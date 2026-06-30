@@ -32,6 +32,27 @@ const EPISODE_MANIFEST = path.join(EPISODE_DIR, "multishot_bundles.json");
 const PROJECT_ROOT = path.resolve(__dirname, "..", "..");
 const FINAL_DIR = path.join(PROJECT_ROOT, "final_selection");
 const SELECTIONS_DB = path.join(EPISODE_DIR, "selections.json");
+
+// Voice/sound references (NOT dialogue) — identity locks for the speakers.
+// `order` is the speaker order inside the (combined) clip, stated in the prompt.
+const AUDIO_REFS = [
+  { rel: "audio-as-video-refs/sara_voice_reference.mp4", label: "Sara — voice", order: ["Sara"] },
+  { rel: "audio-as-video-refs/helena_voice_reference.mp4", label: "Helena — voice", order: ["Helena"] },
+  { rel: "draft-2/references/forest_king_voice_ref.wav", label: "Forest King — voice", order: ["Forest King"] },
+  { rel: "audio-as-video-refs/sara_helena_combined_reference.mp4", label: "Sara + Helena — combined", order: ["Sara", "Helena"] },
+  { rel: "draft-2/references/combined_3voice_reference.wav", label: "Sara + Helena + Forest King — combined", order: ["Sara", "Helena", "Forest King"] },
+];
+const A = { sara: AUDIO_REFS[0].rel, helena: AUDIO_REFS[1].rel, king: AUDIO_REFS[2].rel, sh: AUDIO_REFS[3].rel, shk: AUDIO_REFS[4].rel };
+// Pick the best single voice reference for the speakers present in a bundle.
+function pickAudio(chars) {
+  const s = chars.has("Sara"), h = chars.has("Helena"), k = chars.has("Forest King");
+  if (k && (s || h)) return A.shk; // covers S+K, H+K, S+H+K
+  if (s && h) return A.sh;
+  if (s) return A.sara;
+  if (h) return A.helena;
+  if (k) return A.king;
+  return null;
+}
 const IMG_RE = /\.(png|jpe?g|webp|gif)$/i;
 const SKIP_DIRS = new Set(["node_modules", ".git", "dist", "final_selection", "shot-studio", ".DS_Store"]);
 
@@ -336,6 +357,7 @@ app.get("/api/library", (req, res) => {
             rel: im.rel,
             name: im.name,
             url: "/asset/" + im.rel.split(path.sep).join("/"),
+            abs: path.join(PROJECT_ROOT, im.rel),
             selected: !!db.library[im.rel],
           })),
       }));
@@ -467,6 +489,7 @@ app.post("/api/episode/auto-assign", (req, res) => {
     let totalAssigned = 0;
     const summary = {};
     db.episode = {};
+    db.episodeAudio = {};
     for (const b of manifest.bundles) {
       const reqs = bundleRequirements(b);
       // one image per role; for each role try its candidate tags in priority order
@@ -482,9 +505,48 @@ app.post("/api/episode/auto-assign", (req, res) => {
       db.episode[b.id] = matched;
       summary[b.id] = matched.length;
       totalAssigned += matched.length;
+
+      // audio: one voice reference per bundle based on speaking characters present
+      const chars = new Set(b.shots.flatMap((s) => s.characters || []));
+      const audioRel = pickAudio(chars);
+      db.episodeAudio[b.id] = audioRel ? [audioRel] : [];
     }
     writeDB(db);
     res.json({ ok: true, bundles: manifest.bundles.length, totalAssigned, summary });
+  } catch (e) {
+    res.status(500).json({ error: String(e.message || e) });
+  }
+});
+
+// Available voice/sound references + current per-bundle audio picks.
+app.get("/api/audio", (req, res) => {
+  try {
+    const db = readDB();
+    const items = AUDIO_REFS.map((a) => ({
+      ...a,
+      abs: path.join(PROJECT_ROOT, a.rel),
+      url: "/asset/" + a.rel.split(path.sep).join("/"),
+      exists: fs.existsSync(path.join(PROJECT_ROOT, a.rel)),
+    }));
+    res.json({ audio: items, episode: db.episodeAudio || {} });
+  } catch (e) {
+    res.status(500).json({ error: String(e.message || e) });
+  }
+});
+
+// Toggle a voice reference for one bundle.
+app.post("/api/episode/audio-select", (req, res) => {
+  try {
+    const { bundle, rel, selected } = req.body || {};
+    if (!bundle || !rel) return res.status(400).json({ error: "Missing 'bundle' or 'rel'" });
+    const db = readDB();
+    db.episodeAudio = db.episodeAudio || {};
+    const cur = new Set(db.episodeAudio[bundle] || []);
+    if (selected) cur.add(rel);
+    else cur.delete(rel);
+    db.episodeAudio[bundle] = [...cur];
+    writeDB(db);
+    res.json({ ok: true, bundle, selected: db.episodeAudio[bundle] });
   } catch (e) {
     res.status(500).json({ error: String(e.message || e) });
   }

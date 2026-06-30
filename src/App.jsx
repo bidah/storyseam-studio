@@ -360,6 +360,24 @@ function MultiShot({ reloadKey }) {
   );
 }
 
+// Friendly label for a reference image, from its filename.
+function refLabel(rel) {
+  const base = rel.split("/").pop().toLowerCase();
+  const night = base.includes("night");
+  const t = (n) => (night ? `${n} (night)` : n);
+  if (base.includes("kids")) return "Elf kids";
+  if (base.includes("king") && base.includes("house")) return "King's house";
+  if (base.includes("king")) return t("Forest King");
+  if (base.includes("sara")) return t("Sara");
+  if (base.includes("helena")) return t("Helena");
+  if (base.includes("mote") || base.includes("glow")) return t("Mote");
+  if (base.includes("deep") && base.includes("forest")) return t("deep wood");
+  if (base.includes("school")) return "school";
+  if (base.includes("classroom")) return "classroom";
+  if (base.includes("forest")) return t("forest");
+  return base.replace(/\.[a-z0-9]+$/, "");
+}
+
 function CopyButton({ text }) {
   const [copied, setCopied] = useState(false);
   const onCopy = useCallback(async () => {
@@ -516,9 +534,29 @@ function RefPickerModal({ bundle, folders, picked, flat, onAdd, onRemove, onView
   );
 }
 
-function EpisodeBundle({ b, flat, picked, onOpenPicker, onRemove, onView }) {
+function EpisodeBundle({ b, flat, picked, onOpenPicker, onRemove, onView, audioMap, audioPicked, onOpenAudio }) {
   const [open, setOpen] = useState(false);
   const assigned = [...picked].map((rel) => flat.get(rel)).filter(Boolean);
+  const audioAssigned = [...audioPicked].map((rel) => audioMap.get(rel)).filter(Boolean);
+
+  // Live skill prompt: image refs + voice refs (name + path) on top, then body.
+  const refBlock = assigned.length
+    ? "IMAGE REFERENCES (pass each file as an image_references entry):\n" +
+      assigned.map((im) => `- ${refLabel(im.rel)}: ${im.abs || im.rel}`).join("\n")
+    : "IMAGE REFERENCES: (none selected yet — use “choose references” above)";
+  const audioBlock = audioAssigned.length
+    ? "\n\nVOICE / SOUND REFERENCES (pass as the audio reference — voice identity, NOT dialogue):\n" +
+      audioAssigned
+        .map(
+          (a) =>
+            `- ${a.label}: ${a.abs || a.rel}` +
+            (a.order && a.order.length > 1
+              ? ` — voices appear in this order: ${a.order.map((n, i) => `${i + 1}=${n}`).join(", ")}`
+              : "")
+        )
+        .join("\n")
+    : "";
+  const fullPrompt = refBlock + audioBlock + "\n\n" + b.skillPrompt;
   return (
     <section className="ep-bundle">
       <div className="ep-bundle-head">
@@ -558,6 +596,25 @@ function EpisodeBundle({ b, flat, picked, onOpenPicker, onRemove, onView }) {
         <button className="secondary ep-choose" onClick={() => onOpenPicker(b)}>＋ choose references</button>
       </div>
 
+      {/* Voice / sound references for this scene */}
+      <div className="ep-assigned ep-audio-row">
+        {audioAssigned.length === 0 ? (
+          <span className="not-yet">no voice reference chosen</span>
+        ) : (
+          <div className="ep-audio-chips">
+            {audioAssigned.map((a) => (
+              <span key={a.rel} className="ep-audio-chip" title={a.rel}>
+                🔊 {a.label}
+                {a.order && a.order.length > 1 && (
+                  <em> ({a.order.map((n, i) => `${i + 1}=${n}`).join(", ")})</em>
+                )}
+              </span>
+            ))}
+          </div>
+        )}
+        <button className="secondary ep-choose" onClick={() => onOpenAudio(b)}>🔊 choose audio references</button>
+      </div>
+
       <ol className="ep-shots">
         {b.shots.map((s) => (
           <li key={s.id}>
@@ -578,13 +635,13 @@ function EpisodeBundle({ b, flat, picked, onOpenPicker, onRemove, onView }) {
       <div className="ep-prompt-wrap">
         <div className="ep-prompt-bar">
           <span className="ep-prompt-label">skill prompt — paste back to generate this multishot</span>
-          <CopyButton text={b.skillPrompt} />
+          <CopyButton text={fullPrompt} />
         </div>
         <textarea
           className="ep-prompt"
           readOnly
-          rows={open ? 18 : 4}
-          value={b.skillPrompt}
+          rows={open ? 20 : 5}
+          value={fullPrompt}
           onFocus={() => setOpen(true)}
         />
         <button className="ep-toggle" onClick={() => setOpen((o) => !o)}>
@@ -592,6 +649,55 @@ function EpisodeBundle({ b, flat, picked, onOpenPicker, onRemove, onView }) {
         </button>
       </div>
     </section>
+  );
+}
+
+function AudioPickerModal({ bundle, audioRefs, picked, onToggle, onClose }) {
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+  return (
+    <div className="ms-modal-overlay" onClick={onClose}>
+      <div className="picker-modal audio-modal" onClick={(e) => e.stopPropagation()}>
+        <div className="picker-head">
+          <h3>
+            Voice / sound references · <span className="ep-id">{bundle.id}</span>{" "}
+            <span className="ep-name">{bundle.beatTitle}</span>
+          </h3>
+          <button className="ms-modal-close" onClick={onClose} aria-label="Close">✕</button>
+        </div>
+        <div className="audio-list">
+          {audioRefs.map((a) => {
+            const on = picked.has(a.rel);
+            return (
+              <div key={a.rel} className={`audio-item ${on ? "selected" : ""}`}>
+                <button
+                  className={`ep-pick-check ${on ? "on" : ""}`}
+                  title={on ? "remove from this shot" : "use in this shot"}
+                  onClick={() => onToggle(bundle.id, a.rel, !on)}
+                >
+                  {on ? "✓" : "＋"}
+                </button>
+                <div className="audio-meta">
+                  <div className="audio-label">
+                    {a.label}
+                    {!a.exists && <span className="ep-badge miss"> missing file</span>}
+                  </div>
+                  {a.order && a.order.length > 1 && (
+                    <div className="audio-order">voice order: {a.order.map((n, i) => `${i + 1}=${n}`).join(", ")}</div>
+                  )}
+                  <audio controls preload="none" src={a.url} />
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -603,6 +709,9 @@ function Episode({ reloadKey, onView }) {
   const [error, setError] = useState(null);
   const [confirm, setConfirm] = useState(null); // { bundle, f }
   const [pickerBundle, setPickerBundle] = useState(null);
+  const [audioRefs, setAudioRefs] = useState([]);
+  const [audioPicks, setAudioPicks] = useState({}); // bundleId -> Set(rel)
+  const [audioPicker, setAudioPicker] = useState(null);
 
   useEffect(() => {
     let alive = true;
@@ -611,8 +720,9 @@ function Episode({ reloadKey, onView }) {
       fetch("/api/episode").then((r) => r.json()),
       fetch("/api/library").then((r) => r.json()),
       fetch("/api/final").then((r) => r.json()),
+      fetch("/api/audio").then((r) => r.json()),
     ])
-      .then(([ep, lib, fn]) => {
+      .then(([ep, lib, fn, au]) => {
         if (!alive) return;
         if (ep.error) throw new Error(ep.error);
         setData(ep.episode);
@@ -620,6 +730,10 @@ function Episode({ reloadKey, onView }) {
         const m = {};
         for (const [k, v] of Object.entries(fn.episode || {})) m[k] = new Set(v);
         setPicks(m);
+        setAudioRefs(au.audio || []);
+        const am = {};
+        for (const [k, v] of Object.entries(au.episode || {})) am[k] = new Set(v);
+        setAudioPicks(am);
       })
       .catch((e) => alive && setError(String(e.message || e)))
       .finally(() => alive && setLoading(false));
@@ -627,6 +741,30 @@ function Episode({ reloadKey, onView }) {
       alive = false;
     };
   }, [reloadKey]);
+
+  const audioMap = useMemo(() => {
+    const m = new Map();
+    for (const a of audioRefs) m.set(a.rel, a);
+    return m;
+  }, [audioRefs]);
+
+  const onAudioToggle = useCallback(async (bundle, rel, selected) => {
+    setAudioPicks((p) => {
+      const s = new Set(p[bundle] || []);
+      if (selected) s.add(rel);
+      else s.delete(rel);
+      return { ...p, [bundle]: s };
+    });
+    try {
+      await fetch("/api/episode/audio-select", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ bundle, rel, selected }),
+      });
+    } catch {
+      /* keep optimistic state */
+    }
+  }, []);
 
   // Map every library image by rel (to resolve assigned thumbnails).
   const flat = useMemo(() => {
@@ -680,6 +818,10 @@ function Episode({ reloadKey, onView }) {
       const m = {};
       for (const [k, v] of Object.entries(fn.episode || {})) m[k] = new Set(v);
       setPicks(m);
+      const au = await fetch("/api/audio").then((r) => r.json());
+      const am = {};
+      for (const [k, v] of Object.entries(au.episode || {})) am[k] = new Set(v);
+      setAudioPicks(am);
     } catch (e) {
       setError(String(e.message || e));
     } finally {
@@ -717,9 +859,22 @@ function Episode({ reloadKey, onView }) {
             onOpenPicker={setPickerBundle}
             onRemove={onRemove}
             onView={onView}
+            audioMap={audioMap}
+            audioPicked={audioPicks[b.id] || new Set()}
+            onOpenAudio={setAudioPicker}
           />
         ))}
       </div>
+
+      {audioPicker && (
+        <AudioPickerModal
+          bundle={audioPicker}
+          audioRefs={audioRefs}
+          picked={audioPicks[audioPicker.id] || new Set()}
+          onToggle={onAudioToggle}
+          onClose={() => setAudioPicker(null)}
+        />
+      )}
 
       {pickerBundle && (
         <RefPickerModal
