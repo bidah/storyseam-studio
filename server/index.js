@@ -429,12 +429,13 @@ function classifyRef(rel) {
 // What a bundle needs, as an ordered list of role requirements. Each requirement
 // is a priority list of candidate tags (first available image wins) — so a night
 // scene prefers forest-night but falls back to day forest if none is selected.
-const NIGHT_GROUPS = new Set([
-  "forest-path-night", "night-clearing", "boundary-stone-night", "montage", "hollow-dusk", "whistlewood-aerial",
-]);
+// Beats that play at dusk/night — used to pick night character + forest refs.
+// (Beat-level, not group-level: the B7 rescue happens at the hollow at night,
+// but the "hollow" group also holds the daytime B3/B4H scenes.)
+const NIGHT_BEATS = new Set(["B5H", "B6H", "B6S", "B7", "B8"]);
 function bundleRequirements(bundle) {
   const reqs = [];
-  const night = NIGHT_GROUPS.has(bundle.group);
+  const night = NIGHT_BEATS.has(bundle.beat);
   for (const c of new Set(bundle.shots.flatMap((s) => s.characters || []))) {
     // late scenes prefer the night character version, fall back to day
     reqs.push(night ? ["char:" + c + "-night", "char:" + c] : ["char:" + c]);
@@ -447,7 +448,6 @@ function bundleRequirements(bundle) {
     else if (k.includes("school")) reqs.push(["loc:school"]);
     else if (k.includes("classroom")) reqs.push(["loc:classroom"]);
     else if (k.includes("forest")) {
-      const night = /night|montage|dusk/.test(k); // late scenes -> forest-night
       reqs.push(night ? ["loc:forest-night", "loc:forest"] : ["loc:forest"]);
     }
   }
