@@ -421,6 +421,7 @@ function classifyRef(rel) {
     if (base.includes("helena")) tags.add("char:Helena" + suf);
     if (base.includes("mote") || base.includes("glow")) tags.add("char:Mote" + suf);
     if (base.includes("king") && !base.includes("house")) tags.add("char:Forest King" + suf);
+    if (base.includes("kids")) tags.add("char:Elf kids"); // school-yard fill kids
   }
   return tags;
 }
