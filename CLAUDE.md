@@ -3,6 +3,25 @@
 Vite + React front-end (`src/`) with an Express API (`server/index.js`) for reviewing
 Whistlewood episode shots, references, and Seedance renders.
 
+## UI stack
+
+The front-end is built on **Tailwind CSS v4** + **shadcn/ui** (New York style, zinc base,
+emerald accent). Key files:
+
+- `src/index.css` — Tailwind entry + the theme tokens (`:root` = light, `.dark` = dark,
+  which is the default via `class="dark"` on `<html>`). Colors are OKLCH CSS variables
+  mapped through `@theme inline`.
+- `src/components/ui/*` — shadcn primitives (`button`, `card`, `dialog`, `tabs`, `badge`,
+  `input`, `textarea`, `label`, `checkbox`, `slider`, `tooltip`, `separator`, …). Add more
+  with `npx shadcn@latest add <name>`. `Badge` is extended with `success` / `warning` /
+  `info` / `muted` variants for status pills.
+- `@/` is aliased to `src/` (see `vite.config.js` + `jsconfig.json`), `cn()` lives in
+  `src/lib/utils.js`.
+
+**Prefer shadcn components + Tailwind utility classes** over bespoke CSS. Reuse the small
+in-file helpers in `App.jsx` (`Empty`, `Eyebrow`, `Chip`, `Panel`, `Spinner`, `ErrorNote`)
+for consistency. All modals are shadcn `Dialog` (Esc / overlay-click close for free).
+
 ## UI conventions
 
 - **Always use [lucide-react](https://lucide.dev) icons — never emojis or Unicode glyphs**

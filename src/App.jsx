@@ -4,8 +4,103 @@ import {
   RotateCcw, Maximize2, Volume2, VolumeX, Speech, Star, Play, RefreshCw,
   Copy, Pencil, ExternalLink, Leaf, Sparkles, TriangleAlert, Circle,
   Heart, Music, Save, Clock, Download, Trash2,
-  PenLine, FileText, CheckSquare, Square, Image as ImageIcon,
+  PenLine, FileText, Image as ImageIcon, Clapperboard, Sun, Moon,
+  Loader2,
 } from "lucide-react";
+
+import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Separator } from "@/components/ui/separator";
+import { Slider } from "@/components/ui/slider";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Tooltip, TooltipContent, TooltipProvider, TooltipTrigger,
+} from "@/components/ui/tooltip";
+import {
+  Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle,
+} from "@/components/ui/dialog";
+
+/* ---------------------------------------------------------------- *
+ * Small shared building blocks                                     *
+ * ---------------------------------------------------------------- */
+
+// Muted, italic empty / "not yet" state.
+function Empty({ children, className }) {
+  return (
+    <span className={cn("text-sm italic text-muted-foreground", className)}>
+      {children}
+    </span>
+  );
+}
+
+// Uppercase eyebrow / section label.
+function Eyebrow({ children, className }) {
+  return (
+    <div className={cn("text-[11px] font-semibold uppercase tracking-wider text-muted-foreground", className)}>
+      {children}
+    </div>
+  );
+}
+
+// Toggle chip (moods, restrictions, …).
+function Chip({ on, className, children, ...props }) {
+  return (
+    <button
+      type="button"
+      className={cn(
+        "inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium transition-colors",
+        on
+          ? "border-primary/40 bg-primary/15 text-primary"
+          : "border-border text-muted-foreground hover:bg-accent hover:text-accent-foreground",
+        className
+      )}
+      {...props}
+    >
+      {children}
+    </button>
+  );
+}
+
+// Section card with a title row.
+function Panel({ title, meta, className, bodyClassName, children }) {
+  return (
+    <Card className={cn("gap-0 overflow-hidden py-0", className)}>
+      {(title || meta) && (
+        <CardHeader className="flex flex-row items-center justify-between gap-3 border-b px-4 py-3 [.border-b]:pb-3">
+          {title && <CardTitle className="text-sm font-semibold">{title}</CardTitle>}
+          {meta}
+        </CardHeader>
+      )}
+      <CardContent className={cn("p-4", bodyClassName)}>{children}</CardContent>
+    </Card>
+  );
+}
+
+function Spinner({ label }) {
+  return (
+    <div className="flex items-center gap-2 p-6 text-sm text-muted-foreground">
+      <Loader2 size={16} className="animate-spin" /> {label}
+    </div>
+  );
+}
+
+function ErrorNote({ children }) {
+  return (
+    <div className="flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+      <TriangleAlert size={15} className="mt-0.5 shrink-0" /> <span>{children}</span>
+    </div>
+  );
+}
+
+/* ---------------------------------------------------------------- *
+ * Editable text cell (Seedance shot / seed-audio block)            *
+ * ---------------------------------------------------------------- */
 
 function EditableCell({ shotId, kind, initialText, found, segmentTag, segmentLabel }) {
   const [text, setText] = useState(initialText);
@@ -13,7 +108,6 @@ function EditableCell({ shotId, kind, initialText, found, segmentTag, segmentLab
   const [status, setStatus] = useState(null); // "saving" | "ok" | error string
   const dirty = text !== saved;
 
-  // Re-sync when a refresh brings new server text (only if user hasn't edited).
   useEffect(() => {
     setText(initialText);
     setSaved(initialText);
@@ -38,72 +132,94 @@ function EditableCell({ shotId, kind, initialText, found, segmentTag, segmentLab
   }, [shotId, kind, text]);
 
   if (!found && !initialText) {
-    return <span className="not-yet">no matching block in source file</span>;
+    return <Empty>no matching block in source file</Empty>;
   }
 
   return (
-    <div>
+    <div className="space-y-2">
       {segmentLabel ? (
-        <div className="seg-header" title="Shared segment context (not editable here)">
+        <div
+          className="rounded-md border border-amber-500/25 bg-amber-500/10 px-2.5 py-1.5 text-xs font-semibold uppercase tracking-wide text-amber-500"
+          title="Shared segment context (not editable here)"
+        >
           {segmentLabel}
         </div>
       ) : (
-        segmentTag != null && <span className="seg-tag">SEGMENT {segmentTag}</span>
+        segmentTag != null && <Badge variant="muted">SEGMENT {segmentTag}</Badge>
       )}
-      <textarea value={text} onChange={(e) => setText(e.target.value)} />
-      <div className="cell-actions">
-        <button className="save" onClick={onSave} disabled={!dirty || status === "saving"}>
-          {status === "saving" ? "Saving…" : "Save"}
-        </button>
-        {dirty && <span className="dirty-dot"><Circle size={8} fill="currentColor" /> unsaved</span>}
-        {status === "ok" && <span className="saved-msg"><Check size={13} /> written to file</span>}
+      <Textarea
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        className="min-h-[220px] resize-y font-mono text-xs leading-relaxed"
+      />
+      <div className="flex flex-wrap items-center gap-3">
+        <Button size="sm" onClick={onSave} disabled={!dirty || status === "saving"}>
+          {status === "saving" ? <><Loader2 size={13} className="animate-spin" /> Saving…</> : <><Save size={13} /> Save</>}
+        </Button>
+        {dirty && (
+          <span className="flex items-center gap-1 text-xs text-amber-500">
+            <Circle size={8} fill="currentColor" /> unsaved
+          </span>
+        )}
+        {status === "ok" && (
+          <span className="flex items-center gap-1 text-xs text-primary">
+            <Check size={13} /> written to file
+          </span>
+        )}
         {status && status !== "ok" && status !== "saving" && (
-          <span className="err-msg">{status}</span>
+          <span className="text-xs text-destructive">{status}</span>
         )}
       </div>
     </div>
   );
 }
 
+/* ---------------------------------------------------------------- *
+ * Media takes (audio / video) with a take scrubber                 *
+ * ---------------------------------------------------------------- */
+
 function MediaTakes({ kind, takes, reloadKey }) {
   const list = Array.isArray(takes) ? takes : [];
-  // index 0 = latest. Slider goes oldest (left) → latest (right).
-  const [i, setI] = useState(0);
+  const [i, setI] = useState(0); // index 0 = latest
   useEffect(() => setI(0), [reloadKey, list.length]);
 
   if (list.length === 0) {
-    return <span className="not-yet">not generated yet</span>;
+    return <Empty>not generated yet</Empty>;
   }
   const takesArr = list;
   const t = takesArr[Math.min(i, takesArr.length - 1)];
   const src = `${t.url}?v=${reloadKey}`;
   return (
-    <div className="media-takes">
-      <div className="take-title" title={t.title}>
+    <div className="flex flex-col gap-1.5">
+      <div className="flex items-center gap-1 truncate text-[11px] text-muted-foreground" title={t.title}>
         {i === 0 && (
-          <span className="take-latest"><Star size={12} fill="currentColor" /> LATEST · </span>
+          <span className="inline-flex items-center gap-1 font-semibold text-primary">
+            <Star size={11} fill="currentColor" /> LATEST ·
+          </span>
         )}
-        {t.title}
+        <span className="truncate">{t.title}</span>
       </div>
       {kind === "audio" ? (
         <audio key={src} controls preload="none">
           <source src={src} type="audio/mpeg" />
         </audio>
       ) : (
-        <video key={src} controls preload="metadata">
+        <video key={src} controls preload="metadata" className="bg-black">
           <source src={src} type="video/mp4" />
         </video>
       )}
       {takesArr.length > 1 && (
-        <div className="take-slider">
-          <input
-            type="range"
-            min="0"
+        <div className="flex items-center gap-2.5">
+          <Slider
+            className="flex-1"
+            min={0}
             max={takesArr.length - 1}
-            value={takesArr.length - 1 - i}
-            onChange={(e) => setI(takesArr.length - 1 - Number(e.target.value))}
+            step={1}
+            value={[takesArr.length - 1 - i]}
+            onValueChange={([v]) => setI(takesArr.length - 1 - v)}
+            aria-label="Select take"
           />
-          <span className="take-count">
+          <span className="whitespace-nowrap text-[11px] text-muted-foreground">
             take {t.take}
             {t.variant && t.variant !== "final" ? ` · ${t.variant}` : ""} ·{" "}
             {takesArr.length - i}/{takesArr.length}
@@ -114,50 +230,54 @@ function MediaTakes({ kind, takes, reloadKey }) {
   );
 }
 
-function ImageModal({ image, onClose }) {
-  // Close on Escape.
-  useEffect(() => {
-    if (!image) return;
-    const onKey = (e) => {
-      if (e.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [image, onClose]);
+/* ---------------------------------------------------------------- *
+ * Full-size image viewer                                           *
+ * ---------------------------------------------------------------- */
 
-  if (!image) return null;
+function ImageModal({ image, onClose }) {
   return (
-    <div className="ms-modal-overlay" onClick={onClose}>
-      <div className="ms-modal" onClick={(e) => e.stopPropagation()}>
-        <button className="ms-modal-close" onClick={onClose} aria-label="Close">
-          <X size={18} />
-        </button>
-        <img src={image.url} alt={image.name} />
-        <div className="ms-modal-cap">
-          <span className="ms-ref-role">{image.role}</span>
-          {image.name}
-        </div>
-      </div>
-    </div>
+    <Dialog open={!!image} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="max-w-[min(92vw,1100px)] gap-0 overflow-hidden bg-card p-0">
+        <DialogHeader className="sr-only">
+          <DialogTitle>{image?.name || "Image"}</DialogTitle>
+        </DialogHeader>
+        {image && (
+          <>
+            <img
+              src={image.url}
+              alt={image.name}
+              className="max-h-[80vh] w-full bg-black object-contain"
+            />
+            <div className="flex items-center gap-2 border-t px-4 py-3 text-sm">
+              <Badge variant="secondary" className="uppercase">{image.role}</Badge>
+              <span className="truncate text-muted-foreground">{image.name}</span>
+            </div>
+          </>
+        )}
+      </DialogContent>
+    </Dialog>
   );
 }
+
+/* ---------------------------------------------------------------- *
+ * MultiShot experiment — generation slideshow + summaries          *
+ * ---------------------------------------------------------------- */
 
 function GenerationSlideshow({ generations, reloadKey }) {
   const list = Array.isArray(generations) ? generations : [];
   const [i, setI] = useState(0);
-  // Clamp when the list size changes (e.g. after a refresh).
   useEffect(() => {
     setI((cur) => Math.min(cur, Math.max(0, list.length - 1)));
   }, [list.length]);
 
   if (list.length === 0) {
     return (
-      <section className="ms-panel ms-slideshow">
-        <h3>Generations</h3>
-        <div className="not-yet">
-          no generations yet — submit the Seedance multishot job, then <RefreshCw size={12} /> Refresh
-        </div>
-      </section>
+      <Panel title="Generations">
+        <Empty>
+          no generations yet — submit the Seedance multishot job, then{" "}
+          <RefreshCw size={12} className="inline" /> Refresh
+        </Empty>
+      </Panel>
     );
   }
 
@@ -167,94 +287,110 @@ function GenerationSlideshow({ generations, reloadKey }) {
   const params = g.params || {};
 
   return (
-    <section className="ms-panel ms-slideshow">
-      <div className="ms-slide-head">
-        <h3>Generations</h3>
-        <div className="ms-slide-nav">
-          <button className="secondary" onClick={prev} disabled={list.length < 2} aria-label="Previous">
+    <Panel
+      title="Generations"
+      meta={
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="icon-sm" onClick={prev} disabled={list.length < 2} aria-label="Previous">
             <ChevronLeft size={16} />
-          </button>
-          <div className="ms-dots">
+          </Button>
+          <div className="flex items-center gap-1.5">
             {list.map((gen, idx) => (
               <button
                 key={gen.id || idx}
-                className={`ms-dot ${idx === i ? "active" : ""}`}
+                className={cn(
+                  "size-2 rounded-full transition-colors",
+                  idx === i ? "bg-primary" : "bg-muted-foreground/30 hover:bg-muted-foreground/60"
+                )}
                 onClick={() => setI(idx)}
                 title={gen.label || `Take ${idx + 1}`}
+                aria-label={gen.label || `Take ${idx + 1}`}
               />
             ))}
           </div>
-          <button className="secondary" onClick={next} disabled={list.length < 2} aria-label="Next">
+          <Button variant="outline" size="icon-sm" onClick={next} disabled={list.length < 2} aria-label="Next">
             <ChevronRight size={16} />
-          </button>
-          <span className="ms-slide-count">
+          </Button>
+          <span className="ml-1 text-xs tabular-nums text-muted-foreground">
             {i + 1} / {list.length}
           </span>
         </div>
-      </div>
-
-      <div className="ms-slide-body">
-        <div className="ms-slide-video">
-          <div className="ms-slide-label">
-            <strong>{g.label || `Take ${i + 1}`}</strong>
-            <span className={`ms-audio-badge ${g.hasAudio ? "on" : "off"}`}>
-              {g.hasAudio ? <><Volume2 size={13} /> has audio</> : <><VolumeX size={13} /> silent</>}
-            </span>
-            {g.createdAt && <span className="ms-slide-date">{g.createdAt}</span>}
+      }
+    >
+      <div className="grid gap-4 lg:grid-cols-[1.4fr_1fr]">
+        <div className="space-y-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <strong className="text-sm">{g.label || `Take ${i + 1}`}</strong>
+            <Badge variant={g.hasAudio ? "success" : "muted"}>
+              {g.hasAudio ? <><Volume2 size={12} /> has audio</> : <><VolumeX size={12} /> silent</>}
+            </Badge>
+            {g.createdAt && <span className="text-xs text-muted-foreground">{g.createdAt}</span>}
           </div>
           {g.videoUrl ? (
-            <video key={`${g.videoUrl}?v=${reloadKey}-${i}`} controls preload="metadata">
+            <video key={`${g.videoUrl}?v=${reloadKey}-${i}`} controls preload="metadata" className="rounded-lg bg-black">
               <source src={`${g.videoUrl}?v=${reloadKey}`} type="video/mp4" />
             </video>
           ) : (
-            <div className="not-yet">video file missing</div>
+            <Empty>video file missing</Empty>
           )}
           {g.resultUrl && (
-            <a className="ms-link" href={g.resultUrl} target="_blank" rel="noreferrer">
+            <a
+              className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
+              href={g.resultUrl}
+              target="_blank"
+              rel="noreferrer"
+            >
               result URL <ExternalLink size={12} />
             </a>
           )}
         </div>
 
-        <div className="ms-slide-details">
-          <div className="ms-detail-block">
-            <div className="ms-detail-title">Params</div>
-            <div className="ms-params">
+        <div className="space-y-4">
+          <div>
+            <Eyebrow className="mb-1.5">Params</Eyebrow>
+            <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
               {Object.entries(params).map(([k, v]) => (
-                <div className="ms-param" key={k}>
-                  <span className="ms-param-k">{k}</span>
-                  <span className={`ms-param-v ${k === "generate_audio" ? (v ? "v-true" : "v-false") : ""}`}>
+                <div className="flex items-center justify-between gap-2 rounded bg-muted/50 px-2 py-1" key={k}>
+                  <span className="text-muted-foreground">{k}</span>
+                  <span
+                    className={cn(
+                      "font-medium",
+                      k === "generate_audio" && (v ? "text-primary" : "text-destructive")
+                    )}
+                  >
                     {String(v)}
                   </span>
                 </div>
               ))}
               {g.id && (
-                <div className="ms-param">
-                  <span className="ms-param-k">job id</span>
-                  <span className="ms-param-v mono">{g.id}</span>
+                <div className="col-span-2 flex items-center justify-between gap-2 rounded bg-muted/50 px-2 py-1">
+                  <span className="text-muted-foreground">job id</span>
+                  <span className="truncate font-mono text-[11px]">{g.id}</span>
                 </div>
               )}
             </div>
           </div>
 
           {Array.isArray(g.mediaInputs) && g.mediaInputs.length > 0 && (
-            <div className="ms-detail-block">
-              <div className="ms-detail-title">Media inputs</div>
-              <ul className="ms-mediainputs">
+            <div>
+              <Eyebrow className="mb-1.5">Media inputs</Eyebrow>
+              <ul className="space-y-1 text-xs text-muted-foreground">
                 {g.mediaInputs.map((m, idx) => (
-                  <li key={idx}>{m}</li>
+                  <li key={idx} className="truncate font-mono">{m}</li>
                 ))}
               </ul>
             </div>
           )}
 
-          <div className="ms-detail-block">
-            <div className="ms-detail-title">Prompt</div>
-            <pre className="ms-prompt">{g.prompt}</pre>
+          <div>
+            <Eyebrow className="mb-1.5">Prompt</Eyebrow>
+            <pre className="max-h-52 overflow-auto whitespace-pre-wrap rounded-md bg-muted/50 p-2.5 font-mono text-[11px] leading-relaxed">
+              {g.prompt}
+            </pre>
           </div>
         </div>
       </div>
-    </section>
+    </Panel>
   );
 }
 
@@ -283,85 +419,81 @@ function MultiShot({ reloadKey }) {
     load();
   }, [load, reloadKey]);
 
-  if (loading) return <p className="status">loading multishot…</p>;
-  if (error) return <p className="err-msg">Error: {error}</p>;
-  if (!data) return <p className="not-yet">No multishot experiment found.</p>;
+  if (loading) return <Spinner label="loading multishot…" />;
+  if (error) return <ErrorNote>{error}</ErrorNote>;
+  if (!data) return <Empty>No multishot experiment found.</Empty>;
 
   return (
-    <div className="multishot">
-      <div className="ms-head">
-        <h2>{data.title}</h2>
-        <div className="ms-meta">
-          <span className="ms-badge status-done">
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h2 className="text-xl font-semibold tracking-tight">{data.title}</h2>
+        <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+          <Badge variant="success">
             {(data.generations || []).length} generation
             {(data.generations || []).length === 1 ? "" : "s"}
-          </span>
+          </Badge>
           <span>{data.model}</span>
+          <Separator orientation="vertical" className="!h-3" />
           <span>{data.submittedVia}</span>
         </div>
       </div>
 
-      {/* Generations slideshow (newest first), each with its prompt + params */}
       <GenerationSlideshow generations={data.generations} reloadKey={reloadKey} />
 
-      <div className="ms-grid">
-        {/* Summary: shots used */}
-        <section className="ms-panel">
-          <h3>Shots used ({data.shots.length})</h3>
-          <ol className="ms-shots">
+      <div className="grid gap-4 lg:grid-cols-3">
+        <Panel title={`Shots used (${data.shots.length})`}>
+          <ol className="space-y-3">
             {data.shots.map((s) => (
-              <li key={s.id}>
-                <div className="ms-shot-top">
-                  <span className="ms-shot-id">shot{s.id}</span>
-                  <span className="ms-shot-time">{s.time}</span>
-                  <span className="ms-shot-cam">{s.camera}</span>
+              <li key={s.id} className="rounded-lg border bg-muted/30 p-3">
+                <div className="mb-1 flex flex-wrap items-center gap-2 text-xs">
+                  <Badge variant="secondary" className="font-mono">shot{s.id}</Badge>
+                  <span className="text-muted-foreground">{s.time}</span>
+                  <span className="text-muted-foreground">{s.camera}</span>
                 </div>
-                <div className="ms-shot-sum">{s.summary}</div>
-                <div className="ms-shot-line"><Speech size={13} /> {s.dialogue}</div>
+                <div className="text-sm">{s.summary}</div>
+                <div className="mt-1 flex items-start gap-1.5 text-xs text-muted-foreground">
+                  <Speech size={13} className="mt-0.5 shrink-0" /> {s.dialogue}
+                </div>
               </li>
             ))}
           </ol>
-        </section>
+        </Panel>
 
-        {/* Summary: image references used */}
-        <section className="ms-panel">
-          <h3>Images used ({data.images.length})</h3>
-          <div className="ms-refs">
+        <Panel title={`Images used (${data.images.length})`}>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
             {data.images.map((im) => (
-              <figure key={im.file} className="ms-ref">
+              <figure key={im.file} className="space-y-1">
                 <button
                   type="button"
-                  className="ms-ref-btn"
+                  className="block w-full overflow-hidden rounded-lg border bg-muted transition-transform hover:scale-[1.02]"
                   onClick={() => setModalImage({ ...im, url: `${im.url}?v=${reloadKey}` })}
                   title="Click to view full image"
                 >
-                  <img src={`${im.url}?v=${reloadKey}`} alt={im.name} />
+                  <img src={`${im.url}?v=${reloadKey}`} alt={im.name} className="aspect-square w-full object-cover" />
                 </button>
-                <figcaption>
-                  <span className="ms-ref-role">{im.role}</span>
+                <figcaption className="truncate text-[11px] text-muted-foreground">
+                  <span className="mr-1 font-medium text-primary">{im.role}</span>
                   {im.name}
                 </figcaption>
               </figure>
             ))}
           </div>
-        </section>
+        </Panel>
 
-        {/* Summary: audio references used */}
-        <section className="ms-panel">
-          <h3>Audio used ({data.audio.length})</h3>
-          <ul className="ms-audio">
+        <Panel title={`Audio used (${data.audio.length})`}>
+          <ul className="space-y-3">
             {data.audio.map((a) => (
-              <li key={a.file}>
-                <div className="ms-audio-top">
-                  <span className="ms-ref-role">{a.role}</span>
-                  <span className="ms-audio-name">{a.name}</span>
+              <li key={a.file} className="space-y-1.5">
+                <div className="flex items-center gap-2 text-xs">
+                  <Badge variant="secondary">{a.role}</Badge>
+                  <span className="truncate text-muted-foreground">{a.name}</span>
                 </div>
                 <audio controls preload="none" src={`${a.url}?v=${reloadKey}`} />
-                {a.note && <div className="ms-audio-note">{a.note}</div>}
+                {a.note && <div className="text-xs text-muted-foreground">{a.note}</div>}
               </li>
             ))}
           </ul>
-        </section>
+        </Panel>
       </div>
 
       <ImageModal image={modalImage} onClose={() => setModalImage(null)} />
@@ -369,7 +501,10 @@ function MultiShot({ reloadKey }) {
   );
 }
 
-// Friendly label for a reference image, from its filename.
+/* ---------------------------------------------------------------- *
+ * Reference-label + copy helpers                                   *
+ * ---------------------------------------------------------------- */
+
 function refLabel(rel) {
   const base = rel.split("/").pop().toLowerCase();
   const night = base.includes("night");
@@ -387,13 +522,12 @@ function refLabel(rel) {
   return base.replace(/\.[a-z0-9]+$/, "");
 }
 
-function CopyButton({ text }) {
+function CopyButton({ text, label = "copy prompt" }) {
   const [copied, setCopied] = useState(false);
   const onCopy = useCallback(async () => {
     try {
       await navigator.clipboard.writeText(text);
     } catch {
-      // Fallback for non-secure contexts.
       const ta = document.createElement("textarea");
       ta.value = text;
       document.body.appendChild(ta);
@@ -405,53 +539,47 @@ function CopyButton({ text }) {
     setTimeout(() => setCopied(false), 1500);
   }, [text]);
   return (
-    <button className={`ep-copy ${copied ? "ok" : ""}`} onClick={onCopy}>
-      {copied ? <><Check size={13} /> copied</> : <><Copy size={13} /> copy prompt</>}
-    </button>
+    <Button variant={copied ? "secondary" : "outline"} size="sm" onClick={onCopy}>
+      {copied ? <><Check size={13} /> copied</> : <><Copy size={13} /> {label}</>}
+    </Button>
   );
 }
+
+/* ---------------------------------------------------------------- *
+ * Confirm dialog                                                   *
+ * ---------------------------------------------------------------- */
 
 function ConfirmModal({ open, title, message, confirmLabel = "Remove", onConfirm, onCancel }) {
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e) => {
-      if (e.key === "Escape") onCancel();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [open, onCancel]);
-  if (!open) return null;
   return (
-    <div className="ms-modal-overlay" onClick={onCancel}>
-      <div className="confirm-modal" onClick={(e) => e.stopPropagation()}>
-        <h3>{title}</h3>
-        <p>{message}</p>
-        <div className="confirm-actions">
-          <button className="secondary" onClick={onCancel}>Cancel</button>
-          <button className="danger" onClick={onConfirm}>{confirmLabel}</button>
-        </div>
-      </div>
-    </div>
+    <Dialog open={open} onOpenChange={(o) => !o && onCancel()}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>{title}</DialogTitle>
+        </DialogHeader>
+        <p className="text-sm text-muted-foreground">{message}</p>
+        <DialogFooter>
+          <Button variant="outline" onClick={onCancel}>Cancel</Button>
+          <Button variant="destructive" onClick={onConfirm}>{confirmLabel}</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
-// Per-bundle revision signing. Three independent section signatures
-// (images | prompt | audio); toggling a box signs/clears that section with the
-// signer name + a server timestamp. When all three are set the bundle is signed.
+/* ---------------------------------------------------------------- *
+ * Revision signing                                                 *
+ * ---------------------------------------------------------------- */
+
 const SIGN_SECTIONS = [
   { key: "images", label: "Images", hint: "all references needed for the prompt are assigned", Icon: ImageIcon },
   { key: "prompt", label: "Prompt", hint: "the skill prompt is final", Icon: FileText },
   { key: "audio", label: "Audio", hint: "the voice / sound references are correct", Icon: Volume2 },
 ];
-function SigningModal({ bundle, signoff, onSign, onClose }) {
+
+function SigningModal({ bundle, signoff, open, onSign, onClose }) {
   const [signedBy, setSignedBy] = useState(() => {
     try { return localStorage.getItem("shotStudioSigner") || ""; } catch { return ""; }
   });
-  useEffect(() => {
-    const onKey = (e) => { if (e.key === "Escape") onClose(); };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
   const so = signoff || { images: null, prompt: null, audio: null };
   const name = signedBy.trim();
   const toggle = (section, signed) => {
@@ -463,160 +591,198 @@ function SigningModal({ bundle, signoff, onSign, onClose }) {
   };
   const fmt = (at) => { try { return new Date(at).toLocaleString(); } catch { return at; } };
   return (
-    <div className="ms-modal-overlay" onClick={onClose}>
-      <div className="confirm-modal signing-modal" onClick={(e) => e.stopPropagation()}>
-        <h3><PenLine size={16} /> Revision signing · <span className="ep-id">{bundle.id}</span> <span className="ep-name">{bundle.beatTitle}</span></h3>
-        <label className="signing-by">
-          Signed by
-          <input
-            type="text"
+    <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <PenLine size={16} /> Revision signing
+            <Badge variant="secondary" className="font-mono">{bundle.id}</Badge>
+            <span className="font-normal text-muted-foreground">{bundle.beatTitle}</span>
+          </DialogTitle>
+        </DialogHeader>
+        <div className="space-y-1.5">
+          <Label htmlFor="signed-by">Signed by</Label>
+          <Input
+            id="signed-by"
             value={signedBy}
             placeholder="your name"
             onChange={(e) => setSignedBy(e.target.value)}
           />
-        </label>
-        <div className="signing-rows">
+        </div>
+        <div className="space-y-2">
           {SIGN_SECTIONS.map(({ key, label, hint, Icon }) => {
             const sig = so[key];
             const on = !!sig;
             return (
-              <div key={key} className={`signing-row ${on ? "signed" : ""}`}>
-                <button
-                  className="signing-check"
-                  aria-label={on ? `unsign ${label}` : `sign ${label}`}
+              <div
+                key={key}
+                className={cn(
+                  "flex items-center gap-3 rounded-lg border p-3 transition-colors",
+                  on ? "border-primary/30 bg-primary/5" : "border-border"
+                )}
+              >
+                <Checkbox
+                  checked={on}
                   disabled={!on && !name}
-                  onClick={() => toggle(key, !on)}
-                >
-                  {on ? <CheckSquare size={18} /> : <Square size={18} />}
-                </button>
-                <div className="signing-meta">
-                  <div className="signing-label"><Icon size={13} /> {label}</div>
-                  <div className="signing-hint">{on ? `signed by ${sig.by} · ${fmt(sig.at)}` : hint}</div>
+                  onCheckedChange={(c) => toggle(key, !!c)}
+                  aria-label={on ? `unsign ${label}` : `sign ${label}`}
+                  className="size-5"
+                />
+                <div className="min-w-0">
+                  <div className="flex items-center gap-1.5 text-sm font-medium">
+                    <Icon size={13} /> {label}
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    {on ? `signed by ${sig.by} · ${fmt(sig.at)}` : hint}
+                  </div>
                 </div>
               </div>
             );
           })}
         </div>
-        <div className="confirm-actions">
-          <button className="secondary" onClick={onClose}>Done</button>
-        </div>
-      </div>
-    </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>Done</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
-// A single square reference thumbnail with an assign (Plus) / remove (X) button.
+/* ---------------------------------------------------------------- *
+ * Reference thumbnails + pickers                                   *
+ * ---------------------------------------------------------------- */
+
 function SqItem({ im, on, bundleId, onAdd, onRemove, onView }) {
   return (
-    <figure className={`sq-item ${on ? "selected" : ""}`}>
-      <button className="ep-img-btn" onClick={() => onView({ url: im.url, name: im.rel, role: "reference" })}>
-        <img src={im.url} loading="lazy" alt={im.name} />
+    <figure
+      className={cn(
+        "group relative overflow-hidden rounded-lg border bg-muted transition-colors",
+        on ? "border-primary ring-1 ring-primary/40" : "border-border"
+      )}
+    >
+      <button className="block w-full" onClick={() => onView({ url: im.url, name: im.rel, role: "reference" })}>
+        <img src={im.url} loading="lazy" alt={im.name} className="aspect-square w-full object-cover" />
       </button>
       {on ? (
-        <button className="ep-remove" title="remove from this shot" aria-label="remove from this shot" onClick={() => onRemove(bundleId, im)}><X size={13} /></button>
+        <Button
+          variant="destructive" size="icon-xs"
+          className="absolute right-1.5 top-1.5 rounded-full opacity-90"
+          title="remove from this shot" aria-label="remove from this shot"
+          onClick={() => onRemove(bundleId, im)}
+        >
+          <X size={13} />
+        </Button>
       ) : (
-        <button className="ep-pick-check" title="use in this shot" aria-label="use in this shot" onClick={() => onAdd(bundleId, im)}><Plus size={14} /></button>
+        <Button
+          size="icon-xs"
+          className="absolute right-1.5 top-1.5 rounded-full opacity-90"
+          title="use in this shot" aria-label="use in this shot"
+          onClick={() => onAdd(bundleId, im)}
+        >
+          <Plus size={14} />
+        </Button>
       )}
-      <figcaption>{im.name}</figcaption>
+      <figcaption className="truncate px-2 py-1 text-[11px] text-muted-foreground">{im.name}</figcaption>
     </figure>
   );
 }
 
-// Per-shot reference picker, in a modal. Same structure as the library tab
-// (folders → grid) but limited to images PRE-SELECTED in the library, with the
-// references already assigned to this shot pinned on top.
-function RefPickerModal({ bundle, folders, picked, flat, onAdd, onRemove, onView, onClose }) {
+function RefPickerModal({ bundle, folders, picked, flat, open, onAdd, onRemove, onView, onClose }) {
   const [active, setActive] = useState(null);
-  useEffect(() => {
-    const onKey = (e) => {
-      if (e.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
-
   const selected = [...picked].map((rel) => flat.get(rel)).filter(Boolean);
   const af = active && folders.find((f) => f.folder === active);
 
   return (
-    <div className="ms-modal-overlay" onClick={onClose}>
-      <div className="picker-modal" onClick={(e) => e.stopPropagation()}>
-        <div className="picker-head">
-          <h3>
-            References · <span className="ep-id">{bundle.id}</span>{" "}
-            <span className="ep-name">{bundle.beatTitle}</span>
-          </h3>
-          <button className="ms-modal-close" onClick={onClose} aria-label="Close"><X size={18} /></button>
-        </div>
+    <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="flex max-h-[88vh] max-w-[min(94vw,1000px)] flex-col gap-0 overflow-hidden p-0">
+        <DialogHeader className="border-b px-5 py-4">
+          <DialogTitle className="flex items-center gap-2">
+            References
+            <Badge variant="secondary" className="font-mono">{bundle.id}</Badge>
+            <span className="font-normal text-muted-foreground">{bundle.beatTitle}</span>
+          </DialogTitle>
+        </DialogHeader>
 
-        {/* selections for THIS shot, pinned on top */}
-        <div className="picker-selected">
-          <div className="ep-sel-label">selected for this shot ({selected.length})</div>
-          {selected.length === 0 ? (
-            <div className="not-yet">none yet — pick from your library selections below</div>
-          ) : (
-            <div className="sq-grid">
-              {selected.map((im) => (
-                <SqItem key={im.rel} im={im} on bundleId={bundle.id} onAdd={onAdd} onRemove={onRemove} onView={onView} />
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* browse the pre-selected pool, folders first */}
-        <div className="picker-browse">
-          {folders.length === 0 ? (
-            <div className="not-yet">no images pre-selected yet — go to the library tab and select some first.</div>
-          ) : af ? (
-            <>
-              <div className="lib-head">
-                <button className="secondary" onClick={() => setActive(null)}><ChevronLeft size={14} /> folders</button>
-                <h4>{af.folder}</h4>
-                <span className="ep-badge">{af.images.length} selected here</span>
-              </div>
-              <div className="sq-grid">
-                {af.images.map((im) => (
-                  <SqItem
-                    key={im.rel}
-                    im={im}
-                    on={picked.has(im.rel)}
-                    bundleId={bundle.id}
-                    onAdd={onAdd}
-                    onRemove={onRemove}
-                    onView={onView}
-                  />
+        <div className="min-h-0 flex-1 space-y-5 overflow-y-auto p-5">
+          <div>
+            <Eyebrow className="mb-2">selected for this shot ({selected.length})</Eyebrow>
+            {selected.length === 0 ? (
+              <Empty>none yet — pick from your library selections below</Empty>
+            ) : (
+              <div className="grid grid-cols-3 gap-3 sm:grid-cols-4 md:grid-cols-5">
+                {selected.map((im) => (
+                  <SqItem key={im.rel} im={im} on bundleId={bundle.id} onAdd={onAdd} onRemove={onRemove} onView={onView} />
                 ))}
               </div>
-            </>
-          ) : (
-            <div className="lib-folders">
-              {folders.map((f) => {
-                const inShot = f.images.filter((i) => picked.has(i.rel)).length;
-                return (
-                  <button key={f.folder} className="lib-folder-card" onClick={() => setActive(f.folder)}>
-                    <div className="lib-folder-thumb">
-                      <img src={f.preview} loading="lazy" alt={f.folder} />
-                      {inShot > 0 && <span className="lib-folder-badge">{inShot} <Check size={11} /></span>}
-                    </div>
-                    <div className="lib-folder-meta">
-                      <span className="lib-folder-name">{f.folder}</span>
-                      <span className="lib-folder-count">{f.images.length} selected</span>
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-          )}
+            )}
+          </div>
+
+          <Separator />
+
+          <div>
+            {folders.length === 0 ? (
+              <Empty>no images pre-selected yet — go to the library tab and select some first.</Empty>
+            ) : af ? (
+              <>
+                <div className="mb-3 flex items-center gap-3">
+                  <Button variant="outline" size="sm" onClick={() => setActive(null)}>
+                    <ChevronLeft size={14} /> folders
+                  </Button>
+                  <h4 className="text-sm font-semibold">{af.folder}</h4>
+                  <Badge variant="secondary">{af.images.length} selected here</Badge>
+                </div>
+                <div className="grid grid-cols-3 gap-3 sm:grid-cols-4 md:grid-cols-5">
+                  {af.images.map((im) => (
+                    <SqItem
+                      key={im.rel}
+                      im={im}
+                      on={picked.has(im.rel)}
+                      bundleId={bundle.id}
+                      onAdd={onAdd}
+                      onRemove={onRemove}
+                      onView={onView}
+                    />
+                  ))}
+                </div>
+              </>
+            ) : (
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
+                {folders.map((f) => {
+                  const inShot = f.images.filter((i) => picked.has(i.rel)).length;
+                  return (
+                    <button
+                      key={f.folder}
+                      className="group overflow-hidden rounded-lg border bg-card text-left transition-colors hover:border-primary/50"
+                      onClick={() => setActive(f.folder)}
+                    >
+                      <div className="relative aspect-video bg-muted">
+                        <img src={f.preview} loading="lazy" alt={f.folder} className="h-full w-full object-cover" />
+                        {inShot > 0 && (
+                          <Badge className="absolute right-1.5 top-1.5">{inShot} <Check size={11} /></Badge>
+                        )}
+                      </div>
+                      <div className="p-2.5">
+                        <div className="truncate text-sm font-medium">{f.folder}</div>
+                        <div className="text-xs text-muted-foreground">{f.images.length} selected</div>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
         </div>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 
-// Right-rail slider over a bundle's rendered generations (newest selected first),
-// mirroring the multishot tab's slideshow: name label + prev/next + dots.
+/* ---------------------------------------------------------------- *
+ * Rendered generations rail (per episode bundle)                   *
+ * ---------------------------------------------------------------- */
+
 function EpVideoRail({ bundleId, vids, reloadKey, onToggleVideo }) {
-  const [i, setI] = useState(vids.length - 1); // default to newest
+  const [i, setI] = useState(vids.length - 1);
   useEffect(() => {
     setI(vids.length - 1);
   }, [vids.length]);
@@ -626,39 +792,50 @@ function EpVideoRail({ bundleId, vids, reloadKey, onToggleVideo }) {
   const next = () => setI((n) => (n + 1) % vids.length);
   const selCount = vids.filter((v) => v.selected).length;
   return (
-    <div className="ep-rail">
-      <div className="ep-rail-head">
-        <span className="ep-rail-name">
-          {bundleId} · {g.name || `gen ${idx + 1}`}
-          {selCount > 0 && <span className="ep-rail-selcount">{selCount} <Check size={11} /> for stitch</span>}
+    <div className="rounded-xl border bg-muted/30 p-3">
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <span className="flex min-w-0 items-center gap-2 text-xs font-medium">
+          <span className="truncate">{bundleId} · {g.name || `gen ${idx + 1}`}</span>
+          {selCount > 0 && (
+            <Badge variant="success" className="shrink-0">{selCount} <Check size={11} /> stitch</Badge>
+          )}
         </span>
-        <div className="ep-rail-nav">
-          <button className="secondary" onClick={prev} disabled={vids.length < 2} aria-label="Previous"><ChevronLeft size={16} /></button>
-          <span className="ep-rail-count">{idx + 1} / {vids.length}</span>
-          <button className="secondary" onClick={next} disabled={vids.length < 2} aria-label="Next"><ChevronRight size={16} /></button>
+        <div className="flex shrink-0 items-center gap-1.5">
+          <Button variant="outline" size="icon-xs" onClick={prev} disabled={vids.length < 2} aria-label="Previous"><ChevronLeft size={14} /></Button>
+          <span className="text-xs tabular-nums text-muted-foreground">{idx + 1} / {vids.length}</span>
+          <Button variant="outline" size="icon-xs" onClick={next} disabled={vids.length < 2} aria-label="Next"><ChevronRight size={14} /></Button>
         </div>
       </div>
-      <div className={`ep-rail-frame ${g.selected ? "selected" : ""}`}>
-        <video key={`${g.url}?v=${reloadKey}-${idx}`} controls preload="metadata" playsInline>
+      <div className={cn("relative overflow-hidden rounded-lg", g.selected && "ring-2 ring-primary")}>
+        <video key={`${g.url}?v=${reloadKey}-${idx}`} controls preload="metadata" playsInline className="bg-black">
           <source src={`${g.url}?v=${reloadKey}`} type="video/mp4" />
         </video>
         <button
-          className={`ep-vid-check ${g.selected ? "on" : ""}`}
+          className={cn(
+            "absolute left-2 top-2 flex size-6 items-center justify-center rounded-full border-2 border-white/80 shadow transition-colors",
+            g.selected ? "bg-primary text-primary-foreground" : "bg-black/50 text-transparent hover:bg-black/70"
+          )}
           title={g.selected ? "selected for stitching — click to unselect" : "select this take for stitching"}
           onClick={() => onToggleVideo(bundleId, g.file, !g.selected)}
         >
-          {g.selected && <Check size={14} />}
+          <Check size={14} />
         </button>
-        {g.selected && <span className="ep-vid-badge">selected</span>}
+        {g.selected && (
+          <Badge className="absolute right-2 top-2">selected</Badge>
+        )}
       </div>
       {vids.length > 1 && (
-        <div className="ep-rail-dots">
+        <div className="mt-2 flex flex-wrap justify-center gap-1.5">
           {vids.map((v, k) => (
             <button
               key={v.file || k}
-              className={`ep-rail-dot ${k === idx ? "active" : ""} ${v.selected ? "picked" : ""}`}
+              className={cn(
+                "size-2 rounded-full transition-colors",
+                k === idx ? "bg-primary" : v.selected ? "bg-primary/50" : "bg-muted-foreground/30 hover:bg-muted-foreground/60"
+              )}
               onClick={() => setI(k)}
               title={`${v.name || `gen ${k + 1}`}${v.selected ? " — selected" : ""}`}
+              aria-label={v.name || `gen ${k + 1}`}
             />
           ))}
         </div>
@@ -667,9 +844,10 @@ function EpVideoRail({ bundleId, vids, reloadKey, onToggleVideo }) {
   );
 }
 
-// Restriction toggles for the lead line (originally the single NOFX line
-// "NO VISUAL EFFECTS AND NO BACKGROUND MUSIC."). Each selected toggle contributes
-// its caps fragment; the fragments are joined back into that one line.
+/* ---------------------------------------------------------------- *
+ * Prompt editor (restrictions, style, directives, per-shot)        *
+ * ---------------------------------------------------------------- */
+
 const RESTRICTIONS = [
   { key: "noMusic", label: "no background music", frag: "NO BACKGROUND MUSIC" },
   { key: "noVfx", label: "no visual effects & sounds", frag: "NO VISUAL EFFECTS AND NO SOUND EFFECTS" },
@@ -689,9 +867,6 @@ function lineFromRestrictions(state) {
   return frags.length ? frags.join(". ") + "." : "";
 }
 
-// Split a bundle's skill-prompt body into editable sections: the lead restriction
-// line, the STYLE line, the middle directives block, and one block per shot.
-// serializePrompt() is the exact inverse.
 function parsePrompt(body) {
   const shotStart = body.search(/^SHOT \d+ \(/m);
   const head = (shotStart >= 0 ? body.slice(0, shotStart) : body).replace(/\s+$/, "");
@@ -711,20 +886,9 @@ function serializePrompt({ restrictionLine, styleLine, directives, shots }) {
   return shots.length ? head + "\n\n" + shots.join("\n\n") : head;
 }
 
-// Full-screen editor for a bundle's skill prompt. Edits the sections; every change
-// recomposes the body and is pushed up (parent debounce-saves it). Image / sound
-// references are managed by the pickers behind the modal, shown here read-only.
-function PromptModal({ bundle, body, fullPrefix, assigned, audioAssigned, edited, onView, onChange, onReset, onClose }) {
+function PromptModal({ bundle, body, fullPrefix, assigned, audioAssigned, edited, open, onView, onChange, onReset, onClose }) {
   const [sec, setSec] = useState(() => parsePrompt(body));
   const restr = useMemo(() => restrictionsFromLine(sec.restrictionLine), [sec.restrictionLine]);
-
-  useEffect(() => {
-    const onKey = (e) => {
-      if (e.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
 
   const push = useCallback(
     (next) => {
@@ -743,113 +907,105 @@ function PromptModal({ bundle, body, fullPrefix, assigned, audioAssigned, edited
   };
 
   return (
-    <div className="ms-modal-overlay" onClick={onClose}>
-      <div className="prompt-modal" onClick={(e) => e.stopPropagation()}>
-        <div className="pm-head">
-          <h3>
-            <span className="ep-id">{bundle.id}</span> {bundle.beatTitle} — edit prompt
-            {edited ? <span className="ep-prompt-flag"><Pencil size={11} /> edited</span> : <span className="ep-prompt-flag live">live</span>}
-          </h3>
-          <div className="pm-head-actions">
+    <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="flex max-h-[90vh] max-w-[min(94vw,900px)] flex-col gap-0 overflow-hidden p-0">
+        <DialogHeader className="flex flex-row items-center justify-between gap-3 border-b px-5 py-4">
+          <DialogTitle className="flex items-center gap-2">
+            <Badge variant="secondary" className="font-mono">{bundle.id}</Badge>
+            <span className="font-normal">{bundle.beatTitle} — edit prompt</span>
+            {edited ? (
+              <Badge variant="warning"><Pencil size={11} /> edited</Badge>
+            ) : (
+              <Badge variant="success">live</Badge>
+            )}
+          </DialogTitle>
+          <div className="flex items-center gap-2 pr-8">
             {edited && (
-              <button className="secondary" onClick={onReset} title="discard edits, return to the auto-composed prompt">
+              <Button variant="outline" size="sm" onClick={onReset} title="discard edits, return to the auto-composed prompt">
                 <RotateCcw size={13} /> reset to live
-              </button>
+              </Button>
             )}
             <CopyButton text={fullPrefix + serializePrompt(sec)} />
-            <button className="ms-modal-close" onClick={onClose} aria-label="Close"><X size={18} /></button>
           </div>
-        </div>
+        </DialogHeader>
 
-        <div className="pm-body">
-          <section className="pm-sec">
-            <label className="pm-label">Audio / VFX restrictions</label>
-            <div className="pm-restrictions">
+        <div className="min-h-0 flex-1 space-y-5 overflow-y-auto p-5">
+          <section className="space-y-2">
+            <Label>Audio / VFX restrictions</Label>
+            <div className="flex flex-wrap gap-2">
               {RESTRICTIONS.map((r) => (
-                <button
-                  key={r.key}
-                  className={`pm-chip ${restr[r.key] ? "on" : ""}`}
-                  onClick={() => toggleRestriction(r.key)}
-                >
-                  {restr[r.key] && <Check size={13} className="pm-chip-check" />}
+                <Chip key={r.key} on={restr[r.key]} onClick={() => toggleRestriction(r.key)}>
+                  {restr[r.key] && <Check size={13} />}
                   {r.label}
-                </button>
+                </Chip>
               ))}
             </div>
-            <div className="pm-line-preview">
+            <div className="rounded-md bg-muted/50 px-3 py-2 font-mono text-xs text-muted-foreground">
               {sec.restrictionLine || "(no restrictions — Seedance may add music, VFX & sound)"}
             </div>
           </section>
 
-          <section className="pm-sec">
-            <label className="pm-label">
-              References <span className="pm-hint">managed with the pickers behind this modal · click a thumbnail to preview</span>
-            </label>
+          <section className="space-y-2">
+            <Label className="flex items-center gap-2">
+              References
+              <span className="text-xs font-normal text-muted-foreground">
+                managed with the pickers behind this modal · click a thumbnail to preview
+              </span>
+            </Label>
             {assigned.length === 0 && audioAssigned.length === 0 ? (
-              <span className="not-yet">no references chosen</span>
+              <Empty>no references chosen</Empty>
             ) : (
-              <div className="pm-refs">
+              <div className="flex flex-wrap items-start gap-3">
                 {assigned.map((im) => (
-                  <figure key={im.rel} className="pm-ref-thumb">
+                  <figure key={im.rel} className="w-20 space-y-1">
                     <button
                       type="button"
-                      className="ep-img-btn"
+                      className="block w-full overflow-hidden rounded-md border bg-muted"
                       onClick={() => onView({ url: im.url, name: im.rel, role: "reference" })}
                       title="click to view full image"
                     >
-                      <img src={im.url} loading="lazy" alt={im.name} />
+                      <img src={im.url} loading="lazy" alt={im.name} className="aspect-square w-full object-cover" />
                     </button>
-                    <figcaption>{refLabel(im.rel)}</figcaption>
+                    <figcaption className="truncate text-center text-[11px] text-muted-foreground">{refLabel(im.rel)}</figcaption>
                   </figure>
                 ))}
                 {audioAssigned.map((a) => (
-                  <span key={a.rel} className="pm-ref-chip"><Volume2 size={12} /> {a.label}</span>
+                  <Badge key={a.rel} variant="secondary" className="h-7"><Volume2 size={12} /> {a.label}</Badge>
                 ))}
               </div>
             )}
           </section>
 
-          <section className="pm-sec">
-            <label className="pm-label">Style</label>
-            <textarea
-              className="pm-textarea"
-              rows={6}
-              value={sec.styleLine}
-              onChange={(e) => setField("styleLine", e.target.value)}
-            />
+          <section className="space-y-2">
+            <Label>Style</Label>
+            <Textarea rows={6} className="font-mono text-xs" value={sec.styleLine} onChange={(e) => setField("styleLine", e.target.value)} />
           </section>
 
-          <section className="pm-sec">
-            <label className="pm-label">Directives</label>
-            <textarea
-              className="pm-textarea"
-              rows={7}
-              value={sec.directives}
-              onChange={(e) => setField("directives", e.target.value)}
-            />
+          <section className="space-y-2">
+            <Label>Directives</Label>
+            <Textarea rows={7} className="font-mono text-xs" value={sec.directives} onChange={(e) => setField("directives", e.target.value)} />
           </section>
 
-          <section className="pm-sec">
-            <label className="pm-label">Shots ({sec.shots.length})</label>
-            <div className="pm-shots">
+          <section className="space-y-2">
+            <Label>Shots ({sec.shots.length})</Label>
+            <div className="space-y-3">
               {sec.shots.map((s, i) => (
-                <div className="pm-shot" key={i}>
-                  <div className="pm-shot-num">Shot {i + 1}</div>
-                  <textarea
-                    className="pm-textarea"
-                    rows={5}
-                    value={s}
-                    onChange={(e) => setShot(i, e.target.value)}
-                  />
+                <div key={i} className="space-y-1.5 rounded-lg border bg-muted/30 p-3">
+                  <div className="text-xs font-semibold text-muted-foreground">Shot {i + 1}</div>
+                  <Textarea rows={5} className="font-mono text-xs" value={s} onChange={(e) => setShot(i, e.target.value)} />
                 </div>
               ))}
             </div>
           </section>
         </div>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }
+
+/* ---------------------------------------------------------------- *
+ * Episode bundle card                                              *
+ * ---------------------------------------------------------------- */
 
 function EpisodeBundle({ b, flat, picked, onOpenPicker, onRemove, onView, audioMap, audioPicked, onOpenAudio, vids, reloadKey, onToggleVideo, override, onEditPrompt, onResetPrompt, signoff, onSign }) {
   const [open, setOpen] = useState(false);
@@ -861,7 +1017,6 @@ function EpisodeBundle({ b, flat, picked, onOpenPicker, onRemove, onView, audioM
   const assigned = [...picked].map((rel) => flat.get(rel)).filter(Boolean);
   const audioAssigned = [...audioPicked].map((rel) => audioMap.get(rel)).filter(Boolean);
 
-  // Live skill prompt: image refs + voice refs (name + path) on top, then body.
   const refBlock = assigned.length
     ? "IMAGE REFERENCES (pass each file as an image_references entry):\n" +
       assigned.map((im) => `- ${refLabel(im.rel)}: ${im.abs || im.rel}`).join("\n")
@@ -878,200 +1033,209 @@ function EpisodeBundle({ b, flat, picked, onOpenPicker, onRemove, onView, audioM
         )
         .join("\n")
     : "";
-  // The override stores only the edited BODY; the image/sound reference blocks stay
-  // live-composed and prepended, so they keep updating even after the body is edited.
   const bodyPrompt = edited ? override : b.skillPrompt;
   const fullPrefix = refBlock + audioBlock + "\n\n";
   const displayPrompt = fullPrefix + bodyPrompt;
+
   return (
-    <section className="ep-bundle">
-      <div className="ep-bundle-head">
-        <div className="ep-bundle-title">
-          <span className="ep-id">{b.id}</span>
-          <span className="ep-name">{b.beatTitle}</span>
+    <Card className="gap-0 py-0">
+      <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3 rounded-t-xl border-b px-4 py-3 [.border-b]:pb-3">
+        <div className="flex items-center gap-2">
+          <Badge variant="secondary" className="font-mono text-sm">{b.id}</Badge>
+          <span className="font-semibold">{b.beatTitle}</span>
         </div>
-        <div className="ep-meta">
-          <span className="ep-badge">{b.shots.length} shots</span>
-          <span className={`ep-badge ${b.durationEst > 15 ? "over" : "dur"}`}>~{b.durationEst}s → {b.duration}s</span>
-          {assigned.length > 0 && <span className="ep-badge dur">{assigned.length} refs</span>}
-          {hasVid && <span className="ep-badge rendered"><Play size={11} fill="currentColor" /> {vids.length} rendered</span>}
+        <div className="flex flex-wrap items-center gap-1.5">
+          <Badge variant="outline">{b.shots.length} shots</Badge>
+          <Badge variant={b.durationEst > 15 ? "warning" : "muted"}>~{b.durationEst}s → {b.duration}s</Badge>
+          {assigned.length > 0 && <Badge variant="success">{assigned.length} refs</Badge>}
+          {hasVid && <Badge variant="success"><Play size={11} fill="currentColor" /> {vids.length} rendered</Badge>}
           {signedCount === 3 ? (
-            <span className="ep-badge dur"><Check size={11} /> signed</span>
+            <Badge variant="success"><Check size={11} /> signed</Badge>
           ) : signedCount > 0 ? (
-            <span className="ep-badge miss">{signedCount}/3 signed</span>
+            <Badge variant="warning">{signedCount}/3 signed</Badge>
           ) : null}
-          <button className="secondary ep-sign" onClick={() => setSignOpen(true)} title="revision signing">
+          <Button variant="outline" size="sm" onClick={() => setSignOpen(true)} title="revision signing">
             <PenLine size={13} /> revision signing
-          </button>
+          </Button>
         </div>
-      </div>
+      </CardHeader>
 
-      <div className={`ep-body ${hasVid ? "has-video" : ""}`}>
-        <div className="ep-main">
-
-      {/* What this scene needs (build's computed ref slots) — text only. */}
-      <div className="ep-needs">
-        <span className="ep-needs-label">scene needs:</span> {b.images.map((im) => im.key).join(" · ")}
-      </div>
-
-      {/* References ASSIGNED to this shot (square thumbnails) + open the picker. */}
-      <div className="ep-assigned">
-        {assigned.length === 0 ? (
-          <span className="not-yet">no references chosen for this shot</span>
-        ) : (
-          <div className="sq-grid">
-            {assigned.map((im) => (
-              <figure key={im.rel} className="sq-item selected">
-                <button className="ep-img-btn" onClick={() => onView({ url: im.url, name: im.rel, role: "reference" })}>
-                  <img src={im.url} loading="lazy" alt={im.name} />
-                </button>
-                <button className="ep-remove" title="remove from this shot" aria-label="remove from this shot" onClick={() => onRemove(b.id, im)}><X size={13} /></button>
-                <figcaption>{im.name}</figcaption>
-              </figure>
-            ))}
+      <CardContent className={cn("grid gap-4 p-4", hasVid && "lg:grid-cols-[2fr_1fr]")}>
+        <div className="min-w-0 space-y-4">
+          <div className="text-xs text-muted-foreground">
+            <span className="font-semibold uppercase tracking-wide">scene needs:</span>{" "}
+            {b.images.map((im) => im.key).join(" · ")}
           </div>
-        )}
-        <button className="secondary ep-choose" onClick={() => onOpenPicker(b)}><Plus size={14} /> choose references</button>
-      </div>
 
-      {/* Voice / sound references for this scene */}
-      <div className="ep-assigned ep-audio-row">
-        {audioAssigned.length === 0 ? (
-          <span className="not-yet">no voice reference chosen</span>
-        ) : (
-          <div className="ep-audio-chips">
-            {audioAssigned.map((a) => (
-              <span key={a.rel} className="ep-audio-chip" title={a.rel}>
-                <Volume2 size={12} /> {a.label}
-                {a.order && a.order.length > 1 && (
-                  <em> ({a.order.map((n, i) => `${i + 1}=${n}`).join(", ")})</em>
+          <div className="space-y-3">
+            {assigned.length === 0 ? (
+              <Empty>no references chosen for this shot</Empty>
+            ) : (
+              <div className="grid grid-cols-3 gap-3 sm:grid-cols-4 md:grid-cols-6">
+                {assigned.map((im) => (
+                  <figure key={im.rel} className="relative overflow-hidden rounded-lg border border-primary bg-muted ring-1 ring-primary/40">
+                    <button className="block w-full" onClick={() => onView({ url: im.url, name: im.rel, role: "reference" })}>
+                      <img src={im.url} loading="lazy" alt={im.name} className="aspect-square w-full object-cover" />
+                    </button>
+                    <Button
+                      variant="destructive" size="icon-xs"
+                      className="absolute right-1.5 top-1.5 rounded-full opacity-90"
+                      title="remove from this shot" aria-label="remove from this shot"
+                      onClick={() => onRemove(b.id, im)}
+                    >
+                      <X size={13} />
+                    </Button>
+                    <figcaption className="truncate px-2 py-1 text-[11px] text-muted-foreground">{im.name}</figcaption>
+                  </figure>
+                ))}
+              </div>
+            )}
+            <Button variant="outline" size="sm" onClick={() => onOpenPicker(b)}>
+              <Plus size={14} /> choose references
+            </Button>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            {audioAssigned.length === 0 ? (
+              <Empty>no voice reference chosen</Empty>
+            ) : (
+              audioAssigned.map((a) => (
+                <Badge key={a.rel} variant="secondary" className="h-7" title={a.rel}>
+                  <Volume2 size={12} /> {a.label}
+                  {a.order && a.order.length > 1 && (
+                    <em className="ml-1 not-italic text-muted-foreground">({a.order.map((n, i) => `${i + 1}=${n}`).join(", ")})</em>
+                  )}
+                </Badge>
+              ))
+            )}
+            <Button variant="outline" size="sm" onClick={() => onOpenAudio(b)}>
+              <Volume2 size={14} /> choose audio references
+            </Button>
+          </div>
+
+          <ol className="space-y-2">
+            {b.shots.map((s) => (
+              <li key={s.id} className="rounded-lg border bg-muted/30 p-3">
+                <div className="mb-1 flex flex-wrap items-center gap-2 text-xs">
+                  <Badge variant="secondary" className="font-mono">{s.id}</Badge>
+                  <span className="text-muted-foreground">{s.dur}s</span>
+                  <span className="text-muted-foreground">{s.location}</span>
+                  <span className="text-muted-foreground">{s.camera}</span>
+                </div>
+                <div className="text-sm">{s.summary}</div>
+                {!/\(no dialogue\)/i.test(s.dialogue) && s.dialogue && (
+                  <div className="mt-1 flex items-start gap-1.5 text-xs text-muted-foreground">
+                    <Speech size={13} className="mt-0.5 shrink-0" /> {s.dialogue}
+                  </div>
+                )}
+              </li>
+            ))}
+          </ol>
+
+          <div className="space-y-2">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <span className="flex items-center gap-2 text-xs text-muted-foreground">
+                skill prompt — click to edit, auto-saves
+                {edited ? (
+                  <Badge variant="warning"><Pencil size={11} /> edited</Badge>
+                ) : (
+                  <Badge variant="success">live</Badge>
                 )}
               </span>
-            ))}
-          </div>
-        )}
-        <button className="secondary ep-choose" onClick={() => onOpenAudio(b)}><Volume2 size={14} /> choose audio references</button>
-      </div>
-
-      <ol className="ep-shots">
-        {b.shots.map((s) => (
-          <li key={s.id}>
-            <div className="ep-shot-top">
-              <span className="ep-shot-id">{s.id}</span>
-              <span className="ep-shot-dur">{s.dur}s</span>
-              <span className="ep-shot-loc">{s.location}</span>
-              <span className="ep-shot-cam">{s.camera}</span>
+              <div className="flex items-center gap-2">
+                {edited && (
+                  <Button variant="outline" size="sm" onClick={() => onResetPrompt(b.id)} title="discard edits, return to the auto-composed prompt">
+                    <RotateCcw size={13} /> reset to live
+                  </Button>
+                )}
+                <Button variant="outline" size="sm" onClick={() => setModalOpen(true)} title="open the full-screen prompt editor">
+                  <Maximize2 size={13} /> edit
+                </Button>
+                <CopyButton text={displayPrompt} />
+              </div>
             </div>
-            <div className="ep-shot-sum">{s.summary}</div>
-            {!/\(no dialogue\)/i.test(s.dialogue) && s.dialogue && (
-              <div className="ep-shot-line"><Speech size={13} /> {s.dialogue}</div>
-            )}
-          </li>
-        ))}
-      </ol>
-
-      <div className="ep-prompt-wrap">
-        <div className="ep-prompt-bar">
-          <span className="ep-prompt-label">
-            skill prompt — click to edit, auto-saves
-            {edited ? <span className="ep-prompt-flag"><Pencil size={11} /> edited</span> : <span className="ep-prompt-flag live">live</span>}
-          </span>
-          <div className="ep-prompt-actions">
-            {edited && (
-              <button className="secondary ep-reset" onClick={() => onResetPrompt(b.id)} title="discard edits, return to the auto-composed prompt">
-                <RotateCcw size={13} /> reset to live
-              </button>
-            )}
-            <button className="secondary ep-edit" onClick={() => setModalOpen(true)} title="open the full-screen prompt editor">
-              <Maximize2 size={13} /> edit
-            </button>
-            <CopyButton text={displayPrompt} />
+            <Textarea
+              className="cursor-pointer font-mono text-xs leading-relaxed"
+              rows={open ? 20 : 6}
+              value={displayPrompt}
+              readOnly
+              onClick={() => setModalOpen(true)}
+              title="click to open the full-screen editor"
+            />
+            <Button variant="ghost" size="sm" className="text-muted-foreground" onClick={() => setOpen((o) => !o)}>
+              {open ? <><ChevronUp size={13} /> collapse</> : <><ChevronDown size={13} /> expand prompt</>}
+            </Button>
           </div>
         </div>
-        <textarea
-          className="ep-prompt ep-prompt-preview"
-          rows={open ? 20 : 6}
-          value={displayPrompt}
-          readOnly
-          onClick={() => setModalOpen(true)}
-          title="click to open the full-screen editor"
-        />
-        <button className="ep-toggle" onClick={() => setOpen((o) => !o)}>
-          {open ? <><ChevronUp size={13} /> collapse</> : <><ChevronDown size={13} /> expand prompt</>}
-        </button>
-      </div>
-      {modalOpen && (
-        <PromptModal
-          bundle={b}
-          body={bodyPrompt}
-          fullPrefix={fullPrefix}
-          assigned={assigned}
-          audioAssigned={audioAssigned}
-          edited={edited}
-          onView={onView}
-          onChange={(text) => onEditPrompt(b.id, text)}
-          onReset={() => { onResetPrompt(b.id); setModalOpen(false); }}
-          onClose={() => setModalOpen(false)}
-        />
-      )}
-      {signOpen && (
-        <SigningModal
-          bundle={b}
-          signoff={signoff}
-          onSign={onSign}
-          onClose={() => setSignOpen(false)}
-        />
-      )}
-        </div>{/* /ep-main */}
 
-        {/* The rendered Seedance clips — right rail, ~1/3 width, slider per gen. */}
         {hasVid && (
-          <aside className="ep-video">
+          <aside className="min-w-0 lg:sticky lg:top-[76px] lg:self-start">
             <EpVideoRail bundleId={b.id} vids={vids} reloadKey={reloadKey} onToggleVideo={onToggleVideo} />
           </aside>
         )}
-      </div>{/* /ep-body */}
-    </section>
+      </CardContent>
+
+      <PromptModal
+        bundle={b}
+        body={bodyPrompt}
+        fullPrefix={fullPrefix}
+        assigned={assigned}
+        audioAssigned={audioAssigned}
+        edited={edited}
+        open={modalOpen}
+        onView={onView}
+        onChange={(text) => onEditPrompt(b.id, text)}
+        onReset={() => { onResetPrompt(b.id); setModalOpen(false); }}
+        onClose={() => setModalOpen(false)}
+      />
+      <SigningModal
+        bundle={b}
+        signoff={signoff}
+        open={signOpen}
+        onSign={onSign}
+        onClose={() => setSignOpen(false)}
+      />
+    </Card>
   );
 }
 
-function AudioPickerModal({ bundle, audioRefs, picked, onToggle, onClose }) {
-  useEffect(() => {
-    const onKey = (e) => {
-      if (e.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
+function AudioPickerModal({ bundle, audioRefs, picked, open, onToggle, onClose }) {
   return (
-    <div className="ms-modal-overlay" onClick={onClose}>
-      <div className="picker-modal audio-modal" onClick={(e) => e.stopPropagation()}>
-        <div className="picker-head">
-          <h3>
-            Voice / sound references · <span className="ep-id">{bundle.id}</span>{" "}
-            <span className="ep-name">{bundle.beatTitle}</span>
-          </h3>
-          <button className="ms-modal-close" onClick={onClose} aria-label="Close"><X size={18} /></button>
-        </div>
-        <div className="audio-list">
+    <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="flex max-h-[88vh] max-w-[min(94vw,640px)] flex-col gap-0 overflow-hidden p-0">
+        <DialogHeader className="border-b px-5 py-4">
+          <DialogTitle className="flex items-center gap-2">
+            Voice / sound references
+            <Badge variant="secondary" className="font-mono">{bundle.id}</Badge>
+            <span className="font-normal text-muted-foreground">{bundle.beatTitle}</span>
+          </DialogTitle>
+        </DialogHeader>
+        <div className="min-h-0 flex-1 space-y-2 overflow-y-auto p-4">
           {audioRefs.map((a) => {
             const on = picked.has(a.rel);
             return (
-              <div key={a.rel} className={`audio-item ${on ? "selected" : ""}`}>
-                <button
-                  className={`ep-pick-check ${on ? "on" : ""}`}
+              <div
+                key={a.rel}
+                className={cn(
+                  "flex items-start gap-3 rounded-lg border p-3 transition-colors",
+                  on ? "border-primary/40 bg-primary/5" : "border-border"
+                )}
+              >
+                <Button
+                  variant={on ? "default" : "outline"} size="icon-sm"
+                  className="mt-0.5 shrink-0 rounded-full"
                   title={on ? "remove from this shot" : "use in this shot"}
                   onClick={() => onToggle(bundle.id, a.rel, !on)}
                 >
                   {on ? <Check size={14} /> : <Plus size={14} />}
-                </button>
-                <div className="audio-meta">
-                  <div className="audio-label">
+                </Button>
+                <div className="min-w-0 flex-1 space-y-1.5">
+                  <div className="flex items-center gap-2 text-sm font-medium">
                     {a.label}
-                    {!a.exists && <span className="ep-badge miss"> missing file</span>}
+                    {!a.exists && <Badge variant="destructive">missing file</Badge>}
                   </div>
                   {a.order && a.order.length > 1 && (
-                    <div className="audio-order">voice order: {a.order.map((n, i) => `${i + 1}=${n}`).join(", ")}</div>
+                    <div className="text-xs text-muted-foreground">voice order: {a.order.map((n, i) => `${i + 1}=${n}`).join(", ")}</div>
                   )}
                   <audio controls preload="none" src={a.url} />
                 </div>
@@ -1079,26 +1243,26 @@ function AudioPickerModal({ bundle, audioRefs, picked, onToggle, onClose }) {
             );
           })}
         </div>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 
 function Episode({ reloadKey, onView }) {
   const [data, setData] = useState(null);
-  const [folders, setFolders] = useState([]); // raw /api/library folders
-  const [picks, setPicks] = useState({}); // bundleId -> Set(rel)
+  const [folders, setFolders] = useState([]);
+  const [picks, setPicks] = useState({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [confirm, setConfirm] = useState(null); // { bundle, f }
+  const [confirm, setConfirm] = useState(null);
   const [pickerBundle, setPickerBundle] = useState(null);
   const [audioRefs, setAudioRefs] = useState([]);
-  const [audioPicks, setAudioPicks] = useState({}); // bundleId -> Set(rel)
+  const [audioPicks, setAudioPicks] = useState({});
   const [audioPicker, setAudioPicker] = useState(null);
-  const [videos, setVideos] = useState({}); // bundleId -> { url, ... } rendered clips
-  const [prompts, setPrompts] = useState({}); // bundleId -> edited prompt override
-  const [signoffs, setSignoffs] = useState({}); // bundleId -> { images, prompt, audio }
-  const promptTimers = useRef({}); // bundleId -> debounce timer
+  const [videos, setVideos] = useState({});
+  const [prompts, setPrompts] = useState({});
+  const [signoffs, setSignoffs] = useState({});
+  const promptTimers = useRef({});
 
   useEffect(() => {
     let alive = true;
@@ -1156,14 +1320,12 @@ function Episode({ reloadKey, onView }) {
     }
   }, []);
 
-  // Map every library image by rel (to resolve assigned thumbnails).
   const flat = useMemo(() => {
     const m = new Map();
     for (const f of folders) for (const im of f.images) m.set(im.rel, im);
     return m;
   }, [folders]);
 
-  // The PRE-SELECTED pool, folder-structured (only library-selected images).
   const selFolders = useMemo(
     () =>
       folders
@@ -1197,7 +1359,6 @@ function Episode({ reloadKey, onView }) {
   const onAdd = useCallback((bundle, im) => setPick(bundle, im.rel, true), [setPick]);
   const onRemove = useCallback((bundle, im) => setConfirm({ bundle, f: im }), []);
 
-  // Select/deselect a rendered generation for later stitching.
   const onToggleVideo = useCallback((bundle, file, selected) => {
     setVideos((vs) => {
       const arr = (vs[bundle] || []).map((g) => (g.file === file ? { ...g, selected } : g));
@@ -1210,7 +1371,6 @@ function Episode({ reloadKey, onView }) {
     }).catch(() => {});
   }, []);
 
-  // Edited skill prompt: update local state immediately, debounce-save to disk.
   const onEditPrompt = useCallback((bundle, text) => {
     setPrompts((p) => ({ ...p, [bundle]: text }));
     clearTimeout(promptTimers.current[bundle]);
@@ -1222,7 +1382,6 @@ function Episode({ reloadKey, onView }) {
       }).catch(() => {});
     }, 600);
   }, []);
-  // Reset to the live auto-composed prompt (clears the override on disk too).
   const onResetPrompt = useCallback((bundle) => {
     setPrompts((p) => {
       const n = { ...p };
@@ -1237,7 +1396,6 @@ function Episode({ reloadKey, onView }) {
     }).catch(() => {});
   }, []);
 
-  // Revision signing: sign/clear one section (images|prompt|audio) of a bundle.
   const onSign = useCallback(async (bundle, section, signed, signedBy) => {
     try {
       const res = await fetch("/api/episode/sign", {
@@ -1275,27 +1433,28 @@ function Episode({ reloadKey, onView }) {
     }
   }, []);
 
-  if (loading) return <p className="status">loading episode plan…</p>;
-  if (error) return <p className="err-msg">Error: {error}</p>;
-  if (!data) return <p className="not-yet">No episode plan found. Run episode-multishot/build.mjs.</p>;
+  if (loading) return <Spinner label="loading episode plan…" />;
+  if (error) return <ErrorNote>{error}</ErrorNote>;
+  if (!data) return <Empty>No episode plan found. Run episode-multishot/build.mjs.</Empty>;
 
   return (
-    <div className="episode">
-      <div className="ep-head">
-        <div className="ep-head-top">
-          <h2>{data.title}</h2>
-          <button className="ep-autoassign" onClick={autoAssign} disabled={assigning || selCount === 0}>
-            {assigning ? "assigning…" : <><Sparkles size={14} /> auto-assign references</>}
-          </button>
+    <div className="space-y-4">
+      <div className="flex flex-col gap-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h2 className="text-xl font-semibold tracking-tight">{data.title}</h2>
+          <Button onClick={autoAssign} disabled={assigning || selCount === 0}>
+            {assigning ? <><Loader2 size={14} className="animate-spin" /> assigning…</> : <><Sparkles size={14} /> auto-assign references</>}
+          </Button>
         </div>
-        <div className="ep-head-meta">
-          <span className="ep-badge">{data.bundles.length} multishot bundles</span>
-          <span className="ep-badge">{data.totalShots} shots total</span>
-          <span className="ep-badge dur">{selCount} library-selected refs</span>
+        <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+          <Badge variant="outline">{data.bundles.length} multishot bundles</Badge>
+          <Badge variant="outline">{data.totalShots} shots total</Badge>
+          <Badge variant="success">{selCount} library-selected refs</Badge>
           <span>auto-assign matches your library picks to each shot by character + location</span>
         </div>
       </div>
-      <div className="ep-list">
+
+      <div className="space-y-4">
         {data.bundles.map((b) => (
           <EpisodeBundle
             key={b.id}
@@ -1325,6 +1484,7 @@ function Episode({ reloadKey, onView }) {
           bundle={audioPicker}
           audioRefs={audioRefs}
           picked={audioPicks[audioPicker.id] || new Set()}
+          open={!!audioPicker}
           onToggle={onAudioToggle}
           onClose={() => setAudioPicker(null)}
         />
@@ -1336,6 +1496,7 @@ function Episode({ reloadKey, onView }) {
           folders={selFolders}
           picked={picks[pickerBundle.id] || new Set()}
           flat={flat}
+          open={!!pickerBundle}
           onAdd={onAdd}
           onRemove={onRemove}
           onView={onView}
@@ -1358,7 +1519,10 @@ function Episode({ reloadKey, onView }) {
   );
 }
 
-// ---------------- Complete cuts (stitch selected takes MS-01 → MS-22) --------------
+/* ---------------------------------------------------------------- *
+ * Complete cuts (stitch selected takes)                            *
+ * ---------------------------------------------------------------- */
+
 function fmtTime(sec) {
   if (!sec && sec !== 0) return "—";
   const s = Math.max(0, Math.round(sec));
@@ -1371,7 +1535,7 @@ function CompleteCuts({ reloadKey }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [stitching, setStitching] = useState(false);
-  const [bump, setBump] = useState(0); // cache-bust the output video after a stitch
+  const [bump, setBump] = useState(0);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -1407,8 +1571,8 @@ function CompleteCuts({ reloadKey }) {
     }
   }, [load]);
 
-  if (loading) return <p className="status">loading cuts…</p>;
-  if (!data) return <p className="err-msg">Error: {error}</p>;
+  if (loading) return <Spinner label="loading cuts…" />;
+  if (!data) return <ErrorNote>{error}</ErrorNote>;
 
   const segs = data.segments || [];
   const usable = segs.filter((s) => s.file);
@@ -1418,88 +1582,99 @@ function CompleteCuts({ reloadKey }) {
   const out = data.output;
 
   return (
-    <div className="cuts">
-      <div className="ep-head">
-        <div className="ep-head-top">
-          <h2>Complete cut · {data.range.from} → {data.range.to}</h2>
-          <button className="ep-autoassign" onClick={stitch} disabled={stitching || usable.length === 0}>
-            {stitching ? "stitching…" : out ? <><RefreshCw size={13} /> re-stitch</> : <><Play size={13} fill="currentColor" /> stitch selected takes</>}
-          </button>
+    <div className="space-y-4">
+      <div className="flex flex-col gap-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h2 className="text-xl font-semibold tracking-tight">Complete cut · {data.range.from} → {data.range.to}</h2>
+          <Button onClick={stitch} disabled={stitching || usable.length === 0}>
+            {stitching ? <><Loader2 size={13} className="animate-spin" /> stitching…</> : out ? <><RefreshCw size={13} /> re-stitch</> : <><Play size={13} fill="currentColor" /> stitch selected takes</>}
+          </Button>
         </div>
-        <div className="ep-head-meta">
-          <span className="ep-badge">{usable.length} scenes</span>
-          <span className="ep-badge dur">~{fmtTime(total)} total</span>
-          {fallbacks.length > 0 && <span className="ep-badge over">{fallbacks.length} fallback (no take selected)</span>}
-          {missing.length > 0 && <span className="ep-badge over">{missing.length} missing</span>}
-          <span>concatenates the <Check size={11} /> selected take of each scene, in order, into one mp4</span>
+        <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+          <Badge variant="outline">{usable.length} scenes</Badge>
+          <Badge variant="success">~{fmtTime(total)} total</Badge>
+          {fallbacks.length > 0 && <Badge variant="warning">{fallbacks.length} fallback (no take selected)</Badge>}
+          {missing.length > 0 && <Badge variant="warning">{missing.length} missing</Badge>}
+          <span className="flex items-center gap-1">concatenates the <Check size={11} /> selected take of each scene, in order, into one mp4</span>
         </div>
       </div>
 
-      {error && <p className="err-msg">Error: {error}</p>}
+      {error && <ErrorNote>{error}</ErrorNote>}
 
-      {/* The stitched result */}
       {out ? (
-        <section className="ms-panel cuts-output">
-          <h3>Stitched video</h3>
-          <video key={`${out.url}?v=${bump}`} controls preload="metadata">
-            <source src={`${out.url}?v=${bump}`} type="video/mp4" />
-          </video>
-          <div className="cuts-out-meta">
-            stitched from <strong>{out.range?.from || data.range.from}</strong> →{" "}
-            <strong>{out.range?.to || data.range.to}</strong>
-            {out.totalDuration != null && <> · {fmtTime(out.totalDuration)}</>}
-            {out.stitchedAt && <> · {new Date(out.stitchedAt).toLocaleString()}</>}
+        <Panel title="Stitched video">
+          <div className="space-y-3">
+            <video key={`${out.url}?v=${bump}`} controls preload="metadata" className="rounded-lg bg-black">
+              <source src={`${out.url}?v=${bump}`} type="video/mp4" />
+            </video>
+            <div className="text-sm text-muted-foreground">
+              stitched from <strong className="text-foreground">{out.range?.from || data.range.from}</strong> →{" "}
+              <strong className="text-foreground">{out.range?.to || data.range.to}</strong>
+              {out.totalDuration != null && <> · {fmtTime(out.totalDuration)}</>}
+              {out.stitchedAt && <> · {new Date(out.stitchedAt).toLocaleString()}</>}
+            </div>
+            <a
+              className="inline-flex items-center gap-1 text-sm text-primary hover:underline"
+              href={`${out.url}?v=${bump}`} target="_blank" rel="noreferrer" download
+            >
+              <Download size={13} /> download mp4 <ExternalLink size={12} />
+            </a>
           </div>
-          <a className="ms-link" href={`${out.url}?v=${bump}`} target="_blank" rel="noreferrer" download>
-            download mp4 <ExternalLink size={12} />
-          </a>
-        </section>
+        </Panel>
       ) : (
-        <div className="not-yet">
-          not stitched yet — press “stitch selected takes” to build the {data.range.from} → {data.range.to} cut.
+        <div className="rounded-xl border border-dashed p-6 text-center">
+          <Empty>not stitched yet — press “stitch selected takes” to build the {data.range.from} → {data.range.to} cut.</Empty>
         </div>
       )}
 
-      {/* The ordered stitch timeline: which take each scene contributes + from→to */}
-      <section className="ms-panel">
-        <h3>Stitch order ({usable.length} scenes)</h3>
-        <ol className="cuts-list">
+      <Panel title={`Stitch order (${usable.length} scenes)`}>
+        <ol className="space-y-1.5">
           {segs.map((s) => (
-            <li key={s.id} className={`cuts-row ${s.missing ? "missing" : ""} ${s.fallback ? "fallback" : ""}`}>
-              <span className="cuts-id">{s.id}</span>
+            <li
+              key={s.id}
+              className={cn(
+                "flex flex-wrap items-center gap-3 rounded-lg border px-3 py-2 text-sm",
+                s.missing && "border-destructive/30 bg-destructive/5",
+                s.fallback && "border-warning/30 bg-warning/5"
+              )}
+            >
+              <Badge variant="secondary" className="font-mono">{s.id}</Badge>
               {s.missing ? (
-                <span className="not-yet">no rendered take</span>
+                <Empty>no rendered take</Empty>
               ) : (
                 <>
-                  <span className="cuts-take">
+                  <span className="flex items-center gap-2">
                     {s.name}
                     {s.fallback ? (
-                      <span className="ep-prompt-flag"><TriangleAlert size={11} /> no take selected — using first</span>
+                      <Badge variant="warning"><TriangleAlert size={11} /> no take selected — using first</Badge>
                     ) : (
-                      <span className="ep-prompt-flag live"><Check size={11} /> selected</span>
+                      <Badge variant="success"><Check size={11} /> selected</Badge>
                     )}
                   </span>
-                  <span className="cuts-range">
+                  <span className="ml-auto text-xs tabular-nums text-muted-foreground">
                     {fmtTime(s.start)} → {fmtTime(s.end)}
-                    <em> ({s.duration.toFixed(1)}s)</em>
+                    <em className="not-italic"> ({s.duration.toFixed(1)}s)</em>
                   </span>
                 </>
               )}
             </li>
           ))}
         </ol>
-      </section>
+      </Panel>
     </div>
   );
 }
 
-// ---------------- Asset library (browse folders, select into final_selection) -----
+/* ---------------------------------------------------------------- *
+ * Asset library                                                    *
+ * ---------------------------------------------------------------- */
+
 function Library({ reloadKey, onView }) {
   const [folders, setFolders] = useState(null);
-  const [active, setActive] = useState(null); // folder name
+  const [active, setActive] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [confirm, setConfirm] = useState(null); // image pending removal
+  const [confirm, setConfirm] = useState(null);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -1537,8 +1712,8 @@ function Library({ reloadKey, onView }) {
     }
   }, []);
 
-  if (loading) return <p className="status">loading library…</p>;
-  if (error) return <p className="err-msg">Error: {error}</p>;
+  if (loading) return <Spinner label="loading library…" />;
+  if (error) return <ErrorNote>{error}</ErrorNote>;
   if (!folders) return null;
 
   const af = active && folders.find((f) => f.folder === active);
@@ -1546,26 +1721,48 @@ function Library({ reloadKey, onView }) {
   if (af) {
     const selCount = af.images.filter((i) => i.selected).length;
     return (
-      <div className="library">
-        <div className="lib-head">
-          <button className="secondary" onClick={() => setActive(null)}><ChevronLeft size={14} /> all folders</button>
-          <h2>{af.folder}</h2>
-          <span className="ep-badge">{af.count} images</span>
-          {selCount > 0 && <span className="ep-badge dur">{selCount} selected</span>}
+      <div className="space-y-4">
+        <div className="flex flex-wrap items-center gap-3">
+          <Button variant="outline" size="sm" onClick={() => setActive(null)}>
+            <ChevronLeft size={14} /> all folders
+          </Button>
+          <h2 className="text-xl font-semibold tracking-tight">{af.folder}</h2>
+          <Badge variant="outline">{af.count} images</Badge>
+          {selCount > 0 && <Badge variant="success">{selCount} selected</Badge>}
         </div>
-        <div className="lib-grid">
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
           {af.images.map((im) => (
-            <figure key={im.rel} className={`lib-item ${im.selected ? "selected" : ""}`}>
-              <button className="ep-img-btn" onClick={() => onView({ url: im.url, name: im.rel, role: "asset" })}>
-                <img src={im.url} loading="lazy" alt={im.name} />
+            <figure
+              key={im.rel}
+              className={cn(
+                "group relative overflow-hidden rounded-lg border bg-muted transition-colors",
+                im.selected ? "border-primary ring-1 ring-primary/40" : "border-border"
+              )}
+            >
+              <button className="block w-full" onClick={() => onView({ url: im.url, name: im.rel, role: "asset" })}>
+                <img src={im.url} loading="lazy" alt={im.name} className="aspect-square w-full object-cover" />
               </button>
               {im.selected ? (
-                <button className="ep-remove" title="remove from final_selection" aria-label="remove from final_selection" onClick={() => setConfirm(im)}><X size={13} /></button>
+                <Button
+                  variant="destructive" size="icon-xs"
+                  className="absolute right-1.5 top-1.5 rounded-full opacity-90"
+                  title="remove from final_selection" aria-label="remove from final_selection"
+                  onClick={() => setConfirm(im)}
+                >
+                  <X size={13} />
+                </Button>
               ) : (
-                <button className="ep-pick-check" title="add to final_selection" aria-label="add to final_selection" onClick={() => toggle(im)}><Plus size={14} /></button>
+                <Button
+                  size="icon-xs"
+                  className="absolute right-1.5 top-1.5 rounded-full opacity-0 transition-opacity group-hover:opacity-90"
+                  title="add to final_selection" aria-label="add to final_selection"
+                  onClick={() => toggle(im)}
+                >
+                  <Plus size={14} />
+                </Button>
               )}
-              {im.selected && <span className="ep-sel-tag">selected</span>}
-              <figcaption>{im.name}</figcaption>
+              {im.selected && <Badge className="absolute left-1.5 top-1.5">selected</Badge>}
+              <figcaption className="truncate px-2 py-1 text-[11px] text-muted-foreground">{im.name}</figcaption>
             </figure>
           ))}
         </div>
@@ -1586,24 +1783,30 @@ function Library({ reloadKey, onView }) {
   }
 
   return (
-    <div className="library">
-      <div className="lib-head">
-        <h2>Asset library</h2>
-        <span className="ep-badge">{folders.length} folders</span>
-        <span className="ep-badge dur">{folders.reduce((a, f) => a + f.images.filter((i) => i.selected).length, 0)} selected → final_selection</span>
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center gap-3">
+        <h2 className="text-xl font-semibold tracking-tight">Asset library</h2>
+        <Badge variant="outline">{folders.length} folders</Badge>
+        <Badge variant="success">
+          {folders.reduce((a, f) => a + f.images.filter((i) => i.selected).length, 0)} selected → final_selection
+        </Badge>
       </div>
-      <div className="lib-folders">
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
         {folders.map((f) => {
           const sel = f.images.filter((i) => i.selected).length;
           return (
-            <button key={f.folder} className="lib-folder-card" onClick={() => setActive(f.folder)}>
-              <div className="lib-folder-thumb">
-                <img src={f.preview} loading="lazy" alt={f.folder} />
-                {sel > 0 && <span className="lib-folder-badge">{sel} <Check size={11} /></span>}
+            <button
+              key={f.folder}
+              className="group overflow-hidden rounded-xl border bg-card text-left transition-colors hover:border-primary/50"
+              onClick={() => setActive(f.folder)}
+            >
+              <div className="relative aspect-video bg-muted">
+                <img src={f.preview} loading="lazy" alt={f.folder} className="h-full w-full object-cover transition-transform group-hover:scale-105" />
+                {sel > 0 && <Badge className="absolute right-2 top-2">{sel} <Check size={11} /></Badge>}
               </div>
-              <div className="lib-folder-meta">
-                <span className="lib-folder-name">{f.folder}</span>
-                <span className="lib-folder-count">{f.count} images</span>
+              <div className="p-3">
+                <div className="truncate text-sm font-medium">{f.folder}</div>
+                <div className="text-xs text-muted-foreground">{f.count} images</div>
               </div>
             </button>
           );
@@ -1613,11 +1816,10 @@ function Library({ reloadKey, onView }) {
   );
 }
 
-// ===========================================================================
-// Sound Studio — an audio library. Each track keeps ordered versions; editing
-// a prompt saves a NEW version (starts "pending" until rendered). Like a
-// version, rename it or the track, and play/download the rendered audio.
-// ===========================================================================
+/* ---------------------------------------------------------------- *
+ * Sound studio                                                     *
+ * ---------------------------------------------------------------- */
+
 async function soundApi(url, opts) {
   const res = await fetch(url, {
     headers: opts?.body ? { "Content-Type": "application/json" } : undefined,
@@ -1674,94 +1876,70 @@ function SoundVersion({ track, ver, onChanged }) {
   };
 
   return (
-    <div className={`ss-ver ${ver.liked ? "liked" : ""}`}>
-      <div className="ss-ver-top">
-        <span className="ss-badge">v{ver.v}</span>
-        {ver.name && <span className="ss-vname">{ver.name}</span>}
+    <div className={cn("space-y-2.5 rounded-lg border bg-muted/30 p-3", ver.liked && "border-primary/30")}>
+      <div className="flex flex-wrap items-center gap-2">
+        <Badge variant="secondary" className="font-mono">v{ver.v}</Badge>
+        {ver.name && <span className="text-sm font-medium">{ver.name}</span>}
         {ver.status === "ready" ? (
-          <span className="ss-pill ready">ready</span>
+          <Badge variant="success">ready</Badge>
         ) : (
-          <span className="ss-pill pending">
-            <Clock size={11} /> needs render
-          </span>
+          <Badge variant="warning"><Clock size={11} /> needs render</Badge>
         )}
-        {ver.duration ? <span className="ss-dur">{ver.duration.toFixed(1)}s</span> : null}
-        <span className="ss-spacer" />
-        <button
-          className="ss-like"
+        {ver.duration ? <span className="text-xs text-muted-foreground">{ver.duration.toFixed(1)}s</span> : null}
+        <span className="flex-1" />
+        <Button
+          variant="ghost" size="icon-sm"
           aria-label={ver.liked ? "Unlike this version" : "Like this version"}
-          onClick={toggleLike}
-          disabled={busy}
-          title="Like"
+          onClick={toggleLike} disabled={busy} title="Like"
         >
-          <Heart size={16} fill={ver.liked ? "#c33a54" : "none"} />
-        </button>
-        <button
-          className="ss-icon-btn"
-          aria-label="Delete this version"
-          onClick={del}
-          disabled={busy}
-          title="Delete version"
-        >
+          <Heart size={16} fill={ver.liked ? "#e11d48" : "none"} color={ver.liked ? "#e11d48" : "currentColor"} />
+        </Button>
+        <Button variant="ghost" size="icon-sm" aria-label="Delete this version" onClick={del} disabled={busy} title="Delete version">
           <Trash2 size={15} />
-        </button>
+        </Button>
       </div>
 
-      <textarea
-        className="ss-prompt"
+      <Textarea
+        className="min-h-24 font-mono text-xs"
         value={prompt}
         onChange={(e) => setPrompt(e.target.value)}
         spellCheck={false}
       />
 
-      <div className="ss-actions">
-        <input
-          className="ss-vname-input"
+      <div className="flex flex-wrap items-center gap-2">
+        <Input
+          className="h-8 w-52"
           placeholder="new version name (optional)"
           value={vname}
           onChange={(e) => setVname(e.target.value)}
         />
-        <button
-          className="save ss-mini"
-          onClick={saveNewVersion}
-          disabled={busy || !prompt.trim()}
-          title="Save the edited prompt as a new version (starts pending)"
-        >
+        <Button size="sm" onClick={saveNewVersion} disabled={busy || !prompt.trim()} title="Save the edited prompt as a new version (starts pending)">
           <Plus size={13} /> Save as new version
-        </button>
+        </Button>
         {dirty && (
           <>
-            <button
-              className="secondary ss-mini"
-              onClick={saveInPlace}
-              disabled={busy}
-              title="Overwrite this version's prompt (no new version)"
-            >
+            <Button variant="outline" size="sm" onClick={saveInPlace} disabled={busy} title="Overwrite this version's prompt (no new version)">
               <Save size={13} /> Update v{ver.v}
-            </button>
-            <button
-              className="secondary ss-mini"
-              onClick={() => setPrompt(ver.prompt)}
-              disabled={busy}
-            >
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => setPrompt(ver.prompt)} disabled={busy}>
               <RotateCcw size={13} /> Reset
-            </button>
+            </Button>
           </>
         )}
-        <span className="ss-dur">{prompt.length} chars</span>
-        {err && <span className="err-msg">{err}</span>}
+        <span className="text-xs text-muted-foreground">{prompt.length} chars</span>
+        {err && <span className="text-xs text-destructive">{err}</span>}
       </div>
 
       {ver.status === "ready" && ver.url ? (
-        <div className="ss-audio">
-          <audio controls src={ver.url} preload="none" />
-          <a className="ss-dl" href={ver.url} download>
+        <div className="flex items-center gap-3">
+          <audio controls src={ver.url} preload="none" className="flex-1" />
+          <a className="inline-flex items-center gap-1 text-xs text-primary hover:underline" href={ver.url} download>
             <Download size={13} /> download
           </a>
         </div>
       ) : (
-        <div className="ss-hint">
-          <Clock size={13} /> pending — ask me to “render pending sounds” and I’ll run Seed
+        <div className="flex items-start gap-1.5 rounded-md bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
+          <Clock size={13} className="mt-0.5 shrink-0" /> pending — ask me to “render pending sounds” and I’ll run Seed
           Audio and attach the audio here.
         </div>
       )}
@@ -1809,42 +1987,42 @@ function SoundTrack({ track, onChanged }) {
   const versions = [...track.versions].sort((a, b) => b.v - a.v);
 
   return (
-    <div className="ss-card">
-      <div className="ss-card-top">
-        <Music size={18} />
-        <input
-          className="ss-name-input"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          onBlur={saveName}
-          onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
-          disabled={busy}
-          aria-label="Track name"
-        />
-        {liked && <Heart size={15} fill="#c33a54" color="#c33a54" />}
-        <span className="ss-dur">
-          {track.versions.length} version{track.versions.length === 1 ? "" : "s"}
-        </span>
-        <button
-          className="ss-icon-btn"
-          aria-label="Delete track"
-          onClick={delTrack}
-          disabled={busy}
-          title="Delete track"
-        >
-          <Trash2 size={16} />
-        </button>
-      </div>
-      <div className="ss-versions">
-        {versions.map((v) => (
-          <SoundVersion key={v.v} track={track} ver={v} onChanged={onChanged} />
-        ))}
-      </div>
-    </div>
+    <Panel
+      className="gap-0"
+      bodyClassName="space-y-3"
+      title={
+        <div className="flex items-center gap-2.5">
+          <Music size={18} className="text-primary" />
+          <Input
+            className="h-8 w-64 font-medium"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            onBlur={saveName}
+            onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
+            disabled={busy}
+            aria-label="Track name"
+          />
+          {liked && <Heart size={15} fill="#e11d48" color="#e11d48" />}
+        </div>
+      }
+      meta={
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-muted-foreground">
+            {track.versions.length} version{track.versions.length === 1 ? "" : "s"}
+          </span>
+          <Button variant="ghost" size="icon-sm" aria-label="Delete track" onClick={delTrack} disabled={busy} title="Delete track">
+            <Trash2 size={16} />
+          </Button>
+        </div>
+      }
+    >
+      {versions.map((v) => (
+        <SoundVersion key={v.v} track={track} ver={v} onChanged={onChanged} />
+      ))}
+    </Panel>
   );
 }
 
-// Preset moods for the New-sound builder (plus a free-text field for others).
 const MOODS = [
   "whimsical", "tension", "mystery", "chill", "exploratory", "friendly",
   "frightening", "playful", "tender", "magical", "adventurous", "melancholic",
@@ -1852,15 +2030,12 @@ const MOODS = [
 ];
 const SEED_AUDIO_CAP = 2048;
 
-// Structured prompt builder for a new sound. Assembles a Seed Audio prompt from
-// duration + moods + selected multi-shot references + optional sound-design
-// marks, with a live editable preview you can copy or turn into a track.
 function NewSoundBuilder({ bundles, busy, onCreate, onCancel }) {
   const [name, setName] = useState("");
   const [seconds, setSeconds] = useState(15);
   const [moods, setMoods] = useState(() => new Set());
   const [customMood, setCustomMood] = useState("");
-  const [picked, setPicked] = useState(() => new Set()); // "MS-01/01"
+  const [picked, setPicked] = useState(() => new Set());
   const [expanded, setExpanded] = useState(() => new Set());
   const [marks, setMarks] = useState("");
   const [edited, setEdited] = useState(false);
@@ -1936,173 +2111,157 @@ function NewSoundBuilder({ bundles, busy, onCreate, onCancel }) {
   };
 
   return (
-    <div className="ss-new">
-      <input
-        className="ss-newname"
-        placeholder="name (optional)"
-        value={name}
-        onChange={(e) => setName(e.target.value)}
-      />
+    <Card className="border-primary/30">
+      <CardContent className="space-y-5 p-5">
+        <Input
+          className="max-w-sm"
+          placeholder="name (optional)"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+        />
 
-      <div className="ss-field">
-        <label className="ss-label">Duration</label>
-        <div className="ss-inline">
-          <input
-            type="number"
-            className="ss-num"
-            min={1}
-            max={120}
-            value={seconds}
+        <div className="space-y-2">
+          <Label>Duration</Label>
+          <div className="flex items-center gap-2">
+            <Input
+              type="number"
+              className="w-24"
+              min={1}
+              max={120}
+              value={seconds}
+              onChange={(e) => {
+                setSeconds(e.target.value);
+                setEdited(false);
+              }}
+            />
+            <span className="text-sm text-muted-foreground">seconds</span>
+          </div>
+        </div>
+
+        <div className="space-y-2">
+          <Label>Mood</Label>
+          <div className="flex flex-wrap gap-2">
+            {MOODS.map((m) => (
+              <Chip key={m} on={moods.has(m)} onClick={() => toggleMood(m)}>{m}</Chip>
+            ))}
+          </div>
+          <Input
+            className="max-w-md"
+            placeholder="other moods (comma-separated)…"
+            value={customMood}
             onChange={(e) => {
-              setSeconds(e.target.value);
+              setCustomMood(e.target.value);
               setEdited(false);
             }}
           />
-          <span className="ss-dur">seconds</span>
         </div>
-      </div>
 
-      <div className="ss-field">
-        <label className="ss-label">Mood</label>
-        <div className="ss-chips">
-          {MOODS.map((m) => (
-            <button
-              key={m}
-              type="button"
-              className={`ss-chip ${moods.has(m) ? "on" : ""}`}
-              onClick={() => toggleMood(m)}
-            >
-              {m}
-            </button>
-          ))}
-        </div>
-        <input
-          className="ss-vname-input ss-custommood"
-          placeholder="other moods (comma-separated)…"
-          value={customMood}
-          onChange={(e) => {
-            setCustomMood(e.target.value);
-            setEdited(false);
-          }}
-        />
-      </div>
-
-      <div className="ss-field">
-        <label className="ss-label">
-          Scene reference — pick shots (whole MS bundle, or individual shots)
-        </label>
-        {bundles.length === 0 ? (
-          <span className="not-yet">no multi-shot bundles loaded</span>
-        ) : (
-          <div className="ss-bundles">
-            {bundles.map((b) => {
-              const keys = b.shots.map((s) => `${b.id}/${s.id}`);
-              const allSel = keys.every((k) => picked.has(k));
-              const someSel = keys.some((k) => picked.has(k));
-              const open = expanded.has(b.id);
-              return (
-                <div className="ss-bundle" key={b.id}>
-                  <div className="ss-bundle-head">
-                    <input
-                      type="checkbox"
-                      checked={allSel}
-                      ref={(el) => el && (el.indeterminate = someSel && !allSel)}
-                      onChange={() => toggleBundle(b)}
-                      aria-label={`Select all of ${b.id}`}
-                    />
-                    <button
-                      type="button"
-                      className="ss-bundle-toggle"
-                      onClick={() => toggleExpand(b.id)}
-                    >
-                      {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-                      <strong>{b.id}</strong>
-                      <span className="ss-bundle-title">
-                        {b.beatTitle} · shots {b.shots[0]?.id}–{b.shots[b.shots.length - 1]?.id}
-                      </span>
-                      {someSel && (
-                        <span className="ss-count">
-                          {keys.filter((k) => picked.has(k)).length}/{keys.length}
+        <div className="space-y-2">
+          <Label>Scene reference — pick shots (whole MS bundle, or individual shots)</Label>
+          {bundles.length === 0 ? (
+            <Empty>no multi-shot bundles loaded</Empty>
+          ) : (
+            <div className="space-y-1.5">
+              {bundles.map((b) => {
+                const keys = b.shots.map((s) => `${b.id}/${s.id}`);
+                const allSel = keys.every((k) => picked.has(k));
+                const someSel = keys.some((k) => picked.has(k));
+                const open = expanded.has(b.id);
+                return (
+                  <div className="rounded-lg border bg-muted/30" key={b.id}>
+                    <div className="flex items-center gap-2 p-2.5">
+                      <Checkbox
+                        checked={allSel ? true : someSel ? "indeterminate" : false}
+                        onCheckedChange={() => toggleBundle(b)}
+                        aria-label={`Select all of ${b.id}`}
+                      />
+                      <button
+                        type="button"
+                        className="flex flex-1 items-center gap-2 text-left text-sm"
+                        onClick={() => toggleExpand(b.id)}
+                      >
+                        {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                        <strong className="font-mono">{b.id}</strong>
+                        <span className="truncate text-muted-foreground">
+                          {b.beatTitle} · shots {b.shots[0]?.id}–{b.shots[b.shots.length - 1]?.id}
                         </span>
-                      )}
-                    </button>
-                  </div>
-                  {open && (
-                    <div className="ss-shotgrid">
-                      {b.shots.map((s) => (
-                        <label className="ss-shotchk" key={s.id}>
-                          <input
-                            type="checkbox"
-                            checked={picked.has(`${b.id}/${s.id}`)}
-                            onChange={() => toggleShot(`${b.id}/${s.id}`)}
-                          />
-                          shot {s.id} <span className="ss-shot-dur">{s.dur}s</span>
-                        </label>
-                      ))}
+                        {someSel && (
+                          <Badge variant="success" className="ml-auto">
+                            {keys.filter((k) => picked.has(k)).length}/{keys.length}
+                          </Badge>
+                        )}
+                      </button>
                     </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        )}
-        <span className="ss-note">
-          references use each shot’s short summary to keep the prompt within Seed Audio’s {SEED_AUDIO_CAP}-char limit
-        </span>
-      </div>
-
-      <div className="ss-field">
-        <label className="ss-label">Sound design marks (optional)</label>
-        <input
-          className="ss-vname-input ss-marks"
-          placeholder="e.g. swell at 0:03, dip at 0:08, sparkle at 0:12"
-          value={marks}
-          onChange={(e) => {
-            setMarks(e.target.value);
-            setEdited(false);
-          }}
-        />
-      </div>
-
-      <div className="ss-field">
-        <div className="ss-preview-head">
-          <label className="ss-label">Composed prompt</label>
-          {edited && (
-            <button className="secondary ss-mini" onClick={() => setEdited(false)}>
-              <RotateCcw size={12} /> Rebuild from fields
-            </button>
+                    {open && (
+                      <div className="flex flex-wrap gap-x-4 gap-y-2 border-t px-3 py-2.5">
+                        {b.shots.map((s) => (
+                          <label className="flex items-center gap-1.5 text-xs" key={s.id}>
+                            <Checkbox
+                              checked={picked.has(`${b.id}/${s.id}`)}
+                              onCheckedChange={() => toggleShot(`${b.id}/${s.id}`)}
+                            />
+                            shot {s.id} <span className="text-muted-foreground">{s.dur}s</span>
+                          </label>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
           )}
+          <span className="text-xs text-muted-foreground">
+            references use each shot’s short summary to keep the prompt within Seed Audio’s {SEED_AUDIO_CAP}-char limit
+          </span>
         </div>
-        <textarea
-          className="ss-prompt"
-          value={promptText}
-          spellCheck={false}
-          onChange={(e) => {
-            setManual(e.target.value);
-            setEdited(true);
-          }}
-        />
-      </div>
 
-      <div className="ss-actions">
-        <button
-          className="save ss-mini"
-          onClick={() => onCreate({ name, prompt: promptText })}
-          disabled={busy || !promptText.trim() || over}
-        >
-          <Plus size={13} /> Create (pending render)
-        </button>
-        <button className="secondary ss-mini" onClick={copy} disabled={!promptText.trim()}>
-          {copied ? <Check size={13} /> : <Copy size={13} />} {copied ? "Copied" : "Copy prompt"}
-        </button>
-        <button className="secondary ss-mini" onClick={onCancel} disabled={busy}>
-          Cancel
-        </button>
-        <span className={`ss-dur ${over ? "over" : ""}`}>
-          {promptText.length} / {SEED_AUDIO_CAP} chars
-        </span>
-      </div>
-    </div>
+        <div className="space-y-2">
+          <Label>Sound design marks (optional)</Label>
+          <Input
+            className="max-w-lg"
+            placeholder="e.g. swell at 0:03, dip at 0:08, sparkle at 0:12"
+            value={marks}
+            onChange={(e) => {
+              setMarks(e.target.value);
+              setEdited(false);
+            }}
+          />
+        </div>
+
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <Label>Composed prompt</Label>
+            {edited && (
+              <Button variant="outline" size="sm" onClick={() => setEdited(false)}>
+                <RotateCcw size={12} /> Rebuild from fields
+              </Button>
+            )}
+          </div>
+          <Textarea
+            className="min-h-32 font-mono text-xs"
+            value={promptText}
+            spellCheck={false}
+            onChange={(e) => {
+              setManual(e.target.value);
+              setEdited(true);
+            }}
+          />
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <Button onClick={() => onCreate({ name, prompt: promptText })} disabled={busy || !promptText.trim() || over}>
+            <Plus size={13} /> Create (pending render)
+          </Button>
+          <Button variant="outline" onClick={copy} disabled={!promptText.trim()}>
+            {copied ? <Check size={13} /> : <Copy size={13} />} {copied ? "Copied" : "Copy prompt"}
+          </Button>
+          <Button variant="ghost" onClick={onCancel} disabled={busy}>Cancel</Button>
+          <span className={cn("text-xs", over ? "font-semibold text-destructive" : "text-muted-foreground")}>
+            {promptText.length} / {SEED_AUDIO_CAP} chars
+          </span>
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -2130,7 +2289,6 @@ function SoundStudio({ reloadKey }) {
     load();
   }, [load, reloadKey]);
 
-  // Multi-shot bundles feed the "scene reference" picker in the new-sound builder.
   useEffect(() => {
     (async () => {
       try {
@@ -2166,18 +2324,16 @@ function SoundStudio({ reloadKey }) {
   );
 
   return (
-    <div>
-      <div className="ss-head">
-        <h2>sound studio</h2>
-        <div className="ms-meta">
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h2 className="text-xl font-semibold tracking-tight">Sound studio</h2>
+        <div className="flex items-center gap-2">
           {pending > 0 && (
-            <span className="ss-pill pending">
-              <Clock size={11} /> {pending} pending render
-            </span>
+            <Badge variant="warning"><Clock size={11} /> {pending} pending render</Badge>
           )}
-          <button onClick={() => setShowNew((s) => !s)}>
+          <Button onClick={() => setShowNew((s) => !s)}>
             <Plus size={14} /> New sound
-          </button>
+          </Button>
         </div>
       </div>
 
@@ -2190,13 +2346,15 @@ function SoundStudio({ reloadKey }) {
         />
       )}
 
-      {error && <p className="err-msg">Error: {error}</p>}
+      {error && <ErrorNote>{error}</ErrorNote>}
       {loading ? (
-        <p className="not-yet">loading…</p>
+        <Spinner label="loading…" />
       ) : tracks.length === 0 ? (
-        <p className="not-yet">No sounds yet — click “New sound”.</p>
+        <div className="rounded-xl border border-dashed p-8 text-center">
+          <Empty>No sounds yet — click “New sound”.</Empty>
+        </div>
       ) : (
-        <div className="ss-tracks">
+        <div className="space-y-4">
           {tracks.map((t) => (
             <SoundTrack key={t.id} track={t} onChanged={load} />
           ))}
@@ -2206,14 +2364,46 @@ function SoundStudio({ reloadKey }) {
   );
 }
 
+/* ---------------------------------------------------------------- *
+ * App shell                                                        *
+ * ---------------------------------------------------------------- */
+
+const TABS = [
+  { value: "shots", label: "Shots" },
+  { value: "multishot", label: "Multi-shot" },
+  { value: "episode", label: "Episode (48)" },
+  { value: "cuts", label: "Complete cuts" },
+  { value: "library", label: "Library" },
+  { value: "sounds", label: "Sound studio" },
+];
+
+function ThemeToggle() {
+  const [dark, setDark] = useState(() =>
+    typeof document !== "undefined" ? document.documentElement.classList.contains("dark") : true
+  );
+  const toggle = () => {
+    const next = !dark;
+    setDark(next);
+    document.documentElement.classList.toggle("dark", next);
+  };
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button variant="ghost" size="icon-sm" onClick={toggle} aria-label="Toggle theme">
+          {dark ? <Sun size={16} /> : <Moon size={16} />}
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent>{dark ? "Light mode" : "Dark mode"}</TooltipContent>
+    </Tooltip>
+  );
+}
+
 export default function App() {
-  const [view, setView] = useState("shots"); // "shots" | "multishot" | "episode" | "cuts" | "library" | "sounds"
+  const [view, setView] = useState("shots");
   const [shots, setShots] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  // bump key forces media elements to reload when refreshing.
   const [reloadKey, setReloadKey] = useState(0);
-  // shared full-size image modal for the episode + library tabs.
   const [modalImage, setModalImage] = useState(null);
 
   const load = useCallback(async () => {
@@ -2237,147 +2427,128 @@ export default function App() {
   }, [load]);
 
   return (
-    <>
-      <header className="app-header">
-        <div className="header-left">
-          <h1>shot-studio · animation pipeline dashboard</h1>
-          <nav className="tabs">
-            <button
-              className={`tab ${view === "shots" ? "active" : ""}`}
-              onClick={() => setView("shots")}
-            >
-              shots
-            </button>
-            <button
-              className={`tab ${view === "multishot" ? "active" : ""}`}
-              onClick={() => setView("multishot")}
-            >
-              multi shot
-            </button>
-            <button
-              className={`tab ${view === "episode" ? "active" : ""}`}
-              onClick={() => setView("episode")}
-            >
-              episode (48)
-            </button>
-            <button
-              className={`tab ${view === "cuts" ? "active" : ""}`}
-              onClick={() => setView("cuts")}
-            >
-              complete cuts
-            </button>
-            <button
-              className={`tab ${view === "library" ? "active" : ""}`}
-              onClick={() => setView("library")}
-            >
-              library
-            </button>
-            <button
-              className={`tab ${view === "sounds" ? "active" : ""}`}
-              onClick={() => setView("sounds")}
-            >
-              sound studio
-            </button>
-          </nav>
-        </div>
-        <div className="right">
-          <span className="status">
-            {loading ? "loading…" : `${shots.length} shots`}
-          </span>
-          <button className="secondary" onClick={load} disabled={loading}>
-            <RefreshCw size={13} /> Refresh
-          </button>
-        </div>
-      </header>
+    <TooltipProvider delayDuration={200}>
+      <Tabs value={view} onValueChange={setView}>
+        <header className="sticky top-0 z-30 border-b bg-card/80 backdrop-blur supports-[backdrop-filter]:bg-card/60">
+          <div className="mx-auto flex max-w-[1500px] flex-wrap items-center gap-x-6 gap-y-3 px-4 py-3 md:px-6">
+            <div className="flex items-center gap-2.5">
+              <div className="flex size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground shadow-sm">
+                <Clapperboard size={18} />
+              </div>
+              <div className="leading-tight">
+                <div className="text-sm font-semibold tracking-tight">shot-studio</div>
+                <div className="text-[11px] text-muted-foreground">animation pipeline dashboard</div>
+              </div>
+            </div>
 
-      {view === "sounds" ? (
-        <div className="wrap">
-          <SoundStudio reloadKey={reloadKey} />
-        </div>
-      ) : view === "library" ? (
-        <div className="wrap">
-          <Library reloadKey={reloadKey} onView={setModalImage} />
-        </div>
-      ) : view === "cuts" ? (
-        <div className="wrap">
-          <CompleteCuts reloadKey={reloadKey} />
-        </div>
-      ) : view === "episode" ? (
-        <div className="wrap">
-          <Episode reloadKey={reloadKey} onView={setModalImage} />
-        </div>
-      ) : view === "multishot" ? (
-        <div className="wrap">
-          <MultiShot reloadKey={reloadKey} />
-        </div>
-      ) : (
-      <div className="wrap">
-        {error && <p className="err-msg">Error: {error}</p>}
-        <table className="grid">
-          <thead>
-            <tr>
-              <th className="col-shot">Shot</th>
-              <th className="col-text">Seedance shot</th>
-              <th className="col-text">Audio shot (seed-audio)</th>
-              <th className="col-media">Audio generation</th>
-              <th className="col-media">Video generation</th>
-            </tr>
-          </thead>
-          <tbody>
-            {(() => {
-              const rows = [];
-              let lastSeg = null;
-              for (const s of shots) {
-                // Emit a sticky segment header whenever the segment changes.
-                if (s.audioSegmentLabel && s.audioSegment !== lastSeg) {
-                  lastSeg = s.audioSegment;
-                  rows.push(
-                    <tr key={`seg-${s.audioSegment}`} className="seg-row">
-                      <td colSpan={5} className="seg-sticky">
-                        {s.audioSegmentLabel}
-                      </td>
-                    </tr>
-                  );
-                }
-                rows.push(
-              <tr key={s.id}>
-                <td className="col-shot">shot{s.id}</td>
-                <td className="col-text">
-                  <EditableCell
-                    shotId={s.id}
-                    kind="seedance"
-                    initialText={s.seedanceText}
-                    found={s.seedanceFound}
-                  />
-                </td>
-                <td className="col-text">
-                  <EditableCell
-                    shotId={s.id}
-                    kind="audio"
-                    initialText={s.audioText}
-                    found={s.audioFound}
-                  />
-                </td>
-                <td className="col-media">
-                  <div className="stem-label"><Speech size={13} /> Speech · for lipsync</div>
-                  <MediaTakes kind="audio" takes={s.speechTakes} reloadKey={reloadKey} />
-                  <div className="stem-label vfx"><Leaf size={13} /> VFX · layer on video</div>
-                  <MediaTakes kind="audio" takes={s.vfxTakes} reloadKey={reloadKey} />
-                </td>
-                <td className="col-media">
-                  <MediaTakes kind="video" takes={s.videoTakes} reloadKey={reloadKey} />
-                </td>
-              </tr>
-                );
-              }
-              return rows;
-            })()}
-          </tbody>
-        </table>
-      </div>
-      )}
+            <TabsList className="h-9">
+              {TABS.map((t) => (
+                <TabsTrigger key={t.value} value={t.value} className="text-xs">
+                  {t.label}
+                </TabsTrigger>
+              ))}
+            </TabsList>
+
+            <div className="ml-auto flex items-center gap-2">
+              <span className="hidden text-xs text-muted-foreground sm:inline">
+                {loading ? "loading…" : `${shots.length} shots`}
+              </span>
+              <Button variant="outline" size="sm" onClick={load} disabled={loading}>
+                <RefreshCw size={13} className={cn(loading && "animate-spin")} /> Refresh
+              </Button>
+              <ThemeToggle />
+            </div>
+          </div>
+        </header>
+
+        <main className="mx-auto max-w-[1500px] px-4 py-6 md:px-6">
+          {view === "sounds" ? (
+            <SoundStudio reloadKey={reloadKey} />
+          ) : view === "library" ? (
+            <Library reloadKey={reloadKey} onView={setModalImage} />
+          ) : view === "cuts" ? (
+            <CompleteCuts reloadKey={reloadKey} />
+          ) : view === "episode" ? (
+            <Episode reloadKey={reloadKey} onView={setModalImage} />
+          ) : view === "multishot" ? (
+            <MultiShot reloadKey={reloadKey} />
+          ) : (
+            <div className="space-y-4">
+              {error && <ErrorNote>{error}</ErrorNote>}
+              <div className="overflow-hidden rounded-xl border">
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[1040px] table-fixed border-collapse text-sm">
+                    <colgroup>
+                      <col className="w-[6%]" />
+                      <col className="w-[30%]" />
+                      <col className="w-[26%]" />
+                      <col className="w-[20%]" />
+                      <col className="w-[18%]" />
+                    </colgroup>
+                    <thead>
+                      <tr className="bg-muted/60 text-left">
+                        <th className="border-b px-3 py-2.5 font-semibold">Shot</th>
+                        <th className="border-b px-3 py-2.5 font-semibold">Seedance shot</th>
+                        <th className="border-b px-3 py-2.5 font-semibold">Audio shot (seed-audio)</th>
+                        <th className="border-b px-3 py-2.5 font-semibold">Audio generation</th>
+                        <th className="border-b px-3 py-2.5 font-semibold">Video generation</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(() => {
+                        const rows = [];
+                        let lastSeg = null;
+                        for (const s of shots) {
+                          if (s.audioSegmentLabel && s.audioSegment !== lastSeg) {
+                            lastSeg = s.audioSegment;
+                            rows.push(
+                              <tr key={`seg-${s.audioSegment}`}>
+                                <td
+                                  colSpan={5}
+                                  className="border-y border-amber-500/25 bg-amber-500/10 px-3 py-2 text-xs font-bold uppercase tracking-wider text-amber-500"
+                                >
+                                  {s.audioSegmentLabel}
+                                </td>
+                              </tr>
+                            );
+                          }
+                          rows.push(
+                            <tr key={s.id} className="align-top odd:bg-muted/20">
+                              <td className="border-b px-3 py-3 font-mono font-semibold">shot{s.id}</td>
+                              <td className="border-b px-3 py-3">
+                                <EditableCell shotId={s.id} kind="seedance" initialText={s.seedanceText} found={s.seedanceFound} />
+                              </td>
+                              <td className="border-b px-3 py-3">
+                                <EditableCell shotId={s.id} kind="audio" initialText={s.audioText} found={s.audioFound} />
+                              </td>
+                              <td className="border-b px-3 py-3">
+                                <div className="mb-1 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wide text-primary">
+                                  <Speech size={13} /> Speech · for lipsync
+                                </div>
+                                <MediaTakes kind="audio" takes={s.speechTakes} reloadKey={reloadKey} />
+                                <div className="mb-1 mt-3 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wide text-amber-500">
+                                  <Leaf size={13} /> VFX · layer on video
+                                </div>
+                                <MediaTakes kind="audio" takes={s.vfxTakes} reloadKey={reloadKey} />
+                              </td>
+                              <td className="border-b px-3 py-3">
+                                <MediaTakes kind="video" takes={s.videoTakes} reloadKey={reloadKey} />
+                              </td>
+                            </tr>
+                          );
+                        }
+                        return rows;
+                      })()}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          )}
+        </main>
+      </Tabs>
 
       <ImageModal image={modalImage} onClose={() => setModalImage(null)} />
-    </>
+    </TooltipProvider>
   );
 }
