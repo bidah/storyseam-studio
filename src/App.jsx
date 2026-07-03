@@ -237,18 +237,30 @@ function MediaTakes({ kind, takes, reloadKey }) {
 function ImageModal({ image, onClose }) {
   return (
     <Dialog open={!!image} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-w-[min(92vw,1100px)] gap-0 overflow-hidden bg-card p-0">
+      <DialogContent
+        showCloseButton={false}
+        className="flex h-[94vh] w-[96vw] max-w-[96vw] flex-col gap-0 overflow-hidden bg-card p-0 sm:max-w-[96vw]"
+      >
         <DialogHeader className="sr-only">
           <DialogTitle>{image?.name || "Image"}</DialogTitle>
         </DialogHeader>
         {image && (
           <>
-            <img
-              src={image.url}
-              alt={image.name}
-              className="max-h-[80vh] w-full bg-black object-contain"
-            />
-            <div className="flex items-center gap-2 border-t px-4 py-3 text-sm">
+            <div className="relative flex min-h-0 flex-1 items-center justify-center bg-black">
+              <img
+                src={image.url}
+                alt={image.name}
+                className="h-full w-full object-contain"
+              />
+              <button
+                onClick={onClose}
+                aria-label="Close"
+                className="absolute right-3 top-3 flex size-9 items-center justify-center rounded-full bg-black/60 text-white ring-1 ring-white/25 backdrop-blur transition-colors hover:bg-black/85 focus-visible:ring-2 focus-visible:ring-white/70 focus-visible:outline-none"
+              >
+                <X size={18} />
+              </button>
+            </div>
+            <div className="flex shrink-0 items-center gap-2 border-t px-4 py-3 text-sm">
               <Badge variant="secondary" className="uppercase">{image.role}</Badge>
               <span className="truncate text-muted-foreground">{image.name}</span>
             </div>
