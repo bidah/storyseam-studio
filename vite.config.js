@@ -13,6 +13,8 @@ export default defineConfig({
       "/refs": "http://localhost:3334",
       "/asset": "http://localhost:3334",
       "/final": "http://localhost:3334",
+      "/gen": "http://localhost:3334",
+      "/sound-media": "http://localhost:3334",
     },
   },
 });

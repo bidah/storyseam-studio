@@ -2,6 +2,10 @@ import express from "express";
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
+import { execFile } from "child_process";
+import { promisify } from "util";
+
+const execFileP = promisify(execFile);
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -32,6 +36,16 @@ const EPISODE_MANIFEST = path.join(EPISODE_DIR, "multishot_bundles.json");
 const PROJECT_ROOT = path.resolve(__dirname, "..", "..");
 const FINAL_DIR = path.join(PROJECT_ROOT, "final_selection");
 const SELECTIONS_DB = path.join(EPISODE_DIR, "selections.json");
+
+// Rendered Seedance clips, one per bundle (MS-01.mp4, ...). Shown in the card.
+const GEN_DIR = path.join(EPISODE_DIR, "generations");
+
+// Sound Studio: a standalone audio library (sibling of the other data folders).
+// Each "track" holds ordered versions; the media files live in media/.
+const SOUND_DIR = path.join(PROJECT_ROOT, "sound-studio");
+const SOUND_MEDIA = path.join(SOUND_DIR, "media");
+const SOUNDS_DB = path.join(SOUND_DIR, "sounds.json");
+const DEFAULT_SOUND_PARAMS = { model: "seed_audio", format: "wav", sample_rate: 48000 };
 
 // Voice/sound references (NOT dialogue) — identity locks for the speakers.
 // `order` is the speaker order inside the (combined) clip, stated in the prompt.
@@ -339,6 +353,8 @@ app.use("/refs", express.static(DATA_ROOT));
 // Serve any project image by relative path, and the final_selection folder.
 app.use("/asset", express.static(PROJECT_ROOT));
 app.use("/final", express.static(FINAL_DIR));
+app.use("/gen", express.static(GEN_DIR));
+app.use("/sound-media", express.static(SOUND_MEDIA));
 
 // --- Asset library: folders of images, browsable + selectable -------------
 app.get("/api/library", (req, res) => {
@@ -552,6 +568,28 @@ app.post("/api/episode/audio-select", (req, res) => {
   }
 });
 
+// Revision signing: sign off one SECTION of a bundle (images | prompt | audio).
+// Each section is an independent signature { by, at }; clearing sets it null.
+const SIGN_SECTIONS = new Set(["images", "prompt", "audio"]);
+app.post("/api/episode/sign", (req, res) => {
+  try {
+    const { bundle, section, signed, signedBy } = req.body || {};
+    if (!bundle || !SIGN_SECTIONS.has(section))
+      return res.status(400).json({ error: "Missing 'bundle' or invalid 'section'" });
+    if (signed && !String(signedBy || "").trim())
+      return res.status(400).json({ error: "Missing 'signedBy'" });
+    const db = readDB();
+    db.signoffs = db.signoffs || {};
+    const cur = db.signoffs[bundle] || { images: null, prompt: null, audio: null };
+    cur[section] = signed ? { by: String(signedBy).trim(), at: new Date().toISOString() } : null;
+    db.signoffs[bundle] = cur;
+    writeDB(db);
+    res.json({ ok: true, bundle, signoff: cur });
+  } catch (e) {
+    res.status(500).json({ error: String(e.message || e) });
+  }
+});
+
 // Toggle a final-selection image as a chosen reference for one bundle/scene.
 app.post("/api/episode/select", (req, res) => {
   try {
@@ -575,7 +613,213 @@ app.get("/api/episode", (req, res) => {
   try {
     if (!fs.existsSync(EPISODE_MANIFEST)) return res.json({ episode: null });
     const manifest = JSON.parse(fs.readFileSync(EPISODE_MANIFEST, "utf8"));
-    res.json({ episode: manifest });
+    const db = readDB();
+    // Attach a list of rendered clips (newest last) for every bundle that has any
+    // on disk. db.video[id] is an array of generations; tolerate the old single
+    // object shape too.
+    const video = {};
+    for (const [id, entry] of Object.entries(db.video || {})) {
+      const arr = Array.isArray(entry) ? entry : entry ? [entry] : [];
+      const list = arr
+        .filter((v) => v && v.file && fs.existsSync(path.join(GEN_DIR, v.file)))
+        .map((v, idx) => ({ ...v, name: v.name || `gen ${idx + 1}`, url: "/gen/" + v.file }));
+      if (list.length) video[id] = list;
+    }
+    res.json({ episode: manifest, video, prompts: db.prompt || {}, signoffs: db.signoffs || {} });
+  } catch (e) {
+    res.status(500).json({ error: String(e.message || e) });
+  }
+});
+
+// Mark a rendered generation as selected/deselected (for stitching later).
+app.post("/api/episode/video-select", (req, res) => {
+  try {
+    const { bundle, file, selected } = req.body || {};
+    if (!bundle || !file) return res.status(400).json({ error: "Missing 'bundle' or 'file'" });
+    const db = readDB();
+    const arr = Array.isArray(db.video?.[bundle]) ? db.video[bundle] : db.video?.[bundle] ? [db.video[bundle]] : [];
+    const g = arr.find((v) => v.file === file);
+    if (!g) return res.status(404).json({ error: "Generation not found" });
+    g.selected = !!selected;
+    db.video[bundle] = arr;
+    writeDB(db);
+    res.json({ ok: true, bundle, file, selected: g.selected });
+  } catch (e) {
+    res.status(500).json({ error: String(e.message || e) });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Complete cuts: stitch the SELECTED take of each bundle, in order, into one mp4.
+// ---------------------------------------------------------------------------
+const CUT_FILE = "complete_cut.mp4"; // the full episode cut, MS-01 → last rendered
+
+const bundleNum = (id) => {
+  const m = /MS-0*(\d+)/.exec(id || "");
+  return m ? Number(m[1]) : 0;
+};
+
+// Pick the chosen take for a bundle: the one flagged `selected`, else the first
+// take that still exists on disk. Returns null when nothing is renderable.
+function pickTake(entry) {
+  const list = Array.isArray(entry) ? entry : entry ? [entry] : [];
+  const present = list.filter((v) => v && v.file && fs.existsSync(path.join(GEN_DIR, v.file)));
+  if (!present.length) return null;
+  const sel = present.find((v) => v.selected);
+  return { take: sel || present[0], fallback: !sel };
+}
+
+async function probeDuration(file) {
+  try {
+    const { stdout } = await execFileP("ffprobe", [
+      "-v", "error",
+      "-show_entries", "format=duration",
+      "-of", "default=noprint_wrappers=1:nokey=1",
+      path.join(GEN_DIR, file),
+    ]);
+    return parseFloat(stdout.trim()) || 0;
+  } catch {
+    return 0;
+  }
+}
+
+// Ordered MS-01 … last-rendered plan with the chosen take, duration, and the
+// from→to timecode each segment occupies in the stitched output.
+async function buildCutSegments() {
+  const db = readDB();
+  const ids = Object.keys(db.video || {}).sort((a, b) => bundleNum(a) - bundleNum(b));
+  const segs = [];
+  let cursor = 0;
+  for (const id of ids) {
+    const picked = pickTake(db.video?.[id]);
+    if (!picked) {
+      segs.push({ id, file: null, missing: true, start: cursor, duration: 0, end: cursor });
+      continue;
+    }
+    const duration = await probeDuration(picked.take.file);
+    segs.push({
+      id,
+      file: picked.take.file,
+      name: picked.take.name || picked.take.file,
+      url: "/gen/" + picked.take.file,
+      selected: !picked.fallback,
+      fallback: picked.fallback,
+      start: cursor,
+      duration,
+      end: cursor + duration,
+    });
+    cursor += duration;
+  }
+  return segs;
+}
+
+// First/last bundle id across a segment list (covers the full stitched range).
+function segRange(segs) {
+  const ids = segs.map((s) => s.id);
+  return { from: ids[0] || null, to: ids[ids.length - 1] || null };
+}
+
+// Read the current plan + any previously stitched output.
+app.get("/api/episode/cuts", async (req, res) => {
+  try {
+    const segments = await buildCutSegments();
+    const db = readDB();
+    const outPath = path.join(GEN_DIR, CUT_FILE);
+    const output = fs.existsSync(outPath)
+      ? { url: "/gen/" + CUT_FILE, file: CUT_FILE, ...(db.cut || {}) }
+      : null;
+    res.json({ range: segRange(segments), segments, output });
+  } catch (e) {
+    res.status(500).json({ error: String(e.message || e) });
+  }
+});
+
+// Stitch the selected takes (MS-01 … last rendered) into one mp4 via ffmpeg.
+app.post("/api/episode/stitch", async (req, res) => {
+  try {
+    const segments = await buildCutSegments();
+    const usable = segments.filter((s) => s.file);
+    if (!usable.length) return res.status(400).json({ error: "No rendered takes to stitch" });
+
+    fs.mkdirSync(GEN_DIR, { recursive: true });
+    // ffmpeg concat-demuxer list file (abs paths, single quotes escaped).
+    const listPath = path.join(GEN_DIR, ".complete_cut_list.txt");
+    const listBody = usable
+      .map((s) => `file '${path.join(GEN_DIR, s.file).replace(/'/g, "'\\''")}'`)
+      .join("\n");
+    fs.writeFileSync(listPath, listBody + "\n", "utf8");
+    const outPath = path.join(GEN_DIR, CUT_FILE);
+
+    // All takes share codec/res/fps (h264 1280x720 24fps + aac), so a fast
+    // stream copy works; if it ever fails, fall back to a re-encode.
+    const concatArgs = (extra) => [
+      "-y", "-f", "concat", "-safe", "0", "-i", listPath, ...extra, outPath,
+    ];
+    try {
+      await execFileP("ffmpeg", concatArgs(["-c", "copy", "-fflags", "+genpts"]));
+    } catch {
+      await execFileP("ffmpeg", concatArgs([
+        "-c:v", "libx264", "-preset", "veryfast", "-crf", "18",
+        "-c:a", "aac", "-b:a", "192k", "-vsync", "cfr", "-r", "24",
+      ]));
+    }
+    fs.rmSync(listPath, { force: true });
+
+    const totalDuration = usable.reduce((a, s) => a + s.duration, 0);
+    const db = readDB();
+    db.cut = {
+      range: segRange(usable),
+      segments: usable.map((s) => ({ id: s.id, file: s.file, name: s.name, fallback: s.fallback, start: s.start, duration: s.duration, end: s.end })),
+      totalDuration,
+      stitchedAt: new Date().toISOString(),
+    };
+    writeDB(db);
+
+    res.json({ ok: true, url: "/gen/" + CUT_FILE, file: CUT_FILE, totalDuration, count: usable.length, segments });
+  } catch (e) {
+    res.status(500).json({ error: String(e.message || e) });
+  }
+});
+
+// Save (or clear) an edited skill prompt for one bundle. Empty/omitted text
+// clears the override so the bundle falls back to the live-composed prompt.
+app.post("/api/episode/prompt", (req, res) => {
+  try {
+    const { bundle, text } = req.body || {};
+    if (!bundle) return res.status(400).json({ error: "Missing 'bundle'" });
+    const db = readDB();
+    db.prompt = db.prompt || {};
+    if (typeof text === "string" && text.length) db.prompt[bundle] = text;
+    else delete db.prompt[bundle];
+    writeDB(db);
+    res.json({ ok: true, bundle, saved: !!db.prompt[bundle] });
+  } catch (e) {
+    res.status(500).json({ error: String(e.message || e) });
+  }
+});
+
+// Attach a rendered Seedance clip to a bundle. APPENDS a new generation (keeps
+// prior ones) — downloads `url` into generations/<bundle>_genN.mp4 and records it.
+app.post("/api/episode/video", async (req, res) => {
+  try {
+    const { bundle, url, jobId } = req.body || {};
+    if (!bundle || !url) return res.status(400).json({ error: "Missing 'bundle' or 'url'" });
+    fs.mkdirSync(GEN_DIR, { recursive: true });
+    const db = readDB();
+    db.video = db.video || {};
+    // normalize to an array (migrate old single-object / legacy <bundle>.mp4 entry)
+    let list = db.video[bundle];
+    list = Array.isArray(list) ? list : list ? [list] : [];
+    const n = list.length + 1;
+    const file = `${bundle}_gen${n}.mp4`;
+    const resp = await fetch(url);
+    if (!resp.ok) return res.status(502).json({ error: `Download failed: ${resp.status}` });
+    const buf = Buffer.from(await resp.arrayBuffer());
+    fs.writeFileSync(path.join(GEN_DIR, file), buf);
+    list.push({ file, name: `gen ${n}`, jobId: jobId || null, source: url, ts: new Date().toISOString() });
+    db.video[bundle] = list;
+    writeDB(db);
+    res.json({ ok: true, bundle, name: `gen ${n}`, count: list.length, url: "/gen/" + file });
   } catch (e) {
     res.status(500).json({ error: String(e.message || e) });
   }
@@ -638,6 +882,230 @@ app.put("/api/shots/:id/audio", (req, res) => {
       return res.status(400).json({ error: "Missing 'text'" });
     writeSeedaudioBlock(req.params.id, text);
     res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: String(e.message || e) });
+  }
+});
+
+// ===========================================================================
+// Sound Studio — a standalone audio library. Each "track" holds ordered
+// versions; editing a prompt saves a NEW version (which starts "pending").
+// The agent renders pending versions with Seed Audio, then attaches the audio
+// (by remote URL or a local file path) — mirroring the episode video flow.
+// ===========================================================================
+function readSounds() {
+  try {
+    return JSON.parse(fs.readFileSync(SOUNDS_DB, "utf8"));
+  } catch {
+    return { tracks: [], seq: 0 };
+  }
+}
+function writeSounds(db) {
+  fs.mkdirSync(SOUND_DIR, { recursive: true });
+  fs.writeFileSync(SOUNDS_DB, JSON.stringify(db, null, 2));
+}
+const findTrack = (db, id) => (db.tracks || []).find((t) => t.id === id) || null;
+const nextVersion = (t) => t.versions.reduce((m, v) => Math.max(m, v.v), 0) + 1;
+async function soundDuration(abs) {
+  try {
+    const { stdout } = await execFileP("ffprobe", [
+      "-v", "error", "-show_entries", "format=duration",
+      "-of", "default=noprint_wrappers=1:nokey=1", abs,
+    ]);
+    return parseFloat(stdout.trim()) || 0;
+  } catch {
+    return 0;
+  }
+}
+// Serialize a track for the client, resolving each version's media URL.
+const soundView = (t) => ({
+  ...t,
+  versions: t.versions.map((v) => ({ ...v, url: v.file ? "/sound-media/" + v.file : null })),
+});
+
+// List every track (newest first).
+app.get("/api/sounds", (req, res) => {
+  try {
+    const db = readSounds();
+    const tracks = [...(db.tracks || [])].reverse().map(soundView);
+    res.json({ tracks });
+  } catch (e) {
+    res.status(500).json({ error: String(e.message || e) });
+  }
+});
+
+// Create a new track with an initial v1 (pending render).
+app.post("/api/sounds", (req, res) => {
+  try {
+    const { name, prompt, params } = req.body || {};
+    if (typeof prompt !== "string" || !prompt.trim())
+      return res.status(400).json({ error: "Missing 'prompt'" });
+    const db = readSounds();
+    db.seq = (db.seq || 0) + 1;
+    const now = new Date().toISOString();
+    const track = {
+      id: `trk_${db.seq}`,
+      name: (name && name.trim()) || `sound ${db.seq}`,
+      createdAt: now,
+      versions: [{
+        v: 1, prompt: prompt.trim(), name: null, file: null,
+        status: "pending", liked: false, params: params || DEFAULT_SOUND_PARAMS, ts: now,
+      }],
+    };
+    db.tracks = db.tracks || [];
+    db.tracks.push(track);
+    writeSounds(db);
+    res.json({ ok: true, track: soundView(track) });
+  } catch (e) {
+    res.status(500).json({ error: String(e.message || e) });
+  }
+});
+
+// Rename a track.
+app.patch("/api/sounds/:id", (req, res) => {
+  try {
+    const { name } = req.body || {};
+    const db = readSounds();
+    const t = findTrack(db, req.params.id);
+    if (!t) return res.status(404).json({ error: "No such track" });
+    if (typeof name === "string" && name.trim()) t.name = name.trim();
+    writeSounds(db);
+    res.json({ ok: true, track: soundView(t) });
+  } catch (e) {
+    res.status(500).json({ error: String(e.message || e) });
+  }
+});
+
+// Delete a track and all its media.
+app.delete("/api/sounds/:id", (req, res) => {
+  try {
+    const db = readSounds();
+    const t = findTrack(db, req.params.id);
+    if (!t) return res.status(404).json({ error: "No such track" });
+    for (const v of t.versions)
+      if (v.file) fs.rmSync(path.join(SOUND_MEDIA, v.file), { force: true });
+    db.tracks = db.tracks.filter((x) => x.id !== t.id);
+    writeSounds(db);
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: String(e.message || e) });
+  }
+});
+
+// Add a new version from an edited prompt — bumps the number, starts pending.
+app.post("/api/sounds/:id/version", (req, res) => {
+  try {
+    const { prompt, name, params } = req.body || {};
+    if (typeof prompt !== "string" || !prompt.trim())
+      return res.status(400).json({ error: "Missing 'prompt'" });
+    const db = readSounds();
+    const t = findTrack(db, req.params.id);
+    if (!t) return res.status(404).json({ error: "No such track" });
+    const prev = t.versions[t.versions.length - 1];
+    const v = nextVersion(t);
+    t.versions.push({
+      v, prompt: prompt.trim(), name: (name && name.trim()) || null, file: null,
+      status: "pending", liked: false, params: params || prev?.params || DEFAULT_SOUND_PARAMS,
+      ts: new Date().toISOString(),
+    });
+    writeSounds(db);
+    res.json({ ok: true, version: v, track: soundView(t) });
+  } catch (e) {
+    res.status(500).json({ error: String(e.message || e) });
+  }
+});
+
+// Edit a version in place (prompt and/or name) WITHOUT creating a new version.
+app.patch("/api/sounds/:id/version/:v", (req, res) => {
+  try {
+    const { prompt, name } = req.body || {};
+    const db = readSounds();
+    const t = findTrack(db, req.params.id);
+    if (!t) return res.status(404).json({ error: "No such track" });
+    const ver = t.versions.find((x) => x.v === Number(req.params.v));
+    if (!ver) return res.status(404).json({ error: "No such version" });
+    if (typeof prompt === "string") ver.prompt = prompt;
+    if (typeof name === "string") ver.name = name.trim() || null;
+    writeSounds(db);
+    res.json({ ok: true, track: soundView(t) });
+  } catch (e) {
+    res.status(500).json({ error: String(e.message || e) });
+  }
+});
+
+// Toggle a version's "like".
+app.post("/api/sounds/:id/version/:v/like", (req, res) => {
+  try {
+    const db = readSounds();
+    const t = findTrack(db, req.params.id);
+    if (!t) return res.status(404).json({ error: "No such track" });
+    const ver = t.versions.find((x) => x.v === Number(req.params.v));
+    if (!ver) return res.status(404).json({ error: "No such version" });
+    ver.liked = !ver.liked;
+    writeSounds(db);
+    res.json({ ok: true, liked: ver.liked });
+  } catch (e) {
+    res.status(500).json({ error: String(e.message || e) });
+  }
+});
+
+// Delete a single version (removes the track if it was the last one).
+app.delete("/api/sounds/:id/version/:v", (req, res) => {
+  try {
+    const db = readSounds();
+    const t = findTrack(db, req.params.id);
+    if (!t) return res.status(404).json({ error: "No such track" });
+    const ver = t.versions.find((x) => x.v === Number(req.params.v));
+    if (!ver) return res.status(404).json({ error: "No such version" });
+    if (ver.file) fs.rmSync(path.join(SOUND_MEDIA, ver.file), { force: true });
+    t.versions = t.versions.filter((x) => x.v !== ver.v);
+    if (!t.versions.length) db.tracks = db.tracks.filter((x) => x.id !== t.id);
+    writeSounds(db);
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: String(e.message || e) });
+  }
+});
+
+// Attach rendered audio to a version — from a remote URL (downloaded) or a
+// local file path (copied). Marks the version ready and probes its duration.
+app.post("/api/sounds/:id/version/:v/attach", async (req, res) => {
+  try {
+    const { url, localPath } = req.body || {};
+    const db = readSounds();
+    const t = findTrack(db, req.params.id);
+    if (!t) return res.status(404).json({ error: "No such track" });
+    const ver = t.versions.find((x) => x.v === Number(req.params.v));
+    if (!ver) return res.status(404).json({ error: "No such version" });
+    fs.mkdirSync(SOUND_MEDIA, { recursive: true });
+
+    let ext = ".wav";
+    if (localPath) ext = path.extname(localPath) || ".wav";
+    else if (url) {
+      const m = /\.(wav|mp3|ogg|opus|m4a|aac)(?:\?|$)/i.exec(url);
+      if (m) ext = "." + m[1].toLowerCase();
+    }
+    const file = `${t.id}_v${ver.v}${ext}`;
+    const dest = path.join(SOUND_MEDIA, file);
+
+    if (localPath) {
+      if (!fs.existsSync(localPath)) return res.status(400).json({ error: "localPath not found" });
+      fs.copyFileSync(localPath, dest);
+    } else if (url) {
+      const resp = await fetch(url);
+      if (!resp.ok) return res.status(502).json({ error: `Download failed: ${resp.status}` });
+      fs.writeFileSync(dest, Buffer.from(await resp.arrayBuffer()));
+    } else {
+      return res.status(400).json({ error: "Provide 'url' or 'localPath'" });
+    }
+
+    ver.file = file;
+    ver.status = "ready";
+    ver.duration = await soundDuration(dest);
+    ver.source = url || localPath;
+    ver.ts = new Date().toISOString();
+    writeSounds(db);
+    res.json({ ok: true, version: ver.v, url: "/sound-media/" + file, duration: ver.duration });
   } catch (e) {
     res.status(500).json({ error: String(e.message || e) });
   }
