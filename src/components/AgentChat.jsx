@@ -242,7 +242,7 @@ export default function AgentChat({ view }) {
   };
 
   return (
-    <aside className="flex h-dvh w-[380px] shrink-0 flex-col border-l bg-card">
+    <aside className="flex h-dvh w-[495px] shrink-0 flex-col border-l bg-card">
       <header className="flex h-14 shrink-0 items-center gap-2 border-b px-4">
         <div className="flex size-7 items-center justify-center rounded-md bg-primary text-primary-foreground">
           <Bot size={16} />
