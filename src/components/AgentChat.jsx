@@ -12,6 +12,7 @@ import {
   XCircle,
   KeyRound,
 } from "lucide-react";
+import { Streamdown } from "streamdown";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 
@@ -148,7 +149,9 @@ function MessagePart({ part, canRespond, onRespond }) {
       return null;
     case "text":
       return part.text ? (
-        <div className="whitespace-pre-wrap break-words text-sm leading-relaxed">{part.text}</div>
+        <Streamdown className="space-y-2 break-words text-sm leading-relaxed [&_a]:text-primary [&_a]:underline [&_code]:rounded [&_code]:bg-muted [&_code]:px-1 [&_code]:py-0.5 [&_code]:text-xs [&_ol]:list-decimal [&_ol]:pl-5 [&_pre]:overflow-x-auto [&_pre]:rounded-md [&_pre]:bg-muted [&_pre]:p-2 [&_ul]:list-disc [&_ul]:pl-5">
+          {part.text}
+        </Streamdown>
       ) : null;
     case "reasoning":
       return part.text ? (
