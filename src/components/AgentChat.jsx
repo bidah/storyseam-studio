@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useEveAgent } from "eve/react";
+import { useAgent } from "@/components/AgentProvider";
 import {
   Bot,
   Send,
@@ -11,10 +11,26 @@ import {
   CheckCircle2,
   XCircle,
   KeyRound,
+  Paperclip,
+  Loader2,
+  X,
+  ArrowDown,
+  Image as ImageIcon,
 } from "lucide-react";
 import { Streamdown } from "streamdown";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import {
+  Attachment,
+  AttachmentGroup,
+  AttachmentMedia,
+  AttachmentContent,
+  AttachmentTitle,
+  AttachmentDescription,
+  AttachmentActions,
+  AttachmentAction,
+} from "@/components/ui/attachment";
+import { Marker, MarkerIcon, MarkerContent } from "@/components/ui/marker";
 
 // ---------------------------------------------------------------------------
 // Chat rendering mirrors eve's canonical approach (its scaffolded web template):
@@ -22,7 +38,20 @@ import { Button } from "@/components/ui/button";
 // of scanning only the last message. HITL prompts render inline on their tool
 // part and, once answered, collapse to a persistent "Responded: …" line — so
 // options are real buttons (not prose) and the answer stays in the history.
+//
+// Attachments: images picked from the composer are uploaded to Cloudflare R2
+// (POST /api/upload) and sent to the agent as `image` message parts pointing at
+// their public URL, so the model can actually see them. eve's default message
+// projection only keeps text/tool parts, so we remember what each user turn was
+// sent with (in `sentAttachmentsRef`, ordinal-aligned to the user messages) and
+// render the thumbnails back into that turn's bubble.
 // ---------------------------------------------------------------------------
+
+function prettySize(n) {
+  if (typeof n !== "number") return "";
+  const kb = n / 1024;
+  return kb < 1024 ? `${Math.max(1, Math.round(kb))} KB` : `${(kb / 1024).toFixed(1)} MB`;
+}
 
 function ToolChip({ part }) {
   const name = part.toolName || "tool";
@@ -149,7 +178,11 @@ function MessagePart({ part, canRespond, onRespond }) {
       return null;
     case "text":
       return part.text ? (
-        <Streamdown className="space-y-2 break-words text-sm leading-relaxed [&_a]:text-primary [&_a]:underline [&_code]:rounded [&_code]:bg-muted [&_code]:px-1 [&_code]:py-0.5 [&_code]:text-xs [&_ol]:list-decimal [&_ol]:pl-5 [&_pre]:overflow-x-auto [&_pre]:rounded-md [&_pre]:bg-muted [&_pre]:p-2 [&_ul]:list-disc [&_ul]:pl-5">
+        <Streamdown
+          animated={{ animation: "fadeIn", duration: 180, sep: "word" }}
+          isAnimating={part.state === "streaming"}
+          className="space-y-2 break-words text-sm leading-relaxed [&_a]:text-primary [&_a]:underline [&_code]:rounded [&_code]:bg-muted [&_code]:px-1 [&_code]:py-0.5 [&_code]:text-xs [&_ol]:list-decimal [&_ol]:pl-5 [&_pre]:overflow-x-auto [&_pre]:rounded-md [&_pre]:bg-muted [&_pre]:p-2 [&_ul]:list-disc [&_ul]:pl-5"
+        >
           {part.text}
         </Streamdown>
       ) : null;
@@ -172,7 +205,25 @@ function MessagePart({ part, canRespond, onRespond }) {
   }
 }
 
-function AgentMessage({ message, canRespond, onRespond }) {
+// Thumbnails for the images a user turn was sent with, rendered back into the
+// bubble (eve's projection doesn't keep image parts, so `atts` is supplied by
+// the composer's ordinal-aligned record).
+function SentAttachments({ atts }) {
+  if (!atts?.length) return null;
+  return (
+    <AttachmentGroup className="mt-1.5 max-w-[92%] justify-end">
+      {atts.map((a, i) => (
+        <Attachment key={i} size="sm" orientation="vertical" className="w-20">
+          <AttachmentMedia variant="image">
+            <img src={a.url} alt={a.name || "attachment"} />
+          </AttachmentMedia>
+        </Attachment>
+      ))}
+    </AttachmentGroup>
+  );
+}
+
+function AgentMessage({ message, atts, canRespond, onRespond }) {
   const isUser = message.role === "user";
   if (isUser) {
     const text = (message.parts || [])
@@ -181,9 +232,12 @@ function AgentMessage({ message, canRespond, onRespond }) {
       .join("");
     return (
       <div className="flex flex-col items-end">
-        <div className="max-w-[92%] whitespace-pre-wrap break-words rounded-2xl bg-primary px-3 py-2 text-sm text-primary-foreground">
-          {text}
-        </div>
+        {text ? (
+          <div className="max-w-[92%] whitespace-pre-wrap break-words rounded-2xl bg-primary px-3 py-2 text-sm text-primary-foreground">
+            {text}
+          </div>
+        ) : null}
+        <SentAttachments atts={atts} />
       </div>
     );
   }
@@ -213,28 +267,155 @@ function hasPendingRequest(messages) {
   return false;
 }
 
-export default function AgentChat({ view }) {
-  const agent = useEveAgent({
-    // Tell the agent which screen the user is on, every turn.
-    prepareSend: (input) => ({ ...input, clientContext: { screen: view } }),
-  });
+// The agent is "thinking" while a turn is in flight and the current assistant
+// message hasn't produced any renderable content yet (no text/reasoning/tool).
+function isThinking(messages, busy) {
+  if (!busy) return false;
+  const last = messages[messages.length - 1];
+  if (!last || last.role === "user") return true;
+  const hasContent = (last.parts || []).some(
+    (p) =>
+      (p.type === "text" && p.text?.trim()) ||
+      (p.type === "reasoning" && p.text?.trim()) ||
+      p.type === "dynamic-tool" ||
+      p.type === "authorization",
+  );
+  return !hasContent;
+}
+
+export default function AgentChat() {
+  // Shared session: the same instance the sound-studio Render buttons drive.
+  const agent = useAgent();
   const [text, setText] = useState("");
+  const [attachments, setAttachments] = useState([]);
+  const [atBottom, setAtBottom] = useState(true);
   const scrollRef = useRef(null);
+  const fileInputRef = useRef(null);
+  // One entry per user turn (ordinal-aligned to user messages): the images that
+  // turn was sent with, so they can be re-rendered in the bubble.
+  const sentAttachmentsRef = useRef([]);
 
   const messages = agent.data?.messages ?? [];
   const isBusy = agent.status === "submitted" || agent.status === "streaming";
   const pending = useMemo(() => hasPendingRequest(messages), [messages]);
+  const thinking = useMemo(() => isThinking(messages, isBusy), [messages, isBusy]);
 
+  const uploading = attachments.some((a) => a.state === "uploading");
+  const doneAttachments = attachments.filter((a) => a.state === "done");
+  const canSend = (text.trim() || doneAttachments.length > 0) && !isBusy && !uploading;
+
+  // Stick to the bottom while new content streams — but only if the user is
+  // already there, so scrolling up to read history isn't yanked back down.
   useEffect(() => {
     const el = scrollRef.current;
+    if (el && atBottom) el.scrollTop = el.scrollHeight;
+  }, [messages, agent.status, thinking, attachments, atBottom]);
+
+  const onScroll = () => {
+    const el = scrollRef.current;
+    if (!el) return;
+    setAtBottom(el.scrollHeight - el.scrollTop - el.clientHeight < 80);
+  };
+
+  const jumpToLatest = () => {
+    const el = scrollRef.current;
     if (el) el.scrollTop = el.scrollHeight;
-  }, [messages, agent.status]);
+    setAtBottom(true);
+  };
+
+  async function uploadOne(file, id) {
+    try {
+      const resp = await fetch("/api/upload", {
+        method: "POST",
+        headers: {
+          "content-type": file.type || "application/octet-stream",
+          "x-filename": encodeURIComponent(file.name),
+        },
+        body: file,
+      });
+      const data = await resp.json().catch(() => ({}));
+      if (!resp.ok) throw new Error(data.error || `Upload failed (${resp.status})`);
+      setAttachments((prev) =>
+        prev.map((a) =>
+          a.id === id ? { ...a, state: "done", url: data.url, size: data.size ?? a.size } : a,
+        ),
+      );
+    } catch (e) {
+      setAttachments((prev) =>
+        prev.map((a) => (a.id === id ? { ...a, state: "error", error: String(e.message || e) } : a)),
+      );
+    }
+  }
+
+  function addFiles(fileList) {
+    const files = Array.from(fileList || []).filter((f) => f.type.startsWith("image/"));
+    if (!files.length) return;
+    const entries = files.map((f) => ({
+      id: crypto.randomUUID(),
+      name: f.name,
+      size: f.size,
+      contentType: f.type,
+      state: "uploading",
+      url: null,
+      previewUrl: URL.createObjectURL(f),
+      error: null,
+    }));
+    setAttachments((prev) => [...prev, ...entries]);
+    entries.forEach((e, i) => uploadOne(files[i], e.id));
+  }
+
+  function removeAttachment(id) {
+    setAttachments((prev) => {
+      const gone = prev.find((a) => a.id === id);
+      if (gone?.previewUrl) URL.revokeObjectURL(gone.previewUrl);
+      return prev.filter((a) => a.id !== id);
+    });
+  }
+
+  const onPick = (e) => {
+    addFiles(e.target.files);
+    e.target.value = ""; // allow re-picking the same file
+  };
+
+  const onPaste = (e) => {
+    const imgs = Array.from(e.clipboardData?.files || []).filter((f) =>
+      f.type.startsWith("image/"),
+    );
+    if (imgs.length) {
+      e.preventDefault();
+      addFiles(imgs);
+    }
+  };
 
   const submit = async () => {
+    if (!canSend) return;
     const t = text.trim();
-    if (!t || isBusy) return;
+    const sent = doneAttachments.map((a) => ({
+      url: a.url,
+      name: a.name,
+      contentType: a.contentType,
+    }));
+
+    // Build the eve message: image parts + optional text, or a plain string.
+    let message;
+    if (sent.length) {
+      message = [
+        ...(t ? [{ type: "text", text: t }] : []),
+        ...sent.map((a) => ({ type: "image", image: a.url })),
+      ];
+    } else {
+      message = t;
+    }
+
+    // Record this turn's attachments (ordinal-aligned) before the optimistic
+    // user message renders, then clear the composer.
+    sentAttachmentsRef.current.push(sent);
     setText("");
-    await agent.send({ message: t });
+    attachments.forEach((a) => a.previewUrl && URL.revokeObjectURL(a.previewUrl));
+    setAttachments([]);
+    setAtBottom(true);
+
+    await agent.send({ message });
   };
 
   const onRespond = async (responses) => {
@@ -264,38 +445,132 @@ export default function AgentChat({ view }) {
         />
       </header>
 
-      <div ref={scrollRef} className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-4">
-        {messages.length === 0 ? (
-          <div className="flex h-full flex-col items-center justify-center gap-2 text-center text-muted-foreground">
-            <Sparkles size={22} />
-            <p className="text-sm">Ask me to build the episode.</p>
-            <p className="max-w-[16rem] text-xs">
-              e.g. “create a rain-ambience sound”, “stitch the complete cut”, or “assign the
-              library images to bundles”.
-            </p>
-          </div>
-        ) : (
-          messages.map((m) => (
-            <AgentMessage key={m.id} message={m} canRespond={!isBusy} onRespond={onRespond} />
-          ))
-        )}
-
-        {agent.error ? (
-          <div className="flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/5 p-2.5 text-sm">
-            <AlertCircle size={15} className="mt-0.5 shrink-0 text-destructive" />
-            <div className="min-w-0">
-              <div className="font-medium">Agent error</div>
-              <div className="break-words text-xs text-muted-foreground">{agent.error.message}</div>
+      <div className="relative min-h-0 flex-1">
+        <div
+          ref={scrollRef}
+          onScroll={onScroll}
+          className="h-full space-y-4 overflow-y-auto px-4 py-4"
+        >
+          {messages.length === 0 ? (
+            <div className="flex h-full flex-col items-center justify-center gap-2 text-center text-muted-foreground">
+              <Sparkles size={22} />
+              <p className="text-sm">Ask me to build the episode.</p>
+              <p className="max-w-[16rem] text-xs">
+                e.g. “create a rain-ambience sound”, “stitch the complete cut”, or “assign the
+                library images to bundles”. Attach a reference image with the paperclip.
+              </p>
             </div>
-          </div>
+          ) : (
+            (() => {
+              let userOrdinal = -1;
+              return messages.map((m) => {
+                if (m.role === "user") userOrdinal += 1;
+                const atts = m.role === "user" ? sentAttachmentsRef.current[userOrdinal] : null;
+                return (
+                  <AgentMessage
+                    key={m.id}
+                    message={m}
+                    atts={atts}
+                    canRespond={!isBusy}
+                    onRespond={onRespond}
+                  />
+                );
+              });
+            })()
+          )}
+
+          {thinking ? (
+            <Marker>
+              <MarkerIcon>
+                <Loader2 className="animate-spin" />
+              </MarkerIcon>
+              <MarkerContent className="shimmer">Thinking…</MarkerContent>
+            </Marker>
+          ) : null}
+
+          {agent.error ? (
+            <div className="flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/5 p-2.5 text-sm">
+              <AlertCircle size={15} className="mt-0.5 shrink-0 text-destructive" />
+              <div className="min-w-0">
+                <div className="font-medium">Agent error</div>
+                <div className="break-words text-xs text-muted-foreground">
+                  {agent.error.message}
+                </div>
+              </div>
+            </div>
+          ) : null}
+        </div>
+
+        {!atBottom && messages.length > 0 ? (
+          <Button
+            size="icon"
+            variant="secondary"
+            onClick={jumpToLatest}
+            aria-label="Jump to latest"
+            className="absolute bottom-3 left-1/2 size-8 -translate-x-1/2 rounded-full border shadow-md"
+          >
+            <ArrowDown size={15} />
+          </Button>
         ) : null}
       </div>
 
       <div className="shrink-0 border-t p-3">
+        {attachments.length > 0 ? (
+          <AttachmentGroup className="mb-2">
+            {attachments.map((a) => (
+              <Attachment key={a.id} state={a.state} size="sm">
+                <AttachmentMedia variant="image">
+                  {a.previewUrl || a.url ? (
+                    <img src={a.previewUrl || a.url} alt={a.name} />
+                  ) : (
+                    <ImageIcon />
+                  )}
+                </AttachmentMedia>
+                <AttachmentContent>
+                  <AttachmentTitle>{a.name}</AttachmentTitle>
+                  <AttachmentDescription>
+                    {a.state === "uploading"
+                      ? "Uploading…"
+                      : a.state === "error"
+                        ? a.error || "Upload failed"
+                        : prettySize(a.size)}
+                  </AttachmentDescription>
+                </AttachmentContent>
+                <AttachmentActions>
+                  <AttachmentAction
+                    aria-label={`Remove ${a.name}`}
+                    onClick={() => removeAttachment(a.id)}
+                  >
+                    <X size={14} />
+                  </AttachmentAction>
+                </AttachmentActions>
+              </Attachment>
+            ))}
+          </AttachmentGroup>
+        ) : null}
+
         <div className="flex items-end gap-2">
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            multiple
+            hidden
+            onChange={onPick}
+          />
+          <Button
+            size="icon"
+            variant="ghost"
+            onClick={() => fileInputRef.current?.click()}
+            aria-label="Attach image"
+            title="Attach image"
+          >
+            <Paperclip size={16} />
+          </Button>
           <textarea
             value={text}
             onChange={(e) => setText(e.target.value)}
+            onPaste={onPaste}
             onKeyDown={(e) => {
               if (e.key === "Enter" && !e.shiftKey) {
                 e.preventDefault();
@@ -311,8 +586,14 @@ export default function AgentChat({ view }) {
               <Square size={15} />
             </Button>
           ) : (
-            <Button size="icon" onClick={submit} disabled={!text.trim()} aria-label="Send">
-              <Send size={15} />
+            <Button
+              size="icon"
+              onClick={submit}
+              disabled={!canSend}
+              aria-label="Send"
+              title={uploading ? "Waiting for upload…" : "Send"}
+            >
+              {uploading ? <Loader2 size={15} className="animate-spin" /> : <Send size={15} />}
             </Button>
           )}
         </div>

@@ -5,11 +5,15 @@ import {
   Copy, Pencil, ExternalLink, Leaf, Sparkles, TriangleAlert, Circle,
   Heart, Music, Save, Clock, Download, Trash2,
   PenLine, FileText, Image as ImageIcon, Clapperboard, Sun, Moon,
-  Loader2,
+  Loader2, Wand2,
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import AgentChat from "@/components/AgentChat";
+import LoginGate from "@/components/Login";
+import {
+  AgentProvider, useAgent, agentIsBusy, renderSoundMessage, renderAllPendingMessage,
+} from "@/components/AgentProvider";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -1853,6 +1857,19 @@ function SoundVersion({ track, ver, onChanged }) {
   }, [ver.prompt, ver.v, track.id]);
   const dirty = prompt !== ver.prompt;
 
+  // Drive the shared studio agent to actually render this pending version
+  // (seed-audio skill → Higgsfield → attach_sound) — same as asking it in chat.
+  const agent = useAgent();
+  const agentBusy = agentIsBusy(agent);
+  const requestRender = async () => {
+    setErr(null);
+    try {
+      await agent.send({ message: renderSoundMessage(track, ver) });
+    } catch (e) {
+      setErr(String(e.message || e));
+    }
+  };
+
   const run = async (fn) => {
     setBusy(true);
     setErr(null);
@@ -1900,6 +1917,16 @@ function SoundVersion({ track, ver, onChanged }) {
         )}
         {ver.duration ? <span className="text-xs text-muted-foreground">{ver.duration.toFixed(1)}s</span> : null}
         <span className="flex-1" />
+        {ver.status !== "ready" && (
+          <Button
+            size="sm"
+            onClick={requestRender}
+            disabled={agentBusy}
+            title={agentBusy ? "Agent is busy — wait for the current turn to finish" : "Render this version with Seed Audio via the studio agent"}
+          >
+            {agentBusy ? <Loader2 size={13} className="animate-spin" /> : <Wand2 size={13} />} Render
+          </Button>
+        )}
         <Button
           variant="ghost" size="icon-sm"
           aria-label={ver.liked ? "Unlike this version" : "Like this version"}
@@ -1951,9 +1978,15 @@ function SoundVersion({ track, ver, onChanged }) {
           </a>
         </div>
       ) : (
-        <div className="flex items-start gap-1.5 rounded-md bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
-          <Clock size={13} className="mt-0.5 shrink-0" /> pending — ask me to “render pending sounds” and I’ll run Seed
-          Audio and attach the audio here.
+        <div className="flex items-center gap-2 rounded-md bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
+          <Clock size={13} className="shrink-0" />
+          <span className="flex-1">
+            Pending — hit <span className="font-medium text-foreground">Render</span> and the studio agent runs Seed
+            Audio via Higgsfield, then attaches the result here.
+          </span>
+          <Button size="sm" onClick={requestRender} disabled={agentBusy}>
+            {agentBusy ? <Loader2 size={13} className="animate-spin" /> : <Wand2 size={13} />} Render
+          </Button>
         </div>
       )}
 
@@ -2598,6 +2631,8 @@ function SoundStudio({ reloadKey }) {
   const [tab, setTab] = useState("music");
   const [showNew, setShowNew] = useState(false);
   const [busy, setBusy] = useState(false);
+  const agent = useAgent();
+  const agentBusy = agentIsBusy(agent);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -2662,7 +2697,17 @@ function SoundStudio({ reloadKey }) {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h2 className="text-xl font-semibold tracking-tight">Sound studio</h2>
         {pending > 0 && (
-          <Badge variant="warning"><Clock size={11} /> {pending} pending render</Badge>
+          <div className="flex items-center gap-2">
+            <Badge variant="warning"><Clock size={11} /> {pending} pending render</Badge>
+            <Button
+              size="sm"
+              onClick={() => agent.send({ message: renderAllPendingMessage(tracks) }).catch(() => {})}
+              disabled={agentBusy}
+              title={agentBusy ? "Agent is busy — wait for the current turn to finish" : "Render every pending version via the studio agent"}
+            >
+              {agentBusy ? <Loader2 size={13} className="animate-spin" /> : <Wand2 size={13} />} Render all pending
+            </Button>
+          </div>
         )}
       </div>
 
@@ -2799,6 +2844,8 @@ export default function App() {
 
   return (
     <TooltipProvider delayDuration={200}>
+      <AgentProvider view={view}>
+      <LoginGate>
       <div className="flex h-dvh overflow-hidden">
       <div className="min-w-0 flex-1 overflow-y-auto">
       <Tabs value={view} onValueChange={setView}>
@@ -2921,10 +2968,12 @@ export default function App() {
         </main>
       </Tabs>
       </div>
-      <AgentChat view={view} />
+      <AgentChat />
       </div>
 
       <ImageModal image={modalImage} onClose={() => setModalImage(null)} />
+      </LoginGate>
+      </AgentProvider>
     </TooltipProvider>
   );
 }

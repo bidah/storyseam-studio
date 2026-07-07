@@ -4,10 +4,19 @@ import path from "path";
 import { fileURLToPath } from "url";
 import { execFile } from "child_process";
 import { promisify } from "util";
+import { AwsClient } from "aws4fetch";
 
 const execFileP = promisify(execFile);
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+// Load shot-studio/.env so the R2 upload credentials (and any other env) are
+// available even when the server is started on its own (not via the eve stack).
+try {
+  process.loadEnvFile(path.join(__dirname, "..", ".env"));
+} catch {
+  /* no .env present — rely on the ambient environment */
+}
 
 // ---------------------------------------------------------------------------
 // Paths to the pipeline data (sibling of the shot-studio folder).
@@ -1141,6 +1150,29 @@ function writeSecrets(db) {
   fs.writeFileSync(SECRETS_FILE, JSON.stringify(db, null, 2));
 }
 
+// App login state. The app is gated behind a Higgsfield sign-in (the same
+// OAuth the render skills use); we're "logged in" when a pre-provisioned static
+// bearer is configured, or when the interactive OAuth has stored a token for
+// the local principal (see agent/lib/higgsfield-oauth.ts → higgsfield:token:*).
+const HIGGSFIELD_TOKEN_KEY = "higgsfield:token:shot-studio-local:local-user";
+app.get("/api/auth/status", (req, res) => {
+  if (process.env.HIGGSFIELD_MCP_TOKEN) {
+    return res.json({ loggedIn: true, method: "static" });
+  }
+  const db = readSecrets();
+  const rec = db[HIGGSFIELD_TOKEN_KEY];
+  const loggedIn = Boolean(rec && rec.accessToken);
+  res.json({ loggedIn, method: loggedIn ? "oauth" : null });
+});
+
+// Sign out: drop the stored Higgsfield credential so the app re-gates.
+app.post("/api/auth/logout", (req, res) => {
+  const db = readSecrets();
+  delete db[HIGGSFIELD_TOKEN_KEY];
+  writeSecrets(db);
+  res.json({ ok: true });
+});
+
 app.get("/api/secrets/:key", (req, res) => {
   const key = req.params.key;
   if (!SAFE_SECRET_KEY.test(key)) return res.status(400).json({ error: "bad key" });
@@ -1165,6 +1197,85 @@ app.delete("/api/secrets/:key", (req, res) => {
   delete db[key];
   writeSecrets(db);
   res.json({ ok: true });
+});
+
+// ---------------------------------------------------------------------------
+// Chat attachments → Cloudflare R2. The agent chat uploads images here; we
+// stream the bytes straight to an R2 bucket over the S3-compatible API (signed
+// with aws4fetch) and hand back the public URL. That URL is what gets attached
+// to the eve message so the model can actually see the image.
+//
+// Configure in shot-studio/.env:
+//   R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET,
+//   R2_PUBLIC_BASE_URL (the bucket's public origin — an r2.dev URL or a custom
+//   domain; must be publicly reachable so the model can fetch the image).
+// ---------------------------------------------------------------------------
+const R2 = {
+  accountId: process.env.R2_ACCOUNT_ID,
+  accessKeyId: process.env.R2_ACCESS_KEY_ID,
+  secretAccessKey: process.env.R2_SECRET_ACCESS_KEY,
+  bucket: process.env.R2_BUCKET,
+  publicBase: (process.env.R2_PUBLIC_BASE_URL || "").replace(/\/+$/, ""),
+};
+const r2Configured = () =>
+  Boolean(R2.accountId && R2.accessKeyId && R2.secretAccessKey && R2.bucket && R2.publicBase);
+
+let _r2Client = null;
+function r2Client() {
+  if (!_r2Client) {
+    _r2Client = new AwsClient({
+      accessKeyId: R2.accessKeyId,
+      secretAccessKey: R2.secretAccessKey,
+      service: "s3",
+      region: "auto",
+    });
+  }
+  return _r2Client;
+}
+
+// Accept the raw file bytes (no multipart / no base64) with the mime type in
+// Content-Type and the original name in X-Filename.
+app.post("/api/upload", express.raw({ type: () => true, limit: "25mb" }), async (req, res) => {
+  try {
+    if (!r2Configured()) {
+      return res.status(501).json({
+        error:
+          "R2 not configured — set R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET and R2_PUBLIC_BASE_URL in shot-studio/.env",
+      });
+    }
+    const body = req.body;
+    if (!Buffer.isBuffer(body) || body.length === 0)
+      return res.status(400).json({ error: "Empty upload body" });
+
+    const contentType = req.headers["content-type"] || "application/octet-stream";
+    const rawName = String(req.headers["x-filename"] || "upload");
+    const safeName =
+      decodeURIComponent(rawName).replace(/[^a-zA-Z0-9._-]/g, "_").replace(/^_+/, "").slice(-80) ||
+      "upload";
+    const key = `chat-uploads/${Date.now()}-${Math.random().toString(36).slice(2, 8)}-${safeName}`;
+
+    const endpoint = `https://${R2.accountId}.r2.cloudflarestorage.com/${R2.bucket}/${key}`;
+    const put = await r2Client().fetch(endpoint, {
+      method: "PUT",
+      body,
+      headers: { "content-type": contentType },
+    });
+    if (!put.ok) {
+      const detail = await put.text().catch(() => "");
+      return res.status(502).json({ error: `R2 upload failed: ${put.status} ${detail.slice(0, 200)}` });
+    }
+
+    res.json({
+      ok: true,
+      url: `${R2.publicBase}/${key}`,
+      key,
+      name: safeName,
+      contentType,
+      size: body.length,
+    });
+  } catch (e) {
+    res.status(500).json({ error: String(e.message || e) });
+  }
 });
 
 // Optionally serve the built front-end if it exists.
