@@ -1,93 +1,213 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useEveAgent } from "eve/react";
-import { Bot, Send, Square, Wrench, AlertCircle, ExternalLink, Sparkles } from "lucide-react";
+import {
+  Bot,
+  Send,
+  Square,
+  Wrench,
+  AlertCircle,
+  ExternalLink,
+  Sparkles,
+  CheckCircle2,
+  XCircle,
+  KeyRound,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 
-// Pull the pending human-in-the-loop input request (ask_question / approval)
-// off the latest assistant message, if any.
-function pendingInputRequest(messages) {
-  const last = messages[messages.length - 1];
-  if (!last) return null;
-  for (const part of last.parts || []) {
-    const req = part?.toolMetadata?.eve?.inputRequest;
-    if (req && !req.responded) return req;
-  }
-  return null;
-}
+// ---------------------------------------------------------------------------
+// Chat rendering mirrors eve's canonical approach (its scaffolded web template):
+// walk every part of every message in order and render each by `type`, instead
+// of scanning only the last message. HITL prompts render inline on their tool
+// part and, once answered, collapse to a persistent "Responded: …" line — so
+// options are real buttons (not prose) and the answer stays in the history.
+// ---------------------------------------------------------------------------
 
-function TextParts({ message }) {
-  const text = (message.parts || [])
-    .filter((p) => p.type === "text")
-    .map((p) => p.text)
-    .join("");
-  if (!text) return null;
-  return <div className="whitespace-pre-wrap break-words text-sm leading-relaxed">{text}</div>;
-}
-
-// Compact chips for tool calls + authorization prompts so the user sees the
-// agent working through skills/tools.
-function ActivityParts({ message }) {
-  const chips = [];
-  for (const part of message.parts || []) {
-    if (part.type === "dynamic-tool" || part.type === "tool" || part.type?.startsWith?.("tool-")) {
-      const name = part.toolName || part.name || part.type?.replace?.("tool-", "") || "tool";
-      if (part.toolMetadata?.eve?.inputRequest) continue; // rendered separately
-      chips.push(
-        <span
-          key={chips.length}
-          className="inline-flex items-center gap-1 rounded-md border border-border bg-muted/50 px-1.5 py-0.5 text-[11px] text-muted-foreground"
-        >
-          <Wrench size={11} /> {name}
-        </span>,
-      );
-    }
-    if (part.type === "authorization" && part.authorization?.url) {
-      chips.push(
-        <a
-          key={chips.length}
-          href={part.authorization.url}
-          target="_blank"
-          rel="noreferrer"
-          className="inline-flex items-center gap-1 rounded-md border border-primary/40 bg-primary/10 px-1.5 py-0.5 text-[11px] text-primary"
-        >
-          <ExternalLink size={11} /> Authorize {part.displayName || "connection"}
-        </a>,
-      );
-    }
-  }
-  if (!chips.length) return null;
-  return <div className="mt-1.5 flex flex-wrap gap-1">{chips}</div>;
-}
-
-function HitlPrompt({ request, onRespond, disabled }) {
-  const options = request.options || [];
+function ToolChip({ part }) {
+  const name = part.toolName || "tool";
+  const errored = part.state === "output-error";
   return (
-    <div className="mt-2 rounded-lg border border-primary/30 bg-primary/5 p-2.5">
-      {request.prompt ? (
-        <div className="mb-2 text-sm font-medium">{request.prompt}</div>
-      ) : null}
-      <div className="flex flex-wrap gap-1.5">
-        {options.map((opt) => {
-          const optionId = opt.optionId ?? opt.id ?? opt.value ?? opt.label;
-          return (
-            <Button
-              key={optionId}
-              size="sm"
-              variant="secondary"
-              disabled={disabled}
-              onClick={() => onRespond(request.requestId, optionId)}
-            >
-              {opt.label ?? optionId}
+    <span
+      className={cn(
+        "inline-flex w-fit items-center gap-1 rounded-md border px-1.5 py-0.5 text-[11px]",
+        errored
+          ? "border-destructive/40 bg-destructive/5 text-destructive"
+          : "border-border bg-muted/50 text-muted-foreground",
+      )}
+    >
+      <Wrench size={11} /> {name}
+      {errored ? " · failed" : null}
+    </span>
+  );
+}
+
+function authTitle(part) {
+  if (part.state === "required") return `Connect ${part.displayName}`;
+  if (part.outcome === "authorized") return `${part.displayName} connected`;
+  return `${part.displayName} authorization ${part.outcome ?? "ended"}`;
+}
+
+function AuthorizationCard({ part }) {
+  const isAuthorized = part.state === "completed" && part.outcome === "authorized";
+  const isCompleted = part.state === "completed";
+  const Icon = isAuthorized ? CheckCircle2 : isCompleted ? XCircle : KeyRound;
+  const instructions = part.authorization?.instructions;
+  const showInstructions = instructions && instructions !== part.description;
+
+  return (
+    <div
+      className={cn(
+        "space-y-2 rounded-lg border p-3",
+        isAuthorized
+          ? "border-emerald-500/30 bg-emerald-500/5"
+          : isCompleted
+            ? "border-destructive/30 bg-destructive/5"
+            : "border-primary/30 bg-primary/5",
+      )}
+    >
+      <div className="flex items-start gap-2.5">
+        <span
+          className={cn(
+            "mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-full",
+            isAuthorized
+              ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-300"
+              : isCompleted
+                ? "bg-destructive/10 text-destructive"
+                : "bg-primary/10 text-primary",
+          )}
+        >
+          <Icon size={15} />
+        </span>
+        <div className="min-w-0 flex-1 space-y-1.5">
+          <p className="text-sm font-medium">{authTitle(part)}</p>
+          {part.description ? (
+            <p className="text-sm text-muted-foreground">{part.description}</p>
+          ) : null}
+          {showInstructions ? (
+            <p className="text-sm text-muted-foreground">{instructions}</p>
+          ) : null}
+          {part.state === "required" && part.authorization?.userCode ? (
+            <div className="flex flex-wrap items-center gap-2 text-sm">
+              <span className="text-muted-foreground">Code</span>
+              <code className="rounded-md bg-background px-2 py-1 font-mono">
+                {part.authorization.userCode}
+              </code>
+            </div>
+          ) : null}
+          {part.state === "required" && part.authorization?.url ? (
+            <Button asChild size="sm">
+              <a href={part.authorization.url} rel="noreferrer" target="_blank">
+                <ExternalLink size={14} /> Sign in with {part.displayName}
+              </a>
             </Button>
-          );
-        })}
+          ) : null}
+        </div>
       </div>
-      {options.length === 0 ? (
-        <div className="text-xs text-muted-foreground">Answer in the box below to continue.</div>
-      ) : null}
     </div>
   );
+}
+
+function InputRequest({ part, canRespond, onRespond }) {
+  const req = part.toolMetadata?.eve?.inputRequest;
+  if (!req) return null;
+  const res = part.toolMetadata?.eve?.inputResponse;
+  const selected = req.options?.find((o) => o.id === res?.optionId);
+
+  return (
+    <div className="space-y-2 rounded-lg border border-amber-500/30 bg-amber-500/5 p-3">
+      {req.prompt ? <p className="text-sm text-muted-foreground">{req.prompt}</p> : null}
+      {res ? (
+        <p className="text-sm font-medium">
+          Responded: {selected?.label ?? res.text ?? res.optionId}
+        </p>
+      ) : req.options?.length ? (
+        <div className="flex flex-wrap gap-1.5">
+          {req.options.map((opt) => (
+            <Button
+              key={opt.id}
+              size="sm"
+              type="button"
+              disabled={!canRespond}
+              variant={opt.style === "danger" ? "destructive" : "default"}
+              onClick={() => onRespond([{ requestId: req.requestId, optionId: opt.id }])}
+            >
+              {opt.label}
+            </Button>
+          ))}
+        </div>
+      ) : (
+        <p className="text-xs text-muted-foreground">Type your answer below to continue.</p>
+      )}
+    </div>
+  );
+}
+
+function MessagePart({ part, canRespond, onRespond }) {
+  switch (part.type) {
+    case "step-start":
+      return null;
+    case "text":
+      return part.text ? (
+        <div className="whitespace-pre-wrap break-words text-sm leading-relaxed">{part.text}</div>
+      ) : null;
+    case "reasoning":
+      return part.text ? (
+        <details className="rounded-md border bg-muted/30 px-2 py-1 text-xs text-muted-foreground">
+          <summary className="cursor-pointer select-none">Reasoning</summary>
+          <div className="mt-1 whitespace-pre-wrap break-words">{part.text}</div>
+        </details>
+      ) : null;
+    case "authorization":
+      return <AuthorizationCard part={part} />;
+    case "dynamic-tool":
+      if (part.toolMetadata?.eve?.inputRequest) {
+        return <InputRequest part={part} canRespond={canRespond} onRespond={onRespond} />;
+      }
+      return <ToolChip part={part} />;
+    default:
+      return null;
+  }
+}
+
+function AgentMessage({ message, canRespond, onRespond }) {
+  const isUser = message.role === "user";
+  if (isUser) {
+    const text = (message.parts || [])
+      .filter((p) => p.type === "text")
+      .map((p) => p.text)
+      .join("");
+    return (
+      <div className="flex flex-col items-end">
+        <div className="max-w-[92%] whitespace-pre-wrap break-words rounded-2xl bg-primary px-3 py-2 text-sm text-primary-foreground">
+          {text}
+        </div>
+      </div>
+    );
+  }
+  return (
+    <div className="flex flex-col gap-2">
+      {(message.parts || []).map((part, i) => (
+        <MessagePart
+          key={part.toolCallId ?? `${part.type}:${i}`}
+          part={part}
+          canRespond={canRespond}
+          onRespond={onRespond}
+        />
+      ))}
+    </div>
+  );
+}
+
+// A HITL request is pending when some tool part carries an inputRequest with no
+// matching inputResponse yet (drives the composer placeholder).
+function hasPendingRequest(messages) {
+  for (const m of messages) {
+    for (const part of m.parts || []) {
+      const eve = part?.toolMetadata?.eve;
+      if (eve?.inputRequest && !eve.inputResponse) return true;
+    }
+  }
+  return false;
 }
 
 export default function AgentChat({ view }) {
@@ -100,7 +220,7 @@ export default function AgentChat({ view }) {
 
   const messages = agent.data?.messages ?? [];
   const isBusy = agent.status === "submitted" || agent.status === "streaming";
-  const request = useMemo(() => pendingInputRequest(messages), [messages]);
+  const pending = useMemo(() => hasPendingRequest(messages), [messages]);
 
   useEffect(() => {
     const el = scrollRef.current;
@@ -114,8 +234,8 @@ export default function AgentChat({ view }) {
     await agent.send({ message: t });
   };
 
-  const respond = async (requestId, optionId) => {
-    await agent.send({ inputResponses: [{ requestId, optionId }] });
+  const onRespond = async (responses) => {
+    await agent.send({ inputResponses: responses });
   };
 
   return (
@@ -153,25 +273,9 @@ export default function AgentChat({ view }) {
           </div>
         ) : (
           messages.map((m) => (
-            <div key={m.id} className={cn("flex flex-col", m.role === "user" && "items-end")}>
-              <div
-                className={cn(
-                  "max-w-[92%] rounded-2xl px-3 py-2",
-                  m.role === "user"
-                    ? "bg-primary text-primary-foreground"
-                    : "bg-muted text-foreground",
-                )}
-              >
-                <TextParts message={m} />
-                {m.role !== "user" ? <ActivityParts message={m} /> : null}
-              </div>
-            </div>
+            <AgentMessage key={m.id} message={m} canRespond={!isBusy} onRespond={onRespond} />
           ))
         )}
-
-        {request ? (
-          <HitlPrompt request={request} onRespond={respond} disabled={isBusy} />
-        ) : null}
 
         {agent.error ? (
           <div className="flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/5 p-2.5 text-sm">
@@ -196,7 +300,7 @@ export default function AgentChat({ view }) {
               }
             }}
             rows={1}
-            placeholder={request ? "Type your answer…" : "Message the studio agent…"}
+            placeholder={pending ? "Type your answer…" : "Message the studio agent…"}
             className="max-h-32 min-h-[38px] flex-1 resize-none rounded-lg border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
           />
           {isBusy ? (
