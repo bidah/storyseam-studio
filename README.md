@@ -81,3 +81,42 @@ in the header to re-scan the folders and reload the players (cache-busted).
 - No file watching; use the Refresh button.
 - Saving overwrites the block in place. There's no undo, so keep the files under
   version control if you want history.
+
+## Studio agent (chat) — Vercel eve
+
+A chat agent lives in the right-hand panel and drives the whole pipeline through
+**tools + skills**, so you can build the episode without leaving the browser
+("create a rain-ambience sound", "stitch the complete cut", "assign the library
+images to bundles"). It asks clarifying questions inline and continues once you
+answer.
+
+- Built on **[eve](https://eve.dev)** (`agent/`), model `anthropic/claude-sonnet-5`.
+- `agent/tools/*.ts` — one typed tool per Express API action (sounds, shots,
+  episode, cuts, library). This is how "all functionality is routed through the
+  agent".
+- `agent/skills/*` — the reused render skills (`seed-audio`, `generate-multishot`,
+  `continue-video`, `video-from-audio-vfx`), loaded on demand.
+- `agent/connections/higgsfield.ts` — the Higgsfield MCP the skills drive to
+  actually render audio/video.
+- The browser chat uses eve's `useEveAgent` (`src/components/AgentChat.jsx`);
+  Vite proxies `/eve` → the agent so it's same-origin (no CORS).
+
+### Running the agent
+
+The agent needs **Node ≥ 24** (the UI/API run on any Node). One command runs all
+three processes (API :3334, agent :2000, UI :3333):
+
+```bash
+cp .env.example .env      # fill in AI_GATEWAY_API_KEY (see below)
+npm run stack             # API + eve agent + Vite, then open http://localhost:3333
+```
+
+Or individually: `npm run server`, `npm run agent:build && npm run agent:start`,
+`npm run dev`.
+
+**Credentials** (`.env`):
+- `AI_GATEWAY_API_KEY` — **required** for the chat to reply (the model routes
+  through the Vercel AI Gateway; create a key at
+  https://vercel.com/dashboard/ai/api-keys, or run `vercel link` for OIDC).
+- `HIGGSFIELD_MCP_URL` / `HIGGSFIELD_MCP_TOKEN` — required for **live** audio/video
+  rendering via the skills; without them the pipeline management still works.

@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import AgentChat from "@/components/AgentChat";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -18,7 +19,7 @@ import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Separator } from "@/components/ui/separator";
 import { Slider } from "@/components/ui/slider";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Tooltip, TooltipContent, TooltipProvider, TooltipTrigger,
 } from "@/components/ui/tooltip";
@@ -1955,6 +1956,43 @@ function SoundVersion({ track, ver, onChanged }) {
           Audio and attach the audio here.
         </div>
       )}
+
+      {ver.ref?.url && (
+        <div className="flex flex-wrap items-center gap-2 rounded-md border border-dashed bg-muted/30 px-3 py-2">
+          <Speech size={13} className="shrink-0 text-muted-foreground" />
+          <span className="shrink-0 text-xs text-muted-foreground">reference:</span>
+          {ver.ref.name && <span className="shrink-0 text-xs font-medium">{ver.ref.name}</span>}
+          <audio controls src={ver.ref.url} preload="none" className="h-8 min-w-48 flex-1" />
+          <a className="inline-flex items-center gap-1 text-xs text-primary hover:underline" href={ver.ref.url} download>
+            <Download size={13} /> ref
+          </a>
+        </div>
+      )}
+
+      {ver.seedText && (
+        <details className="rounded-md border bg-muted/20">
+          <summary className="cursor-pointer select-none px-3 py-2 text-xs font-medium text-muted-foreground">
+            <FileText size={12} className="mr-1 inline" /> Seed Audio prompt &amp; config
+          </summary>
+          <div className="space-y-2 border-t px-3 py-2">
+            <pre className="max-h-72 overflow-auto whitespace-pre-wrap font-mono text-[11px] leading-relaxed">{ver.seedText}</pre>
+            <div className="flex items-center gap-4">
+              <button
+                type="button"
+                onClick={() => navigator.clipboard?.writeText(ver.seedText)}
+                className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
+              >
+                <Copy size={12} /> copy
+              </button>
+              {ver.seedUrl && (
+                <a className="inline-flex items-center gap-1 text-xs text-primary hover:underline" href={ver.seedUrl} download>
+                  <Download size={12} /> download .txt
+                </a>
+              )}
+            </div>
+          </div>
+        </details>
+      )}
     </div>
   );
 }
@@ -2277,11 +2315,287 @@ function NewSoundBuilder({ bundles, busy, onCreate, onCancel }) {
   );
 }
 
+// Sound effects share the /api/sounds store with background music; they're told
+// apart by this fixed prompt lead-in (see trackKind).
+const SFX_PREFIX =
+  "Use the Seed Audio prompt to create a sound effect for an animated series for kids.";
+const SFX_OUTRO =
+  "Finish it not abruptly but softly, into an end mix of an ending and a fade-out if needed depending on the tune.";
+const sfxPrompt = (desc, seconds, smoothOutro) =>
+  `${SFX_PREFIX} The sound to create is: ${desc.trim()}.` +
+  (seconds ? ` It should be about ${seconds} second${Number(seconds) === 1 ? "" : "s"} long.` : "") +
+  (smoothOutro ? ` ${SFX_OUTRO}` : "");
+const SFX_RE = /^\s*use the seed audio prompt to create a sound effect/i;
+
+// Voice-acting lines are cloned from a Seed Audio voice reference. They're told
+// apart from music/sfx by a leading @AudioN reference or this fixed lead-in.
+const VOICE_PREFIX =
+  "Use a Seed Audio voice reference to voice-act a dialogue line for an animated series for kids.";
+const voicePrompt = (character, lines) =>
+  `${VOICE_PREFIX}${character?.trim() ? ` Character: ${character.trim()}.` : ""}` +
+  ` Match the uploaded voice reference exactly (timbre, pitch, age, tone). Speak only clean dialogue in that voice — no music, no sound effects, no background.` +
+  ` Lines: ${lines.trim()}`;
+const VOICE_RE = /^\s*(@audio\d|use a seed audio voice reference to voice-act)/i;
+
+function trackKind(t) {
+  const v1 = (t.versions || []).find((v) => v.v === 1) || (t.versions || [])[0];
+  const p = v1?.prompt || "";
+  if (VOICE_RE.test(p)) return "voice";
+  return SFX_RE.test(p) ? "sfx" : "music";
+}
+
+// Sound-effect builder: one description field → the fixed SFX prompt (editable).
+function SfxBuilder({ busy, onCreate, onCancel }) {
+  const [name, setName] = useState("");
+  const [desc, setDesc] = useState("");
+  const [seconds, setSeconds] = useState("");
+  const [smoothOutro, setSmoothOutro] = useState(false);
+  const [edited, setEdited] = useState(false);
+  const [manual, setManual] = useState("");
+  const [copied, setCopied] = useState(false);
+
+  const composed = useMemo(
+    () => sfxPrompt(desc || "…", seconds, smoothOutro),
+    [desc, seconds, smoothOutro]
+  );
+  const promptText = edited ? manual : composed;
+  const over = promptText.length > SEED_AUDIO_CAP;
+  const canCreate = !busy && !over && promptText.trim() && (edited || desc.trim());
+
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(promptText);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1200);
+    } catch {
+      /* clipboard blocked — ignore */
+    }
+  };
+
+  return (
+    <Card className="border-primary/30">
+      <CardContent className="space-y-5 p-5">
+        <Input
+          className="max-w-sm"
+          placeholder="name (optional)"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+        />
+
+        <div className="space-y-2">
+          <Label>Sound to create</Label>
+          <Textarea
+            className="min-h-20"
+            placeholder="e.g. a magical sparkle chime as the fairy waves her wand — short, bright, whimsical"
+            value={desc}
+            onChange={(e) => {
+              setDesc(e.target.value);
+              setEdited(false);
+            }}
+          />
+          <span className="text-xs text-muted-foreground">
+            wrapped into a Seed Audio prompt: “{SFX_PREFIX} The sound to create is: …”
+          </span>
+        </div>
+
+        <div className="space-y-2">
+          <Label>Length <span className="text-xs font-normal text-muted-foreground">(optional)</span></Label>
+          <div className="flex items-center gap-2">
+            <Input
+              type="number"
+              className="w-24"
+              min={1}
+              max={60}
+              placeholder="e.g. 3"
+              value={seconds}
+              onChange={(e) => {
+                setSeconds(e.target.value);
+                setEdited(false);
+              }}
+            />
+            <span className="text-sm text-muted-foreground">seconds</span>
+          </div>
+        </div>
+
+        <label className="flex cursor-pointer items-start gap-2.5">
+          <Checkbox
+            checked={smoothOutro}
+            onCheckedChange={(c) => {
+              setSmoothOutro(!!c);
+              setEdited(false);
+            }}
+            className="mt-0.5"
+          />
+          <span>
+            <span className="text-sm font-medium">Smooth outro</span>
+            <span className="block text-xs text-muted-foreground">
+              finish softly — an end mix of an ending and a fade-out if the tune needs it
+            </span>
+          </span>
+        </label>
+
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <Label>Composed prompt</Label>
+            {edited && (
+              <Button variant="outline" size="sm" onClick={() => setEdited(false)}>
+                <RotateCcw size={12} /> Rebuild from field
+              </Button>
+            )}
+          </div>
+          <Textarea
+            className="min-h-28 font-mono text-xs"
+            value={promptText}
+            spellCheck={false}
+            onChange={(e) => {
+              setManual(e.target.value);
+              setEdited(true);
+            }}
+          />
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <Button onClick={() => onCreate({ name, prompt: promptText })} disabled={!canCreate}>
+            <Plus size={13} /> Create (pending render)
+          </Button>
+          <Button variant="outline" onClick={copy} disabled={!promptText.trim()}>
+            {copied ? <Check size={13} /> : <Copy size={13} />} {copied ? "Copied" : "Copy prompt"}
+          </Button>
+          <Button variant="ghost" onClick={onCancel} disabled={busy}>Cancel</Button>
+          <span className={cn("text-xs", over ? "font-semibold text-destructive" : "text-muted-foreground")}>
+            {promptText.length} / {SEED_AUDIO_CAP} chars
+          </span>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+// Voice-acting builder: character + dialogue lines → the fixed voice prompt.
+// The actual generation clones an uploaded voice reference (done by the agent).
+function VoiceBuilder({ busy, onCreate, onCancel }) {
+  const [name, setName] = useState("");
+  const [character, setCharacter] = useState("");
+  const [lines, setLines] = useState("");
+  const [edited, setEdited] = useState(false);
+  const [manual, setManual] = useState("");
+  const [copied, setCopied] = useState(false);
+
+  const composed = useMemo(() => voicePrompt(character, lines || "…"), [character, lines]);
+  const promptText = edited ? manual : composed;
+  const over = promptText.length > SEED_AUDIO_CAP;
+  const canCreate = !busy && !over && promptText.trim() && (edited || lines.trim());
+
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(promptText);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1200);
+    } catch {
+      /* clipboard blocked — ignore */
+    }
+  };
+
+  return (
+    <Card className="border-primary/30">
+      <CardContent className="space-y-5 p-5">
+        <Input
+          className="max-w-sm"
+          placeholder="name (optional)"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+        />
+
+        <div className="space-y-2">
+          <Label>Character <span className="text-xs font-normal text-muted-foreground">(voice to match)</span></Label>
+          <Input
+            className="max-w-sm"
+            placeholder="e.g. Helena"
+            value={character}
+            onChange={(e) => {
+              setCharacter(e.target.value);
+              setEdited(false);
+            }}
+          />
+        </div>
+
+        <div className="space-y-2">
+          <Label>Dialogue lines</Label>
+          <Textarea
+            className="min-h-24"
+            placeholder={'e.g. "Oh!" ... (1s pause) ... "Where is Sara?"  (2s)  "There you are!"'}
+            value={lines}
+            onChange={(e) => {
+              setLines(e.target.value);
+              setEdited(false);
+            }}
+          />
+          <span className="text-xs text-muted-foreground">
+            cloned from an uploaded voice reference · wrapped into: “{VOICE_PREFIX} … Lines: …”
+          </span>
+        </div>
+
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <Label>Composed prompt</Label>
+            {edited && (
+              <Button variant="outline" size="sm" onClick={() => setEdited(false)}>
+                <RotateCcw size={12} /> Rebuild from fields
+              </Button>
+            )}
+          </div>
+          <Textarea
+            className="min-h-28 font-mono text-xs"
+            value={promptText}
+            spellCheck={false}
+            onChange={(e) => {
+              setManual(e.target.value);
+              setEdited(true);
+            }}
+          />
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <Button onClick={() => onCreate({ name, prompt: promptText })} disabled={!canCreate}>
+            <Plus size={13} /> Create (pending render)
+          </Button>
+          <Button variant="outline" onClick={copy} disabled={!promptText.trim()}>
+            {copied ? <Check size={13} /> : <Copy size={13} />} {copied ? "Copied" : "Copy prompt"}
+          </Button>
+          <Button variant="ghost" onClick={onCancel} disabled={busy}>Cancel</Button>
+          <span className={cn("text-xs", over ? "font-semibold text-destructive" : "text-muted-foreground")}>
+            {promptText.length} / {SEED_AUDIO_CAP} chars
+          </span>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function TrackList({ loading, tracks, emptyText, onChanged }) {
+  if (loading) return <Spinner label="loading…" />;
+  if (tracks.length === 0) {
+    return (
+      <div className="rounded-xl border border-dashed p-8 text-center">
+        <Empty>{emptyText}</Empty>
+      </div>
+    );
+  }
+  return (
+    <div className="space-y-4">
+      {tracks.map((t) => (
+        <SoundTrack key={t.id} track={t} onChanged={onChanged} />
+      ))}
+    </div>
+  );
+}
+
 function SoundStudio({ reloadKey }) {
   const [tracks, setTracks] = useState([]);
   const [bundles, setBundles] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [tab, setTab] = useState("music");
   const [showNew, setShowNew] = useState(false);
   const [busy, setBusy] = useState(false);
 
@@ -2330,48 +2644,93 @@ function SoundStudio({ reloadKey }) {
     }
   };
 
+  const music = useMemo(() => tracks.filter((t) => trackKind(t) === "music"), [tracks]);
+  const sfx = useMemo(() => tracks.filter((t) => trackKind(t) === "sfx"), [tracks]);
+  const voice = useMemo(() => tracks.filter((t) => trackKind(t) === "voice"), [tracks]);
   const pending = tracks.reduce(
     (n, t) => n + t.versions.filter((v) => v.status !== "ready").length,
     0
   );
 
+  const switchTab = (v) => {
+    setTab(v);
+    setShowNew(false);
+  };
+
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h2 className="text-xl font-semibold tracking-tight">Sound studio</h2>
-        <div className="flex items-center gap-2">
-          {pending > 0 && (
-            <Badge variant="warning"><Clock size={11} /> {pending} pending render</Badge>
-          )}
-          <Button onClick={() => setShowNew((s) => !s)}>
-            <Plus size={14} /> New sound
-          </Button>
-        </div>
+        {pending > 0 && (
+          <Badge variant="warning"><Clock size={11} /> {pending} pending render</Badge>
+        )}
       </div>
 
-      {showNew && (
-        <NewSoundBuilder
-          bundles={bundles}
-          busy={busy}
-          onCreate={createTrack}
-          onCancel={() => setShowNew(false)}
-        />
-      )}
-
       {error && <ErrorNote>{error}</ErrorNote>}
-      {loading ? (
-        <Spinner label="loading…" />
-      ) : tracks.length === 0 ? (
-        <div className="rounded-xl border border-dashed p-8 text-center">
-          <Empty>No sounds yet — click “New sound”.</Empty>
-        </div>
-      ) : (
-        <div className="space-y-4">
-          {tracks.map((t) => (
-            <SoundTrack key={t.id} track={t} onChanged={load} />
-          ))}
-        </div>
-      )}
+
+      <Tabs value={tab} onValueChange={switchTab}>
+        <TabsList>
+          <TabsTrigger value="music"><Music size={14} /> Background music</TabsTrigger>
+          <TabsTrigger value="sfx"><Volume2 size={14} /> Sound effects</TabsTrigger>
+          <TabsTrigger value="voice"><Speech size={14} /> Voice acting</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="music" className="mt-4 space-y-4">
+          <div className="flex justify-end">
+            <Button onClick={() => setShowNew((s) => !s)}>
+              <Plus size={14} /> New background music
+            </Button>
+          </div>
+          {showNew && (
+            <NewSoundBuilder
+              bundles={bundles}
+              busy={busy}
+              onCreate={createTrack}
+              onCancel={() => setShowNew(false)}
+            />
+          )}
+          <TrackList
+            loading={loading}
+            tracks={music}
+            emptyText="No background music yet — click “New background music”."
+            onChanged={load}
+          />
+        </TabsContent>
+
+        <TabsContent value="sfx" className="mt-4 space-y-4">
+          <div className="flex justify-end">
+            <Button onClick={() => setShowNew((s) => !s)}>
+              <Plus size={14} /> New sound effect
+            </Button>
+          </div>
+          {showNew && (
+            <SfxBuilder busy={busy} onCreate={createTrack} onCancel={() => setShowNew(false)} />
+          )}
+          <TrackList
+            loading={loading}
+            tracks={sfx}
+            emptyText="No sound effects yet — click “New sound effect”."
+            onChanged={load}
+          />
+        </TabsContent>
+
+        <TabsContent value="voice" className="mt-4 space-y-4">
+          <div className="flex justify-end">
+            <Button onClick={() => setShowNew((s) => !s)}>
+              <Plus size={14} /> New voice line
+            </Button>
+          </div>
+          {showNew && (
+            <VoiceBuilder busy={busy} onCreate={createTrack} onCancel={() => setShowNew(false)} />
+          )}
+          <TrackList
+            loading={loading}
+            tracks={voice}
+            emptyText="No voice lines yet — click “New voice line”."
+            onChanged={load}
+          />
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }
@@ -2440,6 +2799,8 @@ export default function App() {
 
   return (
     <TooltipProvider delayDuration={200}>
+      <div className="flex h-dvh overflow-hidden">
+      <div className="min-w-0 flex-1 overflow-y-auto">
       <Tabs value={view} onValueChange={setView}>
         <header className="sticky top-0 z-30 border-b bg-card/80 backdrop-blur supports-[backdrop-filter]:bg-card/60">
           <div className="mx-auto flex max-w-[1500px] flex-wrap items-center gap-x-6 gap-y-3 px-4 py-3 md:px-6">
@@ -2559,6 +2920,9 @@ export default function App() {
           )}
         </main>
       </Tabs>
+      </div>
+      <AgentChat view={view} />
+      </div>
 
       <ImageModal image={modalImage} onClose={() => setModalImage(null)} />
     </TooltipProvider>

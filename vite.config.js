@@ -22,6 +22,16 @@ export default defineConfig({
       "/final": "http://localhost:3334",
       "/gen": "http://localhost:3334",
       "/sound-media": "http://localhost:3334",
+      // The eve agent (chat) dev server. Proxying makes /eve same-origin so
+      // useEveAgent() needs no host/CORS config. SSE streaming passes through.
+      "/eve": {
+        target: "http://localhost:2000",
+        changeOrigin: true,
+        configure: (proxy) => {
+          // don't buffer the Server-Sent-Events stream
+          proxy.on("proxyReq", (proxyReq) => proxyReq.setHeader("accept-encoding", "identity"));
+        },
+      },
     },
   },
 });

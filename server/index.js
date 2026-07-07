@@ -920,7 +920,14 @@ async function soundDuration(abs) {
 // Serialize a track for the client, resolving each version's media URL.
 const soundView = (t) => ({
   ...t,
-  versions: t.versions.map((v) => ({ ...v, url: v.file ? "/sound-media/" + v.file : null })),
+  versions: t.versions.map((v) => ({
+    ...v,
+    url: v.file ? "/sound-media/" + v.file : null,
+    // Resolve the URL of the voice reference used for this version (voice acting).
+    ref: v.ref
+      ? { ...v.ref, url: v.ref.file ? "/sound-media/" + v.ref.file : null }
+      : undefined,
+  })),
 });
 
 // List every track (newest first).
@@ -1109,6 +1116,55 @@ app.post("/api/sounds/:id/version/:v/attach", async (req, res) => {
   } catch (e) {
     res.status(500).json({ error: String(e.message || e) });
   }
+});
+
+// ---------------------------------------------------------------------------
+// Agent secrets KV — a tiny local-only store the eve agent uses to persist
+// OAuth credentials (e.g. the Higgsfield refresh token + registered client id)
+// across turns and server restarts. Lives outside the data root and is
+// gitignored (.secrets/). Keys are namespaced by the caller (e.g.
+// "higgsfield:token:<principal>"). This is a localhost dev surface only.
+// ---------------------------------------------------------------------------
+const SECRETS_DIR = path.join(__dirname, "..", ".secrets");
+const SECRETS_FILE = path.join(SECRETS_DIR, "agent-oauth.json");
+const SAFE_SECRET_KEY = /^[A-Za-z0-9._:/-]{1,200}$/;
+
+function readSecrets() {
+  try {
+    return JSON.parse(fs.readFileSync(SECRETS_FILE, "utf8"));
+  } catch {
+    return {};
+  }
+}
+function writeSecrets(db) {
+  fs.mkdirSync(SECRETS_DIR, { recursive: true });
+  fs.writeFileSync(SECRETS_FILE, JSON.stringify(db, null, 2));
+}
+
+app.get("/api/secrets/:key", (req, res) => {
+  const key = req.params.key;
+  if (!SAFE_SECRET_KEY.test(key)) return res.status(400).json({ error: "bad key" });
+  const db = readSecrets();
+  if (!(key in db)) return res.status(404).json({ error: "not found" });
+  res.json({ value: db[key] });
+});
+
+app.put("/api/secrets/:key", (req, res) => {
+  const key = req.params.key;
+  if (!SAFE_SECRET_KEY.test(key)) return res.status(400).json({ error: "bad key" });
+  const db = readSecrets();
+  db[key] = req.body?.value ?? null;
+  writeSecrets(db);
+  res.json({ ok: true });
+});
+
+app.delete("/api/secrets/:key", (req, res) => {
+  const key = req.params.key;
+  if (!SAFE_SECRET_KEY.test(key)) return res.status(400).json({ error: "bad key" });
+  const db = readSecrets();
+  delete db[key];
+  writeSecrets(db);
+  res.json({ ok: true });
 });
 
 // Optionally serve the built front-end if it exists.
