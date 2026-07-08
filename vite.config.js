@@ -14,6 +14,15 @@ export default defineConfig({
   server: {
     port: 3333,
     proxy: {
+      // Script live-updates (SSE) — must come BEFORE "/api" and disable
+      // buffering so the event stream reaches the browser promptly.
+      "/api/script/events": {
+        target: "http://localhost:3334",
+        changeOrigin: true,
+        configure: (proxy) => {
+          proxy.on("proxyReq", (proxyReq) => proxyReq.setHeader("accept-encoding", "identity"));
+        },
+      },
       "/api": "http://localhost:3334",
       "/media": "http://localhost:3334",
       "/multishot-media": "http://localhost:3334",

@@ -56,6 +56,11 @@ const SOUND_MEDIA = path.join(SOUND_DIR, "media");
 const SOUNDS_DB = path.join(SOUND_DIR, "sounds.json");
 const DEFAULT_SOUND_PARAMS = { model: "seed_audio", format: "wav", sample_rate: 48000 };
 
+// Script tab: a single Notion-style / screenplay document (TipTap ProseMirror
+// JSON) persisted to a small JSON file.
+const SCRIPT_DIR = path.join(PROJECT_ROOT, "script-studio");
+const SCRIPT_FILE = path.join(SCRIPT_DIR, "script.json");
+
 // Voice/sound references (NOT dialogue) — identity locks for the speakers.
 // `order` is the speaker order inside the (combined) clip, stated in the prompt.
 const AUDIO_REFS = [
@@ -364,6 +369,116 @@ app.use("/asset", express.static(PROJECT_ROOT));
 app.use("/final", express.static(FINAL_DIR));
 app.use("/gen", express.static(GEN_DIR));
 app.use("/sound-media", express.static(SOUND_MEDIA));
+
+// --- Script tab: load / save the single screenplay document ----------------
+// Durable store is the Cloudflare Worker's R2 object (GET/PUT {worker}/script),
+// derived from the same Worker used for chat uploads (VITE_UPLOAD_URL). Falls
+// back to a local script.json when the Worker isn't configured/reachable (e.g.
+// before the updated Worker is deployed), so the tab keeps working either way.
+const SCRIPT_STORE_URL = (() => {
+  const explicit = process.env.SCRIPT_STORE_URL;
+  if (explicit) return explicit.replace(/\/+$/, "");
+  const upload = process.env.VITE_UPLOAD_URL;
+  if (upload) {
+    try { return new URL(upload).origin + "/script"; } catch { /* ignore */ }
+  }
+  return null;
+})();
+
+function readScriptLocal() {
+  try {
+    return JSON.parse(fs.readFileSync(SCRIPT_FILE, "utf8"));
+  } catch {
+    return { title: "", doc: null, updatedAt: null };
+  }
+}
+function writeScriptLocal(rec) {
+  fs.mkdirSync(SCRIPT_DIR, { recursive: true });
+  fs.writeFileSync(SCRIPT_FILE, JSON.stringify(rec, null, 2));
+}
+
+async function readScript() {
+  if (SCRIPT_STORE_URL) {
+    try {
+      const r = await fetch(SCRIPT_STORE_URL, { method: "GET" });
+      if (r.ok) return await r.json();
+      // 404 etc. (e.g. /script not deployed yet) → fall back to local.
+    } catch {
+      /* network error → fall back to local */
+    }
+  }
+  return readScriptLocal();
+}
+async function writeScript(rec) {
+  if (SCRIPT_STORE_URL) {
+    try {
+      const r = await fetch(SCRIPT_STORE_URL, {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(rec),
+      });
+      if (r.ok) return;
+      // else fall through to local so a save is never lost.
+    } catch {
+      /* network error → persist locally instead */
+    }
+  }
+  writeScriptLocal(rec);
+}
+
+// Live updates: any client (browser) or the chat agent that PUTs the script
+// broadcasts a change to every open Script tab over Server-Sent Events. The
+// payload carries the saver's `clientId` so a browser can ignore the echo of
+// its own save (and glow / reload only for edits made elsewhere — e.g. the agent).
+const scriptClients = new Set();
+function broadcastScript(payload) {
+  const frame = `data: ${JSON.stringify(payload)}\n\n`;
+  for (const res of scriptClients) {
+    try { res.write(frame); } catch { /* drop dead connections on next close */ }
+  }
+}
+
+app.get("/api/script/events", (req, res) => {
+  res.writeHead(200, {
+    "Content-Type": "text/event-stream",
+    "Cache-Control": "no-cache, no-transform",
+    Connection: "keep-alive",
+  });
+  res.write(": connected\n\n");
+  scriptClients.add(res);
+  const heartbeat = setInterval(() => {
+    try { res.write(": ping\n\n"); } catch { /* ignore */ }
+  }, 25000);
+  req.on("close", () => {
+    clearInterval(heartbeat);
+    scriptClients.delete(res);
+  });
+});
+
+app.get("/api/script", async (req, res) => {
+  try {
+    res.json(await readScript());
+  } catch (e) {
+    res.status(500).json({ error: String(e.message || e) });
+  }
+});
+
+app.put("/api/script", async (req, res) => {
+  try {
+    const { title, doc, clientId } = req.body || {};
+    const rec = {
+      title: typeof title === "string" ? title : "",
+      doc: doc ?? null,
+      updatedAt: new Date().toISOString(),
+      clientId: clientId ?? null,
+    };
+    await writeScript(rec);
+    broadcastScript({ updatedAt: rec.updatedAt, clientId: clientId ?? null });
+    res.json({ ok: true, updatedAt: rec.updatedAt });
+  } catch (e) {
+    res.status(500).json({ error: String(e.message || e) });
+  }
+});
 
 // --- Asset library: folders of images, browsable + selectable -------------
 app.get("/api/library", (req, res) => {
@@ -728,16 +843,119 @@ function segRange(segs) {
   return { from: ids[0] || null, to: ids[ids.length - 1] || null };
 }
 
-// Read the current plan + any previously stitched output.
+// ---------------------------------------------------------------------------
+// Background music score: overlay the Sound Studio cues (Cue 2 … Cue 11) under
+// the stitched cut at a low bed level, producing a second "scored" version.
+// Each cue is pinned to the FIRST bundle of its beat; it starts at that
+// segment's timecode in the cut and underscores the whole beat.
+// ---------------------------------------------------------------------------
+const SCORED_CUT_FILE = "complete_cut_scored.mp4";
+const MUSIC_BED_GAIN = 0.08; // ~-22 dB — a low background bed; dialogue/SFX lead
+
+const MUSIC_CUES = [
+  { track: "trk_12", label: "Cue 2 — The deal", first: 4, last: 8 },
+  { track: "trk_13", label: "Cue 3 — Crossing over", first: 9, last: 10 },
+  { track: "trk_14", label: "Cue 4 — The Forest King", first: 11, last: 14 },
+  { track: "trk_15", label: "Cue 5 — Helena searches", first: 15, last: 16 },
+  { track: "trk_16", label: "Cue 6 — Tea & the locked door", first: 17, last: 21 },
+  { track: "trk_17", label: "Cue 7 — The plan & Mote", first: 22, last: 25 },
+  { track: "trk_18", label: "Cue 8 — Nightfall montage", first: 26, last: 31 },
+  { track: "trk_19", label: "Cue 9 — At the window", first: 32, last: 35 },
+  { track: "trk_20", label: "Cue 10 — The rescue", first: 36, last: 42 },
+  { track: "trk_21", label: "Cue 11 — Home, changed", first: 43, last: 48 },
+];
+
+// Resolve a Sound Studio track's ready media file → { abs, file, name } or null.
+function soundFileForTrack(trackId) {
+  try {
+    const db = JSON.parse(fs.readFileSync(SOUNDS_DB, "utf8"));
+    const t = (db.tracks || []).find((x) => x.id === trackId);
+    if (!t) return null;
+    const v =
+      [...(t.versions || [])].reverse().find((x) => x.file && x.status === "ready") ||
+      (t.versions || []).find((x) => x.file);
+    if (!v || !v.file) return null;
+    const abs = path.join(SOUND_MEDIA, v.file);
+    return fs.existsSync(abs) ? { abs, file: v.file, name: t.name } : null;
+  } catch {
+    return null;
+  }
+}
+
+// Placement of each music cue over the stitched segments: where it starts (its
+// first bundle's timecode) and the beat span it underscores.
+async function buildScoreLayout(segments) {
+  const present = segments.filter((s) => s.file);
+  const numOf = (s) => bundleNum(s.id);
+  const layout = [];
+  for (const cue of MUSIC_CUES) {
+    const firstSeg = present.find((s) => numOf(s) === cue.first);
+    if (!firstSeg) continue; // beat not in the cut
+    const inBeat = present.filter((s) => numOf(s) >= cue.first && numOf(s) <= cue.last);
+    const snd = soundFileForTrack(cue.track);
+    if (!snd) continue; // no rendered music yet
+    const duration = await soundDuration(snd.abs);
+    layout.push({
+      track: cue.track,
+      label: cue.label,
+      name: snd.name,
+      file: snd.file,
+      url: "/sound-media/" + snd.file,
+      first: cue.first,
+      last: cue.last,
+      start: firstSeg.start,
+      beatEnd: inBeat.length ? inBeat[inBeat.length - 1].end : firstSeg.end,
+      duration,
+      gainDb: Math.round(20 * Math.log10(MUSIC_BED_GAIN)),
+    });
+  }
+  return layout;
+}
+
+// Tag each segment with the cue that plays over it (for UI display).
+function annotateSegmentsMusic(segments) {
+  for (const s of segments) {
+    const n = bundleNum(s.id);
+    const cue = MUSIC_CUES.find((c) => n >= c.first && n <= c.last);
+    s.musicCue = cue ? { track: cue.track, label: cue.label } : null;
+  }
+  return segments;
+}
+
+// File name for scored version N (v1 keeps the legacy name for continuity).
+const scoredVersionFile = (v) => (v === 1 ? SCORED_CUT_FILE : `complete_cut_scored_v${v}.mp4`);
+
+// Normalized list of scored versions that still exist on disk, newest first.
+// Migrates the legacy single `db.cut.scored` into a v1 entry when present.
+function listScoredVersions(db) {
+  let versions = Array.isArray(db.cut?.scoredVersions) ? db.cut.scoredVersions.slice() : [];
+  if (!versions.length && db.cut?.scored && fs.existsSync(path.join(GEN_DIR, SCORED_CUT_FILE))) {
+    versions = [{ v: 1, file: SCORED_CUT_FILE, ...db.cut.scored }];
+  }
+  return versions
+    .filter((x) => fs.existsSync(path.join(GEN_DIR, x.file)))
+    .map((x) => ({ ...x, url: "/gen/" + x.file }))
+    .sort((a, b) => b.v - a.v);
+}
+
+// Read the current plan + any previously stitched output (+ music layout).
 app.get("/api/episode/cuts", async (req, res) => {
   try {
-    const segments = await buildCutSegments();
+    const segments = annotateSegmentsMusic(await buildCutSegments());
+    const music = await buildScoreLayout(segments);
     const db = readDB();
     const outPath = path.join(GEN_DIR, CUT_FILE);
+    const scoredVersions = listScoredVersions(db);
     const output = fs.existsSync(outPath)
-      ? { url: "/gen/" + CUT_FILE, file: CUT_FILE, ...(db.cut || {}) }
+      ? {
+          url: "/gen/" + CUT_FILE,
+          file: CUT_FILE,
+          ...(db.cut || {}),
+          scoredVersions,
+          scored: scoredVersions[0] || null, // newest, for back-compat
+        }
       : null;
-    res.json({ range: segRange(segments), segments, output });
+    res.json({ range: segRange(segments), segments, music, output });
   } catch (e) {
     res.status(500).json({ error: String(e.message || e) });
   }
@@ -785,6 +1003,76 @@ app.post("/api/episode/stitch", async (req, res) => {
     writeDB(db);
 
     res.json({ ok: true, url: "/gen/" + CUT_FILE, file: CUT_FILE, totalDuration, count: usable.length, segments });
+  } catch (e) {
+    res.status(500).json({ error: String(e.message || e) });
+  }
+});
+
+// Overlay the background-music cues under the stitched cut → a scored version.
+// Music sits ~-14 dB under the baked-in dialogue/SFX; peaks are soft-limited.
+app.post("/api/episode/score", async (req, res) => {
+  try {
+    const cutPath = path.join(GEN_DIR, CUT_FILE);
+    if (!fs.existsSync(cutPath)) return res.status(400).json({ error: "Stitch the cut first" });
+    const segments = await buildCutSegments();
+    const layout = await buildScoreLayout(segments);
+    if (!layout.length) return res.status(400).json({ error: "No rendered music cues to add" });
+
+    const gain = typeof req.body?.gain === "number" && req.body.gain > 0 ? req.body.gain : MUSIC_BED_GAIN;
+
+    const inputs = ["-i", cutPath];
+    for (const m of layout) inputs.push("-i", path.join(SOUND_MEDIA, m.file));
+
+    // Normalize every stream to 48k stereo, delay each bed to its cue start,
+    // drop it to bed level, then sum with the original audio and soft-limit.
+    const NORM = "aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo";
+    const parts = [`[0:a]${NORM}[a0]`];
+    const beds = [];
+    layout.forEach((m, i) => {
+      const k = i + 1;
+      const ms = Math.max(0, Math.round(m.start * 1000));
+      parts.push(`[${k}:a]${NORM},adelay=${ms}:all=1,volume=${gain}[m${k}]`);
+      beds.push(`[m${k}]`);
+    });
+    const filter =
+      parts.join(";") +
+      `;[a0]${beds.join("")}amix=inputs=${layout.length + 1}:duration=first:normalize=0,alimiter=limit=0.95[aout]`;
+
+    // Each call mints a NEW version (previous scored cuts are kept for A/B).
+    const db = readDB();
+    db.cut = db.cut || {};
+    const existing = listScoredVersions(db); // migrates legacy `scored` → v1
+    const nextV = existing.reduce((m, x) => Math.max(m, x.v), 0) + 1;
+    const file = scoredVersionFile(nextV);
+    const outPath = path.join(GEN_DIR, file);
+
+    await execFileP("ffmpeg", [
+      "-y", ...inputs,
+      "-filter_complex", filter,
+      "-map", "0:v", "-map", "[aout]",
+      "-c:v", "copy", "-c:a", "aac", "-b:a", "192k",
+      outPath,
+    ]);
+
+    const entry = {
+      v: nextV,
+      file,
+      gainDb: Math.round(20 * Math.log10(gain)),
+      createdAt: new Date().toISOString(),
+      music: layout.map((m) => ({
+        track: m.track, label: m.label, name: m.name,
+        start: m.start, beatEnd: m.beatEnd, duration: m.duration,
+      })),
+    };
+    // Persist as a version list; strip file/url the reader re-derives.
+    db.cut.scoredVersions = [
+      ...existing.map(({ url, ...rest }) => rest),
+      entry,
+    ];
+    delete db.cut.scored; // superseded by scoredVersions
+    writeDB(db);
+
+    res.json({ ok: true, version: nextV, url: "/gen/" + file, file, gainDb: entry.gainDb, count: layout.length, music: entry.music });
   } catch (e) {
     res.status(500).json({ error: String(e.message || e) });
   }

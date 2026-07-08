@@ -5,11 +5,17 @@
 //   GET  /files/<key>   — stream an object back from R2 (this is the public URL the
 //                         model fetches; no public bucket needed)
 //   GET  /uploads       — the most recent uploads (from D1), for listing/debugging
+//   GET  /script        — read the Script-tab screenplay document (one R2 object)
+//   PUT  /script        — save the Script-tab screenplay document to R2
 //
 // Bindings (see wrangler.jsonc): BUCKET → R2 bucket, DB → D1 database.
 
 const ALLOW_HEADERS = "content-type,x-filename";
-const ALLOW_METHODS = "GET,POST,OPTIONS";
+const ALLOW_METHODS = "GET,POST,PUT,OPTIONS";
+
+// The screenplay document (Script tab) is stored as a single JSON object in R2.
+const SCRIPT_KEY = "script/current.json";
+const EMPTY_SCRIPT = { title: "", doc: null, updatedAt: null, clientId: null };
 
 function cors(origin) {
   return {
@@ -72,6 +78,37 @@ export default {
         200,
         origin,
       );
+    }
+
+    // --- Script tab: the screenplay document, stored as one R2 object ------
+    if (url.pathname === "/script") {
+      if (request.method === "GET") {
+        const obj = await env.BUCKET.get(SCRIPT_KEY);
+        if (!obj) return json(EMPTY_SCRIPT, 200, origin);
+        try {
+          return json(await obj.json(), 200, origin);
+        } catch {
+          return json(EMPTY_SCRIPT, 200, origin);
+        }
+      }
+      if (request.method === "PUT") {
+        let body;
+        try {
+          body = await request.json();
+        } catch {
+          return json({ error: "Invalid JSON body" }, 400, origin);
+        }
+        const rec = {
+          title: typeof body?.title === "string" ? body.title : "",
+          doc: body?.doc ?? null,
+          updatedAt: new Date().toISOString(),
+          clientId: body?.clientId ?? null,
+        };
+        await env.BUCKET.put(SCRIPT_KEY, JSON.stringify(rec), {
+          httpMetadata: { contentType: "application/json" },
+        });
+        return json({ ok: true, updatedAt: rec.updatedAt }, 200, origin);
+      }
     }
 
     // --- serve an object ---------------------------------------------------

@@ -5,14 +5,19 @@ import {
   Copy, Pencil, ExternalLink, Leaf, Sparkles, TriangleAlert, Circle,
   Heart, Music, Save, Clock, Download, Trash2,
   PenLine, FileText, Image as ImageIcon, Clapperboard, Sun, Moon,
-  Loader2, Wand2,
+  Loader2, Wand2, LogOut, User,
 } from "lucide-react";
 
+import { Glowing } from "glowing";
+
 import { cn } from "@/lib/utils";
+import { CLIENT_ID } from "@/lib/clientId";
 import AgentChat from "@/components/AgentChat";
 import LoginGate from "@/components/Login";
+import ScriptEditor from "@/components/ScriptEditor";
 import {
   AgentProvider, useAgent, agentIsBusy, renderSoundMessage, renderAllPendingMessage,
+  renderEpisodeMessage,
 } from "@/components/AgentProvider";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -30,6 +35,11 @@ import {
 import {
   Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
+  DropdownMenuSeparator, DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 /* ---------------------------------------------------------------- *
  * Small shared building blocks                                     *
@@ -1028,7 +1038,9 @@ function EpisodeBundle({ b, flat, picked, onOpenPicker, onRemove, onView, audioM
   const [open, setOpen] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
   const [signOpen, setSignOpen] = useState(false);
+  const [renderErr, setRenderErr] = useState(null);
   const signedCount = signoff ? ["images", "prompt", "audio"].filter((k) => signoff[k]).length : 0;
+  const fullySigned = signedCount === 3;
   const hasVid = Array.isArray(vids) && vids.length > 0;
   const edited = typeof override === "string";
   const assigned = [...picked].map((rel) => flat.get(rel)).filter(Boolean);
@@ -1054,6 +1066,20 @@ function EpisodeBundle({ b, flat, picked, onOpenPicker, onRemove, onView, audioM
   const fullPrefix = refBlock + audioBlock + "\n\n";
   const displayPrompt = fullPrefix + bodyPrompt;
 
+  // Drive the shared studio agent to render this bundle once its revision is
+  // signed off (generate-multishot skill → Higgsfield → attach_episode_video) —
+  // same as asking it in chat.
+  const agent = useAgent();
+  const agentBusy = agentIsBusy(agent);
+  const requestRender = async () => {
+    setRenderErr(null);
+    try {
+      await agent.send({ message: renderEpisodeMessage(b, displayPrompt) });
+    } catch (e) {
+      setRenderErr(String(e.message || e));
+    }
+  };
+
   return (
     <Card className="gap-0 py-0">
       <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3 rounded-t-xl border-b px-4 py-3 [.border-b]:pb-3">
@@ -1074,6 +1100,21 @@ function EpisodeBundle({ b, flat, picked, onOpenPicker, onRemove, onView, audioM
           <Button variant="outline" size="sm" onClick={() => setSignOpen(true)} title="revision signing">
             <PenLine size={13} /> revision signing
           </Button>
+          <Button
+            size="sm"
+            onClick={requestRender}
+            disabled={!fullySigned || agentBusy}
+            title={
+              !fullySigned
+                ? "Sign off images, prompt, and audio before rendering"
+                : agentBusy
+                ? "Agent is busy — wait for the current turn to finish"
+                : "Render this bundle with Seedance via the studio agent"
+            }
+          >
+            {agentBusy ? <Loader2 size={13} className="animate-spin" /> : <Wand2 size={13} />} Render
+          </Button>
+          {renderErr && <span className="w-full text-xs text-destructive">{renderErr}</span>}
         </div>
       </CardHeader>
 
@@ -1552,6 +1593,7 @@ function CompleteCuts({ reloadKey }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [stitching, setStitching] = useState(false);
+  const [scoring, setScoring] = useState(false);
   const [bump, setBump] = useState(0);
 
   const load = useCallback(async () => {
@@ -1588,6 +1630,22 @@ function CompleteCuts({ reloadKey }) {
     }
   }, [load]);
 
+  const score = useCallback(async () => {
+    setScoring(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/episode/score", { method: "POST" });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "Add music failed");
+      await load();
+      setBump((b) => b + 1);
+    } catch (e) {
+      setError(String(e.message || e));
+    } finally {
+      setScoring(false);
+    }
+  }, [load]);
+
   if (loading) return <Spinner label="loading cuts…" />;
   if (!data) return <ErrorNote>{error}</ErrorNote>;
 
@@ -1597,15 +1655,31 @@ function CompleteCuts({ reloadKey }) {
   const fallbacks = usable.filter((s) => s.fallback);
   const total = usable.reduce((a, s) => a + s.duration, 0);
   const out = data.output;
+  const music = data.music || [];
+  const scoredVersions = out?.scoredVersions || [];
+  const scored = scoredVersions[0]; // newest
+  // All generations (base stitch + each scored version) as one list, sorted by
+  // creation time NEWEST-FIRST so the most-recently rendered is the top card.
+  const generations = out
+    ? [
+        { key: "stitch", kind: "stitch", at: out.stitchedAt, url: out.url },
+        ...scoredVersions.map((sv) => ({ key: `v${sv.v}`, kind: "scored", at: sv.createdAt, url: sv.url, sv })),
+      ].sort((a, b) => new Date(b.at || 0).getTime() - new Date(a.at || 0).getTime())
+    : [];
 
   return (
     <div className="space-y-4">
       <div className="flex flex-col gap-3">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <h2 className="text-xl font-semibold tracking-tight">Complete cut · {data.range.from} → {data.range.to}</h2>
-          <Button onClick={stitch} disabled={stitching || usable.length === 0}>
-            {stitching ? <><Loader2 size={13} className="animate-spin" /> stitching…</> : out ? <><RefreshCw size={13} /> re-stitch</> : <><Play size={13} fill="currentColor" /> stitch selected takes</>}
-          </Button>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button onClick={stitch} disabled={stitching || usable.length === 0}>
+              {stitching ? <><Loader2 size={13} className="animate-spin" /> stitching…</> : out ? <><RefreshCw size={13} /> re-stitch</> : <><Play size={13} fill="currentColor" /> stitch selected takes</>}
+            </Button>
+            <Button variant="outline" onClick={score} disabled={scoring || !out || music.length === 0} title={!out ? "stitch the cut first" : music.length === 0 ? "no rendered music cues" : "mix the background music under the cut"}>
+              {scoring ? <><Loader2 size={13} className="animate-spin" /> mixing…</> : <><Music size={13} /> {scored ? "add music version" : "add background music"}</>}
+            </Button>
+          </div>
         </div>
         <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
           <Badge variant="outline">{usable.length} scenes</Badge>
@@ -1619,25 +1693,84 @@ function CompleteCuts({ reloadKey }) {
       {error && <ErrorNote>{error}</ErrorNote>}
 
       {out ? (
-        <Panel title="Stitched video">
-          <div className="space-y-3">
-            <video key={`${out.url}?v=${bump}`} controls preload="metadata" className="rounded-lg bg-black">
-              <source src={`${out.url}?v=${bump}`} type="video/mp4" />
-            </video>
-            <div className="text-sm text-muted-foreground">
-              stitched from <strong className="text-foreground">{out.range?.from || data.range.from}</strong> →{" "}
-              <strong className="text-foreground">{out.range?.to || data.range.to}</strong>
-              {out.totalDuration != null && <> · {fmtTime(out.totalDuration)}</>}
-              {out.stitchedAt && <> · {new Date(out.stitchedAt).toLocaleString()}</>}
+        <div className="space-y-4">
+          {/* One list of generations — the base stitched cut + each scored
+              version — sorted NEWEST-FIRST, so the most recent render is the
+              top card (tagged "newest"). */}
+          {generations.map((g, idx) => {
+            const newest = idx === 0;
+            const cardClass = newest ? "border-primary/40" : undefined;
+            if (g.kind === "stitch") {
+              return (
+                <Panel
+                  key={g.key}
+                  className={cardClass}
+                  title={<span className="flex items-center gap-2"><Play size={15} className="text-primary" fill="currentColor" /> Stitched cut — no music</span>}
+                  meta={
+                    <div className="flex items-center gap-1.5">
+                      {newest && <Badge variant="info">newest</Badge>}
+                      <Badge variant="outline">{usable.length} scenes · {fmtTime(out.totalDuration ?? total)}</Badge>
+                    </div>
+                  }
+                >
+                  <div className="space-y-3">
+                    <video key={`${out.url}?v=${bump}`} controls preload="metadata" className="w-full rounded-lg bg-black">
+                      <source src={`${out.url}?v=${bump}`} type="video/mp4" />
+                    </video>
+                    <div className="text-sm text-muted-foreground">
+                      {out.range?.from || data.range.from} → {out.range?.to || data.range.to}
+                      {out.stitchedAt && <> · stitched {new Date(out.stitchedAt).toLocaleString()}</>}
+                    </div>
+                    <a
+                      className="inline-flex items-center gap-1 text-sm text-primary hover:underline"
+                      href={`${out.url}?v=${bump}`} target="_blank" rel="noreferrer" download
+                    >
+                      <Download size={13} /> download mp4 <ExternalLink size={12} />
+                    </a>
+                  </div>
+                </Panel>
+              );
+            }
+            const sv = g.sv;
+            return (
+              <Panel
+                key={g.key}
+                className={cardClass}
+                title={<span className="flex items-center gap-2"><Music size={15} className="text-primary" /> Scored v{sv.v} — with background music</span>}
+                meta={
+                  <div className="flex items-center gap-1.5">
+                    {newest && <Badge variant="info">newest</Badge>}
+                    <Badge variant="success">{Math.abs(sv.gainDb ?? -14)} dB bed · {sv.music?.length || 0} cues</Badge>
+                  </div>
+                }
+              >
+                <div className="space-y-3">
+                  <video key={`${sv.url}?v=${bump}`} controls preload="metadata" className="w-full rounded-lg bg-black">
+                    <source src={`${sv.url}?v=${bump}`} type="video/mp4" />
+                  </video>
+                  <div className="text-sm text-muted-foreground">
+                    {sv.music?.length || 0} music cues ~{Math.abs(sv.gainDb ?? -14)} dB under the dialogue &amp; SFX
+                    {sv.createdAt && <> · mixed {new Date(sv.createdAt).toLocaleString()}</>}
+                  </div>
+                  <a
+                    className="inline-flex items-center gap-1 text-sm text-primary hover:underline"
+                    href={`${sv.url}?v=${bump}`} target="_blank" rel="noreferrer" download
+                  >
+                    <Download size={13} /> download mp4 <ExternalLink size={12} />
+                  </a>
+                </div>
+              </Panel>
+            );
+          })}
+
+          {music.length > 0 && scoredVersions.length === 0 && (
+            <div className="rounded-xl border border-dashed p-4 text-center text-sm text-muted-foreground">
+              <span className="flex items-center justify-center gap-1.5">
+                <Music size={13} /> {music.length} background-music cues ready — press <strong className="text-foreground">add background music</strong> to render a scored version as the next card.
+              </span>
             </div>
-            <a
-              className="inline-flex items-center gap-1 text-sm text-primary hover:underline"
-              href={`${out.url}?v=${bump}`} target="_blank" rel="noreferrer" download
-            >
-              <Download size={13} /> download mp4 <ExternalLink size={12} />
-            </a>
-          </div>
-        </Panel>
+          )}
+        </div>
       ) : (
         <div className="rounded-xl border border-dashed p-6 text-center">
           <Empty>not stitched yet — press “stitch selected takes” to build the {data.range.from} → {data.range.to} cut.</Empty>
@@ -1660,12 +1793,17 @@ function CompleteCuts({ reloadKey }) {
                 <Empty>no rendered take</Empty>
               ) : (
                 <>
-                  <span className="flex items-center gap-2">
+                  <span className="flex flex-wrap items-center gap-2">
                     {s.name}
                     {s.fallback ? (
                       <Badge variant="warning"><TriangleAlert size={11} /> no take selected — using first</Badge>
                     ) : (
                       <Badge variant="success"><Check size={11} /> selected</Badge>
+                    )}
+                    {s.musicCue && (
+                      <Badge variant="info" title="background music cue over this scene">
+                        <Music size={11} /> {s.musicCue.label}
+                      </Badge>
                     )}
                   </span>
                   <span className="ml-auto text-xs tabular-nums text-muted-foreground">
@@ -2785,6 +2923,7 @@ function SoundStudio({ reloadKey }) {
  * ---------------------------------------------------------------- */
 
 const TABS = [
+  { value: "script", label: "Script" },
   { value: "shots", label: "Shots" },
   { value: "multishot", label: "Multi-shot" },
   { value: "episode", label: "Episode (48)" },
@@ -2792,6 +2931,50 @@ const TABS = [
   { value: "library", label: "Library" },
   { value: "sounds", label: "Sound studio" },
 ];
+
+// Brand-lime glow (matches the Higgsfield primary) for the "route being edited"
+// cue on the Script tab. `colors` alternates the glow hue with black so the
+// glowing library's gradient reads as a lime shimmer.
+const GLOW_OPTS = {
+  colors: ["#cbf74e", "#000000", "#a3e635", "#000000", "#cbf74e"],
+  colors2: ["#ffffff", "#000000", "#000000", "#ffffff"],
+  width: 3,
+  rotationDuration: 2200,
+  glowingBlurRatio: 1.4,
+};
+
+// Glow the element matching `selector` (a DOM query, since radix TabsTrigger
+// doesn't forward refs) while `active` is true — created on activation, removed
+// on deactivation / unmount.
+function useGlow(selector, active, options) {
+  useEffect(() => {
+    if (!active) return;
+    const el = document.querySelector(selector);
+    if (!el) return;
+    const glow = new Glowing(el, options);
+    return () => glow.remove();
+  }, [selector, active, options]);
+}
+
+// Subscribe to the Script live-update stream. Returns a counter that bumps on
+// every edit made ELSEWHERE (the chat agent) — not this tab's own saves — so the
+// Script editor can reload and the tab can glow.
+function useScriptLiveEdits() {
+  const [edits, setEdits] = useState(0);
+  useEffect(() => {
+    const es = new EventSource("/api/script/events");
+    es.onmessage = (e) => {
+      try {
+        const data = JSON.parse(e.data);
+        if (data.clientId !== CLIENT_ID) setEdits((n) => n + 1);
+      } catch {
+        /* ignore malformed frames / heartbeats */
+      }
+    };
+    return () => es.close();
+  }, []);
+  return edits;
+}
 
 function ThemeToggle() {
   const [dark, setDark] = useState(() =>
@@ -2814,6 +2997,51 @@ function ThemeToggle() {
   );
 }
 
+// Account menu — the shadcn avatar in the header opens a dropdown with a link
+// to higgsfield.ai and a sign-out that drops the Higgsfield credential and
+// re-gates the app (reload → LoginGate re-checks → homepage).
+function UserMenu() {
+  const signOut = async () => {
+    try {
+      await fetch("/api/auth/logout", { method: "POST" });
+    } catch {
+      /* reload re-gates regardless of the request outcome */
+    }
+    window.location.reload();
+  };
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button
+          type="button"
+          aria-label="Account menu"
+          className="rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+        >
+          <Avatar className="size-8">
+            <AvatarFallback className="bg-primary/10 text-primary">
+              <User size={16} />
+            </AvatarFallback>
+          </Avatar>
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-52">
+        <DropdownMenuLabel>Higgsfield account</DropdownMenuLabel>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem asChild>
+          <a href="https://higgsfield.ai" target="_blank" rel="noopener noreferrer">
+            <ExternalLink size={14} /> Visit higgsfield.ai
+          </a>
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem variant="destructive" onClick={signOut}>
+          <LogOut size={14} /> Sign out
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
 export default function App() {
   const [view, setView] = useState("shots");
   const [shots, setShots] = useState([]);
@@ -2821,6 +3049,27 @@ export default function App() {
   const [error, setError] = useState(null);
   const [reloadKey, setReloadKey] = useState(0);
   const [modalImage, setModalImage] = useState(null);
+
+  // Live Script edits (from the chat agent) → reload the editor + glow the tab.
+  const scriptEdits = useScriptLiveEdits();
+  const [scriptGlow, setScriptGlow] = useState(false);
+  const viewRef = useRef(view);
+  viewRef.current = view;
+  useEffect(() => {
+    if (scriptEdits === 0) return; // ignore the initial value
+    if (viewRef.current === "script") {
+      // Already looking at it (it live-updates) — just a brief pulse.
+      setScriptGlow(true);
+      const t = setTimeout(() => setScriptGlow(false), 1800);
+      return () => clearTimeout(t);
+    }
+    // Editing happened on another tab — glow until the user opens the Script tab.
+    setScriptGlow(true);
+  }, [scriptEdits]);
+  useEffect(() => {
+    if (view === "script") setScriptGlow(false);
+  }, [view]);
+  useGlow('[data-script-tab="true"]', scriptGlow, GLOW_OPTS);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -2863,7 +3112,12 @@ export default function App() {
 
             <TabsList className="h-9">
               {TABS.map((t) => (
-                <TabsTrigger key={t.value} value={t.value} className="text-xs">
+                <TabsTrigger
+                  key={t.value}
+                  value={t.value}
+                  className="text-xs"
+                  {...(t.value === "script" ? { "data-script-tab": "true" } : {})}
+                >
                   {t.label}
                 </TabsTrigger>
               ))}
@@ -2877,12 +3131,15 @@ export default function App() {
                 <RefreshCw size={13} className={cn(loading && "animate-spin")} /> Refresh
               </Button>
               <ThemeToggle />
+              <UserMenu />
             </div>
           </div>
         </header>
 
         <main className="mx-auto max-w-[1500px] px-4 py-6 md:px-6">
-          {view === "sounds" ? (
+          {view === "script" ? (
+            <ScriptEditor reloadKey={reloadKey} liveKey={scriptEdits} />
+          ) : view === "sounds" ? (
             <SoundStudio reloadKey={reloadKey} />
           ) : view === "library" ? (
             <Library reloadKey={reloadKey} onView={setModalImage} />
