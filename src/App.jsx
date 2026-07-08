@@ -1604,7 +1604,9 @@ function fmtTime(sec) {
 // timecodes the server computed for each segment. Clicking a chip jumps to that
 // card in the Episode / Sound-studio tab (see App's navigateTo).
 function NowPlayingCut({ src, segs, music, withMusic, navigateTo }) {
+  const videoRef = useRef(null);
   const [t, setT] = useState(0);
+  const [duration, setDuration] = useState(0);
   const usable = useMemo(() => (segs || []).filter((s) => s.file), [segs]);
   const seg =
     usable.find((s) => t >= s.start && t < s.end) ||
@@ -1615,47 +1617,198 @@ function NowPlayingCut({ src, segs, music, withMusic, navigateTo }) {
     "pointer-events-auto flex items-center gap-1.5 rounded-md bg-black/70 px-2.5 py-1.5 " +
     "text-xs font-medium text-white shadow-sm backdrop-blur transition hover:bg-black/85";
 
-  return (
-    <div className="relative overflow-hidden rounded-lg bg-black">
-      <video
-        key={src}
-        controls
-        preload="metadata"
-        playsInline
-        className="w-full rounded-lg bg-black"
-        onTimeUpdate={(e) => setT(e.currentTarget.currentTime)}
-        onSeeked={(e) => setT(e.currentTarget.currentTime)}
-      >
-        <source src={src} type="video/mp4" />
-      </video>
+  // Fall back to the last segment's end when the browser hasn't reported the
+  // real container duration yet, so dots still lay out before playback starts.
+  const dur = duration || (usable.length ? usable[usable.length - 1].end : 0);
 
-      <div className="pointer-events-none absolute right-2 top-2 flex max-w-[75%] flex-col items-end gap-1.5">
-        {seg && (
-          <button
-            type="button"
-            className={chip}
-            onClick={() => navigateTo({ view: "episode", anchor: `ep-${seg.id}` })}
-            title={`Jump to ${seg.id} in the Episode tab`}
-          >
-            <Clapperboard size={13} className="shrink-0 text-primary" />
-            <span className="font-mono">{seg.id}</span>
-            {seg.name && <span className="max-w-[16ch] truncate text-white/70">{seg.name}</span>}
-            <ExternalLink size={11} className="shrink-0 opacity-70" />
-          </button>
-        )}
-        {cue && (
-          <button
-            type="button"
-            className={chip}
-            onClick={() => navigateTo({ view: "sounds", anchor: `snd-${cue.track}` })}
-            title={`Jump to “${cue.name || cue.label}” in the Sound studio`}
-          >
-            <Music size={13} className="shrink-0 text-primary" />
-            <span className="max-w-[24ch] truncate">{cue.label}</span>
-            <ExternalLink size={11} className="shrink-0 opacity-70" />
-          </button>
-        )}
+  // Every shot boundary + (for a scored cut) every background-music cue, placed
+  // on the strip by its fraction of the total duration.
+  const markers = useMemo(() => {
+    if (!(dur > 0)) return [];
+    const shots = usable.map((s) => ({
+      kind: "shot",
+      key: `shot-${s.id}`,
+      left: Math.min(1, Math.max(0, s.start / dur)),
+      seekTo: s.start,
+      seg: s,
+    }));
+    const cues = withMusic
+      ? (music || []).map((m) => ({
+          kind: "cue",
+          key: `cue-${m.track}-${m.start}`,
+          left: Math.min(1, Math.max(0, m.start / dur)),
+          seekTo: m.start,
+          cue: m,
+        }))
+      : [];
+    return [...shots, ...cues];
+  }, [usable, music, withMusic, dur]);
+
+  const seek = (to) => {
+    const v = videoRef.current;
+    if (v && dur > 0) v.currentTime = Math.min(dur, Math.max(0, to));
+  };
+  const seekToFraction = (e) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    if (!rect.width) return;
+    const frac = Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width));
+    seek(frac * dur);
+  };
+
+  const tip =
+    "pointer-events-auto flex cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-md " +
+    "border border-white/15 bg-black/85 px-2 py-1 text-[11px] font-medium text-white shadow-md " +
+    "backdrop-blur transition-colors hover:border-primary hover:bg-primary/30";
+
+  return (
+    <div className="space-y-2">
+      <div className="relative overflow-hidden rounded-lg bg-black">
+        <video
+          key={src}
+          ref={videoRef}
+          controls
+          preload="metadata"
+          playsInline
+          className="w-full rounded-lg bg-black"
+          onLoadedMetadata={(e) => setDuration(e.currentTarget.duration || 0)}
+          onTimeUpdate={(e) => setT(e.currentTarget.currentTime)}
+          onSeeked={(e) => setT(e.currentTarget.currentTime)}
+        >
+          <source src={src} type="video/mp4" />
+        </video>
+
+        <div className="pointer-events-none absolute right-2 top-2 flex max-w-[75%] flex-col items-end gap-1.5">
+          {seg && (
+            <button
+              type="button"
+              className={chip}
+              onClick={() => navigateTo({ view: "episode", anchor: `ep-${seg.id}` })}
+              title={`Jump to ${seg.id} in the Episode tab`}
+            >
+              <Clapperboard size={13} className="shrink-0 text-primary" />
+              <span className="font-mono">{seg.id}</span>
+              {seg.name && <span className="max-w-[16ch] truncate text-white/70">{seg.name}</span>}
+              <ExternalLink size={11} className="shrink-0 opacity-70" />
+            </button>
+          )}
+          {cue && (
+            <button
+              type="button"
+              className={chip}
+              onClick={() => navigateTo({ view: "sounds", anchor: `snd-${cue.track}` })}
+              title={`Jump to “${cue.name || cue.label}” in the Sound studio`}
+            >
+              <Music size={13} className="shrink-0 text-primary" />
+              <span className="max-w-[24ch] truncate">{cue.label}</span>
+              <ExternalLink size={11} className="shrink-0 opacity-70" />
+            </button>
+          )}
+        </div>
       </div>
+
+      {/* Custom marker/seek strip: a dot at every shot (lime) and background-sound
+          cue (sky). Click the strip to seek; hover a dot for a tooltip that, when
+          clicked, jumps to that scene's Episode / Sound-studio card. */}
+      {dur > 0 && (
+        <div className="mx-[15px] px-0.5 pt-4">
+          <div
+            className="group/strip relative h-6 cursor-pointer"
+            onClick={seekToFraction}
+            role="slider"
+            aria-label="cut timeline — click to seek"
+            aria-valuemin={0}
+            aria-valuemax={Math.round(dur)}
+            aria-valuenow={Math.round(t)}
+          >
+            {/* track */}
+            <div className="absolute inset-x-0 top-1/2 h-1 -translate-y-1/2 rounded-full bg-muted" />
+            {/* progress fill */}
+            <div
+              className="absolute left-0 top-1/2 h-1 -translate-y-1/2 rounded-full bg-primary/50"
+              style={{ width: `${Math.min(1, Math.max(0, t / dur)) * 100}%` }}
+            />
+            {/* playhead */}
+            <div
+              className="absolute top-1/2 h-3 w-0.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-primary"
+              style={{ left: `${Math.min(1, Math.max(0, t / dur)) * 100}%` }}
+            />
+            {markers.map((mk) => {
+              const isShot = mk.kind === "shot";
+              return (
+                <div
+                  key={mk.key}
+                  className="group/dot absolute top-1/2 -translate-x-1/2 -translate-y-1/2"
+                  style={{ left: `${mk.left * 100}%` }}
+                >
+                  {/* dot — click seeks to this marker's start */}
+                  <button
+                    type="button"
+                    aria-label={
+                      isShot
+                        ? `${mk.seg.id} ${mk.seg.name || ""} — seek to scene`
+                        : `${mk.cue.label} — seek to cue`
+                    }
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      seek(mk.seekTo);
+                    }}
+                    className={cn(
+                      "block h-2.5 w-2.5 rounded-full border border-black/40 shadow-sm transition hover:scale-125",
+                      isShot ? "bg-primary" : "bg-sky-400",
+                      !isShot && "translate-y-2" // sound dots sit on a lower row so they don't overlap shot dots
+                    )}
+                  />
+                  {/* tooltip — hover the dot, move up onto it, click to jump to the card.
+                      pb bridges the gap so the cursor never leaves the group. */}
+                  <div
+                    className={cn(
+                      "absolute bottom-full left-1/2 z-10 hidden -translate-x-1/2 pb-2 group-hover/dot:block",
+                      !isShot && "-translate-y-2"
+                    )}
+                  >
+                    {isShot ? (
+                      <button
+                        type="button"
+                        className={tip}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          navigateTo({ view: "episode", anchor: `ep-${mk.seg.id}` });
+                        }}
+                        title={`Jump to ${mk.seg.id} in the Episode tab`}
+                      >
+                        <Clapperboard size={12} className="shrink-0 text-primary" />
+                        <span className="font-mono">{mk.seg.id}</span>
+                        {mk.seg.name && <span className="max-w-[18ch] truncate text-white/70">{mk.seg.name}</span>}
+                        <span className="tabular-nums text-white/50">
+                          {fmtTime(mk.seg.start)} → {fmtTime(mk.seg.end)}
+                        </span>
+                        <ExternalLink size={10} className="shrink-0 opacity-70" />
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        className={tip}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          navigateTo({ view: "sounds", anchor: `snd-${mk.cue.track}` });
+                        }}
+                        title={`Jump to “${mk.cue.name || mk.cue.label}” in the Sound studio`}
+                      >
+                        <Music size={12} className="shrink-0 text-sky-400" />
+                        <span className="max-w-[24ch] truncate">{mk.cue.label}</span>
+                        <span className="tabular-nums text-white/50">
+                          {fmtTime(mk.cue.start)} → {fmtTime(mk.cue.beatEnd)}
+                        </span>
+                        <ExternalLink size={10} className="shrink-0 opacity-70" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
