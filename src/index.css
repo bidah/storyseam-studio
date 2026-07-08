@@ -420,3 +420,15 @@
     }
   }
 }
+
+/* Brief lime pulse on a card when we jump to it from the Complete-cut overlay
+   (see navigateTo / .nav-flash in App.jsx). */
+@keyframes nav-flash {
+  0%   { box-shadow: 0 0 0 0 rgba(203, 247, 78, 0); }
+  20%  { box-shadow: 0 0 0 4px rgba(203, 247, 78, 0.9); }
+  100% { box-shadow: 0 0 0 0 rgba(203, 247, 78, 0); }
+}
+.nav-flash {
+  animation: nav-flash 1.5s ease-out 1;
+  border-radius: var(--radius);
+}

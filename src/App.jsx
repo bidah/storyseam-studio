@@ -83,9 +83,9 @@ function Chip({ on, className, children, ...props }) {
 }
 
 // Section card with a title row.
-function Panel({ title, meta, className, bodyClassName, children }) {
+function Panel({ id, title, meta, className, bodyClassName, children }) {
   return (
-    <Card className={cn("gap-0 overflow-hidden py-0", className)}>
+    <Card id={id} className={cn("gap-0 overflow-hidden py-0", className)}>
       {(title || meta) && (
         <CardHeader className="flex flex-row items-center justify-between gap-3 border-b px-4 py-3 [.border-b]:pb-3">
           {title && <CardTitle className="text-sm font-semibold">{title}</CardTitle>}
@@ -1081,7 +1081,7 @@ function EpisodeBundle({ b, flat, picked, onOpenPicker, onRemove, onView, audioM
   };
 
   return (
-    <Card className="gap-0 py-0">
+    <Card id={`ep-${b.id}`} className="scroll-mt-24 gap-0 py-0">
       <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3 rounded-t-xl border-b px-4 py-3 [.border-b]:pb-3">
         <div className="flex items-center gap-2">
           <Badge variant="secondary" className="font-mono text-sm">{b.id}</Badge>
@@ -1588,7 +1588,69 @@ function fmtTime(sec) {
   return `${m}:${String(s % 60).padStart(2, "0")}`;
 }
 
-function CompleteCuts({ reloadKey }) {
+// A stitched-cut <video> with a live "now playing" overlay. As the cut plays,
+// the top-right chips track which multishot bundle (and, for a scored cut, which
+// background-music cue) the current frame comes from — using the from→to
+// timecodes the server computed for each segment. Clicking a chip jumps to that
+// card in the Episode / Sound-studio tab (see App's navigateTo).
+function NowPlayingCut({ src, segs, music, withMusic, navigateTo }) {
+  const [t, setT] = useState(0);
+  const usable = useMemo(() => (segs || []).filter((s) => s.file), [segs]);
+  const seg =
+    usable.find((s) => t >= s.start && t < s.end) ||
+    (usable.length ? usable[t > 0 ? usable.length - 1 : 0] : null);
+  const cue = withMusic ? (music || []).find((m) => t >= m.start && t < m.beatEnd) : null;
+
+  const chip =
+    "pointer-events-auto flex items-center gap-1.5 rounded-md bg-black/70 px-2.5 py-1.5 " +
+    "text-xs font-medium text-white shadow-sm backdrop-blur transition hover:bg-black/85";
+
+  return (
+    <div className="relative overflow-hidden rounded-lg bg-black">
+      <video
+        key={src}
+        controls
+        preload="metadata"
+        playsInline
+        className="w-full rounded-lg bg-black"
+        onTimeUpdate={(e) => setT(e.currentTarget.currentTime)}
+        onSeeked={(e) => setT(e.currentTarget.currentTime)}
+      >
+        <source src={src} type="video/mp4" />
+      </video>
+
+      <div className="pointer-events-none absolute right-2 top-2 flex max-w-[75%] flex-col items-end gap-1.5">
+        {seg && (
+          <button
+            type="button"
+            className={chip}
+            onClick={() => navigateTo({ view: "episode", anchor: `ep-${seg.id}` })}
+            title={`Jump to ${seg.id} in the Episode tab`}
+          >
+            <Clapperboard size={13} className="shrink-0 text-primary" />
+            <span className="font-mono">{seg.id}</span>
+            {seg.name && <span className="max-w-[16ch] truncate text-white/70">{seg.name}</span>}
+            <ExternalLink size={11} className="shrink-0 opacity-70" />
+          </button>
+        )}
+        {cue && (
+          <button
+            type="button"
+            className={chip}
+            onClick={() => navigateTo({ view: "sounds", anchor: `snd-${cue.track}` })}
+            title={`Jump to “${cue.name || cue.label}” in the Sound studio`}
+          >
+            <Music size={13} className="shrink-0 text-primary" />
+            <span className="max-w-[24ch] truncate">{cue.label}</span>
+            <ExternalLink size={11} className="shrink-0 opacity-70" />
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function CompleteCuts({ reloadKey, navigateTo }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -1714,9 +1776,13 @@ function CompleteCuts({ reloadKey }) {
                   }
                 >
                   <div className="space-y-3">
-                    <video key={`${out.url}?v=${bump}`} controls preload="metadata" className="w-full rounded-lg bg-black">
-                      <source src={`${out.url}?v=${bump}`} type="video/mp4" />
-                    </video>
+                    <NowPlayingCut
+                      src={`${out.url}?v=${bump}`}
+                      segs={out.segments || segs}
+                      music={music}
+                      withMusic={false}
+                      navigateTo={navigateTo}
+                    />
                     <div className="text-sm text-muted-foreground">
                       {out.range?.from || data.range.from} → {out.range?.to || data.range.to}
                       {out.stitchedAt && <> · stitched {new Date(out.stitchedAt).toLocaleString()}</>}
@@ -1745,9 +1811,13 @@ function CompleteCuts({ reloadKey }) {
                 }
               >
                 <div className="space-y-3">
-                  <video key={`${sv.url}?v=${bump}`} controls preload="metadata" className="w-full rounded-lg bg-black">
-                    <source src={`${sv.url}?v=${bump}`} type="video/mp4" />
-                  </video>
+                  <NowPlayingCut
+                    src={`${sv.url}?v=${bump}`}
+                    segs={sv.segments || out.segments || segs}
+                    music={sv.music || music}
+                    withMusic
+                    navigateTo={navigateTo}
+                  />
                   <div className="text-sm text-muted-foreground">
                     {sv.music?.length || 0} music cues ~{Math.abs(sv.gainDb ?? -14)} dB under the dialogue &amp; SFX
                     {sv.createdAt && <> · mixed {new Date(sv.createdAt).toLocaleString()}</>}
@@ -2209,7 +2279,8 @@ function SoundTrack({ track, onChanged }) {
 
   return (
     <Panel
-      className="gap-0"
+      id={`snd-${track.id}`}
+      className="scroll-mt-24 gap-0"
       bodyClassName="space-y-3"
       title={
         <div className="flex items-center gap-2.5">
@@ -3050,6 +3121,38 @@ export default function App() {
   const [reloadKey, setReloadKey] = useState(0);
   const [modalImage, setModalImage] = useState(null);
 
+  // Cross-tab jump: the Complete-cut overlay calls navigateTo({ view, anchor })
+  // to switch tabs and scroll to a bundle / sound card. The target tab remounts
+  // and loads async, so we retry finding the anchor for a few seconds, then
+  // flash it. { view, anchor, nonce } — nonce lets the same target re-trigger.
+  const [navTarget, setNavTarget] = useState(null);
+  const navNonce = useRef(0);
+  const navigateTo = useCallback(({ view: v, anchor }) => {
+    navNonce.current += 1;
+    setNavTarget({ view: v, anchor, nonce: navNonce.current });
+    setView(v);
+  }, []);
+  useEffect(() => {
+    if (!navTarget || view !== navTarget.view) return;
+    let tries = 0;
+    let timer;
+    const tryScroll = () => {
+      const el = document.getElementById(navTarget.anchor);
+      if (el) {
+        el.scrollIntoView({ behavior: "smooth", block: "center" });
+        el.classList.remove("nav-flash");
+        void el.offsetWidth; // restart the animation if already applied
+        el.classList.add("nav-flash");
+        setTimeout(() => el.classList.remove("nav-flash"), 1600);
+        setNavTarget(null);
+        return;
+      }
+      if (tries++ < 40) timer = setTimeout(tryScroll, 100); // wait out async load
+    };
+    tryScroll();
+    return () => clearTimeout(timer);
+  }, [navTarget, view]);
+
   // Live Script edits (from the chat agent) → reload the editor + glow the tab.
   const scriptEdits = useScriptLiveEdits();
   const [scriptGlow, setScriptGlow] = useState(false);
@@ -3144,7 +3247,7 @@ export default function App() {
           ) : view === "library" ? (
             <Library reloadKey={reloadKey} onView={setModalImage} />
           ) : view === "cuts" ? (
-            <CompleteCuts reloadKey={reloadKey} />
+            <CompleteCuts reloadKey={reloadKey} navigateTo={navigateTo} />
           ) : view === "episode" ? (
             <Episode reloadKey={reloadKey} onView={setModalImage} />
           ) : view === "multishot" ? (

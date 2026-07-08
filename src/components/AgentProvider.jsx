@@ -245,6 +245,29 @@ export function renderSoundMessage(track, ver) {
     .join("\n");
 }
 
+// Build the chat turn that drives the render → attach loop for one episode
+// bundle, once its revision has been fully signed off. Mirrors the agent's own
+// instructions (load generate-multishot → render via Higgsfield → attach_episode_video)
+// and hands it the fully-composed prompt (refs + audio refs + body) so it doesn't
+// have to reassemble it.
+export function renderEpisodeMessage(bundle, prompt) {
+  const label = `${bundle.id}${bundle.beatTitle ? ` — ${bundle.beatTitle}` : ""}`;
+  return [
+    `Render episode bundle ${label} now — its revision is signed off.`,
+    `Load the generate-multishot skill, render this bundle's multi-shot Seedance` +
+      ` video from the exact prompt below (image + audio references included), then` +
+      ` call attach_episode_video for ${bundle.id} with the resulting mp4 URL so the` +
+      ` take shows up in the UI. Confirm the Higgsfield submit with me first, as usual.`,
+    "",
+    bundle.duration ? `Target duration: ~${bundle.duration}s` : null,
+    "",
+    "Prompt:",
+    prompt,
+  ]
+    .filter((l) => l !== null)
+    .join("\n");
+}
+
 // Combined turn for "render every pending version in the studio".
 export function renderAllPendingMessage(tracks) {
   const pending = [];

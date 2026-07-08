@@ -1059,6 +1059,13 @@ app.post("/api/episode/score", async (req, res) => {
       file,
       gainDb: Math.round(20 * Math.log10(gain)),
       createdAt: new Date().toISOString(),
+      // Freeze the full setup this scored mp4 was baked from — the ordered
+      // background videos (bundle takes + their timecodes) AND the music cues —
+      // so the "now playing" overlay always matches THIS version, even after the
+      // plan is re-selected or re-stitched later.
+      segments: segments
+        .filter((s) => s.file)
+        .map((s) => ({ id: s.id, file: s.file, name: s.name, fallback: s.fallback, start: s.start, duration: s.duration, end: s.end })),
       music: layout.map((m) => ({
         track: m.track, label: m.label, name: m.name,
         start: m.start, beatEnd: m.beatEnd, duration: m.duration,
