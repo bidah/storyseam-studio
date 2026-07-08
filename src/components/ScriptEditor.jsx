@@ -26,8 +26,10 @@ import { useAgent, agentIsBusy, generateShotListMessage } from "@/components/Age
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
-  Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger,
+  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger,
 } from "@/components/ui/dialog";
 import {
   Screenplay, SlashCommand, buildInitialContent,
@@ -297,16 +299,21 @@ function ShotlistGate({ draftId, signed, shotlistExists, onSignedChange }) {
   const agent = useAgent();
   const agentBusy = agentIsBusy(agent);
   const [busy, setBusy] = useState(false);
+  const [signOpen, setSignOpen] = useState(false);
 
-  const toggleSign = useCallback(async (next) => {
+  // `by` is the author name captured by the confirmation modal (only on sign).
+  const toggleSign = useCallback(async (next, by) => {
     setBusy(true);
     try {
       const res = await fetch("/api/script/sign", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ signed: next }),
+        body: JSON.stringify({ signed: next, by: by ?? null }),
       });
-      if (res.ok) onSignedChange(next);
+      if (res.ok) { onSignedChange(next); return true; }
+      return false;
+    } catch {
+      return false;
     } finally {
       setBusy(false);
     }
@@ -332,14 +339,112 @@ function ShotlistGate({ draftId, signed, shotlistExists, onSignedChange }) {
           <CircleCheck size={13} className="text-primary" /> Signed
         </Button>
       ) : (
-        <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => toggleSign(true)} disabled={busy || !draftId} title="Sign this draft to unlock the shot list">
+        <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => setSignOpen(true)} disabled={busy || !draftId} title="Sign this draft to unlock the shot list">
           {busy ? <Loader2 size={13} className="animate-spin" /> : <CircleCheck size={13} />} Sign script
         </Button>
       )}
       <Button size="sm" className="h-7 text-xs" onClick={generate} disabled={genDisabled} title={genTitle}>
         {agentBusy ? <Loader2 size={13} className="animate-spin" /> : shotlistExists ? <Lock size={13} /> : <ListChecks size={13} />} Generate shot list
       </Button>
+
+      <ScriptSignModal
+        open={signOpen}
+        onOpenChange={setSignOpen}
+        busy={busy}
+        onConfirm={(by) => toggleSign(true, by)}
+      />
     </div>
+  );
+}
+
+// Acknowledgements the author must tick before the script can be closed. All
+// three + a name are required — mirrors the per-bundle Revision-signing gate on
+// the Episode tab, but for the whole screenplay.
+const SCRIPT_SIGN_CHECKS = [
+  "The screenplay is final — structure, scenes, and dialogue are locked.",
+  "Signing closes the script; editing it afterward unsigns it and requires re-signing.",
+  "I accept authorship of this revision and acknowledge the script is closed.",
+];
+
+// Confirmation modal for closing (signing) the script. Gates on a signer name +
+// every acknowledgement checked, then calls onConfirm(name) → the sign request.
+function ScriptSignModal({ open, onOpenChange, busy, onConfirm }) {
+  const [signedBy, setSignedBy] = useState(() => {
+    try { return localStorage.getItem("shotStudioSigner") || ""; } catch { return ""; }
+  });
+  const [checks, setChecks] = useState(() => SCRIPT_SIGN_CHECKS.map(() => false));
+  // Reset the acknowledgements each time the modal opens.
+  useEffect(() => {
+    if (open) setChecks(SCRIPT_SIGN_CHECKS.map(() => false));
+  }, [open]);
+
+  const name = signedBy.trim();
+  const allChecked = checks.every(Boolean);
+  const canSign = !!name && allChecked && !busy;
+
+  const submit = async () => {
+    if (!canSign) return;
+    try { localStorage.setItem("shotStudioSigner", name); } catch { /* ignore */ }
+    const ok = await onConfirm(name);
+    if (ok !== false) onOpenChange(false);
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => { if (!busy) onOpenChange(o); }}>
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <CircleCheck size={16} className="text-primary" /> Sign &amp; close script
+          </DialogTitle>
+          <DialogDescription>
+            Signing locks this draft as the closed screenplay and unlocks shot-list
+            generation. Editing the script afterward unsigns it and requires re-signing.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-1.5">
+          <Label htmlFor="script-signed-by">Signed by</Label>
+          <Input
+            id="script-signed-by"
+            value={signedBy}
+            placeholder="your name"
+            onChange={(e) => setSignedBy(e.target.value)}
+          />
+        </div>
+
+        <div className="space-y-2">
+          {SCRIPT_SIGN_CHECKS.map((text, i) => {
+            const on = checks[i];
+            return (
+              <label
+                key={i}
+                className={cn(
+                  "flex cursor-pointer items-start gap-3 rounded-lg border p-3 transition-colors",
+                  on ? "border-primary/30 bg-primary/5" : "border-border",
+                  !name && !on && "cursor-not-allowed opacity-60",
+                )}
+              >
+                <Checkbox
+                  checked={on}
+                  disabled={!name && !on}
+                  onCheckedChange={(c) => setChecks((arr) => arr.map((v, j) => (j === i ? !!c : v)))}
+                  className="mt-0.5 size-5"
+                  aria-label={text}
+                />
+                <span className="text-sm">{text}</span>
+              </label>
+            );
+          })}
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={busy}>Cancel</Button>
+          <Button onClick={submit} disabled={!canSign}>
+            {busy ? <><Loader2 size={13} className="animate-spin" /> signing…</> : <><CircleCheck size={13} /> Sign &amp; close script</>}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 

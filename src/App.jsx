@@ -1930,7 +1930,7 @@ function ShotList({ reloadKey }) {
                         title={on ? "show all shots" : `show only ${p.id}'s shots`}
                         className={cn(
                           "flex w-full items-center gap-2 rounded-md border px-2.5 py-1.5 text-left text-xs transition-colors",
-                          on ? "border-primary bg-primary/10 ring-1 ring-primary/40" : "hover:border-primary/50 hover:bg-accent",
+                          on ? "border-primary bg-primary/10 ring-1 ring-primary/40" : "hover:bg-muted",
                         )}
                       >
                         <Badge variant="secondary" className="font-mono">{p.id}</Badge>
