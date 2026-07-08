@@ -6,6 +6,7 @@ import { execFile } from "child_process";
 import { promisify } from "util";
 import { AwsClient } from "aws4fetch";
 import { randomUUID } from "node:crypto";
+import { packPreview } from "./lib/pack.js";
 
 const execFileP = promisify(execFile);
 
@@ -40,6 +41,9 @@ const MULTISHOT_MANIFEST = path.join(MULTISHOT_DIR, "multishot.json");
 // Full-episode multishot plan (45 bundles) lives as a sibling folder.
 const EPISODE_DIR = path.resolve(__dirname, "..", "..", "episode-multishot");
 const EPISODE_MANIFEST = path.join(EPISODE_DIR, "multishot_bundles.json");
+// Editable flat shot list (the granular per-shot list, pre-packing). Unlike the
+// read-only build outputs above, this is read AND written by the app.
+const SHOTLIST_FILE = path.join(EPISODE_DIR, "shotlist.json");
 
 // Asset library: the whole project root, browsable by folder. Selected images
 // are copied into final_selection/ and tracked in a tiny JSON "database".
@@ -532,6 +536,7 @@ app.get("/api/script", async (req, res) => {
   try {
     const store = await readStore();
     const d = pinnedDraft(store);
+    const sign = readDB().scriptSignoff?.[d.id] || null;
     res.json({
       title: d.title,
       doc: d.doc,
@@ -541,7 +546,30 @@ app.get("/api/script", async (req, res) => {
       draftName: d.name,
       pinnedId: store.pinnedId,
       drafts: metaList(store),
+      // Pipeline gate: the pinned draft's sign-off + whether a shot list already
+      // exists (so the Script tab can enable/disable "Generate shot list").
+      signed: !!sign,
+      signedAt: sign?.at || null,
+      shotlistExists: shotlistShots().length > 0,
     });
+  } catch (e) {
+    res.status(500).json({ error: String(e.message || e) });
+  }
+});
+
+// Sign / unsign the PINNED script draft. A signed draft unlocks the next stage
+// (generate the shot list). Any edit to the draft clears this (see PUT above).
+app.post("/api/script/sign", async (req, res) => {
+  try {
+    const { signed = true, by } = req.body || {};
+    const store = await readStore();
+    const d = pinnedDraft(store);
+    const db = readDB();
+    db.scriptSignoff = db.scriptSignoff || {};
+    if (signed) db.scriptSignoff[d.id] = { at: new Date().toISOString(), by: by || null };
+    else delete db.scriptSignoff[d.id];
+    writeDB(db);
+    res.json({ ok: true, draftId: d.id, signed: !!signed, signedAt: db.scriptSignoff[d.id]?.at || null });
   } catch (e) {
     res.status(500).json({ error: String(e.message || e) });
   }
@@ -558,6 +586,10 @@ app.put("/api/script", async (req, res) => {
     d.updatedAt = nowIso();
     d.clientId = clientId ?? null;
     await writeStore(store);
+    // Editing the script invalidates its sign-off — it must be re-signed before
+    // the shot list can be (re)generated from it.
+    const db = readDB();
+    if (db.scriptSignoff?.[d.id]) { delete db.scriptSignoff[d.id]; writeDB(db); }
     broadcastScript({ updatedAt: d.updatedAt, clientId: clientId ?? null, pinnedId: store.pinnedId });
     res.json({ ok: true, updatedAt: d.updatedAt, draftId: d.id });
   } catch (e) {
@@ -655,6 +687,123 @@ app.delete("/api/script/drafts/:id", async (req, res) => {
     const d = pinnedDraft(store);
     broadcastScript({ updatedAt: d.updatedAt, clientId, pinnedId: store.pinnedId });
     res.json({ ok: true, drafts: metaList(store), pinnedId: store.pinnedId });
+  } catch (e) {
+    res.status(500).json({ error: String(e.message || e) });
+  }
+});
+
+// --- Shot list: the editable granular per-shot list -----------------------
+// The flat shot list (every ~2-3s shot with its own Seedance prompt), which
+// auto-packs into the <=15s multishot bundles. Its own mutable file; the .txt /
+// multishot_bundles.json remain read-only build outputs.
+
+// One shot's canonical field set (SHOT | TIME | CAMERA | ACTION |
+// SEEDANCE-PROMPT | AUDIO-SYNC — the columns from the source shot list).
+function normalizeShot(s, i) {
+  const n = i + 1;
+  return {
+    n,
+    id: s.id || String(n).padStart(2, "0"),
+    src: s.src || s.id || String(n).padStart(2, "0"),
+    beat: s.beat || "",
+    beatTitle: s.beatTitle || "",
+    dur: Number(s.dur) || 0,
+    location: s.location || "",
+    characters: Array.isArray(s.characters) ? s.characters : (s.characters ? [s.characters] : []),
+    camera: s.camera || "",
+    action: s.action || s.summary || "",
+    dialogue: s.dialogue || "",
+    audioSync: s.audioSync || "",
+    prompt: s.prompt || "",
+  };
+}
+
+function readShotlist() {
+  try {
+    const obj = JSON.parse(fs.readFileSync(SHOTLIST_FILE, "utf8"));
+    return { ...obj, shots: (obj.shots || []).map(normalizeShot) };
+  } catch {
+    return { generatedAt: null, source: null, shots: [] };
+  }
+}
+function writeShotlist(obj) {
+  fs.mkdirSync(path.dirname(SHOTLIST_FILE), { recursive: true });
+  fs.writeFileSync(SHOTLIST_FILE, JSON.stringify(obj, null, 2));
+}
+const shotlistShots = () => readShotlist().shots;
+
+// Recreate the shot list from the existing episode manifest: flatten every
+// bundle's ordered shots into one globally-numbered list. 2D-directing / audio
+// aren't in the manifest (that build dropped them) → left blank to fill in later.
+function rebuildShotlistFromEpisode() {
+  const manifest = JSON.parse(fs.readFileSync(EPISODE_MANIFEST, "utf8"));
+  const flat = [];
+  for (const b of manifest.bundles || []) {
+    for (const s of b.shots || []) {
+      flat.push(normalizeShot({ ...s, action: s.summary || s.action, beat: b.beat, beatTitle: b.beatTitle }, flat.length));
+    }
+  }
+  const obj = { generatedAt: new Date().toISOString(), source: "episode", shots: flat };
+  writeShotlist(obj);
+  return obj;
+}
+
+// Read the shot list (auto-seeding from the current episode on first use) plus
+// the live <=15s pack preview.
+app.get("/api/shotlist", (req, res) => {
+  try {
+    let sl = readShotlist();
+    if (!sl.shots.length && fs.existsSync(EPISODE_MANIFEST)) sl = rebuildShotlistFromEpisode();
+    res.json({ ...sl, packs: packPreview(sl.shots) });
+  } catch (e) {
+    res.status(500).json({ error: String(e.message || e) });
+  }
+});
+
+// Replace the whole shot list (agent `save_shotlist`, or a bulk UI save).
+app.post("/api/shotlist", (req, res) => {
+  try {
+    const { shots, source } = req.body || {};
+    if (!Array.isArray(shots)) return res.status(400).json({ error: "shots[] required" });
+    const obj = { generatedAt: new Date().toISOString(), source: source || "agent", shots: shots.map(normalizeShot) };
+    writeShotlist(obj);
+    res.json({ ok: true, count: obj.shots.length, packs: packPreview(obj.shots) });
+  } catch (e) {
+    res.status(500).json({ error: String(e.message || e) });
+  }
+});
+
+// Edit one shot in place (inline editing on the Shot list tab).
+app.put("/api/shotlist/shot/:n", (req, res) => {
+  try {
+    const n = Number(req.params.n);
+    const sl = readShotlist();
+    const idx = sl.shots.findIndex((s) => s.n === n);
+    if (idx < 0) return res.status(404).json({ error: `no shot ${n}` });
+    const patch = req.body || {};
+    sl.shots[idx] = normalizeShot({ ...sl.shots[idx], ...patch }, idx);
+    writeShotlist(sl);
+    res.json({ ok: true, shot: sl.shots[idx], packs: packPreview(sl.shots) });
+  } catch (e) {
+    res.status(500).json({ error: String(e.message || e) });
+  }
+});
+
+// Recreate the shot list from the current episode (the "Rebuild" button).
+app.post("/api/shotlist/rebuild-from-episode", (req, res) => {
+  try {
+    if (!fs.existsSync(EPISODE_MANIFEST)) return res.status(400).json({ error: "No episode manifest to rebuild from" });
+    const obj = rebuildShotlistFromEpisode();
+    res.json({ ...obj, packs: packPreview(obj.shots) });
+  } catch (e) {
+    res.status(500).json({ error: String(e.message || e) });
+  }
+});
+
+// The live <=15s multishot pack preview for the current shot list.
+app.get("/api/shotlist/packs", (req, res) => {
+  try {
+    res.json({ packs: packPreview(shotlistShots()) });
   } catch (e) {
     res.status(500).json({ error: String(e.message || e) });
   }
@@ -1375,6 +1524,73 @@ app.post("/api/episode/video", async (req, res) => {
     db.video[bundle] = list;
     writeDB(db);
     res.json({ ok: true, bundle, name: `gen ${n}`, count: list.length, url: "/gen/" + file });
+  } catch (e) {
+    res.status(500).json({ error: String(e.message || e) });
+  }
+});
+
+// Trim a rendered take to a sub-range [from, to] seconds → a NEW "trim" version
+// stored ALONGSIDE the original (the source take is never mutated, so it stays in
+// history and remains selectable). The trim take carries kind:"trim", a sourceFile
+// link, and its trim:{start,end}; the /api/episode selection + stitch flow keys on
+// `file`, so a trim is picked/stitched exactly like any other take. ffmpeg cuts a
+// frame-accurate re-encode (clips are short) so the cut lands where the handle sat.
+app.post("/api/episode/trim", async (req, res) => {
+  try {
+    let { bundle, sourceFile, from, to } = req.body || {};
+    if (!bundle || !sourceFile) return res.status(400).json({ error: "Missing 'bundle' or 'sourceFile'" });
+    from = Number(from);
+    to = Number(to);
+    if (!Number.isFinite(from) || !Number.isFinite(to)) return res.status(400).json({ error: "'from' and 'to' must be numbers (seconds)" });
+
+    const db = readDB();
+    db.video = db.video || {};
+    let list = db.video[bundle];
+    list = Array.isArray(list) ? list : list ? [list] : [];
+    const srcIdx = list.findIndex((v) => v.file === sourceFile);
+    if (srcIdx < 0) return res.status(404).json({ error: "Source take not found" });
+    const src = list[srcIdx];
+    const srcPath = path.join(GEN_DIR, sourceFile);
+    if (!fs.existsSync(srcPath)) return res.status(404).json({ error: "Source file missing on disk" });
+
+    // Clamp the range to the source clip and enforce a minimum length.
+    const srcDur = await probeDuration(sourceFile);
+    from = Math.max(0, from);
+    if (srcDur > 0) to = Math.min(to, srcDur);
+    if (to - from < 0.1) return res.status(400).json({ error: "Trim range must be at least 0.1s ('to' after 'from')" });
+
+    fs.mkdirSync(GEN_DIR, { recursive: true });
+    // Name derived from the source, versioned so repeated trims never collide and
+    // the original is always kept: <sourceBase>_trimN.mp4.
+    const base = sourceFile.replace(/\.mp4$/i, "");
+    const trimCount = list.filter((v) => v.kind === "trim" && v.sourceFile === sourceFile).length;
+    const file = `${base}_trim${trimCount + 1}.mp4`;
+
+    // -ss before -i seeks fast AND accurately when re-encoding; -t (duration) is
+    // unambiguous (unlike -to, whose reference point depends on -ss placement).
+    await execFileP("ffmpeg", [
+      "-y", "-ss", String(from), "-i", srcPath, "-t", String(to - from),
+      "-c:v", "libx264", "-preset", "veryfast", "-crf", "18",
+      "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart",
+      path.join(GEN_DIR, file),
+    ]);
+
+    const trim = { start: Number(from.toFixed(3)), end: Number(to.toFixed(3)) };
+    const take = {
+      file,
+      name: `${src.name || "gen"} · trim`,
+      kind: "trim",
+      sourceFile,
+      trim,
+      jobId: src.jobId || null,
+      ts: new Date().toISOString(),
+    };
+    // Insert right after the source so the trim card sits next to its original in
+    // the carousel; not selected on creation (the user picks it in the UI).
+    list.splice(srcIdx + 1, 0, take);
+    db.video[bundle] = list;
+    writeDB(db);
+    res.json({ ok: true, bundle, file, name: take.name, kind: "trim", trim, count: list.length, url: "/gen/" + file });
   } catch (e) {
     res.status(500).json({ error: String(e.message || e) });
   }

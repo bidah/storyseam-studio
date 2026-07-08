@@ -268,6 +268,20 @@ export function renderEpisodeMessage(bundle, prompt) {
     .join("\n");
 }
 
+// Build the chat turn that generates the granular shot list from the signed
+// script. Routed through the agent (the shot-list skill) like the Render buttons.
+export function generateShotListMessage() {
+  return [
+    `Generate the shot list from the script now — the pinned draft is signed.`,
+    `Load the shot-list skill and follow it: call get_script, break the screenplay into an` +
+      ` ordered list of short (~2-4s) shots, each with beat/location, camera, action,` +
+      ` dialogue, an audio-sync note, and a Seedance prompt, then` +
+      ` call save_shotlist. Do NOT render any video and do NOT pack the bundles yourself —` +
+      ` the app auto-packs into <=15s multishots. When done, tell me how many shots you wrote` +
+      ` and how many <=15s multishots they pack into.`,
+  ].join("\n");
+}
+
 // Build the chat turn that (re)stitches the complete cut. Routed through the
 // agent — like every other mutation — so it uses the same get_cuts → stitch_cuts
 // flow (which runs ffmpeg locally) and picks up whatever takes are currently
@@ -298,6 +312,25 @@ export function scoreCutMessage(range) {
     `Load the complete-cut skill and call score_cut to overlay the Sound Studio` +
       ` background-music cues UNDER the stitched cut at a low bed level so the baked-in` +
       ` dialogue and SFX stay dominant. Keep the previous versions for A/B.`,
+  ].join("\n");
+}
+
+// Build the chat turn that trims a single take to an in/out range. Routed through
+// the agent (trim-video skill → trim_video → ffmpeg on the server) so the trim is
+// saved as a NEW version alongside the original and shows up as an extra card in
+// the bundle's carousel. `sourceName` is only for a human-readable summary.
+export function trimMessage(bundleId, sourceFile, from, to, sourceName) {
+  const s = (n) => Number(n).toFixed(2);
+  const label = sourceName ? `${sourceName} (${sourceFile})` : sourceFile;
+  return [
+    `Trim the ${label} take of bundle ${bundleId} to ${s(from)}s → ${s(to)}s now.`,
+    `Load the trim-video skill and call trim_video with bundle="${bundleId}",` +
+      ` sourceFile="${sourceFile}", from=${s(from)}, to=${s(to)}. This runs ffmpeg` +
+      ` to cut that sub-range and saves it as a NEW "trim" version next to the` +
+      ` original (the original stays in history). It appears as an extra selectable` +
+      ` card in this bundle's carousel with a TRIM VERSION badge. It's a local cut,` +
+      ` not a Higgsfield render, so no confirmation is needed — just do it and tell` +
+      ` me when the trim is ready.`,
   ].join("\n");
 }
 

@@ -5,7 +5,7 @@ import {
   Copy, Pencil, ExternalLink, Leaf, Sparkles, TriangleAlert, Circle,
   Heart, Music, Save, Clock, Download, Trash2,
   PenLine, FileText, Image as ImageIcon, Clapperboard, Sun, Moon,
-  Loader2, Wand2, LogOut, User, History,
+  Loader2, Wand2, LogOut, User, History, Scissors, Layers, Film,
 } from "lucide-react";
 
 import { Glowing } from "glowing";
@@ -17,7 +17,7 @@ import LoginGate from "@/components/Login";
 import ScriptEditor from "@/components/ScriptEditor";
 import {
   AgentProvider, useAgent, agentIsBusy, renderSoundMessage, renderAllPendingMessage,
-  renderEpisodeMessage, stitchCutMessage, scoreCutMessage,
+  renderEpisodeMessage, stitchCutMessage, scoreCutMessage, trimMessage,
 } from "@/components/AgentProvider";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -808,6 +808,14 @@ function RefPickerModal({ bundle, folders, picked, flat, open, onAdd, onRemove, 
  * Rendered generations rail (per episode bundle)                   *
  * ---------------------------------------------------------------- */
 
+// Format seconds as m:ss.d for the trim readout.
+const fmtDur = (s) => {
+  if (!Number.isFinite(s)) return "0:00";
+  const m = Math.floor(s / 60);
+  const r = s - m * 60;
+  return `${m}:${r.toFixed(1).padStart(4, "0")}`;
+};
+
 function EpVideoRail({ bundleId, vids, reloadKey, onToggleVideo }) {
   // Prefer the selected take so a picked video is never hidden behind a later
   // unselected one; fall back to the last render when nothing is selected.
@@ -825,6 +833,61 @@ function EpVideoRail({ bundleId, vids, reloadKey, onToggleVideo }) {
   const prev = () => setI((n) => (n - 1 + vids.length) % vids.length);
   const next = () => setI((n) => (n + 1) % vids.length);
   const selCount = vids.filter((v) => v.selected).length;
+  const isTrim = g.kind === "trim";
+
+  // Trim controls — drive the shared agent to run the ffmpeg cut (trim-video skill).
+  const agent = useAgent();
+  const agentBusy = agentIsBusy(agent);
+  const videoRef = useRef(null);
+  const [dur, setDur] = useState(0);
+  const [trimOpen, setTrimOpen] = useState(false);
+  const [range, setRange] = useState([0, 0]);
+  const [trimErr, setTrimErr] = useState(null);
+
+  // Reset the trim panel whenever the shown clip changes.
+  useEffect(() => {
+    setTrimOpen(false);
+    setTrimErr(null);
+    setDur(0);
+    setRange([0, 0]);
+  }, [g.url]);
+
+  const onMeta = (e) => {
+    const d = e.currentTarget.duration;
+    if (Number.isFinite(d) && d > 0) {
+      setDur(d);
+      setRange([0, d]);
+    }
+  };
+
+  // Drag either handle → scrub the <video> to that frame so the in/out point is
+  // visible. Seeks to whichever handle moved (the out frame while dragging right,
+  // the in frame while dragging left).
+  const onScrub = ([a, b]) => {
+    let lo = Math.min(a, b);
+    let hi = Math.max(a, b);
+    if (hi - lo < 0.1) hi = Math.min(dur, lo + 0.1);
+    const target = Math.abs(hi - range[1]) >= Math.abs(lo - range[0]) ? hi : lo;
+    setRange([lo, hi]);
+    const v = videoRef.current;
+    if (v) {
+      v.pause();
+      try { v.currentTime = Math.min(target, Math.max(0, dur - 0.05)); } catch { /* not seekable yet */ }
+    }
+  };
+
+  const trimLen = range[1] - range[0];
+  const canTrim = dur > 0 && trimLen >= 0.1 && !agentBusy;
+  const doTrim = async () => {
+    setTrimErr(null);
+    try {
+      await agent.send({ message: trimMessage(bundleId, g.file, range[0], range[1], g.name) });
+      setTrimOpen(false);
+    } catch (e) {
+      setTrimErr(String(e.message || e));
+    }
+  };
+
   return (
     <div className="rounded-xl border bg-muted/30 p-3">
       <div className="mb-2 flex items-center justify-between gap-2">
@@ -835,13 +898,22 @@ function EpVideoRail({ bundleId, vids, reloadKey, onToggleVideo }) {
           )}
         </span>
         <div className="flex shrink-0 items-center gap-1.5">
+          <Button
+            variant={trimOpen ? "default" : "outline"}
+            size="icon-xs"
+            onClick={() => setTrimOpen((o) => !o)}
+            aria-label={trimOpen ? "Close trim" : "Trim this take"}
+            title="Trim this take"
+          >
+            <Scissors size={14} />
+          </Button>
           <Button variant="outline" size="icon-xs" onClick={prev} disabled={vids.length < 2} aria-label="Previous"><ChevronLeft size={14} /></Button>
           <span className="text-xs tabular-nums text-muted-foreground">{idx + 1} / {vids.length}</span>
           <Button variant="outline" size="icon-xs" onClick={next} disabled={vids.length < 2} aria-label="Next"><ChevronRight size={14} /></Button>
         </div>
       </div>
       <div className={cn("relative overflow-hidden rounded-lg", g.selected && "ring-2 ring-primary")}>
-        <video key={`${g.url}?v=${reloadKey}-${idx}`} controls preload="metadata" playsInline className="bg-black">
+        <video ref={videoRef} key={`${g.url}?v=${reloadKey}-${idx}`} controls preload="metadata" playsInline className="bg-black" onLoadedMetadata={onMeta}>
           <source src={`${g.url}?v=${reloadKey}`} type="video/mp4" />
         </video>
         <button
@@ -854,10 +926,48 @@ function EpVideoRail({ bundleId, vids, reloadKey, onToggleVideo }) {
         >
           <Check size={14} />
         </button>
+        {isTrim && (
+          <Badge variant="warning" className="absolute left-1/2 top-2 -translate-x-1/2 shrink-0 gap-1">
+            <Scissors size={11} /> trim version
+          </Badge>
+        )}
         {g.selected && (
           <Badge className="absolute right-2 top-2">selected</Badge>
         )}
       </div>
+
+      {trimOpen && (
+        <div className="mt-3 rounded-lg border bg-background/60 p-3">
+          <div className="mb-2 flex items-center justify-between gap-2 text-xs">
+            <span className="flex items-center gap-1.5 font-medium"><Scissors size={12} /> Trim</span>
+            <span className="tabular-nums text-muted-foreground">
+              {fmtDur(range[0])} <span className="text-muted-foreground/60">–</span> {fmtDur(range[1])}
+              <span className="ml-1.5 text-primary">({trimLen.toFixed(1)}s)</span>
+            </span>
+          </div>
+          <Slider
+            min={0}
+            max={dur || 0}
+            step={0.05}
+            value={range}
+            onValueChange={onScrub}
+            disabled={!dur}
+            aria-label="Trim in and out points"
+            className="my-3"
+          />
+          <p className="mb-2 text-[11px] leading-snug text-muted-foreground">
+            Drag the handles to set the start and end — the video scrubs to that frame. Creating a trim keeps the original and adds a new selectable version.
+          </p>
+          {trimErr && <ErrorNote>{trimErr}</ErrorNote>}
+          <div className="flex items-center justify-end gap-2">
+            <Button variant="ghost" size="sm" onClick={() => setTrimOpen(false)}>Cancel</Button>
+            <Button size="sm" onClick={doTrim} disabled={!canTrim}>
+              {agentBusy ? <><Loader2 size={13} className="animate-spin" /> Trimming…</> : <><Scissors size={13} /> Create trim</>}
+            </Button>
+          </div>
+        </div>
+      )}
+
       {vids.length > 1 && (
         <div className="mt-2 flex flex-wrap justify-center gap-1.5">
           {vids.map((v, k) => (
@@ -865,10 +975,11 @@ function EpVideoRail({ bundleId, vids, reloadKey, onToggleVideo }) {
               key={v.file || k}
               className={cn(
                 "size-2 rounded-full transition-colors",
+                v.kind === "trim" && "rotate-45 rounded-[1px]",
                 k === idx ? "bg-primary" : v.selected ? "bg-primary/50" : "bg-muted-foreground/30 hover:bg-muted-foreground/60"
               )}
               onClick={() => setI(k)}
-              title={`${v.name || `gen ${k + 1}`}${v.selected ? " — selected" : ""}`}
+              title={`${v.name || `gen ${k + 1}`}${v.kind === "trim" ? " (trim)" : ""}${v.selected ? " — selected" : ""}`}
               aria-label={v.name || `gen ${k + 1}`}
             />
           ))}
@@ -1330,38 +1441,59 @@ function Episode({ reloadKey, onView }) {
   const [prompts, setPrompts] = useState({});
   const [signoffs, setSignoffs] = useState({});
   const promptTimers = useRef({});
+  const agent = useAgent();
 
+  // A monotonic request id lets a newer load cancel a slower older one's
+  // setState (replaces the per-effect `alive` guard now that `load` is shared
+  // between the mount effect and the agent-turn refetch below).
+  const loadSeq = useRef(0);
+  const load = useCallback(async ({ background = false } = {}) => {
+    const seq = ++loadSeq.current;
+    if (!background) setLoading(true);
+    try {
+      const [ep, lib, fn, au] = await Promise.all([
+        fetch("/api/episode").then((r) => r.json()),
+        fetch("/api/library").then((r) => r.json()),
+        fetch("/api/final").then((r) => r.json()),
+        fetch("/api/audio").then((r) => r.json()),
+      ]);
+      if (seq !== loadSeq.current) return; // superseded by a newer load
+      if (ep.error) throw new Error(ep.error);
+      setData(ep.episode);
+      setVideos(ep.video || {});
+      setPrompts(ep.prompts || {});
+      setSignoffs(ep.signoffs || {});
+      setFolders(lib.folders || []);
+      const m = {};
+      for (const [k, v] of Object.entries(fn.episode || {})) m[k] = new Set(v);
+      setPicks(m);
+      setAudioRefs(au.audio || []);
+      const am = {};
+      for (const [k, v] of Object.entries(au.episode || {})) am[k] = new Set(v);
+      setAudioPicks(am);
+      setError(null);
+    } catch (e) {
+      if (seq === loadSeq.current) setError(String(e.message || e));
+    } finally {
+      // Only the DATA application above is seq-guarded (newest wins). The spinner
+      // must always be cleared by whichever foreground load set it — otherwise a
+      // background refetch that bumps the seq mid-flight strands `loading` at true.
+      if (!background) setLoading(false);
+    }
+  }, []);
+
+  // Mount + manual Refresh (reloadKey) → full load with the loading spinner.
   useEffect(() => {
-    let alive = true;
-    setLoading(true);
-    Promise.all([
-      fetch("/api/episode").then((r) => r.json()),
-      fetch("/api/library").then((r) => r.json()),
-      fetch("/api/final").then((r) => r.json()),
-      fetch("/api/audio").then((r) => r.json()),
-    ])
-      .then(([ep, lib, fn, au]) => {
-        if (!alive) return;
-        if (ep.error) throw new Error(ep.error);
-        setData(ep.episode);
-        setVideos(ep.video || {});
-        setPrompts(ep.prompts || {});
-        setSignoffs(ep.signoffs || {});
-        setFolders(lib.folders || []);
-        const m = {};
-        for (const [k, v] of Object.entries(fn.episode || {})) m[k] = new Set(v);
-        setPicks(m);
-        setAudioRefs(au.audio || []);
-        const am = {};
-        for (const [k, v] of Object.entries(au.episode || {})) am[k] = new Set(v);
-        setAudioPicks(am);
-      })
-      .catch((e) => alive && setError(String(e.message || e)))
-      .finally(() => alive && setLoading(false));
-    return () => {
-      alive = false;
-    };
-  }, [reloadKey]);
+    load();
+  }, [load, reloadKey]);
+
+  // After the agent finishes a turn it may have just created a trim take,
+  // attached a render, or changed a selection. Refetch in the BACKGROUND (no
+  // spinner, no unmount) so new cards — e.g. a TRIM VERSION — appear on the
+  // left rail without a manual Refresh or a page reload.
+  useEffect(() => {
+    if (agent.status === "ready") load({ background: true });
+  }, [agent.status, load]);
 
   const audioMap = useMemo(() => {
     const m = new Map();
@@ -1585,6 +1717,240 @@ function Episode({ reloadKey, onView }) {
           setConfirm(null);
         }}
       />
+    </div>
+  );
+}
+
+/* ---------------------------------------------------------------- *
+ * Shot list (granular shots → auto-packed ≤15s multishots)         *
+ * ---------------------------------------------------------------- */
+
+// One inline-editable shot field. Saves on blur (only when changed) via
+// PUT /api/shotlist/shot/:n and hands the fresh pack preview back up.
+function ShotField({ n, field, value, onSaved, multiline, mono, placeholder, rows = 2 }) {
+  const [v, setV] = useState(value ?? "");
+  useEffect(() => { setV(value ?? ""); }, [value]);
+  const commit = async () => {
+    if ((v ?? "") === (value ?? "")) return;
+    const body = field === "characters"
+      ? { characters: v.split(",").map((x) => x.trim()).filter(Boolean) }
+      : field === "dur"
+        ? { dur: Number(v) || 0 }
+        : { [field]: v };
+    try {
+      const res = await fetch(`/api/shotlist/shot/${n}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const json = await res.json();
+      if (res.ok) onSaved?.(json);
+    } catch { /* ignore — keeps the typed value */ }
+  };
+  const cls = cn(
+    "w-full resize-y rounded-md border border-transparent bg-transparent px-2 py-1 text-sm hover:border-border focus:border-primary focus:bg-background focus:outline-none",
+    mono && "font-mono",
+  );
+  return multiline ? (
+    <textarea rows={rows} className={cls} value={v} placeholder={placeholder}
+      onChange={(e) => setV(e.target.value)} onBlur={commit} />
+  ) : (
+    <input className={cls} value={v} placeholder={placeholder}
+      onChange={(e) => setV(e.target.value)} onBlur={commit} />
+  );
+}
+
+function ShotList({ reloadKey }) {
+  const agent = useAgent();
+  const agentBusy = agentIsBusy(agent);
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [rebuilding, setRebuilding] = useState(false);
+  // Which pack the left rail is filtering the body by (null = show every shot).
+  const [activePack, setActivePack] = useState(null);
+
+  const load = useCallback(async () => {
+    setError(null);
+    try {
+      const res = await fetch("/api/shotlist");
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "Failed to load");
+      setData(json);
+    } catch (e) {
+      setError(String(e.message || e));
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+  useEffect(() => { load(); }, [load, reloadKey]);
+  // The agent just wrote the shot list (save_shotlist) → refresh when it's done.
+  useEffect(() => { if (agent.status === "ready") load(); }, [agent.status, load]);
+
+  const rebuild = useCallback(async () => {
+    setRebuilding(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/shotlist/rebuild-from-episode", { method: "POST" });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "Rebuild failed");
+      setData(json);
+    } catch (e) {
+      setError(String(e.message || e));
+    } finally {
+      setRebuilding(false);
+    }
+  }, []);
+
+  const onSaved = useCallback((json) => {
+    // Server returns the updated shot + fresh packs; patch both in place.
+    setData((d) => {
+      if (!d) return d;
+      const shots = json.shot ? d.shots.map((s) => (s.n === json.shot.n ? json.shot : s)) : d.shots;
+      return { ...d, shots, packs: json.packs || d.packs };
+    });
+  }, []);
+
+  if (loading) return <Spinner label="loading shot list…" />;
+  if (!data) return <ErrorNote>{error}</ErrorNote>;
+
+  const shots = data.shots || [];
+  const packs = data.packs || [];
+  const runtime = shots.reduce((a, s) => a + (Number(s.dur) || 0), 0);
+  const packById = new Map();
+  packs.forEach((p) => p.shotIds.forEach((id) => packById.set(id, p.id)));
+
+  // Clicking a pack in the left rail filters the body to just that pack's shots;
+  // clicking it again shows all. Guard the selection so a pack that vanished
+  // after an edit/rebuild falls back to "show all" instead of an empty body.
+  const effPack = activePack && packs.some((p) => p.id === activePack) ? activePack : null;
+  const visibleShots = effPack ? shots.filter((s) => packById.get(s.id) === effPack) : shots;
+
+  // Group the visible shots by beat, in order.
+  const beats = [];
+  for (const s of visibleShots) {
+    const last = beats[beats.length - 1];
+    if (!last || last.beat !== s.beat) beats.push({ beat: s.beat, beatTitle: s.beatTitle, shots: [s] });
+    else last.shots.push(s);
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-col gap-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h2 className="text-xl font-semibold tracking-tight">Shot list</h2>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button variant="outline" onClick={rebuild} disabled={rebuilding}>
+              {rebuilding ? <><Loader2 size={13} className="animate-spin" /> rebuilding…</> : <><RefreshCw size={13} /> rebuild from current episode</>}
+            </Button>
+          </div>
+        </div>
+        <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+          <Badge variant="outline">{shots.length} shots</Badge>
+          <Badge variant="success">~{fmtTime(runtime)} total</Badge>
+          <Badge variant="info"><Layers size={11} /> {packs.length} multishot packs</Badge>
+          {agentBusy && <Badge variant="warning"><Loader2 size={11} className="animate-spin" /> agent working…</Badge>}
+          <span>the granular shots auto-pack into ≤15s multishots (left rail — click one to filter); generate them from a signed script on the Script tab</span>
+        </div>
+      </div>
+
+      {error && <ErrorNote>{error}</ErrorNote>}
+
+      {shots.length === 0 ? (
+        <div className="rounded-xl border border-dashed p-6 text-center">
+          <Empty>no shots yet — sign the script and press “generate shot list”, or rebuild from the current episode.</Empty>
+        </div>
+      ) : (
+        <div className="flex flex-col gap-4 md:flex-row md:items-start">
+          {/* Shots, grouped by beat */}
+          <div className="min-w-0 flex-1 space-y-4">
+            {beats.map((b) => (
+              <Panel
+                key={b.beat + b.shots[0].id}
+                title={<span className="flex items-center gap-2"><Film size={15} className="text-primary" /> {b.beatTitle || b.beat}</span>}
+                meta={<Badge variant="outline">{b.shots.length} shots</Badge>}
+              >
+                <div className="space-y-3">
+                  {b.shots.map((s) => (
+                    <div key={s.n} className="rounded-lg border p-2.5">
+                      <div className="mb-1.5 flex flex-wrap items-center gap-2 text-xs">
+                        <Badge variant="secondary" className="font-mono">shot {s.id}</Badge>
+                        {packById.get(s.id) && <Badge variant="info" className="font-mono">{packById.get(s.id)}</Badge>}
+                        <span className="text-muted-foreground">{s.location}</span>
+                        <span className="ml-auto flex items-center gap-1 text-muted-foreground">
+                          <span className="w-10"><ShotField n={s.n} field="dur" value={s.dur} onSaved={onSaved} /></span>s
+                        </span>
+                      </div>
+                      <div className="grid gap-1.5 sm:grid-cols-2">
+                        <label className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Location
+                          <ShotField n={s.n} field="location" value={s.location} onSaved={onSaved} mono /></label>
+                        <label className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Characters
+                          <ShotField n={s.n} field="characters" value={(s.characters || []).join(", ")} onSaved={onSaved} placeholder="Sara, Helena" /></label>
+                        <label className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground sm:col-span-2">Camera
+                          <ShotField n={s.n} field="camera" value={s.camera} onSaved={onSaved} /></label>
+                        <label className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground sm:col-span-2">Action
+                          <ShotField n={s.n} field="action" value={s.action} onSaved={onSaved} multiline /></label>
+                        <label className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Dialogue
+                          <ShotField n={s.n} field="dialogue" value={s.dialogue} onSaved={onSaved} multiline /></label>
+                        <label className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Audio sync
+                          <ShotField n={s.n} field="audioSync" value={s.audioSync} onSaved={onSaved} multiline /></label>
+                        <label className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground sm:col-span-2">Seedance prompt
+                          <ShotField n={s.n} field="prompt" value={s.prompt} onSaved={onSaved} multiline rows={4} /></label>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </Panel>
+            ))}
+          </div>
+
+          {/* ≤15s pack rail — pinned on the LEFT within the shot-list wrapper and
+              scrollable on its own (the list gets long). Click a pack to filter
+              the body to just its shots; click again to show all. */}
+          <aside className="shrink-0 md:order-first md:sticky md:top-[73px] md:w-[260px] md:self-start md:max-h-[calc(100dvh-92px)] md:overflow-y-auto lg:w-[300px]">
+            <Panel title={<span className="flex items-center gap-2"><Layers size={15} className="text-primary" /> Multishot packs</span>} meta={<Badge variant="outline">{packs.length}</Badge>}>
+              {effPack && (
+                <button
+                  type="button"
+                  onClick={() => setActivePack(null)}
+                  className="mb-1.5 flex w-full items-center justify-center gap-1 rounded-md border border-dashed px-2 py-1 text-[11px] text-muted-foreground transition-colors hover:bg-accent"
+                >
+                  <X size={11} /> showing {effPack} — show all
+                </button>
+              )}
+              <ol className="space-y-1.5">
+                {packs.map((p) => {
+                  const on = effPack === p.id;
+                  return (
+                    <li key={p.id}>
+                      <button
+                        type="button"
+                        onClick={() => setActivePack((cur) => (cur === p.id ? null : p.id))}
+                        aria-pressed={on}
+                        title={on ? "show all shots" : `show only ${p.id}'s shots`}
+                        className={cn(
+                          "flex w-full items-center gap-2 rounded-md border px-2.5 py-1.5 text-left text-xs transition-colors",
+                          on ? "border-primary bg-primary/10 ring-1 ring-primary/40" : "hover:border-primary/50 hover:bg-accent",
+                        )}
+                      >
+                        <Badge variant="secondary" className="font-mono">{p.id}</Badge>
+                        <span className="font-mono text-muted-foreground">{p.from}–{p.to}</span>
+                        <span className="ml-auto flex items-center gap-1.5">
+                          <span className="text-muted-foreground">{p.count} shots</span>
+                          <Badge variant={p.durationEst > 15 ? "warning" : "success"}>{p.durationEst}s</Badge>
+                        </span>
+                      </button>
+                    </li>
+                  );
+                })}
+              </ol>
+              <p className="mt-2 px-1 text-[11px] text-muted-foreground">
+                click a pack to show only its shots. packing is automatic — a pack never crosses a beat/location or exceeds 15s. these become the Episode bundles.
+              </p>
+            </Panel>
+          </aside>
+        </div>
+      )}
     </div>
   );
 }
@@ -3177,8 +3543,11 @@ function SoundStudio({ reloadKey }) {
 
 const TABS = [
   { value: "script", label: "Script" },
-  { value: "shots", label: "Shots" },
-  { value: "multishot", label: "Multi-shot" },
+  { value: "shotlist", label: "Shot list" },
+  // Sample-code tabs — kept wired up (routes/content still work) but hidden from
+  // the top menu. Drop `hidden` to surface them again.
+  { value: "shots", label: "Shots", hidden: true },
+  { value: "multishot", label: "Multi-shot", hidden: true },
   { value: "episode", label: "Episode (48)" },
   { value: "cuts", label: "Complete cuts" },
   { value: "library", label: "Library" },
@@ -3296,7 +3665,7 @@ function UserMenu() {
 }
 
 export default function App() {
-  const [view, setView] = useState("shots");
+  const [view, setView] = useState("script");
   const [shots, setShots] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -3396,7 +3765,7 @@ export default function App() {
             </div>
 
             <TabsList className="h-9">
-              {TABS.map((t) => (
+              {TABS.filter((t) => !t.hidden).map((t) => (
                 <TabsTrigger
                   key={t.value}
                   value={t.value}
@@ -3424,6 +3793,8 @@ export default function App() {
         <main className="mx-auto max-w-[1500px] px-4 py-6 md:px-6">
           {view === "script" ? (
             <ScriptEditor reloadKey={reloadKey} liveKey={scriptEdits} />
+          ) : view === "shotlist" ? (
+            <ShotList reloadKey={reloadKey} />
           ) : view === "sounds" ? (
             <SoundStudio reloadKey={reloadKey} />
           ) : view === "library" ? (

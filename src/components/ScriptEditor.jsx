@@ -15,15 +15,38 @@ import { TextStyle } from "@tiptap/extension-text-style";
 import { Color } from "@tiptap/extension-color";
 import { Placeholder } from "@tiptap/extension-placeholder";
 import { TaskList, TaskItem } from "@tiptap/extension-list";
-import { Check, Loader2, Cloud, PenLine, Save, Pencil } from "lucide-react";
+import {
+  Check, Loader2, Cloud, PenLine, Save, Pencil,
+  GitBranch, Plus, Trash2, Pin, CircleCheck, ListChecks, Lock,
+} from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { CLIENT_ID } from "@/lib/clientId";
+import { useAgent, agentIsBusy, generateShotListMessage } from "@/components/AgentProvider";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
+import {
+  Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger,
+} from "@/components/ui/dialog";
 import {
   Screenplay, SlashCommand, buildInitialContent,
   SP_TYPES, SP_LABELS, SP_PLACEHOLDERS,
 } from "@/components/notes";
+
+// "2m ago" / "just now" — compact relative time for the drafts list.
+function relTime(iso) {
+  if (!iso) return "";
+  const then = new Date(iso).getTime();
+  if (Number.isNaN(then)) return "";
+  const s = Math.round((Date.now() - then) / 1000);
+  if (s < 45) return "just now";
+  const m = Math.round(s / 60);
+  if (m < 60) return `${m}m ago`;
+  const h = Math.round(m / 60);
+  if (h < 24) return `${h}h ago`;
+  return `${Math.round(h / 24)}d ago`;
+}
 
 /* ---------------------------------------------------------------- *
  * Title — a click-to-edit field that sits above the editor box     *
@@ -101,11 +124,230 @@ function TitleField({ value, onCommit }) {
 }
 
 /* ---------------------------------------------------------------- *
+ * Version control — drafts. The "pinned" draft is the active one    *
+ * that both this editor AND the chat agent read/write.              *
+ * ---------------------------------------------------------------- */
+
+async function draftsApi(path, method, body) {
+  const res = await fetch(path, {
+    method,
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ...body, clientId: CLIENT_ID }),
+  });
+  if (!res.ok) {
+    const d = await res.json().catch(() => ({}));
+    throw new Error(d.error || `${method} ${path} failed`);
+  }
+  return res.json();
+}
+
+function DraftControls({ drafts, pinnedId, currentName, flush, reload }) {
+  const [open, setOpen] = useState(false);
+  const [name, setName] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState(null);
+
+  const run = async (fn) => {
+    setBusy(true);
+    setErr(null);
+    try {
+      await flush?.(); // never lose an in-flight edit to the current draft
+      await fn();
+      await reload();
+    } catch (e) {
+      setErr(String(e.message || e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const createDraft = () =>
+    run(async () => {
+      await draftsApi("/api/script/drafts", "POST", { name: name.trim() || undefined });
+      setName("");
+      setOpen(false); // new draft is now pinned — editor remounts on it
+    });
+  const pin = (id) => {
+    if (id === pinnedId) return;
+    run(() => draftsApi("/api/script/pin", "POST", { id }));
+    setOpen(false);
+  };
+  const remove = (id) =>
+    run(() => draftsApi(`/api/script/drafts/${id}`, "DELETE", {}));
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button variant="outline" size="sm" className="h-7 gap-1.5 text-xs">
+          <GitBranch size={13} /> Version control draft
+          <Badge variant="secondary" className="ml-1 font-normal">{currentName}</Badge>
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <GitBranch size={16} /> Version control — drafts
+          </DialogTitle>
+          <DialogDescription>
+            Create a new draft to save the current version and keep writing on a fresh
+            one. The <strong>pinned</strong> draft is the active version — both this
+            editor and the chat agent read and write only the pinned draft.
+          </DialogDescription>
+        </DialogHeader>
+
+        {err && (
+          <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-1.5 text-xs text-destructive">
+            {err}
+          </div>
+        )}
+
+        {/* Create a new draft */}
+        <div className="rounded-lg border bg-muted/30 p-3">
+          <div className="mb-2 text-xs font-semibold text-muted-foreground">
+            Create a new draft
+          </div>
+          <div className="flex items-center gap-2">
+            <Input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && !busy && createDraft()}
+              placeholder={`Draft ${drafts.length + 1}`}
+              className="h-8"
+            />
+            <Button size="sm" className="h-8 shrink-0 gap-1.5" disabled={busy} onClick={createDraft}>
+              {busy ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
+              Create draft
+            </Button>
+          </div>
+          <p className="mt-1.5 text-[11px] text-muted-foreground">
+            Clones the current pinned draft, then pins the new one.
+          </p>
+        </div>
+
+        {/* Existing drafts — switch the pin or delete */}
+        <div className="space-y-1">
+          <div className="px-1 text-xs font-semibold text-muted-foreground">
+            Drafts ({drafts.length})
+          </div>
+          <div className="max-h-64 space-y-1 overflow-y-auto">
+            {[...drafts]
+              .sort((a, b) => (b.updatedAt || "").localeCompare(a.updatedAt || ""))
+              .map((d) => {
+                const isPinned = d.id === pinnedId;
+                return (
+                  <div
+                    key={d.id}
+                    className={cn(
+                      "flex items-center gap-2 rounded-md border px-2.5 py-1.5 text-sm",
+                      isPinned ? "border-primary/50 bg-primary/5" : "hover:bg-accent/40"
+                    )}
+                  >
+                    <button
+                      type="button"
+                      disabled={busy || isPinned}
+                      onClick={() => pin(d.id)}
+                      className="flex min-w-0 flex-1 items-center gap-2 text-left disabled:cursor-default"
+                      title={isPinned ? "Pinned (active)" : "Pin this draft"}
+                    >
+                      <Pin
+                        size={13}
+                        className={cn(
+                          "shrink-0",
+                          isPinned ? "fill-primary text-primary" : "text-muted-foreground"
+                        )}
+                      />
+                      <span className="truncate font-medium">{d.name}</span>
+                      {isPinned && (
+                        <Badge variant="secondary" className="shrink-0 text-[10px]">pinned</Badge>
+                      )}
+                      <span className="ml-auto shrink-0 pl-2 text-[11px] text-muted-foreground">
+                        {d.lineCount} lines · {relTime(d.updatedAt)}
+                      </span>
+                    </button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="size-6 shrink-0 text-muted-foreground hover:text-destructive"
+                      disabled={busy || drafts.length <= 1}
+                      onClick={() => remove(d.id)}
+                      aria-label={`Delete ${d.name}`}
+                      title={drafts.length <= 1 ? "Can't delete the only draft" : "Delete draft"}
+                    >
+                      <Trash2 size={13} />
+                    </Button>
+                  </div>
+                );
+              })}
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/* ---------------------------------------------------------------- *
  * The editor (mounted only once the initial content is loaded)     *
  * ---------------------------------------------------------------- */
 
-function Editor({ initial }) {
+// Pipeline gate on the Script toolbar: SIGN the pinned draft → unlock GENERATE
+// SHOT LIST (agent-driven, via the shot-list skill). Once a shot list already
+// exists, Generate is locked (no destructive re-run). `signed` is driven from
+// the parent so an autosave (which clears the server-side sign-off) drops it.
+function ShotlistGate({ draftId, signed, shotlistExists, onSignedChange }) {
+  const agent = useAgent();
+  const agentBusy = agentIsBusy(agent);
+  const [busy, setBusy] = useState(false);
+
+  const toggleSign = useCallback(async (next) => {
+    setBusy(true);
+    try {
+      const res = await fetch("/api/script/sign", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ signed: next }),
+      });
+      if (res.ok) onSignedChange(next);
+    } finally {
+      setBusy(false);
+    }
+  }, [onSignedChange]);
+
+  const generate = useCallback(() => {
+    agent.send({ message: generateShotListMessage() }).catch(() => {});
+  }, [agent]);
+
+  const genDisabled = agentBusy || !signed || shotlistExists;
+  const genTitle = agentBusy
+    ? "agent is busy"
+    : !signed
+      ? "sign the script first"
+      : shotlistExists
+        ? "a shot list already exists — edit it on the Shot list tab, or regenerate via chat"
+        : "ask the agent to break the script into a shot list";
+
+  return (
+    <div className="flex flex-wrap items-center gap-1.5">
+      {signed ? (
+        <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => toggleSign(false)} disabled={busy} title="Unsign to keep editing">
+          <CircleCheck size={13} className="text-primary" /> Signed
+        </Button>
+      ) : (
+        <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => toggleSign(true)} disabled={busy || !draftId} title="Sign this draft to unlock the shot list">
+          {busy ? <Loader2 size={13} className="animate-spin" /> : <CircleCheck size={13} />} Sign script
+        </Button>
+      )}
+      <Button size="sm" className="h-7 text-xs" onClick={generate} disabled={genDisabled} title={genTitle}>
+        {agentBusy ? <Loader2 size={13} className="animate-spin" /> : shotlistExists ? <Lock size={13} /> : <ListChecks size={13} />} Generate shot list
+      </Button>
+    </div>
+  );
+}
+
+function Editor({ initial, drafts, pinnedId, currentName, reload, signed: signedInit, shotlistExists, draftId }) {
   const [saveState, setSaveState] = useState("saved"); // "saved" | "saving" | "error"
+  // Local sign-off mirror: editing clears the server-side sign-off, so drop it
+  // whenever we autosave; the Sign button sets it back.
+  const [signed, setSigned] = useState(!!signedInit);
   const [spType, setSpType] = useState(null); // current screenplay type, or null
   const [title, setTitle] = useState(initial.title);
   const titleRef = useRef(initial.title);
@@ -115,6 +357,7 @@ function Editor({ initial }) {
   const saveNow = useCallback(async () => {
     clearTimeout(timer.current);
     setSaveState("saving");
+    setSigned(false); // an edit invalidates the sign-off (server clears it too)
     try {
       const res = await fetch("/api/script", {
         method: "PUT",
@@ -205,6 +448,21 @@ function Editor({ initial }) {
     <div className="mx-auto max-w-3xl space-y-3">
       {/* Toolbar */}
       <div className="sticky top-[57px] z-20 -mx-1 flex flex-wrap items-center gap-2 rounded-lg border bg-card/90 px-3 py-2 backdrop-blur supports-[backdrop-filter]:bg-card/70">
+        <DraftControls
+          drafts={drafts}
+          pinnedId={pinnedId}
+          currentName={currentName}
+          flush={saveNow}
+          reload={reload}
+        />
+        <span className="mx-0.5 h-5 w-px bg-border" aria-hidden />
+        <ShotlistGate
+          draftId={draftId}
+          signed={signed}
+          shotlistExists={shotlistExists}
+          onSignedChange={setSigned}
+        />
+        <span className="mx-0.5 h-5 w-px bg-border" aria-hidden />
         <span className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground">
           <PenLine size={13} /> Screenplay
         </span>
@@ -257,9 +515,12 @@ function Editor({ initial }) {
 export default function ScriptEditor({ reloadKey = 0, liveKey = 0 }) {
   const [stored, setStored] = useState(undefined); // undefined = loading
   const [error, setError] = useState(null);
+  const [bump, setBump] = useState(0); // local re-fetch after a draft op
+  const reload = useCallback(() => setBump((b) => b + 1), []);
 
-  // Re-fetch when the header Refresh bumps reloadKey, or when a live agent edit
-  // (over SSE) bumps liveKey — so agent writes appear without a manual refresh.
+  // Re-fetch when the header Refresh bumps reloadKey, when a live agent edit
+  // (over SSE) bumps liveKey, or after a local draft op (bump) — so agent writes
+  // and version-control changes appear without a manual refresh.
   useEffect(() => {
     let alive = true;
     fetch("/api/script")
@@ -269,7 +530,7 @@ export default function ScriptEditor({ reloadKey = 0, liveKey = 0 }) {
     return () => {
       alive = false;
     };
-  }, [reloadKey, liveKey]);
+  }, [reloadKey, liveKey, bump]);
 
   const initial = useMemo(
     () => (stored === undefined ? null : buildInitialContent(stored)),
@@ -290,7 +551,20 @@ export default function ScriptEditor({ reloadKey = 0, liveKey = 0 }) {
       </div>
     );
   }
-  // Remount the editor when the loaded document changes (Refresh or a live agent
-  // edit) so useEditor re-initializes with the new content.
-  return <Editor key={stored.updatedAt || `k${reloadKey}-${liveKey}`} initial={initial} />;
+  // Remount the editor when the pinned draft or its content changes (Refresh, a
+  // live agent edit, or switching/creating a draft) so useEditor re-initializes
+  // with the new content. Keying on pinnedId guarantees a remount on a switch.
+  return (
+    <Editor
+      key={`${stored.pinnedId || "d"}:${stored.updatedAt || `k${reloadKey}-${liveKey}`}`}
+      initial={initial}
+      drafts={stored.drafts || []}
+      pinnedId={stored.pinnedId}
+      currentName={stored.draftName || "Draft"}
+      reload={reload}
+      signed={stored.signed}
+      shotlistExists={stored.shotlistExists}
+      draftId={stored.draftId}
+    />
+  );
 }
