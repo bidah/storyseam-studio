@@ -47,6 +47,11 @@ import { Marker, MarkerIcon, MarkerContent } from "@/components/ui/marker";
 // render the thumbnails back into that turn's bubble.
 // ---------------------------------------------------------------------------
 
+// Where attachment uploads go. Defaults to the Cloudflare Worker
+// (VITE_UPLOAD_URL) — an R2-backed endpoint that also records each upload in
+// D1 — and falls back to the local Express endpoint when it isn't configured.
+const UPLOAD_ENDPOINT = import.meta.env.VITE_UPLOAD_URL || "/api/upload";
+
 function prettySize(n) {
   if (typeof n !== "number") return "";
   const kb = n / 1024;
@@ -325,7 +330,7 @@ export default function AgentChat() {
 
   async function uploadOne(file, id) {
     try {
-      const resp = await fetch("/api/upload", {
+      const resp = await fetch(UPLOAD_ENDPOINT, {
         method: "POST",
         headers: {
           "content-type": file.type || "application/octet-stream",

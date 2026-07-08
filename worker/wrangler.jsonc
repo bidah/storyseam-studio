@@ -1,0 +1,17 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "shot-studio-uploads",
+  "main": "src/index.js",
+  "compatibility_date": "2026-06-01",
+  "observability": { "enabled": true },
+  "r2_buckets": [
+    { "binding": "BUCKET", "bucket_name": "shot-studio-uploads" }
+  ],
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "shot-studio-uploads",
+      "database_id": "248c977c-1beb-4ae8-9995-c4959219bd49"
+    }
+  ]
+}
