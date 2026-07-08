@@ -268,6 +268,39 @@ export function renderEpisodeMessage(bundle, prompt) {
     .join("\n");
 }
 
+// Build the chat turn that (re)stitches the complete cut. Routed through the
+// agent — like every other mutation — so it uses the same get_cuts → stitch_cuts
+// flow (which runs ffmpeg locally) and picks up whatever takes are currently
+// selected. `count` and `range` are just context for the agent's summary.
+export function stitchCutMessage(range, count) {
+  const span = range?.from ? ` (${range.from} → ${range.to})` : "";
+  return [
+    `Re-stitch the complete cut${span} now.`,
+    `Load the complete-cut skill, call get_cuts to confirm the current stitch plan,` +
+      ` then stitch_cuts to concatenate the selected take of every bundle (in order).` +
+      ` Pick up whatever takes are selected right now — I just changed a selection on` +
+      ` the Episodes tab, so the new cut must reflect it. This mints a NEW version` +
+      ` (the previous ones are kept in history) and, if background music was already` +
+      ` added, the fresh cut is automatically re-scored so the newest version keeps` +
+      ` the music. Tell me the new version number when it's done.`,
+    count ? `\nExpecting ~${count} scenes in the cut.` : null,
+  ]
+    .filter((l) => l !== null)
+    .join("\n");
+}
+
+// Build the chat turn that scores the stitched cut (background music under the
+// dialogue/SFX). Routed through the agent so it uses score_cut.
+export function scoreCutMessage(range) {
+  const span = range?.from ? ` (${range.from} → ${range.to})` : "";
+  return [
+    `Add the background music to the complete cut${span} now — mint a new scored version.`,
+    `Load the complete-cut skill and call score_cut to overlay the Sound Studio` +
+      ` background-music cues UNDER the stitched cut at a low bed level so the baked-in` +
+      ` dialogue and SFX stay dominant. Keep the previous versions for A/B.`,
+  ].join("\n");
+}
+
 // Combined turn for "render every pending version in the studio".
 export function renderAllPendingMessage(tracks) {
   const pending = [];

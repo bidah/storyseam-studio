@@ -5,7 +5,7 @@ import {
   Copy, Pencil, ExternalLink, Leaf, Sparkles, TriangleAlert, Circle,
   Heart, Music, Save, Clock, Download, Trash2,
   PenLine, FileText, Image as ImageIcon, Clapperboard, Sun, Moon,
-  Loader2, Wand2, LogOut, User,
+  Loader2, Wand2, LogOut, User, History,
 } from "lucide-react";
 
 import { Glowing } from "glowing";
@@ -17,7 +17,7 @@ import LoginGate from "@/components/Login";
 import ScriptEditor from "@/components/ScriptEditor";
 import {
   AgentProvider, useAgent, agentIsBusy, renderSoundMessage, renderAllPendingMessage,
-  renderEpisodeMessage,
+  renderEpisodeMessage, stitchCutMessage, scoreCutMessage,
 } from "@/components/AgentProvider";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -619,11 +619,11 @@ function SigningModal({ bundle, signoff, open, onSign, onClose }) {
   const fmt = (at) => { try { return new Date(at).toLocaleString(); } catch { return at; } };
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent className="sm:max-w-2xl">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <PenLine size={16} /> Revision signing
-            <Badge variant="secondary" className="font-mono">{bundle.id}</Badge>
+          <DialogTitle className="flex flex-wrap items-center gap-2">
+            <PenLine size={16} className="shrink-0" /> Revision signing
+            <Badge variant="secondary" className="shrink-0 font-mono">{bundle.id}</Badge>
             <span className="font-normal text-muted-foreground">{bundle.beatTitle}</span>
           </DialogTitle>
         </DialogHeader>
@@ -1815,13 +1815,113 @@ function NowPlayingCut({ src, segs, music, withMusic, navigateTo }) {
   );
 }
 
+// One rendered complete-cut generation (a base stitch or a scored version),
+// shown as a card with the version number, the now-playing player, the frozen
+// setup it was baked from, and a download link. Every generation is immutable
+// and keeps its own object setup, so an old version always plays exactly as it
+// was rendered.
+function CutVersionCard({ gen, bump, navigateTo, latest, compact, olderCount, onOpenHistory }) {
+  const scored = gen.kind === "scored";
+  const when = gen.at ? new Date(gen.at).toLocaleString() : null;
+  const scenes = (gen.segments || []).filter((s) => s.file).length;
+  const src = `${gen.url}?v=${bump}`;
+  return (
+    <Panel
+      className={latest ? "border-primary/40" : undefined}
+      title={
+        <span className="flex items-center gap-2">
+          {scored ? <Music size={15} className="text-primary" /> : <Play size={15} className="text-primary" fill="currentColor" />}
+          <span className="font-mono">v{gen.v}</span>
+          <span className="text-muted-foreground">·</span>
+          {scored ? "with background music" : "stitched — no music"}
+        </span>
+      }
+      meta={
+        <div className="flex items-center gap-1.5">
+          {latest && <Badge variant="info">latest</Badge>}
+          {scored
+            ? <Badge variant="success">{Math.abs(gen.gainDb ?? -22)} dB bed · {gen.music?.length || 0} cues</Badge>
+            : <Badge variant="outline">{scenes} scenes · {fmtTime(gen.totalDuration)}</Badge>}
+        </div>
+      }
+    >
+      <div className="space-y-3">
+        <NowPlayingCut
+          src={src}
+          segs={gen.segments || []}
+          music={gen.music || []}
+          withMusic={scored}
+          navigateTo={navigateTo}
+        />
+        <div className="flex flex-wrap items-center justify-between gap-2 text-sm text-muted-foreground">
+          <span>
+            {gen.range?.from} → {gen.range?.to}
+            {scored
+              ? <> · {gen.music?.length || 0} cues ~{Math.abs(gen.gainDb ?? -22)} dB under dialogue &amp; SFX{when && <> · mixed {when}</>}</>
+              : <>{when && <> · stitched {when}</>}</>}
+          </span>
+          <a
+            className="inline-flex items-center gap-1 text-primary hover:underline"
+            href={src} target="_blank" rel="noreferrer" download
+          >
+            <Download size={13} /> download mp4 <ExternalLink size={12} />
+          </a>
+        </div>
+        {latest && !compact && olderCount > 0 && (
+          <button
+            type="button"
+            onClick={onOpenHistory}
+            className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+          >
+            <History size={12} /> {olderCount} older version{olderCount === 1 ? "" : "s"} in history
+          </button>
+        )}
+      </div>
+    </Panel>
+  );
+}
+
+// Modal archive of every complete-cut generation, newest first. Each keeps its
+// own preserved setup (takes, timecodes, music cues) so you can A/B any version.
+function CutHistoryDialog({ open, onOpenChange, history, bump, navigateTo }) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-h-[85vh] max-w-3xl overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <History size={16} /> Complete-cut history
+            <Badge variant="secondary">{history.length} version{history.length === 1 ? "" : "s"}</Badge>
+          </DialogTitle>
+        </DialogHeader>
+        {history.length === 0 ? (
+          <Empty>no versions rendered yet.</Empty>
+        ) : (
+          <div className="space-y-4">
+            {history.map((gen, idx) => (
+              <CutVersionCard
+                key={gen.v}
+                gen={gen}
+                bump={bump}
+                navigateTo={navigateTo}
+                latest={idx === 0}
+                compact
+              />
+            ))}
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function CompleteCuts({ reloadKey, navigateTo }) {
+  const agent = useAgent();
+  const agentBusy = agentIsBusy(agent);
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [stitching, setStitching] = useState(false);
-  const [scoring, setScoring] = useState(false);
   const [bump, setBump] = useState(0);
+  const [historyOpen, setHistoryOpen] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -1840,38 +1940,35 @@ function CompleteCuts({ reloadKey, navigateTo }) {
   useEffect(() => {
     load();
   }, [load, reloadKey]);
+  // Re-read the cut whenever the agent finishes a turn (it may have just run
+  // stitch_cuts / score_cut), and bust the <video> cache so the new mp4 shows.
+  useEffect(() => {
+    if (agent.status === "ready") {
+      load();
+      setBump((b) => b + 1);
+    }
+  }, [agent.status, load]);
 
+  // Stitching/scoring runs THROUGH the agent chat (get_cuts → stitch_cuts /
+  // score_cut), like every other mutation — the agent runs ffmpeg locally and
+  // picks up the takes selected right now, so a fresh Episodes-tab pick is honored.
   const stitch = useCallback(async () => {
-    setStitching(true);
     setError(null);
     try {
-      const res = await fetch("/api/episode/stitch", { method: "POST" });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error || "Stitch failed");
-      await load();
-      setBump((b) => b + 1);
+      await agent.send({ message: stitchCutMessage(data?.range, (data?.segments || []).filter((s) => s.file).length) });
     } catch (e) {
       setError(String(e.message || e));
-    } finally {
-      setStitching(false);
     }
-  }, [load]);
+  }, [agent, data]);
 
   const score = useCallback(async () => {
-    setScoring(true);
     setError(null);
     try {
-      const res = await fetch("/api/episode/score", { method: "POST" });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error || "Add music failed");
-      await load();
-      setBump((b) => b + 1);
+      await agent.send({ message: scoreCutMessage(data?.range) });
     } catch (e) {
       setError(String(e.message || e));
-    } finally {
-      setScoring(false);
     }
-  }, [load]);
+  }, [agent, data]);
 
   if (loading) return <Spinner label="loading cuts…" />;
   if (!data) return <ErrorNote>{error}</ErrorNote>;
@@ -1881,18 +1978,10 @@ function CompleteCuts({ reloadKey, navigateTo }) {
   const missing = segs.filter((s) => s.missing);
   const fallbacks = usable.filter((s) => s.fallback);
   const total = usable.reduce((a, s) => a + s.duration, 0);
-  const out = data.output;
   const music = data.music || [];
-  const scoredVersions = out?.scoredVersions || [];
-  const scored = scoredVersions[0]; // newest
-  // All generations (base stitch + each scored version) as one list, sorted by
-  // creation time NEWEST-FIRST so the most-recently rendered is the top card.
-  const generations = out
-    ? [
-        { key: "stitch", kind: "stitch", at: out.stitchedAt, url: out.url },
-        ...scoredVersions.map((sv) => ({ key: `v${sv.v}`, kind: "scored", at: sv.createdAt, url: sv.url, sv })),
-      ].sort((a, b) => new Date(b.at || 0).getTime() - new Date(a.at || 0).getTime())
-    : [];
+  const history = data.history || [];     // every generation, newest-first
+  const out = data.output;                // the latest generation (or null)
+  const olderCount = Math.max(0, history.length - 1);
 
   return (
     <div className="space-y-4">
@@ -1900,11 +1989,14 @@ function CompleteCuts({ reloadKey, navigateTo }) {
         <div className="flex flex-wrap items-center justify-between gap-3">
           <h2 className="text-xl font-semibold tracking-tight">Complete cut · {data.range.from} → {data.range.to}</h2>
           <div className="flex flex-wrap items-center gap-2">
-            <Button onClick={stitch} disabled={stitching || usable.length === 0}>
-              {stitching ? <><Loader2 size={13} className="animate-spin" /> stitching…</> : out ? <><RefreshCw size={13} /> re-stitch</> : <><Play size={13} fill="currentColor" /> stitch selected takes</>}
+            <Button variant="ghost" onClick={() => setHistoryOpen(true)} disabled={history.length === 0} title={history.length === 0 ? "no versions yet" : `${history.length} version${history.length === 1 ? "" : "s"} rendered`}>
+              <History size={13} /> history{history.length > 0 && <Badge variant="secondary" className="ml-1">{history.length}</Badge>}
             </Button>
-            <Button variant="outline" onClick={score} disabled={scoring || !out || music.length === 0} title={!out ? "stitch the cut first" : music.length === 0 ? "no rendered music cues" : "mix the background music under the cut"}>
-              {scoring ? <><Loader2 size={13} className="animate-spin" /> mixing…</> : <><Music size={13} /> {scored ? "add music version" : "add background music"}</>}
+            <Button onClick={stitch} disabled={agentBusy || usable.length === 0} title={agentBusy ? "agent is busy — finishing the current turn" : usable.length === 0 ? "no rendered takes to stitch" : "asks the agent to (re)build the complete cut as a new version"}>
+              {agentBusy ? <><Loader2 size={13} className="animate-spin" /> agent working…</> : out ? <><RefreshCw size={13} /> re-stitch</> : <><Play size={13} fill="currentColor" /> stitch selected takes</>}
+            </Button>
+            <Button variant="outline" onClick={score} disabled={agentBusy || !out || music.length === 0} title={agentBusy ? "agent is busy — finishing the current turn" : !out ? "stitch the cut first" : music.length === 0 ? "no rendered music cues" : "mix the background music under the cut as a new version"}>
+              {agentBusy ? <><Loader2 size={13} className="animate-spin" /> agent working…</> : <><Music size={13} /> {history.some((g) => g.kind === "scored") ? "add music version" : "add background music"}</>}
             </Button>
           </div>
         </div>
@@ -1920,97 +2012,22 @@ function CompleteCuts({ reloadKey, navigateTo }) {
       {error && <ErrorNote>{error}</ErrorNote>}
 
       {out ? (
-        <div className="space-y-4">
-          {/* One list of generations — the base stitched cut + each scored
-              version — sorted NEWEST-FIRST, so the most recent render is the
-              top card (tagged "newest"). */}
-          {generations.map((g, idx) => {
-            const newest = idx === 0;
-            const cardClass = newest ? "border-primary/40" : undefined;
-            if (g.kind === "stitch") {
-              return (
-                <Panel
-                  key={g.key}
-                  className={cardClass}
-                  title={<span className="flex items-center gap-2"><Play size={15} className="text-primary" fill="currentColor" /> Stitched cut — no music</span>}
-                  meta={
-                    <div className="flex items-center gap-1.5">
-                      {newest && <Badge variant="info">newest</Badge>}
-                      <Badge variant="outline">{usable.length} scenes · {fmtTime(out.totalDuration ?? total)}</Badge>
-                    </div>
-                  }
-                >
-                  <div className="space-y-3">
-                    <NowPlayingCut
-                      src={`${out.url}?v=${bump}`}
-                      segs={out.segments || segs}
-                      music={music}
-                      withMusic={false}
-                      navigateTo={navigateTo}
-                    />
-                    <div className="text-sm text-muted-foreground">
-                      {out.range?.from || data.range.from} → {out.range?.to || data.range.to}
-                      {out.stitchedAt && <> · stitched {new Date(out.stitchedAt).toLocaleString()}</>}
-                    </div>
-                    <a
-                      className="inline-flex items-center gap-1 text-sm text-primary hover:underline"
-                      href={`${out.url}?v=${bump}`} target="_blank" rel="noreferrer" download
-                    >
-                      <Download size={13} /> download mp4 <ExternalLink size={12} />
-                    </a>
-                  </div>
-                </Panel>
-              );
-            }
-            const sv = g.sv;
-            return (
-              <Panel
-                key={g.key}
-                className={cardClass}
-                title={<span className="flex items-center gap-2"><Music size={15} className="text-primary" /> Scored v{sv.v} — with background music</span>}
-                meta={
-                  <div className="flex items-center gap-1.5">
-                    {newest && <Badge variant="info">newest</Badge>}
-                    <Badge variant="success">{Math.abs(sv.gainDb ?? -14)} dB bed · {sv.music?.length || 0} cues</Badge>
-                  </div>
-                }
-              >
-                <div className="space-y-3">
-                  <NowPlayingCut
-                    src={`${sv.url}?v=${bump}`}
-                    segs={sv.segments || out.segments || segs}
-                    music={sv.music || music}
-                    withMusic
-                    navigateTo={navigateTo}
-                  />
-                  <div className="text-sm text-muted-foreground">
-                    {sv.music?.length || 0} music cues ~{Math.abs(sv.gainDb ?? -14)} dB under the dialogue &amp; SFX
-                    {sv.createdAt && <> · mixed {new Date(sv.createdAt).toLocaleString()}</>}
-                  </div>
-                  <a
-                    className="inline-flex items-center gap-1 text-sm text-primary hover:underline"
-                    href={`${sv.url}?v=${bump}`} target="_blank" rel="noreferrer" download
-                  >
-                    <Download size={13} /> download mp4 <ExternalLink size={12} />
-                  </a>
-                </div>
-              </Panel>
-            );
-          })}
-
-          {music.length > 0 && scoredVersions.length === 0 && (
-            <div className="rounded-xl border border-dashed p-4 text-center text-sm text-muted-foreground">
-              <span className="flex items-center justify-center gap-1.5">
-                <Music size={13} /> {music.length} background-music cues ready — press <strong className="text-foreground">add background music</strong> to render a scored version as the next card.
-              </span>
-            </div>
-          )}
-        </div>
+        <CutVersionCard gen={out} bump={bump} navigateTo={navigateTo} latest olderCount={olderCount} onOpenHistory={() => setHistoryOpen(true)} />
       ) : (
         <div className="rounded-xl border border-dashed p-6 text-center">
           <Empty>not stitched yet — press “stitch selected takes” to build the {data.range.from} → {data.range.to} cut.</Empty>
         </div>
       )}
+
+      {out && out.kind !== "scored" && music.length > 0 && (
+        <div className="rounded-xl border border-dashed p-4 text-center text-sm text-muted-foreground">
+          <span className="flex items-center justify-center gap-1.5">
+            <Music size={13} /> {music.length} background-music cues ready — press <strong className="text-foreground">add background music</strong> to render a scored version (it becomes the new latest version).
+          </span>
+        </div>
+      )}
+
+      <CutHistoryDialog open={historyOpen} onOpenChange={setHistoryOpen} history={history} bump={bump} navigateTo={navigateTo} />
 
       <Panel title={`Stitch order (${usable.length} scenes)`}>
         <ol className="space-y-1.5">

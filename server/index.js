@@ -918,6 +918,7 @@ app.get("/api/episode", (req, res) => {
     if (!fs.existsSync(EPISODE_MANIFEST)) return res.json({ episode: null });
     const manifest = JSON.parse(fs.readFileSync(EPISODE_MANIFEST, "utf8"));
     const db = readDB();
+    if (normalizeVideoSelections(db)) writeDB(db); // heal any stale multi-selection
     // Attach a list of rendered clips (newest last) for every bundle that has any
     // on disk. db.video[id] is an array of generations; tolerate the old single
     // object shape too.
@@ -945,8 +946,13 @@ app.post("/api/episode/video-select", (req, res) => {
     const g = arr.find((v) => v.file === file);
     if (!g) return res.status(404).json({ error: "Generation not found" });
     g.selected = !!selected;
-    // Single-selection: picking a take clears any other selected take in the bundle.
-    if (g.selected) arr.forEach((v) => { if (v.file !== file) v.selected = false; });
+    // Single-selection: picking a take clears any other selected take in the
+    // bundle and stamps WHEN it was picked, so the most recent pick wins at
+    // stitch time even if stale flags linger.
+    if (g.selected) {
+      g.selectedAt = new Date().toISOString();
+      arr.forEach((v) => { if (v.file !== file) v.selected = false; });
+    }
     db.video[bundle] = arr;
     writeDB(db);
     res.json({ ok: true, bundle, file, selected: g.selected });
@@ -965,14 +971,42 @@ const bundleNum = (id) => {
   return m ? Number(m[1]) : 0;
 };
 
-// Pick the chosen take for a bundle: the one flagged `selected`, else the first
-// take that still exists on disk. Returns null when nothing is renderable.
+// Sort key deciding which selected take wins when more than one is flagged:
+// most-recently SELECTED first, then most-recently generated. Guards against
+// legacy/raced data where two takes ended up selected at once.
+const selKey = (v) => Date.parse(v?.selectedAt) || Date.parse(v?.ts) || 0;
+
+// Pick the chosen take for a bundle: the most-recently-selected take that still
+// exists on disk; if none is selected, the first present take (a fallback).
 function pickTake(entry) {
   const list = Array.isArray(entry) ? entry : entry ? [entry] : [];
   const present = list.filter((v) => v && v.file && fs.existsSync(path.join(GEN_DIR, v.file)));
   if (!present.length) return null;
-  const sel = present.find((v) => v.selected);
-  return { take: sel || present[0], fallback: !sel };
+  const chosen = present.filter((v) => v.selected);
+  if (chosen.length) {
+    const sel = chosen
+      .slice()
+      .sort((a, b) => selKey(b) - selKey(a) || present.indexOf(b) - present.indexOf(a))[0];
+    return { take: sel, fallback: false };
+  }
+  return { take: present[0], fallback: true };
+}
+
+// Collapse any bundle that ended up with >1 selected take down to the single
+// most-recently-selected one, so the UI, the disk, and the stitch always agree.
+// Returns true if it changed anything (caller should writeDB).
+function normalizeVideoSelections(db) {
+  let changed = false;
+  for (const entry of Object.values(db.video || {})) {
+    const list = Array.isArray(entry) ? entry : entry ? [entry] : [];
+    const sel = list.filter((v) => v && v.selected);
+    if (sel.length <= 1) continue;
+    const keep = sel
+      .slice()
+      .sort((a, b) => selKey(b) - selKey(a) || list.indexOf(b) - list.indexOf(a))[0];
+    for (const v of sel) if (v !== keep) { v.selected = false; changed = true; }
+  }
+  return changed;
 }
 
 async function probeDuration(file) {
@@ -1104,9 +1138,6 @@ function annotateSegmentsMusic(segments) {
   return segments;
 }
 
-// File name for scored version N (v1 keeps the legacy name for continuity).
-const scoredVersionFile = (v) => (v === 1 ? SCORED_CUT_FILE : `complete_cut_scored_v${v}.mp4`);
-
 // Normalized list of scored versions that still exist on disk, newest first.
 // Migrates the legacy single `db.cut.scored` into a v1 entry when present.
 function listScoredVersions(db) {
@@ -1120,148 +1151,186 @@ function listScoredVersions(db) {
     .sort((a, b) => b.v - a.v);
 }
 
-// Read the current plan + any previously stitched output (+ music layout).
+// --- Versioned complete-cut history ------------------------------------------
+// Every stitch/score mints a NEW, immutable generation file (complete_cut_vN.mp4)
+// so nothing is ever overwritten — the UI can show the version number and the
+// browser can never serve a stale cached cut. `db.cutHistory` is the ordered
+// list of every generation (base stitches + scored versions).
+const cutVersionFile = (v) => `complete_cut_v${v}.mp4`;
+
+// Legacy → history: synthesize generation entries from the old single `db.cut`
+// (+ its scored versions) so a project stitched before versioning still shows
+// its cut and music in the history.
+function legacyToHistory(db) {
+  const out = [];
+  const cut = db.cut;
+  if (cut && fs.existsSync(path.join(GEN_DIR, CUT_FILE))) {
+    out.push({ v: 1, kind: "stitch", file: CUT_FILE, at: cut.stitchedAt || null, range: cut.range || null, totalDuration: cut.totalDuration || 0, segments: cut.segments || [] });
+  }
+  for (const sv of listScoredVersions(db).slice().sort((a, b) => a.v - b.v)) {
+    out.push({ v: out.length + 1, kind: "scored", file: sv.file, at: sv.createdAt || null, range: cut?.range || null, totalDuration: cut?.totalDuration || 0, segments: sv.segments || cut?.segments || [], gainDb: sv.gainDb, baseV: 1, music: sv.music || [] });
+  }
+  return out;
+}
+
+// Ensure db.cutHistory exists (migrating legacy on first touch); returns it.
+function ensureCutHistory(db) {
+  if (!Array.isArray(db.cutHistory)) db.cutHistory = legacyToHistory(db);
+  return db.cutHistory;
+}
+// Next monotonic version across ALL generations (stitch + scored).
+function nextCutV(db) {
+  return ensureCutHistory(db).reduce((m, g) => Math.max(m, g.v || 0), 0) + 1;
+}
+// Normalized history for the API: existing files only, newest-first, url added.
+function getCutHistory(db) {
+  return ensureCutHistory(db)
+    .filter((g) => g.file && fs.existsSync(path.join(GEN_DIR, g.file)))
+    .map((g) => ({ ...g, url: "/gen/" + g.file, withMusic: g.kind === "scored" }))
+    .sort((a, b) => (b.v || 0) - (a.v || 0));
+}
+
+const freezeSegs = (segs) => segs.filter((s) => s.file).map((s) => ({ id: s.id, file: s.file, name: s.name, fallback: s.fallback, start: s.start, duration: s.duration, end: s.end }));
+const cleanMusic = (layout) => layout.map((m) => ({ track: m.track, label: m.label, name: m.name, start: m.start, beatEnd: m.beatEnd, duration: m.duration }));
+
+// Overlay the background-music cues under a base cut video → outAbs. Music sits
+// at `gain` (linear) under the baked-in dialogue/SFX; the sum is soft-limited.
+async function mixScore(baseAbs, layout, gain, outAbs) {
+  const inputs = ["-i", baseAbs];
+  for (const m of layout) inputs.push("-i", path.join(SOUND_MEDIA, m.file));
+  const NORM = "aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo";
+  const parts = [`[0:a]${NORM}[a0]`];
+  const beds = [];
+  layout.forEach((m, i) => {
+    const k = i + 1;
+    const ms = Math.max(0, Math.round(m.start * 1000));
+    parts.push(`[${k}:a]${NORM},adelay=${ms}:all=1,volume=${gain}[m${k}]`);
+    beds.push(`[m${k}]`);
+  });
+  const filter = parts.join(";") + `;[a0]${beds.join("")}amix=inputs=${layout.length + 1}:duration=first:normalize=0,alimiter=limit=0.95[aout]`;
+  await execFileP("ffmpeg", ["-y", ...inputs, "-filter_complex", filter, "-map", "0:v", "-map", "[aout]", "-c:v", "copy", "-c:a", "aac", "-b:a", "192k", outAbs]);
+}
+
+// Read the current plan, the latest generation (`output`), and the full history.
 app.get("/api/episode/cuts", async (req, res) => {
   try {
+    const db = readDB();
+    if (normalizeVideoSelections(db)) writeDB(db); // heal stale multi-selection first
     const segments = annotateSegmentsMusic(await buildCutSegments());
     const music = await buildScoreLayout(segments);
-    const db = readDB();
-    const outPath = path.join(GEN_DIR, CUT_FILE);
-    const scoredVersions = listScoredVersions(db);
-    const output = fs.existsSync(outPath)
-      ? {
-          url: "/gen/" + CUT_FILE,
-          file: CUT_FILE,
-          ...(db.cut || {}),
-          scoredVersions,
-          scored: scoredVersions[0] || null, // newest, for back-compat
-        }
-      : null;
-    res.json({ range: segRange(segments), segments, music, output });
+    const history = getCutHistory(db);
+    res.json({ range: segRange(segments), segments, music, output: history[0] || null, history });
   } catch (e) {
     res.status(500).json({ error: String(e.message || e) });
   }
 });
 
-// Stitch the selected takes (MS-01 … last rendered) into one mp4 via ffmpeg.
+// Stitch the selected takes (MS-01 … last rendered) into a NEW versioned mp4 via
+// ffmpeg. Never overwrites a prior generation; if music was added before, the
+// fresh cut is re-scored so the newest version still has the background music.
 app.post("/api/episode/stitch", async (req, res) => {
   try {
+    const db = readDB();
+    if (normalizeVideoSelections(db)) writeDB(db); // stitch the take actually picked
     const segments = await buildCutSegments();
     const usable = segments.filter((s) => s.file);
     if (!usable.length) return res.status(400).json({ error: "No rendered takes to stitch" });
 
     fs.mkdirSync(GEN_DIR, { recursive: true });
+    ensureCutHistory(db);
+    const v = nextCutV(db);
+    const outPath = path.join(GEN_DIR, cutVersionFile(v));
+
     // ffmpeg concat-demuxer list file (abs paths, single quotes escaped).
     const listPath = path.join(GEN_DIR, ".complete_cut_list.txt");
-    const listBody = usable
-      .map((s) => `file '${path.join(GEN_DIR, s.file).replace(/'/g, "'\\''")}'`)
-      .join("\n");
-    fs.writeFileSync(listPath, listBody + "\n", "utf8");
-    const outPath = path.join(GEN_DIR, CUT_FILE);
-
+    fs.writeFileSync(
+      listPath,
+      usable.map((s) => `file '${path.join(GEN_DIR, s.file).replace(/'/g, "'\\''")}'`).join("\n") + "\n",
+      "utf8",
+    );
     // All takes share codec/res/fps (h264 1280x720 24fps + aac), so a fast
     // stream copy works; if it ever fails, fall back to a re-encode.
-    const concatArgs = (extra) => [
-      "-y", "-f", "concat", "-safe", "0", "-i", listPath, ...extra, outPath,
-    ];
+    const concatArgs = (extra) => ["-y", "-f", "concat", "-safe", "0", "-i", listPath, ...extra, outPath];
     try {
       await execFileP("ffmpeg", concatArgs(["-c", "copy", "-fflags", "+genpts"]));
     } catch {
-      await execFileP("ffmpeg", concatArgs([
-        "-c:v", "libx264", "-preset", "veryfast", "-crf", "18",
-        "-c:a", "aac", "-b:a", "192k", "-vsync", "cfr", "-r", "24",
-      ]));
+      await execFileP("ffmpeg", concatArgs(["-c:v", "libx264", "-preset", "veryfast", "-crf", "18", "-c:a", "aac", "-b:a", "192k", "-vsync", "cfr", "-r", "24"]));
     }
     fs.rmSync(listPath, { force: true });
 
     const totalDuration = usable.reduce((a, s) => a + s.duration, 0);
-    const db = readDB();
-    db.cut = {
-      range: segRange(usable),
-      segments: usable.map((s) => ({ id: s.id, file: s.file, name: s.name, fallback: s.fallback, start: s.start, duration: s.duration, end: s.end })),
-      totalDuration,
-      stitchedAt: new Date().toISOString(),
-    };
+    const frozen = freezeSegs(segments);
+    const range = segRange(usable);
+    const base = { v, kind: "stitch", file: cutVersionFile(v), at: new Date().toISOString(), range, totalDuration, segments: frozen };
+    db.cutHistory.push(base);
+
+    // Carry the background music forward: if music was ever added, re-score this
+    // fresh cut (at the most recent bed level) so the NEWEST version still has
+    // music. Prior generations are preserved in the history regardless.
+    let latest = base;
+    let carriedMusic = false;
+    const scoredBefore = db.cutHistory.filter((g) => g.kind === "scored");
+    if (scoredBefore.length) {
+      const layout = await buildScoreLayout(segments);
+      if (layout.length) {
+        const lastDb = scoredBefore[scoredBefore.length - 1].gainDb;
+        const gain = typeof lastDb === "number" ? Math.pow(10, lastDb / 20) : MUSIC_BED_GAIN;
+        const sv = nextCutV(db);
+        await mixScore(outPath, layout, gain, path.join(GEN_DIR, cutVersionFile(sv)));
+        latest = { v: sv, kind: "scored", file: cutVersionFile(sv), at: new Date().toISOString(), range, totalDuration, segments: frozen, gainDb: Math.round(20 * Math.log10(gain)), baseV: v, music: cleanMusic(layout) };
+        db.cutHistory.push(latest);
+        carriedMusic = true;
+      }
+    }
+
+    db.cut = { range, segments: frozen, totalDuration, stitchedAt: base.at }; // legacy pointer
+    delete db.cut.scored;
     writeDB(db);
 
-    res.json({ ok: true, url: "/gen/" + CUT_FILE, file: CUT_FILE, totalDuration, count: usable.length, segments });
+    res.json({ ok: true, url: "/gen/" + latest.file, file: latest.file, version: latest.v, kind: latest.kind, carriedMusic, totalDuration, count: usable.length });
   } catch (e) {
     res.status(500).json({ error: String(e.message || e) });
   }
 });
 
-// Overlay the background-music cues under the stitched cut → a scored version.
-// Music sits ~-14 dB under the baked-in dialogue/SFX; peaks are soft-limited.
+// Overlay the background-music cues under the latest music-FREE base cut → a NEW
+// versioned scored generation (previous versions are kept for A/B). Music sits
+// low under the baked-in dialogue/SFX; peaks are soft-limited.
 app.post("/api/episode/score", async (req, res) => {
   try {
-    const cutPath = path.join(GEN_DIR, CUT_FILE);
-    if (!fs.existsSync(cutPath)) return res.status(400).json({ error: "Stitch the cut first" });
-    const segments = await buildCutSegments();
-    const layout = await buildScoreLayout(segments);
+    const db = readDB();
+    ensureCutHistory(db);
+    // Score the most recent base stitch (clean overlay), else the latest cut.
+    const base =
+      [...db.cutHistory].reverse().find((g) => g.kind === "stitch" && fs.existsSync(path.join(GEN_DIR, g.file))) ||
+      [...db.cutHistory].reverse().find((g) => g.file && fs.existsSync(path.join(GEN_DIR, g.file)));
+    if (!base) return res.status(400).json({ error: "Stitch the cut first" });
+
+    // Use the base's FROZEN segments so the music timecodes match its video.
+    const baseSegs = base.segments && base.segments.length ? base.segments : freezeSegs(await buildCutSegments());
+    const layout = await buildScoreLayout(baseSegs);
     if (!layout.length) return res.status(400).json({ error: "No rendered music cues to add" });
 
     const gain = typeof req.body?.gain === "number" && req.body.gain > 0 ? req.body.gain : MUSIC_BED_GAIN;
-
-    const inputs = ["-i", cutPath];
-    for (const m of layout) inputs.push("-i", path.join(SOUND_MEDIA, m.file));
-
-    // Normalize every stream to 48k stereo, delay each bed to its cue start,
-    // drop it to bed level, then sum with the original audio and soft-limit.
-    const NORM = "aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo";
-    const parts = [`[0:a]${NORM}[a0]`];
-    const beds = [];
-    layout.forEach((m, i) => {
-      const k = i + 1;
-      const ms = Math.max(0, Math.round(m.start * 1000));
-      parts.push(`[${k}:a]${NORM},adelay=${ms}:all=1,volume=${gain}[m${k}]`);
-      beds.push(`[m${k}]`);
-    });
-    const filter =
-      parts.join(";") +
-      `;[a0]${beds.join("")}amix=inputs=${layout.length + 1}:duration=first:normalize=0,alimiter=limit=0.95[aout]`;
-
-    // Each call mints a NEW version (previous scored cuts are kept for A/B).
-    const db = readDB();
-    db.cut = db.cut || {};
-    const existing = listScoredVersions(db); // migrates legacy `scored` → v1
-    const nextV = existing.reduce((m, x) => Math.max(m, x.v), 0) + 1;
-    const file = scoredVersionFile(nextV);
-    const outPath = path.join(GEN_DIR, file);
-
-    await execFileP("ffmpeg", [
-      "-y", ...inputs,
-      "-filter_complex", filter,
-      "-map", "0:v", "-map", "[aout]",
-      "-c:v", "copy", "-c:a", "aac", "-b:a", "192k",
-      outPath,
-    ]);
+    const v = nextCutV(db);
+    const file = cutVersionFile(v);
+    await mixScore(path.join(GEN_DIR, base.file), layout, gain, path.join(GEN_DIR, file));
 
     const entry = {
-      v: nextV,
-      file,
+      v, kind: "scored", file, at: new Date().toISOString(),
+      range: base.range || segRange(baseSegs),
+      totalDuration: base.totalDuration || baseSegs.reduce((a, s) => a + (s.duration || 0), 0),
+      // Freeze the full setup this scored mp4 was baked from (background takes +
+      // timecodes AND the music cues) so its overlay always matches THIS version.
+      segments: baseSegs,
       gainDb: Math.round(20 * Math.log10(gain)),
-      createdAt: new Date().toISOString(),
-      // Freeze the full setup this scored mp4 was baked from — the ordered
-      // background videos (bundle takes + their timecodes) AND the music cues —
-      // so the "now playing" overlay always matches THIS version, even after the
-      // plan is re-selected or re-stitched later.
-      segments: segments
-        .filter((s) => s.file)
-        .map((s) => ({ id: s.id, file: s.file, name: s.name, fallback: s.fallback, start: s.start, duration: s.duration, end: s.end })),
-      music: layout.map((m) => ({
-        track: m.track, label: m.label, name: m.name,
-        start: m.start, beatEnd: m.beatEnd, duration: m.duration,
-      })),
+      baseV: base.v,
+      music: cleanMusic(layout),
     };
-    // Persist as a version list; strip file/url the reader re-derives.
-    db.cut.scoredVersions = [
-      ...existing.map(({ url, ...rest }) => rest),
-      entry,
-    ];
-    delete db.cut.scored; // superseded by scoredVersions
+    db.cutHistory.push(entry);
     writeDB(db);
 
-    res.json({ ok: true, version: nextV, url: "/gen/" + file, file, gainDb: entry.gainDb, count: layout.length, music: entry.music });
+    res.json({ ok: true, version: v, url: "/gen/" + file, file, gainDb: entry.gainDb, count: layout.length, music: entry.music });
   } catch (e) {
     res.status(500).json({ error: String(e.message || e) });
   }
