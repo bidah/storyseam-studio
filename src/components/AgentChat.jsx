@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useAgent } from "@/components/AgentProvider";
+import { useAgent, useConversations } from "@/components/AgentProvider";
 import {
   Bot,
   Send,
@@ -16,10 +16,22 @@ import {
   X,
   ArrowDown,
   Image as ImageIcon,
+  SquarePen,
+  History,
+  MessageSquare,
+  Trash2,
+  Check,
 } from "lucide-react";
 import { Streamdown } from "streamdown";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from "@/components/ui/sheet";
 import {
   Attachment,
   AttachmentGroup,
@@ -288,9 +300,90 @@ function isThinking(messages, busy) {
   return !hasContent;
 }
 
+// Compact "2m" / "3h" / "5d" relative time for the chat list.
+function relTime(ts) {
+  if (!ts) return "";
+  const s = Math.max(0, Math.round((Date.now() - ts) / 1000));
+  if (s < 60) return "now";
+  const m = Math.round(s / 60);
+  if (m < 60) return `${m}m`;
+  const h = Math.round(m / 60);
+  if (h < 24) return `${h}h`;
+  return `${Math.round(h / 24)}d`;
+}
+
+// Chat history as a right-side slide-in panel, sized to match the chat panel.
+// Rows are plain buttons (not menu items), so a mouse click reliably switches
+// conversations; the trash button is a sibling, not a nested button.
+function ChatHistorySheet({ conv }) {
+  const [open, setOpen] = useState(false);
+  const select = (id) => {
+    conv.switchChat(id);
+    setOpen(false);
+  };
+  return (
+    <Sheet open={open} onOpenChange={setOpen}>
+      <SheetTrigger asChild>
+        <Button size="icon" variant="ghost" className="size-8" aria-label="Previous chats" title="Previous chats">
+          <History size={16} />
+        </Button>
+      </SheetTrigger>
+      <SheetContent side="right" className="w-[495px] max-w-none gap-0 p-0 sm:max-w-none">
+        <SheetHeader className="border-b pr-14">
+          <SheetTitle>Chats</SheetTitle>
+        </SheetHeader>
+        <div className="min-h-0 flex-1 overflow-y-auto p-2">
+          {conv.list.length === 0 ? (
+            <div className="px-2 py-10 text-center text-sm text-muted-foreground">No chats yet</div>
+          ) : (
+            <ul className="space-y-1">
+              {conv.list.map((c) => {
+                const active = c.id === conv.activeId;
+                return (
+                  <li key={c.id} className="group relative">
+                    <button
+                      type="button"
+                      onClick={() => select(c.id)}
+                      className={cn(
+                        "flex w-full items-center gap-2.5 rounded-lg border px-3 py-2.5 pr-9 text-left transition-colors",
+                        active
+                          ? "border-primary/40 bg-primary/10"
+                          : "border-transparent hover:bg-accent",
+                      )}
+                    >
+                      {active ? (
+                        <Check size={15} className="shrink-0 text-primary" />
+                      ) : (
+                        <MessageSquare size={15} className="shrink-0 text-muted-foreground" />
+                      )}
+                      <span className="min-w-0 flex-1 truncate text-sm">{c.title || "New chat"}</span>
+                      <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground">
+                        {relTime(c.updatedAt)}
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      aria-label={`Delete chat: ${c.title || "New chat"}`}
+                      onClick={() => conv.deleteChat(c.id)}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-muted-foreground opacity-0 transition-opacity hover:text-destructive focus:opacity-100 group-hover:opacity-100"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
+      </SheetContent>
+    </Sheet>
+  );
+}
+
 export default function AgentChat() {
   // Shared session: the same instance the sound-studio Render buttons drive.
   const agent = useAgent();
+  const conv = useConversations();
   const [text, setText] = useState("");
   const [attachments, setAttachments] = useState([]);
   const [atBottom, setAtBottom] = useState(true);
@@ -299,6 +392,21 @@ export default function AgentChat() {
   // One entry per user turn (ordinal-aligned to user messages): the images that
   // turn was sent with, so they can be re-rendered in the bubble.
   const sentAttachmentsRef = useRef([]);
+
+  const activeChat = conv.list.find((c) => c.id === conv.activeId);
+
+  // On mount and whenever the active chat changes, re-seed the composer's
+  // attachment record from that chat and clear any half-typed message. The
+  // agent session itself is swapped in by AgentProvider (context), so messages
+  // update on their own — this only resets client-only composer state.
+  useEffect(() => {
+    const { attachments: saved } = conv.getInitial(conv.activeId);
+    sentAttachmentsRef.current = Array.isArray(saved) ? saved : [];
+    setText("");
+    setAttachments([]);
+    setAtBottom(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [conv.activeId]);
 
   const messages = agent.data?.messages ?? [];
   const isBusy = agent.status === "submitted" || agent.status === "streaming";
@@ -413,8 +521,10 @@ export default function AgentChat() {
     }
 
     // Record this turn's attachments (ordinal-aligned) before the optimistic
-    // user message renders, then clear the composer.
+    // user message renders, persist them to the active chat, then clear the
+    // composer. (Turn events + cursor persist via the session's onFinish.)
     sentAttachmentsRef.current.push(sent);
+    conv.saveAttachments(conv.activeId, sentAttachmentsRef.current);
     setText("");
     attachments.forEach((a) => a.previewUrl && URL.revokeObjectURL(a.previewUrl));
     setAttachments([]);
@@ -430,24 +540,41 @@ export default function AgentChat() {
   return (
     <aside className="flex h-dvh w-[495px] shrink-0 flex-col border-l bg-card">
       <header className="flex h-14 shrink-0 items-center gap-2 border-b px-4">
-        <div className="flex size-7 items-center justify-center rounded-md bg-primary text-primary-foreground">
+        <div className="flex size-7 shrink-0 items-center justify-center rounded-md bg-primary text-primary-foreground">
           <Bot size={16} />
         </div>
-        <div className="leading-tight">
-          <div className="text-sm font-semibold">Studio agent</div>
-          <div className="text-[11px] text-muted-foreground">drives the pipeline via skills</div>
+        <div className="min-w-0 leading-tight">
+          <div className="flex items-center gap-1.5">
+            <span className="text-sm font-semibold">Studio agent</span>
+            <span
+              className={cn(
+                "size-2 shrink-0 rounded-full",
+                agent.status === "error"
+                  ? "bg-destructive"
+                  : isBusy
+                    ? "animate-pulse bg-emerald-500"
+                    : "bg-muted-foreground/40",
+              )}
+              title={agent.status}
+            />
+          </div>
+          <div className="truncate text-[11px] text-muted-foreground" title={activeChat?.title}>
+            {activeChat?.title || "New chat"}
+          </div>
         </div>
-        <span
-          className={cn(
-            "ml-auto size-2 rounded-full",
-            agent.status === "error"
-              ? "bg-destructive"
-              : isBusy
-                ? "animate-pulse bg-emerald-500"
-                : "bg-muted-foreground/40",
-          )}
-          title={agent.status}
-        />
+        <div className="ml-auto flex shrink-0 items-center gap-0.5">
+          <Button
+            size="icon"
+            variant="ghost"
+            className="size-8"
+            aria-label="New chat"
+            title="New chat"
+            onClick={() => conv.newChat()}
+          >
+            <SquarePen size={16} />
+          </Button>
+          <ChatHistorySheet conv={conv} />
+        </div>
       </header>
 
       <div className="relative min-h-0 flex-1">

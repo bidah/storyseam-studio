@@ -1,35 +1,220 @@
-import { createContext, useContext, useRef } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useEveAgent } from "eve/react";
+import {
+  CHATS_LIMIT,
+  deriveTitle,
+  loadStore,
+  makeChat,
+  persistStore,
+} from "@/lib/chat-store";
 
 // ---------------------------------------------------------------------------
-// A single shared eve agent session for the whole app.
+// A single shared eve agent session for the whole app, backed by persistent,
+// switchable chat history.
 //
 // `useEveAgent` owns one conversation per hook instance, so the chat panel and
 // any "drive the agent from the UI" affordances (e.g. the sound-studio Render
-// buttons) must read from the SAME instance. This provider creates it once and
-// hands it down; `AgentChat` renders it and `useAgent()` lets deep components
-// send turns to it (the same as typing in the composer).
+// buttons) must read from the SAME instance. Its session config is read once
+// when the store is created, so pointing at a different conversation means
+// recreating the store — which we do by keying `AgentSessionRunner` on the
+// active chat id.
+//
+// To switch conversations WITHOUT remounting the whole app, the runner renders
+// nothing: it just runs the hook and publishes the live agent snapshot up to
+// `AgentProvider`, which hands it down through a stable `AgentContext`. Only the
+// runner remounts on a chat switch; every consumer merely re-renders with the
+// new session. `ConversationsContext` (the history manager) never remounts.
 // ---------------------------------------------------------------------------
 
 const AgentContext = createContext(null);
+const ConversationsContext = createContext(null);
 
-export function AgentProvider({ view, children }) {
-  // Keep the current screen fresh without recreating the session on every tab
-  // switch (session config is read once when the store is created).
+// Owns the persisted set of conversations and the active selection. Stable
+// across the app's lifetime — mutations flow through `update`, which persists.
+function useConversationManager() {
+  const [store, setStore] = useState(loadStore);
+  // Latest store, readable synchronously from callbacks (e.g. `getInitial` at a
+  // freshly-keyed runner mount, before the next render commits).
+  const storeRef = useRef(store);
+  storeRef.current = store;
+
+  const update = useCallback((fn) => {
+    setStore((prev) => {
+      const next = fn(prev);
+      if (next === prev) return prev;
+      persistStore(next);
+      return next;
+    });
+  }, []);
+
+  const newChat = useCallback(() => {
+    update((prev) => {
+      const c = makeChat();
+      const order = [c.id, ...prev.order].slice(0, CHATS_LIMIT);
+      const chats = { [c.id]: c };
+      for (const id of order) if (prev.chats[id]) chats[id] = prev.chats[id];
+      return { activeId: c.id, order, chats };
+    });
+  }, [update]);
+
+  const switchChat = useCallback(
+    (id) => update((prev) => (prev.chats[id] && id !== prev.activeId ? { ...prev, activeId: id } : prev)),
+    [update],
+  );
+
+  const deleteChat = useCallback(
+    (id) =>
+      update((prev) => {
+        if (!prev.chats[id]) return prev;
+        const order = prev.order.filter((x) => x !== id);
+        const chats = { ...prev.chats };
+        delete chats[id];
+        if (order.length === 0) {
+          const c = makeChat();
+          return { activeId: c.id, order: [c.id], chats: { [c.id]: c } };
+        }
+        const activeId = id === prev.activeId ? order[0] : prev.activeId;
+        return { activeId, order, chats };
+      }),
+    [update],
+  );
+
+  // Persist a completed turn's events + cursor for one chat, refreshing its
+  // title from the first user line and floating it to the top of the list.
+  const saveTurn = useCallback(
+    (id, snapshot) =>
+      update((prev) => {
+        const chat = prev.chats[id];
+        if (!chat) return prev;
+        const next = {
+          ...chat,
+          events: snapshot.events ?? chat.events,
+          session: snapshot.session ?? chat.session,
+          title: deriveTitle(snapshot.data?.messages) ?? chat.title,
+          updatedAt: Date.now(),
+        };
+        const order = [id, ...prev.order.filter((x) => x !== id)];
+        return { ...prev, order, chats: { ...prev.chats, [id]: next } };
+      }),
+    [update],
+  );
+
+  const saveSession = useCallback(
+    (id, session) =>
+      update((prev) => {
+        const chat = prev.chats[id];
+        if (!chat) return prev;
+        return { ...prev, chats: { ...prev.chats, [id]: { ...chat, session } } };
+      }),
+    [update],
+  );
+
+  // The composer's ordinal-aligned attachment record (client-only state).
+  const saveAttachments = useCallback(
+    (id, attachments) =>
+      update((prev) => {
+        const chat = prev.chats[id];
+        if (!chat) return prev;
+        return { ...prev, chats: { ...prev.chats, [id]: { ...chat, attachments } } };
+      }),
+    [update],
+  );
+
+  // Seed values for (re)creating an eve store for a given chat. Reads the ref so
+  // a runner keyed on a just-created chat still sees it.
+  const getInitial = useCallback((id) => {
+    const chat = storeRef.current.chats[id];
+    return {
+      events: chat?.events ?? [],
+      session: chat?.session ?? { streamIndex: 0 },
+      attachments: chat?.attachments ?? [],
+    };
+  }, []);
+
+  const list = useMemo(
+    () => store.order.map((id) => store.chats[id]).filter(Boolean),
+    [store],
+  );
+
+  return useMemo(
+    () => ({
+      activeId: store.activeId,
+      list,
+      newChat,
+      switchChat,
+      deleteChat,
+      saveTurn,
+      saveSession,
+      saveAttachments,
+      getInitial,
+    }),
+    [store.activeId, list, newChat, switchChat, deleteChat, saveTurn, saveSession, saveAttachments, getInitial],
+  );
+}
+
+// Runs the eve session for the active chat and publishes it upward. Rendered
+// with `key={activeId}` so a chat switch remounts it (rebuilding the store from
+// that chat's persisted events/cursor); renders nothing so no consumer remounts.
+function AgentSessionRunner({ activeId, view, conv, publish }) {
   const viewRef = useRef(view);
   viewRef.current = view;
 
+  // Read the chat's persisted seed exactly once, at mount for this key.
+  const initialRef = useRef(null);
+  if (initialRef.current === null) initialRef.current = conv.getInitial(activeId);
+
   const agent = useEveAgent({
+    initialEvents: initialRef.current.events,
+    initialSession: initialRef.current.session,
     // Tell the agent which screen the user is on, every turn.
     prepareSend: (input) => ({ ...input, clientContext: { screen: viewRef.current } }),
+    onFinish: (snapshot) => conv.saveTurn(activeId, snapshot),
+    onSessionChange: (session) => conv.saveSession(activeId, session),
   });
 
-  return <AgentContext.Provider value={agent}>{children}</AgentContext.Provider>;
+  // Publish before paint so switching chats never flashes stale content.
+  useLayoutEffect(() => {
+    publish(agent);
+  }, [agent, publish]);
+
+  return null;
+}
+
+export function AgentProvider({ view, children }) {
+  const conv = useConversationManager();
+  const [agent, setAgent] = useState(null);
+
+  return (
+    <ConversationsContext.Provider value={conv}>
+      <AgentSessionRunner
+        key={conv.activeId}
+        activeId={conv.activeId}
+        view={view}
+        conv={conv}
+        publish={setAgent}
+      />
+      <AgentContext.Provider value={agent}>{agent ? children : null}</AgentContext.Provider>
+    </ConversationsContext.Provider>
+  );
 }
 
 export function useAgent() {
   const ctx = useContext(AgentContext);
   if (!ctx) throw new Error("useAgent must be used within <AgentProvider>");
+  return ctx;
+}
+
+export function useConversations() {
+  const ctx = useContext(ConversationsContext);
+  if (!ctx) throw new Error("useConversations must be used within <AgentProvider>");
   return ctx;
 }
 
