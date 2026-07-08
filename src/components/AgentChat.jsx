@@ -250,7 +250,7 @@ function AgentMessage({ message, atts, canRespond, onRespond }) {
     return (
       <div className="flex flex-col items-end">
         {text ? (
-          <div className="max-w-[92%] whitespace-pre-wrap break-words rounded-2xl bg-primary px-3 py-2 text-sm text-primary-foreground">
+          <div className="max-w-[92%] whitespace-pre-wrap break-words rounded-2xl bg-muted px-3 py-2 text-sm text-foreground">
             {text}
           </div>
         ) : null}
@@ -389,9 +389,18 @@ export default function AgentChat() {
   const [atBottom, setAtBottom] = useState(true);
   const scrollRef = useRef(null);
   const fileInputRef = useRef(null);
+  const taRef = useRef(null);
   // One entry per user turn (ordinal-aligned to user messages): the images that
   // turn was sent with, so they can be re-rendered in the bubble.
   const sentAttachmentsRef = useRef([]);
+
+  // Auto-grow the composer with its content, up to a max height (then scroll).
+  useEffect(() => {
+    const el = taRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, 180)}px`;
+  }, [text]);
 
   const activeChat = conv.list.find((c) => c.id === conv.activeId);
 
@@ -539,7 +548,7 @@ export default function AgentChat() {
 
   return (
     <aside className="flex h-dvh w-[495px] shrink-0 flex-col border-l bg-card">
-      <header className="flex h-14 shrink-0 items-center gap-2 border-b px-4">
+      <header className="flex h-[61px] shrink-0 items-center gap-2 border-b px-4">
         <div className="flex size-7 shrink-0 items-center justify-center rounded-md bg-primary text-primary-foreground">
           <Bot size={16} />
         </div>
@@ -581,7 +590,7 @@ export default function AgentChat() {
         <div
           ref={scrollRef}
           onScroll={onScroll}
-          className="h-full space-y-4 overflow-y-auto px-4 py-4"
+          className="h-full space-y-4 overflow-y-auto bg-[#0E0E10] px-4 py-4"
         >
           {messages.length === 0 ? (
             <div className="flex h-full flex-col items-center justify-center gap-2 text-center text-muted-foreground">
@@ -700,6 +709,7 @@ export default function AgentChat() {
             <Paperclip size={16} />
           </Button>
           <textarea
+            ref={taRef}
             value={text}
             onChange={(e) => setText(e.target.value)}
             onPaste={onPaste}
@@ -711,7 +721,7 @@ export default function AgentChat() {
             }}
             rows={1}
             placeholder={pending ? "Type your answer…" : "Message the studio agent…"}
-            className="max-h-32 min-h-[38px] flex-1 resize-none rounded-lg border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
+            className="max-h-[180px] min-h-[38px] flex-1 resize-none overflow-y-auto rounded-lg border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
           />
           {isBusy ? (
             <Button size="icon" variant="secondary" onClick={agent.stop} aria-label="Stop">
