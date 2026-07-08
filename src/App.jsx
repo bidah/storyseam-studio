@@ -942,7 +942,7 @@ function PromptModal({ bundle, body, fullPrefix, assigned, audioAssigned, edited
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="flex max-h-[90vh] max-w-[min(94vw,900px)] flex-col gap-0 overflow-hidden p-0">
+      <DialogContent className="flex max-h-[90vh] min-w-[min(94vw,1800px)] max-w-[min(94vw,1800px)] flex-col gap-0 overflow-hidden p-0">
         <DialogHeader className="flex flex-row items-center justify-between gap-3 border-b px-5 py-4">
           <DialogTitle className="flex items-center gap-2">
             <Badge variant="secondary" className="font-mono">{bundle.id}</Badge>
@@ -1220,8 +1220,10 @@ function EpisodeBundle({ b, flat, picked, onOpenPicker, onRemove, onView, audioM
               </div>
             </div>
             <Textarea
-              className="cursor-pointer font-mono text-xs leading-relaxed"
-              rows={open ? 20 : 6}
+              className={cn(
+                "cursor-pointer resize-none font-mono text-xs leading-relaxed",
+                open ? "[field-sizing:content] overflow-hidden" : "h-[400px] overflow-hidden [field-sizing:fixed]"
+              )}
               value={displayPrompt}
               readOnly
               onClick={() => setModalOpen(true)}
