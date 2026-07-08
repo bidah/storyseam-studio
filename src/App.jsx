@@ -1089,7 +1089,7 @@ function EpisodeBundle({ b, flat, picked, onOpenPicker, onRemove, onView, audioM
 
   return (
     <Card id={`ep-${b.id}`} className="scroll-mt-24 gap-0 py-0">
-      <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3 rounded-t-xl border-b px-4 py-3 [.border-b]:pb-3">
+      <CardHeader className="sticky top-[61px] z-10 flex flex-row flex-wrap items-center justify-between gap-3 rounded-t-xl border-b bg-card px-4 py-3 [.border-b]:pb-3">
         <div className="flex items-center gap-2">
           <Badge variant="secondary" className="font-mono text-sm">{b.id}</Badge>
           <span className="font-semibold">{b.beatTitle}</span>
@@ -1236,7 +1236,7 @@ function EpisodeBundle({ b, flat, picked, onOpenPicker, onRemove, onView, audioM
         </div>
 
         {hasVid && (
-          <aside className="min-w-0 lg:sticky lg:top-[76px] lg:self-start">
+          <aside className="min-w-0 lg:sticky lg:top-[124px] lg:self-start">
             <EpVideoRail bundleId={b.id} vids={vids} reloadKey={reloadKey} onToggleVideo={onToggleVideo} />
           </aside>
         )}
