@@ -5,6 +5,7 @@ import { fileURLToPath } from "url";
 import { execFile } from "child_process";
 import { promisify } from "util";
 import { AwsClient } from "aws4fetch";
+import { randomUUID } from "node:crypto";
 
 const execFileP = promisify(execFile);
 
@@ -385,37 +386,106 @@ const SCRIPT_STORE_URL = (() => {
   return null;
 })();
 
-function readScriptLocal() {
-  try {
-    return JSON.parse(fs.readFileSync(SCRIPT_FILE, "utf8"));
-  } catch {
-    return { title: "", doc: null, updatedAt: null };
+// The persisted store is a *set of drafts* with one "pinned" (active) draft:
+//   { v: 2, pinnedId, drafts: [ { id, name, title, doc, createdAt, updatedAt,
+//     clientId } ] }
+// The editor and the agent tools all talk to the PINNED draft through the same
+// /api/script GET/PUT — the draft set lives behind those endpoints so nothing
+// downstream has to know about versioning. Version-control endpoints below
+// (list / create / pin / rename / delete) manage the set itself.
+
+const nowIso = () => new Date().toISOString();
+const newDraftId = () => `d_${randomUUID().slice(0, 8)}`;
+
+// Count the non-empty top-level blocks in a ProseMirror doc (a rough line count
+// for the drafts UI — mirrors how the agent's docToElements drops empty blocks).
+function countLines(doc) {
+  const blocks = doc && doc.type === "doc" && Array.isArray(doc.content) ? doc.content : [];
+  let n = 0;
+  for (const node of blocks) {
+    if (node?.type === "title") continue;
+    const text = JSON.stringify(node?.content || "");
+    if (/"text"\s*:\s*"[^"]/.test(text)) n += 1;
   }
-}
-function writeScriptLocal(rec) {
-  fs.mkdirSync(SCRIPT_DIR, { recursive: true });
-  fs.writeFileSync(SCRIPT_FILE, JSON.stringify(rec, null, 2));
+  return n;
 }
 
-async function readScript() {
+function makeDraft({ name, title = "", doc = null, clientId = null }) {
+  const ts = nowIso();
+  return { id: newDraftId(), name: name || "Draft 1", title, doc, createdAt: ts, updatedAt: ts, clientId };
+}
+
+// Accept any of: a v2 store, a legacy single { title, doc } record, or {} /
+// null — and always return a well-formed v2 store with a valid pinnedId.
+function normalizeStore(obj) {
+  if (obj && Array.isArray(obj.drafts) && obj.drafts.length) {
+    const drafts = obj.drafts.map((d) => ({
+      id: typeof d.id === "string" ? d.id : newDraftId(),
+      name: typeof d.name === "string" && d.name ? d.name : "Draft",
+      title: typeof d.title === "string" ? d.title : "",
+      doc: d.doc ?? null,
+      createdAt: d.createdAt || nowIso(),
+      updatedAt: d.updatedAt || d.createdAt || nowIso(),
+      clientId: d.clientId ?? null,
+    }));
+    const pinnedId = drafts.some((d) => d.id === obj.pinnedId) ? obj.pinnedId : drafts[0].id;
+    return { v: 2, pinnedId, drafts };
+  }
+  // Legacy single-doc record (pre-versioning) → wrap it as the first draft.
+  if (obj && (typeof obj.title === "string" || obj.doc)) {
+    const d = makeDraft({ name: "Draft 1", title: obj.title || "", doc: obj.doc ?? null });
+    if (obj.updatedAt) d.updatedAt = obj.updatedAt;
+    return { v: 2, pinnedId: d.id, drafts: [d] };
+  }
+  // Empty / unknown → a fresh single blank draft.
+  const d = makeDraft({ name: "Draft 1" });
+  return { v: 2, pinnedId: d.id, drafts: [d] };
+}
+
+const pinnedDraft = (store) =>
+  store.drafts.find((d) => d.id === store.pinnedId) || store.drafts[0];
+
+const draftMeta = (d, pinnedId) => ({
+  id: d.id,
+  name: d.name,
+  createdAt: d.createdAt,
+  updatedAt: d.updatedAt,
+  lineCount: countLines(d.doc),
+  pinned: d.id === pinnedId,
+});
+const metaList = (store) => store.drafts.map((d) => draftMeta(d, store.pinnedId));
+
+function readStoreLocal() {
+  try {
+    return normalizeStore(JSON.parse(fs.readFileSync(SCRIPT_FILE, "utf8")));
+  } catch {
+    return normalizeStore(null);
+  }
+}
+function writeStoreLocal(store) {
+  fs.mkdirSync(SCRIPT_DIR, { recursive: true });
+  fs.writeFileSync(SCRIPT_FILE, JSON.stringify(store, null, 2));
+}
+
+async function readStore() {
   if (SCRIPT_STORE_URL) {
     try {
       const r = await fetch(SCRIPT_STORE_URL, { method: "GET" });
-      if (r.ok) return await r.json();
+      if (r.ok) return normalizeStore(await r.json());
       // 404 etc. (e.g. /script not deployed yet) → fall back to local.
     } catch {
       /* network error → fall back to local */
     }
   }
-  return readScriptLocal();
+  return readStoreLocal();
 }
-async function writeScript(rec) {
+async function writeStore(store) {
   if (SCRIPT_STORE_URL) {
     try {
       const r = await fetch(SCRIPT_STORE_URL, {
         method: "PUT",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify(rec),
+        body: JSON.stringify(store),
       });
       if (r.ok) return;
       // else fall through to local so a save is never lost.
@@ -423,7 +493,7 @@ async function writeScript(rec) {
       /* network error → persist locally instead */
     }
   }
-  writeScriptLocal(rec);
+  writeStoreLocal(store);
 }
 
 // Live updates: any client (browser) or the chat agent that PUTs the script
@@ -455,26 +525,136 @@ app.get("/api/script/events", (req, res) => {
   });
 });
 
+// Read the PINNED draft (plus the drafts index so the UI can render the
+// version-control menu in one round-trip). Shape stays backward-compatible:
+// { title, doc, updatedAt, clientId } is what the editor + agent tools read.
 app.get("/api/script", async (req, res) => {
   try {
-    res.json(await readScript());
+    const store = await readStore();
+    const d = pinnedDraft(store);
+    res.json({
+      title: d.title,
+      doc: d.doc,
+      updatedAt: d.updatedAt,
+      clientId: d.clientId,
+      draftId: d.id,
+      draftName: d.name,
+      pinnedId: store.pinnedId,
+      drafts: metaList(store),
+    });
   } catch (e) {
     res.status(500).json({ error: String(e.message || e) });
   }
 });
 
+// Save into the PINNED draft (the editor autosave + agent save/append tools).
 app.put("/api/script", async (req, res) => {
   try {
     const { title, doc, clientId } = req.body || {};
-    const rec = {
-      title: typeof title === "string" ? title : "",
-      doc: doc ?? null,
-      updatedAt: new Date().toISOString(),
+    const store = await readStore();
+    const d = pinnedDraft(store);
+    d.title = typeof title === "string" ? title : "";
+    d.doc = doc ?? null;
+    d.updatedAt = nowIso();
+    d.clientId = clientId ?? null;
+    await writeStore(store);
+    broadcastScript({ updatedAt: d.updatedAt, clientId: clientId ?? null, pinnedId: store.pinnedId });
+    res.json({ ok: true, updatedAt: d.updatedAt, draftId: d.id });
+  } catch (e) {
+    res.status(500).json({ error: String(e.message || e) });
+  }
+});
+
+// --- Script drafts (version control) --------------------------------------
+// List every draft + which one is pinned.
+app.get("/api/script/drafts", async (req, res) => {
+  try {
+    const store = await readStore();
+    res.json({ drafts: metaList(store), pinnedId: store.pinnedId });
+  } catch (e) {
+    res.status(500).json({ error: String(e.message || e) });
+  }
+});
+
+// Create a new draft. By default it clones the current pinned draft's content
+// (so "save current, keep writing on a fresh version"); pass { blank: true } to
+// start empty. The new draft becomes pinned; the previous one stays in history.
+app.post("/api/script/drafts", async (req, res) => {
+  try {
+    const { name, blank, clientId } = req.body || {};
+    const store = await readStore();
+    const cur = pinnedDraft(store);
+    const draft = makeDraft({
+      name: typeof name === "string" && name.trim() ? name.trim() : `Draft ${store.drafts.length + 1}`,
+      title: blank ? "" : cur.title,
+      doc: blank ? null : cur.doc,
       clientId: clientId ?? null,
-    };
-    await writeScript(rec);
-    broadcastScript({ updatedAt: rec.updatedAt, clientId: clientId ?? null });
-    res.json({ ok: true, updatedAt: rec.updatedAt });
+    });
+    store.drafts.push(draft);
+    store.pinnedId = draft.id;
+    await writeStore(store);
+    broadcastScript({ updatedAt: draft.updatedAt, clientId: clientId ?? null, pinnedId: store.pinnedId });
+    res.json({ ok: true, draft: draftMeta(draft, store.pinnedId), drafts: metaList(store), pinnedId: store.pinnedId });
+  } catch (e) {
+    res.status(500).json({ error: String(e.message || e) });
+  }
+});
+
+// Switch the pinned (active) draft — everything (editor + agent) now edits it.
+app.post("/api/script/pin", async (req, res) => {
+  try {
+    const { id, clientId } = req.body || {};
+    const store = await readStore();
+    if (!store.drafts.some((d) => d.id === id)) {
+      return res.status(404).json({ error: `no draft ${id}` });
+    }
+    store.pinnedId = id;
+    await writeStore(store);
+    const d = pinnedDraft(store);
+    broadcastScript({ updatedAt: d.updatedAt, clientId: clientId ?? null, pinnedId: store.pinnedId });
+    res.json({ ok: true, pinnedId: store.pinnedId, drafts: metaList(store) });
+  } catch (e) {
+    res.status(500).json({ error: String(e.message || e) });
+  }
+});
+
+// Rename a draft.
+app.patch("/api/script/drafts/:id", async (req, res) => {
+  try {
+    const { name, clientId } = req.body || {};
+    const store = await readStore();
+    const d = store.drafts.find((x) => x.id === req.params.id);
+    if (!d) return res.status(404).json({ error: `no draft ${req.params.id}` });
+    if (typeof name === "string" && name.trim()) d.name = name.trim();
+    await writeStore(store);
+    broadcastScript({ updatedAt: nowIso(), clientId: clientId ?? null, pinnedId: store.pinnedId });
+    res.json({ ok: true, drafts: metaList(store), pinnedId: store.pinnedId });
+  } catch (e) {
+    res.status(500).json({ error: String(e.message || e) });
+  }
+});
+
+// Delete a draft (never the last one). If the pinned draft is removed, pin the
+// most recently updated of what remains.
+app.delete("/api/script/drafts/:id", async (req, res) => {
+  try {
+    const clientId = req.body?.clientId ?? null;
+    const store = await readStore();
+    if (store.drafts.length <= 1) {
+      return res.status(400).json({ error: "cannot delete the only draft" });
+    }
+    const idx = store.drafts.findIndex((d) => d.id === req.params.id);
+    if (idx < 0) return res.status(404).json({ error: `no draft ${req.params.id}` });
+    const wasPinned = store.pinnedId === req.params.id;
+    store.drafts.splice(idx, 1);
+    if (wasPinned) {
+      store.pinnedId = [...store.drafts].sort((a, b) =>
+        (b.updatedAt || "").localeCompare(a.updatedAt || ""))[0].id;
+    }
+    await writeStore(store);
+    const d = pinnedDraft(store);
+    broadcastScript({ updatedAt: d.updatedAt, clientId, pinnedId: store.pinnedId });
+    res.json({ ok: true, drafts: metaList(store), pinnedId: store.pinnedId });
   } catch (e) {
     res.status(500).json({ error: String(e.message || e) });
   }
@@ -765,6 +945,8 @@ app.post("/api/episode/video-select", (req, res) => {
     const g = arr.find((v) => v.file === file);
     if (!g) return res.status(404).json({ error: "Generation not found" });
     g.selected = !!selected;
+    // Single-selection: picking a take clears any other selected take in the bundle.
+    if (g.selected) arr.forEach((v) => { if (v.file !== file) v.selected = false; });
     db.video[bundle] = arr;
     writeDB(db);
     res.json({ ok: true, bundle, file, selected: g.selected });

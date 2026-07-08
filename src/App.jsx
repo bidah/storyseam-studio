@@ -809,10 +809,17 @@ function RefPickerModal({ bundle, folders, picked, flat, open, onAdd, onRemove, 
  * ---------------------------------------------------------------- */
 
 function EpVideoRail({ bundleId, vids, reloadKey, onToggleVideo }) {
-  const [i, setI] = useState(vids.length - 1);
+  // Prefer the selected take so a picked video is never hidden behind a later
+  // unselected one; fall back to the last render when nothing is selected.
+  const selFile = vids.find((v) => v.selected)?.file;
+  const [i, setI] = useState(() => {
+    const s = vids.findIndex((v) => v.selected);
+    return s >= 0 ? s : vids.length - 1;
+  });
   useEffect(() => {
-    setI(vids.length - 1);
-  }, [vids.length]);
+    const s = vids.findIndex((v) => v.selected);
+    setI(s >= 0 ? s : vids.length - 1);
+  }, [selFile, vids.length]);
   const idx = Math.min(i, vids.length - 1);
   const g = vids[idx];
   const prev = () => setI((n) => (n - 1 + vids.length) % vids.length);
@@ -1419,7 +1426,10 @@ function Episode({ reloadKey, onView }) {
 
   const onToggleVideo = useCallback((bundle, file, selected) => {
     setVideos((vs) => {
-      const arr = (vs[bundle] || []).map((g) => (g.file === file ? { ...g, selected } : g));
+      // Only one take per bundle can be selected — picking one clears the rest.
+      const arr = (vs[bundle] || []).map((g) =>
+        g.file === file ? { ...g, selected } : selected ? { ...g, selected: false } : g
+      );
       return { ...vs, [bundle]: arr };
     });
     fetch("/api/episode/video-select", {
