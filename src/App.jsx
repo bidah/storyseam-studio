@@ -15,6 +15,7 @@ import { CLIENT_ID } from "@/lib/clientId";
 import AgentChat from "@/components/AgentChat";
 import LoginGate from "@/components/Login";
 import ScriptEditor from "@/components/ScriptEditor";
+import Editor from "@/components/Editor";
 import {
   AgentProvider, useAgent, agentIsBusy, renderSoundMessage, renderAllPendingMessage,
   renderEpisodeMessage, stitchCutMessage, scoreCutMessage, trimMessage,
@@ -35,6 +36,9 @@ import {
 import {
   Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  Sheet, SheetContent, SheetHeader, SheetTitle,
+} from "@/components/ui/sheet";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
@@ -2251,32 +2255,34 @@ function CutVersionCard({ gen, bump, navigateTo, latest, compact, olderCount, on
 // own preserved setup (takes, timecodes, music cues) so you can A/B any version.
 function CutHistoryDialog({ open, onOpenChange, history, bump, navigateTo }) {
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[85vh] max-w-3xl overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      <SheetContent side="right" className="flex w-[495px] max-w-none flex-col gap-0 p-0 sm:max-w-none">
+        <SheetHeader className="border-b pr-14">
+          <SheetTitle className="flex flex-wrap items-center gap-2">
             <History size={16} /> Complete-cut history
             <Badge variant="secondary">{history.length} version{history.length === 1 ? "" : "s"}</Badge>
-          </DialogTitle>
-        </DialogHeader>
-        {history.length === 0 ? (
-          <Empty>no versions rendered yet.</Empty>
-        ) : (
-          <div className="space-y-4">
-            {history.map((gen, idx) => (
-              <CutVersionCard
-                key={gen.v}
-                gen={gen}
-                bump={bump}
-                navigateTo={navigateTo}
-                latest={idx === 0}
-                compact
-              />
-            ))}
-          </div>
-        )}
-      </DialogContent>
-    </Dialog>
+          </SheetTitle>
+        </SheetHeader>
+        <div className="min-h-0 flex-1 overflow-y-auto p-4">
+          {history.length === 0 ? (
+            <Empty>no versions rendered yet.</Empty>
+          ) : (
+            <div className="space-y-4">
+              {history.map((gen, idx) => (
+                <CutVersionCard
+                  key={gen.v}
+                  gen={gen}
+                  bump={bump}
+                  navigateTo={navigateTo}
+                  latest={idx === 0}
+                  compact
+                />
+              ))}
+            </div>
+          )}
+        </div>
+      </SheetContent>
+    </Sheet>
   );
 }
 
@@ -3550,6 +3556,7 @@ const TABS = [
   { value: "multishot", label: "Multi-shot", hidden: true },
   { value: "episode", label: "Episode (48)" },
   { value: "cuts", label: "Complete cuts" },
+  { value: "editor", label: "Editor" },
   { value: "library", label: "Library" },
   { value: "sounds", label: "Sound studio" },
 ];
@@ -3790,7 +3797,7 @@ export default function App() {
           </div>
         </header>
 
-        <main className="mx-auto max-w-[1500px] px-4 py-6 md:px-6">
+        <main className="mx-auto w-full max-w-[1500px] px-4 py-6 md:px-6">
           {view === "script" ? (
             <ScriptEditor reloadKey={reloadKey} liveKey={scriptEdits} />
           ) : view === "shotlist" ? (
@@ -3801,6 +3808,8 @@ export default function App() {
             <Library reloadKey={reloadKey} onView={setModalImage} />
           ) : view === "cuts" ? (
             <CompleteCuts reloadKey={reloadKey} navigateTo={navigateTo} />
+          ) : view === "editor" ? (
+            <Editor reloadKey={reloadKey} />
           ) : view === "episode" ? (
             <Episode reloadKey={reloadKey} onView={setModalImage} />
           ) : view === "multishot" ? (

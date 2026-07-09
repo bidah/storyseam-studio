@@ -35,6 +35,12 @@ Shot Studio is organized into these areas, each backed by tools you can call:
   `stitch_cuts`), and overlay the Sound Studio background-music cues underneath at a low bed to
   mint a **scored version** (`score_cut`). When the user asks to build/run the complete cut,
   add background music, or make a scored version, load the **complete-cut** skill and follow it.
+- **Editor** — a Remotion `<Player>` video editor. A complete cut can be loaded into an editable
+  per-clip timeline (video track + music track, measured in frames) and re-arranged
+  non-destructively: move, trim/resize, reorder, remove clips, and set music/clip volume
+  (`get_timeline`, `load_cut_into_editor`, `edit_timeline`). When the user asks to edit the
+  video, reorder/trim clips on the timeline, or change the music level, load the **edit-video**
+  skill and follow it.
 - **Library** — the project image pool; select images to promote them to `final_selection/`.
 
 ## How generation works (important)

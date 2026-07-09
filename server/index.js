@@ -1374,6 +1374,206 @@ app.get("/api/episode/cuts", async (req, res) => {
   }
 });
 
+// ---------------------------------------------------------------------------
+// Editor timeline — the editable, per-clip representation of a complete cut used
+// by the Remotion <Player> editor tab and the chat agent. Stored as
+// `db.editorTimeline`. Frames are at TL_FPS; media are the same /gen and
+// /sound-media URLs the cut uses. Both the UI and the agent read/write it here
+// so a chat edit and a drag on the timeline stay in sync.
+// ---------------------------------------------------------------------------
+const TL_FPS = 24;
+const secFrames = (sec) => Math.max(1, Math.round((sec || 0) * TL_FPS));
+
+// Build a fresh timeline from a stored cut generation (its ordered clips + music
+// bed). `v` selects the cut version; omitted → the latest generation.
+function buildTimelineFromCut(db, v) {
+  const hist = getCutHistory(db);
+  const gen = v != null ? hist.find((g) => g.v === Number(v)) : hist[0];
+  if (!gen) return null;
+  const videoItems = (gen.segments || [])
+    .filter((s) => s.file)
+    .map((s, i) => {
+      const from = Math.round((s.start || 0) * TL_FPS);
+      return {
+        id: `v${gen.v}_${i}_${s.id}`,
+        src: "/gen/" + s.file,
+        name: `${s.id} · ${s.name || s.file}`,
+        bundle: s.id,
+        from,
+        durationInFrames: secFrames(s.duration),
+        // The clip's natural (full source) length in frames — a video can be
+        // trimmed shorter but never stretched past this on the timeline.
+        sourceDurationInFrames: secFrames(s.duration),
+        volume: 1,
+      };
+    });
+  const musicItems = (gen.music || [])
+    .map((m, i) => {
+      const snd = soundFileForTrack(m.track);
+      if (!snd) return null;
+      const from = Math.round((m.start || 0) * TL_FPS);
+      const endSec = m.beatEnd != null ? m.beatEnd : (m.start || 0) + (m.duration || 0);
+      const end = Math.round(endSec * TL_FPS);
+      return {
+        id: `m${gen.v}_${i}_${m.track}`,
+        src: "/sound-media/" + snd.file,
+        name: m.name || m.label || m.track,
+        track: m.track,
+        from,
+        durationInFrames: Math.max(1, end - from),
+        volume: gen.gainDb != null ? Math.pow(10, gen.gainDb / 20) : MUSIC_BED_GAIN,
+      };
+    })
+    .filter(Boolean);
+  return {
+    fps: TL_FPS,
+    width: 1280,
+    height: 720,
+    source: { kind: gen.kind, v: gen.v, file: gen.file, at: gen.at || null },
+    tracks: [
+      { id: "video", name: "Video", type: "video", items: videoItems },
+      { id: "music", name: "Music", type: "audio", items: musicItems },
+    ],
+  };
+}
+
+const findItem = (tl, id) => {
+  for (const t of tl.tracks || []) {
+    const it = (t.items || []).find((x) => x.id === id);
+    if (it) return { track: t, item: it };
+  }
+  return null;
+};
+// Lay a track's items end-to-end from frame 0 (gapless), in current array order.
+const repackTrack = (track) => {
+  let cur = 0;
+  for (const it of track.items) {
+    it.from = cur;
+    cur += it.durationInFrames;
+  }
+};
+
+// Apply a list of edit ops to a timeline in place. Ops:
+//   { op:"move", id, from }                 – set an item's start frame
+//   { op:"resize", id, durationInFrames }   – set an item's length
+//   { op:"remove", id }                     – delete an item
+//   { op:"volume", id, volume }             – set gain (0..2, 1 = unity)
+//   { op:"mute", id, muted }                – mute/unmute an item
+//   { op:"reorder", track, order:[ids] }    – reorder + repack a track gapless
+//   { op:"repack", track }                  – close gaps in a track, gapless
+function applyTimelineOps(tl, ops) {
+  for (const op of ops || []) {
+    if (op.op === "move" && op.id != null) {
+      const f = findItem(tl, op.id);
+      if (f) f.item.from = Math.max(0, Math.round(op.from || 0));
+    } else if (op.op === "resize" && op.id != null) {
+      const f = findItem(tl, op.id);
+      if (f) {
+        let d = Math.max(1, Math.round(op.durationInFrames || 1));
+        if (f.item.sourceDurationInFrames) d = Math.min(d, f.item.sourceDurationInFrames); // can't exceed source length
+        f.item.durationInFrames = d;
+      }
+    } else if (op.op === "remove" && op.id != null) {
+      for (const t of tl.tracks) t.items = t.items.filter((x) => x.id !== op.id);
+    } else if (op.op === "volume" && op.id != null) {
+      const f = findItem(tl, op.id);
+      if (f) f.item.volume = Math.min(2, Math.max(0, Number(op.volume)));
+    } else if (op.op === "mute" && op.id != null) {
+      const f = findItem(tl, op.id);
+      if (f) f.item.muted = !!op.muted;
+    } else if (op.op === "disable" && op.id != null) {
+      const f = findItem(tl, op.id);
+      if (f) f.item.disabled = !!op.disabled;
+    } else if (op.op === "reorder" && op.track && Array.isArray(op.order)) {
+      const t = tl.tracks.find((x) => x.id === op.track);
+      if (t) {
+        const byId = new Map(t.items.map((it) => [it.id, it]));
+        const ordered = op.order.map((id) => byId.get(id)).filter(Boolean);
+        for (const it of t.items) if (!ordered.includes(it)) ordered.push(it);
+        t.items = ordered;
+        repackTrack(t);
+      }
+    } else if (op.op === "repack" && op.track) {
+      const t = tl.tracks.find((x) => x.id === op.track);
+      if (t) {
+        t.items.sort((a, b) => a.from - b.from);
+        repackTrack(t);
+      }
+    }
+  }
+  return tl;
+}
+
+// Read the saved editor timeline (null if none yet), plus the list of cut
+// generations the editor can load from.
+app.get("/api/timeline", (req, res) => {
+  try {
+    const db = readDB();
+    const cuts = getCutHistory(db).map((g) => ({
+      v: g.v,
+      kind: g.kind,
+      file: g.file,
+      url: g.url,
+      at: g.at || null,
+      withMusic: g.withMusic,
+      clips: (g.segments || []).filter((s) => s.file).length,
+      music: (g.music || []).length,
+      totalDuration: g.totalDuration || 0,
+    }));
+    res.json({ timeline: db.editorTimeline || null, cuts });
+  } catch (e) {
+    res.status(500).json({ error: String(e.message || e) });
+  }
+});
+
+// Replace the saved timeline outright (the UI autosaves the whole thing here).
+app.post("/api/timeline", (req, res) => {
+  try {
+    const { timeline } = req.body || {};
+    if (!timeline || !Array.isArray(timeline.tracks)) {
+      return res.status(400).json({ error: "Body must be { timeline: { tracks: [...] } }" });
+    }
+    const db = readDB();
+    db.editorTimeline = timeline;
+    writeDB(db);
+    res.json({ ok: true, timeline });
+  } catch (e) {
+    res.status(500).json({ error: String(e.message || e) });
+  }
+});
+
+// Load a complete cut into the editor (its clips + music, in order), replacing
+// the working timeline. `v` = cut version (default: latest generation).
+app.post("/api/timeline/from-cut", (req, res) => {
+  try {
+    const db = readDB();
+    const timeline = buildTimelineFromCut(db, req.body?.v);
+    if (!timeline) return res.status(404).json({ error: "No matching cut generation to load" });
+    db.editorTimeline = timeline;
+    writeDB(db);
+    res.json({ ok: true, timeline });
+  } catch (e) {
+    res.status(500).json({ error: String(e.message || e) });
+  }
+});
+
+// Apply granular edit ops to the working timeline (used by the chat agent).
+app.post("/api/timeline/edit", (req, res) => {
+  try {
+    const ops = req.body?.ops;
+    if (!Array.isArray(ops)) return res.status(400).json({ error: "Body must be { ops: [...] }" });
+    const db = readDB();
+    if (!db.editorTimeline || !Array.isArray(db.editorTimeline.tracks)) {
+      return res.status(400).json({ error: "No timeline loaded yet — load a cut into the editor first" });
+    }
+    applyTimelineOps(db.editorTimeline, ops);
+    writeDB(db);
+    res.json({ ok: true, timeline: db.editorTimeline });
+  } catch (e) {
+    res.status(500).json({ error: String(e.message || e) });
+  }
+});
+
 // Stitch the selected takes (MS-01 … last rendered) into a NEW versioned mp4 via
 // ffmpeg. Never overwrites a prior generation; if music was added before, the
 // fresh cut is re-scored so the newest version still has the background music.
