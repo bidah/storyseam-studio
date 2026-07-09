@@ -10,9 +10,12 @@ import React from "react";
 // audio in the <Player> preview than the WebCodecs-based @remotion/media path,
 // which stutters/repeats audio while buffering during scrubbing. (These are
 // marked deprecated in v4 but remain the right choice for a realtime editor.)
-import { AbsoluteFill, Sequence, Video, Audio } from "remotion";
+// For the headless render (/api/render) we swap to <OffthreadVideo>, which is
+// frame-accurate and doesn't rely on realtime <video> playback.
+import { AbsoluteFill, Sequence, Video, Audio, OffthreadVideo, getRemotionEnvironment } from "remotion";
 
 function VideoItem({ item, zIndex }) {
+  const Clip = getRemotionEnvironment().isRendering ? OffthreadVideo : Video;
   return (
     <Sequence
       from={item.from}
@@ -24,7 +27,7 @@ function VideoItem({ item, zIndex }) {
           video channel is transparent in its letterbox areas and the channel
           below shows through. `zIndex` makes the higher timeline row win. */}
       <AbsoluteFill style={{ zIndex }}>
-        <Video
+        <Clip
           src={item.src}
           volume={item.muted ? 0 : item.volume ?? 1}
           style={{ width: "100%", height: "100%", objectFit: "contain" }}

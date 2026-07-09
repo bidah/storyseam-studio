@@ -16,8 +16,10 @@
   },
   "dependencies": {
     "@ai-sdk/openai-compatible": "^3.0.5",
+    "@remotion/bundler": "^4.0.486",
     "@remotion/media": "^4.0.486",
     "@remotion/player": "^4.0.486",
+    "@remotion/renderer": "^4.0.486",
     "@tiptap/core": "^3.27.3",
     "@tiptap/extension-color": "^3.27.3",
     "@tiptap/extension-document": "^3.27.3",

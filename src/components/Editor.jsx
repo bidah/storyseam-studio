@@ -4,24 +4,30 @@
 // editable timeline, previews it live with <Player>, and lets you drag/trim/
 // reorder/remove clips and set music volume. The timeline is the same JSON the
 // chat agent edits (via /api/timeline*), so agent edits and manual edits stay
-// in sync — the tab re-fetches on the header Refresh and after a chat turn.
+// in sync — the tab re-fetches on the header Refresh, after a chat turn, and
+// live via the /api/timeline/events SSE stream whenever the agent edits.
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Player } from "@remotion/player";
 import {
   Loader2, TriangleAlert, RefreshCw, Check, Scissors, Trash2,
   Film, Music, ChevronLeft, ChevronRight, Layers, Wand2, Volume2, VolumeX, Undo2,
-  Eye, EyeOff,
+  Eye, EyeOff, Clapperboard, Download, ExternalLink,
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Slider } from "@/components/ui/slider";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Separator } from "@/components/ui/separator";
 import {
-  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
-  DropdownMenuSeparator, DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
+} from "@/components/ui/dialog";
+import {
+  Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription,
+} from "@/components/ui/sheet";
 import {
   ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator,
   ContextMenuShortcut, ContextMenuTrigger,
@@ -29,6 +35,7 @@ import {
 
 import EditorComposition from "@/editor/Composition";
 import { timelineDuration, framesToSec } from "@/editor/timeline";
+import { CLIENT_ID } from "@/lib/clientId";
 
 /* ---- tiny shared bits (kept local so this file is self-contained) ---- */
 function Spinner({ label }) {
@@ -51,6 +58,13 @@ const fmtTime = (sec) => {
   const m = Math.floor(sec / 60);
   const s = sec - m * 60;
   return `${m}:${s.toFixed(1).padStart(4, "0")}`;
+};
+
+const fmtBytes = (b) => {
+  if (!Number.isFinite(b)) return "";
+  if (b < 1024) return `${b} B`;
+  if (b < 1024 * 1024) return `${(b / 1024).toFixed(0)} KB`;
+  return `${(b / 1024 / 1024).toFixed(1)} MB`;
 };
 
 // Backfill each video clip's natural source length so it can't be stretched
@@ -167,6 +181,16 @@ export default function Editor({ reloadKey }) {
   //   { type: "move", trackId }  – drop onto an existing same-type channel
   //   { type: "new", at }        – spawn a new channel at track index `at`
   const [dropTarget, setDropTarget] = useState(null);
+  const [cutPickerOpen, setCutPickerOpen] = useState(false); // "load a cut" modal
+  // Render / "Deliver" panel state + Remotion options chosen before rendering.
+  const [renderOpen, setRenderOpen] = useState(false);
+  const [renderOut, setRenderOut] = useState("final_selection/renders/editor-render.mp4");
+  const [renderCodec, setRenderCodec] = useState("h264");
+  const [renderCrf, setRenderCrf] = useState(18);
+  const [renderScale, setRenderScale] = useState(1);
+  const [rendering, setRendering] = useState(false);
+  const [renderResult, setRenderResult] = useState(null);
+  const [renderError, setRenderError] = useState(null);
 
   const playerRef = useRef(null);
   const dragRef = useRef(null);
@@ -176,6 +200,7 @@ export default function Editor({ reloadKey }) {
   const timelineRef = useRef(null); // latest timeline, for undo snapshots
   const histRef = useRef([]); // undo stack of JSON snapshots
   const inGestureRef = useRef(false); // true between pointer-down and up of a drag/slide
+  const pendingReloadRef = useRef(false); // a live agent edit arrived mid-gesture; reload on release
   const [canUndo, setCanUndo] = useState(false);
 
   useEffect(() => { timelineRef.current = timeline; }, [timeline]);
@@ -212,8 +237,10 @@ export default function Editor({ reloadKey }) {
   );
   const durationSec = framesToSec(durationInFrames, fps);
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  // `silent` refreshes in place without the full-panel spinner — used by the
+  // live SSE reload so an agent edit doesn't flash the editor to a loading state.
+  const load = useCallback(async ({ silent = false } = {}) => {
+    if (!silent) setLoading(true);
     setError(null);
     try {
       const res = await fetch("/api/timeline");
@@ -227,11 +254,33 @@ export default function Editor({ reloadKey }) {
     } catch (e) {
       setError(String(e.message || e));
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, []);
 
   useEffect(() => { load(); }, [load, reloadKey]);
+
+  // Live-sync: reload when the timeline changes ELSEWHERE (the chat agent's
+  // edit_timeline). Our own autosaves echo back with our CLIENT_ID and are
+  // ignored. A foreign edit that lands mid-drag is deferred until pointer-up so
+  // it doesn't yank the timeline out from under the gesture.
+  useEffect(() => {
+    const es = new EventSource("/api/timeline/events");
+    const flush = () => {
+      if (!pendingReloadRef.current) return;
+      pendingReloadRef.current = false;
+      load({ silent: true });
+    };
+    es.onmessage = (e) => {
+      let data;
+      try { data = JSON.parse(e.data); } catch { return; } // heartbeats / malformed
+      if (data.clientId === CLIENT_ID) return; // our own save echo
+      if (inGestureRef.current) { pendingReloadRef.current = true; return; }
+      load({ silent: true });
+    };
+    window.addEventListener("pointerup", flush);
+    return () => { es.close(); window.removeEventListener("pointerup", flush); };
+  }, [load]);
 
   // Autosave the whole timeline (debounced) whenever it changes from an edit.
   useEffect(() => {
@@ -242,7 +291,7 @@ export default function Editor({ reloadKey }) {
         const res = await fetch("/api/timeline", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ timeline }),
+          body: JSON.stringify({ timeline, clientId: CLIENT_ID }),
         });
         if (!res.ok) throw new Error((await res.json()).error || "save failed");
         setSaveState("saved");
@@ -443,7 +492,7 @@ export default function Editor({ reloadKey }) {
       const res = await fetch("/api/timeline/from-cut", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ v }),
+        body: JSON.stringify({ v, clientId: CLIENT_ID }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to load cut");
@@ -459,6 +508,35 @@ export default function Editor({ reloadKey }) {
       setLoading(false);
     }
   }, []);
+
+  // Render the current timeline to an mp4 via Remotion (server-side). Sends the
+  // live in-editor timeline (not just the saved one) plus the chosen options so
+  // what you see is what gets delivered.
+  const runRender = useCallback(async () => {
+    setRendering(true);
+    setRenderError(null);
+    setRenderResult(null);
+    try {
+      const res = await fetch("/api/render", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          timeline: timelineRef.current,
+          out: renderOut,
+          codec: renderCodec,
+          crf: renderCrf,
+          scale: renderScale,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Render failed");
+      setRenderResult(data);
+    } catch (e) {
+      setRenderError(String(e.message || e));
+    } finally {
+      setRendering(false);
+    }
+  }, [renderOut, renderCodec, renderCrf, renderScale]);
 
   /* ---- drag handling for move / resize ---- */
   // A "move" drag slides the clip horizontally (its start frame) AND can carry it
@@ -559,30 +637,172 @@ export default function Editor({ reloadKey }) {
   if (loading && !timeline) return <Spinner label="loading editor…" />;
 
   const CutPicker = (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button variant="outline" size="sm">
-          <Layers size={14} /> {timeline ? "Load another cut" : "Choose a cut"}
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" className="max-h-80 overflow-auto">
-        <DropdownMenuLabel>Complete cuts</DropdownMenuLabel>
-        <DropdownMenuSeparator />
-        {cuts.length === 0 ? (
-          <DropdownMenuItem disabled>no stitched cuts yet</DropdownMenuItem>
-        ) : (
-          cuts.map((c) => (
-            <DropdownMenuItem key={c.v} onSelect={() => loadCut(c.v)} className="gap-2">
-              <Badge variant={c.withMusic ? "success" : "muted"} className="font-mono">v{c.v}</Badge>
-              <span className="flex-1">{c.kind === "scored" ? "scored" : "stitch"}</span>
-              <span className="text-xs text-muted-foreground">
-                {c.clips} clips{c.withMusic ? ` · ${c.music} music` : ""}
-              </span>
-            </DropdownMenuItem>
-          ))
-        )}
-      </DropdownMenuContent>
-    </DropdownMenu>
+    <>
+      <Button variant="outline" size="sm" onClick={() => setCutPickerOpen(true)}>
+        <Layers size={14} /> {timeline ? "Load another cut" : "Choose a cut"}
+      </Button>
+      <Dialog open={cutPickerOpen} onOpenChange={setCutPickerOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Complete cuts</DialogTitle>
+            <DialogDescription>
+              Load a stitched cut's clips and music into the editor. This replaces the current timeline.
+            </DialogDescription>
+          </DialogHeader>
+          {cuts.length === 0 ? (
+            <p className="py-6 text-center text-sm text-muted-foreground">No stitched cuts yet.</p>
+          ) : (
+            <div className="-mx-1 max-h-[60vh] space-y-1 overflow-y-auto px-1">
+              {cuts.map((c) => (
+                <button
+                  key={c.v}
+                  onClick={() => { loadCut(c.v); setCutPickerOpen(false); }}
+                  className="flex w-full items-center gap-2 rounded-md border px-3 py-2 text-left text-sm transition-colors hover:bg-accent hover:text-accent-foreground"
+                >
+                  <Badge variant={c.withMusic ? "success" : "muted"} className="font-mono">v{c.v}</Badge>
+                  <span className="flex-1 font-medium">{c.kind === "scored" ? "scored" : "stitch"}</span>
+                  <span className="text-xs text-muted-foreground">
+                    {c.clips} clips{c.withMusic ? ` · ${c.music} music` : ""}
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+
+  // Small segmented button-group control (used for codec / scale options).
+  const OptionGroup = ({ value, onChange, options }) => (
+    <div className="inline-flex rounded-md border p-0.5">
+      {options.map((o) => (
+        <button
+          key={String(o.value)}
+          type="button"
+          onClick={() => onChange(o.value)}
+          className={cn(
+            "rounded px-2.5 py-1 text-xs font-medium transition-colors",
+            value === o.value ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground",
+          )}
+        >
+          {o.label}
+        </button>
+      ))}
+    </div>
+  );
+
+  const RenderPanel = (
+    <>
+      <Button size="sm" onClick={() => setRenderOpen(true)} disabled={!timeline} title="Render this timeline to an mp4">
+        <Clapperboard size={14} /> Deliver
+      </Button>
+      <Sheet open={renderOpen} onOpenChange={setRenderOpen}>
+        <SheetContent side="right" className="w-[495px] max-w-none gap-0 p-0 sm:max-w-none">
+          <SheetHeader className="border-b pr-14">
+            <SheetTitle className="flex items-center gap-2"><Clapperboard size={16} /> Deliver render</SheetTitle>
+            <SheetDescription>
+              Render the current timeline to an mp4 with Remotion. Set the options, then render.
+            </SheetDescription>
+          </SheetHeader>
+
+          <div className="flex flex-col gap-5 overflow-y-auto p-5">
+            {/* Composition summary */}
+            <div className="grid grid-cols-3 gap-2 rounded-lg border bg-muted/30 p-3 text-center text-xs">
+              <div><div className="text-muted-foreground">Size</div><div className="font-medium tabular-nums">{timeline?.width || 1280}×{timeline?.height || 720}</div></div>
+              <div><div className="text-muted-foreground">FPS</div><div className="font-medium tabular-nums">{fps}</div></div>
+              <div><div className="text-muted-foreground">Duration</div><div className="font-medium tabular-nums">{fmtTime(durationSec)}</div></div>
+            </div>
+
+            {/* Remotion options */}
+            <div className="space-y-1.5">
+              <Label>Codec</Label>
+              <div>
+                <OptionGroup
+                  value={renderCodec}
+                  onChange={setRenderCodec}
+                  options={[{ value: "h264", label: "H.264 (mp4)" }, { value: "h265", label: "H.265 (mp4)" }]}
+                />
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label>Resolution scale</Label>
+              <div>
+                <OptionGroup
+                  value={renderScale}
+                  onChange={setRenderScale}
+                  options={[{ value: 0.5, label: "0.5×" }, { value: 1, label: "1×" }, { value: 2, label: "2×" }]}
+                />
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between">
+                <Label htmlFor="render-crf">Quality (CRF)</Label>
+                <span className="text-xs tabular-nums text-muted-foreground">{renderCrf} · lower = better</span>
+              </div>
+              <Slider
+                id="render-crf"
+                min={1} max={51} step={1}
+                value={[renderCrf]}
+                onValueChange={([v]) => setRenderCrf(v)}
+                aria-label="CRF quality"
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="render-out">Output file</Label>
+              <Input
+                id="render-out"
+                value={renderOut}
+                onChange={(e) => setRenderOut(e.target.value)}
+                spellCheck={false}
+                className="font-mono text-xs"
+              />
+              <p className="text-[11px] text-muted-foreground">Path relative to the project root. Must end in .mp4.</p>
+            </div>
+
+            <Separator />
+
+            <Button onClick={runRender} disabled={rendering} className="w-full">
+              {rendering ? <><Loader2 size={15} className="animate-spin" /> Rendering…</> : <><Clapperboard size={15} /> Render to mp4</>}
+            </Button>
+
+            {rendering && (
+              <p className="text-center text-xs text-muted-foreground">
+                Rendering in the background — this can take a while for long timelines. Keep this panel open.
+              </p>
+            )}
+
+            {renderError && <ErrorNote>{renderError}</ErrorNote>}
+
+            {renderResult && (
+              <div className="space-y-3 rounded-lg border border-primary/30 bg-primary/5 p-3">
+                <div className="flex items-center gap-2 text-sm font-medium text-primary">
+                  <Check size={15} /> Rendered
+                </div>
+                <div className="break-all font-mono text-xs text-muted-foreground">{renderResult.out}</div>
+                <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                  <span>{fmtBytes(renderResult.bytes)}</span>
+                  <span>{renderResult.width}×{renderResult.height}</span>
+                  <span>{renderResult.durationInFrames} frames @ {renderResult.fps}fps</span>
+                  <span>{renderResult.codec} · crf {renderResult.crf} · {renderResult.scale}×</span>
+                </div>
+                <div className="flex gap-2">
+                  <Button asChild variant="outline" size="sm">
+                    <a href={renderResult.url} target="_blank" rel="noreferrer"><ExternalLink size={14} /> Open</a>
+                  </Button>
+                  <Button asChild variant="outline" size="sm">
+                    <a href={renderResult.url} download={renderResult.file}><Download size={14} /> Download</a>
+                  </Button>
+                </div>
+              </div>
+            )}
+          </div>
+        </SheetContent>
+      </Sheet>
+    </>
   );
 
   return (
@@ -602,6 +822,7 @@ export default function Editor({ reloadKey }) {
           {saveState === "error" && <span className="text-xs text-destructive">save failed</span>}
           {CutPicker}
           <Button variant="outline" size="sm" onClick={load}><RefreshCw size={14} /> Refresh</Button>
+          {RenderPanel}
         </div>
       </div>
 

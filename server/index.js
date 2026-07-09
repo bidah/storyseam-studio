@@ -1459,6 +1459,7 @@ const repackTrack = (track) => {
 //   { op:"remove", id }                     – delete an item
 //   { op:"volume", id, volume }             – set gain (0..2, 1 = unity)
 //   { op:"mute", id, muted }                – mute/unmute an item
+//   { op:"disable", id, disabled }          – grey out + skip an item in playback
 //   { op:"reorder", track, order:[ids] }    – reorder + repack a track gapless
 //   { op:"repack", track }                  – close gaps in a track, gapless
 function applyTimelineOps(tl, ops) {
@@ -1504,6 +1505,35 @@ function applyTimelineOps(tl, ops) {
   return tl;
 }
 
+// Live-update stream for the video editor timeline. Same pattern as the script
+// stream: every timeline change broadcasts a frame here, carrying the saver's
+// `clientId` so the Editor tab ignores the echo of its OWN autosave and reloads
+// only for edits made elsewhere — e.g. the chat agent's edit_timeline.
+const timelineClients = new Set();
+function broadcastTimeline(payload) {
+  const frame = `data: ${JSON.stringify(payload)}\n\n`;
+  for (const res of timelineClients) {
+    try { res.write(frame); } catch { /* drop dead connections on next close */ }
+  }
+}
+
+app.get("/api/timeline/events", (req, res) => {
+  res.writeHead(200, {
+    "Content-Type": "text/event-stream",
+    "Cache-Control": "no-cache, no-transform",
+    Connection: "keep-alive",
+  });
+  res.write(": connected\n\n");
+  timelineClients.add(res);
+  const heartbeat = setInterval(() => {
+    try { res.write(": ping\n\n"); } catch { /* ignore */ }
+  }, 25000);
+  req.on("close", () => {
+    clearInterval(heartbeat);
+    timelineClients.delete(res);
+  });
+});
+
 // Read the saved editor timeline (null if none yet), plus the list of cut
 // generations the editor can load from.
 app.get("/api/timeline", (req, res) => {
@@ -1529,13 +1559,14 @@ app.get("/api/timeline", (req, res) => {
 // Replace the saved timeline outright (the UI autosaves the whole thing here).
 app.post("/api/timeline", (req, res) => {
   try {
-    const { timeline } = req.body || {};
+    const { timeline, clientId } = req.body || {};
     if (!timeline || !Array.isArray(timeline.tracks)) {
       return res.status(400).json({ error: "Body must be { timeline: { tracks: [...] } }" });
     }
     const db = readDB();
     db.editorTimeline = timeline;
     writeDB(db);
+    broadcastTimeline({ at: nowIso(), clientId: clientId ?? null });
     res.json({ ok: true, timeline });
   } catch (e) {
     res.status(500).json({ error: String(e.message || e) });
@@ -1551,6 +1582,7 @@ app.post("/api/timeline/from-cut", (req, res) => {
     if (!timeline) return res.status(404).json({ error: "No matching cut generation to load" });
     db.editorTimeline = timeline;
     writeDB(db);
+    broadcastTimeline({ at: nowIso(), clientId: req.body?.clientId ?? null });
     res.json({ ok: true, timeline });
   } catch (e) {
     res.status(500).json({ error: String(e.message || e) });
@@ -1568,6 +1600,9 @@ app.post("/api/timeline/edit", (req, res) => {
     }
     applyTimelineOps(db.editorTimeline, ops);
     writeDB(db);
+    // The chat agent has no clientId, so open Editor tabs treat this as a
+    // foreign edit and reload — reflecting agent edits in the UI right away.
+    broadcastTimeline({ at: nowIso(), clientId: req.body?.clientId ?? null });
     res.json({ ok: true, timeline: db.editorTimeline });
   } catch (e) {
     res.status(500).json({ error: String(e.message || e) });
@@ -1577,6 +1612,99 @@ app.post("/api/timeline/edit", (req, res) => {
 // Stitch the selected takes (MS-01 … last rendered) into a NEW versioned mp4 via
 // ffmpeg. Never overwrites a prior generation; if music was added before, the
 // fresh cut is re-scored so the newest version still has the background music.
+// ---------------------------------------------------------------------------
+// Remotion render — the editor's "Deliver" button. Bundles the editor
+// composition (cached across renders) and renders the CURRENT timeline (or one
+// posted in the body) to an mp4 at a chosen path inside the project. Media srcs
+// (/gen, /sound-media, …) are rewritten to absolute URLs on this server so the
+// headless browser can fetch them during the render.
+// ---------------------------------------------------------------------------
+let _remotionBundlePromise = null;
+async function getRemotionBundle() {
+  if (!_remotionBundlePromise) {
+    _remotionBundlePromise = (async () => {
+      const { bundle } = await import("@remotion/bundler");
+      const entry = path.join(__dirname, "..", "src", "editor", "RemotionRoot.jsx");
+      return bundle({ entryPoint: entry });
+    })().catch((e) => { _remotionBundlePromise = null; throw e; });
+  }
+  return _remotionBundlePromise;
+}
+
+// Rewrite root-relative media URLs (/gen/…, /sound-media/…) to absolute URLs on
+// this server so headless Chrome can fetch them from the bundle context.
+function absolutizeTracks(tracks, origin) {
+  return (tracks || []).map((t) => ({
+    ...t,
+    items: (t.items || []).map((it) => ({
+      ...it,
+      src: it.src && it.src.startsWith("/") ? origin + it.src : it.src,
+    })),
+  }));
+}
+
+app.post("/api/render", async (req, res) => {
+  try {
+    const body = req.body || {};
+    const db = readDB();
+    const timeline = body.timeline || db.editorTimeline;
+    if (!timeline || !Array.isArray(timeline.tracks)) {
+      return res.status(400).json({ error: "No timeline to render — load a cut into the editor first" });
+    }
+
+    // Output path (relative to the project root); default under final_selection/renders/.
+    const rel = (body.out && String(body.out).trim()) || "final_selection/renders/editor-render.mp4";
+    const outAbs = safeAbs(rel);
+    if (!outAbs) return res.status(400).json({ error: "Output path must stay inside the project" });
+    if (!/\.mp4$/i.test(outAbs)) return res.status(400).json({ error: "Output file must end in .mp4" });
+    fs.mkdirSync(path.dirname(outAbs), { recursive: true });
+
+    // Remotion options selected in the modal.
+    const codec = body.codec === "h265" ? "h265" : "h264";
+    const crf = Number.isFinite(+body.crf) ? Math.min(51, Math.max(1, Math.round(+body.crf))) : 18;
+    const scale = [0.5, 1, 2].includes(+body.scale) ? +body.scale : 1;
+
+    const origin = `http://localhost:${PORT}`;
+    const inputProps = {
+      tracks: absolutizeTracks(timeline.tracks, origin),
+      fps: timeline.fps || TL_FPS,
+      width: timeline.width || 1280,
+      height: timeline.height || 720,
+    };
+
+    const { renderMedia, selectComposition, ensureBrowser } = await import("@remotion/renderer");
+    await ensureBrowser();
+    const serveUrl = await getRemotionBundle();
+    const composition = await selectComposition({ serveUrl, id: "Editor", inputProps });
+
+    await renderMedia({
+      serveUrl,
+      composition,
+      codec,
+      crf,
+      scale,
+      outputLocation: outAbs,
+      inputProps,
+    });
+
+    const bytes = fs.statSync(outAbs).size;
+    res.json({
+      ok: true,
+      out: rel,
+      file: path.basename(outAbs),
+      url: "/asset/" + rel.split(path.sep).join("/"),
+      bytes,
+      codec, crf, scale,
+      width: composition.width,
+      height: composition.height,
+      fps: composition.fps,
+      durationInFrames: composition.durationInFrames,
+    });
+  } catch (e) {
+    res.status(500).json({ error: String(e.message || e) });
+  }
+});
+
 app.post("/api/episode/stitch", async (req, res) => {
   try {
     const db = readDB();
