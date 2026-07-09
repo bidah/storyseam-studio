@@ -237,6 +237,13 @@ export default function Editor({ reloadKey }) {
   );
   const durationSec = framesToSec(durationInFrames, fps);
 
+  // MUST be referentially stable across re-renders: a fresh object here makes
+  // the <Player> rebuild its internal video config every frame (the playhead
+  // readout re-renders us ~24×/s), which restarts its playback clock and drops
+  // it to ~half speed — the videos then run ahead and get seeked back every
+  // couple of seconds.
+  const playerInputProps = useMemo(() => ({ tracks: timeline?.tracks }), [timeline]);
+
   // `silent` refreshes in place without the full-panel spinner — used by the
   // live SSE reload so an agent edit doesn't flash the editor to a loading state.
   const load = useCallback(async ({ silent = false } = {}) => {
@@ -842,14 +849,13 @@ export default function Editor({ reloadKey }) {
             <Player
               ref={playerRef}
               component={EditorComposition}
-              inputProps={{ tracks: timeline.tracks }}
+              inputProps={playerInputProps}
               durationInFrames={durationInFrames}
               fps={fps}
               compositionWidth={timeline.width || 1280}
               compositionHeight={timeline.height || 720}
               style={{ width: "100%" }}
               controls
-              pauseWhenBuffering
               acknowledgeRemotionLicense
             />
           </div>

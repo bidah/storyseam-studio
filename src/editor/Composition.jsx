@@ -27,9 +27,12 @@ function VideoItem({ item, zIndex }) {
           video channel is transparent in its letterbox areas and the channel
           below shows through. `zIndex` makes the higher timeline row win. */}
       <AbsoluteFill style={{ zIndex }}>
+        {/* pauseWhenBuffering: a stalled clip pauses the whole timeline instead
+            of the timeline running on and yanking the video back into sync. */}
         <Clip
           src={item.src}
           volume={item.muted ? 0 : item.volume ?? 1}
+          pauseWhenBuffering
           style={{ width: "100%", height: "100%", objectFit: "contain" }}
         />
       </AbsoluteFill>
@@ -45,7 +48,7 @@ function AudioItem({ item }) {
       name={item.name || "music"}
       layout="none"
     >
-      <Audio src={item.src} volume={item.muted ? 0 : item.volume ?? 1} />
+      <Audio src={item.src} volume={item.muted ? 0 : item.volume ?? 1} pauseWhenBuffering />
     </Sequence>
   );
 }
