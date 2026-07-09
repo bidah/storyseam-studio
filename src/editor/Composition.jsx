@@ -12,7 +12,7 @@ import React from "react";
 // marked deprecated in v4 but remain the right choice for a realtime editor.)
 import { AbsoluteFill, Sequence, Video, Audio } from "remotion";
 
-function VideoItem({ item }) {
+function VideoItem({ item, zIndex }) {
   return (
     <Sequence
       from={item.from}
@@ -20,7 +20,10 @@ function VideoItem({ item }) {
       name={item.name || item.bundle || "clip"}
       layout="none"
     >
-      <AbsoluteFill style={{ backgroundColor: "black" }}>
+      {/* No black fill here — only the composition's base is black, so an upper
+          video channel is transparent in its letterbox areas and the channel
+          below shows through. `zIndex` makes the higher timeline row win. */}
+      <AbsoluteFill style={{ zIndex }}>
         <Video
           src={item.src}
           volume={item.muted ? 0 : item.volume ?? 1}
@@ -45,16 +48,19 @@ function AudioItem({ item }) {
 }
 
 export function EditorComposition({ tracks = [] }) {
+  // The timeline rows are drawn top-to-bottom (tracks[0] on top). A higher row
+  // must PLAY on top, so give earlier tracks a higher zIndex (last row = 1).
+  const n = tracks.length;
   return (
     <AbsoluteFill style={{ backgroundColor: "black" }}>
-      {tracks.map((track) =>
+      {tracks.map((track, ti) =>
         (track.items || [])
           .filter((item) => !item.disabled) // disabled clips are skipped in playback
           .map((item) =>
             track.type === "audio" ? (
               <AudioItem key={item.id} item={item} />
             ) : (
-              <VideoItem key={item.id} item={item} />
+              <VideoItem key={item.id} item={item} zIndex={n - ti} />
             )
           )
       )}

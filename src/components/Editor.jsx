@@ -80,6 +80,21 @@ function gapsFor(track) {
   return gaps;
 }
 
+// Height of one timeline lane, in px (must match the `h-16` on the lane divs).
+// Used to place the "new channel" drop indicator between lanes.
+const LANE_H = 64;
+
+// Build a fresh empty track of the given media type, with an id/name that
+// doesn't collide with existing tracks (video-2, video-3, music-2, …).
+function makeTrack(tl, type) {
+  const isAudio = type === "audio";
+  const base = isAudio ? "music" : "video";
+  const ids = new Set(tl.tracks.map((t) => t.id));
+  let n = 2;
+  while (ids.has(`${base}-${n}`)) n++;
+  return { id: `${base}-${n}`, name: `${isAudio ? "Music" : "Video"} ${n}`, type, items: [] };
+}
+
 /* ---- one clip/music block on the timeline ---- */
 function TimelineItem({ item, track, pxPerSec, fps, selected, onSelect, onDragStart, onToggleDisable, onRemove }) {
   const left = framesToSec(item.from, fps) * pxPerSec;
@@ -103,7 +118,7 @@ function TimelineItem({ item, track, pxPerSec, fps, selected, onSelect, onDragSt
           onPointerDown={(e) => {
             if (e.button !== 0) return; // let right-click open the context menu
             onSelect(item.id);
-            if (!e.target.dataset?.handle) onDragStart(e, item, "move");
+            if (!e.target.dataset?.handle) onDragStart(e, item, track, "move");
           }}
           title={item.name}
         >
@@ -114,7 +129,7 @@ function TimelineItem({ item, track, pxPerSec, fps, selected, onSelect, onDragSt
           {/* right-edge resize handle */}
           <div
             data-handle="resize"
-            onPointerDown={(e) => { e.stopPropagation(); onSelect(item.id); onDragStart(e, item, "resize"); }}
+            onPointerDown={(e) => { e.stopPropagation(); onSelect(item.id); onDragStart(e, item, track, "resize"); }}
             className="w-2 shrink-0 cursor-ew-resize bg-black/25 opacity-0 transition-opacity group-hover:opacity-100"
             title="Drag to trim the end"
           />
@@ -148,10 +163,15 @@ export default function Editor({ reloadKey }) {
   const [pxPerSec, setPxPerSec] = useState(70);
   const [frame, setFrame] = useState(0);
   const [saveState, setSaveState] = useState("idle"); // idle | saving | saved | error
+  // While dragging a card vertically: where it would land on release.
+  //   { type: "move", trackId }  – drop onto an existing same-type channel
+  //   { type: "new", at }        – spawn a new channel at track index `at`
+  const [dropTarget, setDropTarget] = useState(null);
 
   const playerRef = useRef(null);
   const dragRef = useRef(null);
   const trackAreaRef = useRef(null);
+  const lanesWrapRef = useRef(null); // wraps the stacked lanes, for drop hit-testing
   const dirtyRef = useRef(false); // suppress autosave right after a fetch
   const timelineRef = useRef(null); // latest timeline, for undo snapshots
   const histRef = useRef([]); // undo stack of JSON snapshots
@@ -331,10 +351,11 @@ export default function Editor({ reloadKey }) {
     setSelectedGap(null);
   }, [mutate]);
 
-  // Reorder a video clip left/right in playback order, then close gaps.
+  // Reorder a video clip left/right in playback order, then close gaps. Operates
+  // on whichever video channel the clip currently lives on.
   const reorderVideo = useCallback((id, dir) => {
     mutate((tl) => {
-      const t = tl.tracks.find((x) => x.id === "video");
+      const t = tl.tracks.find((x) => x.items.some((it) => it.id === id));
       if (!t) return tl;
       const items = t.items.slice().sort((a, b) => a.from - b.from);
       const i = items.findIndex((x) => x.id === id);
@@ -348,17 +369,71 @@ export default function Editor({ reloadKey }) {
     });
   }, [mutate]);
 
-  // Lay a track's clips end-to-end (gapless) in current start order.
-  const closeGaps = useCallback((trackId) => {
+  // Lay every video channel's clips end-to-end (gapless) in current start order.
+  const closeGapsAll = useCallback(() => {
     mutate((tl) => {
-      const t = tl.tracks.find((x) => x.id === trackId);
-      if (!t) return tl;
-      const items = t.items.slice().sort((a, b) => a.from - b.from);
-      let cur = 0;
-      for (const it of items) { it.from = cur; cur += it.durationInFrames; }
-      t.items = items;
+      for (const t of tl.tracks) {
+        if (t.type !== "video") continue;
+        const items = t.items.slice().sort((a, b) => a.from - b.from);
+        let cur = 0;
+        for (const it of items) { it.from = cur; cur += it.durationInFrames; }
+        t.items = items;
+      }
       return tl;
     });
+  }, [mutate]);
+
+  // Which channel a vertical drag would drop onto. Reads the live lane DOM rects
+  // so it tracks zoom/scroll. Dragging PAST the top/bottom border of the whole
+  // lane stack spawns a new channel there; hovering a different same-type lane
+  // moves the clip onto it. Staying within the item's own lane does nothing
+  // (so ordinary horizontal moves never accidentally create a channel).
+  const computeDrop = useCallback((clientY, itemType, srcTrackId) => {
+    const wrap = lanesWrapRef.current;
+    if (!wrap) return null;
+    const laneEls = Array.from(wrap.querySelectorAll("[data-lane]"));
+    if (!laneEls.length) return null;
+    const first = laneEls[0].getBoundingClientRect();
+    const last = laneEls[laneEls.length - 1].getBoundingClientRect();
+    if (clientY < first.top) return { type: "new", at: 0 };
+    if (clientY > last.bottom) return { type: "new", at: laneEls.length };
+    for (const el of laneEls) {
+      const r = el.getBoundingClientRect();
+      if (clientY >= r.top && clientY <= r.bottom) {
+        if (el.dataset.lane === srcTrackId) return null;    // already here
+        if (el.dataset.laneType !== itemType) return null;  // no cross-media moves
+        return { type: "move", trackId: el.dataset.lane };
+      }
+    }
+    return null;
+  }, []);
+
+  // Commit a vertical drag: pull the item out of its channel and either move it
+  // onto an existing channel or into a brand-new one inserted at `drop.at`. Runs
+  // silent — the drag already snapshotted once at pointer-down (one undo step).
+  const applyDrop = useCallback((id, drop, type) => {
+    mutate((tl) => {
+      let moved = null, srcTrack = null;
+      for (const t of tl.tracks) {
+        const it = t.items.find((x) => x.id === id);
+        if (it) { moved = it; srcTrack = t; break; }
+      }
+      if (!moved) return tl;
+      if (drop.type === "move") {
+        const dest = tl.tracks.find((t) => t.id === drop.trackId);
+        if (!dest || dest === srcTrack) return tl;
+        srcTrack.items = srcTrack.items.filter((x) => x.id !== id);
+        dest.items.push(moved);
+      } else if (drop.type === "new") {
+        srcTrack.items = srcTrack.items.filter((x) => x.id !== id);
+        const nt = makeTrack(tl, type);
+        nt.items.push(moved);
+        tl.tracks.splice(drop.at, 0, nt);
+      }
+      // Drop any now-empty channel we created earlier; keep the base two always.
+      tl.tracks = tl.tracks.filter((t) => t.items.length > 0 || t.id === "video" || t.id === "music");
+      return tl;
+    }, true);
   }, [mutate]);
 
   const loadCut = useCallback(async (v) => {
@@ -386,7 +461,12 @@ export default function Editor({ reloadKey }) {
   }, []);
 
   /* ---- drag handling for move / resize ---- */
-  const onDragStart = useCallback((e, item, mode) => {
+  // A "move" drag slides the clip horizontally (its start frame) AND can carry it
+  // to another channel vertically: over another same-type row it moves there;
+  // into the top/bottom grab-band it spawns a new channel. The vertical target is
+  // only previewed (dropTarget) during the drag and committed on release, so the
+  // card itself just slides along its own lane until you let go.
+  const onDragStart = useCallback((e, item, track, mode) => {
     e.preventDefault();
     beginGesture(); // one undo step for the whole drag
     dragRef.current = {
@@ -395,6 +475,9 @@ export default function Editor({ reloadKey }) {
       startFrom: item.from,
       startDur: item.durationInFrames,
       srcDur: item.sourceDurationInFrames, // resize cap (undefined = uncapped)
+      type: track.type,
+      srcTrackId: track.id,
+      drop: null,
     };
     const onMove = (ev) => {
       const d = dragRef.current;
@@ -402,6 +485,9 @@ export default function Editor({ reloadKey }) {
       const deltaFrames = ((ev.clientX - d.startX) / pxPerSec) * fps;
       if (d.mode === "move") {
         mapItem(d.id, { from: Math.max(0, Math.round(d.startFrom + deltaFrames)) }, true);
+        const drop = computeDrop(ev.clientY, d.type, d.srcTrackId);
+        d.drop = drop;
+        setDropTarget(drop);
       } else {
         // Trim shorter freely; never stretch past the clip's real length.
         let next = Math.max(1, Math.round(d.startDur + deltaFrames));
@@ -410,13 +496,16 @@ export default function Editor({ reloadKey }) {
       }
     };
     const onUp = () => {
+      const d = dragRef.current;
+      if (d && d.mode === "move" && d.drop) applyDrop(d.id, d.drop, d.type);
       dragRef.current = null;
+      setDropTarget(null);
       window.removeEventListener("pointermove", onMove);
       window.removeEventListener("pointerup", onUp);
     };
     window.addEventListener("pointermove", onMove);
     window.addEventListener("pointerup", onUp);
-  }, [pxPerSec, fps, mapItem]);
+  }, [pxPerSec, fps, mapItem, beginGesture, computeDrop, applyDrop]);
 
   // Click the ruler / empty track area → seek the player there.
   const seekFromEvent = useCallback((e) => {
@@ -554,7 +643,7 @@ export default function Editor({ reloadKey }) {
               <Button variant="outline" size="sm" onClick={undo} disabled={!canUndo} title="Undo last timeline edit (⌘Z)">
                 <Undo2 size={14} /> Undo
               </Button>
-              <Button variant="outline" size="sm" onClick={() => closeGaps("video")} title="Lay video clips end-to-end, removing gaps">
+              <Button variant="outline" size="sm" onClick={closeGapsAll} title="Lay video clips end-to-end on every channel, removing gaps">
                 <Scissors size={14} /> Close gaps
               </Button>
               <div className="flex items-center gap-2">
@@ -593,11 +682,19 @@ export default function Editor({ reloadKey }) {
                       </div>
                     ))}
                   </div>
-                  {/* lanes — clicking empty space deselects (seeking is ruler-only) */}
+                  {/* lanes — clicking empty space deselects (seeking is ruler-only).
+                      Wrapped so the "new channel" drop line can position between rows. */}
+                  <div ref={lanesWrapRef} className="relative">
                   {timeline.tracks.map((t) => (
                     <div
                       key={t.id}
-                      className="relative h-16 border-b"
+                      data-lane={t.id}
+                      data-lane-type={t.type}
+                      className={cn(
+                        "relative h-16 border-b",
+                        dropTarget?.type === "move" && dropTarget.trackId === t.id &&
+                          "bg-primary/10 ring-2 ring-inset ring-primary/60",
+                      )}
                       onPointerDown={(e) => { if (e.target === e.currentTarget) { setSelectedId(null); setSelectedGap(null); } }}
                     >
                       {/* selectable gaps between video clips */}
@@ -635,6 +732,19 @@ export default function Editor({ reloadKey }) {
                       ))}
                     </div>
                   ))}
+                  {/* "new channel" drop line — shown between rows while dragging a
+                      card into the top/bottom grab-band */}
+                  {dropTarget?.type === "new" && (
+                    <div
+                      className="pointer-events-none absolute left-0 right-0 z-30 h-0.5 -translate-y-1/2 bg-primary"
+                      style={{ top: dropTarget.at * LANE_H }}
+                    >
+                      <span className="absolute left-2 -top-2.5 rounded bg-primary px-1.5 py-0.5 text-[10px] font-medium text-primary-foreground shadow">
+                        new channel
+                      </span>
+                    </div>
+                  )}
+                  </div>
                   {/* playhead — draggable head scrubs the video */}
                   <div className="pointer-events-none absolute top-0 bottom-0 z-20 w-px bg-primary" style={{ left: playheadX }}>
                     <div
@@ -698,6 +808,7 @@ export default function Editor({ reloadKey }) {
           ) : (
             <p className="text-center text-xs text-muted-foreground">
               Click a clip to trim, reorder, adjust volume or remove it. Drag a clip to move it, or its right edge to trim the end.
+              Drag it onto another channel — or up/down past the edge to spawn a new one; higher channels play on top.
             </p>
           )}
         </>
