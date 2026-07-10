@@ -33,6 +33,7 @@ import { registerLibrary } from "./routes/library.js";
 import { registerCuts } from "./routes/cuts.js";
 import { registerProjects, getActiveProject, userCanAccessProject } from "./routes/projects.js";
 import { registerRender } from "./routes/render.js";
+import { registerExport } from "./routes/export.js";
 import { createAuth } from "./auth.js";
 import { broadcast } from "./lib/broadcast.js";
 import { kindForPrefix, mediaKey, streamKey } from "./lib/media.js";
@@ -334,6 +335,7 @@ registerLibrary(app);
 registerCuts(app);
 registerProjects(app);
 registerRender(app);
+registerExport(app);
 
 // --- eve chat agent proxy --------------------------------------------------
 // The chat agent (eve) runs on Vercel; the SPA is served from this Worker and

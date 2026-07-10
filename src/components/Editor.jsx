@@ -13,7 +13,7 @@ import {
   Loader2, TriangleAlert, RefreshCw, Check, Scissors, Trash2,
   Film, Music, ChevronLeft, ChevronRight, Layers, Wand2, Volume2, VolumeX, Undo2,
   Eye, EyeOff, Clapperboard, Download, ExternalLink,
-  PanelLeftClose, PanelLeftOpen, FolderOpen, Ban,
+  PanelLeftClose, PanelLeftOpen, FolderOpen, Ban, FileDown,
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -37,6 +37,7 @@ import {
 import EditorComposition from "@/editor/Composition";
 import { timelineDuration, framesToSec } from "@/editor/timeline";
 import { CLIENT_ID } from "@/lib/clientId";
+import { getProjectId } from "@/lib/projectFetch";
 
 /* ---- tiny shared bits (kept local so this file is self-contained) ---- */
 function Spinner({ label }) {
@@ -567,6 +568,7 @@ export default function Editor({ reloadKey }) {
   const [rendering, setRendering] = useState(false);
   const [renderResult, setRenderResult] = useState(null);
   const [renderError, setRenderError] = useState(null);
+  const [exporting, setExporting] = useState(false); // "Export for Resolve" (FCPXML zip)
 
   const playerRef = useRef(null);
   const dragRef = useRef(null);
@@ -1047,6 +1049,34 @@ export default function Editor({ reloadKey }) {
     }
   }, [renderOut, renderCodec, renderCrf, renderScale]);
 
+  // "Export for Resolve" — persist the LIVE timeline, then let the browser stream
+  // the FCPXML+media zip to disk via a plain <a download>. An <a> can't send the
+  // x-project-id header, so the export URL carries ?projectId= instead.
+  const runExport = useCallback(async () => {
+    setExporting(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/timeline", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ timeline: timelineRef.current, clientId: CLIENT_ID }),
+      });
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "Save failed");
+      dirtyRef.current = false;
+      const pid = getProjectId();
+      const a = document.createElement("a");
+      a.href = `/api/export/resolve${pid ? `?projectId=${encodeURIComponent(pid)}` : ""}`;
+      a.download = "";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    } catch (e) {
+      setError(String(e.message || e));
+    } finally {
+      setExporting(false);
+    }
+  }, []);
+
   /* ---- drag handling for move / resize ---- */
   // A "move" drag slides the clip horizontally (its start frame) AND can carry it
   // to another channel vertically: over another same-type row it moves there;
@@ -1356,6 +1386,16 @@ export default function Editor({ reloadKey }) {
           {saveState === "error" && <span className="text-xs text-destructive">save failed</span>}
           {CutPicker}
           <Button variant="outline" size="sm" onClick={load}><RefreshCw size={14} /> Refresh</Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={runExport}
+            disabled={!timeline || exporting}
+            title="Download a DaVinci Resolve timeline (FCPXML + media zip)"
+          >
+            {exporting ? <Loader2 size={14} className="animate-spin" /> : <FileDown size={14} />}
+            Export for Resolve
+          </Button>
           {RenderPanel}
         </div>
       </div>
