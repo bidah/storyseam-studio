@@ -1,7 +1,27 @@
 # shot-studio
 
-Vite + React front-end (`src/`) with an Express API (`server/index.js`) for reviewing
-Whistlewood episode shots, references, and Seedance renders.
+Vite + React front-end (`src/`, port 3333) backed by a Cloudflare Worker
+(`worker/`, name `shot-studio-uploads` — D1 + R2 + KV + a `ProjectEvents`
+Durable Object for live-sync SSE) for building the Whistlewood episode: script,
+shots, audio/video renders, cuts, and library. An [eve](https://eve.dev) chat
+agent (`agent/`, port 2000, proxied at `/eve`) drives the pipeline via typed
+tools + render skills. See `README.md` for architecture and how to run it.
+
+## Routing & data
+
+URL routing is **React Router v7 in data mode** (`src/router.jsx` → `RootLayout` +
+one lazy-loaded route per tab in `src/routes/*.jsx`, each exporting `{ Component,
+loader }`). Tabs fetch through their route **`loader`** (stale-while-revalidate via
+`src/lib/swr.js`), **not** `useEffect`; components read data with `useLoaderData()`,
+and load errors render through the route's `ErrorBoundary` (`RouteError`).
+
+**After any mutation: `invalidateTabCache(key); revalidate()`** — the canonical
+pair. `RootLayout` wires that same pair to the three "data changed" signals (the
+`/api/data/events` SSE firehose, the Refresh button, and project switch). `reloadKey`
+survives **only** as a media cache-bust nonce (`?v=` on `<video>`/`<img>`/`<audio>`),
+not for data. Do NOT loaderize the Script (TipTap) or Editor (Remotion) surfaces —
+they own their document state. Full route tree, gotchas, and the Worker
+`run_worker_first` caveat: **`docs/routing.md`**.
 
 ## UI stack
 

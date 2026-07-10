@@ -1,122 +1,103 @@
 # shot-studio
 
-A small local dashboard for the per-shot animation pipeline that lives in
-`../shot-by-shot/`. One row per shot (`shot01`, `shot02`, …) with four columns:
+A browser studio for building the Whistlewood episode end-to-end: write the
+screenplay, break it into shots, generate audio/video via Higgsfield, assemble
+cuts, and drive the whole pipeline from a built-in chat agent. Multi-project,
+with per-user accounts.
 
-1. **Seedance shot** — editable text of that shot's `SHOT: NN` block from
-   `whistlewood_s1_15s_seedance_shotlist.txt`.
-2. **Audio shot (seed-audio)** — editable text of the seed-audio block for that
-   shot from `whistlewood_1x01_scene1_FULL_seedaudio_prompt.txt`.
-3. **Audio generation** — HTML5 `<audio>` player for `shotNN_audio.mp3`
-   (or "not generated yet").
-4. **Video generation** — HTML5 `<video>` player for `shotNN_FINAL.mp4`
-   (or "not generated yet").
+The header tabs are the workflow: **Script**, **Shot list**, **Episode**,
+**Complete cuts**, **Editor**, **Library**, **Sound studio** — plus a project
+switcher and the **Studio agent** chat panel on the right.
 
-Editing a text cell and clicking **Save** writes the edited block back into the
-correct `.txt` file on disk, replacing **only** that block and preserving the
-rest of the file.
+Each tab is a real **URL route** (`/script`, `/episode`, …) — React Router v7 in
+data mode, with per-route lazy loading + loader-driven SWR caching. Architecture,
+the revalidation rule, and gotchas are in [`docs/routing.md`](docs/routing.md).
 
 ## Architecture
 
-- **Express API** (`server/index.js`, port **5174**) parses both `.txt` files,
-  scans `../shot-by-shot/shots/`, serves the media files statically under
-  `/media`, and handles the read/write endpoints.
-- **Vite + React front-end** (`src/`, port **5173**) renders the grid and proxies
-  `/api` and `/media` to the API (see `vite.config.js`).
+Three processes, no Express server (the old Express/Render backend was retired):
 
-The list of rows comes from the `shotNN` folders on disk. The seed-audio file is
-organized by `SEGMENT` (Segment 1 = shots 01–07, etc.), so each shot maps to the
-segment whose shot range contains it; the segment number is shown as a tag on the
-audio cell.
+- **Vite + React front-end** (`src/`, port **3333**). Renders the studio and
+  proxies all data/media paths to the Worker (see `vite.config.js`). `/eve` is
+  proxied to the agent so the chat is same-origin (no CORS).
+- **Cloudflare Worker** (`worker/`, name `shot-studio-uploads`) — the backend.
+  `src/index.js` + `src/routes/*` serve the JSON API and stream media; auth is
+  Better Auth (`src/auth.js`). Storage: **D1** (`DB`) for project/script/shot
+  data, **R2** (`BUCKET`) for media bytes, **KV** (`AUTH_KV`) for sessions. A
+  Durable Object (`ProjectEvents`) fans out live-update SSE so edits sync across
+  tabs. It also serves the built `dist/` as static `ASSETS` in production.
+  Deployed at `https://shot-studio-uploads.rodrigofigueroa-name.workers.dev`.
+- **Studio agent** (`agent/`, port **2000**) — an [eve](https://eve.dev) chat
+  agent (model `anthropic/claude-sonnet-5`) that drives the pipeline through
+  typed tools (`agent/tools/*.ts`) and render skills (`agent/skills/*`), calling
+  the Higgsfield MCP (`agent/connections/`) to actually render audio/video.
+
+By default the front-end talks to the **deployed** Worker, so `npm run dev` alone
+gives a working app — no local backend needed.
 
 ## Running it
 
-From this `shot-studio/` directory:
+From this `shot-studio/` directory (`npm install` already done):
 
 ```bash
-npm install        # already done
-npm start          # runs BOTH the API (5174) and the front-end (5173)
+npm run dev        # front-end only on http://localhost:3333 → deployed Worker backend
 ```
 
-Then open http://localhost:5173
-
-`npm start` uses `concurrently` to run both processes. If you prefer two
-terminals:
+To run the chat agent too (needs **Node ≥ 24**; the UI/Worker run on any Node):
 
 ```bash
-npm run server     # terminal 1 -> API on http://localhost:5174
-npm run dev        # terminal 2 -> front-end on http://localhost:5173
+cp .env.example .env   # fill in AI_GATEWAY_API_KEY (see Credentials)
+npm run stack          # eve agent (:2000) + Vite (:3333) together
 ```
 
-### Production / single-server option
+Or start pieces individually:
 
 ```bash
-npm run build      # outputs dist/
-npm run server     # Express also serves dist/ -> open http://localhost:5174
+npm run dev                                 # UI on :3333
+npm run agent:build && npm run agent:start  # eve agent on :2000
+npm run worker:dev                          # local Worker on :8787 (wrangler dev)
 ```
 
-## API
-
-- `GET  /api/shots` → `{ shots: [{ id, seedanceText, audioText, audioUrl?,
-  videoUrl?, audioSegment, seedanceFound, audioFound }] }`
-- `PUT  /api/shots/:id/seedance` body `{ "text": "..." }` → rewrites that shot's
-  `SHOT: NN` block.
-- `PUT  /api/shots/:id/audio` body `{ "text": "..." }` → rewrites the seed-audio
-  segment block that contains that shot.
-- `GET  /media/shotNN/<file>` → static media (mp3 / wav / mp4).
-
-## Refresh
-
-When new `shotNN_audio.mp3` / `shotNN_FINAL.mp4` files appear, click **↻ Refresh**
-in the header to re-scan the folders and reload the players (cache-busted).
-
-## Caveats
-
-- The seed-audio file has **no per-shot blocks** — it's segmented. Multiple shots
-  in the same segment share (and edit) the same audio block. With the current
-  data, shots 01–05 all map to Segment 1, so editing any of their audio cells
-  edits Segment 1.
-- The API resolves the data folder relative to itself (`../shot-by-shot`). Keep
-  `shot-studio/` as a sibling of `shot-by-shot/`.
-- No file watching; use the Refresh button.
-- Saving overwrites the block in place. There's no undo, so keep the files under
-  version control if you want history.
-
-## Studio agent (chat) — Vercel eve
-
-A chat agent lives in the right-hand panel and drives the whole pipeline through
-**tools + skills**, so you can build the episode without leaving the browser
-("create a rain-ambience sound", "stitch the complete cut", "assign the library
-images to bundles"). It asks clarifying questions inline and continues once you
-answer.
-
-- Built on **[eve](https://eve.dev)** (`agent/`), model `anthropic/claude-sonnet-5`.
-- `agent/tools/*.ts` — one typed tool per Express API action (sounds, shots,
-  episode, cuts, library). This is how "all functionality is routed through the
-  agent".
-- `agent/skills/*` — the reused render skills (`seed-audio`, `generate-multishot`,
-  `continue-video`, `video-from-audio-vfx`), loaded on demand.
-- `agent/connections/higgsfield.ts` — the Higgsfield MCP the skills drive to
-  actually render audio/video.
-- The browser chat uses eve's `useEveAgent` (`src/components/AgentChat.jsx`);
-  Vite proxies `/eve` → the agent so it's same-origin (no CORS).
-
-### Running the agent
-
-The agent needs **Node ≥ 24** (the UI/API run on any Node). One command runs all
-three processes (API :3334, agent :2000, UI :3333):
+To point the UI at a **local** Worker instead of the deployed one, set `WORKER`:
 
 ```bash
-cp .env.example .env      # fill in AI_GATEWAY_API_KEY (see below)
-npm run stack             # API + eve agent + Vite, then open http://localhost:3333
+npm run worker:dev                          # terminal 1 → :8787
+WORKER=http://localhost:8787 npm run dev    # terminal 2
 ```
 
-Or individually: `npm run server`, `npm run agent:build && npm run agent:start`,
-`npm run dev`.
+### Production / deploy
 
-**Credentials** (`.env`):
+```bash
+npm run worker:deploy   # builds dist/ then `wrangler deploy` (Worker serves dist/ as ASSETS)
+```
+
+## Credentials (`.env`)
+
 - `AI_GATEWAY_API_KEY` — **required** for the chat to reply (the model routes
   through the Vercel AI Gateway; create a key at
   https://vercel.com/dashboard/ai/api-keys, or run `vercel link` for OIDC).
-- `HIGGSFIELD_MCP_URL` / `HIGGSFIELD_MCP_TOKEN` — required for **live** audio/video
-  rendering via the skills; without them the pipeline management still works.
+- `HIGGSFIELD_MCP_URL` / `HIGGSFIELD_MCP_TOKEN` — required for **live**
+  audio/video rendering via the skills; without them the pipeline management
+  (script, shots, cuts, library) still works.
+
+Worker-side secrets (R2 keys, Better Auth, D1) live in `worker/wrangler.jsonc`
+vars and `wrangler secret`; see `.env.example`.
+
+## API (proxied paths → Worker)
+
+`vite.config.js` proxies these to the Worker (routes in `worker/src/routes/`):
+
+- `/api` — JSON API: `projects`, `script`, `shotlist`, `episode`, `cuts`,
+  `library`, `sounds`, `timeline`, `render`, `auth`.
+- `/api/script/events`, `/api/timeline/events` — live-update **SSE** streams
+  (no proxy buffering) backed by the `ProjectEvents` Durable Object.
+- `/media`, `/multishot-media`, `/sound-media`, `/refs`, `/asset`, `/final`,
+  `/gen`, `/files` — media served from R2.
+- `/eve` — the Studio agent (proxied to `http://localhost:2000`).
+
+## UI stack
+
+Tailwind CSS v4 + shadcn/ui (New York, zinc base, emerald accent), Vite alias
+`@/` → `src/`. See `CLAUDE.md` for component conventions (shadcn primitives,
+lucide-react icons only, shared helpers in `src/components/shared.jsx`; each tab
+lives in `src/routes/`).
