@@ -13,7 +13,7 @@ import {
   Loader2, TriangleAlert, RefreshCw, Check, Scissors, Trash2,
   Film, Music, ChevronLeft, ChevronRight, Layers, Wand2, Volume2, VolumeX, Undo2,
   Eye, EyeOff, Clapperboard, Download, ExternalLink,
-  PanelLeftClose, PanelLeftOpen, FolderOpen, Ban, FileDown,
+  PanelLeftClose, PanelLeftOpen, FolderOpen, Ban, FileDown, Magnet,
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -276,6 +276,7 @@ function gapsFor(track) {
 // Height of one timeline lane, in px (must match the `h-16` on the lane divs).
 // Used to place the "new channel" drop indicator between lanes.
 const LANE_H = 64;
+const SNAP_PX = 8; // magnet pull radius in px (converted to frames at the current zoom)
 
 // Build a fresh empty track of the given media type, with an id/name that
 // doesn't collide with existing tracks (video-2, video-3, music-2, …).
@@ -546,6 +547,7 @@ export default function Editor({ reloadKey }) {
   const [selectedGap, setSelectedGap] = useState(null); // { trackId, from, to }
   const [pxPerSec, setPxPerSec] = useState(70);
   const [frame, setFrame] = useState(0);
+  const [magnet, setMagnet] = useState(true); // snapping toggle — clips snap to nearby edges
   const [saveState, setSaveState] = useState("idle"); // idle | saving | saved | error
   // While dragging a card vertically: where it would land on release.
   //   { type: "move", trackId }  – drop onto an existing same-type channel
@@ -585,8 +587,13 @@ export default function Editor({ reloadKey }) {
   const poolSeqRef = useRef(0); // monotonic suffix for ids of clips added from the pool
   const playerWrapRef = useRef(null); // player box — the media pool matches its height
   const [poolH, setPoolH] = useState(null); // measured player height (px) so the pool scrolls internally
+  const magnetRef = useRef(true); // live snapping flag, read inside the drag handler
+  const frameRef = useRef(0); // live playhead frame, a snap target during a move drag
+  const [snapLine, setSnapLine] = useState(null); // frame of the active snap guide (null = none)
 
   useEffect(() => { timelineRef.current = timeline; }, [timeline]);
+  useEffect(() => { magnetRef.current = magnet; }, [magnet]);
+  useEffect(() => { frameRef.current = frame; }, [frame]);
 
   // Keep the media pool the same height as the player so its list scrolls
   // internally instead of stretching the whole tab. Tracks the player box live.
@@ -1082,6 +1089,40 @@ export default function Editor({ reloadKey }) {
     }
   }, []);
 
+  /* ---- magnet / snapping ---- */
+  // When the magnet is on, a moving clip snaps its START or END edge to a nearby
+  // target: the edges of every OTHER clip (across all tracks), the timeline start
+  // (0), and the playhead. The threshold is a fixed ~8px, converted to frames so
+  // the "pull" feels the same at any zoom. Returns the snapped `from` (the clip's
+  // length never changes on a move) and reports the snap point via setSnapLine so
+  // a guide can be drawn; null snap point clears it.
+  const snapFrom = useCallback((proposedFrom, dur, draggedId) => {
+    const tl = timelineRef.current;
+    if (!tl) { setSnapLine(null); return proposedFrom; }
+    const thresh = Math.max(1, (SNAP_PX / pxPerSec) * fps);
+    const targets = [0, frameRef.current];
+    for (const t of tl.tracks || []) {
+      for (const it of t.items || []) {
+        if (it.id === draggedId) continue;
+        const s = it.from || 0;
+        targets.push(s, s + (it.durationInFrames || 0));
+      }
+    }
+    const start = proposedFrom;
+    const end = proposedFrom + dur;
+    let best = null; // { from, at, dist }
+    for (const target of targets) {
+      const ds = Math.abs(start - target);
+      if (ds <= thresh && (!best || ds < best.dist)) best = { from: target, at: target, dist: ds };
+      const de = Math.abs(end - target);
+      if (de <= thresh && (!best || de < best.dist)) best = { from: target - dur, at: target, dist: de };
+    }
+    if (!best) { setSnapLine(null); return proposedFrom; }
+    const snapped = Math.max(0, Math.round(best.from));
+    setSnapLine(best.at);
+    return snapped;
+  }, [pxPerSec, fps]);
+
   /* ---- drag handling for move / resize ---- */
   // A "move" drag slides the clip horizontally (its start frame) AND can carry it
   // to another channel vertically: over another same-type row it moves there;
@@ -1106,7 +1147,9 @@ export default function Editor({ reloadKey }) {
       if (!d) return;
       const deltaFrames = ((ev.clientX - d.startX) / pxPerSec) * fps;
       if (d.mode === "move") {
-        mapItem(d.id, { from: Math.max(0, Math.round(d.startFrom + deltaFrames)) }, true);
+        let nextFrom = Math.max(0, Math.round(d.startFrom + deltaFrames));
+        if (magnetRef.current) nextFrom = snapFrom(nextFrom, d.startDur, d.id);
+        mapItem(d.id, { from: nextFrom }, true);
         const drop = computeDrop(ev.clientY, d.type, d.srcTrackId);
         d.drop = drop;
         setDropTarget(drop);
@@ -1122,12 +1165,13 @@ export default function Editor({ reloadKey }) {
       if (d && d.mode === "move" && d.drop) applyDrop(d.id, d.drop, d.type);
       dragRef.current = null;
       setDropTarget(null);
+      setSnapLine(null);
       window.removeEventListener("pointermove", onMove);
       window.removeEventListener("pointerup", onUp);
     };
     window.addEventListener("pointermove", onMove);
     window.addEventListener("pointerup", onUp);
-  }, [pxPerSec, fps, mapItem, beginGesture, computeDrop, applyDrop]);
+  }, [pxPerSec, fps, mapItem, beginGesture, computeDrop, applyDrop, snapFrom]);
 
   // Drag a fade handle on an audio card: horizontal movement sets the fade
   // length in frames. Fades are clamped so fade-in + fade-out ≤ clip length.
@@ -1456,6 +1500,17 @@ export default function Editor({ reloadKey }) {
               <Button variant="outline" size="sm" onClick={closeGapsAll} title="Lay video clips end-to-end on every channel, removing gaps">
                 <Scissors size={14} /> Close gaps
               </Button>
+              <Button
+                variant={magnet ? "default" : "outline"}
+                size="sm"
+                onClick={() => setMagnet((m) => !m)}
+                aria-pressed={magnet}
+                title={magnet
+                  ? "Snapping on — dragged clips snap to nearby edges. Click to turn off."
+                  : "Snapping off — clips move freely. Click to turn on (magnet)."}
+              >
+                <Magnet size={14} /> Snap
+              </Button>
               <div className="flex items-center gap-2">
                 <span className="text-xs text-muted-foreground">zoom</span>
                 <Slider
@@ -1495,6 +1550,13 @@ export default function Editor({ reloadKey }) {
                   {/* lanes — clicking empty space deselects (seeking is ruler-only).
                       Wrapped so the "new channel" drop line can position between rows. */}
                   <div ref={lanesWrapRef} className="relative">
+                  {/* magnet snap guide — a full-height line at the edge being snapped to */}
+                  {snapLine != null && (
+                    <div
+                      className="pointer-events-none absolute top-0 bottom-0 z-20 w-px bg-primary"
+                      style={{ left: framesToSec(snapLine, fps) * pxPerSec }}
+                    />
+                  )}
                   {timeline.tracks.map((t) => (
                     <div
                       key={t.id}
