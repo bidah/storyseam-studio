@@ -1,24 +1,17 @@
 import { createBrowserRouter, redirect } from "react-router";
 import RootLayout from "@/components/RootLayout";
 import { RouteError } from "@/components/shared";
-import * as script from "@/routes/script";
-import * as shotlist from "@/routes/shotlist";
-import * as shots from "@/routes/shots";
-import * as multishot from "@/routes/multishot";
-import * as episode from "@/routes/episode";
-import * as cuts from "@/routes/cuts";
-import * as editor from "@/routes/editor";
-import * as library from "@/routes/library";
-import * as sounds from "@/routes/sounds";
 
 // React Router v7 in DATA mode (createBrowserRouter + RouterProvider). The app is
 // plain-Vite-built and served as static assets by the Cloudflare Worker with SPA
 // fallback — we deliberately do NOT use framework mode (see docs/react-router-
 // migration-plan.md §Part A).
 //
-// Phase 2: routes only. Each route module exports a `Component` that reads the
-// shell context and renders the existing tab (still effect-fetching via reloadKey).
-// Phase 3 adds `loader`s; Phase 4 swaps `Component:` for `lazy: () => import(...)`.
+// Each route is code-split via `lazy: () => import(...)`: the route module exports
+// { Component, loader } (and loaders reuse the swr cache), so React Router pulls a
+// tab's chunk on first navigation and keeps the current tab visible while it loads.
+// Biggest win: /editor's Remotion deps leave the main bundle. ErrorBoundary stays
+// statically set so it also catches lazy-load failures.
 export const router = createBrowserRouter([
   {
     path: "/",
@@ -26,15 +19,15 @@ export const router = createBrowserRouter([
     id: "root",
     children: [
       { index: true, loader: () => redirect("/script") },
-      { path: "script", Component: script.Component },
-      { path: "shotlist", Component: shotlist.Component, loader: shotlist.loader, ErrorBoundary: RouteError },
-      { path: "shots", Component: shots.Component },
-      { path: "multishot", Component: multishot.Component, loader: multishot.loader, ErrorBoundary: RouteError },
-      { path: "episode", Component: episode.Component, loader: episode.loader, ErrorBoundary: RouteError },
-      { path: "cuts", Component: cuts.Component, loader: cuts.loader, ErrorBoundary: RouteError },
-      { path: "editor", Component: editor.Component },
-      { path: "library", Component: library.Component, loader: library.loader, ErrorBoundary: RouteError },
-      { path: "sounds", Component: sounds.Component, loader: sounds.loader, ErrorBoundary: RouteError },
+      { path: "script", lazy: () => import("@/routes/script") },
+      { path: "shotlist", lazy: () => import("@/routes/shotlist"), ErrorBoundary: RouteError },
+      { path: "shots", lazy: () => import("@/routes/shots") },
+      { path: "multishot", lazy: () => import("@/routes/multishot"), ErrorBoundary: RouteError },
+      { path: "episode", lazy: () => import("@/routes/episode"), ErrorBoundary: RouteError },
+      { path: "cuts", lazy: () => import("@/routes/cuts"), ErrorBoundary: RouteError },
+      { path: "editor", lazy: () => import("@/routes/editor") }, // keeps Remotion out of the main chunk
+      { path: "library", lazy: () => import("@/routes/library"), ErrorBoundary: RouteError },
+      { path: "sounds", lazy: () => import("@/routes/sounds"), ErrorBoundary: RouteError },
       // Unknown paths fall back to the Script tab.
       { path: "*", loader: () => redirect("/script") },
     ],
