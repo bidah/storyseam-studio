@@ -1,14 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Check, Play, RefreshCw, ExternalLink, TriangleAlert, Music, Download, Clapperboard, Loader2, History } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { readTabCache, writeTabCache } from "@/lib/tabCache";
+import { invalidateTabCache } from "@/lib/tabCache";
+import { swr, useRevalidateOnMount } from "@/lib/swr";
 import { useAgent, agentIsBusy, stitchCutMessage, scoreCutMessage } from "@/components/AgentProvider";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import { useNavigate } from "react-router";
-import { Empty, Panel, Spinner, ErrorNote, fmtTime } from "@/components/shared";
-import { useShell } from "@/lib/shellContext";
+import { useNavigate, useLoaderData, useRevalidator } from "react-router";
+import { Empty, Panel, ErrorNote, fmtTime } from "@/components/shared";
 
 // A stitched-cut <video> with a live "now playing" overlay. As the cut plays,
 // the top-right chips track which multishot bundle (and, for a scored cut, which
@@ -326,46 +326,25 @@ function CutHistoryDialog({ open, onOpenChange, history, bump, navigateTo }) {
   );
 }
 
-function CompleteCuts({ reloadKey, navigateTo }) {
+function CompleteCuts({ navigateTo }) {
   const agent = useAgent();
   const agentBusy = agentIsBusy(agent);
-  // Seed from cache so a tab remount paints the last cut instantly (no spinner).
-  const [data, setData] = useState(() => readTabCache("cuts") || null);
-  const [loading, setLoading] = useState(() => !readTabCache("cuts"));
-  const [error, setError] = useState(null);
-  const [bump, setBump] = useState(0);
+  const data = useLoaderData();
+  const revalidator = useRevalidator();
+  useRevalidateOnMount("cuts");
+  const [error, setError] = useState(null); // stitch/score/trim (mutation) errors
+  const [bump, setBump] = useState(0);      // media cache-bust for the cut <video>
   const [historyOpen, setHistoryOpen] = useState(false);
 
-  // `force` (agent-turn refetch) always revalidates; a plain mount serves cache
-  // instantly and revalidates in the background — spinner only on the first load.
-  const load = useCallback(async () => {
-    const cached = readTabCache("cuts");
-    if (cached) { setData(cached); setLoading(false); }
-    else setLoading(true);
-    setError(null);
-    try {
-      const res = await fetch("/api/episode/cuts");
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error || "Failed to load");
-      setData(json);
-      writeTabCache("cuts", json);
-    } catch (e) {
-      if (!readTabCache("cuts")) setError(String(e.message || e));
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-  useEffect(() => {
-    load();
-  }, [load, reloadKey]);
   // Re-read the cut whenever the agent finishes a turn (it may have just run
   // stitch_cuts / score_cut), and bust the <video> cache so the new mp4 shows.
   useEffect(() => {
     if (agent.status === "ready") {
-      load();
+      invalidateTabCache("cuts");
+      revalidator.revalidate();
       setBump((b) => b + 1);
     }
-  }, [agent.status, load]);
+  }, [agent.status, revalidator]);
 
   // Stitching/scoring runs THROUGH the agent chat (get_cuts → stitch_cuts /
   // score_cut), like every other mutation — the agent runs ffmpeg locally and
@@ -387,9 +366,6 @@ function CompleteCuts({ reloadKey, navigateTo }) {
       setError(String(e.message || e));
     }
   }, [agent, data]);
-
-  if (loading) return <Spinner label="loading cuts…" />;
-  if (!data) return <ErrorNote>{error}</ErrorNote>;
 
   const segs = data.segments || [];
   const usable = segs.filter((s) => s.file);
@@ -490,6 +466,16 @@ function CompleteCuts({ reloadKey, navigateTo }) {
   );
 }
 
+// Loader: the complete-cut manifest (segments, music, render history, output).
+export function loader() {
+  return swr("cuts", async () => {
+    const res = await fetch("/api/episode/cuts");
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.error || "Failed to load");
+    return json;
+  });
+}
+
 export { CompleteCuts };
 
 // Route entry. The Complete-cuts overlay still calls navigateTo({ view, anchor })
@@ -497,11 +483,10 @@ export { CompleteCuts };
 // (/episode#ep-<id>, /sounds#snd-<track>). RootLayout's anchor hook does the
 // scroll + flash once the target tab has loaded.
 export function Component() {
-  const { reloadKey } = useShell();
   const navigate = useNavigate();
   const navigateTo = useCallback(
     ({ view, anchor }) => navigate(`/${view}${anchor ? `#${anchor}` : ""}`),
     [navigate],
   );
-  return <CompleteCuts reloadKey={reloadKey} navigateTo={navigateTo} />;
+  return <CompleteCuts navigateTo={navigateTo} />;
 }

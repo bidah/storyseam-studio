@@ -1,11 +1,12 @@
-import { useCallback, useEffect, useState } from "react";
+import { useState, useEffect } from "react";
+import { useLoaderData } from "react-router";
 import { ChevronLeft, ChevronRight, Volume2, VolumeX, Speech, RefreshCw, ExternalLink } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { readTabCache, writeTabCache } from "@/lib/tabCache";
+import { swr, useRevalidateOnMount } from "@/lib/swr";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { Empty, Eyebrow, Panel, Spinner, ErrorNote, ImageModal } from "@/components/shared";
+import { Empty, Eyebrow, Panel, ImageModal } from "@/components/shared";
 import { useShell } from "@/lib/shellContext";
 
 /* ---------------------------------------------------------------- *
@@ -144,35 +145,10 @@ function GenerationSlideshow({ generations, reloadKey }) {
 }
 
 function MultiShot({ reloadKey }) {
-  const [data, setData] = useState(() => readTabCache("multishot") ?? null);
-  const [loading, setLoading] = useState(() => readTabCache("multishot") === undefined);
-  const [error, setError] = useState(null);
+  const data = useLoaderData(); // the multishot experiment, or null if none
+  useRevalidateOnMount("multishot");
   const [modalImage, setModalImage] = useState(null);
 
-  const load = useCallback(async () => {
-    const cached = readTabCache("multishot");
-    if (cached !== undefined) { setData(cached); setLoading(false); }
-    else setLoading(true);
-    setError(null);
-    try {
-      const res = await fetch("/api/multishot");
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error || "Failed to load");
-      setData(json.multishot);
-      writeTabCache("multishot", json.multishot ?? null);
-    } catch (e) {
-      if (readTabCache("multishot") === undefined) setError(String(e.message || e));
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    load();
-  }, [load, reloadKey]);
-
-  if (loading) return <Spinner label="loading multishot…" />;
-  if (error) return <ErrorNote>{error}</ErrorNote>;
   if (!data) return <Empty>No multishot experiment found.</Empty>;
 
   return (
@@ -251,6 +227,17 @@ function MultiShot({ reloadKey }) {
       <ImageModal image={modalImage} onClose={() => setModalImage(null)} />
     </div>
   );
+}
+
+// Loader: the multishot experiment (or null if none). reloadKey still flows from
+// the shell for the <video>/<img>/<audio> cache-bust (?v=).
+export function loader() {
+  return swr("multishot", async () => {
+    const res = await fetch("/api/multishot");
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.error || "Failed to load");
+    return json.multishot ?? null;
+  });
 }
 
 export { MultiShot };

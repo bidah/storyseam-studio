@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useState } from "react";
+import { useLoaderData, useRevalidator } from "react-router";
 import { X, RefreshCw, Loader2, Layers, Film } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { readTabCache, writeTabCache } from "@/lib/tabCache";
+import { invalidateTabCache } from "@/lib/tabCache";
+import { swr, useRevalidateOnMount } from "@/lib/swr";
 import { useAgent, agentIsBusy } from "@/components/AgentProvider";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Empty, Panel, Spinner, ErrorNote, fmtTime } from "@/components/shared";
-import { useShell } from "@/lib/shellContext";
+import { Empty, Panel, ErrorNote, fmtTime } from "@/components/shared";
 
 // One inline-editable shot field. Saves on blur (only when changed) via
 // PUT /api/shotlist/shot/:n and hands the fresh pack preview back up.
@@ -43,63 +44,41 @@ function ShotField({ n, field, value, onSaved, multiline, mono, placeholder, row
   );
 }
 
-function ShotList({ reloadKey }) {
+function ShotList() {
   const agent = useAgent();
   const agentBusy = agentIsBusy(agent);
-  const [data, setData] = useState(() => readTabCache("shotlist") ?? null);
-  const [loading, setLoading] = useState(() => readTabCache("shotlist") === undefined);
-  const [error, setError] = useState(null);
+  const data = useLoaderData();
+  const revalidator = useRevalidator();
+  useRevalidateOnMount("shotlist");
+  const [error, setError] = useState(null);   // rebuild (mutation) error
   const [rebuilding, setRebuilding] = useState(false);
   // Which pack the left rail is filtering the body by (null = show every shot).
   const [activePack, setActivePack] = useState(null);
 
-  const load = useCallback(async () => {
-    const cached = readTabCache("shotlist");
-    if (cached !== undefined) { setData(cached); setLoading(false); }
-    setError(null);
-    try {
-      const res = await fetch("/api/shotlist");
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error || "Failed to load");
-      setData(json);
-      writeTabCache("shotlist", json);
-    } catch (e) {
-      if (readTabCache("shotlist") === undefined) setError(String(e.message || e));
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-  useEffect(() => { load(); }, [load, reloadKey]);
+  const refetch = useCallback(() => {
+    invalidateTabCache("shotlist");
+    revalidator.revalidate();
+  }, [revalidator]);
+
   // The agent just wrote the shot list (save_shotlist) → refresh when it's done.
-  useEffect(() => { if (agent.status === "ready") load(); }, [agent.status, load]);
+  useEffect(() => { if (agent.status === "ready") refetch(); }, [agent.status, refetch]);
 
   const rebuild = useCallback(async () => {
     setRebuilding(true);
     setError(null);
     try {
       const res = await fetch("/api/shotlist/rebuild-from-episode", { method: "POST" });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error || "Rebuild failed");
-      setData(json);
-      writeTabCache("shotlist", json);
+      if (!res.ok) throw new Error((await res.json()).error || "Rebuild failed");
+      refetch();
     } catch (e) {
       setError(String(e.message || e));
     } finally {
       setRebuilding(false);
     }
-  }, []);
+  }, [refetch]);
 
-  const onSaved = useCallback((json) => {
-    // Server returns the updated shot + fresh packs; patch both in place.
-    setData((d) => {
-      if (!d) return d;
-      const shots = json.shot ? d.shots.map((s) => (s.n === json.shot.n ? json.shot : s)) : d.shots;
-      return { ...d, shots, packs: json.packs || d.packs };
-    });
-  }, []);
-
-  if (loading) return <Spinner label="loading shot list…" />;
-  if (!data) return <ErrorNote>{error}</ErrorNote>;
+  // A ShotField saved → refetch so the patched shot + fresh packs reflect the edit.
+  const onSaved = refetch;
 
   const shots = data.shots || [];
   const packs = data.packs || [];
@@ -242,9 +221,18 @@ function ShotList({ reloadKey }) {
   );
 }
 
+// Loader: the shot list (shots + auto-packed multishot packs).
+export function loader() {
+  return swr("shotlist", async () => {
+    const res = await fetch("/api/shotlist");
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.error || "Failed to load");
+    return json;
+  });
+}
+
 export { ShotList };
 
 export function Component() {
-  const { reloadKey } = useShell();
-  return <ShotList reloadKey={reloadKey} />;
+  return <ShotList />;
 }
