@@ -48,6 +48,10 @@ baked complete-cut mp4s (that's the complete-cut / stitch skill).
    - Drop a clip or music cue → `{ op:'remove', id }`.
    - Music/clip volume → `{ op:'volume', id, volume }` (1 = unity, 0.5 = half,
      0 = silent; music beds are quiet by default, ~0.08). Or `{ op:'mute', id, muted:true }`.
+   - Disable/enable a clip → `{ op:'disable', id, disabled:true }` (greys it out and
+     skips it in playback while keeping it on the timeline; `disabled:false` re-enables).
+     Prefer this over `remove` when the user wants to "turn off", "grey out", "skip", or
+     temporarily hide a clip without deleting it.
    - Close gaps after edits → `{ op:'repack', track:'video' }` (reorder already does this).
 3. **Report the result.** `edit_timeline` returns `{ ok, timeline }` with the
    updated timeline. Tell the user what changed in plain terms (e.g. "moved MS-05

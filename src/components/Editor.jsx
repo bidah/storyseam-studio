@@ -13,6 +13,7 @@ import {
   Loader2, TriangleAlert, RefreshCw, Check, Scissors, Trash2,
   Film, Music, ChevronLeft, ChevronRight, Layers, Wand2, Volume2, VolumeX, Undo2,
   Eye, EyeOff, Clapperboard, Download, ExternalLink,
+  PanelLeftClose, PanelLeftOpen, FolderOpen, Ban,
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -66,6 +67,23 @@ const fmtBytes = (b) => {
   if (b < 1024 * 1024) return `${(b / 1024).toFixed(0)} KB`;
   return `${(b / 1024 / 1024).toFixed(1)} MB`;
 };
+
+// Grab the currently-painted frame of a <video> as a small JPEG data URL, used
+// as the translucent "video frame" that follows the cursor while dragging a
+// pool clip. Returns null for audio / not-yet-painted / tainted sources.
+function captureVideoFrame(el) {
+  try {
+    if (!el || el.tagName !== "VIDEO" || !el.videoWidth) return null;
+    const w = 180;
+    const h = Math.max(1, Math.round(w * (el.videoHeight / el.videoWidth || 0.5625)));
+    const c = document.createElement("canvas");
+    c.width = w; c.height = h;
+    c.getContext("2d").drawImage(el, 0, 0, w, h);
+    return c.toDataURL("image/jpeg", 0.7);
+  } catch {
+    return null; // e.g. a frame not yet decoded
+  }
+}
 
 // Backfill each video clip's natural source length so it can't be stretched
 // past its real duration (legacy timelines saved before this field existed).
@@ -167,6 +185,132 @@ function TimelineItem({ item, track, pxPerSec, fps, selected, onSelect, onDragSt
   );
 }
 
+/* ---- media pool: one draggable source clip ---- */
+// A video generation (or audio track) shown in the left rail. Pointer-down
+// starts a drag onto the timeline; on metadata load it reports its natural
+// duration up so a drop knows how long the clip should be.
+function PoolCard({ item, active, onMeta, onDragStart }) {
+  const mediaRef = useRef(null);
+  const isVideo = item.mediaType === "video";
+  return (
+    <div
+      className={cn(
+        "group relative select-none overflow-hidden rounded-md border bg-card text-left transition-shadow",
+        "cursor-grab active:cursor-grabbing hover:border-primary/50 hover:shadow-sm",
+        item.selected && "ring-1 ring-emerald-500/50",
+        active && "opacity-40",
+      )}
+      onPointerDown={(e) => { if (e.button !== 0) return; onDragStart(e, item, mediaRef.current); }}
+      title={item.name}
+    >
+      {isVideo ? (
+        <video
+          ref={mediaRef}
+          src={item.src}
+          muted
+          playsInline
+          preload="metadata"
+          className="pointer-events-none aspect-video w-full bg-black object-cover"
+          onLoadedMetadata={(e) => {
+            const v = e.currentTarget;
+            onMeta(item.id, v.duration);
+            // Nudge to a painted frame so the drag ghost has a real thumbnail.
+            try { v.currentTime = Math.min(0.1, (v.duration || 1) / 2); } catch { /* ignore */ }
+          }}
+        />
+      ) : (
+        <div className="flex aspect-video w-full items-center justify-center bg-violet-500/15">
+          <Music size={20} className="text-violet-300" />
+          <audio
+            ref={mediaRef}
+            src={item.src}
+            preload="metadata"
+            className="hidden"
+            onLoadedMetadata={(e) => onMeta(item.id, e.currentTarget.duration)}
+          />
+        </div>
+      )}
+      <div className="flex items-center gap-1 px-1.5 py-1">
+        {isVideo ? <Film size={10} className="shrink-0 text-emerald-400" /> : <Music size={10} className="shrink-0 text-violet-300" />}
+        <span className="truncate text-[10px] font-medium">{item.name}</span>
+      </div>
+    </div>
+  );
+}
+
+/* ---- media pool rail (collapsible, ~1/4 width, left of the player) ---- */
+function MediaPool({ pool, collapsed, height, onToggle, dragId, onMeta, onDragStart }) {
+  const video = pool.video || [];
+  const audio = pool.audio || [];
+  const total = video.length + audio.length;
+  // Match the player's height (falls back to a viewport cap before it's measured)
+  // so the pool's own list scrolls instead of stretching the tab.
+  const style = height ? { height } : undefined;
+
+  if (collapsed) {
+    return (
+      <div style={style} className="flex max-h-[70vh] w-9 shrink-0 flex-col items-center gap-2 rounded-xl border bg-muted/20 py-2">
+        <Button variant="ghost" size="icon-sm" onClick={onToggle} title="Show media pool" aria-label="Show media pool">
+          <PanelLeftOpen size={16} />
+        </Button>
+        <div className="mt-1 flex flex-1 items-center">
+          <span className="rotate-180 text-[10px] font-medium tracking-wide text-muted-foreground [writing-mode:vertical-rl]">
+            Media pool · {total}
+          </span>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={style} className="flex max-h-[70vh] w-1/4 min-w-[170px] max-w-[300px] shrink-0 flex-col overflow-hidden rounded-xl border bg-muted/20">
+      <div className="flex items-center justify-between gap-1 border-b px-2.5 py-1.5">
+        <div className="flex items-center gap-1.5 text-xs font-medium">
+          <FolderOpen size={13} /> Media pool
+          <Badge variant="muted" className="tabular-nums">{total}</Badge>
+        </div>
+        <Button variant="ghost" size="icon-sm" onClick={onToggle} title="Collapse media pool" aria-label="Collapse media pool">
+          <PanelLeftClose size={16} />
+        </Button>
+      </div>
+      <div className="min-h-0 flex-1 overflow-y-auto p-2">
+        {total === 0 ? (
+          <p className="px-1 py-6 text-center text-[11px] text-muted-foreground">
+            No generations yet. Render some clips and they'll show up here to drag onto the timeline.
+          </p>
+        ) : (
+          <div className="space-y-3">
+            {video.length > 0 && (
+              <div className="space-y-1.5">
+                <div className="flex items-center gap-1 px-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  <Film size={11} /> Video · {video.length}
+                </div>
+                <div className="grid grid-cols-2 gap-1.5">
+                  {video.map((it) => (
+                    <PoolCard key={it.id} item={it} active={dragId === it.id} onMeta={onMeta} onDragStart={onDragStart} />
+                  ))}
+                </div>
+              </div>
+            )}
+            {audio.length > 0 && (
+              <div className="space-y-1.5">
+                <div className="flex items-center gap-1 px-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  <Music size={11} /> Audio · {audio.length}
+                </div>
+                <div className="grid grid-cols-2 gap-1.5">
+                  {audio.map((it) => (
+                    <PoolCard key={it.id} item={it} active={dragId === it.id} onMeta={onMeta} onDragStart={onDragStart} />
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function Editor({ reloadKey }) {
   const [timeline, setTimeline] = useState(null);
   const [cuts, setCuts] = useState([]);
@@ -182,6 +326,13 @@ export default function Editor({ reloadKey }) {
   //   { type: "new", at }        – spawn a new channel at track index `at`
   const [dropTarget, setDropTarget] = useState(null);
   const [cutPickerOpen, setCutPickerOpen] = useState(false); // "load a cut" modal
+  // Media pool (draggable source generations) shown left of the player.
+  const [pool, setPool] = useState({ video: [], audio: [] });
+  const [poolCollapsed, setPoolCollapsed] = useState(false);
+  // Active pool→timeline drag: the floating ghost + where it would land.
+  //   { item, frameUrl, durationSec, x, y, drop }
+  //   drop: null | { trackId, from, valid }
+  const [poolDrag, setPoolDrag] = useState(null);
   // Render / "Deliver" panel state + Remotion options chosen before rendering.
   const [renderOpen, setRenderOpen] = useState(false);
   const [renderOut, setRenderOut] = useState("final_selection/renders/editor-render.mp4");
@@ -202,8 +353,24 @@ export default function Editor({ reloadKey }) {
   const inGestureRef = useRef(false); // true between pointer-down and up of a drag/slide
   const pendingReloadRef = useRef(false); // a live agent edit arrived mid-gesture; reload on release
   const [canUndo, setCanUndo] = useState(false);
+  const poolDurRef = useRef({}); // pool item id → natural duration (sec), from media metadata
+  const poolDragRef = useRef(null); // live pool-drag payload during a gesture
+  const poolSeqRef = useRef(0); // monotonic suffix for ids of clips added from the pool
+  const playerWrapRef = useRef(null); // player box — the media pool matches its height
+  const [poolH, setPoolH] = useState(null); // measured player height (px) so the pool scrolls internally
 
   useEffect(() => { timelineRef.current = timeline; }, [timeline]);
+
+  // Keep the media pool the same height as the player so its list scrolls
+  // internally instead of stretching the whole tab. Tracks the player box live.
+  useEffect(() => {
+    const el = playerWrapRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(() => setPoolH(el.offsetHeight));
+    ro.observe(el);
+    setPoolH(el.offsetHeight);
+    return () => ro.disconnect();
+  }, [timeline, poolCollapsed]);
 
   // Any drag/slide is ONE undo step: the gesture snapshots once at pointer-down
   // and all its moves are silent. A window pointer-up closes the gesture so the
@@ -264,6 +431,17 @@ export default function Editor({ reloadKey }) {
       if (!silent) setLoading(false);
     }
   }, []);
+
+  // Media pool loads independently of the timeline — it's just what exists on
+  // disk, so a failure here never blocks the editor.
+  const loadPool = useCallback(async () => {
+    try {
+      const res = await fetch("/api/pool");
+      const data = await res.json();
+      if (res.ok) setPool({ video: data.video || [], audio: data.audio || [] });
+    } catch { /* leave the pool empty on failure */ }
+  }, []);
+  useEffect(() => { loadPool(); }, [loadPool, reloadKey]);
 
   useEffect(() => { load(); }, [load, reloadKey]);
 
@@ -491,6 +669,105 @@ export default function Editor({ reloadKey }) {
       return tl;
     }, true);
   }, [mutate]);
+
+  /* ---- media pool → timeline drag ---- */
+  // Record a pool item's natural length as its metadata loads, so a drop knows
+  // how long the clip should be (falls back to 3s if it never loaded).
+  const onPoolMeta = useCallback((id, dur) => {
+    if (Number.isFinite(dur) && dur > 0) poolDurRef.current[id] = dur;
+  }, []);
+
+  // Where a pool clip would land, from the cursor position. The start frame
+  // comes from X; the target comes from Y:
+  //   { type:"new", at, from }        – near the top/bottom border → spawn a new
+  //                                     matching-type channel there (always valid)
+  //   { type:"lane", trackId, from }  – onto an existing lane; `valid` is false
+  //                                     over the wrong media type (video only
+  //                                     lands on video lanes, audio on audio).
+  const computePoolDrop = useCallback((clientX, clientY, mediaType) => {
+    const wrap = lanesWrapRef.current;
+    const area = trackAreaRef.current;
+    if (!wrap || !area) return null;
+    const laneEls = Array.from(wrap.querySelectorAll("[data-lane]"));
+    if (!laneEls.length) return null;
+    const rect = area.getBoundingClientRect();
+    const x = clientX - rect.left + area.scrollLeft;
+    const from = Math.max(0, Math.round((x / pxPerSec) * fps));
+    const first = laneEls[0].getBoundingClientRect();
+    const last = laneEls[laneEls.length - 1].getBoundingClientRect();
+    const EDGE = 14; // px band at the outer borders that spawns a NEW channel
+    // Above the stack (incl. the ruler) or on the top border → new channel first.
+    if (clientY < first.top + EDGE) return { type: "new", at: 0, from, valid: true };
+    // On the bottom border or below the stack → new channel last.
+    if (clientY > last.bottom - EDGE) return { type: "new", at: laneEls.length, from, valid: true };
+    for (const el of laneEls) {
+      const r = el.getBoundingClientRect();
+      if (clientY >= r.top && clientY <= r.bottom) {
+        return { type: "lane", trackId: el.dataset.lane, from, valid: el.dataset.laneType === mediaType };
+      }
+    }
+    return null;
+  }, [pxPerSec, fps]);
+
+  // Drop a pool clip as a fresh timeline item carrying the media's natural length
+  // (also its trim cap). `drop` decides whether it joins an existing lane or
+  // spawns a brand-new matching-type channel at `drop.at`. Selects the new clip.
+  const addPoolClip = useCallback((item, drop, durationSec) => {
+    const newId = `pool_${item.mediaType}_${poolSeqRef.current++}_${Date.now()}`;
+    const type = item.mediaType === "audio" ? "audio" : "video";
+    mutate((tl) => {
+      const dur = Math.max(1, Math.round((durationSec || 3) * (tl.fps || fps)));
+      const newItem = {
+        id: newId,
+        src: item.src,
+        name: item.name,
+        from: Math.max(0, Math.round(drop.from)),
+        durationInFrames: dur,
+        sourceDurationInFrames: dur,
+        volume: 1,
+        ...(item.bundle ? { bundle: item.bundle } : {}),
+      };
+      if (drop.type === "new") {
+        const nt = makeTrack(tl, type);
+        nt.items.push(newItem);
+        tl.tracks.splice(Math.min(drop.at, tl.tracks.length), 0, nt);
+      } else {
+        const t = tl.tracks.find((x) => x.id === drop.trackId);
+        if (!t) return tl;
+        t.items.push(newItem);
+      }
+      return tl;
+    });
+    setSelectedId(newId);
+    setSelectedGap(null);
+  }, [mutate, fps]);
+
+  // Begin dragging a pool card. A translucent frame follows the cursor; over a
+  // matching lane it becomes a translucent clip preview; releasing there commits.
+  const startPoolDrag = useCallback((e, item, mediaEl) => {
+    e.preventDefault();
+    const frameUrl = captureVideoFrame(mediaEl);
+    const durationSec = poolDurRef.current[item.id] || (mediaEl && Number.isFinite(mediaEl.duration) ? mediaEl.duration : 0) || 3;
+    poolDragRef.current = { item, frameUrl, durationSec };
+    setPoolDrag({ item, frameUrl, durationSec, x: e.clientX, y: e.clientY, drop: null });
+    const onMove = (ev) => {
+      const d = poolDragRef.current;
+      if (!d) return;
+      const drop = computePoolDrop(ev.clientX, ev.clientY, d.item.mediaType);
+      d.drop = drop;
+      setPoolDrag({ ...d, x: ev.clientX, y: ev.clientY, drop });
+    };
+    const onUp = () => {
+      const d = poolDragRef.current;
+      poolDragRef.current = null;
+      setPoolDrag(null);
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      if (d && d.drop && d.drop.valid) addPoolClip(d.item, d.drop, d.durationSec);
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+  }, [computePoolDrop, addPoolClip]);
 
   const loadCut = useCallback(async (v) => {
     setLoading(true);
@@ -844,20 +1121,31 @@ export default function Editor({ reloadKey }) {
         </div>
       ) : (
         <>
-          {/* Player */}
-          <div className="mx-auto w-full max-w-4xl overflow-hidden rounded-xl border bg-black">
-            <Player
-              ref={playerRef}
-              component={EditorComposition}
-              inputProps={playerInputProps}
-              durationInFrames={durationInFrames}
-              fps={fps}
-              compositionWidth={timeline.width || 1280}
-              compositionHeight={timeline.height || 720}
-              style={{ width: "100%" }}
-              controls
-              acknowledgeRemotionLicense
+          {/* Fixed top section: media pool (left, ~1/4, collapsible) + player */}
+          <div className="flex items-start gap-4">
+            <MediaPool
+              pool={pool}
+              collapsed={poolCollapsed}
+              height={poolH}
+              onToggle={() => setPoolCollapsed((c) => !c)}
+              dragId={poolDrag?.item.id}
+              onMeta={onPoolMeta}
+              onDragStart={startPoolDrag}
             />
+            <div ref={playerWrapRef} className="min-w-0 flex-1 self-start overflow-hidden rounded-xl border bg-black">
+              <Player
+                ref={playerRef}
+                component={EditorComposition}
+                inputProps={playerInputProps}
+                durationInFrames={durationInFrames}
+                fps={fps}
+                compositionWidth={timeline.width || 1280}
+                compositionHeight={timeline.height || 720}
+                style={{ width: "100%" }}
+                controls
+                acknowledgeRemotionLicense
+              />
+            </div>
           </div>
 
           {/* Timeline toolbar */}
@@ -921,9 +1209,30 @@ export default function Editor({ reloadKey }) {
                         "relative h-16 border-b",
                         dropTarget?.type === "move" && dropTarget.trackId === t.id &&
                           "bg-primary/10 ring-2 ring-inset ring-primary/60",
+                        poolDrag?.drop?.trackId === t.id && (poolDrag.drop.valid
+                          ? "bg-primary/10 ring-2 ring-inset ring-primary/60"
+                          : "bg-destructive/10 ring-2 ring-inset ring-destructive/50"),
                       )}
                       onPointerDown={(e) => { if (e.target === e.currentTarget) { setSelectedId(null); setSelectedGap(null); } }}
                     >
+                      {/* translucent preview of the clip a pool drag would drop here */}
+                      {poolDrag?.drop?.valid && poolDrag.drop.trackId === t.id && (
+                        <div
+                          className={cn(
+                            "pointer-events-none absolute top-1 bottom-1 z-10 flex items-center gap-1 overflow-hidden rounded-md border px-1.5 text-[11px] opacity-70",
+                            t.type === "audio"
+                              ? "border-violet-400/60 bg-violet-500/30 text-violet-100"
+                              : "border-emerald-400/60 bg-emerald-500/30 text-emerald-50",
+                          )}
+                          style={{
+                            left: framesToSec(poolDrag.drop.from, fps) * pxPerSec,
+                            width: Math.max(6, (poolDrag.durationSec || 3) * pxPerSec),
+                          }}
+                        >
+                          {t.type === "audio" ? <Music size={11} className="shrink-0" /> : <Film size={11} className="shrink-0" />}
+                          <span className="truncate">{poolDrag.item.name}</span>
+                        </div>
+                      )}
                       {/* selectable gaps between video clips */}
                       {t.type === "video" && gapsFor(t).map((g, gi) => {
                         const gsel = selectedGap && selectedGap.trackId === t.id
@@ -968,6 +1277,17 @@ export default function Editor({ reloadKey }) {
                     >
                       <span className="absolute left-2 -top-2.5 rounded bg-primary px-1.5 py-0.5 text-[10px] font-medium text-primary-foreground shadow">
                         new channel
+                      </span>
+                    </div>
+                  )}
+                  {/* "new channel" line while dragging a clip in from the media pool */}
+                  {poolDrag?.drop?.type === "new" && (
+                    <div
+                      className="pointer-events-none absolute left-0 right-0 z-30 h-0.5 -translate-y-1/2 bg-primary"
+                      style={{ top: poolDrag.drop.at * LANE_H }}
+                    >
+                      <span className="absolute left-2 -top-2.5 rounded bg-primary px-1.5 py-0.5 text-[10px] font-medium text-primary-foreground shadow">
+                        new {poolDrag.item.mediaType === "audio" ? "music" : "video"} channel
                       </span>
                     </div>
                   )}
@@ -1039,6 +1359,35 @@ export default function Editor({ reloadKey }) {
             </p>
           )}
         </>
+      )}
+
+      {/* Floating drag ghost: a translucent video frame that follows the cursor.
+          Over a valid lane it hides (the lane shows the clip preview instead);
+          over a wrong-type lane it shows a "no drop" badge. */}
+      {poolDrag && !(poolDrag.drop && poolDrag.drop.type === "lane" && poolDrag.drop.valid) && (
+        <div
+          className="pointer-events-none fixed z-50 -translate-x-1/2 -translate-y-1/2"
+          style={{ left: poolDrag.x, top: poolDrag.y }}
+        >
+          <div className={cn(
+            "relative w-[180px] overflow-hidden rounded-md border shadow-xl",
+            poolDrag.drop && !poolDrag.drop.valid ? "border-destructive/70 opacity-80" : "border-primary/60 opacity-70",
+          )}>
+            {poolDrag.frameUrl ? (
+              <img src={poolDrag.frameUrl} alt="" className="block aspect-video w-full object-cover" />
+            ) : (
+              <div className="flex aspect-video w-full items-center justify-center bg-violet-500/25">
+                <Music size={22} className="text-violet-200" />
+              </div>
+            )}
+            <div className="truncate bg-background/85 px-1.5 py-1 text-[10px] font-medium">{poolDrag.item.name}</div>
+            {poolDrag.drop && !poolDrag.drop.valid && (
+              <div className="absolute inset-0 flex items-center justify-center bg-destructive/20">
+                <Ban size={26} className="text-destructive drop-shadow" />
+              </div>
+            )}
+          </div>
+        </div>
       )}
     </div>
   );

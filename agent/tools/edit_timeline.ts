@@ -20,14 +20,21 @@ export default defineTool({
       .array(
         z.object({
           op: z
-            .enum(["move", "resize", "remove", "volume", "mute", "reorder", "repack"])
+            .enum(["move", "resize", "remove", "volume", "mute", "disable", "reorder", "repack"])
             .describe("The edit operation."),
-          id: z.string().optional().describe("Target item id (for move/resize/remove/volume/mute)."),
+          id: z
+            .string()
+            .optional()
+            .describe("Target item id (for move/resize/remove/volume/mute/disable)."),
           track: z.string().optional().describe("Target track id 'video' or 'music' (for reorder/repack)."),
           from: z.number().optional().describe("Start frame (for move)."),
           durationInFrames: z.number().optional().describe("Length in frames (for resize)."),
           volume: z.number().optional().describe("Gain 0..2 (for volume)."),
           muted: z.boolean().optional().describe("Mute flag (for mute)."),
+          disabled: z
+            .boolean()
+            .optional()
+            .describe("Disable flag (for disable) — true greys out the clip and skips it in playback."),
           order: z.array(z.string()).optional().describe("Ordered item ids (for reorder)."),
         }),
       )
