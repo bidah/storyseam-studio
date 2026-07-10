@@ -8,7 +8,7 @@ import { elementsToDoc, SCRIPT_ELEMENT_TYPES } from "../lib/script.js";
 // append_script to add without overwriting).
 export default defineTool({
   description:
-    "Replace the entire screenplay on the Script tab with a new title + list of screenplay lines. Each element is { type, text } where type is one of scene_heading, action, character, dialogue, parenthetical, transition. This OVERWRITES the current script — call get_script first if you're revising existing content. The change autosaves and appears when the user's editor reloads.",
+    "Replace the entire screenplay on the Script tab with a new title + list of screenplay lines. Writes to the PINNED draft only — the active version; other drafts are untouched. Each element is { type, text } where type is one of scene_heading, action, character, dialogue, parenthetical, transition. This OVERWRITES the pinned draft — call get_script first if you're revising existing content. The change autosaves and appears when the user's editor reloads. To keep the old text as a separate version, create a new draft with new_draft first, then save into it.",
   inputSchema: z.object({
     title: z
       .string()

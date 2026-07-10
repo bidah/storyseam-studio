@@ -12,11 +12,14 @@
 //     fps: 24, width: 1280, height: 720,
 //     tracks: [
 //       { id, name, type: "video", items: [ { id, src, from, durationInFrames, name, bundle } ] },
-//       { id, name, type: "audio", items: [ { id, src, from, durationInFrames, name, volume } ] },
+//       { id, name, type: "audio", items: [ { id, src, from, durationInFrames, name, volume,
+//                                             fadeInFrames?, fadeOutFrames? } ] },
 //     ],
 //   }
 // `from` / `durationInFrames` are integer frame counts. `src` is a root-relative
-// URL (e.g. "/gen/MS-01.mp4") resolved against the app origin.
+// URL (e.g. "/gen/MS-01.mp4") resolved against the app origin. Audio items may
+// carry `fadeInFrames` / `fadeOutFrames` — linear volume ramps at the clip's
+// head/tail, set by dragging the fade handles on the editor's timeline cards.
 
 export const FPS = 24;
 export const WIDTH = 1280;

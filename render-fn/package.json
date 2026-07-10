@@ -1,0 +1,26 @@
+{
+  "name": "shot-studio-render-fn",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Standalone Vercel function: render the shot-studio editor's Remotion 'Editor' composition on a Vercel Sandbox and store it in Cloudflare R2.",
+  "scripts": {
+    "sync": "node scripts/sync-composition.mjs",
+    "deploy": "npm run sync && vercel deploy --prod"
+  },
+  "dependencies": {
+    "@remotion/bundler": "4.0.486",
+    "@remotion/vercel": "4.0.486",
+    "@vercel/sandbox": "^2.5.0",
+    "aws4fetch": "^1.0.20",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "remotion": "4.0.486"
+  },
+  "devDependencies": {
+    "@types/node": "^24.13.2",
+    "@types/react": "^18.3.1",
+    "@vercel/node": "^5.0.0",
+    "typescript": "^5.6.0"
+  }
+}

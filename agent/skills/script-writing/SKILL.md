@@ -8,7 +8,9 @@ description: >-
   teleplay for the episode. The Script tab is a screenplay editor whose elements
   are scene headings, action, character cues, dialogue, parentheticals, and
   transitions — this skill drives it through the get_script / save_script /
-  append_script tools.
+  append_script tools. The script is version-controlled into drafts and every
+  edit applies ONLY to the pinned (active) draft; list_drafts / new_draft /
+  pin_draft manage the versions.
 ---
 
 # Script writing (Shot Studio Script tab)
@@ -38,8 +40,26 @@ You never write ProseMirror/HTML — you work with a flat array of
   `elements`). Use only for a full rewrite or a restructure; when in doubt read
   first and re-send the complete, corrected list.
 
-All three autosave server-side. Remind the user the editor shows the change on
-its next load / **Refresh** (it does not live-push into an open editor).
+All three autosave server-side and the open editor live-updates to show them.
+
+## Drafts (version control) — you only ever edit the PINNED draft
+
+The script is kept as a set of **drafts** (versions) with exactly one **pinned**
+(active) draft. `get_script`, `append_script`, and `save_script` all read and
+write **only the pinned draft** — they never touch the others. Keep this in mind:
+
+- Before a big rewrite the user might want to undo, offer to **`new_draft`**
+  first — it copies the current pinned draft into a new version and pins it, so
+  the original stays intact and you keep editing the new one.
+- **`list_drafts`** shows every version and which is pinned (also included in
+  `get_script`'s result as `pinnedDraft` / `drafts`).
+- **`pin_draft`** switches the active version by name (e.g. the user says "go
+  back to Draft 1"). After it, all edits target that draft.
+- A plain "save this as a new version" → `new_draft` (optionally with a name).
+  "Undo my changes / go back" → `pin_draft` to the earlier draft.
+
+Remind the user the editor shows the change on its next load / **Refresh** for
+non-pinned housekeeping, but pinned-draft edits live-update in the open editor.
 
 ## How to write
 

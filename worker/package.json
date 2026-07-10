@@ -10,5 +10,10 @@
   },
   "devDependencies": {
     "wrangler": "^4.108.0"
+  },
+  "dependencies": {
+    "better-auth": "^1.6.23",
+    "better-auth-cloudflare": "^0.3.0",
+    "hono": "^4.12.28"
   }
 }

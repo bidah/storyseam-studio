@@ -41,6 +41,20 @@ function VideoItem({ item, zIndex }) {
 }
 
 function AudioItem({ item }) {
+  const base = item.muted ? 0 : item.volume ?? 1;
+  const dur = item.durationInFrames;
+  // Fades never overlap: cap each at the clip length, fade-out yields to fade-in.
+  const fadeIn = Math.max(0, Math.min(item.fadeInFrames || 0, dur));
+  const fadeOut = Math.max(0, Math.min(item.fadeOutFrames || 0, dur - fadeIn));
+  const volume =
+    fadeIn || fadeOut
+      ? (f) => {
+          let v = base;
+          if (fadeIn > 0 && f < fadeIn) v *= f / fadeIn;
+          if (fadeOut > 0 && f > dur - fadeOut) v *= Math.max(0, (dur - f) / fadeOut);
+          return v;
+        }
+      : base;
   return (
     <Sequence
       from={item.from}
@@ -48,7 +62,7 @@ function AudioItem({ item }) {
       name={item.name || "music"}
       layout="none"
     >
-      <Audio src={item.src} volume={item.muted ? 0 : item.volume ?? 1} pauseWhenBuffering />
+      <Audio src={item.src} volume={volume} pauseWhenBuffering />
     </Sequence>
   );
 }

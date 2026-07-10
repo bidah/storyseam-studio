@@ -85,6 +85,166 @@ function captureVideoFrame(el) {
   }
 }
 
+/* ---- first-frame thumbnails for video timeline cards ---- */
+// One thumbnail per source URL, captured client-side from an offscreen <video>
+// (same-origin /gen/ files, so the canvas isn't tainted). Cached for the whole
+// session — every timeline card and future card with the same src reuses it.
+const videoThumbCache = new Map(); // src → dataURL | Promise<dataURL|null>
+
+function getVideoThumb(src) {
+  const hit = videoThumbCache.get(src);
+  if (hit) return typeof hit === "string" ? Promise.resolve(hit) : hit;
+  const p = new Promise((resolve) => {
+    const v = document.createElement("video");
+    let done = false;
+    const finish = (url) => {
+      if (done) return;
+      done = true;
+      v.removeAttribute("src");
+      try { v.load(); } catch { /* releasing the element is best-effort */ }
+      resolve(url);
+    };
+    v.muted = true;
+    v.playsInline = true;
+    v.preload = "auto";
+    v.onerror = () => finish(null);
+    v.onloadeddata = () => {
+      // Nudge off frame 0 — some encodes paint black until the first real frame.
+      try { v.currentTime = Math.min(0.1, (v.duration || 1) / 2); } catch { finish(null); }
+    };
+    v.onseeked = () => finish(captureVideoFrame(v));
+    setTimeout(() => finish(null), 15000);
+    v.src = src;
+  }).then((url) => {
+    if (url) videoThumbCache.set(src, url);
+    else videoThumbCache.delete(src); // transient failure — allow a retry later
+    return url;
+  });
+  videoThumbCache.set(src, p);
+  return p;
+}
+
+// Latest cached thumbnail for a video src (null while capturing / for audio).
+function useVideoThumb(src) {
+  const cached = src ? videoThumbCache.get(src) : null;
+  const [thumb, setThumb] = useState(typeof cached === "string" ? cached : null);
+  useEffect(() => {
+    if (!src) { setThumb(null); return undefined; }
+    const hit = videoThumbCache.get(src);
+    if (typeof hit === "string") { setThumb(hit); return undefined; }
+    let on = true;
+    getVideoThumb(src).then((url) => { if (on) setThumb(url); });
+    return () => { on = false; };
+  }, [src]);
+  return thumb;
+}
+
+/* ---- waveform peaks for audio timeline cards ---- */
+// Decode each audio src once (Web Audio) into ~1000 normalized peak buckets;
+// cards draw their trimmed slice of these into a canvas at any zoom.
+const audioPeaksCache = new Map(); // src → Float32Array | Promise<Float32Array|null>
+let peaksAudioCtx = null; // shared decode-only AudioContext
+
+function getAudioPeaks(src) {
+  const hit = audioPeaksCache.get(src);
+  if (hit) return hit instanceof Float32Array ? Promise.resolve(hit) : hit;
+  const p = (async () => {
+    const res = await fetch(src);
+    if (!res.ok) throw new Error(`fetch ${res.status}`);
+    const buf = await res.arrayBuffer();
+    peaksAudioCtx ||= new AudioContext();
+    const audio = await peaksAudioCtx.decodeAudioData(buf);
+    const ch0 = audio.getChannelData(0);
+    const ch1 = audio.numberOfChannels > 1 ? audio.getChannelData(1) : null;
+    const BUCKETS = 1000;
+    const per = Math.max(1, Math.floor(ch0.length / BUCKETS));
+    const stride = Math.max(1, Math.floor(per / 64)); // sample within a bucket, plenty for a 56px-tall wave
+    const peaks = new Float32Array(BUCKETS);
+    for (let b = 0; b < BUCKETS; b++) {
+      let max = 0;
+      const end = Math.min(ch0.length, (b + 1) * per);
+      for (let i = b * per; i < end; i += stride) {
+        const a = Math.abs(ch0[i]);
+        if (a > max) max = a;
+        if (ch1) {
+          const c = Math.abs(ch1[i]);
+          if (c > max) max = c;
+        }
+      }
+      peaks[b] = max;
+    }
+    let m = 0;
+    for (const v of peaks) if (v > m) m = v;
+    if (m > 0) for (let i = 0; i < peaks.length; i++) peaks[i] /= m;
+    return peaks;
+  })().then(
+    (peaks) => { audioPeaksCache.set(src, peaks); return peaks; },
+    () => { audioPeaksCache.delete(src); return null; }, // allow a retry later
+  );
+  audioPeaksCache.set(src, p);
+  return p;
+}
+
+function useAudioPeaks(src) {
+  const cached = src ? audioPeaksCache.get(src) : null;
+  const [peaks, setPeaks] = useState(cached instanceof Float32Array ? cached : null);
+  useEffect(() => {
+    if (!src) { setPeaks(null); return undefined; }
+    const hit = audioPeaksCache.get(src);
+    if (hit instanceof Float32Array) { setPeaks(hit); return undefined; }
+    let on = true;
+    getAudioPeaks(src).then((p) => { if (on) setPeaks(p); });
+    return () => { on = false; };
+  }, [src]);
+  return peaks;
+}
+
+// The waveform painted across an audio card, with the fade envelope on top:
+// the faded region is dimmed and bounded by the classic diagonal volume line.
+// `trimFraction` is how much of the source the card currently shows (end-trim).
+function Waveform({ peaks, width, trimFraction, fadeInPx, fadeOutPx, disabled }) {
+  const ref = useRef(null);
+  useEffect(() => {
+    const canvas = ref.current;
+    if (!canvas || !peaks) return;
+    const H = 54; // card inner height: h-16 lane − top-1/bottom-1 − borders
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    // Cap the backing store so a long clip at high zoom can't allocate a huge
+    // canvas — CSS stretches it back to the card, slightly soft is fine.
+    const W = Math.max(1, Math.min(Math.round(width * dpr), 8192));
+    canvas.width = W;
+    canvas.height = Math.round(H * dpr);
+    const ctx = canvas.getContext("2d");
+    const h = canvas.height;
+    const mid = h / 2;
+    ctx.clearRect(0, 0, W, h);
+    const n = Math.max(1, Math.round(peaks.length * Math.min(1, Math.max(0.001, trimFraction || 1))));
+    ctx.fillStyle = disabled ? "rgba(161,161,170,0.45)" : "rgba(196,181,253,0.8)"; // zinc-400 / violet-300
+    for (let x = 0; x < W; x++) {
+      const i0 = Math.floor((x / W) * n);
+      const i1 = Math.max(i0 + 1, Math.ceil(((x + 1) / W) * n));
+      let a = 0;
+      for (let i = i0; i < i1 && i < n; i++) if (peaks[i] > a) a = peaks[i];
+      const half = Math.max(a, 0.02) * (mid - dpr);
+      ctx.fillRect(x, mid - half, 1, half * 2);
+    }
+    const fi = Math.max(0, Math.min((fadeInPx / width) * W, W));
+    const fo = Math.max(0, Math.min((fadeOutPx / width) * W, W));
+    if (fi > 0 || fo > 0) {
+      ctx.fillStyle = "rgba(0,0,0,0.45)";
+      if (fi > 0) { ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(fi, 0); ctx.lineTo(0, h); ctx.closePath(); ctx.fill(); }
+      if (fo > 0) { ctx.beginPath(); ctx.moveTo(W, 0); ctx.lineTo(W - fo, 0); ctx.lineTo(W, h); ctx.closePath(); ctx.fill(); }
+      ctx.strokeStyle = "rgba(255,255,255,0.8)";
+      ctx.lineWidth = dpr;
+      ctx.beginPath();
+      if (fi > 0) { ctx.moveTo(0, h); ctx.lineTo(fi, 0); }
+      if (fo > 0) { ctx.moveTo(W - fo, 0); ctx.lineTo(W, h); }
+      ctx.stroke();
+    }
+  }, [peaks, width, trimFraction, fadeInPx, fadeOutPx, disabled]);
+  return <canvas ref={ref} aria-hidden className="pointer-events-none absolute inset-0 h-full w-full" />;
+}
+
 // Backfill each video clip's natural source length so it can't be stretched
 // past its real duration (legacy timelines saved before this field existed).
 function withSourceDurations(tl) {
@@ -128,17 +288,26 @@ function makeTrack(tl, type) {
 }
 
 /* ---- one clip/music block on the timeline ---- */
-function TimelineItem({ item, track, pxPerSec, fps, selected, onSelect, onDragStart, onToggleDisable, onRemove }) {
+function TimelineItem({ item, track, pxPerSec, fps, selected, onSelect, onDragStart, onFadeStart, onToggleDisable, onRemove }) {
   const left = framesToSec(item.from, fps) * pxPerSec;
   const width = Math.max(6, framesToSec(item.durationInFrames, fps) * pxPerSec);
   const isAudio = track.type === "audio";
   const disabled = !!item.disabled;
+  const thumb = useVideoThumb(!isAudio ? item.src : null);
+  const peaks = useAudioPeaks(isAudio ? item.src : null);
+  const fadeInPx = framesToSec(item.fadeInFrames || 0, fps) * pxPerSec;
+  const fadeOutPx = framesToSec(item.fadeOutFrames || 0, fps) * pxPerSec;
+  // Waveform slice: end-trimming a clip shows only the played part of the source.
+  const trimFraction = item.sourceDurationInFrames
+    ? item.durationInFrames / item.sourceDurationInFrames
+    : 1;
+  const hasArt = isAudio ? !!peaks : !!thumb;
   return (
     <ContextMenu>
       <ContextMenuTrigger asChild>
         <div
           className={cn(
-            "group absolute top-1 bottom-1 flex select-none items-stretch overflow-hidden rounded-md border text-[11px] shadow-sm",
+            "group absolute top-1 bottom-1 select-none overflow-hidden rounded-md border text-[11px] shadow-sm",
             disabled
               ? "border-muted-foreground/30 bg-muted-foreground/15 text-muted-foreground line-through decoration-muted-foreground/50"
               : isAudio
@@ -154,15 +323,71 @@ function TimelineItem({ item, track, pxPerSec, fps, selected, onSelect, onDragSt
           }}
           title={item.name}
         >
-          <div className="pointer-events-none flex min-w-0 flex-1 items-center gap-1 px-1.5">
+          {/* filmstrip: the clip's first frame tiled across the card */}
+          {!isAudio && thumb && !disabled && (
+            <div
+              aria-hidden
+              className="pointer-events-none absolute inset-0"
+              style={{
+                backgroundImage: `url(${thumb})`,
+                backgroundSize: "auto 100%",
+                backgroundRepeat: "repeat-x",
+                backgroundPosition: "left center",
+              }}
+            />
+          )}
+          {/* waveform + fade envelope */}
+          {isAudio && peaks && (
+            <Waveform
+              peaks={peaks}
+              width={width}
+              trimFraction={trimFraction}
+              fadeInPx={fadeInPx}
+              fadeOutPx={fadeOutPx}
+              disabled={disabled}
+            />
+          )}
+          {/* label strip */}
+          <div
+            className={cn(
+              "pointer-events-none absolute inset-x-0 top-0 flex min-w-0 items-center gap-1 px-1.5 py-0.5",
+              hasArt && !disabled && "bg-gradient-to-b from-black/60 to-transparent",
+            )}
+          >
             {disabled ? <EyeOff size={11} className="shrink-0" /> : isAudio ? <Music size={11} className="shrink-0" /> : <Film size={11} className="shrink-0" />}
             <span className="truncate">{item.name}</span>
           </div>
+          {/* fade handles — the classic dots at the card's top corners; drag
+              inward to lengthen the fade (the dot sits where the fade ends) */}
+          {isAudio && !disabled && (
+            <>
+              <div
+                data-handle="fade-in"
+                onPointerDown={(e) => { e.stopPropagation(); onSelect(item.id); onFadeStart(e, item, "in"); }}
+                className={cn(
+                  "absolute top-0.5 z-10 h-2.5 w-2.5 -translate-x-1/2 cursor-ew-resize rounded-full border border-white/80 bg-violet-300 shadow transition-opacity",
+                  selected || item.fadeInFrames ? "opacity-100" : "opacity-0 group-hover:opacity-100",
+                )}
+                style={{ left: Math.min(Math.max(fadeInPx, 6), Math.max(6, width / 2)) }}
+                title="Drag to set fade in"
+              />
+              <div
+                data-handle="fade-out"
+                onPointerDown={(e) => { e.stopPropagation(); onSelect(item.id); onFadeStart(e, item, "out"); }}
+                className={cn(
+                  "absolute top-0.5 z-10 h-2.5 w-2.5 -translate-x-1/2 cursor-ew-resize rounded-full border border-white/80 bg-violet-300 shadow transition-opacity",
+                  selected || item.fadeOutFrames ? "opacity-100" : "opacity-0 group-hover:opacity-100",
+                )}
+                style={{ left: Math.max(Math.min(width - fadeOutPx, width - 6), Math.min(width - 6, width / 2)) }}
+                title="Drag to set fade out"
+              />
+            </>
+          )}
           {/* right-edge resize handle */}
           <div
             data-handle="resize"
             onPointerDown={(e) => { e.stopPropagation(); onSelect(item.id); onDragStart(e, item, track, "resize"); }}
-            className="w-2 shrink-0 cursor-ew-resize bg-black/25 opacity-0 transition-opacity group-hover:opacity-100"
+            className="absolute inset-y-0 right-0 w-2 cursor-ew-resize bg-black/25 opacity-0 transition-opacity group-hover:opacity-100"
             title="Drag to trim the end"
           />
         </div>
@@ -869,6 +1094,31 @@ export default function Editor({ reloadKey }) {
     window.addEventListener("pointerup", onUp);
   }, [pxPerSec, fps, mapItem, beginGesture, computeDrop, applyDrop]);
 
+  // Drag a fade handle on an audio card: horizontal movement sets the fade
+  // length in frames. Fades are clamped so fade-in + fade-out ≤ clip length.
+  const onFadeStart = useCallback((e, item, which) => {
+    e.preventDefault();
+    beginGesture(); // one undo step for the whole drag
+    const startX = e.clientX;
+    const startFade = (which === "in" ? item.fadeInFrames : item.fadeOutFrames) || 0;
+    const onMove = (ev) => {
+      const deltaFrames = ((ev.clientX - startX) / pxPerSec) * fps;
+      // Fade-in grows dragging right; fade-out grows dragging left.
+      const want = Math.round(which === "in" ? startFade + deltaFrames : startFade - deltaFrames);
+      mapItem(item.id, (it) => {
+        const other = (which === "in" ? it.fadeOutFrames : it.fadeInFrames) || 0;
+        const next = Math.max(0, Math.min(want, it.durationInFrames - other));
+        return which === "in" ? { fadeInFrames: next } : { fadeOutFrames: next };
+      }, true);
+    };
+    const onUp = () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+  }, [pxPerSec, fps, mapItem, beginGesture]);
+
   // Click the ruler / empty track area → seek the player there.
   const seekFromEvent = useCallback((e) => {
     const el = trackAreaRef.current;
@@ -1262,6 +1512,7 @@ export default function Editor({ reloadKey }) {
                           selected={selectedId === item.id}
                           onSelect={selectItem}
                           onDragStart={onDragStart}
+                          onFadeStart={onFadeStart}
                           onToggleDisable={toggleDisable}
                           onRemove={removeItem}
                         />
@@ -1325,7 +1576,7 @@ export default function Editor({ reloadKey }) {
                   <Button variant="destructive" size="sm" onClick={() => removeItem(selected.item.id)}><Trash2 size={13} /> Remove</Button>
                 </div>
               </div>
-              <div className="grid gap-4 sm:grid-cols-3">
+              <div className={cn("grid gap-4", selected.track.type === "audio" ? "sm:grid-cols-4" : "sm:grid-cols-3")}>
                 <div className="text-xs">
                   <div className="mb-1 text-muted-foreground">Start</div>
                   <div className="tabular-nums">{fmtTime(framesToSec(selected.item.from, fps))}</div>
@@ -1334,6 +1585,16 @@ export default function Editor({ reloadKey }) {
                   <div className="mb-1 text-muted-foreground">Duration</div>
                   <div className="tabular-nums">{framesToSec(selected.item.durationInFrames, fps).toFixed(2)}s</div>
                 </div>
+                {selected.track.type === "audio" && (
+                  <div className="text-xs">
+                    <div className="mb-1 text-muted-foreground">Fade in / out</div>
+                    <div className="tabular-nums">
+                      {framesToSec(selected.item.fadeInFrames || 0, fps).toFixed(1)}s
+                      {" · "}
+                      {framesToSec(selected.item.fadeOutFrames || 0, fps).toFixed(1)}s
+                    </div>
+                  </div>
+                )}
                 <div className="text-xs">
                   <div className="mb-1 flex items-center gap-1 text-muted-foreground">
                     {selected.item.muted || selected.item.volume === 0 ? <VolumeX size={12} /> : <Volume2 size={12} />} Volume
@@ -1356,6 +1617,7 @@ export default function Editor({ reloadKey }) {
             <p className="text-center text-xs text-muted-foreground">
               Click a clip to trim, reorder, adjust volume or remove it. Drag a clip to move it, or its right edge to trim the end.
               Drag it onto another channel — or up/down past the edge to spawn a new one; higher channels play on top.
+              On audio clips, drag the dots at the top corners to fade in / out.
             </p>
           )}
         </>

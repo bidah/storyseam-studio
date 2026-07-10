@@ -3,9 +3,34 @@
   "name": "shot-studio-uploads",
   "main": "src/index.js",
   "compatibility_date": "2026-06-01",
+  // nodejs_compat: needed by @daytona/sdk (Buffer/axios) when the ffmpeg
+  // orchestration moves onto the Worker (Stage 3).
+  "compatibility_flags": ["nodejs_compat"],
   "observability": { "enabled": true },
+  // Non-secret config. Secrets are set with `wrangler secret put <NAME>`:
+  //   R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY  (presign R2 for the
+  //     Daytona ffmpeg sandbox — see src/lib/ffmpeg.js)
+  //   DAYTONA_API_KEY                (ffmpeg orchestration)
+  //   HIGGSFIELD_MCP_TOKEN           (optional; static-login shortcut)
+  "vars": {
+    "R2_BUCKET": "shot-studio-uploads",
+    "R2_ACCOUNT_ID": "cda687c8b568323a9b535ca44a192131",
+    "WORKER_PUBLIC_URL": "https://shot-studio-uploads.rodrigofigueroa-name.workers.dev",
+    "HIGGSFIELD_CLIENT_ID": "LgvtzrTQ0pgrGOzD"
+  },
+  // Serve the built Vite SPA from the Worker; API routes below take precedence,
+  // and client-side routes fall back to index.html.
+  "assets": {
+    "directory": "../dist",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application"
+  },
   "r2_buckets": [
     { "binding": "BUCKET", "bucket_name": "shot-studio-uploads" }
+  ],
+  // KV for Better Auth (sessions secondary storage + rate limiting).
+  "kv_namespaces": [
+    { "binding": "AUTH_KV", "id": "4be9b787dc844a14a14d242b54ef7ca2" }
   ],
   "d1_databases": [
     {
@@ -13,5 +38,11 @@
       "database_name": "shot-studio-uploads",
       "database_id": "248c977c-1beb-4ae8-9995-c4959219bd49"
     }
-  ]
+  ],
+  // Per-project SSE live-sync (script + timeline) — replaces the Express
+  // in-memory client sets, which can't work across Worker isolates.
+  "durable_objects": {
+    "bindings": [{ "name": "PROJECT_EVENTS", "class_name": "ProjectEvents" }]
+  },
+  "migrations": [{ "tag": "v1", "new_classes": ["ProjectEvents"] }]
 }

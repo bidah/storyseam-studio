@@ -274,7 +274,10 @@ the rate params below are Higgsfield-exposed controls layered on top — use wor
 | `get_cost` | boolean | no | `false` | — | Preflight credit cost without submitting. |
 
 > **No `duration` parameter.** State the target length in the prompt
-> ("Create a 40-second ..."). **Max output ~2 minutes per pass.**
+> ("Create a 40-second ..."). **Max output ~2 minutes per pass** — anything up
+> to ~120s is a single render, so do NOT pre-split cues under 2 min or reach for
+> the extend/stitch flow (that's only for clips that must exceed ~2 min). A ~60s
+> music cue = one pass.
 
 ### Tuning cheatsheet
 

@@ -14,6 +14,10 @@ import { cn } from "@/lib/utils";
 import { CLIENT_ID } from "@/lib/clientId";
 import AgentChat from "@/components/AgentChat";
 import LoginGate from "@/components/Login";
+import ProjectProvider from "@/components/ProjectProvider";
+import ProjectSwitcher from "@/components/ProjectSwitcher";
+import { onProjectChange } from "@/lib/projectFetch";
+import { signOut as authSignOut } from "@/lib/auth-client";
 import ScriptEditor from "@/components/ScriptEditor";
 import Editor from "@/components/Editor";
 import {
@@ -3632,7 +3636,7 @@ function ThemeToggle() {
 function UserMenu() {
   const signOut = async () => {
     try {
-      await fetch("/api/auth/logout", { method: "POST" });
+      await authSignOut();
     } catch {
       /* reload re-gates regardless of the request outcome */
     }
@@ -3677,7 +3681,16 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [reloadKey, setReloadKey] = useState(0);
+  const [projectKey, setProjectKey] = useState(0);
   const [modalImage, setModalImage] = useState(null);
+
+  // Switching projects (from the header ProjectSwitcher) changes the id in the
+  // fetch shim; re-fetch every tab and remount the body so no stale project
+  // data lingers.
+  useEffect(() => onProjectChange(() => {
+    setReloadKey((k) => k + 1);
+    setProjectKey((k) => k + 1);
+  }), []);
 
   // Cross-tab jump: the Complete-cut overlay calls navigateTo({ view, anchor })
   // to switch tabs and scroll to a bundle / sound card. The target tab remounts
@@ -3756,6 +3769,7 @@ export default function App() {
     <TooltipProvider delayDuration={200}>
       <AgentProvider view={view}>
       <LoginGate>
+      <ProjectProvider>
       <div className="flex h-dvh overflow-hidden">
       <div className="min-w-0 flex-1 overflow-y-auto">
       <Tabs value={view} onValueChange={setView}>
@@ -3764,6 +3778,8 @@ export default function App() {
             <div className="flex size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground shadow-sm">
               <Clapperboard size={18} />
             </div>
+
+            <ProjectSwitcher />
 
             <TabsList className="h-9">
               {TABS.filter((t) => !t.hidden).map((t) => (
@@ -3791,7 +3807,7 @@ export default function App() {
           </div>
         </header>
 
-        <main className="mx-auto w-full max-w-[1500px] px-4 py-6 md:px-6">
+        <main key={projectKey} className="mx-auto w-full max-w-[1500px] px-4 py-6 md:px-6">
           {view === "script" ? (
             <ScriptEditor reloadKey={reloadKey} liveKey={scriptEdits} />
           ) : view === "shotlist" ? (
@@ -3888,6 +3904,7 @@ export default function App() {
       </div>
 
       <ImageModal image={modalImage} onClose={() => setModalImage(null)} />
+      </ProjectProvider>
       </LoginGate>
       </AgentProvider>
     </TooltipProvider>

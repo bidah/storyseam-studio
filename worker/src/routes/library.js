@@ -1,0 +1,293 @@
+// Library / Shots / Multishot endpoints, ported from server/index.js
+// (/api/library*, /api/shots*, /api/multishot). These three groups are all
+// media-LISTING feature-changes: in Express they SCANNED a local media monorepo
+// (fs.readdirSync over the repo + build-artifact .txt files). There is no repo on
+// the Worker — media now lives in R2 under `media/<projectId>/...` — so they are
+// re-backed by R2 listings (`listMedia` / `BUCKET.list`) and the JSON doc store.
+//
+// Doc store: `state/<projectId>/selections.json` holds `db.library` (a map
+// rel->true of picked asset-library images). The multishot manifest and the
+// shots metadata live in their own docs (`multishot` / `shots`).
+//
+// MEDIA NOTE: media URLs stay EXACTLY as Express emitted them
+// (`/asset/<rel>`, `/media/<file>`, `/multishot-media/<file>`) — the `/asset/*`,
+// `/media/*`, `/multishot-media/*` streaming routes serve the R2 objects. See the
+// TODO(stage2) markers for the media-copy / build-file work still owed.
+import { readDoc, writeDoc } from "../lib/docs.js";
+import { listMedia } from "../lib/media.js";
+
+// The de-facto selections DB (library picks + per-bundle episode selections).
+const readDB = (env, pid) => readDoc(env, pid, "selections", { library: {}, episode: {} });
+const writeDB = (env, pid, db) => writeDoc(env, pid, "selections", db);
+
+// Image extensions accepted in the browsable asset library (was IMG_RE).
+const IMG_RE = /\.(png|jpe?g|webp|gif)$/i;
+
+// Sanitize a client-supplied rel: strip leading slashes + parent-traversal, so a
+// crafted `rel` can never escape the asset prefix (was safeAbs against the repo).
+const cleanRel = (rel) =>
+  String(rel || "").replace(/^\/+/, "").replace(/\.\.(\/|\\|$)/g, "");
+
+// The R2 key of a browsable asset-library image (served at `/asset/<rel>`).
+const assetKey = (pid, rel) => {
+  const safe = String(pid || "p_default").replace(/[^a-zA-Z0-9._-]/g, "") || "p_default";
+  return `media/${safe}/asset/${cleanRel(rel)}`;
+};
+
+// Directory portion of a rel ("a/b/img.png" -> "a/b"; "img.png" -> "." as Node's
+// path.dirname did, which the Express handler used as the folder key).
+const dirOf = (rel) => {
+  const i = rel.lastIndexOf("/");
+  return i === -1 ? "." : rel.slice(0, i);
+};
+const baseOf = (rel) => {
+  const i = rel.lastIndexOf("/");
+  return i === -1 ? rel : rel.slice(i + 1);
+};
+
+// List every browsable asset-library image (rel = key sans `media/<pid>/asset/`).
+// Replaces the Express recursive fs scan of the repo (scanLibrary()).
+async function listAssets(env, pid) {
+  const safe = String(pid || "p_default").replace(/[^a-zA-Z0-9._-]/g, "") || "p_default";
+  const prefix = `media/${safe}/asset/`;
+  const out = [];
+  let cursor;
+  do {
+    const res = await env.BUCKET.list({ prefix, cursor, limit: 1000 });
+    for (const o of res.objects) {
+      const rel = o.key.slice(prefix.length);
+      if (rel && IMG_RE.test(rel)) out.push(rel);
+    }
+    cursor = res.truncated ? res.cursor : undefined;
+  } while (cursor);
+  return out;
+}
+
+// --- /api/shots take reconstruction ----------------------------------------
+// Group the R2 media listing under `media/<pid>/shots/` by shot id and parse the
+// versioned take file names EXACTLY as Express's buildShots() did. Each listed
+// name is the key sans `media/<pid>/shots/` (e.g. "shot01/takes/..._speech...mp3"
+// or the flat "shot01/shot01_audio.mp3"); its served URL is `/media/<name>`.
+function takesForShot(files, id) {
+  const speechTakes = [];
+  const vfxTakes = [];
+  const videoTakes = [];
+  const takePrefix = `shot${id}/takes/`;
+  for (const rel of files) {
+    if (!rel.startsWith(takePrefix)) continue;
+    const f = rel.slice(takePrefix.length);
+    if (f.includes("/")) continue; // takes are flat inside the takes/ dir
+    let m;
+    if ((m = /_speech_take(\d+)_([0-9-]+)\.mp3$/.exec(f))) {
+      speechTakes.push({ take: Number(m[1]), ts: m[2], title: f, url: `/media/${rel}` });
+    } else if ((m = /_vfx_take(\d+)_([0-9-]+)\.mp3$/.exec(f))) {
+      vfxTakes.push({ take: Number(m[1]), ts: m[2], title: f, url: `/media/${rel}` });
+    } else if ((m = /_(lipsync|withvfx|final)_take(\d+)_([0-9-]+)\.mp4$/i.exec(f))) {
+      videoTakes.push({ take: Number(m[2]), ts: m[3], variant: m[1].toLowerCase(), title: f, url: `/media/${rel}` });
+    }
+  }
+  speechTakes.sort((a, b) => b.take - a.take);
+  vfxTakes.sort((a, b) => b.take - a.take);
+  videoTakes.sort((a, b) => b.take - a.take || a.variant.localeCompare(b.variant));
+
+  // Fallback: a shot with only a flat audio/video file shows it as take 1.
+  const flatAudio = `shot${id}/shot${id}_audio.mp3`;
+  const flatVideo = `shot${id}/shot${id}_FINAL.mp4`;
+  if (speechTakes.length === 0 && files.includes(flatAudio))
+    speechTakes.push({ take: 1, ts: null, title: `shot${id}_audio.mp3`, url: `/media/${flatAudio}` });
+  if (videoTakes.length === 0 && files.includes(flatVideo))
+    videoTakes.push({ take: 1, ts: null, variant: "final", title: `shot${id}_FINAL.mp4`, url: `/media/${flatVideo}` });
+
+  return { speechTakes, vfxTakes, videoTakes };
+}
+
+export function registerLibrary(app) {
+  // -------------------------------------------------------------------------
+  // Library — the browsable asset image library, grouped into folders, with
+  // per-image `selected` from db.library.
+  // -------------------------------------------------------------------------
+  app.get("/api/library", async (c) => {
+    const pid = c.get("projectId");
+    const db = await readDB(c.env, pid);
+    const rels = await listAssets(c.env, pid);
+
+    // Group by containing folder (Node path.dirname of the rel), matching Express.
+    const folders = new Map(); // dir -> [{ rel, name }]
+    for (const rel of rels) {
+      const dir = dirOf(rel);
+      if (!folders.has(dir)) folders.set(dir, []);
+      folders.get(dir).push({ rel, name: baseOf(rel) });
+    }
+
+    const list = [...folders.entries()]
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .map(([dir, imgs]) => {
+        const sorted = imgs.slice().sort((a, b) => a.name.localeCompare(b.name));
+        return {
+          folder: dir,
+          count: sorted.length,
+          preview: "/asset/" + sorted[0].rel,
+          images: sorted.map((im) => ({
+            rel: im.rel,
+            name: im.name,
+            url: "/asset/" + im.rel,
+            // NOTE: Express also emitted `abs` (the on-disk absolute path). There
+            // is no filesystem on the Worker, so `abs` is intentionally dropped.
+            selected: !!db.library[im.rel],
+          })),
+        };
+      });
+    return c.json({ folders: list });
+  });
+
+  // Toggle a source image's membership in the final_selection set. Verbatim db
+  // mutation from Express; the physical copy into the final pool is deferred.
+  app.post("/api/library/toggle", async (c) => {
+    const pid = c.get("projectId");
+    let body;
+    try { body = await c.req.json(); } catch { body = {}; }
+    const { rel } = body || {};
+    if (typeof rel !== "string") return c.json({ error: "Missing 'rel'" }, 400);
+    // Mirror Express's "Bad path" guard: the source asset must exist in R2.
+    const head = await c.env.BUCKET.head(assetKey(pid, rel));
+    if (!head) return c.json({ error: "Bad path" }, 400);
+
+    const db = await readDB(c.env, pid);
+    db.library = db.library || {};
+    let selected;
+    if (db.library[rel]) {
+      // deselect: drop from db.library and from any per-bundle episode picks.
+      delete db.library[rel];
+      for (const k of Object.keys(db.episode || {})) {
+        db.episode[k] = (db.episode[k] || []).filter((r) => r !== rel);
+      }
+      // TODO(stage2): remove the copied image from the final_selection R2 pool
+      // (Express did fs.rmSync(dest) — the flattened final/<rel> media object).
+      selected = false;
+    } else {
+      db.library[rel] = true;
+      // TODO(stage2): copy the asset into the final_selection R2 pool (Express
+      // did fs.copyFileSync(src, final/<flatten(rel)>) so it shows in /api/final).
+      selected = true;
+    }
+    await writeDB(c.env, pid, db);
+    return c.json({ ok: true, rel, selected });
+  });
+
+  // -------------------------------------------------------------------------
+  // Shots — per-shot Seedance/Seedaudio prompts + versioned takes.
+  //
+  // In Express this scanned `shot-by-shot/shots/shotNN/` folders for takes and
+  // parsed TWO monorepo .txt build files (the whole-episode Seedance shotlist +
+  // the Seedaudio segment prompt) via seedanceBlocks()/seedaudioSegments(). Those
+  // .txt build files DO NOT EXIST in R2, so their derived fields (seedanceText,
+  // audioText, audioSegment/label) can only come from a `shots` doc if one was
+  // seeded — otherwise they degrade to empty. Takes are re-derived from the R2
+  // media listing under `media/<pid>/shots/`.
+  // -------------------------------------------------------------------------
+  app.get("/api/shots", async (c) => {
+    const pid = c.get("projectId");
+    const doc = await readDoc(c.env, pid, "shots", null);
+    if (!doc) return c.json({ shots: [] });
+
+    // Accept either a bare array or a { shots: [...] } document.
+    const shotsIn = Array.isArray(doc) ? doc : Array.isArray(doc.shots) ? doc.shots : [];
+    if (!shotsIn.length) return c.json({ shots: [] });
+
+    const files = await listMedia(c.env, pid, "shots");
+    const shots = shotsIn.map((s) => {
+      const id = String(s.id);
+      const { speechTakes, vfxTakes, videoTakes } = takesForShot(files, id);
+      // seedanceText / audioText / segment fields come from the doc when present
+      // (the .txt build files they used to be parsed from are gone in R2).
+      // TODO(stage2): if the Seedance shotlist / Seedaudio prompt are ever
+      // re-homed into R2 (as docs or media), repopulate these from there.
+      const seedanceText = typeof s.seedanceText === "string" ? s.seedanceText : "";
+      const perShotAudio = typeof s.audioText === "string" ? s.audioText : null;
+      return {
+        id,
+        seedanceText,
+        seedanceFound: !!seedanceText,
+        audioText: perShotAudio != null ? perShotAudio : "",
+        audioFound: perShotAudio != null,
+        audioPerShot: perShotAudio != null,
+        audioSegment: s.audioSegment ?? null,
+        audioSegmentLabel: s.audioSegmentLabel ?? null,
+        audioUrl: speechTakes[0] ? speechTakes[0].url : null,
+        videoUrl: videoTakes[0] ? videoTakes[0].url : null,
+        speechTakes,
+        vfxTakes,
+        videoTakes,
+      };
+    });
+    return c.json({ shots });
+  });
+
+  // Edit a shot's Seedance prompt.
+  //
+  // LEGACY / FLAGGED: in Express this was a BUILD-FILE editor — it rewrote the
+  // matching `SHOT: NN` block inside the monorepo `whistlewood_s1_15s_seedance_
+  // shotlist.txt` on disk. That .txt build file does not exist in R2. Ported here
+  // to update the `shots` doc's per-shot `seedanceText` instead. If the Seedance
+  // shotlist is not managed via this doc, this endpoint no longer applies — flag
+  // for a decision (see report).
+  app.put("/api/shots/:id/seedance", async (c) => {
+    const pid = c.get("projectId");
+    let body;
+    try { body = await c.req.json(); } catch { body = {}; }
+    const { text } = body || {};
+    if (typeof text !== "string") return c.json({ error: "Missing 'text'" }, 400);
+    const doc = (await readDoc(c.env, pid, "shots", null)) || { shots: [] };
+    const shots = Array.isArray(doc) ? doc : (doc.shots = doc.shots || []);
+    const shot = shots.find((s) => String(s.id) === String(c.req.param("id")));
+    if (!shot) return c.json({ error: `No such shot ${c.req.param("id")}` }, 404);
+    shot.seedanceText = text.replace(/\r\n/g, "\n").replace(/\s+$/, "");
+    await writeDoc(c.env, pid, "shots", doc);
+    return c.json({ ok: true });
+  });
+
+  // Edit a shot's Seedaudio prompt.
+  //
+  // LEGACY / FLAGGED: in Express this wrote a per-shot `shotNN_audio_prompt.txt`
+  // file (or, as a fallback, rewrote the shared SEGMENT block in the monorepo
+  // Seedaudio .txt). Neither build file exists in R2. Ported here to update the
+  // `shots` doc's per-shot `audioText` instead — same flag as above.
+  app.put("/api/shots/:id/audio", async (c) => {
+    const pid = c.get("projectId");
+    let body;
+    try { body = await c.req.json(); } catch { body = {}; }
+    const { text } = body || {};
+    if (typeof text !== "string") return c.json({ error: "Missing 'text'" }, 400);
+    const doc = (await readDoc(c.env, pid, "shots", null)) || { shots: [] };
+    const shots = Array.isArray(doc) ? doc : (doc.shots = doc.shots || []);
+    const shot = shots.find((s) => String(s.id) === String(c.req.param("id")));
+    if (!shot) return c.json({ error: `No such shot ${c.req.param("id")}` }, 404);
+    shot.audioText = text.replace(/\r\n/g, "\n").replace(/\s+$/, "");
+    await writeDoc(c.env, pid, "shots", doc);
+    return c.json({ ok: true });
+  });
+
+  // -------------------------------------------------------------------------
+  // Multishot — the standalone S1 shots-1-4 manifest (images/audio/generations).
+  // Read from the `multishot` doc (was multishot-s1-shots1-4/multishot.json).
+  // -------------------------------------------------------------------------
+  app.get("/api/multishot", async (c) => {
+    const pid = c.get("projectId");
+    const manifest = await readDoc(c.env, pid, "multishot", null);
+    if (!manifest) return c.json({ multishot: null });
+
+    // Rewrite media file names to served URLs (`/multishot-media/<file>`).
+    const toUrl = (file) => (file ? `/multishot-media/${file}` : null);
+    const images = (manifest.images || []).map((m) => ({ ...m, url: toUrl(m.file) }));
+    const audio = (manifest.audio || []).map((m) => ({ ...m, url: toUrl(m.file) }));
+
+    // Each generation's video → served URL; drop entries whose video file is gone
+    // (Express did fs.existsSync; here we check the R2 multishot media listing).
+    const present = new Set(await listMedia(c.env, pid, "multishot"));
+    const generations = (manifest.generations || [])
+      .map((g) => ({ ...g, videoUrl: toUrl(g.video) }))
+      .filter((g) => (g.video ? present.has(g.video) : true));
+
+    return c.json({ multishot: { ...manifest, images, audio, generations } });
+  });
+}
