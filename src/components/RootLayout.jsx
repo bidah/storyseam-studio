@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Outlet, useLocation, useNavigate } from "react-router";
 import { RefreshCw, ExternalLink, Clapperboard, Sun, Moon, LogOut, User } from "lucide-react";
 import { Glowing } from "glowing";
 import { cn } from "@/lib/utils";
@@ -10,22 +11,17 @@ import ProjectSwitcher from "@/components/ProjectSwitcher";
 import { onProjectChange } from "@/lib/projectFetch";
 import { clearTabCache } from "@/lib/tabCache";
 import { signOut as authSignOut } from "@/lib/auth-client";
-import ScriptEditor from "@/components/ScriptEditor";
-import Editor from "@/components/Editor";
 import { AgentProvider } from "@/components/AgentProvider";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { MultiShot } from "@/routes/multishot";
-import { Episode } from "@/routes/episode";
-import { ShotList } from "@/routes/shotlist";
-import { CompleteCuts } from "@/routes/cuts";
-import { Library } from "@/routes/library";
-import { SoundStudio } from "@/routes/sounds";
-import { Shots } from "@/routes/shots";
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
+  DropdownMenuSeparator, DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { ImageModal } from "@/components/shared";
+import { ShellContext } from "@/lib/shellContext";
 
 /* ---------------------------------------------------------------- *
  * App shell                                                        *
@@ -176,8 +172,16 @@ function UserMenu() {
   );
 }
 
-export default function App() {
-  const [view, setView] = useState("script");
+// The routed app shell — providers, header, and the <Outlet/> for the active
+// tab. Replaces the old <App> tab-switcher; the URL is now the source of truth
+// for which tab renders (see src/router.jsx). Per-tab data still flows via the
+// ShellContext shim (reloadKey etc.); Phase 3 swaps that for loader revalidation.
+export default function RootLayout() {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const view = location.pathname.slice(1).split("/")[0] || "script";
+  const onScript = view === "script";
+
   const [shots, setShots] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -194,38 +198,6 @@ export default function App() {
     setProjectKey((k) => k + 1);
   }), []);
 
-  // Cross-tab jump: the Complete-cut overlay calls navigateTo({ view, anchor })
-  // to switch tabs and scroll to a bundle / sound card. The target tab remounts
-  // and loads async, so we retry finding the anchor for a few seconds, then
-  // flash it. { view, anchor, nonce } — nonce lets the same target re-trigger.
-  const [navTarget, setNavTarget] = useState(null);
-  const navNonce = useRef(0);
-  const navigateTo = useCallback(({ view: v, anchor }) => {
-    navNonce.current += 1;
-    setNavTarget({ view: v, anchor, nonce: navNonce.current });
-    setView(v);
-  }, []);
-  useEffect(() => {
-    if (!navTarget || view !== navTarget.view) return;
-    let tries = 0;
-    let timer;
-    const tryScroll = () => {
-      const el = document.getElementById(navTarget.anchor);
-      if (el) {
-        el.scrollIntoView({ behavior: "smooth", block: "center" });
-        el.classList.remove("nav-flash");
-        void el.offsetWidth; // restart the animation if already applied
-        el.classList.add("nav-flash");
-        setTimeout(() => el.classList.remove("nav-flash"), 1600);
-        setNavTarget(null);
-        return;
-      }
-      if (tries++ < 40) timer = setTimeout(tryScroll, 100); // wait out async load
-    };
-    tryScroll();
-    return () => clearTimeout(timer);
-  }, [navTarget, view]);
-
   // Live agent edits on any other tab (shot list, episode, cuts, library, sound
   // studio) → bump reloadKey so every tab refetches and reflects the change with
   // no manual Refresh. Script/timeline have their own targeted live streams.
@@ -238,11 +210,9 @@ export default function App() {
   // Live Script edits (from the chat agent) → reload the editor + glow the tab.
   const scriptEdits = useScriptLiveEdits();
   const [scriptGlow, setScriptGlow] = useState(false);
-  const viewRef = useRef(view);
-  viewRef.current = view;
   useEffect(() => {
     if (scriptEdits === 0) return; // ignore the initial value
-    if (viewRef.current === "script") {
+    if (onScript) {
       // Already looking at it (it live-updates) — just a brief pulse.
       setScriptGlow(true);
       const t = setTimeout(() => setScriptGlow(false), 1800);
@@ -250,10 +220,11 @@ export default function App() {
     }
     // Editing happened on another tab — glow until the user opens the Script tab.
     setScriptGlow(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- mirror old viewRef behavior: fire only on new edits
   }, [scriptEdits]);
   useEffect(() => {
-    if (view === "script") setScriptGlow(false);
-  }, [view]);
+    if (onScript) setScriptGlow(false);
+  }, [onScript]);
   useGlow('[data-script-tab="true"]', scriptGlow, GLOW_OPTS);
 
   const load = useCallback(async () => {
@@ -276,14 +247,45 @@ export default function App() {
     load();
   }, [load]);
 
+  // Cross-tab jump: the Complete-cut overlay navigates to `/episode#ep-<id>` or
+  // `/sounds#snd-<track>`. The target tab mounts and loads async, so we retry
+  // finding the hash target for a few seconds, then scroll + flash it. Re-runs on
+  // every navigation (location.key) so re-clicking the same marker re-flashes.
+  useEffect(() => {
+    const anchor = location.hash ? location.hash.slice(1) : "";
+    if (!anchor) return;
+    let tries = 0;
+    let timer;
+    const tryScroll = () => {
+      const el = document.getElementById(anchor);
+      if (el) {
+        el.scrollIntoView({ behavior: "smooth", block: "center" });
+        el.classList.remove("nav-flash");
+        void el.offsetWidth; // restart the animation if already applied
+        el.classList.add("nav-flash");
+        setTimeout(() => el.classList.remove("nav-flash"), 1600);
+        return;
+      }
+      if (tries++ < 40) timer = setTimeout(tryScroll, 100); // wait out async load
+    };
+    tryScroll();
+    return () => clearTimeout(timer);
+  }, [location.hash, location.key]);
+
+  const shell = useMemo(
+    () => ({ reloadKey, scriptEdits, setModalImage, shots, error }),
+    [reloadKey, scriptEdits, shots, error],
+  );
+
   return (
     <TooltipProvider delayDuration={200}>
-      <AgentProvider view={view}>
+      <AgentProvider>
       <LoginGate>
       <ProjectProvider>
+      <ShellContext.Provider value={shell}>
       <div className="flex h-dvh overflow-hidden">
       <div className="min-w-0 flex-1 overflow-y-auto">
-      <Tabs value={view} onValueChange={setView}>
+      <Tabs value={view} onValueChange={(v) => navigate("/" + v)}>
         <header className="sticky top-0 z-30 border-b bg-card/80 backdrop-blur supports-[backdrop-filter]:bg-card/60">
           <div className="mx-auto flex max-w-[1500px] flex-wrap items-center gap-x-6 gap-y-3 px-4 py-3 md:px-6">
             <div className="flex size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground shadow-sm">
@@ -319,25 +321,7 @@ export default function App() {
         </header>
 
         <main key={projectKey} className="mx-auto w-full max-w-[1500px] px-4 py-6 md:px-6">
-          {view === "script" ? (
-            <ScriptEditor reloadKey={reloadKey} liveKey={scriptEdits} />
-          ) : view === "shotlist" ? (
-            <ShotList reloadKey={reloadKey} />
-          ) : view === "sounds" ? (
-            <SoundStudio reloadKey={reloadKey} />
-          ) : view === "library" ? (
-            <Library reloadKey={reloadKey} onView={setModalImage} />
-          ) : view === "cuts" ? (
-            <CompleteCuts reloadKey={reloadKey} navigateTo={navigateTo} />
-          ) : view === "editor" ? (
-            <Editor reloadKey={reloadKey} />
-          ) : view === "episode" ? (
-            <Episode reloadKey={reloadKey} onView={setModalImage} />
-          ) : view === "multishot" ? (
-            <MultiShot reloadKey={reloadKey} />
-          ) : (
-            <Shots shots={shots} error={error} reloadKey={reloadKey} />
-          )}
+          <Outlet />
         </main>
       </Tabs>
       </div>
@@ -345,6 +329,7 @@ export default function App() {
       </div>
 
       <ImageModal image={modalImage} onClose={() => setModalImage(null)} />
+      </ShellContext.Provider>
       </ProjectProvider>
       </LoginGate>
       </AgentProvider>

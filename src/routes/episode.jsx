@@ -14,6 +14,7 @@ import { Separator } from "@/components/ui/separator";
 import { Slider } from "@/components/ui/slider";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Empty, Eyebrow, Chip, Spinner, ErrorNote, ConfirmModal } from "@/components/shared";
+import { useShell } from "@/lib/shellContext";
 
 /* ---------------------------------------------------------------- *
  * Reference-label + copy helpers                                   *
@@ -1206,3 +1207,8 @@ function Episode({ reloadKey, onView }) {
  * ---------------------------------------------------------------- */
 
 export { Episode };
+
+export function Component() {
+  const { reloadKey, setModalImage } = useShell();
+  return <Episode reloadKey={reloadKey} onView={setModalImage} />;
+}

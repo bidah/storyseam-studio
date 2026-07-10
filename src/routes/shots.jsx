@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { Slider } from "@/components/ui/slider";
 import { Empty, ErrorNote } from "@/components/shared";
+import { useShell } from "@/lib/shellContext";
 
 /* ---------------------------------------------------------------- *
  * Editable text cell (Seedance shot / seed-audio block)            *
@@ -215,3 +216,10 @@ function Shots({ shots, error, reloadKey }) {
 }
 
 export { Shots };
+
+// Route entry: the fallback "shots" table pulls its data from the header's
+// /api/shots fetch, shared via the RootLayout shell context.
+export function Component() {
+  const { shots, error, reloadKey } = useShell();
+  return <Shots shots={shots} error={error} reloadKey={reloadKey} />;
+}

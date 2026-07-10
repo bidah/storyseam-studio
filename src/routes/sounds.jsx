@@ -12,6 +12,7 @@ import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Empty, Chip, Panel, Spinner, ErrorNote } from "@/components/shared";
+import { useShell } from "@/lib/shellContext";
 
 /* ---------------------------------------------------------------- *
  * Sound studio                                                     *
@@ -969,3 +970,8 @@ function SoundStudio({ reloadKey }) {
 }
 
 export { SoundStudio };
+
+export function Component() {
+  const { reloadKey } = useShell();
+  return <SoundStudio reloadKey={reloadKey} />;
+}

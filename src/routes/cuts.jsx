@@ -6,7 +6,9 @@ import { useAgent, agentIsBusy, stitchCutMessage, scoreCutMessage } from "@/comp
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { useNavigate } from "react-router";
 import { Empty, Panel, Spinner, ErrorNote, fmtTime } from "@/components/shared";
+import { useShell } from "@/lib/shellContext";
 
 // A stitched-cut <video> with a live "now playing" overlay. As the cut plays,
 // the top-right chips track which multishot bundle (and, for a scored cut, which
@@ -489,3 +491,17 @@ function CompleteCuts({ reloadKey, navigateTo }) {
 }
 
 export { CompleteCuts };
+
+// Route entry. The Complete-cuts overlay still calls navigateTo({ view, anchor })
+// to jump to a bundle / sound card; we adapt that to React Router hash navigation
+// (/episode#ep-<id>, /sounds#snd-<track>). RootLayout's anchor hook does the
+// scroll + flash once the target tab has loaded.
+export function Component() {
+  const { reloadKey } = useShell();
+  const navigate = useNavigate();
+  const navigateTo = useCallback(
+    ({ view, anchor }) => navigate(`/${view}${anchor ? `#${anchor}` : ""}`),
+    [navigate],
+  );
+  return <CompleteCuts reloadKey={reloadKey} navigateTo={navigateTo} />;
+}

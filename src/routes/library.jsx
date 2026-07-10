@@ -5,6 +5,7 @@ import { readTabCache, writeTabCache } from "@/lib/tabCache";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Spinner, ErrorNote, ConfirmModal } from "@/components/shared";
+import { useShell } from "@/lib/shellContext";
 
 /* ---------------------------------------------------------------- *
  * Asset library                                                    *
@@ -161,3 +162,8 @@ function Library({ reloadKey, onView }) {
 }
 
 export { Library };
+
+export function Component() {
+  const { reloadKey, setModalImage } = useShell();
+  return <Library reloadKey={reloadKey} onView={setModalImage} />;
+}

@@ -6,6 +6,7 @@ import { useAgent, agentIsBusy } from "@/components/AgentProvider";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Empty, Panel, Spinner, ErrorNote, fmtTime } from "@/components/shared";
+import { useShell } from "@/lib/shellContext";
 
 // One inline-editable shot field. Saves on blur (only when changed) via
 // PUT /api/shotlist/shot/:n and hands the fresh pack preview back up.
@@ -242,3 +243,8 @@ function ShotList({ reloadKey }) {
 }
 
 export { ShotList };
+
+export function Component() {
+  const { reloadKey } = useShell();
+  return <ShotList reloadKey={reloadKey} />;
+}

@@ -8,6 +8,7 @@ import {
   useState,
 } from "react";
 import { useEveAgent } from "eve/react";
+import { useLocation } from "react-router";
 import {
   CHATS_LIMIT,
   deriveTitle,
@@ -188,9 +189,13 @@ function AgentSessionRunner({ activeId, view, conv, publish }) {
   return null;
 }
 
-export function AgentProvider({ view, children }) {
+export function AgentProvider({ children }) {
   const conv = useConversationManager();
   const [agent, setAgent] = useState(null);
+  // Which screen the user is on — derived from the URL now that the app is
+  // routed (was threaded down from App as a `view` prop).
+  const { pathname } = useLocation();
+  const view = pathname.slice(1).split("/")[0] || "script";
 
   return (
     <ConversationsContext.Provider value={conv}>
