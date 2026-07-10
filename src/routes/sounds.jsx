@@ -1,7 +1,9 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useLoaderData, useRevalidator } from "react-router";
 import { Check, Plus, ChevronDown, ChevronRight, RotateCcw, Volume2, Speech, Copy, Heart, Music, Save, Clock, Download, Trash2, FileText, Loader2, Wand2 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { readTabCache, writeTabCache } from "@/lib/tabCache";
+import { invalidateTabCache } from "@/lib/tabCache";
+import { swr, useRevalidateOnMount } from "@/lib/swr";
 import { useAgent, agentIsBusy, renderSoundMessage, renderAllPendingMessage } from "@/components/AgentProvider";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -12,7 +14,6 @@ import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Empty, Chip, Panel, Spinner, ErrorNote } from "@/components/shared";
-import { useShell } from "@/lib/shellContext";
 
 /* ---------------------------------------------------------------- *
  * Sound studio                                                     *
@@ -811,44 +812,23 @@ function TrackList({ loading, tracks, emptyText, onChanged }) {
   );
 }
 
-function SoundStudio({ reloadKey }) {
-  const [tracks, setTracks] = useState(() => readTabCache("sounds") ?? []);
-  const [bundles, setBundles] = useState([]);
-  const [loading, setLoading] = useState(() => readTabCache("sounds") === undefined);
-  const [error, setError] = useState(null);
+function SoundStudio() {
+  const { tracks, bundles } = useLoaderData();
+  const revalidator = useRevalidator();
+  useRevalidateOnMount("sounds");
+  const [error, setError] = useState(null); // createTrack (mutation) error
   const [tab, setTab] = useState("music");
   const [showNew, setShowNew] = useState(false);
   const [busy, setBusy] = useState(false);
   const agent = useAgent();
   const agentBusy = agentIsBusy(agent);
 
-  const load = useCallback(async () => {
-    if (readTabCache("sounds") === undefined) setLoading(true);
-    setError(null);
-    try {
-      const data = await soundApi("/api/sounds");
-      setTracks(data.tracks || []);
-      writeTabCache("sounds", data.tracks || []);
-    } catch (e) {
-      if (readTabCache("sounds") === undefined) setError(String(e.message || e));
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-  useEffect(() => {
-    load();
-  }, [load, reloadKey]);
-
-  useEffect(() => {
-    (async () => {
-      try {
-        const data = await soundApi("/api/episode");
-        setBundles(data.episode?.bundles || []);
-      } catch {
-        setBundles([]);
-      }
-    })();
-  }, []);
+  // Any track/version mutation (create/rename/delete/like, agent renders) →
+  // refetch the sounds loader so the list reflects the change.
+  const refetch = () => {
+    invalidateTabCache("sounds");
+    revalidator.revalidate();
+  };
 
   const createTrack = async ({ name, prompt }) => {
     if (!prompt.trim()) return;
@@ -860,7 +840,7 @@ function SoundStudio({ reloadKey }) {
         body: JSON.stringify({ name, prompt }),
       });
       setShowNew(false);
-      load();
+      refetch();
     } catch (e) {
       setError(String(e.message || e));
     } finally {
@@ -924,10 +904,10 @@ function SoundStudio({ reloadKey }) {
             />
           )}
           <TrackList
-            loading={loading}
+            loading={false}
             tracks={music}
             emptyText="No background music yet — click “New background music”."
-            onChanged={load}
+            onChanged={refetch}
           />
         </TabsContent>
 
@@ -941,10 +921,10 @@ function SoundStudio({ reloadKey }) {
             <SfxBuilder busy={busy} onCreate={createTrack} onCancel={() => setShowNew(false)} />
           )}
           <TrackList
-            loading={loading}
+            loading={false}
             tracks={sfx}
             emptyText="No sound effects yet — click “New sound effect”."
-            onChanged={load}
+            onChanged={refetch}
           />
         </TabsContent>
 
@@ -958,10 +938,10 @@ function SoundStudio({ reloadKey }) {
             <VoiceBuilder busy={busy} onCreate={createTrack} onCancel={() => setShowNew(false)} />
           )}
           <TrackList
-            loading={loading}
+            loading={false}
             tracks={voice}
             emptyText="No voice lines yet — click “New voice line”."
-            onChanged={load}
+            onChanged={refetch}
           />
         </TabsContent>
       </Tabs>
@@ -969,9 +949,21 @@ function SoundStudio({ reloadKey }) {
   );
 }
 
+// Loader: sound tracks (+ episode bundles, used by the "new music" builder to
+// offer per-scene reference). Episode is best-effort — a failure just omits the
+// bundle picker, it doesn't fail the tab.
+export function loader() {
+  return swr("sounds", async () => {
+    const [sounds, episode] = await Promise.all([
+      soundApi("/api/sounds"),
+      soundApi("/api/episode").catch(() => ({})),
+    ]);
+    return { tracks: sounds.tracks || [], bundles: episode.episode?.bundles || [] };
+  });
+}
+
 export { SoundStudio };
 
 export function Component() {
-  const { reloadKey } = useShell();
-  return <SoundStudio reloadKey={reloadKey} />;
+  return <SoundStudio />;
 }

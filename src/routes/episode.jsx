@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useLoaderData, useRevalidator } from "react-router";
 import { X, Check, Plus, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, RotateCcw, Maximize2, Volume2, Speech, Play, Copy, Pencil, Sparkles, PenLine, FileText, Image as ImageIcon, Loader2, Wand2, Scissors } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { readTabCache, writeTabCache } from "@/lib/tabCache";
+import { invalidateTabCache } from "@/lib/tabCache";
+import { swr, useRevalidateOnMount } from "@/lib/swr";
 import { useAgent, agentIsBusy, renderEpisodeMessage, trimMessage } from "@/components/AgentProvider";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -13,7 +15,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Separator } from "@/components/ui/separator";
 import { Slider } from "@/components/ui/slider";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Empty, Eyebrow, Chip, Spinner, ErrorNote, ConfirmModal } from "@/components/shared";
+import { Empty, Eyebrow, Chip, ErrorNote, ConfirmModal } from "@/components/shared";
 import { useShell } from "@/lib/shellContext";
 
 /* ---------------------------------------------------------------- *
@@ -894,31 +896,30 @@ function AudioPickerModal({ bundle, audioRefs, picked, open, onToggle, onClose }
 }
 
 function Episode({ reloadKey, onView }) {
-  // Seed every slice from the cached payload (if any) so a tab remount paints the
-  // last data with no spinner/empty flash; a background revalidate follows.
-  const seed = readTabCache("episode");
+  // The 4-endpoint payload comes from the loader (swr paints the cache instantly
+  // on a revisit). We mirror it into local slices so the many optimistic
+  // mutations below can update the UI immediately; a following revalidate
+  // reconciles with the server.
+  const payload = useLoaderData(); // { ep, lib, fn, au }
+  const revalidator = useRevalidator();
+  useRevalidateOnMount("episode");
   const setsFrom = (obj) => { const m = {}; for (const [k, v] of Object.entries(obj || {})) m[k] = new Set(v); return m; };
-  const [data, setData] = useState(seed ? seed.ep.episode : null);
-  const [folders, setFolders] = useState(seed ? (seed.lib.folders || []) : []);
-  const [picks, setPicks] = useState(seed ? setsFrom(seed.fn.episode) : {});
-  const [loading, setLoading] = useState(!seed);
-  const [error, setError] = useState(null);
+  const [data, setData] = useState(payload.ep.episode);
+  const [folders, setFolders] = useState(payload.lib.folders || []);
+  const [picks, setPicks] = useState(setsFrom(payload.fn.episode));
+  const [error, setError] = useState(null); // mutation errors (loads use the route ErrorBoundary)
   const [confirm, setConfirm] = useState(null);
   const [pickerBundle, setPickerBundle] = useState(null);
-  const [audioRefs, setAudioRefs] = useState(seed ? (seed.au.audio || []) : []);
-  const [audioPicks, setAudioPicks] = useState(seed ? setsFrom(seed.au.episode) : {});
+  const [audioRefs, setAudioRefs] = useState(payload.au.audio || []);
+  const [audioPicks, setAudioPicks] = useState(setsFrom(payload.au.episode));
   const [audioPicker, setAudioPicker] = useState(null);
-  const [videos, setVideos] = useState(seed ? (seed.ep.video || {}) : {});
-  const [prompts, setPrompts] = useState(seed ? (seed.ep.prompts || {}) : {});
-  const [signoffs, setSignoffs] = useState(seed ? (seed.ep.signoffs || {}) : {});
+  const [videos, setVideos] = useState(payload.ep.video || {});
+  const [prompts, setPrompts] = useState(payload.ep.prompts || {});
+  const [signoffs, setSignoffs] = useState(payload.ep.signoffs || {});
   const promptTimers = useRef({});
   const agent = useAgent();
 
-  // A monotonic request id lets a newer load cancel a slower older one's
-  // setState (replaces the per-effect `alive` guard now that `load` is shared
-  // between the mount effect and the agent-turn refetch below).
-  const loadSeq = useRef(0);
-  // Apply one fetched (or cached) payload to every state slice.
+  // Apply one fetched payload to every state slice.
   const applyPayload = useCallback(({ ep, lib, fn, au }) => {
     setData(ep.episode);
     setVideos(ep.video || {});
@@ -933,48 +934,17 @@ function Episode({ reloadKey, onView }) {
     for (const [k, v] of Object.entries(au.episode || {})) am[k] = new Set(v);
     setAudioPicks(am);
   }, []);
-  const load = useCallback(async ({ background = false } = {}) => {
-    const seq = ++loadSeq.current;
-    // Stale-while-revalidate: paint the last payload instantly (no spinner) and
-    // refetch quietly. Only the very first load (nothing cached) shows a spinner.
-    const cached = readTabCache("episode");
-    if (cached) { applyPayload(cached); setLoading(false); }
-    else if (!background) setLoading(true);
-    try {
-      const [ep, lib, fn, au] = await Promise.all([
-        fetch("/api/episode").then((r) => r.json()),
-        fetch("/api/library").then((r) => r.json()),
-        fetch("/api/final").then((r) => r.json()),
-        fetch("/api/audio").then((r) => r.json()),
-      ]);
-      if (seq !== loadSeq.current) return; // superseded by a newer load
-      if (ep.error) throw new Error(ep.error);
-      const payload = { ep, lib, fn, au };
-      applyPayload(payload);
-      writeTabCache("episode", payload);
-      setError(null);
-    } catch (e) {
-      if (seq === loadSeq.current) setError(String(e.message || e));
-    } finally {
-      // Only the DATA application above is seq-guarded (newest wins). The spinner
-      // must always be cleared by whichever foreground load set it — otherwise a
-      // background refetch that bumps the seq mid-flight strands `loading` at true.
-      if (!background) setLoading(false);
-    }
-  }, [applyPayload]);
 
-  // Mount + manual Refresh (reloadKey) → full load with the loading spinner.
-  useEffect(() => {
-    load();
-  }, [load, reloadKey]);
+  // Adopt fresh loader data whenever it changes — mount and every revalidation
+  // (SSE firehose, Refresh, project switch, agent-turn below).
+  useEffect(() => { applyPayload(payload); }, [payload, applyPayload]);
 
-  // After the agent finishes a turn it may have just created a trim take,
-  // attached a render, or changed a selection. Refetch in the BACKGROUND (no
-  // spinner, no unmount) so new cards — e.g. a TRIM VERSION — appear on the
-  // left rail without a manual Refresh or a page reload.
+  // After the agent finishes a turn it may have created a trim take, attached a
+  // render, or changed a selection → refetch so new cards appear without a manual
+  // Refresh. (The SSE firehose also covers this; a double revalidate is harmless.)
   useEffect(() => {
-    if (agent.status === "ready") load({ background: true });
-  }, [agent.status, load]);
+    if (agent.status === "ready") { invalidateTabCache("episode"); revalidator.revalidate(); }
+  }, [agent.status, revalidator]);
 
   const audioMap = useMemo(() => {
     const m = new Map();
@@ -1116,7 +1086,6 @@ function Episode({ reloadKey, onView }) {
     }
   }, []);
 
-  if (loading) return <Spinner label="loading episode plan…" />;
   if (error) return <ErrorNote>{error}</ErrorNote>;
   if (!data) return <Empty>No episode plan found. Run episode-multishot/build.mjs.</Empty>;
 
@@ -1205,6 +1174,22 @@ function Episode({ reloadKey, onView }) {
 /* ---------------------------------------------------------------- *
  * Shot list (granular shots → auto-packed ≤15s multishots)         *
  * ---------------------------------------------------------------- */
+
+// Loader: the episode plan + library + final selection + audio refs, in one
+// Promise.all (mirrors the old 4-endpoint mount fetch). reloadKey still flows
+// from the shell for the EpVideoRail <video> ?v= cache-bust.
+export function loader() {
+  return swr("episode", async () => {
+    const [ep, lib, fn, au] = await Promise.all([
+      fetch("/api/episode").then((r) => r.json()),
+      fetch("/api/library").then((r) => r.json()),
+      fetch("/api/final").then((r) => r.json()),
+      fetch("/api/audio").then((r) => r.json()),
+    ]);
+    if (ep.error) throw new Error(ep.error);
+    return { ep, lib, fn, au };
+  });
+}
 
 export { Episode };
 

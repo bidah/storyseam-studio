@@ -30,11 +30,11 @@ export const router = createBrowserRouter([
       { path: "shotlist", Component: shotlist.Component, loader: shotlist.loader, ErrorBoundary: RouteError },
       { path: "shots", Component: shots.Component },
       { path: "multishot", Component: multishot.Component, loader: multishot.loader, ErrorBoundary: RouteError },
-      { path: "episode", Component: episode.Component },
+      { path: "episode", Component: episode.Component, loader: episode.loader, ErrorBoundary: RouteError },
       { path: "cuts", Component: cuts.Component, loader: cuts.loader, ErrorBoundary: RouteError },
       { path: "editor", Component: editor.Component },
       { path: "library", Component: library.Component, loader: library.loader, ErrorBoundary: RouteError },
-      { path: "sounds", Component: sounds.Component },
+      { path: "sounds", Component: sounds.Component, loader: sounds.loader, ErrorBoundary: RouteError },
       // Unknown paths fall back to the Script tab.
       { path: "*", loader: () => redirect("/script") },
     ],
