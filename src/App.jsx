@@ -3761,14 +3761,8 @@ export default function App() {
       <Tabs value={view} onValueChange={setView}>
         <header className="sticky top-0 z-30 border-b bg-card/80 backdrop-blur supports-[backdrop-filter]:bg-card/60">
           <div className="mx-auto flex max-w-[1500px] flex-wrap items-center gap-x-6 gap-y-3 px-4 py-3 md:px-6">
-            <div className="flex items-center gap-2.5">
-              <div className="flex size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground shadow-sm">
-                <Clapperboard size={18} />
-              </div>
-              <div className="leading-tight">
-                <div className="text-sm font-semibold tracking-tight">shot-studio</div>
-                <div className="text-[11px] text-muted-foreground">animation pipeline dashboard</div>
-              </div>
+            <div className="flex size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground shadow-sm">
+              <Clapperboard size={18} />
             </div>
 
             <TabsList className="h-9">
