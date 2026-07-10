@@ -34,10 +34,13 @@
     // Force API/media/auth routes to the Worker BEFORE the SPA asset layer.
     // Otherwise a top-level navigation (e.g. the OAuth callback) hits the SPA
     // fallback (index.html) instead of the Worker, and the code is never exchanged.
+    // NOTE: "/projects", "/projects/*" and "/script" were intentionally removed
+    // here so those top-level paths fall through to the SPA (they are React
+    // Router client routes). The APIs live under "/api/*" (matched above).
     "run_worker_first": [
       "/api/*", "/files/*", "/gen/*", "/media/*", "/sound-media/*", "/final/*",
       "/refs/*", "/multishot-media/*", "/asset/*", "/ingest/*", "/ingest-mpu/*",
-      "/eve/*", "/upload", "/uploads", "/projects", "/projects/*", "/script", "/healthz"
+      "/eve/*", "/upload", "/uploads", "/healthz"
     ]
   },
   "r2_buckets": [

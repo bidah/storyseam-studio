@@ -40,19 +40,6 @@ import { kindForPrefix, mediaKey, streamKey } from "./lib/media.js";
 // Durable Object for per-project SSE live-sync (script + timeline channels).
 export { ProjectEvents } from "./sse-do.js";
 
-const DEFAULT_PROJECT_ID = "p_default";
-const LEGACY_SCRIPT_KEY = "script/current.json";
-const EMPTY_SCRIPT = {};
-
-// R2 key for a project's script store (defensive: strip unsafe chars).
-function scriptKey(projectId) {
-  if (!projectId) return LEGACY_SCRIPT_KEY;
-  const safe = String(projectId).replace(/[^a-zA-Z0-9._-]/g, "");
-  return safe ? `script/${safe}.json` : LEGACY_SCRIPT_KEY;
-}
-
-const newProjectId = () => `p_${crypto.randomUUID().replace(/-/g, "").slice(0, 8)}`;
-
 // --- eve proxy user token --------------------------------------------------
 // The eve agent (on Vercel) is publicly reachable and can't see the Better Auth
 // session cookie (that lives on this Worker's origin). To let a signed-in user
@@ -233,77 +220,11 @@ app.get("/uploads", async (c) => {
   return c.json({ uploads: results });
 });
 
-// --- project registry (D1) -------------------------------------------------
-app.get("/projects", async (c) => {
-  const { results } = await c.env.DB.prepare(
-    "SELECT id, name, created_at, updated_at FROM projects WHERE archived = 0 ORDER BY updated_at DESC",
-  ).all();
-  return c.json({ projects: results });
-});
-
-app.post("/projects", async (c) => {
-  let body;
-  try { body = await c.req.json(); } catch { return c.json({ error: "Invalid JSON body" }, 400); }
-  const name = (body && typeof body.name === "string" && body.name.trim()) || "Untitled project";
-  const id = newProjectId();
-  const ts = new Date().toISOString();
-  await c.env.DB.prepare(
-    "INSERT INTO projects (id, name, created_at, updated_at, archived) VALUES (?, ?, ?, ?, 0)",
-  )
-    .bind(id, name, ts, ts)
-    .run();
-  return c.json({ project: { id, name, created_at: ts, updated_at: ts } });
-});
-
-app.patch("/projects/:id", async (c) => {
-  const id = c.req.param("id");
-  let body;
-  try { body = await c.req.json(); } catch { return c.json({ error: "Invalid JSON body" }, 400); }
-  const name = body && typeof body.name === "string" ? body.name.trim() : "";
-  if (!name) return c.json({ error: "Name is required" }, 400);
-  const ts = new Date().toISOString();
-  const res = await c.env.DB.prepare(
-    "UPDATE projects SET name = ?, updated_at = ? WHERE id = ? AND archived = 0",
-  )
-    .bind(name, ts, id)
-    .run();
-  if (!res.meta.changes) return c.json({ error: "Project not found" }, 404);
-  return c.json({ project: { id, name, updated_at: ts } });
-});
-
-app.delete("/projects/:id", async (c) => {
-  const id = c.req.param("id");
-  const row = await c.env.DB.prepare("SELECT COUNT(*) AS n FROM projects WHERE archived = 0").first();
-  if ((row?.n ?? 0) <= 1) return c.json({ error: "Cannot delete the last project" }, 409);
-  const ts = new Date().toISOString();
-  const res = await c.env.DB.prepare(
-    "UPDATE projects SET archived = 1, updated_at = ? WHERE id = ? AND archived = 0",
-  )
-    .bind(ts, id)
-    .run();
-  if (!res.meta.changes) return c.json({ error: "Project not found" }, 404);
-  try { await c.env.BUCKET.delete(scriptKey(id)); } catch { /* best effort */ }
-  return c.json({ ok: true });
-});
-
-// --- script store (R2 JSON blob, one per project) --------------------------
-app.get("/script", async (c) => {
-  const key = scriptKey(c.req.query("projectId"));
-  const obj = await c.env.BUCKET.get(key);
-  if (!obj) return c.json(EMPTY_SCRIPT);
-  try { return c.json(await obj.json()); } catch { return c.json(EMPTY_SCRIPT); }
-});
-
-app.put("/script", async (c) => {
-  const key = scriptKey(c.req.query("projectId"));
-  let body;
-  try { body = await c.req.json(); } catch { return c.json({ error: "Invalid JSON body" }, 400); }
-  if (!body || typeof body !== "object" || Array.isArray(body)) {
-    return c.json({ error: "Body must be a JSON object" }, 400);
-  }
-  await c.env.BUCKET.put(key, JSON.stringify(body), { httpMetadata: { contentType: "application/json" } });
-  return c.json({ ok: true });
-});
+// NOTE: the legacy top-level `/projects*` and `/script` routes were removed to
+// free those URL namespaces for the React Router SPA (a client route like
+// `/script` would otherwise be answered by this JSON API on a hard reload). The
+// canonical equivalents live under `/api/projects*` (routes/projects.js) and
+// `/api/script*` (routes/script.js); nothing calls the old top-level paths.
 
 // --- token-guarded R2 write ------------------------------------------------
 // Lets the Daytona ffmpeg/render sandboxes push outputs back to R2 without R2
