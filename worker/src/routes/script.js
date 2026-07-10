@@ -22,8 +22,9 @@ const readDB = (env, pid) => readDoc(env, pid, "selections", { library: {}, epis
 const writeDB = (env, pid, db) => writeDoc(env, pid, "selections", db);
 
 // Mirror of Express broadcastScript — fan the pinned-script change out to the
-// project's open Script tabs over SSE.
-const broadcastScript = (env, pid, payload) => broadcast(env, pid, "script", payload);
+// project's open Script tabs over SSE. Non-blocking: the DO fan-out runs under
+// the request's executionCtx so a slow DO never delays the write's response.
+const broadcastScript = (c, pid, payload) => broadcast(c.env, pid, "script", payload, c.executionCtx);
 
 export function registerScript(app) {
   // Read the PINNED draft (plus the drafts index so the UI can render the
@@ -96,7 +97,7 @@ export function registerScript(app) {
       // the shot list can be (re)generated from it.
       const db = await readDB(c.env, pid);
       if (db.scriptSignoff?.[d.id]) { delete db.scriptSignoff[d.id]; await writeDB(c.env, pid, db); }
-      await broadcastScript(c.env, pid, { updatedAt: d.updatedAt, clientId: clientId ?? null, pinnedId: store.pinnedId });
+      await broadcastScript(c, pid, { updatedAt: d.updatedAt, clientId: clientId ?? null, pinnedId: store.pinnedId });
       return c.json({ ok: true, updatedAt: d.updatedAt, draftId: d.id });
     } catch (e) {
       return c.json({ error: String(e.message || e) }, 500);
@@ -135,7 +136,7 @@ export function registerScript(app) {
       store.drafts.push(draft);
       store.pinnedId = draft.id;
       await writeStore(c.env, pid, store);
-      await broadcastScript(c.env, pid, { updatedAt: draft.updatedAt, clientId: clientId ?? null, pinnedId: store.pinnedId });
+      await broadcastScript(c, pid, { updatedAt: draft.updatedAt, clientId: clientId ?? null, pinnedId: store.pinnedId });
       return c.json({ ok: true, draft: draftMeta(draft, store.pinnedId), drafts: metaList(store), pinnedId: store.pinnedId });
     } catch (e) {
       return c.json({ error: String(e.message || e) }, 500);
@@ -156,7 +157,7 @@ export function registerScript(app) {
       store.pinnedId = id;
       await writeStore(c.env, pid, store);
       const d = pinnedDraft(store);
-      await broadcastScript(c.env, pid, { updatedAt: d.updatedAt, clientId: clientId ?? null, pinnedId: store.pinnedId });
+      await broadcastScript(c, pid, { updatedAt: d.updatedAt, clientId: clientId ?? null, pinnedId: store.pinnedId });
       return c.json({ ok: true, pinnedId: store.pinnedId, drafts: metaList(store) });
     } catch (e) {
       return c.json({ error: String(e.message || e) }, 500);
@@ -175,7 +176,7 @@ export function registerScript(app) {
       if (!d) return c.json({ error: `no draft ${c.req.param("id")}` }, 404);
       if (typeof name === "string" && name.trim()) d.name = name.trim();
       await writeStore(c.env, pid, store);
-      await broadcastScript(c.env, pid, { updatedAt: nowIso(), clientId: clientId ?? null, pinnedId: store.pinnedId });
+      await broadcastScript(c, pid, { updatedAt: nowIso(), clientId: clientId ?? null, pinnedId: store.pinnedId });
       return c.json({ ok: true, drafts: metaList(store), pinnedId: store.pinnedId });
     } catch (e) {
       return c.json({ error: String(e.message || e) }, 500);
@@ -204,7 +205,7 @@ export function registerScript(app) {
       }
       await writeStore(c.env, pid, store);
       const d = pinnedDraft(store);
-      await broadcastScript(c.env, pid, { updatedAt: d.updatedAt, clientId, pinnedId: store.pinnedId });
+      await broadcastScript(c, pid, { updatedAt: d.updatedAt, clientId, pinnedId: store.pinnedId });
       return c.json({ ok: true, drafts: metaList(store), pinnedId: store.pinnedId });
     } catch (e) {
       return c.json({ error: String(e.message || e) }, 500);

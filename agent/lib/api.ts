@@ -1,15 +1,23 @@
-// Shared client for the Shot Studio Express API (the data layer on :3334).
-// Every tool under agent/tools/ goes through here so there is one base URL.
+// Shared client for the Shot Studio Worker API. Every tool under agent/tools/
+// goes through here so there is one base URL and one place to inject project
+// context (see agent/lib/context.ts).
 const BASE = process.env.SHOT_STUDIO_API ?? "http://localhost:3334";
+
+import { getProjectId } from "./context";
 
 export async function api<T = unknown>(
   path: string,
   init?: { method?: string; body?: unknown },
 ): Promise<T> {
+  const projectId = getProjectId();
+  const headers = new Headers(init?.body ? { "content-type": "application/json" } : undefined);
+  if (projectId) headers.set("x-project-id", projectId);
+
   const res = await fetch(`${BASE}${path}`, {
     method: init?.method ?? "GET",
-    headers: init?.body ? { "content-type": "application/json" } : undefined,
+    headers,
     body: init?.body ? JSON.stringify(init.body) : undefined,
+    credentials: "include",
   });
   const text = await res.text();
   let data: unknown;

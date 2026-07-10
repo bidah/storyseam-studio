@@ -9,6 +9,8 @@
 // requests (e.g. the Cloudflare Worker upload URL) are left untouched so they
 // don't trip CORS.
 
+import { CLIENT_ID } from "@/lib/clientId";
+
 const STORAGE_KEY = "shot-studio:projectId";
 
 let currentProjectId = (() => {
@@ -53,6 +55,9 @@ export function installProjectScope() {
       const base = init && init.headers ? init.headers : (typeof input !== "string" && input ? input.headers : undefined);
       const headers = new Headers(base || {});
       if (currentProjectId) headers.set("x-project-id", currentProjectId);
+      // Tag this tab's own writes so the live-sync firehose can tell them apart
+      // from the chat agent's writes (only the latter trigger a refetch).
+      headers.set("x-client-id", CLIENT_ID);
       // Send the Better Auth session cookie with every same-origin API call.
       init = { credentials: "include", ...(init || {}), headers };
     }

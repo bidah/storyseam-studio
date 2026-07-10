@@ -34,6 +34,7 @@ import { registerCuts } from "./routes/cuts.js";
 import { registerProjects, getActiveProject, userCanAccessProject } from "./routes/projects.js";
 import { registerRender } from "./routes/render.js";
 import { createAuth } from "./auth.js";
+import { broadcast } from "./lib/broadcast.js";
 import { kindForPrefix, mediaKey, streamKey } from "./lib/media.js";
 
 // Durable Object for per-project SSE live-sync (script + timeline channels).
@@ -112,7 +113,7 @@ app.use(
   cors({
     origin: (o) => o || "*",
     allowMethods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allowHeaders: ["content-type", "x-filename", "x-project-id", "authorization", "x-app-origin"],
+    allowHeaders: ["content-type", "x-filename", "x-project-id", "x-client-id", "authorization", "x-app-origin"],
     maxAge: 86400,
     credentials: true,
   }),
@@ -172,6 +173,30 @@ app.use("*", async (c, next) => {
     return c.json({ error: "Forbidden" }, 403);
   }
   await next();
+});
+
+// Live-sync firehose: after any SUCCESSFUL /api/* mutation, announce it on the
+// project's "data" channel so open tabs refetch immediately (no manual Refresh).
+// Skips reads, the auth + *_events endpoints, and script/timeline (they emit
+// their own targeted payloads on dedicated channels). The browser stamps its own
+// writes with `x-client-id` so the client can ignore its own echoes; the agent
+// sends none, so agent writes always reach the tabs. Runs under waitUntil so the
+// DO fan-out never delays the write's response.
+app.use("*", async (c, next) => {
+  await next();
+  const method = c.req.method;
+  if (method === "GET" || method === "HEAD" || method === "OPTIONS") return;
+  const p = new URL(c.req.url).pathname;
+  if (!p.startsWith("/api/") || p.startsWith("/api/auth/") || p.endsWith("/events")) return;
+  if (p.startsWith("/api/script") || p.startsWith("/api/timeline")) return;
+  if (!c.res || c.res.status >= 400) return;
+  broadcast(
+    c.env,
+    c.get("projectId"),
+    "data",
+    { path: p, clientId: c.req.header("x-client-id") || null, at: Date.now() },
+    c.executionCtx,
+  );
 });
 
 app.get("/healthz", (c) => c.json({ ok: true, service: "shot-studio-uploads" }));
@@ -349,6 +374,12 @@ function eventsRoute(channel) {
 }
 app.get("/api/script/events", eventsRoute("script"));
 app.get("/api/timeline/events", eventsRoute("timeline"));
+// Generic live-sync firehose: every successful /api/* mutation (except script &
+// timeline, which have their own targeted channels above) is announced here so
+// open tabs — shot list, episode, cuts, library, sound studio — refetch the
+// moment the chat agent changes anything, no manual Refresh needed. See the
+// post-mutation broadcast middleware below.
+app.get("/api/data/events", eventsRoute("data"));
 
 // --- media streaming from R2 (replaces the Express express.static mounts) ----
 // Each old static prefix maps to a per-project R2 key media/<pid>/<kind>/<file>,

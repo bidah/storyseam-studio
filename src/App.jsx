@@ -3609,6 +3609,27 @@ function useScriptLiveEdits() {
   return edits;
 }
 
+// Subscribe to the generic live-sync firehose (every /api mutation except script
+// & timeline, which have their own streams). Returns a counter that bumps on each
+// change made ELSEWHERE (the chat agent) — not this tab's own writes — so the
+// whole app can refetch and reflect the agent's edits without a manual Refresh.
+function useDataLiveEdits() {
+  const [edits, setEdits] = useState(0);
+  useEffect(() => {
+    const es = new EventSource("/api/data/events");
+    es.onmessage = (e) => {
+      try {
+        const data = JSON.parse(e.data);
+        if (data.clientId !== CLIENT_ID) setEdits((n) => n + 1);
+      } catch {
+        /* ignore malformed frames / heartbeats */
+      }
+    };
+    return () => es.close();
+  }, []);
+  return edits;
+}
+
 function ThemeToggle() {
   const [dark, setDark] = useState(() =>
     typeof document !== "undefined" ? document.documentElement.classList.contains("dark") : true
@@ -3723,6 +3744,15 @@ export default function App() {
     tryScroll();
     return () => clearTimeout(timer);
   }, [navTarget, view]);
+
+  // Live agent edits on any other tab (shot list, episode, cuts, library, sound
+  // studio) → bump reloadKey so every tab refetches and reflects the change with
+  // no manual Refresh. Script/timeline have their own targeted live streams.
+  const dataEdits = useDataLiveEdits();
+  useEffect(() => {
+    if (dataEdits === 0) return; // ignore the initial value
+    setReloadKey((k) => k + 1);
+  }, [dataEdits]);
 
   // Live Script edits (from the chat agent) → reload the editor + glow the tab.
   const scriptEdits = useScriptLiveEdits();

@@ -196,8 +196,8 @@ function applyTimelineOps(tl, ops) {
 // Express `broadcastTimeline({ at, clientId })`). The saver's `clientId` lets an
 // Editor tab ignore the echo of its OWN autosave and reload only for foreign
 // edits (e.g. the chat agent's edit_timeline, which has no clientId).
-const broadcastTimeline = (env, pid, clientId) =>
-  broadcast(env, pid, "timeline", { at: new Date().toISOString(), clientId: clientId ?? null });
+const broadcastTimeline = (c, pid, clientId) =>
+  broadcast(c.env, pid, "timeline", { at: new Date().toISOString(), clientId: clientId ?? null }, c.executionCtx);
 
 export function registerTimeline(app) {
   // Read the saved editor timeline (null if none yet), plus the list of cut
@@ -275,7 +275,7 @@ export function registerTimeline(app) {
     const db = await readSelections(c.env, pid);
     db.editorTimeline = timeline;
     await writeSelections(c.env, pid, db);
-    await broadcastTimeline(c.env, pid, clientId);
+    await broadcastTimeline(c, clientId);
     return c.json({ ok: true, timeline });
   });
 
@@ -290,7 +290,7 @@ export function registerTimeline(app) {
     if (!timeline) return c.json({ error: "No matching cut generation to load" }, 404);
     db.editorTimeline = timeline;
     await writeSelections(c.env, pid, db);
-    await broadcastTimeline(c.env, pid, body?.clientId);
+    await broadcastTimeline(c, body?.clientId);
     return c.json({ ok: true, timeline });
   });
 
@@ -309,7 +309,7 @@ export function registerTimeline(app) {
     await writeSelections(c.env, pid, db);
     // The chat agent has no clientId, so open Editor tabs treat this as a
     // foreign edit and reload — reflecting agent edits in the UI right away.
-    await broadcastTimeline(c.env, pid, body?.clientId);
+    await broadcastTimeline(c, body?.clientId);
     return c.json({ ok: true, timeline: db.editorTimeline });
   });
 }

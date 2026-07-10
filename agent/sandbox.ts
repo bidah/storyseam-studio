@@ -1,11 +1,16 @@
-import { defineSandbox } from "eve/sandbox";
-import { justbash } from "eve/sandbox/just-bash";
+import { defineSandbox, defaultBackend } from "eve/sandbox";
 
-// Local dev: use the dependency-free pure-JS `just-bash` sandbox so the server
-// starts instantly with no Docker image pull. Our tools reach the Shot Studio
-// API over HTTP (not the sandbox), so this is sufficient for the chat + pipeline
-// flows. Switch to docker() / vercel() when a skill needs real binaries (ffmpeg)
-// inside the sandbox.
+// `defaultBackend()` picks the sandbox by host at runtime: on Vercel it uses the
+// **Vercel Sandbox** (real microVMs, auto-authenticated via the deployment's
+// VERCEL_OIDC_TOKEN), and locally it falls back to the dependency-free pure-JS
+// `just-bash` interpreter so `eve dev` starts instantly.
+//
+// We previously pinned `justbash()`, but that backend provisions its template on
+// disk under `.eve/sandbox-cache/`, which is NOT shipped into the Vercel
+// serverless function bundle — so on the deployed agent every sandbox tool
+// (`bash`, `load_skill`, and skill execution) failed with
+// `SandboxTemplateNotProvisionedError`. The Vercel Sandbox needs no bundled
+// template, so it works in the serverless runtime.
 export default defineSandbox({
-  backend: justbash(),
+  backend: defaultBackend(),
 });

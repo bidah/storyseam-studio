@@ -1,5 +1,6 @@
 import { eveChannel } from "eve/channels/eve";
 import { none, vercelOidc } from "eve/channels/auth";
+import { setProjectId } from "../lib/context";
 
 // Local dev: the browser reaches the agent through the Vite dev-server proxy
 // (`/eve` on :3333 → this server on :2000), so requests arrive same-origin from
@@ -127,6 +128,31 @@ function proxiedUser() {
   };
 }
 
+// The browser tags every request with the project it's viewing via the
+// `x-project-id` header (injected by the SPA's fetch shim, see
+// src/lib/projectFetch.js) and the Worker forwards it on the /eve proxy hop. The
+// agent's Worker-API calls must target that same project, so we thread the id
+// into per-session durable state that every tool reads (agent/lib/context.ts →
+// agent/lib/api.ts).
+//
+// `onMessage` runs BEFORE runtime dispatch, outside the ALS scope, so writing
+// durable state there throws ("onMessage handler failed"). Instead it stamps the
+// id onto the caller's auth `attributes` — which DO survive into the dispatched
+// session — and the in-scope `turn.started` lifecycle hook copies it into the
+// state slot before any tool runs.
 export default eveChannel({
   auth: [vercelOidc(), proxiedUser(), localUser(), none()],
+  onMessage: (ctx) => {
+    const caller = ctx.eve.caller;
+    if (!caller) return { auth: null };
+    const projectId = ctx.eve.request.headers.get("x-project-id");
+    if (!projectId) return { auth: caller };
+    return { auth: { ...caller, attributes: { ...caller.attributes, projectId } } };
+  },
+  events: {
+    "turn.started": (_data, _channel, ctx) => {
+      const projectId = ctx.session.auth.current?.attributes?.projectId;
+      setProjectId(typeof projectId === "string" ? projectId : null);
+    },
+  },
 });
