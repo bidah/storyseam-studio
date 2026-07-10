@@ -918,6 +918,11 @@ export default function Editor({ reloadKey }) {
     const laneEls = Array.from(wrap.querySelectorAll("[data-lane]"));
     if (!laneEls.length) return null;
     const rect = area.getBoundingClientRect();
+    // Only land on the timeline when the pointer is actually over the track area
+    // (ruler + lanes). Releasing anywhere else — most notably back over the media
+    // pool, which sits ABOVE the lanes — returns null, so the drop is cancelled
+    // instead of spawning a stray channel via the "above the stack" branch below.
+    if (clientX < rect.left || clientX > rect.right || clientY < rect.top || clientY > rect.bottom) return null;
     const x = clientX - rect.left + area.scrollLeft;
     const from = Math.max(0, Math.round((x / pxPerSec) * fps));
     const first = laneEls[0].getBoundingClientRect();
