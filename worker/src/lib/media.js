@@ -54,6 +54,13 @@ export async function listMedia(env, projectId, kind) {
   return out;
 }
 
+// Like listMedia, but returns a Set of the basenames for O(1) existence checks.
+// Use this to collapse an N-file "does each exist?" loop (N serial R2 HEADs)
+// into ONE R2 list call, then `set.has(file)` in memory.
+export async function listMediaSet(env, projectId, kind) {
+  return new Set(await listMedia(env, projectId, kind));
+}
+
 // Store bytes as a project's media object. `body` is a Buffer/ArrayBuffer/stream.
 export async function putMedia(env, projectId, kind, file, body, contentType) {
   await env.BUCKET.put(mediaKey(projectId, kind, file), body, {

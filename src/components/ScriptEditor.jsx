@@ -22,6 +22,7 @@ import {
 
 import { cn } from "@/lib/utils";
 import { CLIENT_ID } from "@/lib/clientId";
+import { readTabCache, writeTabCache } from "@/lib/tabCache";
 import { useAgent, agentIsBusy, generateShotListMessage } from "@/components/AgentProvider";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -618,7 +619,9 @@ function Editor({ initial, drafts, pinnedId, currentName, reload, signed: signed
  * ---------------------------------------------------------------- */
 
 export default function ScriptEditor({ reloadKey = 0, liveKey = 0 }) {
-  const [stored, setStored] = useState(undefined); // undefined = loading
+  // Seed from cache (undefined = loading) so a tab remount paints the last script
+  // instantly instead of flashing the "loading script…" spinner; still revalidates.
+  const [stored, setStored] = useState(() => readTabCache("script")); // undefined = loading
   const [error, setError] = useState(null);
   const [bump, setBump] = useState(0); // local re-fetch after a draft op
   const reload = useCallback(() => setBump((b) => b + 1), []);
@@ -630,7 +633,11 @@ export default function ScriptEditor({ reloadKey = 0, liveKey = 0 }) {
     let alive = true;
     fetch("/api/script")
       .then((r) => r.json())
-      .then((d) => alive && setStored(d || {}))
+      .then((d) => {
+        if (!alive) return;
+        setStored(d || {});
+        writeTabCache("script", d || {});
+      })
       .catch((e) => alive && setError(String(e.message || e)));
     return () => {
       alive = false;

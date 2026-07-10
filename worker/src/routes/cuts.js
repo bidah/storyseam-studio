@@ -12,7 +12,7 @@
 // the sounds doc are the R2 doc stores (`state/<pid>/selections.json`,
 // `state/<pid>/sounds.json`). Media URLs stay `/gen/<file>` / `/sound-media/<file>`.
 import { readDoc, writeDoc } from "../lib/docs.js";
-import { mediaKey, mediaExists } from "../lib/media.js";
+import { mediaKey, mediaExists, listMediaSet } from "../lib/media.js";
 import { runNative, getSandbox } from "../lib/ffmpeg.js";
 import { createJob, startSandboxJob } from "../lib/jobs.js";
 import { uploadFnBash } from "../lib/upload-snippet.js";
@@ -45,12 +45,10 @@ const selKey = (v) => Date.parse(v?.selectedAt) || Date.parse(v?.ts) || 0;
 
 // Pick the chosen take for a bundle: the most-recently-selected take that still
 // exists in R2; if none is selected, the first present take (a fallback).
-async function pickTake(env, pid, entry) {
+async function pickTake(env, pid, entry, genSet) {
+  const set = genSet || (await listMediaSet(env, pid, "gen"));
   const list = Array.isArray(entry) ? entry : entry ? [entry] : [];
-  const present = [];
-  for (const v of list) {
-    if (v && v.file && (await mediaExists(env, pid, "gen", v.file))) present.push(v);
-  }
+  const present = list.filter((v) => v && v.file && set.has(v.file));
   if (!present.length) return null;
   const chosen = present.filter((v) => v.selected);
   if (chosen.length) {
@@ -98,27 +96,65 @@ async function probeDuration(env, pid, file) {
   }
 }
 
+// Probe MANY "gen" files for their duration in ONE sandbox round-trip. The old
+// code fired one runNative (a remote curl+ffprobe) per take; on the first Cuts
+// load of an episode that was ~45 remote commands. This pulls every file into
+// one sandbox and ffprobes each, emitting `<file>|<seconds>` lines we parse back
+// into a { file: dur } map. Durations are cached onto the take after, so this
+// runs at most once per take across the app's lifetime.
+async function probeDurations(env, pid, files) {
+  const uniq = [...new Set(files.filter(Boolean))];
+  if (!uniq.length) return {};
+  try {
+    const { stdout } = await runNative(env, {
+      binary: "bash",
+      capture: true,
+      inputs: uniq.map((f, i) => ({ id: `f${i}`, r2key: mediaKey(pid, "gen", f) })),
+      // Each line: the original filename, a pipe, then its probed duration (or
+      // empty on failure). `|| true` keeps one bad file from aborting the batch
+      // under the runner's `set -e`.
+      args: (r) => ["-c", uniq.map((f, i) =>
+        `printf '%s|%s\\n' "${f}" "$(ffprobe -v error -show_entries format=duration ` +
+        `-of default=noprint_wrappers=1:nokey=1 "${r(`f${i}`)}" 2>/dev/null || true)"`
+      ).join("\n")],
+    });
+    const out = {};
+    for (const line of String(stdout).split("\n")) {
+      const i = line.indexOf("|");
+      if (i < 0) continue;
+      const file = line.slice(0, i);
+      const dur = parseFloat(line.slice(i + 1).trim());
+      if (file && dur > 0) out[file] = dur;
+    }
+    return out;
+  } catch {
+    return {};
+  }
+}
+
 // Ordered MS-01 … last-rendered plan with the chosen take, duration, and the
 // from→to timecode each segment occupies in the stitched output.
-async function buildCutSegments(env, pid, { probe = true } = {}) {
-  const db = await readDB(env, pid);
+async function buildCutSegments(env, pid, { probe = true, genSet, db: dbIn } = {}) {
+  const db = dbIn || (await readDB(env, pid));
+  const set = genSet || (await listMediaSet(env, pid, "gen"));
   const ids = Object.keys(db.video || {}).sort((a, b) => bundleNum(a) - bundleNum(b));
   const picks = [];
-  for (const id of ids) picks.push({ id, picked: await pickTake(env, pid, db.video?.[id]) });
+  for (const id of ids) picks.push({ id, picked: await pickTake(env, pid, db.video?.[id], set) });
 
-  // Fill any missing durations by probing IN PARALLEL (a remote ffprobe each),
-  // caching the result on the take (picked.take is a reference into db.video) so
-  // later cuts views are instant. `probe:false` (stitch) skips this entirely —
-  // the concat doesn't need durations, only the ordered file list.
+  // Fill any missing durations in ONE batched probe (a single sandbox round-trip
+  // for every un-probed take), caching the result on the take (picked.take is a
+  // reference into db.video) so later cuts views never probe again. `probe:false`
+  // (stitch) skips this entirely — the concat needs only the ordered file list.
   let dirty = false;
   if (probe) {
-    await Promise.all(picks.map(async (p) => {
-      const t = p.picked?.take;
-      if (t && !(Number(t.dur) > 0)) {
-        const dur = await probeDuration(env, pid, t.file);
+    const need = picks.map((p) => p.picked?.take).filter((t) => t && !(Number(t.dur) > 0));
+    if (need.length) {
+      const durs = await probeDurations(env, pid, need.map((t) => t.file));
+      for (const t of need) {
+        const dur = durs[t.file];
         if (dur) { t.dur = dur; dirty = true; }
       }
-    }));
+    }
   }
 
   const segs = [];
@@ -193,16 +229,17 @@ async function soundDuration(env, pid, file) {
 
 // Resolve a Sound Studio track's ready media file → { file, name } or null.
 // Reads the SOUNDS doc and confirms the media object exists in R2.
-async function soundFileForTrack(env, pid, trackId) {
+async function soundFileForTrack(env, pid, trackId, soundSet, soundsDb) {
   try {
-    const db = await readDoc(env, pid, "sounds", { tracks: [] });
+    const db = soundsDb || (await readDoc(env, pid, "sounds", { tracks: [] }));
     const t = (db.tracks || []).find((x) => x.id === trackId);
     if (!t) return null;
     const v =
       [...(t.versions || [])].reverse().find((x) => x.file && x.status === "ready") ||
       (t.versions || []).find((x) => x.file);
     if (!v || !v.file) return null;
-    return (await mediaExists(env, pid, "sound-media", v.file)) ? { file: v.file, name: t.name } : null;
+    const exists = soundSet ? soundSet.has(v.file) : await mediaExists(env, pid, "sound-media", v.file);
+    return exists ? { file: v.file, name: t.name } : null;
   } catch {
     return null;
   }
@@ -213,12 +250,15 @@ async function soundFileForTrack(env, pid, trackId) {
 async function buildScoreLayout(env, pid, segments) {
   const present = segments.filter((s) => s.file);
   const numOf = (s) => bundleNum(s.id);
+  // One list + one sounds-doc read up front, instead of a HEAD + doc read per cue.
+  const soundSet = await listMediaSet(env, pid, "sound-media");
+  const soundsDb = await readDoc(env, pid, "sounds", { tracks: [] });
   const layout = [];
   for (const cue of MUSIC_CUES) {
     const firstSeg = present.find((s) => numOf(s) === cue.first);
     if (!firstSeg) continue; // beat not in the cut
     const inBeat = present.filter((s) => numOf(s) >= cue.first && numOf(s) <= cue.last);
-    const snd = await soundFileForTrack(env, pid, cue.track);
+    const snd = await soundFileForTrack(env, pid, cue.track, soundSet, soundsDb);
     if (!snd) continue; // no rendered music yet
     const duration = await soundDuration(env, pid, snd.file);
     layout.push({
@@ -250,14 +290,15 @@ function annotateSegmentsMusic(segments) {
 
 // Normalized list of scored versions that still exist in R2, newest first.
 // Migrates the legacy single `db.cut.scored` into a v1 entry when present.
-async function listScoredVersions(env, pid, db) {
+async function listScoredVersions(env, pid, db, genSet) {
+  const set = genSet || (await listMediaSet(env, pid, "gen"));
   let versions = Array.isArray(db.cut?.scoredVersions) ? db.cut.scoredVersions.slice() : [];
-  if (!versions.length && db.cut?.scored && (await mediaExists(env, pid, "gen", SCORED_CUT_FILE))) {
+  if (!versions.length && db.cut?.scored && set.has(SCORED_CUT_FILE)) {
     versions = [{ v: 1, file: SCORED_CUT_FILE, ...db.cut.scored }];
   }
   const out = [];
   for (const x of versions) {
-    if (await mediaExists(env, pid, "gen", x.file)) out.push({ ...x, url: "/gen/" + x.file });
+    if (set.has(x.file)) out.push({ ...x, url: "/gen/" + x.file });
   }
   return out.sort((a, b) => b.v - a.v);
 }
@@ -272,13 +313,14 @@ const cutVersionFile = (v) => `complete_cut_v${v}.mp4`;
 // Legacy → history: synthesize generation entries from the old single `db.cut`
 // (+ its scored versions) so a project stitched before versioning still shows
 // its cut and music in the history.
-async function legacyToHistory(env, pid, db) {
+async function legacyToHistory(env, pid, db, genSet) {
+  const set = genSet || (await listMediaSet(env, pid, "gen"));
   const out = [];
   const cut = db.cut;
-  if (cut && (await mediaExists(env, pid, "gen", CUT_FILE))) {
+  if (cut && set.has(CUT_FILE)) {
     out.push({ v: 1, kind: "stitch", file: CUT_FILE, at: cut.stitchedAt || null, range: cut.range || null, totalDuration: cut.totalDuration || 0, segments: cut.segments || [] });
   }
-  const scored = (await listScoredVersions(env, pid, db)).slice().sort((a, b) => a.v - b.v);
+  const scored = (await listScoredVersions(env, pid, db, set)).slice().sort((a, b) => a.v - b.v);
   for (const sv of scored) {
     out.push({ v: out.length + 1, kind: "scored", file: sv.file, at: sv.createdAt || null, range: cut?.range || null, totalDuration: cut?.totalDuration || 0, segments: sv.segments || cut?.segments || [], gainDb: sv.gainDb, baseV: 1, music: sv.music || [] });
   }
@@ -286,8 +328,8 @@ async function legacyToHistory(env, pid, db) {
 }
 
 // Ensure db.cutHistory exists (migrating legacy on first touch); returns it.
-async function ensureCutHistory(env, pid, db) {
-  if (!Array.isArray(db.cutHistory)) db.cutHistory = await legacyToHistory(env, pid, db);
+async function ensureCutHistory(env, pid, db, genSet) {
+  if (!Array.isArray(db.cutHistory)) db.cutHistory = await legacyToHistory(env, pid, db, genSet);
   return db.cutHistory;
 }
 // Next monotonic version across ALL generations (stitch + scored).
@@ -295,11 +337,12 @@ async function nextCutV(env, pid, db) {
   return (await ensureCutHistory(env, pid, db)).reduce((m, g) => Math.max(m, g.v || 0), 0) + 1;
 }
 // Normalized history for the API: existing files only, newest-first, url added.
-async function getCutHistory(env, pid, db) {
-  const hist = await ensureCutHistory(env, pid, db);
+async function getCutHistory(env, pid, db, genSet) {
+  const set = genSet || (await listMediaSet(env, pid, "gen"));
+  const hist = await ensureCutHistory(env, pid, db, set);
   const out = [];
   for (const g of hist) {
-    if (g.file && (await mediaExists(env, pid, "gen", g.file))) {
+    if (g.file && set.has(g.file)) {
       out.push({ ...g, url: "/gen/" + g.file, withMusic: g.kind === "scored" });
     }
   }
@@ -342,10 +385,11 @@ async function mixScore(env, pid, baseFile, layout, gain, outFile) {
 
 // Find the base generation to score: the most recent base stitch present in R2,
 // else the latest present generation. (async port of the Express `.find` chain.)
-async function findScoreBase(env, pid, hist) {
+async function findScoreBase(env, pid, hist, genSet) {
+  const set = genSet || (await listMediaSet(env, pid, "gen"));
   const rev = [...hist].reverse();
-  for (const g of rev) if (g.kind === "stitch" && (await mediaExists(env, pid, "gen", g.file))) return g;
-  for (const g of rev) if (g.file && (await mediaExists(env, pid, "gen", g.file))) return g;
+  for (const g of rev) if (g.kind === "stitch" && set.has(g.file)) return g;
+  for (const g of rev) if (g.file && set.has(g.file)) return g;
   return null;
 }
 
@@ -356,9 +400,12 @@ export function registerCuts(app) {
       const env = c.env, pid = c.get("projectId");
       const db = await readDB(env, pid);
       if (normalizeVideoSelections(db)) await writeDB(env, pid, db); // heal stale multi-selection first
-      const segments = annotateSegmentsMusic(await buildCutSegments(env, pid));
+      // One R2 list of the "gen" bucket, shared across every existence check in
+      // this request (segments, history, scored versions) — was ~100 serial HEADs.
+      const genSet = await listMediaSet(env, pid, "gen");
+      const segments = annotateSegmentsMusic(await buildCutSegments(env, pid, { genSet, db }));
       const music = await buildScoreLayout(env, pid, segments);
-      const history = await getCutHistory(env, pid, db);
+      const history = await getCutHistory(env, pid, db, genSet);
       return c.json({ range: segRange(segments), segments, music, output: history[0] || null, history });
     } catch (e) {
       return c.json({ error: String(e.message || e) }, 500);

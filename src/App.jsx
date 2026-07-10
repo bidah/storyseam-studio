@@ -17,6 +17,7 @@ import LoginGate from "@/components/Login";
 import ProjectProvider from "@/components/ProjectProvider";
 import ProjectSwitcher from "@/components/ProjectSwitcher";
 import { onProjectChange } from "@/lib/projectFetch";
+import { readTabCache, writeTabCache, clearTabCache } from "@/lib/tabCache";
 import { signOut as authSignOut } from "@/lib/auth-client";
 import ScriptEditor from "@/components/ScriptEditor";
 import Editor from "@/components/Editor";
@@ -430,21 +431,24 @@ function GenerationSlideshow({ generations, reloadKey }) {
 }
 
 function MultiShot({ reloadKey }) {
-  const [data, setData] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [data, setData] = useState(() => readTabCache("multishot") ?? null);
+  const [loading, setLoading] = useState(() => readTabCache("multishot") === undefined);
   const [error, setError] = useState(null);
   const [modalImage, setModalImage] = useState(null);
 
   const load = useCallback(async () => {
-    setLoading(true);
+    const cached = readTabCache("multishot");
+    if (cached !== undefined) { setData(cached); setLoading(false); }
+    else setLoading(true);
     setError(null);
     try {
       const res = await fetch("/api/multishot");
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || "Failed to load");
       setData(json.multishot);
+      writeTabCache("multishot", json.multishot ?? null);
     } catch (e) {
-      setError(String(e.message || e));
+      if (readTabCache("multishot") === undefined) setError(String(e.message || e));
     } finally {
       setLoading(false);
     }
@@ -1435,19 +1439,23 @@ function AudioPickerModal({ bundle, audioRefs, picked, open, onToggle, onClose }
 }
 
 function Episode({ reloadKey, onView }) {
-  const [data, setData] = useState(null);
-  const [folders, setFolders] = useState([]);
-  const [picks, setPicks] = useState({});
-  const [loading, setLoading] = useState(true);
+  // Seed every slice from the cached payload (if any) so a tab remount paints the
+  // last data with no spinner/empty flash; a background revalidate follows.
+  const seed = readTabCache("episode");
+  const setsFrom = (obj) => { const m = {}; for (const [k, v] of Object.entries(obj || {})) m[k] = new Set(v); return m; };
+  const [data, setData] = useState(seed ? seed.ep.episode : null);
+  const [folders, setFolders] = useState(seed ? (seed.lib.folders || []) : []);
+  const [picks, setPicks] = useState(seed ? setsFrom(seed.fn.episode) : {});
+  const [loading, setLoading] = useState(!seed);
   const [error, setError] = useState(null);
   const [confirm, setConfirm] = useState(null);
   const [pickerBundle, setPickerBundle] = useState(null);
-  const [audioRefs, setAudioRefs] = useState([]);
-  const [audioPicks, setAudioPicks] = useState({});
+  const [audioRefs, setAudioRefs] = useState(seed ? (seed.au.audio || []) : []);
+  const [audioPicks, setAudioPicks] = useState(seed ? setsFrom(seed.au.episode) : {});
   const [audioPicker, setAudioPicker] = useState(null);
-  const [videos, setVideos] = useState({});
-  const [prompts, setPrompts] = useState({});
-  const [signoffs, setSignoffs] = useState({});
+  const [videos, setVideos] = useState(seed ? (seed.ep.video || {}) : {});
+  const [prompts, setPrompts] = useState(seed ? (seed.ep.prompts || {}) : {});
+  const [signoffs, setSignoffs] = useState(seed ? (seed.ep.signoffs || {}) : {});
   const promptTimers = useRef({});
   const agent = useAgent();
 
@@ -1455,9 +1463,28 @@ function Episode({ reloadKey, onView }) {
   // setState (replaces the per-effect `alive` guard now that `load` is shared
   // between the mount effect and the agent-turn refetch below).
   const loadSeq = useRef(0);
+  // Apply one fetched (or cached) payload to every state slice.
+  const applyPayload = useCallback(({ ep, lib, fn, au }) => {
+    setData(ep.episode);
+    setVideos(ep.video || {});
+    setPrompts(ep.prompts || {});
+    setSignoffs(ep.signoffs || {});
+    setFolders(lib.folders || []);
+    const m = {};
+    for (const [k, v] of Object.entries(fn.episode || {})) m[k] = new Set(v);
+    setPicks(m);
+    setAudioRefs(au.audio || []);
+    const am = {};
+    for (const [k, v] of Object.entries(au.episode || {})) am[k] = new Set(v);
+    setAudioPicks(am);
+  }, []);
   const load = useCallback(async ({ background = false } = {}) => {
     const seq = ++loadSeq.current;
-    if (!background) setLoading(true);
+    // Stale-while-revalidate: paint the last payload instantly (no spinner) and
+    // refetch quietly. Only the very first load (nothing cached) shows a spinner.
+    const cached = readTabCache("episode");
+    if (cached) { applyPayload(cached); setLoading(false); }
+    else if (!background) setLoading(true);
     try {
       const [ep, lib, fn, au] = await Promise.all([
         fetch("/api/episode").then((r) => r.json()),
@@ -1467,18 +1494,9 @@ function Episode({ reloadKey, onView }) {
       ]);
       if (seq !== loadSeq.current) return; // superseded by a newer load
       if (ep.error) throw new Error(ep.error);
-      setData(ep.episode);
-      setVideos(ep.video || {});
-      setPrompts(ep.prompts || {});
-      setSignoffs(ep.signoffs || {});
-      setFolders(lib.folders || []);
-      const m = {};
-      for (const [k, v] of Object.entries(fn.episode || {})) m[k] = new Set(v);
-      setPicks(m);
-      setAudioRefs(au.audio || []);
-      const am = {};
-      for (const [k, v] of Object.entries(au.episode || {})) am[k] = new Set(v);
-      setAudioPicks(am);
+      const payload = { ep, lib, fn, au };
+      applyPayload(payload);
+      writeTabCache("episode", payload);
       setError(null);
     } catch (e) {
       if (seq === loadSeq.current) setError(String(e.message || e));
@@ -1488,7 +1506,7 @@ function Episode({ reloadKey, onView }) {
       // background refetch that bumps the seq mid-flight strands `loading` at true.
       if (!background) setLoading(false);
     }
-  }, []);
+  }, [applyPayload]);
 
   // Mount + manual Refresh (reloadKey) → full load with the loading spinner.
   useEffect(() => {
@@ -1771,22 +1789,25 @@ function ShotField({ n, field, value, onSaved, multiline, mono, placeholder, row
 function ShotList({ reloadKey }) {
   const agent = useAgent();
   const agentBusy = agentIsBusy(agent);
-  const [data, setData] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [data, setData] = useState(() => readTabCache("shotlist") ?? null);
+  const [loading, setLoading] = useState(() => readTabCache("shotlist") === undefined);
   const [error, setError] = useState(null);
   const [rebuilding, setRebuilding] = useState(false);
   // Which pack the left rail is filtering the body by (null = show every shot).
   const [activePack, setActivePack] = useState(null);
 
   const load = useCallback(async () => {
+    const cached = readTabCache("shotlist");
+    if (cached !== undefined) { setData(cached); setLoading(false); }
     setError(null);
     try {
       const res = await fetch("/api/shotlist");
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || "Failed to load");
       setData(json);
+      writeTabCache("shotlist", json);
     } catch (e) {
-      setError(String(e.message || e));
+      if (readTabCache("shotlist") === undefined) setError(String(e.message || e));
     } finally {
       setLoading(false);
     }
@@ -1803,6 +1824,7 @@ function ShotList({ reloadKey }) {
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || "Rebuild failed");
       setData(json);
+      writeTabCache("shotlist", json);
     } catch (e) {
       setError(String(e.message || e));
     } finally {
@@ -2293,22 +2315,28 @@ function CutHistoryDialog({ open, onOpenChange, history, bump, navigateTo }) {
 function CompleteCuts({ reloadKey, navigateTo }) {
   const agent = useAgent();
   const agentBusy = agentIsBusy(agent);
-  const [data, setData] = useState(null);
-  const [loading, setLoading] = useState(true);
+  // Seed from cache so a tab remount paints the last cut instantly (no spinner).
+  const [data, setData] = useState(() => readTabCache("cuts") || null);
+  const [loading, setLoading] = useState(() => !readTabCache("cuts"));
   const [error, setError] = useState(null);
   const [bump, setBump] = useState(0);
   const [historyOpen, setHistoryOpen] = useState(false);
 
+  // `force` (agent-turn refetch) always revalidates; a plain mount serves cache
+  // instantly and revalidates in the background — spinner only on the first load.
   const load = useCallback(async () => {
-    setLoading(true);
+    const cached = readTabCache("cuts");
+    if (cached) { setData(cached); setLoading(false); }
+    else setLoading(true);
     setError(null);
     try {
       const res = await fetch("/api/episode/cuts");
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || "Failed to load");
       setData(json);
+      writeTabCache("cuts", json);
     } catch (e) {
-      setError(String(e.message || e));
+      if (!readTabCache("cuts")) setError(String(e.message || e));
     } finally {
       setLoading(false);
     }
@@ -2453,22 +2481,23 @@ function CompleteCuts({ reloadKey, navigateTo }) {
  * ---------------------------------------------------------------- */
 
 function Library({ reloadKey, onView }) {
-  const [folders, setFolders] = useState(null);
+  const [folders, setFolders] = useState(() => readTabCache("library") ?? null);
   const [active, setActive] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(() => readTabCache("library") === undefined);
   const [error, setError] = useState(null);
   const [confirm, setConfirm] = useState(null);
 
   const load = useCallback(() => {
-    setLoading(true);
+    if (readTabCache("library") === undefined) setLoading(true);
     setError(null);
     fetch("/api/library")
       .then((r) => r.json())
       .then((j) => {
         if (j.error) throw new Error(j.error);
         setFolders(j.folders);
+        writeTabCache("library", j.folders);
       })
-      .catch((e) => setError(String(e.message || e)))
+      .catch((e) => { if (readTabCache("library") === undefined) setError(String(e.message || e)); })
       .finally(() => setLoading(false));
   }, []);
   useEffect(() => {
@@ -2484,12 +2513,14 @@ function Library({ reloadKey, onView }) {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
-      setFolders((fs) =>
-        fs.map((f) => ({
+      setFolders((fs) => {
+        const next = fs.map((f) => ({
           ...f,
           images: f.images.map((x) => (x.rel === im.rel ? { ...x, selected: data.selected } : x)),
-        }))
-      );
+        }));
+        writeTabCache("library", next); // keep the cache in step with the optimistic toggle
+        return next;
+      });
     } catch (e) {
       setError(String(e.message || e));
     }
@@ -3391,9 +3422,9 @@ function TrackList({ loading, tracks, emptyText, onChanged }) {
 }
 
 function SoundStudio({ reloadKey }) {
-  const [tracks, setTracks] = useState([]);
+  const [tracks, setTracks] = useState(() => readTabCache("sounds") ?? []);
   const [bundles, setBundles] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(() => readTabCache("sounds") === undefined);
   const [error, setError] = useState(null);
   const [tab, setTab] = useState("music");
   const [showNew, setShowNew] = useState(false);
@@ -3402,13 +3433,14 @@ function SoundStudio({ reloadKey }) {
   const agentBusy = agentIsBusy(agent);
 
   const load = useCallback(async () => {
-    setLoading(true);
+    if (readTabCache("sounds") === undefined) setLoading(true);
     setError(null);
     try {
       const data = await soundApi("/api/sounds");
       setTracks(data.tracks || []);
+      writeTabCache("sounds", data.tracks || []);
     } catch (e) {
-      setError(String(e.message || e));
+      if (readTabCache("sounds") === undefined) setError(String(e.message || e));
     } finally {
       setLoading(false);
     }
@@ -3709,6 +3741,7 @@ export default function App() {
   // fetch shim; re-fetch every tab and remount the body so no stale project
   // data lingers.
   useEffect(() => onProjectChange(() => {
+    clearTabCache(); // per-tab caches hold the OLD project's payloads — drop them
     setReloadKey((k) => k + 1);
     setProjectKey((k) => k + 1);
   }), []);

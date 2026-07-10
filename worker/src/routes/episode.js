@@ -11,7 +11,7 @@
 // /score, /trim) are intentionally NOT ported here (handled separately). See the
 // TODO markers for the media-copy step still owed.
 import { readDoc, writeDoc } from "../lib/docs.js";
-import { mediaExists, listMedia } from "../lib/media.js";
+import { listMedia, listMediaSet } from "../lib/media.js";
 
 // The de-facto selections DB (library picks + per-bundle episode selections).
 const readDB = (env, pid) => readDoc(env, pid, "selections", { library: {}, episode: {} });
@@ -254,13 +254,16 @@ export function registerEpisode(app) {
     if (normalizeVideoSelections(db)) await writeDB(c.env, pid, db); // heal stale multi-selection
     // Attach a list of rendered clips (newest last) for every bundle that has any
     // in R2. db.video[id] is an array of generations; tolerate the old single
-    // object shape too.
+    // object shape too. One R2 list (into a Set) replaces a per-take HEAD storm:
+    // this used to fire one serial `mediaExists` per generation (100+ round-trips
+    // for a full episode) — now it's a single list + in-memory membership checks.
+    const genSet = await listMediaSet(c.env, pid, "gen");
     const video = {};
     for (const [id, entry] of Object.entries(db.video || {})) {
       const arr = Array.isArray(entry) ? entry : entry ? [entry] : [];
       const list = [];
       for (const v of arr) {
-        if (v && v.file && await mediaExists(c.env, pid, "gen", v.file)) {
+        if (v && v.file && genSet.has(v.file)) {
           list.push({ ...v, name: v.name || `gen ${list.length + 1}`, url: "/gen/" + v.file });
         }
       }
