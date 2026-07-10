@@ -1,0 +1,33 @@
+SEED AUDIO PROMPT
+track: Cue 8 — Nightfall montage  (trk_18)
+version: v1
+status: ready   duration: 31s
+generated: 2026-07-08T15:49:34.433Z
+
+── PROMPT ─────────────────────────────────────────
+Create a background music track that must be 31 seconds long. It should have a start, and an ending that finishes the song not abruptly but gracefully.
+
+Notice this track is adventurous, magical, dreamy, storybook Scandinavian folk.
+
+Use the following multi-shot prompt as reference for the scene the music plays under:
+- MS-26 (Beat 6 — Nightfall montage (Helena)): Helena crouches at a dark hollow log, Mote hovering close so its glow spills inside. The hollow is empty; she…
+- MS-27 (Beat 6 — Nightfall montage (Helena)): At a glistening waterfall rock, Helena peers behind the spray-slick boulder while Mote bobs overhead. Nothing…
+- MS-28 (Beat 6 — Nightfall montage (Helena)): Helena balances along the trunk of a leaning tree, arms out, as Mote darts ahead lighting each branch. The br…
+- MS-29 (Beat 6 — Nightfall montage (Helena)): Flat on her belly, Helena reaches deep into the dark gap beneath big tree roots while Mote squeezes close to…
+- MS-30 (Beat 6 — Nightfall montage (Helena)): Helena sinks down against a broad tree trunk and hugs her knees. Mote settles beside her on the moss, dimming…
+- MS-31 (Beat 6 — Nightfall montage (Helena)): Helena presses her face into her knees. Mote shrinks until its glow is almost nothing, leaving the forest nea…
+
+Try to make some sound design on the track that has some highs or lows at these second marks: a rolling ostinato from 0:00, the theme enters ~0:06, layers stack ~0:15, a full swell/peak ~0:26, then a graceful landing.
+
+Instrumental music only — no voices, no singing, no sound effects or ambience (dialogue and SFX already live in the film); keep it a low underscore beneath the dialogue. Storybook Scandinavian-folklore palette so all the cues sound like one score. Begin with a gentle fade-in and end with a soft fade-out — never an abrupt start or cut.
+
+── CONFIG ─────────────────────────────────────────
+model: seed_audio
+format: wav
+sample_rate: 48000
+speech_rate: 0
+loudness_rate: 0
+pitch_rate: 0
+
+── SOURCE / POST-PROCESSING ───────────────────────
+https://d8j0ntlcm91z4.cloudfront.net/user_38vitaQqa4HdYi7u4JnjNrpYAA8/hf_20260708_154552_9f19ff56-b472-4d0c-b239-4d8400be2a8f.wav

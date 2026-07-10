@@ -1,0 +1,19 @@
+SEED AUDIO PROMPT
+track: kids wispering talking  (trk_6)
+version: v5 — no music / pure sfx
+status: ready   duration: 49.032s
+generated: 2026-07-05T16:36:41.783Z
+
+── PROMPT ─────────────────────────────────────────
+Use the Seed Audio prompt to create a sound effect for an animated series for kids. The sound to create is: a constant, steady BACKGROUND ambience of small kids laughing and playing behind the scene — a schoolyard full of little children at play in a sunny forest clearing. Ongoing happy laughter, giggles and playful squeals, light cheerful chatter and calling out (unintelligible, no clear words), the gentle busy hum of kids playing together. Even and continuous. IMPORTANT: this is a PURE SOUND EFFECT / real ambience field recording — absolutely NO music of any kind. No instrumental, no musical score, no soundtrack, no melody, no underscore, no background music bed, no instruments (no strings, piano, guitar, flute, drums, chimes or bells). ONLY the natural sound of children's voices and play. No adult voices, no dialogue, no door slam, no whistles. Not a sudden burst, not distant mumbling — just the steady cheerful sound of kids laughing and playing. Based on MS-01 (school-clearing beat). NO-MUSIC / pure-SFX run. Assembled as 10s + 2s pause + 15s + 2s pause + 20s versions, each fading in/out gracefully.
+
+── CONFIG ─────────────────────────────────────────
+model: seed_audio
+format: wav
+sample_rate: 48000
+speech_rate: 0
+loudness_rate: 0
+pitch_rate: 0
+
+── SOURCE / POST-PROCESSING ───────────────────────
+higgsfield seed_audio job 8bc16519-5f4a-4508-a79a-fea1d07abdca (100s MS-01 no-music/pure-SFX bed; cut to 10/15/20s faded versions joined with 2s pauses)

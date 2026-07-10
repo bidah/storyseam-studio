@@ -13,7 +13,9 @@
 const fs = require("fs");
 const path = require("path");
 
-const ROOT = path.resolve(__dirname, "../..");
+// sound-studio/ now lives inside shot-studio/ (co-located with the app it
+// belongs to); __dirname is shot-studio/scripts, so the app root is one up.
+const ROOT = path.resolve(__dirname, "..");
 const DB = path.join(ROOT, "sound-studio/sounds.json");
 const MEDIA = path.join(ROOT, "sound-studio/media");
 

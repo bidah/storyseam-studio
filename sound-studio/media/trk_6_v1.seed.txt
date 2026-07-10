@@ -1,0 +1,19 @@
+SEED AUDIO PROMPT
+track: kids wispering talking  (trk_6)
+version: v1 — seed render
+status: ready   duration: 76.032s
+generated: 2026-07-04T17:14:27.135Z
+
+── PROMPT ─────────────────────────────────────────
+Use the Seed Audio prompt to create a sound effect for an animated series for kids. The sound to create is: we have as background sound the murmur and talking of small kids, you dont understand what they are talking they are in second plane. give me version of 10 seconds, 2 second pause in between, 15 second, then 2 second pause, 20 second version, 2 second pause and then 25 second version. all should fade in out gracefully. Finish it not abruptly but softly, into an end mix of an ending and a fade-out if needed depending on the tune.
+
+── CONFIG ─────────────────────────────────────────
+model: seed_audio
+format: wav
+sample_rate: 48000
+speech_rate: 0
+loudness_rate: 0
+pitch_rate: 0
+
+── SOURCE / POST-PROCESSING ───────────────────────
+higgsfield seed_audio job 1c751e8d-0e61-4865-b34e-c55c9ef5ff30 (30s bed; cut to 10/15/20/25s faded versions joined with 2s pauses)

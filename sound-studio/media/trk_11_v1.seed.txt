@@ -1,0 +1,25 @@
+SEED AUDIO PROMPT
+track: sound 11  (trk_11)
+version: v1
+status: ready   duration: 5s
+generated: 2026-07-07T21:38:35.663Z
+
+── PROMPT ─────────────────────────────────────────
+Create a background music track that must be 5 seconds long. It should have a start, and an ending that finishes the song not abruptly but gracefully.
+
+Notice this track is tension, make it very terrifing with tension.
+
+Use the following multi-shot prompt as reference for the scene the music plays under:
+- MS-33 shot 105 (3.4s): The King leans in, pressing the lesson, eyes warm and probing. Sara listens, caught off guard at the edge of frame.
+- MS-33 shot 106 (4s): Sara falters, working it out aloud, brow knitting as the thought forms. She trails off, searching for the word.
+
+── CONFIG ─────────────────────────────────────────
+model: seed_audio
+format: wav
+sample_rate: 48000
+speech_rate: 0
+loudness_rate: 0
+pitch_rate: 0
+
+── SOURCE / POST-PROCESSING ───────────────────────
+https://d8j0ntlcm91z4.cloudfront.net/user_38vitaQqa4HdYi7u4JnjNrpYAA8/hf_20260707_213802_f2fd4340-40f5-4850-8835-dea2a7112aa0.wav

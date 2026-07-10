@@ -1,0 +1,31 @@
+SEED AUDIO PROMPT
+track: Cue 4 — The Forest King  (trk_14)
+version: v1
+status: ready   duration: 42s
+generated: 2026-07-08T15:49:24.609Z
+
+── PROMPT ─────────────────────────────────────────
+Create a background music track that must be 42 seconds long. It should have a start, and an ending that finishes the song not abruptly but gracefully.
+
+Notice this track is magical, dreamy, suspenseful, storybook Scandinavian folk.
+
+Use the following multi-shot prompt as reference for the scene the music plays under:
+- MS-11 (Beat 4 — King's house (Sara)): Sara crawls out of a hedge-archway, rises to her feet, and her neck cranes back as her eyes climb an impossibly high ceiling. The bush behind her has become a grand round doorway.
+- MS-12 (Beat 4 — King's house (Sara)): The Forest King gives a warm, easy smile and gestures faintly with the teapot, steam curling, while tiny Sara stares up at him.
+- MS-13 (Beat 4 — King's house (Sara)): Framed by the round window — the leaning boundary stone and the clearing beyond, clear as day. The King gazes out fondly; tiny Sara peers up beside him.
+- MS-14 (Beat 4 — King's house (Sara)): Sara turns from the glass, won over, and gives a soft small smile.
+
+Try to make some sound design on the track that has some highs or lows at these second marks: music-box theme in at 0:02, a warm curious lift ~0:18, a shadow of dissonance ~0:30, resolve softly.
+
+Instrumental music only — no voices, no singing, no sound effects or ambience (dialogue and SFX already live in the film); keep it a low underscore beneath the dialogue. Storybook Scandinavian-folklore palette so all the cues sound like one score. Begin with a gentle fade-in and end with a soft fade-out — never an abrupt start or cut.
+
+── CONFIG ─────────────────────────────────────────
+model: seed_audio
+format: wav
+sample_rate: 48000
+speech_rate: 0
+loudness_rate: 0
+pitch_rate: 0
+
+── SOURCE / POST-PROCESSING ───────────────────────
+https://d8j0ntlcm91z4.cloudfront.net/user_38vitaQqa4HdYi7u4JnjNrpYAA8/hf_20260708_154515_88b13cb2-7949-4a8c-9399-b42cebcee7de.wav

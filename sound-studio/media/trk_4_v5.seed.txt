@@ -1,0 +1,21 @@
+SEED AUDIO PROMPT
+track: kids going out of school door  (trk_4)
+version: v5 — seed render
+status: ready   duration: 8.04s
+generated: 2026-07-04T14:07:58.837Z
+
+── PROMPT ─────────────────────────────────────────
+Create an 8-second sound effect for a children's animated series: the end-of-school-day rush at a tiny kids' school. Bright, cheerful, wholesome cartoon energy.
+[EVENT] A big school entrance door BURSTS open with a whoosh and a clack of the handle -> [MOVE] a happy stampede of many small children spills outward -> [AMBI] a lively crowd of little kids all overlapping: bright giggles and laughter, excited high-pitched chatter and murmurs, and a flurry of quick tiny footsteps and shoes pattering on the pavement. Joyful, energetic, playful. No music, no adult voices, no spoken dialogue.
+[OUTRO] Over the final 2-3 seconds the children gradually run off and scatter into the distance; the laughter, chatter and footsteps slowly thin out and gently fade down to quiet — a smooth, graceful fade-out, never an abrupt cut or hard stop.
+
+── CONFIG ─────────────────────────────────────────
+model: seed_audio
+format: wav
+sample_rate: 48000
+speech_rate: 0
+loudness_rate: 0
+pitch_rate: 0
+
+── SOURCE / POST-PROCESSING ───────────────────────
+higgsfield seed_audio job 02b9a828-6e28-4fdd-8174-86502d4a566d

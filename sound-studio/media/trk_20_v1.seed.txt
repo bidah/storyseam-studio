@@ -1,0 +1,21 @@
+SEED AUDIO PROMPT
+track: Cue 10 — The rescue  (trk_20)
+version: v1
+status: ready   duration: 63s
+generated: 2026-07-08T15:49:39.394Z
+
+── PROMPT ─────────────────────────────────────────
+Compose a ~63-second underscore with a big dynamic arc for the rescue: Helena and Mote sneak through the night wood, tension builds, and she finally reaches Sara. Start suspenseful and quiet — low pulsing ostinato, ticking hand percussion, held breath — steadily tighten and accelerate, then break into a triumphant full-ensemble statement of the Whistlewood theme as the friends reunite, the Helena and Sara motifs sounding together. Instruments: low ostinato strings, low frame-drum/taiko hits, fiddle & flute, soft horn swell, glockenspiel, choir on the peak. Marks: tense pulse 0:00–0:18, rising drive ~0:25, near-miss spike ~0:38, triumphant theme burst ~0:48, warm resolve to close.
+
+Instrumental background music ONLY — no voices, no singing, no whistling, no sound effects, no bells, no ambience (dialogue and SFX already live in the film). Keep it a low, unobtrusive underscore that leaves room for spoken dialogue. Storybook Scandinavian-folklore palette in a warm D-minor / F-major tonal world so all the cues blend together as one score. Finish gracefully with a soft resolve and gentle fade — never an abrupt cut.
+
+── CONFIG ─────────────────────────────────────────
+model: seed_audio
+format: wav
+sample_rate: 48000
+speech_rate: 0
+loudness_rate: 0
+pitch_rate: 0
+
+── SOURCE / POST-PROCESSING ───────────────────────
+https://d8j0ntlcm91z4.cloudfront.net/user_38vitaQqa4HdYi7u4JnjNrpYAA8/hf_20260708_154120_a0440fcd-d3c8-482a-b54a-17bcabacd3ec.wav

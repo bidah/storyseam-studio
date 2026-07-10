@@ -1,0 +1,21 @@
+SEED AUDIO PROMPT
+track: Whimsical bed — woodwind folk  (trk_3)
+version: v1 — seed render
+status: ready   duration: 15s
+generated: 2026-07-03T12:52:42.000Z
+
+── PROMPT ─────────────────────────────────────────
+Compose a 15-second whimsical woodland folk cue — the light, playful opening of a storybook children's fairytale. Mood: a sunlit toadstool schoolhouse morning and two little elf friends skipping off down a mossy path together, bright and curious with a gently cheeky, mischievous character. Instrumental background music ONLY — no sound effects, no whistling, no voices, no bells, no ambience.
+Style: light, bouncy and character-driven — a playful flute and clarinet trade a charming melody over springy pizzicato strings and soft plucked acoustic notes, with glockenspiel sparkle accents. Warm, folky, whimsical, full of gentle personality but never frantic or comedic.
+Shape: begin warm and inviting; skip forward into a bright, dancing melody with a wry little turn in the middle; in the final few seconds gently slow (ritardando), resolve onto a warm sustained chord, and fade out smoothly to silence — a graceful, unhurried ending, never an abrupt cut.
+
+── CONFIG ─────────────────────────────────────────
+model: seed_audio
+format: wav
+sample_rate: 48000
+speech_rate: 0
+loudness_rate: 0
+pitch_rate: 0
+
+── SOURCE / POST-PROCESSING ───────────────────────
+higgsfield seed_audio job 66909598-88e6-46d2-9792-8f20b7a3b420

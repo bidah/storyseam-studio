@@ -1,0 +1,19 @@
+SEED AUDIO PROMPT
+track: kids wispering talking  (trk_6)
+version: v2 — seed render
+status: ready   duration: 49.032s
+generated: 2026-07-05T16:26:48.945Z
+
+── PROMPT ─────────────────────────────────────────
+Use the Seed Audio prompt to create a sound effect for an animated series for kids. The sound to create is: a constant, steady BACKGROUND layer of small kids laughing and playing behind the scene — a warm continuous bed of a schoolyard full of little children at play in a sunny forest clearing. Ongoing happy laughter, giggles and playful squeals, light cheerful chatter and calling out (unintelligible, no clear words), the gentle busy hum of kids playing together, sitting softly in the background. Even, constant and continuous the whole time — NOT a sudden burst, NOT a crowd bursting out of a door, and NOT distant mumbling; just the steady cheerful background sound of kids laughing and playing. Warm, sunny, outdoor forest-clearing feel, wholesome cartoon energy. No music, no bell, no whistles, no adult voices, no foreground dialogue. Based on MS-01 (school-clearing beat). Assembled as 10s + 2s pause + 15s + 2s pause + 20s versions, each fading in/out gracefully.
+
+── CONFIG ─────────────────────────────────────────
+model: seed_audio
+format: wav
+sample_rate: 48000
+speech_rate: 0
+loudness_rate: 0
+pitch_rate: 0
+
+── SOURCE / POST-PROCESSING ───────────────────────
+higgsfield seed_audio job 6611d8ba-fe3b-4c4d-9ec2-fb8e2c78ae74 (26s MS-01 kids-playing bed; cut to 10/15/20s faded versions joined with 2s pauses)

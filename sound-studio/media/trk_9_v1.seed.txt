@@ -1,0 +1,25 @@
+SEED AUDIO PROMPT
+track: Helena — meet after school (test)  (trk_9)
+version: v1 — seed render (no-british ref)
+status: ready   duration: 5.448s
+generated: 2026-07-06T15:01:22.091Z
+
+── PROMPT ─────────────────────────────────────────
+@Audio1 Use this EXACT voice — match its timbre, pitch, age, accent and tone precisely (match the reference’s accent exactly, it is NOT British). This is Helena, a young elf girl. Generate ONLY her clean spoken dialogue in the same voice and accent as the reference: no music, no sound effects, no background ambience, no other characters — just Helena’s voice. Warm, playful, natural children’s-show delivery with natural pauses between the sentences; a little wondering and searching in tone.
+
+Helena says, exactly these words:
+"Really? We always meet here after school. Where are you, Sara?"
+
+Voice reference: helena audio new no british.mp3 (non-British accent). Dialog test.
+
+── CONFIG ─────────────────────────────────────────
+model: seed_audio
+format: wav
+sample_rate: 48000
+speech_rate: 0
+loudness_rate: 0
+pitch_rate: 0
+voice_reference: Helena — new “no british” ref (trk_9_ref_nobrit.mp3)
+
+── SOURCE / POST-PROCESSING ───────────────────────
+higgsfield seed_audio job 67557d74-4d8d-4268-a0ad-a89583843971 (TA2A voice-clone of non-British ref; “meet after school” dialog test)

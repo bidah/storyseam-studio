@@ -1,0 +1,25 @@
+SEED AUDIO PROMPT
+track: Helena — adventure line (test)  (trk_8)
+version: v1 — seed render (no-british ref)
+status: ready   duration: 13.992s
+generated: 2026-07-06T02:56:15.415Z
+
+── PROMPT ─────────────────────────────────────────
+@Audio1 Use this EXACT voice — match its timbre, pitch, age, accent and tone precisely (match the reference’s accent exactly, it is NOT British). This is Helena, a young elf girl. Generate ONLY her clean spoken dialogue in the same voice and accent as the reference: no music, no sound effects, no background ambience, no other characters — just Helena’s voice. Warm, playful, natural children’s-show delivery with natural pauses between the sentences.
+
+Helena says, exactly these words:
+"You want an adventure? We play, right here. This side of the stone. Hide and seek. You hide, I find you, we go home. That’s the whole adventure with a new sound."
+
+Voice reference: helena audio new no british.mp3 (non-British accent). Dialog test.
+
+── CONFIG ─────────────────────────────────────────
+model: seed_audio
+format: wav
+sample_rate: 48000
+speech_rate: 0
+loudness_rate: 0
+pitch_rate: 0
+voice_reference: Helena — new “no british” ref (trk_8_ref_nobrit.mp3)
+
+── SOURCE / POST-PROCESSING ───────────────────────
+higgsfield seed_audio job 0f566d8b-5a2b-480b-9c3d-4b9208782d4a (TA2A voice-clone of non-British ref; new adventure dialog test)

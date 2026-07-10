@@ -1,0 +1,32 @@
+SEED AUDIO PROMPT
+track: Cue 2 — The deal (forking path)  (trk_12)
+version: v1
+status: ready   duration: 60s
+generated: 2026-07-08T15:49:21.003Z
+
+── PROMPT ─────────────────────────────────────────
+Create a background music track that must be 60 seconds long. It should have a start, and an ending that finishes the song not abruptly but gracefully.
+
+Notice this track is exploratory, playful, melancholic, storybook Scandinavian folk.
+
+Use the following multi-shot prompt as reference for the scene the music plays under:
+- MS-04 (Beat 2 — The forking path / the deal): Helena strides along the forking forest path with brisk purpose, gesturing as she lays out the plan, unaware Sara is no longer beside her.
+- MS-05 (Beat 2 — The forking path / the deal): Helena walks up beside Sara, following her gaze with mild, unbothered confusion.
+- MS-06 (Beat 2 — The forking path / the deal): Helena cuts Sara off flatly, then her face shifts as she lands on an idea, gesturing firmly to the ground right where they stand on the safe side of the stone.
+- MS-07 (Beat 2 — The forking path / the deal): Helena admits it dryly and holds out a hand to shake; the offered hand waits between them.
+- MS-08 (Beat 2 — The forking path / the deal): Helena rolls her eyes, plants herself against the leaning grey boundary stone, and slaps both hands over her face to begin counting.
+
+Try to make some sound design on the track that has some highs or lows at these second marks: warm bloom-in at 0:03, playful lift ~0:20, a tender melancholic dip ~0:35–0:45, gentle forward resolve into the final bars.
+
+Instrumental music only — no voices, no singing, no sound effects or ambience (dialogue and SFX already live in the film); keep it a low underscore beneath the dialogue. Storybook Scandinavian-folklore palette so all the cues sound like one score. Begin with a gentle fade-in and end with a soft fade-out — never an abrupt start or cut.
+
+── CONFIG ─────────────────────────────────────────
+model: seed_audio
+format: wav
+sample_rate: 48000
+speech_rate: 0
+loudness_rate: 0
+pitch_rate: 0
+
+── SOURCE / POST-PROCESSING ───────────────────────
+https://d8j0ntlcm91z4.cloudfront.net/user_38vitaQqa4HdYi7u4JnjNrpYAA8/hf_20260708_154503_7b2aa6b1-fadf-43a7-b9ee-65163c6ab72a.wav

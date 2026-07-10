@@ -1,0 +1,32 @@
+SEED AUDIO PROMPT
+track: Cue 6 — Tea & the locked door  (trk_16)
+version: v1
+status: ready   duration: 63s
+generated: 2026-07-08T15:49:28.683Z
+
+── PROMPT ─────────────────────────────────────────
+Create a background music track that must be 63 seconds long. It should have a start, and an ending that finishes the song not abruptly but gracefully.
+
+Notice this track is cozy, suspenseful, frightening, storybook Scandinavian folk.
+
+Use the following multi-shot prompt as reference for the scene the music plays under:
+- MS-17 (Beat 5 — Tea & the locked door (Sara)): Sara swings her legs from an oversized chair, charmed and dreamy, taking a slow sip from a tiny cup. Steam curls up in the amber light.
+- MS-18 (Beat 5 — Tea & the locked door (Sara)): Sara bolts from the nook to the great round door, shoving, pulling, and throwing her shoulder against it. It does not budge.
+- MS-19 (Beat 5 — Tea & the locked door (Sara)): The King answers quietly, then begins the old story, his gaze drifting as if seeing the deep wood of long ago.
+- MS-20 (Beat 5 — Tea & the locked door (Sara)): Sara looks up, small and afraid, asking the question she dreads the answer to.
+- MS-21 (Beat 5 — Tea & the locked door (Sara)): The King softens further, reassuring her it is no punishment, only the price of the door — she would simply be ordinary again.
+
+Try to make some sound design on the track that has some highs or lows at these second marks: a cozy music-box waltz 0:00–0:20, first harmonic shadow ~0:25, creeping low strings ~0:38, tension tightening ~0:50, end on an unresolved uneasy hush.
+
+Instrumental music only — no voices, no singing, no sound effects or ambience (dialogue and SFX already live in the film); keep it a low underscore beneath the dialogue. Storybook Scandinavian-folklore palette so all the cues sound like one score. Begin with a gentle fade-in and end with a soft fade-out — never an abrupt start or cut.
+
+── CONFIG ─────────────────────────────────────────
+model: seed_audio
+format: wav
+sample_rate: 48000
+speech_rate: 0
+loudness_rate: 0
+pitch_rate: 0
+
+── SOURCE / POST-PROCESSING ───────────────────────
+https://d8j0ntlcm91z4.cloudfront.net/user_38vitaQqa4HdYi7u4JnjNrpYAA8/hf_20260708_154527_82e34a05-8b2d-49fc-b181-e4bd754476fb.wav

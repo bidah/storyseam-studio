@@ -1,0 +1,19 @@
+SEED AUDIO PROMPT
+track: finger whistle — two whistles  (trk_5)
+version: v1 — seed render
+status: ready   duration: 2.04s
+generated: 2026-07-04T16:01:40.249Z
+
+── PROMPT ─────────────────────────────────────────
+Use the Seed Audio prompt to create a sound effect for an animated series for kids. The sound to create is: a girl whistling loudly through her fingers — two DIFFERENT finger whistles back to back, about one second each. First a single loud, sharp, piercing RISING finger whistle (~1s); then a distinctly different loud finger whistle, a quick two-note high-then-low "come here" call (~1s), clearly different in pitch and shape from the first. Clean, close and clear — discrete effects over silence, no music, no background ambience, no voices, bright and punchy. It should be about 2 seconds long.
+
+── CONFIG ─────────────────────────────────────────
+model: seed_audio
+format: wav
+sample_rate: 48000
+speech_rate: 0
+loudness_rate: 0
+pitch_rate: 0
+
+── SOURCE / POST-PROCESSING ───────────────────────
+higgsfield seed_audio job 96058e7b-6581-4205-ad6a-b289ff8dafeb

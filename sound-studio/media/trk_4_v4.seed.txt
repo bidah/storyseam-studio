@@ -1,0 +1,19 @@
+SEED AUDIO PROMPT
+track: kids going out of school door  (trk_4)
+version: v4 — seed render
+status: ready   duration: 5.04s
+generated: 2026-07-04T14:04:36.538Z
+
+── PROMPT ─────────────────────────────────────────
+Use the Seed Audio skill to create a sound effect for an animated series for kids. The sound to create is: its end of school day on the small kids school so we hear the entrace door blast open and a multitude of small kids going out so we hear the sound of the kids multitude laughters, murmurs, footsteps. sound should last 5 seconds
+
+── CONFIG ─────────────────────────────────────────
+model: seed_audio
+format: wav
+sample_rate: 48000
+speech_rate: 0
+loudness_rate: 0
+pitch_rate: 0
+
+── SOURCE / POST-PROCESSING ───────────────────────
+higgsfield seed_audio job 31144cac-c630-4efb-a0b3-a1d5bb83adc4

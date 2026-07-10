@@ -1,0 +1,833 @@
+{
+  "seq": 21,
+  "tracks": [
+    {
+      "id": "trk_1",
+      "name": "Whimsical bed — orchestral theme",
+      "createdAt": "2026-07-03T12:51:24.000Z",
+      "versions": [
+        {
+          "v": 1,
+          "prompt": "Compose a 15-second whimsical fairytale orchestral cue — the warm opening theme of a storybook children's film. Mood: a sunlit toadstool schoolhouse in a golden forest morning, then two little elf friends setting off together down a mossy path, gently playful and slightly cheeky. Instrumental background music ONLY — no sound effects, no whistling, no voices, no bells, no ambience.\nStyle: warm, cinematic storybook orchestral score with one memorable, flowing melodic theme. Lush but gentle strings carry the melody, soft flute and clarinet answering, gentle harp arpeggios, and a light glockenspiel sparkle for magic. Tender, innocent, curious, sunlit.\nShape: begin warm and inviting as the theme blooms in; lift and flow with graceful playfulness in the middle; in the final few seconds gently slow (ritardando), resolve onto a warm sustained chord, and fade out smoothly to silence — an unhurried, graceful ending, never an abrupt cut.",
+          "name": "seed render",
+          "file": "trk_1_v1.mp3",
+          "status": "ready",
+          "liked": true,
+          "duration": 15,
+          "params": {
+            "model": "seed_audio",
+            "format": "wav",
+            "sample_rate": 48000
+          },
+          "source": "higgsfield seed_audio job 6e1b013e-b11e-4047-8446-e8dad78398b5",
+          "ts": "2026-07-03T12:51:24.000Z",
+          "seedText": "SEED AUDIO PROMPT\ntrack: Whimsical bed — orchestral theme  (trk_1)\nversion: v1 — seed render\nstatus: ready   duration: 15s\ngenerated: 2026-07-03T12:51:24.000Z\n\n── PROMPT ─────────────────────────────────────────\nCompose a 15-second whimsical fairytale orchestral cue — the warm opening theme of a storybook children's film. Mood: a sunlit toadstool schoolhouse in a golden forest morning, then two little elf friends setting off together down a mossy path, gently playful and slightly cheeky. Instrumental background music ONLY — no sound effects, no whistling, no voices, no bells, no ambience.\nStyle: warm, cinematic storybook orchestral score with one memorable, flowing melodic theme. Lush but gentle strings carry the melody, soft flute and clarinet answering, gentle harp arpeggios, and a light glockenspiel sparkle for magic. Tender, innocent, curious, sunlit.\nShape: begin warm and inviting as the theme blooms in; lift and flow with graceful playfulness in the middle; in the final few seconds gently slow (ritardando), resolve onto a warm sustained chord, and fade out smoothly to silence — an unhurried, graceful ending, never an abrupt cut.\n\n── CONFIG ─────────────────────────────────────────\nmodel: seed_audio\nformat: wav\nsample_rate: 48000\nspeech_rate: 0\nloudness_rate: 0\npitch_rate: 0\n\n── SOURCE / POST-PROCESSING ───────────────────────\nhiggsfield seed_audio job 6e1b013e-b11e-4047-8446-e8dad78398b5\n",
+          "seedFile": "trk_1_v1.seed.txt",
+          "seedUrl": "/sound-media/trk_1_v1.seed.txt"
+        }
+      ]
+    },
+    {
+      "id": "trk_2",
+      "name": "Whimsical bed — music-box lullaby",
+      "createdAt": "2026-07-03T12:51:31.000Z",
+      "versions": [
+        {
+          "v": 1,
+          "prompt": "Compose a 15-second whimsical storybook lullaby cue with music-box charm — the tender opening of a children's fairytale. Mood: a magical sunlit toadstool schoolhouse in a golden forest morning and two small elf friends beginning a gentle adventure; innocent, cozy, quietly enchanting with a soft mischievous smile. Instrumental background music ONLY — no sound effects, no whistling, no voices, no bells, no ambience.\nStyle: delicate and intimate, led by a twinkling music-box celesta/glockenspiel melody, with a soft harp and a warm cushion of gentle strings underneath. Sparse, tender, picture-book magic — space and air, not busy.\nShape: open softly and glowing as the music-box theme emerges; let the melody unfold warmly and tenderly with a touch of playful curiosity; in the last few seconds gently slow, settle onto one warm sustained chord with a final music-box shimmer, and fade out smoothly to silence — a graceful, unhurried ending, never an abrupt cut.",
+          "name": "seed render",
+          "file": "trk_2_v1.mp3",
+          "status": "ready",
+          "liked": false,
+          "duration": 15,
+          "params": {
+            "model": "seed_audio",
+            "format": "wav",
+            "sample_rate": 48000
+          },
+          "source": "higgsfield seed_audio job 95a9a1e9-0858-47a2-b444-98b20ac23d17",
+          "ts": "2026-07-03T12:51:31.000Z",
+          "seedText": "SEED AUDIO PROMPT\ntrack: Whimsical bed — music-box lullaby  (trk_2)\nversion: v1 — seed render\nstatus: ready   duration: 15s\ngenerated: 2026-07-03T12:51:31.000Z\n\n── PROMPT ─────────────────────────────────────────\nCompose a 15-second whimsical storybook lullaby cue with music-box charm — the tender opening of a children's fairytale. Mood: a magical sunlit toadstool schoolhouse in a golden forest morning and two small elf friends beginning a gentle adventure; innocent, cozy, quietly enchanting with a soft mischievous smile. Instrumental background music ONLY — no sound effects, no whistling, no voices, no bells, no ambience.\nStyle: delicate and intimate, led by a twinkling music-box celesta/glockenspiel melody, with a soft harp and a warm cushion of gentle strings underneath. Sparse, tender, picture-book magic — space and air, not busy.\nShape: open softly and glowing as the music-box theme emerges; let the melody unfold warmly and tenderly with a touch of playful curiosity; in the last few seconds gently slow, settle onto one warm sustained chord with a final music-box shimmer, and fade out smoothly to silence — a graceful, unhurried ending, never an abrupt cut.\n\n── CONFIG ─────────────────────────────────────────\nmodel: seed_audio\nformat: wav\nsample_rate: 48000\nspeech_rate: 0\nloudness_rate: 0\npitch_rate: 0\n\n── SOURCE / POST-PROCESSING ───────────────────────\nhiggsfield seed_audio job 95a9a1e9-0858-47a2-b444-98b20ac23d17\n",
+          "seedFile": "trk_2_v1.seed.txt",
+          "seedUrl": "/sound-media/trk_2_v1.seed.txt"
+        }
+      ]
+    },
+    {
+      "id": "trk_3",
+      "name": "Whimsical bed — woodwind folk",
+      "createdAt": "2026-07-03T12:52:42.000Z",
+      "versions": [
+        {
+          "v": 1,
+          "prompt": "Compose a 15-second whimsical woodland folk cue — the light, playful opening of a storybook children's fairytale. Mood: a sunlit toadstool schoolhouse morning and two little elf friends skipping off down a mossy path together, bright and curious with a gently cheeky, mischievous character. Instrumental background music ONLY — no sound effects, no whistling, no voices, no bells, no ambience.\nStyle: light, bouncy and character-driven — a playful flute and clarinet trade a charming melody over springy pizzicato strings and soft plucked acoustic notes, with glockenspiel sparkle accents. Warm, folky, whimsical, full of gentle personality but never frantic or comedic.\nShape: begin warm and inviting; skip forward into a bright, dancing melody with a wry little turn in the middle; in the final few seconds gently slow (ritardando), resolve onto a warm sustained chord, and fade out smoothly to silence — a graceful, unhurried ending, never an abrupt cut.",
+          "name": "seed render",
+          "file": "trk_3_v1.mp3",
+          "status": "ready",
+          "liked": false,
+          "duration": 15,
+          "params": {
+            "model": "seed_audio",
+            "format": "wav",
+            "sample_rate": 48000
+          },
+          "source": "higgsfield seed_audio job 66909598-88e6-46d2-9792-8f20b7a3b420",
+          "ts": "2026-07-03T12:52:42.000Z",
+          "seedText": "SEED AUDIO PROMPT\ntrack: Whimsical bed — woodwind folk  (trk_3)\nversion: v1 — seed render\nstatus: ready   duration: 15s\ngenerated: 2026-07-03T12:52:42.000Z\n\n── PROMPT ─────────────────────────────────────────\nCompose a 15-second whimsical woodland folk cue — the light, playful opening of a storybook children's fairytale. Mood: a sunlit toadstool schoolhouse morning and two little elf friends skipping off down a mossy path together, bright and curious with a gently cheeky, mischievous character. Instrumental background music ONLY — no sound effects, no whistling, no voices, no bells, no ambience.\nStyle: light, bouncy and character-driven — a playful flute and clarinet trade a charming melody over springy pizzicato strings and soft plucked acoustic notes, with glockenspiel sparkle accents. Warm, folky, whimsical, full of gentle personality but never frantic or comedic.\nShape: begin warm and inviting; skip forward into a bright, dancing melody with a wry little turn in the middle; in the final few seconds gently slow (ritardando), resolve onto a warm sustained chord, and fade out smoothly to silence — a graceful, unhurried ending, never an abrupt cut.\n\n── CONFIG ─────────────────────────────────────────\nmodel: seed_audio\nformat: wav\nsample_rate: 48000\nspeech_rate: 0\nloudness_rate: 0\npitch_rate: 0\n\n── SOURCE / POST-PROCESSING ───────────────────────\nhiggsfield seed_audio job 66909598-88e6-46d2-9792-8f20b7a3b420\n",
+          "seedFile": "trk_3_v1.seed.txt",
+          "seedUrl": "/sound-media/trk_3_v1.seed.txt"
+        }
+      ]
+    },
+    {
+      "id": "trk_4",
+      "name": "kids going out of school door",
+      "createdAt": "2026-07-03T16:42:36.930Z",
+      "versions": [
+        {
+          "v": 1,
+          "prompt": "Use the Seed Audio prompt to create a sound effect for an animated series for kids. The sound to create is: its end of school day on the small kids school so we hear the entrace door blast open and a multitude of small kids going out so we hear the sound of the kids multitude laughters, murmurs, footsteps..",
+          "name": null,
+          "file": null,
+          "status": "pending",
+          "liked": false,
+          "params": {
+            "model": "seed_audio",
+            "format": "wav",
+            "sample_rate": 48000
+          },
+          "ts": "2026-07-03T16:42:36.930Z"
+        },
+        {
+          "v": 2,
+          "prompt": "Use the Seed Audio prompt to create a sound effect for an animated series for kids. The sound to create is: its end of school day on the small kids school so we hear the entrace door blast open and a multitude of small kids going out so we hear the sound of the kids multitude laughters, murmurs, footsteps..",
+          "name": null,
+          "file": null,
+          "status": "pending",
+          "liked": false,
+          "params": {
+            "model": "seed_audio",
+            "format": "wav",
+            "sample_rate": 48000
+          },
+          "ts": "2026-07-03T16:45:17.429Z"
+        },
+        {
+          "v": 3,
+          "prompt": "Use the Seed Audio skill to create a sound effect for an animated series for kids. The sound to create is: its end of school day on the small kids school so we hear the entrace door blast open and a multitude of small kids going out so we hear the sound of the kids multitude laughters, murmurs, footsteps..",
+          "name": null,
+          "file": null,
+          "status": "pending",
+          "liked": false,
+          "params": {
+            "model": "seed_audio",
+            "format": "wav",
+            "sample_rate": 48000
+          },
+          "ts": "2026-07-03T16:45:26.341Z"
+        },
+        {
+          "v": 4,
+          "prompt": "Use the Seed Audio skill to create a sound effect for an animated series for kids. The sound to create is: its end of school day on the small kids school so we hear the entrace door blast open and a multitude of small kids going out so we hear the sound of the kids multitude laughters, murmurs, footsteps. sound should last 5 seconds",
+          "name": "seed render",
+          "file": "trk_4_v4.mp3",
+          "status": "ready",
+          "liked": false,
+          "params": {
+            "model": "seed_audio",
+            "format": "wav",
+            "sample_rate": 48000
+          },
+          "ts": "2026-07-04T14:04:36.538Z",
+          "duration": 5.04,
+          "source": "higgsfield seed_audio job 31144cac-c630-4efb-a0b3-a1d5bb83adc4",
+          "seedText": "SEED AUDIO PROMPT\ntrack: kids going out of school door  (trk_4)\nversion: v4 — seed render\nstatus: ready   duration: 5.04s\ngenerated: 2026-07-04T14:04:36.538Z\n\n── PROMPT ─────────────────────────────────────────\nUse the Seed Audio skill to create a sound effect for an animated series for kids. The sound to create is: its end of school day on the small kids school so we hear the entrace door blast open and a multitude of small kids going out so we hear the sound of the kids multitude laughters, murmurs, footsteps. sound should last 5 seconds\n\n── CONFIG ─────────────────────────────────────────\nmodel: seed_audio\nformat: wav\nsample_rate: 48000\nspeech_rate: 0\nloudness_rate: 0\npitch_rate: 0\n\n── SOURCE / POST-PROCESSING ───────────────────────\nhiggsfield seed_audio job 31144cac-c630-4efb-a0b3-a1d5bb83adc4\n",
+          "seedFile": "trk_4_v4.seed.txt",
+          "seedUrl": "/sound-media/trk_4_v4.seed.txt"
+        },
+        {
+          "v": 5,
+          "prompt": "Create an 8-second sound effect for a children's animated series: the end-of-school-day rush at a tiny kids' school. Bright, cheerful, wholesome cartoon energy.\n[EVENT] A big school entrance door BURSTS open with a whoosh and a clack of the handle -> [MOVE] a happy stampede of many small children spills outward -> [AMBI] a lively crowd of little kids all overlapping: bright giggles and laughter, excited high-pitched chatter and murmurs, and a flurry of quick tiny footsteps and shoes pattering on the pavement. Joyful, energetic, playful. No music, no adult voices, no spoken dialogue.\n[OUTRO] Over the final 2-3 seconds the children gradually run off and scatter into the distance; the laughter, chatter and footsteps slowly thin out and gently fade down to quiet — a smooth, graceful fade-out, never an abrupt cut or hard stop.",
+          "name": "seed render",
+          "file": "trk_4_v5.mp3",
+          "status": "ready",
+          "liked": false,
+          "params": {
+            "model": "seed_audio",
+            "format": "wav",
+            "sample_rate": 48000
+          },
+          "ts": "2026-07-04T14:07:58.837Z",
+          "duration": 8.04,
+          "source": "higgsfield seed_audio job 02b9a828-6e28-4fdd-8174-86502d4a566d",
+          "seedText": "SEED AUDIO PROMPT\ntrack: kids going out of school door  (trk_4)\nversion: v5 — seed render\nstatus: ready   duration: 8.04s\ngenerated: 2026-07-04T14:07:58.837Z\n\n── PROMPT ─────────────────────────────────────────\nCreate an 8-second sound effect for a children's animated series: the end-of-school-day rush at a tiny kids' school. Bright, cheerful, wholesome cartoon energy.\n[EVENT] A big school entrance door BURSTS open with a whoosh and a clack of the handle -> [MOVE] a happy stampede of many small children spills outward -> [AMBI] a lively crowd of little kids all overlapping: bright giggles and laughter, excited high-pitched chatter and murmurs, and a flurry of quick tiny footsteps and shoes pattering on the pavement. Joyful, energetic, playful. No music, no adult voices, no spoken dialogue.\n[OUTRO] Over the final 2-3 seconds the children gradually run off and scatter into the distance; the laughter, chatter and footsteps slowly thin out and gently fade down to quiet — a smooth, graceful fade-out, never an abrupt cut or hard stop.\n\n── CONFIG ─────────────────────────────────────────\nmodel: seed_audio\nformat: wav\nsample_rate: 48000\nspeech_rate: 0\nloudness_rate: 0\npitch_rate: 0\n\n── SOURCE / POST-PROCESSING ───────────────────────\nhiggsfield seed_audio job 02b9a828-6e28-4fdd-8174-86502d4a566d\n",
+          "seedFile": "trk_4_v5.seed.txt",
+          "seedUrl": "/sound-media/trk_4_v5.seed.txt"
+        }
+      ]
+    },
+    {
+      "id": "trk_5",
+      "name": "finger whistle — two whistles",
+      "createdAt": "2026-07-04T16:01:00.998Z",
+      "versions": [
+        {
+          "v": 1,
+          "prompt": "Use the Seed Audio prompt to create a sound effect for an animated series for kids. The sound to create is: a girl whistling loudly through her fingers — two DIFFERENT finger whistles back to back, about one second each. First a single loud, sharp, piercing RISING finger whistle (~1s); then a distinctly different loud finger whistle, a quick two-note high-then-low \"come here\" call (~1s), clearly different in pitch and shape from the first. Clean, close and clear — discrete effects over silence, no music, no background ambience, no voices, bright and punchy. It should be about 2 seconds long.",
+          "name": "seed render",
+          "file": "trk_5_v1.mp3",
+          "status": "ready",
+          "liked": false,
+          "params": {
+            "model": "seed_audio",
+            "format": "wav",
+            "sample_rate": 48000
+          },
+          "ts": "2026-07-04T16:01:40.249Z",
+          "duration": 2.04,
+          "source": "higgsfield seed_audio job 96058e7b-6581-4205-ad6a-b289ff8dafeb",
+          "seedText": "SEED AUDIO PROMPT\ntrack: finger whistle — two whistles  (trk_5)\nversion: v1 — seed render\nstatus: ready   duration: 2.04s\ngenerated: 2026-07-04T16:01:40.249Z\n\n── PROMPT ─────────────────────────────────────────\nUse the Seed Audio prompt to create a sound effect for an animated series for kids. The sound to create is: a girl whistling loudly through her fingers — two DIFFERENT finger whistles back to back, about one second each. First a single loud, sharp, piercing RISING finger whistle (~1s); then a distinctly different loud finger whistle, a quick two-note high-then-low \"come here\" call (~1s), clearly different in pitch and shape from the first. Clean, close and clear — discrete effects over silence, no music, no background ambience, no voices, bright and punchy. It should be about 2 seconds long.\n\n── CONFIG ─────────────────────────────────────────\nmodel: seed_audio\nformat: wav\nsample_rate: 48000\nspeech_rate: 0\nloudness_rate: 0\npitch_rate: 0\n\n── SOURCE / POST-PROCESSING ───────────────────────\nhiggsfield seed_audio job 96058e7b-6581-4205-ad6a-b289ff8dafeb\n",
+          "seedFile": "trk_5_v1.seed.txt",
+          "seedUrl": "/sound-media/trk_5_v1.seed.txt"
+        }
+      ]
+    },
+    {
+      "id": "trk_6",
+      "name": "kids wispering talking",
+      "createdAt": "2026-07-04T17:10:54.801Z",
+      "versions": [
+        {
+          "v": 1,
+          "prompt": "Use the Seed Audio prompt to create a sound effect for an animated series for kids. The sound to create is: we have as background sound the murmur and talking of small kids, you dont understand what they are talking they are in second plane. give me version of 10 seconds, 2 second pause in between, 15 second, then 2 second pause, 20 second version, 2 second pause and then 25 second version. all should fade in out gracefully. Finish it not abruptly but softly, into an end mix of an ending and a fade-out if needed depending on the tune.",
+          "name": "seed render",
+          "file": "trk_6_v1.mp3",
+          "status": "ready",
+          "liked": false,
+          "params": {
+            "model": "seed_audio",
+            "format": "wav",
+            "sample_rate": 48000
+          },
+          "ts": "2026-07-04T17:14:27.135Z",
+          "duration": 76.032,
+          "source": "higgsfield seed_audio job 1c751e8d-0e61-4865-b34e-c55c9ef5ff30 (30s bed; cut to 10/15/20/25s faded versions joined with 2s pauses)",
+          "seedText": "SEED AUDIO PROMPT\ntrack: kids wispering talking  (trk_6)\nversion: v1 — seed render\nstatus: ready   duration: 76.032s\ngenerated: 2026-07-04T17:14:27.135Z\n\n── PROMPT ─────────────────────────────────────────\nUse the Seed Audio prompt to create a sound effect for an animated series for kids. The sound to create is: we have as background sound the murmur and talking of small kids, you dont understand what they are talking they are in second plane. give me version of 10 seconds, 2 second pause in between, 15 second, then 2 second pause, 20 second version, 2 second pause and then 25 second version. all should fade in out gracefully. Finish it not abruptly but softly, into an end mix of an ending and a fade-out if needed depending on the tune.\n\n── CONFIG ─────────────────────────────────────────\nmodel: seed_audio\nformat: wav\nsample_rate: 48000\nspeech_rate: 0\nloudness_rate: 0\npitch_rate: 0\n\n── SOURCE / POST-PROCESSING ───────────────────────\nhiggsfield seed_audio job 1c751e8d-0e61-4865-b34e-c55c9ef5ff30 (30s bed; cut to 10/15/20/25s faded versions joined with 2s pauses)\n",
+          "seedFile": "trk_6_v1.seed.txt",
+          "seedUrl": "/sound-media/trk_6_v1.seed.txt"
+        },
+        {
+          "v": 2,
+          "prompt": "Use the Seed Audio prompt to create a sound effect for an animated series for kids. The sound to create is: a constant, steady BACKGROUND layer of small kids laughing and playing behind the scene — a warm continuous bed of a schoolyard full of little children at play in a sunny forest clearing. Ongoing happy laughter, giggles and playful squeals, light cheerful chatter and calling out (unintelligible, no clear words), the gentle busy hum of kids playing together, sitting softly in the background. Even, constant and continuous the whole time — NOT a sudden burst, NOT a crowd bursting out of a door, and NOT distant mumbling; just the steady cheerful background sound of kids laughing and playing. Warm, sunny, outdoor forest-clearing feel, wholesome cartoon energy. No music, no bell, no whistles, no adult voices, no foreground dialogue. Based on MS-01 (school-clearing beat). Assembled as 10s + 2s pause + 15s + 2s pause + 20s versions, each fading in/out gracefully.",
+          "name": "seed render",
+          "file": "trk_6_v2.mp3",
+          "status": "ready",
+          "liked": false,
+          "params": {
+            "model": "seed_audio",
+            "format": "wav",
+            "sample_rate": 48000
+          },
+          "ts": "2026-07-05T16:26:48.945Z",
+          "duration": 49.032,
+          "source": "higgsfield seed_audio job 6611d8ba-fe3b-4c4d-9ec2-fb8e2c78ae74 (26s MS-01 kids-playing bed; cut to 10/15/20s faded versions joined with 2s pauses)",
+          "seedText": "SEED AUDIO PROMPT\ntrack: kids wispering talking  (trk_6)\nversion: v2 — seed render\nstatus: ready   duration: 49.032s\ngenerated: 2026-07-05T16:26:48.945Z\n\n── PROMPT ─────────────────────────────────────────\nUse the Seed Audio prompt to create a sound effect for an animated series for kids. The sound to create is: a constant, steady BACKGROUND layer of small kids laughing and playing behind the scene — a warm continuous bed of a schoolyard full of little children at play in a sunny forest clearing. Ongoing happy laughter, giggles and playful squeals, light cheerful chatter and calling out (unintelligible, no clear words), the gentle busy hum of kids playing together, sitting softly in the background. Even, constant and continuous the whole time — NOT a sudden burst, NOT a crowd bursting out of a door, and NOT distant mumbling; just the steady cheerful background sound of kids laughing and playing. Warm, sunny, outdoor forest-clearing feel, wholesome cartoon energy. No music, no bell, no whistles, no adult voices, no foreground dialogue. Based on MS-01 (school-clearing beat). Assembled as 10s + 2s pause + 15s + 2s pause + 20s versions, each fading in/out gracefully.\n\n── CONFIG ─────────────────────────────────────────\nmodel: seed_audio\nformat: wav\nsample_rate: 48000\nspeech_rate: 0\nloudness_rate: 0\npitch_rate: 0\n\n── SOURCE / POST-PROCESSING ───────────────────────\nhiggsfield seed_audio job 6611d8ba-fe3b-4c4d-9ec2-fb8e2c78ae74 (26s MS-01 kids-playing bed; cut to 10/15/20s faded versions joined with 2s pauses)\n",
+          "seedFile": "trk_6_v2.seed.txt",
+          "seedUrl": "/sound-media/trk_6_v2.seed.txt"
+        },
+        {
+          "v": 3,
+          "prompt": "Use the Seed Audio prompt to create a sound effect for an animated series for kids. The sound to create is: a LOUD, BUSY, energetic BACKGROUND bed of a big packed crowd of small kids laughing and playing behind the scene — a bustling schoolyard full of little children at play in a sunny forest clearing. Dense, boisterous, non-stop happy laughter, excited squeals and giggles, lots of overlapping cheerful chatter and playful shouting and calling out (unintelligible, no clear words), a big lively busy hubbub of many kids playing all at once. Full, rich and energetic, but still a background layer with no single voice in front. Even and constant the whole time — NOT a sudden burst, NOT a crowd bursting out of a door, and NOT distant mumbling. Warm, sunny, outdoor forest-clearing feel, wholesome cartoon energy. No music, no bell, no whistles, no adult voices, no foreground dialogue. Based on MS-01 (school-clearing beat). LOUDER/BUSIER variant (loudness_rate +14). Assembled as 10s + 2s pause + 15s + 2s pause + 20s versions, each fading in/out gracefully.",
+          "name": "busier / louder",
+          "file": "trk_6_v3.mp3",
+          "status": "ready",
+          "liked": false,
+          "params": {
+            "model": "seed_audio",
+            "format": "wav",
+            "sample_rate": 48000,
+            "loudness_rate": 14
+          },
+          "ts": "2026-07-05T16:31:35.265Z",
+          "duration": 49.032,
+          "source": "higgsfield seed_audio job fe06984b-01a5-4f04-a1e3-b7548c18645d (24s MS-01 busier/louder bed, loudness +14; cut to 10/15/20s faded versions joined with 2s pauses)",
+          "seedText": "SEED AUDIO PROMPT\ntrack: kids wispering talking  (trk_6)\nversion: v3 — busier / louder\nstatus: ready   duration: 49.032s\ngenerated: 2026-07-05T16:31:35.265Z\n\n── PROMPT ─────────────────────────────────────────\nUse the Seed Audio prompt to create a sound effect for an animated series for kids. The sound to create is: a LOUD, BUSY, energetic BACKGROUND bed of a big packed crowd of small kids laughing and playing behind the scene — a bustling schoolyard full of little children at play in a sunny forest clearing. Dense, boisterous, non-stop happy laughter, excited squeals and giggles, lots of overlapping cheerful chatter and playful shouting and calling out (unintelligible, no clear words), a big lively busy hubbub of many kids playing all at once. Full, rich and energetic, but still a background layer with no single voice in front. Even and constant the whole time — NOT a sudden burst, NOT a crowd bursting out of a door, and NOT distant mumbling. Warm, sunny, outdoor forest-clearing feel, wholesome cartoon energy. No music, no bell, no whistles, no adult voices, no foreground dialogue. Based on MS-01 (school-clearing beat). LOUDER/BUSIER variant (loudness_rate +14). Assembled as 10s + 2s pause + 15s + 2s pause + 20s versions, each fading in/out gracefully.\n\n── CONFIG ─────────────────────────────────────────\nmodel: seed_audio\nformat: wav\nsample_rate: 48000\nspeech_rate: 0\nloudness_rate: 14\npitch_rate: 0\n\n── SOURCE / POST-PROCESSING ───────────────────────\nhiggsfield seed_audio job fe06984b-01a5-4f04-a1e3-b7548c18645d (24s MS-01 busier/louder bed, loudness +14; cut to 10/15/20s faded versions joined with 2s pauses)\n",
+          "seedFile": "trk_6_v3.seed.txt",
+          "seedUrl": "/sound-media/trk_6_v3.seed.txt"
+        },
+        {
+          "v": 4,
+          "prompt": "Use the Seed Audio prompt to create a sound effect for an animated series for kids. The sound to create is: a CALM, GENTLE, mellow BACKGROUND bed of just a few small kids laughing and playing softly behind the scene — a quiet, relaxed schoolyard in a sunny forest clearing. Soft, occasional light laughter and gentle giggles, a little easygoing chatter and the odd playful call (unintelligible, no clear words), with plenty of calm space and air between sounds; a low, soothing, unhurried hum of a couple of children playing gently. Sparse, soft and peaceful, sitting quietly in the background. Even and constant the whole time — NOT a sudden burst, NOT a crowd bursting out of a door, and NOT distant mumbling. Warm, sunny, outdoor forest-clearing feel, tender wholesome cartoon energy. No music, no bell, no whistles, no adult voices, no foreground dialogue. Based on MS-01 (school-clearing beat). CALM/GENTLE variant (loudness_rate -10). Assembled as 10s + 2s pause + 15s + 2s pause + 20s versions, each fading in/out gracefully.",
+          "name": "calm / gentle",
+          "file": "trk_6_v4.mp3",
+          "status": "ready",
+          "liked": false,
+          "params": {
+            "model": "seed_audio",
+            "format": "wav",
+            "sample_rate": 48000,
+            "loudness_rate": -10
+          },
+          "ts": "2026-07-05T16:31:35.333Z",
+          "duration": 49.032,
+          "source": "higgsfield seed_audio job f06f45f2-05fe-48af-afdd-8e1f8c97691a (25s MS-01 calm/gentle bed, loudness -10; cut to 10/15/20s faded versions joined with 2s pauses)",
+          "seedText": "SEED AUDIO PROMPT\ntrack: kids wispering talking  (trk_6)\nversion: v4 — calm / gentle\nstatus: ready   duration: 49.032s\ngenerated: 2026-07-05T16:31:35.333Z\n\n── PROMPT ─────────────────────────────────────────\nUse the Seed Audio prompt to create a sound effect for an animated series for kids. The sound to create is: a CALM, GENTLE, mellow BACKGROUND bed of just a few small kids laughing and playing softly behind the scene — a quiet, relaxed schoolyard in a sunny forest clearing. Soft, occasional light laughter and gentle giggles, a little easygoing chatter and the odd playful call (unintelligible, no clear words), with plenty of calm space and air between sounds; a low, soothing, unhurried hum of a couple of children playing gently. Sparse, soft and peaceful, sitting quietly in the background. Even and constant the whole time — NOT a sudden burst, NOT a crowd bursting out of a door, and NOT distant mumbling. Warm, sunny, outdoor forest-clearing feel, tender wholesome cartoon energy. No music, no bell, no whistles, no adult voices, no foreground dialogue. Based on MS-01 (school-clearing beat). CALM/GENTLE variant (loudness_rate -10). Assembled as 10s + 2s pause + 15s + 2s pause + 20s versions, each fading in/out gracefully.\n\n── CONFIG ─────────────────────────────────────────\nmodel: seed_audio\nformat: wav\nsample_rate: 48000\nspeech_rate: 0\nloudness_rate: -10\npitch_rate: 0\n\n── SOURCE / POST-PROCESSING ───────────────────────\nhiggsfield seed_audio job f06f45f2-05fe-48af-afdd-8e1f8c97691a (25s MS-01 calm/gentle bed, loudness -10; cut to 10/15/20s faded versions joined with 2s pauses)\n",
+          "seedFile": "trk_6_v4.seed.txt",
+          "seedUrl": "/sound-media/trk_6_v4.seed.txt"
+        },
+        {
+          "v": 5,
+          "prompt": "Use the Seed Audio prompt to create a sound effect for an animated series for kids. The sound to create is: a constant, steady BACKGROUND ambience of small kids laughing and playing behind the scene — a schoolyard full of little children at play in a sunny forest clearing. Ongoing happy laughter, giggles and playful squeals, light cheerful chatter and calling out (unintelligible, no clear words), the gentle busy hum of kids playing together. Even and continuous. IMPORTANT: this is a PURE SOUND EFFECT / real ambience field recording — absolutely NO music of any kind. No instrumental, no musical score, no soundtrack, no melody, no underscore, no background music bed, no instruments (no strings, piano, guitar, flute, drums, chimes or bells). ONLY the natural sound of children's voices and play. No adult voices, no dialogue, no door slam, no whistles. Not a sudden burst, not distant mumbling — just the steady cheerful sound of kids laughing and playing. Based on MS-01 (school-clearing beat). NO-MUSIC / pure-SFX run. Assembled as 10s + 2s pause + 15s + 2s pause + 20s versions, each fading in/out gracefully.",
+          "name": "no music / pure sfx",
+          "file": "trk_6_v5.mp3",
+          "status": "ready",
+          "liked": false,
+          "params": {
+            "model": "seed_audio",
+            "format": "wav",
+            "sample_rate": 48000
+          },
+          "ts": "2026-07-05T16:36:41.783Z",
+          "duration": 49.032,
+          "source": "higgsfield seed_audio job 8bc16519-5f4a-4508-a79a-fea1d07abdca (100s MS-01 no-music/pure-SFX bed; cut to 10/15/20s faded versions joined with 2s pauses)",
+          "seedText": "SEED AUDIO PROMPT\ntrack: kids wispering talking  (trk_6)\nversion: v5 — no music / pure sfx\nstatus: ready   duration: 49.032s\ngenerated: 2026-07-05T16:36:41.783Z\n\n── PROMPT ─────────────────────────────────────────\nUse the Seed Audio prompt to create a sound effect for an animated series for kids. The sound to create is: a constant, steady BACKGROUND ambience of small kids laughing and playing behind the scene — a schoolyard full of little children at play in a sunny forest clearing. Ongoing happy laughter, giggles and playful squeals, light cheerful chatter and calling out (unintelligible, no clear words), the gentle busy hum of kids playing together. Even and continuous. IMPORTANT: this is a PURE SOUND EFFECT / real ambience field recording — absolutely NO music of any kind. No instrumental, no musical score, no soundtrack, no melody, no underscore, no background music bed, no instruments (no strings, piano, guitar, flute, drums, chimes or bells). ONLY the natural sound of children's voices and play. No adult voices, no dialogue, no door slam, no whistles. Not a sudden burst, not distant mumbling — just the steady cheerful sound of kids laughing and playing. Based on MS-01 (school-clearing beat). NO-MUSIC / pure-SFX run. Assembled as 10s + 2s pause + 15s + 2s pause + 20s versions, each fading in/out gracefully.\n\n── CONFIG ─────────────────────────────────────────\nmodel: seed_audio\nformat: wav\nsample_rate: 48000\nspeech_rate: 0\nloudness_rate: 0\npitch_rate: 0\n\n── SOURCE / POST-PROCESSING ───────────────────────\nhiggsfield seed_audio job 8bc16519-5f4a-4508-a79a-fea1d07abdca (100s MS-01 no-music/pure-SFX bed; cut to 10/15/20s faded versions joined with 2s pauses)\n",
+          "seedFile": "trk_6_v5.seed.txt",
+          "seedUrl": "/sound-media/trk_6_v5.seed.txt"
+        }
+      ]
+    },
+    {
+      "id": "trk_7",
+      "name": "Helena — where is Sara?",
+      "createdAt": "2026-07-05T17:12:38.743Z",
+      "versions": [
+        {
+          "v": 1,
+          "prompt": "@Audio1 Use this EXACT voice — match its timbre, pitch, age and tone precisely. This is Helena, a young elf girl. Generate ONLY her clean spoken dialogue in the same voice as the reference: no music, no sound effects, no background ambience, no other characters — just Helena's voice with the pauses described.\\n\\nShe speaks in this order, with clear silent pauses:\\n1) She notices something, says \"Oh!\", waits about one second looking around, then asks, a little puzzled: \"Where is Sara?\"\\n2) About two seconds of silence.\\n3) Brightening as she spots her friend, warmly: \"There you are!\"\\n4) About two seconds of silence.\\n5) Curious and surprised at something new: \"What is that?\"\\n\\nExact lines, in order, all in the same Helena voice as the reference:\\n\"Oh!\" ... (about 1 second pause) ... \"Where is Sara?\"\\n(about 2 seconds of silence)\\n\"There you are!\"\\n(about 2 seconds of silence)\\n\"What is that?\"\\n\\nVoice reference: helena_voice_reference.mp3 (extracted from helena_voice_reference.mp4).",
+          "name": "raw render",
+          "file": "trk_7_v1.mp3",
+          "status": "ready",
+          "liked": false,
+          "params": {
+            "model": "seed_audio",
+            "format": "wav",
+            "sample_rate": 48000
+          },
+          "ts": "2026-07-05T17:12:51.943Z",
+          "duration": 8.52,
+          "source": "higgsfield seed_audio job 1d1f7e4f-3049-4051-94f8-c70348d5783c (TA2A voice-clone of helena_voice_reference.mp3; raw render)",
+          "ref": {
+            "name": "Helena — original .mp4 voice ref",
+            "file": "trk_7_ref_mp4.mp3",
+            "url": "/sound-media/trk_7_ref_mp4.mp3"
+          },
+          "seedText": "SEED AUDIO PROMPT\ntrack: Helena — where is Sara?  (trk_7)\nversion: v1 — raw render\nstatus: ready   duration: 8.52s\ngenerated: 2026-07-05T17:12:51.943Z\n\n── PROMPT ─────────────────────────────────────────\n@Audio1 Use this EXACT voice — match its timbre, pitch, age and tone precisely. This is Helena, a young elf girl. Generate ONLY her clean spoken dialogue in the same voice as the reference: no music, no sound effects, no background ambience, no other characters — just Helena's voice with the pauses described.\n\nShe speaks in this order, with clear silent pauses:\n1) She notices something, says \"Oh!\", waits about one second looking around, then asks, a little puzzled: \"Where is Sara?\"\n2) About two seconds of silence.\n3) Brightening as she spots her friend, warmly: \"There you are!\"\n4) About two seconds of silence.\n5) Curious and surprised at something new: \"What is that?\"\n\nExact lines, in order, all in the same Helena voice as the reference:\n\"Oh!\" ... (about 1 second pause) ... \"Where is Sara?\"\n(about 2 seconds of silence)\n\"There you are!\"\n(about 2 seconds of silence)\n\"What is that?\"\n\nVoice reference: helena_voice_reference.mp3 (extracted from helena_voice_reference.mp4).\n\n── CONFIG ─────────────────────────────────────────\nmodel: seed_audio\nformat: wav\nsample_rate: 48000\nspeech_rate: 0\nloudness_rate: 0\npitch_rate: 0\nvoice_reference: Helena — original .mp4 voice ref (trk_7_ref_mp4.mp3)\n\n── SOURCE / POST-PROCESSING ───────────────────────\nhiggsfield seed_audio job 1d1f7e4f-3049-4051-94f8-c70348d5783c (TA2A voice-clone of helena_voice_reference.mp3; raw render)\n",
+          "seedFile": "trk_7_v1.seed.txt",
+          "seedUrl": "/sound-media/trk_7_v1.seed.txt"
+        },
+        {
+          "v": 2,
+          "prompt": "@Audio1 Use this EXACT voice — match its timbre, pitch, age and tone precisely. This is Helena, a young elf girl. Generate ONLY her clean spoken dialogue in the same voice as the reference: no music, no sound effects, no background ambience, no other characters — just Helena's voice with the pauses described.\\n\\nShe speaks in this order, with clear silent pauses:\\n1) She notices something, says \"Oh!\", waits about one second looking around, then asks, a little puzzled: \"Where is Sara?\"\\n2) About two seconds of silence.\\n3) Brightening as she spots her friend, warmly: \"There you are!\"\\n4) About two seconds of silence.\\n5) Curious and surprised at something new: \"What is that?\"\\n\\nExact lines, in order, all in the same Helena voice as the reference:\\n\"Oh!\" ... (about 1 second pause) ... \"Where is Sara?\"\\n(about 2 seconds of silence)\\n\"There you are!\"\\n(about 2 seconds of silence)\\n\"What is that?\"\\n\\nVoice reference: helena_voice_reference.mp3 (extracted from helena_voice_reference.mp4).",
+          "name": "retimed 1s / 2s / 2s pauses",
+          "file": "trk_7_v2.mp3",
+          "status": "ready",
+          "liked": false,
+          "params": {
+            "model": "seed_audio",
+            "format": "wav",
+            "sample_rate": 48000
+          },
+          "ts": "2026-07-05T17:12:52.035Z",
+          "duration": 7.992,
+          "source": "higgsfield seed_audio job 1d1f7e4f-3049-4051-94f8-c70348d5783c (voice-clone; retimed locally to exact 1s/2s/2s pauses via ffmpeg)",
+          "ref": {
+            "name": "Helena — original .mp4 voice ref",
+            "file": "trk_7_ref_mp4.mp3",
+            "url": "/sound-media/trk_7_ref_mp4.mp3"
+          },
+          "seedText": "SEED AUDIO PROMPT\ntrack: Helena — where is Sara?  (trk_7)\nversion: v2 — retimed 1s / 2s / 2s pauses\nstatus: ready   duration: 7.992s\ngenerated: 2026-07-05T17:12:52.035Z\n\n── PROMPT ─────────────────────────────────────────\n@Audio1 Use this EXACT voice — match its timbre, pitch, age and tone precisely. This is Helena, a young elf girl. Generate ONLY her clean spoken dialogue in the same voice as the reference: no music, no sound effects, no background ambience, no other characters — just Helena's voice with the pauses described.\n\nShe speaks in this order, with clear silent pauses:\n1) She notices something, says \"Oh!\", waits about one second looking around, then asks, a little puzzled: \"Where is Sara?\"\n2) About two seconds of silence.\n3) Brightening as she spots her friend, warmly: \"There you are!\"\n4) About two seconds of silence.\n5) Curious and surprised at something new: \"What is that?\"\n\nExact lines, in order, all in the same Helena voice as the reference:\n\"Oh!\" ... (about 1 second pause) ... \"Where is Sara?\"\n(about 2 seconds of silence)\n\"There you are!\"\n(about 2 seconds of silence)\n\"What is that?\"\n\nVoice reference: helena_voice_reference.mp3 (extracted from helena_voice_reference.mp4).\n\n── CONFIG ─────────────────────────────────────────\nmodel: seed_audio\nformat: wav\nsample_rate: 48000\nspeech_rate: 0\nloudness_rate: 0\npitch_rate: 0\nvoice_reference: Helena — original .mp4 voice ref (trk_7_ref_mp4.mp3)\n\n── SOURCE / POST-PROCESSING ───────────────────────\nhiggsfield seed_audio job 1d1f7e4f-3049-4051-94f8-c70348d5783c (voice-clone; retimed locally to exact 1s/2s/2s pauses via ffmpeg)\n",
+          "seedFile": "trk_7_v2.seed.txt",
+          "seedUrl": "/sound-media/trk_7_v2.seed.txt"
+        },
+        {
+          "v": 3,
+          "prompt": "@Audio1 Use this EXACT voice — match its timbre, pitch, age and tone precisely. This is Helena, a young elf girl. Generate ONLY her clean spoken dialogue in the same voice as the reference: no music, no sound effects, no background ambience, no other characters — just Helena's voice with the pauses described.\\n\\nShe speaks in this order, with clear silent pauses:\\n1) She notices something, says \"Oh!\", waits about one second looking around, then asks, a little puzzled: \"Where is Sara?\"\\n2) About two seconds of silence.\\n3) Brightening as she spots her friend, warmly: \"There you are!\"\\n4) About two seconds of silence.\\n5) Curious and surprised at something new: \"What is that?\"\\n\\nExact lines, in order, all in the same Helena voice as the reference:\\n\"Oh!\" ... (about 1 second pause) ... \"Where is Sara?\"\\n(about 2 seconds of silence)\\n\"There you are!\"\\n(about 2 seconds of silence)\\n\"What is that?\"\\n\\n\n\nVoice reference: helena audio ref last.mp3 (~/Movies).",
+          "name": "raw render (new ref)",
+          "file": "trk_7_v3.mp3",
+          "status": "ready",
+          "liked": false,
+          "params": {
+            "model": "seed_audio",
+            "format": "wav",
+            "sample_rate": 48000
+          },
+          "ts": "2026-07-05T22:48:08.847Z",
+          "duration": 8.352,
+          "source": "higgsfield seed_audio job e4822ed5-f335-496f-988e-b1f543368e78 (TA2A voice-clone of 'helena audio ref last.mp3'; raw render)",
+          "ref": {
+            "name": "Helena — “audio ref last” (noisy)",
+            "file": "trk_7_ref_last.mp3",
+            "url": "/sound-media/trk_7_ref_last.mp3"
+          },
+          "seedText": "SEED AUDIO PROMPT\ntrack: Helena — where is Sara?  (trk_7)\nversion: v3 — raw render (new ref)\nstatus: ready   duration: 8.352s\ngenerated: 2026-07-05T22:48:08.847Z\n\n── PROMPT ─────────────────────────────────────────\n@Audio1 Use this EXACT voice — match its timbre, pitch, age and tone precisely. This is Helena, a young elf girl. Generate ONLY her clean spoken dialogue in the same voice as the reference: no music, no sound effects, no background ambience, no other characters — just Helena's voice with the pauses described.\n\nShe speaks in this order, with clear silent pauses:\n1) She notices something, says \"Oh!\", waits about one second looking around, then asks, a little puzzled: \"Where is Sara?\"\n2) About two seconds of silence.\n3) Brightening as she spots her friend, warmly: \"There you are!\"\n4) About two seconds of silence.\n5) Curious and surprised at something new: \"What is that?\"\n\nExact lines, in order, all in the same Helena voice as the reference:\n\"Oh!\" ... (about 1 second pause) ... \"Where is Sara?\"\n(about 2 seconds of silence)\n\"There you are!\"\n(about 2 seconds of silence)\n\"What is that?\"\n\n\n\nVoice reference: helena audio ref last.mp3 (~/Movies).\n\n── CONFIG ─────────────────────────────────────────\nmodel: seed_audio\nformat: wav\nsample_rate: 48000\nspeech_rate: 0\nloudness_rate: 0\npitch_rate: 0\nvoice_reference: Helena — “audio ref last” (noisy) (trk_7_ref_last.mp3)\n\n── SOURCE / POST-PROCESSING ───────────────────────\nhiggsfield seed_audio job e4822ed5-f335-496f-988e-b1f543368e78 (TA2A voice-clone of 'helena audio ref last.mp3'; raw render)\n",
+          "seedFile": "trk_7_v3.seed.txt",
+          "seedUrl": "/sound-media/trk_7_v3.seed.txt"
+        },
+        {
+          "v": 4,
+          "prompt": "@Audio1 Use this EXACT voice — match its timbre, pitch, age and tone precisely. This is Helena, a young elf girl. Generate ONLY her clean spoken dialogue in the same voice as the reference: no music, no sound effects, no background ambience, no other characters — just Helena's voice with the pauses described.\\n\\nShe speaks in this order, with clear silent pauses:\\n1) She notices something, says \"Oh!\", waits about one second looking around, then asks, a little puzzled: \"Where is Sara?\"\\n2) About two seconds of silence.\\n3) Brightening as she spots her friend, warmly: \"There you are!\"\\n4) About two seconds of silence.\\n5) Curious and surprised at something new: \"What is that?\"\\n\\nExact lines, in order, all in the same Helena voice as the reference:\\n\"Oh!\" ... (about 1 second pause) ... \"Where is Sara?\"\\n(about 2 seconds of silence)\\n\"There you are!\"\\n(about 2 seconds of silence)\\n\"What is that?\"\\n\\n\n\nVoice reference: helena audio ref last.mp3 (~/Movies).",
+          "name": "retimed 1s / 2s / 2s (new ref)",
+          "file": "trk_7_v4.mp3",
+          "status": "ready",
+          "liked": false,
+          "params": {
+            "model": "seed_audio",
+            "format": "wav",
+            "sample_rate": 48000
+          },
+          "ts": "2026-07-05T22:48:08.936Z",
+          "duration": 8.04,
+          "source": "higgsfield seed_audio job e4822ed5-f335-496f-988e-b1f543368e78 (voice-clone of 'helena audio ref last.mp3'; retimed locally to exact 1s/2s/2s pauses via ffmpeg)",
+          "ref": {
+            "name": "Helena — “audio ref last” (noisy)",
+            "file": "trk_7_ref_last.mp3",
+            "url": "/sound-media/trk_7_ref_last.mp3"
+          },
+          "seedText": "SEED AUDIO PROMPT\ntrack: Helena — where is Sara?  (trk_7)\nversion: v4 — retimed 1s / 2s / 2s (new ref)\nstatus: ready   duration: 8.04s\ngenerated: 2026-07-05T22:48:08.936Z\n\n── PROMPT ─────────────────────────────────────────\n@Audio1 Use this EXACT voice — match its timbre, pitch, age and tone precisely. This is Helena, a young elf girl. Generate ONLY her clean spoken dialogue in the same voice as the reference: no music, no sound effects, no background ambience, no other characters — just Helena's voice with the pauses described.\n\nShe speaks in this order, with clear silent pauses:\n1) She notices something, says \"Oh!\", waits about one second looking around, then asks, a little puzzled: \"Where is Sara?\"\n2) About two seconds of silence.\n3) Brightening as she spots her friend, warmly: \"There you are!\"\n4) About two seconds of silence.\n5) Curious and surprised at something new: \"What is that?\"\n\nExact lines, in order, all in the same Helena voice as the reference:\n\"Oh!\" ... (about 1 second pause) ... \"Where is Sara?\"\n(about 2 seconds of silence)\n\"There you are!\"\n(about 2 seconds of silence)\n\"What is that?\"\n\n\n\nVoice reference: helena audio ref last.mp3 (~/Movies).\n\n── CONFIG ─────────────────────────────────────────\nmodel: seed_audio\nformat: wav\nsample_rate: 48000\nspeech_rate: 0\nloudness_rate: 0\npitch_rate: 0\nvoice_reference: Helena — “audio ref last” (noisy) (trk_7_ref_last.mp3)\n\n── SOURCE / POST-PROCESSING ───────────────────────\nhiggsfield seed_audio job e4822ed5-f335-496f-988e-b1f543368e78 (voice-clone of 'helena audio ref last.mp3'; retimed locally to exact 1s/2s/2s pauses via ffmpeg)\n",
+          "seedFile": "trk_7_v4.seed.txt",
+          "seedUrl": "/sound-media/trk_7_v4.seed.txt"
+        },
+        {
+          "v": 5,
+          "prompt": "@Audio1 Use this EXACT voice — match its timbre, pitch, age and tone precisely. This is Helena, a young elf girl. Generate ONLY her clean spoken dialogue in the same voice as the reference: no music, no sound effects, no background ambience, no other characters — just Helena's voice with the pauses described.\\n\\nShe speaks in this order, with clear silent pauses:\\n1) She notices something, says \"Oh!\", waits about one second looking around, then asks, a little puzzled: \"Where is Sara?\"\\n2) About two seconds of silence.\\n3) Brightening as she spots her friend, warmly: \"There you are!\"\\n4) About two seconds of silence.\\n5) Curious and surprised at something new: \"What is that?\"\\n\\nExact lines, in order, all in the same Helena voice as the reference:\\n\"Oh!\" ... (about 1 second pause) ... \"Where is Sara?\"\\n(about 2 seconds of silence)\\n\"There you are!\"\\n(about 2 seconds of silence)\\n\"What is that?\"\\n\\n\n\nVoice reference: helena audio ref last CLEAN.mp3 (ffmpeg-denoised).",
+          "name": "raw render (clean ref)",
+          "file": "trk_7_v5.mp3",
+          "status": "ready",
+          "liked": false,
+          "params": {
+            "model": "seed_audio",
+            "format": "wav",
+            "sample_rate": 48000
+          },
+          "ts": "2026-07-06T02:16:07.326Z",
+          "duration": 8.568,
+          "source": "higgsfield seed_audio job 25c02065-c00c-4400-9011-a111f1e0ab3c (TA2A voice-clone of ffmpeg-denoised 'helena audio ref last CLEAN.mp3'; raw render)",
+          "ref": {
+            "name": "Helena — cleaned ref (denoised)",
+            "file": "trk_7_ref_clean.mp3",
+            "url": "/sound-media/trk_7_ref_clean.mp3"
+          },
+          "seedText": "SEED AUDIO PROMPT\ntrack: Helena — where is Sara?  (trk_7)\nversion: v5 — raw render (clean ref)\nstatus: ready   duration: 8.568s\ngenerated: 2026-07-06T02:16:07.326Z\n\n── PROMPT ─────────────────────────────────────────\n@Audio1 Use this EXACT voice — match its timbre, pitch, age and tone precisely. This is Helena, a young elf girl. Generate ONLY her clean spoken dialogue in the same voice as the reference: no music, no sound effects, no background ambience, no other characters — just Helena's voice with the pauses described.\n\nShe speaks in this order, with clear silent pauses:\n1) She notices something, says \"Oh!\", waits about one second looking around, then asks, a little puzzled: \"Where is Sara?\"\n2) About two seconds of silence.\n3) Brightening as she spots her friend, warmly: \"There you are!\"\n4) About two seconds of silence.\n5) Curious and surprised at something new: \"What is that?\"\n\nExact lines, in order, all in the same Helena voice as the reference:\n\"Oh!\" ... (about 1 second pause) ... \"Where is Sara?\"\n(about 2 seconds of silence)\n\"There you are!\"\n(about 2 seconds of silence)\n\"What is that?\"\n\n\n\nVoice reference: helena audio ref last CLEAN.mp3 (ffmpeg-denoised).\n\n── CONFIG ─────────────────────────────────────────\nmodel: seed_audio\nformat: wav\nsample_rate: 48000\nspeech_rate: 0\nloudness_rate: 0\npitch_rate: 0\nvoice_reference: Helena — cleaned ref (denoised) (trk_7_ref_clean.mp3)\n\n── SOURCE / POST-PROCESSING ───────────────────────\nhiggsfield seed_audio job 25c02065-c00c-4400-9011-a111f1e0ab3c (TA2A voice-clone of ffmpeg-denoised 'helena audio ref last CLEAN.mp3'; raw render)\n",
+          "seedFile": "trk_7_v5.seed.txt",
+          "seedUrl": "/sound-media/trk_7_v5.seed.txt"
+        },
+        {
+          "v": 6,
+          "prompt": "@Audio1 Use this EXACT voice — match its timbre, pitch, age and tone precisely. This is Helena, a young elf girl. Generate ONLY her clean spoken dialogue in the same voice as the reference: no music, no sound effects, no background ambience, no other characters — just Helena's voice with the pauses described.\\n\\nShe speaks in this order, with clear silent pauses:\\n1) She notices something, says \"Oh!\", waits about one second looking around, then asks, a little puzzled: \"Where is Sara?\"\\n2) About two seconds of silence.\\n3) Brightening as she spots her friend, warmly: \"There you are!\"\\n4) About two seconds of silence.\\n5) Curious and surprised at something new: \"What is that?\"\\n\\nExact lines, in order, all in the same Helena voice as the reference:\\n\"Oh!\" ... (about 1 second pause) ... \"Where is Sara?\"\\n(about 2 seconds of silence)\\n\"There you are!\"\\n(about 2 seconds of silence)\\n\"What is that?\"\\n\\n\n\nVoice reference: helena audio ref last CLEAN.mp3 (ffmpeg-denoised).",
+          "name": "retimed 1s / 2s / 2s (clean ref)",
+          "file": "trk_7_v6.mp3",
+          "status": "ready",
+          "liked": false,
+          "params": {
+            "model": "seed_audio",
+            "format": "wav",
+            "sample_rate": 48000
+          },
+          "ts": "2026-07-06T02:16:07.419Z",
+          "duration": 7.944,
+          "source": "higgsfield seed_audio job 25c02065-c00c-4400-9011-a111f1e0ab3c (voice-clone of ffmpeg-denoised 'helena audio ref last CLEAN.mp3'; retimed locally to exact 1s/2s/2s pauses)",
+          "ref": {
+            "name": "Helena — cleaned ref (denoised)",
+            "file": "trk_7_ref_clean.mp3",
+            "url": "/sound-media/trk_7_ref_clean.mp3"
+          },
+          "seedText": "SEED AUDIO PROMPT\ntrack: Helena — where is Sara?  (trk_7)\nversion: v6 — retimed 1s / 2s / 2s (clean ref)\nstatus: ready   duration: 7.944s\ngenerated: 2026-07-06T02:16:07.419Z\n\n── PROMPT ─────────────────────────────────────────\n@Audio1 Use this EXACT voice — match its timbre, pitch, age and tone precisely. This is Helena, a young elf girl. Generate ONLY her clean spoken dialogue in the same voice as the reference: no music, no sound effects, no background ambience, no other characters — just Helena's voice with the pauses described.\n\nShe speaks in this order, with clear silent pauses:\n1) She notices something, says \"Oh!\", waits about one second looking around, then asks, a little puzzled: \"Where is Sara?\"\n2) About two seconds of silence.\n3) Brightening as she spots her friend, warmly: \"There you are!\"\n4) About two seconds of silence.\n5) Curious and surprised at something new: \"What is that?\"\n\nExact lines, in order, all in the same Helena voice as the reference:\n\"Oh!\" ... (about 1 second pause) ... \"Where is Sara?\"\n(about 2 seconds of silence)\n\"There you are!\"\n(about 2 seconds of silence)\n\"What is that?\"\n\n\n\nVoice reference: helena audio ref last CLEAN.mp3 (ffmpeg-denoised).\n\n── CONFIG ─────────────────────────────────────────\nmodel: seed_audio\nformat: wav\nsample_rate: 48000\nspeech_rate: 0\nloudness_rate: 0\npitch_rate: 0\nvoice_reference: Helena — cleaned ref (denoised) (trk_7_ref_clean.mp3)\n\n── SOURCE / POST-PROCESSING ───────────────────────\nhiggsfield seed_audio job 25c02065-c00c-4400-9011-a111f1e0ab3c (voice-clone of ffmpeg-denoised 'helena audio ref last CLEAN.mp3'; retimed locally to exact 1s/2s/2s pauses)\n",
+          "seedFile": "trk_7_v6.seed.txt",
+          "seedUrl": "/sound-media/trk_7_v6.seed.txt"
+        },
+        {
+          "v": 7,
+          "prompt": "@Audio1 Use this EXACT voice — match its timbre, pitch, age and tone precisely. This is Helena, a young elf girl. Generate ONLY her clean spoken dialogue in the same voice as the reference: no music, no sound effects, no background ambience, no other characters — just Helena's voice with the pauses described.\\n\\nShe speaks in this order, with clear silent pauses:\\n1) She notices something, says \"Oh!\", waits about one second looking around, then asks, a little puzzled: \"Where is Sara?\"\\n2) About two seconds of silence.\\n3) Brightening as she spots her friend, warmly: \"There you are!\"\\n4) About two seconds of silence.\\n5) Curious and surprised at something new: \"What is that?\"\\n\\nExact lines, in order, all in the same Helena voice as the reference:\\n\"Oh!\" ... (about 1 second pause) ... \"Where is Sara?\"\\n(about 2 seconds of silence)\\n\"There you are!\"\\n(about 2 seconds of silence)\\n\"What is that?\"\\n\\n\n\nVoice reference: helena audio new no british.mp3 (new, non-British accent).",
+          "name": "raw render (no-british ref)",
+          "file": "trk_7_v7.mp3",
+          "status": "ready",
+          "liked": false,
+          "params": {
+            "model": "seed_audio",
+            "format": "wav",
+            "sample_rate": 48000
+          },
+          "ts": "2026-07-06T02:39:16.170Z",
+          "duration": 9.096,
+          "source": "higgsfield seed_audio job fa483530-545e-416f-8705-c4d469c22191 (TA2A voice-clone of new non-British ref; raw render)",
+          "ref": {
+            "name": "Helena — new “no british” ref",
+            "file": "trk_7_ref_nobrit.mp3",
+            "url": "/sound-media/trk_7_ref_nobrit.mp3"
+          },
+          "seedText": "SEED AUDIO PROMPT\ntrack: Helena — where is Sara?  (trk_7)\nversion: v7 — raw render (no-british ref)\nstatus: ready   duration: 9.096s\ngenerated: 2026-07-06T02:39:16.170Z\n\n── PROMPT ─────────────────────────────────────────\n@Audio1 Use this EXACT voice — match its timbre, pitch, age and tone precisely. This is Helena, a young elf girl. Generate ONLY her clean spoken dialogue in the same voice as the reference: no music, no sound effects, no background ambience, no other characters — just Helena's voice with the pauses described.\n\nShe speaks in this order, with clear silent pauses:\n1) She notices something, says \"Oh!\", waits about one second looking around, then asks, a little puzzled: \"Where is Sara?\"\n2) About two seconds of silence.\n3) Brightening as she spots her friend, warmly: \"There you are!\"\n4) About two seconds of silence.\n5) Curious and surprised at something new: \"What is that?\"\n\nExact lines, in order, all in the same Helena voice as the reference:\n\"Oh!\" ... (about 1 second pause) ... \"Where is Sara?\"\n(about 2 seconds of silence)\n\"There you are!\"\n(about 2 seconds of silence)\n\"What is that?\"\n\n\n\nVoice reference: helena audio new no british.mp3 (new, non-British accent).\n\n── CONFIG ─────────────────────────────────────────\nmodel: seed_audio\nformat: wav\nsample_rate: 48000\nspeech_rate: 0\nloudness_rate: 0\npitch_rate: 0\nvoice_reference: Helena — new “no british” ref (trk_7_ref_nobrit.mp3)\n\n── SOURCE / POST-PROCESSING ───────────────────────\nhiggsfield seed_audio job fa483530-545e-416f-8705-c4d469c22191 (TA2A voice-clone of new non-British ref; raw render)\n",
+          "seedFile": "trk_7_v7.seed.txt",
+          "seedUrl": "/sound-media/trk_7_v7.seed.txt"
+        },
+        {
+          "v": 8,
+          "prompt": "@Audio1 Use this EXACT voice — match its timbre, pitch, age and tone precisely. This is Helena, a young elf girl. Generate ONLY her clean spoken dialogue in the same voice as the reference: no music, no sound effects, no background ambience, no other characters — just Helena's voice with the pauses described.\\n\\nShe speaks in this order, with clear silent pauses:\\n1) She notices something, says \"Oh!\", waits about one second looking around, then asks, a little puzzled: \"Where is Sara?\"\\n2) About two seconds of silence.\\n3) Brightening as she spots her friend, warmly: \"There you are!\"\\n4) About two seconds of silence.\\n5) Curious and surprised at something new: \"What is that?\"\\n\\nExact lines, in order, all in the same Helena voice as the reference:\\n\"Oh!\" ... (about 1 second pause) ... \"Where is Sara?\"\\n(about 2 seconds of silence)\\n\"There you are!\"\\n(about 2 seconds of silence)\\n\"What is that?\"\\n\\n\n\nVoice reference: helena audio new no british.mp3 (new, non-British accent).",
+          "name": "retimed 1s / 2s / 2s (no-british ref)",
+          "file": "trk_7_v8.mp3",
+          "status": "ready",
+          "liked": false,
+          "params": {
+            "model": "seed_audio",
+            "format": "wav",
+            "sample_rate": 48000
+          },
+          "ts": "2026-07-06T02:39:16.267Z",
+          "duration": 7.776,
+          "source": "higgsfield seed_audio job fa483530-545e-416f-8705-c4d469c22191 (voice-clone of new non-British ref; retimed locally to exact 1s/2s/2s pauses)",
+          "ref": {
+            "name": "Helena — new “no british” ref",
+            "file": "trk_7_ref_nobrit.mp3",
+            "url": "/sound-media/trk_7_ref_nobrit.mp3"
+          },
+          "seedText": "SEED AUDIO PROMPT\ntrack: Helena — where is Sara?  (trk_7)\nversion: v8 — retimed 1s / 2s / 2s (no-british ref)\nstatus: ready   duration: 7.776s\ngenerated: 2026-07-06T02:39:16.267Z\n\n── PROMPT ─────────────────────────────────────────\n@Audio1 Use this EXACT voice — match its timbre, pitch, age and tone precisely. This is Helena, a young elf girl. Generate ONLY her clean spoken dialogue in the same voice as the reference: no music, no sound effects, no background ambience, no other characters — just Helena's voice with the pauses described.\n\nShe speaks in this order, with clear silent pauses:\n1) She notices something, says \"Oh!\", waits about one second looking around, then asks, a little puzzled: \"Where is Sara?\"\n2) About two seconds of silence.\n3) Brightening as she spots her friend, warmly: \"There you are!\"\n4) About two seconds of silence.\n5) Curious and surprised at something new: \"What is that?\"\n\nExact lines, in order, all in the same Helena voice as the reference:\n\"Oh!\" ... (about 1 second pause) ... \"Where is Sara?\"\n(about 2 seconds of silence)\n\"There you are!\"\n(about 2 seconds of silence)\n\"What is that?\"\n\n\n\nVoice reference: helena audio new no british.mp3 (new, non-British accent).\n\n── CONFIG ─────────────────────────────────────────\nmodel: seed_audio\nformat: wav\nsample_rate: 48000\nspeech_rate: 0\nloudness_rate: 0\npitch_rate: 0\nvoice_reference: Helena — new “no british” ref (trk_7_ref_nobrit.mp3)\n\n── SOURCE / POST-PROCESSING ───────────────────────\nhiggsfield seed_audio job fa483530-545e-416f-8705-c4d469c22191 (voice-clone of new non-British ref; retimed locally to exact 1s/2s/2s pauses)\n",
+          "seedFile": "trk_7_v8.seed.txt",
+          "seedUrl": "/sound-media/trk_7_v8.seed.txt"
+        }
+      ]
+    },
+    {
+      "id": "trk_8",
+      "name": "Helena — adventure line (test)",
+      "createdAt": "2026-07-06T02:56:03.470Z",
+      "versions": [
+        {
+          "v": 1,
+          "prompt": "@Audio1 Use this EXACT voice — match its timbre, pitch, age, accent and tone precisely (match the reference’s accent exactly, it is NOT British). This is Helena, a young elf girl. Generate ONLY her clean spoken dialogue in the same voice and accent as the reference: no music, no sound effects, no background ambience, no other characters — just Helena’s voice. Warm, playful, natural children’s-show delivery with natural pauses between the sentences.\n\nHelena says, exactly these words:\n\"You want an adventure? We play, right here. This side of the stone. Hide and seek. You hide, I find you, we go home. That’s the whole adventure with a new sound.\"\n\nVoice reference: helena audio new no british.mp3 (non-British accent). Dialog test.",
+          "name": "seed render (no-british ref)",
+          "file": "trk_8_v1.mp3",
+          "status": "ready",
+          "liked": false,
+          "params": {
+            "model": "seed_audio",
+            "format": "wav",
+            "sample_rate": 48000
+          },
+          "ts": "2026-07-06T02:56:15.415Z",
+          "duration": 13.992,
+          "source": "higgsfield seed_audio job 0f566d8b-5a2b-480b-9c3d-4b9208782d4a (TA2A voice-clone of non-British ref; new adventure dialog test)",
+          "ref": {
+            "name": "Helena — new “no british” ref",
+            "file": "trk_8_ref_nobrit.mp3",
+            "url": "/sound-media/trk_8_ref_nobrit.mp3"
+          },
+          "seedText": "SEED AUDIO PROMPT\ntrack: Helena — adventure line (test)  (trk_8)\nversion: v1 — seed render (no-british ref)\nstatus: ready   duration: 13.992s\ngenerated: 2026-07-06T02:56:15.415Z\n\n── PROMPT ─────────────────────────────────────────\n@Audio1 Use this EXACT voice — match its timbre, pitch, age, accent and tone precisely (match the reference’s accent exactly, it is NOT British). This is Helena, a young elf girl. Generate ONLY her clean spoken dialogue in the same voice and accent as the reference: no music, no sound effects, no background ambience, no other characters — just Helena’s voice. Warm, playful, natural children’s-show delivery with natural pauses between the sentences.\n\nHelena says, exactly these words:\n\"You want an adventure? We play, right here. This side of the stone. Hide and seek. You hide, I find you, we go home. That’s the whole adventure with a new sound.\"\n\nVoice reference: helena audio new no british.mp3 (non-British accent). Dialog test.\n\n── CONFIG ─────────────────────────────────────────\nmodel: seed_audio\nformat: wav\nsample_rate: 48000\nspeech_rate: 0\nloudness_rate: 0\npitch_rate: 0\nvoice_reference: Helena — new “no british” ref (trk_8_ref_nobrit.mp3)\n\n── SOURCE / POST-PROCESSING ───────────────────────\nhiggsfield seed_audio job 0f566d8b-5a2b-480b-9c3d-4b9208782d4a (TA2A voice-clone of non-British ref; new adventure dialog test)\n",
+          "seedFile": "trk_8_v1.seed.txt",
+          "seedUrl": "/sound-media/trk_8_v1.seed.txt"
+        }
+      ]
+    },
+    {
+      "id": "trk_9",
+      "name": "Helena — meet after school (test)",
+      "createdAt": "2026-07-06T15:01:09.449Z",
+      "versions": [
+        {
+          "v": 1,
+          "prompt": "@Audio1 Use this EXACT voice — match its timbre, pitch, age, accent and tone precisely (match the reference’s accent exactly, it is NOT British). This is Helena, a young elf girl. Generate ONLY her clean spoken dialogue in the same voice and accent as the reference: no music, no sound effects, no background ambience, no other characters — just Helena’s voice. Warm, playful, natural children’s-show delivery with natural pauses between the sentences; a little wondering and searching in tone.\n\nHelena says, exactly these words:\n\"Really? We always meet here after school. Where are you, Sara?\"\n\nVoice reference: helena audio new no british.mp3 (non-British accent). Dialog test.",
+          "name": "seed render (no-british ref)",
+          "file": "trk_9_v1.mp3",
+          "status": "ready",
+          "liked": false,
+          "params": {
+            "model": "seed_audio",
+            "format": "wav",
+            "sample_rate": 48000
+          },
+          "ts": "2026-07-06T15:01:22.091Z",
+          "duration": 5.448,
+          "source": "higgsfield seed_audio job 67557d74-4d8d-4268-a0ad-a89583843971 (TA2A voice-clone of non-British ref; “meet after school” dialog test)",
+          "ref": {
+            "name": "Helena — new “no british” ref",
+            "file": "trk_9_ref_nobrit.mp3",
+            "url": "/sound-media/trk_9_ref_nobrit.mp3"
+          },
+          "seedText": "SEED AUDIO PROMPT\ntrack: Helena — meet after school (test)  (trk_9)\nversion: v1 — seed render (no-british ref)\nstatus: ready   duration: 5.448s\ngenerated: 2026-07-06T15:01:22.091Z\n\n── PROMPT ─────────────────────────────────────────\n@Audio1 Use this EXACT voice — match its timbre, pitch, age, accent and tone precisely (match the reference’s accent exactly, it is NOT British). This is Helena, a young elf girl. Generate ONLY her clean spoken dialogue in the same voice and accent as the reference: no music, no sound effects, no background ambience, no other characters — just Helena’s voice. Warm, playful, natural children’s-show delivery with natural pauses between the sentences; a little wondering and searching in tone.\n\nHelena says, exactly these words:\n\"Really? We always meet here after school. Where are you, Sara?\"\n\nVoice reference: helena audio new no british.mp3 (non-British accent). Dialog test.\n\n── CONFIG ─────────────────────────────────────────\nmodel: seed_audio\nformat: wav\nsample_rate: 48000\nspeech_rate: 0\nloudness_rate: 0\npitch_rate: 0\nvoice_reference: Helena — new “no british” ref (trk_9_ref_nobrit.mp3)\n\n── SOURCE / POST-PROCESSING ───────────────────────\nhiggsfield seed_audio job 67557d74-4d8d-4268-a0ad-a89583843971 (TA2A voice-clone of non-British ref; “meet after school” dialog test)\n",
+          "seedFile": "trk_9_v1.seed.txt",
+          "seedUrl": "/sound-media/trk_9_v1.seed.txt"
+        }
+      ]
+    },
+    {
+      "id": "trk_10",
+      "name": "Helena — \"Let's go!\" (enthusiastic test)",
+      "createdAt": "2026-07-07T19:20:47.778Z",
+      "versions": [
+        {
+          "v": 1,
+          "prompt": "Helena (young woman, bright, energetic timbre, voiced to match @Audio1) exclaims with excited urgency: \"Let's go!\" No music, no sound effects, clean voice only, slight room tone, single take.",
+          "name": null,
+          "file": null,
+          "status": "pending",
+          "liked": false,
+          "params": {
+            "format": "wav",
+            "sample_rate": "48000",
+            "speech_rate": "15",
+            "pitch_rate": "0"
+          },
+          "ts": "2026-07-07T19:20:47.778Z"
+        }
+      ]
+    },
+    {
+      "id": "trk_11",
+      "name": "sound 11",
+      "createdAt": "2026-07-07T21:37:08.500Z",
+      "versions": [
+        {
+          "v": 1,
+          "prompt": "Create a background music track that must be 5 seconds long. It should have a start, and an ending that finishes the song not abruptly but gracefully.\n\nNotice this track is tension, make it very terrifing with tension.\n\nUse the following multi-shot prompt as reference for the scene the music plays under:\n- MS-33 shot 105 (3.4s): The King leans in, pressing the lesson, eyes warm and probing. Sara listens, caught off guard at the edge of frame.\n- MS-33 shot 106 (4s): Sara falters, working it out aloud, brow knitting as the thought forms. She trails off, searching for the word.",
+          "name": null,
+          "file": "trk_11_v1.wav",
+          "status": "ready",
+          "liked": false,
+          "params": {
+            "model": "seed_audio",
+            "format": "wav",
+            "sample_rate": 48000
+          },
+          "ts": "2026-07-07T21:38:35.663Z",
+          "duration": 5,
+          "source": "https://d8j0ntlcm91z4.cloudfront.net/user_38vitaQqa4HdYi7u4JnjNrpYAA8/hf_20260707_213802_f2fd4340-40f5-4850-8835-dea2a7112aa0.wav",
+          "seedText": "SEED AUDIO PROMPT\ntrack: sound 11  (trk_11)\nversion: v1\nstatus: ready   duration: 5s\ngenerated: 2026-07-07T21:38:35.663Z\n\n── PROMPT ─────────────────────────────────────────\nCreate a background music track that must be 5 seconds long. It should have a start, and an ending that finishes the song not abruptly but gracefully.\n\nNotice this track is tension, make it very terrifing with tension.\n\nUse the following multi-shot prompt as reference for the scene the music plays under:\n- MS-33 shot 105 (3.4s): The King leans in, pressing the lesson, eyes warm and probing. Sara listens, caught off guard at the edge of frame.\n- MS-33 shot 106 (4s): Sara falters, working it out aloud, brow knitting as the thought forms. She trails off, searching for the word.\n\n── CONFIG ─────────────────────────────────────────\nmodel: seed_audio\nformat: wav\nsample_rate: 48000\nspeech_rate: 0\nloudness_rate: 0\npitch_rate: 0\n\n── SOURCE / POST-PROCESSING ───────────────────────\nhttps://d8j0ntlcm91z4.cloudfront.net/user_38vitaQqa4HdYi7u4JnjNrpYAA8/hf_20260707_213802_f2fd4340-40f5-4850-8835-dea2a7112aa0.wav\n",
+          "seedFile": "trk_11_v1.seed.txt",
+          "seedUrl": "/sound-media/trk_11_v1.seed.txt"
+        }
+      ]
+    },
+    {
+      "id": "trk_13",
+      "name": "Cue 3 — Crossing over (the hollow)",
+      "createdAt": "2026-07-08T15:26:35.136Z",
+      "versions": [
+        {
+          "v": 1,
+          "prompt": "Create a background music track that must be 29 seconds long. It should have a start, and an ending that finishes the song not abruptly but gracefully.\n\nNotice this track is mystery, suspenseful, magical, storybook Scandinavian folk.\n\nUse the following multi-shot prompt as reference for the scene the music plays under:\n- MS-09 (Beat 3 — The hollow): Sara quietly leaves the clearing, searching the underbrush, then pauses as something ahead catches her eye.\n- MS-10 (Beat 3 — The hollow): Sara hesitates at the boundary stone, weighing whether to cross, and gently talks herself a step nearer the glow.\n\nTry to make some sound design on the track that has some highs or lows at these second marks: near-silence at 0:00, a cold shimmer ~0:08, a held airy swell ~0:18 that pulls energy inward, settle into hush by the end.\n\nInstrumental music only — no voices, no singing, no sound effects or ambience (dialogue and SFX already live in the film); keep it a low underscore beneath the dialogue. Storybook Scandinavian-folklore palette so all the cues sound like one score. Begin with a gentle fade-in and end with a soft fade-out — never an abrupt start or cut.",
+          "name": null,
+          "file": "trk_13_v1.wav",
+          "status": "ready",
+          "liked": false,
+          "params": {
+            "model": "seed_audio",
+            "format": "wav",
+            "sample_rate": 48000
+          },
+          "ts": "2026-07-08T15:58:07.496Z",
+          "duration": 29,
+          "source": "https://d8j0ntlcm91z4.cloudfront.net/user_38vitaQqa4HdYi7u4JnjNrpYAA8/hf_20260708_155605_de5d5489-ff71-41de-bc94-0f7cf7e752e4.wav",
+          "seedText": "SEED AUDIO PROMPT\ntrack: Cue 3 — Crossing over (the hollow)  (trk_13)\nversion: v1\nstatus: ready   duration: 29s\ngenerated: 2026-07-08T15:58:07.496Z\n\n── PROMPT ─────────────────────────────────────────\nCreate a background music track that must be 29 seconds long. It should have a start, and an ending that finishes the song not abruptly but gracefully.\n\nNotice this track is mystery, suspenseful, magical, storybook Scandinavian folk.\n\nUse the following multi-shot prompt as reference for the scene the music plays under:\n- MS-09 (Beat 3 — The hollow): Sara quietly leaves the clearing, searching the underbrush, then pauses as something ahead catches her eye.\n- MS-10 (Beat 3 — The hollow): Sara hesitates at the boundary stone, weighing whether to cross, and gently talks herself a step nearer the glow.\n\nTry to make some sound design on the track that has some highs or lows at these second marks: near-silence at 0:00, a cold shimmer ~0:08, a held airy swell ~0:18 that pulls energy inward, settle into hush by the end.\n\nInstrumental music only — no voices, no singing, no sound effects or ambience (dialogue and SFX already live in the film); keep it a low underscore beneath the dialogue. Storybook Scandinavian-folklore palette so all the cues sound like one score. Begin with a gentle fade-in and end with a soft fade-out — never an abrupt start or cut.\n\n── CONFIG ─────────────────────────────────────────\nmodel: seed_audio\nformat: wav\nsample_rate: 48000\nspeech_rate: 0\nloudness_rate: 0\npitch_rate: 0\n\n── SOURCE / POST-PROCESSING ───────────────────────\nhttps://d8j0ntlcm91z4.cloudfront.net/user_38vitaQqa4HdYi7u4JnjNrpYAA8/hf_20260708_155605_de5d5489-ff71-41de-bc94-0f7cf7e752e4.wav\n",
+          "seedFile": "trk_13_v1.seed.txt",
+          "seedUrl": "/sound-media/trk_13_v1.seed.txt"
+        }
+      ]
+    },
+    {
+      "id": "trk_14",
+      "name": "Cue 4 — The Forest King",
+      "createdAt": "2026-07-08T15:26:35.138Z",
+      "versions": [
+        {
+          "v": 1,
+          "prompt": "Create a background music track that must be 42 seconds long. It should have a start, and an ending that finishes the song not abruptly but gracefully.\n\nNotice this track is magical, dreamy, suspenseful, storybook Scandinavian folk.\n\nUse the following multi-shot prompt as reference for the scene the music plays under:\n- MS-11 (Beat 4 — King's house (Sara)): Sara crawls out of a hedge-archway, rises to her feet, and her neck cranes back as her eyes climb an impossibly high ceiling. The bush behind her has become a grand round doorway.\n- MS-12 (Beat 4 — King's house (Sara)): The Forest King gives a warm, easy smile and gestures faintly with the teapot, steam curling, while tiny Sara stares up at him.\n- MS-13 (Beat 4 — King's house (Sara)): Framed by the round window — the leaning boundary stone and the clearing beyond, clear as day. The King gazes out fondly; tiny Sara peers up beside him.\n- MS-14 (Beat 4 — King's house (Sara)): Sara turns from the glass, won over, and gives a soft small smile.\n\nTry to make some sound design on the track that has some highs or lows at these second marks: music-box theme in at 0:02, a warm curious lift ~0:18, a shadow of dissonance ~0:30, resolve softly.\n\nInstrumental music only — no voices, no singing, no sound effects or ambience (dialogue and SFX already live in the film); keep it a low underscore beneath the dialogue. Storybook Scandinavian-folklore palette so all the cues sound like one score. Begin with a gentle fade-in and end with a soft fade-out — never an abrupt start or cut.",
+          "name": null,
+          "file": "trk_14_v1.wav",
+          "status": "ready",
+          "liked": false,
+          "params": {
+            "model": "seed_audio",
+            "format": "wav",
+            "sample_rate": 48000
+          },
+          "ts": "2026-07-08T15:49:24.609Z",
+          "duration": 42,
+          "source": "https://d8j0ntlcm91z4.cloudfront.net/user_38vitaQqa4HdYi7u4JnjNrpYAA8/hf_20260708_154515_88b13cb2-7949-4a8c-9399-b42cebcee7de.wav",
+          "seedText": "SEED AUDIO PROMPT\ntrack: Cue 4 — The Forest King  (trk_14)\nversion: v1\nstatus: ready   duration: 42s\ngenerated: 2026-07-08T15:49:24.609Z\n\n── PROMPT ─────────────────────────────────────────\nCreate a background music track that must be 42 seconds long. It should have a start, and an ending that finishes the song not abruptly but gracefully.\n\nNotice this track is magical, dreamy, suspenseful, storybook Scandinavian folk.\n\nUse the following multi-shot prompt as reference for the scene the music plays under:\n- MS-11 (Beat 4 — King's house (Sara)): Sara crawls out of a hedge-archway, rises to her feet, and her neck cranes back as her eyes climb an impossibly high ceiling. The bush behind her has become a grand round doorway.\n- MS-12 (Beat 4 — King's house (Sara)): The Forest King gives a warm, easy smile and gestures faintly with the teapot, steam curling, while tiny Sara stares up at him.\n- MS-13 (Beat 4 — King's house (Sara)): Framed by the round window — the leaning boundary stone and the clearing beyond, clear as day. The King gazes out fondly; tiny Sara peers up beside him.\n- MS-14 (Beat 4 — King's house (Sara)): Sara turns from the glass, won over, and gives a soft small smile.\n\nTry to make some sound design on the track that has some highs or lows at these second marks: music-box theme in at 0:02, a warm curious lift ~0:18, a shadow of dissonance ~0:30, resolve softly.\n\nInstrumental music only — no voices, no singing, no sound effects or ambience (dialogue and SFX already live in the film); keep it a low underscore beneath the dialogue. Storybook Scandinavian-folklore palette so all the cues sound like one score. Begin with a gentle fade-in and end with a soft fade-out — never an abrupt start or cut.\n\n── CONFIG ─────────────────────────────────────────\nmodel: seed_audio\nformat: wav\nsample_rate: 48000\nspeech_rate: 0\nloudness_rate: 0\npitch_rate: 0\n\n── SOURCE / POST-PROCESSING ───────────────────────\nhttps://d8j0ntlcm91z4.cloudfront.net/user_38vitaQqa4HdYi7u4JnjNrpYAA8/hf_20260708_154515_88b13cb2-7949-4a8c-9399-b42cebcee7de.wav\n",
+          "seedFile": "trk_14_v1.seed.txt",
+          "seedUrl": "/sound-media/trk_14_v1.seed.txt"
+        }
+      ]
+    },
+    {
+      "id": "trk_15",
+      "name": "Cue 5 — Helena searches",
+      "createdAt": "2026-07-08T15:26:35.141Z",
+      "versions": [
+        {
+          "v": 1,
+          "prompt": "Create a background music track that must be 29 seconds long. It should have a start, and an ending that finishes the song not abruptly but gracefully.\n\nNotice this track is adventurous, suspenseful, melancholic, storybook Scandinavian folk.\n\nUse the following multi-shot prompt as reference for the scene the music plays under:\n- MS-15 (Beat 4 — Searching the clearing): Helena arrives at the clearing full of bright confidence, scanning the underbrush like a tiny detective.\n- MS-16 (Beat 4 — Searching the clearing): A montage feel — Helena revisits the same spots again and again, her steps quicker and less playful as her cheer quietly fades.\n\nTry to make some sound design on the track that has some highs or lows at these second marks: an uneasy ostinato from 0:00, the fiddle theme enters ~0:06, tension nudges up ~0:18, leave it unresolved and hanging into the next scene.\n\nInstrumental music only — no voices, no singing, no sound effects or ambience (dialogue and SFX already live in the film); keep it a low underscore beneath the dialogue. Storybook Scandinavian-folklore palette so all the cues sound like one score. Begin with a gentle fade-in and end with a soft fade-out — never an abrupt start or cut.",
+          "name": null,
+          "file": "trk_15_v1.wav",
+          "status": "ready",
+          "liked": false,
+          "params": {
+            "model": "seed_audio",
+            "format": "wav",
+            "sample_rate": 48000
+          },
+          "ts": "2026-07-08T15:58:10.895Z",
+          "duration": 29,
+          "source": "https://d8j0ntlcm91z4.cloudfront.net/user_38vitaQqa4HdYi7u4JnjNrpYAA8/hf_20260708_155610_49dfa62d-4557-484d-b3f5-1782b55159e3.wav",
+          "seedText": "SEED AUDIO PROMPT\ntrack: Cue 5 — Helena searches  (trk_15)\nversion: v1\nstatus: ready   duration: 29s\ngenerated: 2026-07-08T15:58:10.895Z\n\n── PROMPT ─────────────────────────────────────────\nCreate a background music track that must be 29 seconds long. It should have a start, and an ending that finishes the song not abruptly but gracefully.\n\nNotice this track is adventurous, suspenseful, melancholic, storybook Scandinavian folk.\n\nUse the following multi-shot prompt as reference for the scene the music plays under:\n- MS-15 (Beat 4 — Searching the clearing): Helena arrives at the clearing full of bright confidence, scanning the underbrush like a tiny detective.\n- MS-16 (Beat 4 — Searching the clearing): A montage feel — Helena revisits the same spots again and again, her steps quicker and less playful as her cheer quietly fades.\n\nTry to make some sound design on the track that has some highs or lows at these second marks: an uneasy ostinato from 0:00, the fiddle theme enters ~0:06, tension nudges up ~0:18, leave it unresolved and hanging into the next scene.\n\nInstrumental music only — no voices, no singing, no sound effects or ambience (dialogue and SFX already live in the film); keep it a low underscore beneath the dialogue. Storybook Scandinavian-folklore palette so all the cues sound like one score. Begin with a gentle fade-in and end with a soft fade-out — never an abrupt start or cut.\n\n── CONFIG ─────────────────────────────────────────\nmodel: seed_audio\nformat: wav\nsample_rate: 48000\nspeech_rate: 0\nloudness_rate: 0\npitch_rate: 0\n\n── SOURCE / POST-PROCESSING ───────────────────────\nhttps://d8j0ntlcm91z4.cloudfront.net/user_38vitaQqa4HdYi7u4JnjNrpYAA8/hf_20260708_155610_49dfa62d-4557-484d-b3f5-1782b55159e3.wav\n",
+          "seedFile": "trk_15_v1.seed.txt",
+          "seedUrl": "/sound-media/trk_15_v1.seed.txt"
+        }
+      ]
+    },
+    {
+      "id": "trk_16",
+      "name": "Cue 6 — Tea & the locked door",
+      "createdAt": "2026-07-08T15:26:35.143Z",
+      "versions": [
+        {
+          "v": 1,
+          "prompt": "Create a background music track that must be 63 seconds long. It should have a start, and an ending that finishes the song not abruptly but gracefully.\n\nNotice this track is cozy, suspenseful, frightening, storybook Scandinavian folk.\n\nUse the following multi-shot prompt as reference for the scene the music plays under:\n- MS-17 (Beat 5 — Tea & the locked door (Sara)): Sara swings her legs from an oversized chair, charmed and dreamy, taking a slow sip from a tiny cup. Steam curls up in the amber light.\n- MS-18 (Beat 5 — Tea & the locked door (Sara)): Sara bolts from the nook to the great round door, shoving, pulling, and throwing her shoulder against it. It does not budge.\n- MS-19 (Beat 5 — Tea & the locked door (Sara)): The King answers quietly, then begins the old story, his gaze drifting as if seeing the deep wood of long ago.\n- MS-20 (Beat 5 — Tea & the locked door (Sara)): Sara looks up, small and afraid, asking the question she dreads the answer to.\n- MS-21 (Beat 5 — Tea & the locked door (Sara)): The King softens further, reassuring her it is no punishment, only the price of the door — she would simply be ordinary again.\n\nTry to make some sound design on the track that has some highs or lows at these second marks: a cozy music-box waltz 0:00–0:20, first harmonic shadow ~0:25, creeping low strings ~0:38, tension tightening ~0:50, end on an unresolved uneasy hush.\n\nInstrumental music only — no voices, no singing, no sound effects or ambience (dialogue and SFX already live in the film); keep it a low underscore beneath the dialogue. Storybook Scandinavian-folklore palette so all the cues sound like one score. Begin with a gentle fade-in and end with a soft fade-out — never an abrupt start or cut.",
+          "name": null,
+          "file": "trk_16_v1.wav",
+          "status": "ready",
+          "liked": false,
+          "params": {
+            "model": "seed_audio",
+            "format": "wav",
+            "sample_rate": 48000
+          },
+          "ts": "2026-07-08T15:49:28.683Z",
+          "duration": 63,
+          "source": "https://d8j0ntlcm91z4.cloudfront.net/user_38vitaQqa4HdYi7u4JnjNrpYAA8/hf_20260708_154527_82e34a05-8b2d-49fc-b181-e4bd754476fb.wav",
+          "seedText": "SEED AUDIO PROMPT\ntrack: Cue 6 — Tea & the locked door  (trk_16)\nversion: v1\nstatus: ready   duration: 63s\ngenerated: 2026-07-08T15:49:28.683Z\n\n── PROMPT ─────────────────────────────────────────\nCreate a background music track that must be 63 seconds long. It should have a start, and an ending that finishes the song not abruptly but gracefully.\n\nNotice this track is cozy, suspenseful, frightening, storybook Scandinavian folk.\n\nUse the following multi-shot prompt as reference for the scene the music plays under:\n- MS-17 (Beat 5 — Tea & the locked door (Sara)): Sara swings her legs from an oversized chair, charmed and dreamy, taking a slow sip from a tiny cup. Steam curls up in the amber light.\n- MS-18 (Beat 5 — Tea & the locked door (Sara)): Sara bolts from the nook to the great round door, shoving, pulling, and throwing her shoulder against it. It does not budge.\n- MS-19 (Beat 5 — Tea & the locked door (Sara)): The King answers quietly, then begins the old story, his gaze drifting as if seeing the deep wood of long ago.\n- MS-20 (Beat 5 — Tea & the locked door (Sara)): Sara looks up, small and afraid, asking the question she dreads the answer to.\n- MS-21 (Beat 5 — Tea & the locked door (Sara)): The King softens further, reassuring her it is no punishment, only the price of the door — she would simply be ordinary again.\n\nTry to make some sound design on the track that has some highs or lows at these second marks: a cozy music-box waltz 0:00–0:20, first harmonic shadow ~0:25, creeping low strings ~0:38, tension tightening ~0:50, end on an unresolved uneasy hush.\n\nInstrumental music only — no voices, no singing, no sound effects or ambience (dialogue and SFX already live in the film); keep it a low underscore beneath the dialogue. Storybook Scandinavian-folklore palette so all the cues sound like one score. Begin with a gentle fade-in and end with a soft fade-out — never an abrupt start or cut.\n\n── CONFIG ─────────────────────────────────────────\nmodel: seed_audio\nformat: wav\nsample_rate: 48000\nspeech_rate: 0\nloudness_rate: 0\npitch_rate: 0\n\n── SOURCE / POST-PROCESSING ───────────────────────\nhttps://d8j0ntlcm91z4.cloudfront.net/user_38vitaQqa4HdYi7u4JnjNrpYAA8/hf_20260708_154527_82e34a05-8b2d-49fc-b181-e4bd754476fb.wav\n",
+          "seedFile": "trk_16_v1.seed.txt",
+          "seedUrl": "/sound-media/trk_16_v1.seed.txt"
+        }
+      ]
+    },
+    {
+      "id": "trk_18",
+      "name": "Cue 8 — Nightfall montage",
+      "createdAt": "2026-07-08T15:26:35.146Z",
+      "versions": [
+        {
+          "v": 1,
+          "prompt": "Create a background music track that must be 31 seconds long. It should have a start, and an ending that finishes the song not abruptly but gracefully.\n\nNotice this track is adventurous, magical, dreamy, storybook Scandinavian folk.\n\nUse the following multi-shot prompt as reference for the scene the music plays under:\n- MS-26 (Beat 6 — Nightfall montage (Helena)): Helena crouches at a dark hollow log, Mote hovering close so its glow spills inside. The hollow is empty; she…\n- MS-27 (Beat 6 — Nightfall montage (Helena)): At a glistening waterfall rock, Helena peers behind the spray-slick boulder while Mote bobs overhead. Nothing…\n- MS-28 (Beat 6 — Nightfall montage (Helena)): Helena balances along the trunk of a leaning tree, arms out, as Mote darts ahead lighting each branch. The br…\n- MS-29 (Beat 6 — Nightfall montage (Helena)): Flat on her belly, Helena reaches deep into the dark gap beneath big tree roots while Mote squeezes close to…\n- MS-30 (Beat 6 — Nightfall montage (Helena)): Helena sinks down against a broad tree trunk and hugs her knees. Mote settles beside her on the moss, dimming…\n- MS-31 (Beat 6 — Nightfall montage (Helena)): Helena presses her face into her knees. Mote shrinks until its glow is almost nothing, leaving the forest nea…\n\nTry to make some sound design on the track that has some highs or lows at these second marks: a rolling ostinato from 0:00, the theme enters ~0:06, layers stack ~0:15, a full swell/peak ~0:26, then a graceful landing.\n\nInstrumental music only — no voices, no singing, no sound effects or ambience (dialogue and SFX already live in the film); keep it a low underscore beneath the dialogue. Storybook Scandinavian-folklore palette so all the cues sound like one score. Begin with a gentle fade-in and end with a soft fade-out — never an abrupt start or cut.",
+          "name": null,
+          "file": "trk_18_v1.wav",
+          "status": "ready",
+          "liked": false,
+          "params": {
+            "model": "seed_audio",
+            "format": "wav",
+            "sample_rate": 48000
+          },
+          "ts": "2026-07-08T15:49:34.433Z",
+          "duration": 31,
+          "source": "https://d8j0ntlcm91z4.cloudfront.net/user_38vitaQqa4HdYi7u4JnjNrpYAA8/hf_20260708_154552_9f19ff56-b472-4d0c-b239-4d8400be2a8f.wav",
+          "seedText": "SEED AUDIO PROMPT\ntrack: Cue 8 — Nightfall montage  (trk_18)\nversion: v1\nstatus: ready   duration: 31s\ngenerated: 2026-07-08T15:49:34.433Z\n\n── PROMPT ─────────────────────────────────────────\nCreate a background music track that must be 31 seconds long. It should have a start, and an ending that finishes the song not abruptly but gracefully.\n\nNotice this track is adventurous, magical, dreamy, storybook Scandinavian folk.\n\nUse the following multi-shot prompt as reference for the scene the music plays under:\n- MS-26 (Beat 6 — Nightfall montage (Helena)): Helena crouches at a dark hollow log, Mote hovering close so its glow spills inside. The hollow is empty; she…\n- MS-27 (Beat 6 — Nightfall montage (Helena)): At a glistening waterfall rock, Helena peers behind the spray-slick boulder while Mote bobs overhead. Nothing…\n- MS-28 (Beat 6 — Nightfall montage (Helena)): Helena balances along the trunk of a leaning tree, arms out, as Mote darts ahead lighting each branch. The br…\n- MS-29 (Beat 6 — Nightfall montage (Helena)): Flat on her belly, Helena reaches deep into the dark gap beneath big tree roots while Mote squeezes close to…\n- MS-30 (Beat 6 — Nightfall montage (Helena)): Helena sinks down against a broad tree trunk and hugs her knees. Mote settles beside her on the moss, dimming…\n- MS-31 (Beat 6 — Nightfall montage (Helena)): Helena presses her face into her knees. Mote shrinks until its glow is almost nothing, leaving the forest nea…\n\nTry to make some sound design on the track that has some highs or lows at these second marks: a rolling ostinato from 0:00, the theme enters ~0:06, layers stack ~0:15, a full swell/peak ~0:26, then a graceful landing.\n\nInstrumental music only — no voices, no singing, no sound effects or ambience (dialogue and SFX already live in the film); keep it a low underscore beneath the dialogue. Storybook Scandinavian-folklore palette so all the cues sound like one score. Begin with a gentle fade-in and end with a soft fade-out — never an abrupt start or cut.\n\n── CONFIG ─────────────────────────────────────────\nmodel: seed_audio\nformat: wav\nsample_rate: 48000\nspeech_rate: 0\nloudness_rate: 0\npitch_rate: 0\n\n── SOURCE / POST-PROCESSING ───────────────────────\nhttps://d8j0ntlcm91z4.cloudfront.net/user_38vitaQqa4HdYi7u4JnjNrpYAA8/hf_20260708_154552_9f19ff56-b472-4d0c-b239-4d8400be2a8f.wav\n",
+          "seedFile": "trk_18_v1.seed.txt",
+          "seedUrl": "/sound-media/trk_18_v1.seed.txt"
+        },
+        {
+          "v": 2,
+          "prompt": "Create a background music track that must be 13 seconds long, ending in a full graceful fade to silence — after the fade completes there should be true silence, not a hold.\n\nNotice this track is adventurous, magical, dreamy, storybook Scandinavian folk (same palette as the rest of the score).\n\nUse as reference: Helena crouches at a dark hollow log, Mote hovering close, searching for Sara in the nightfall woods — the start of a montage of failed search attempts.\n\nSound design marks: a rolling ostinato from 0:00, the theme enters ~0:04, a brief warm swell ~0:08, then a graceful ritardando and fade beginning ~0:10, reaching full silence by 0:13.\n\nInstrumental music only — no voices, no singing, no sound effects or ambience (dialogue and SFX already live in the film); keep it a low underscore beneath the dialogue. Storybook Scandinavian-folklore palette so it blends with the rest of the score. Begin with a gentle fade-in and end in true silence — never an abrupt cut, and never a sustained hold past the fade.",
+          "name": "Cue 8 — Nightfall montage (short, fades by 0:13)",
+          "file": "trk_18_v2.wav",
+          "status": "ready",
+          "liked": false,
+          "params": {
+            "model": "seed_audio",
+            "format": "wav",
+            "sample_rate": 48000
+          },
+          "ts": "2026-07-08T17:09:12.973Z",
+          "duration": 13,
+          "source": "https://d8j0ntlcm91z4.cloudfront.net/user_38vitaQqa4HdYi7u4JnjNrpYAA8/hf_20260708_170755_6f3700cf-eb5f-4f9e-bca8-03c2b7e898dd.wav"
+        }
+      ]
+    },
+    {
+      "id": "trk_19",
+      "name": "Cue 9 — At the window",
+      "createdAt": "2026-07-08T15:26:35.148Z",
+      "versions": [
+        {
+          "v": 1,
+          "prompt": "Create a background music track that must be 51 seconds long. It should have a start, and an ending that finishes the song not abruptly but gracefully.\n\nNotice this track is melancholic, tender, somber, storybook Scandinavian folk.\n\nUse the following multi-shot prompt as reference for the scene the music plays under:\n- MS-32 (Beat 6 — At the window): Sara stands near the round window; through warm amber glass, tiny and far, Helena sits curled by a small light fading toward dark.\n- MS-33 (Beat 6 — At the window): The King leans near, gently offering a lesson; Sara listens, caught off guard.\n- MS-34 (Beat 6 — At the window): The King speaks softly and poses a turning question; Sara holds still as the words settle.\n- MS-35 (Beat 6 — At the window): The King studies Sara, gives a slow smile, and opens the round window onto the cold night.\n\nTry to make some sound design on the track that has some highs or lows at these second marks: a sparse piano opening 0:00, the cello theme ~0:10, a small swell of longing ~0:30, settle back to a quiet unresolved ache by the end.\n\nInstrumental music only — no voices, no singing, no sound effects or ambience (dialogue and SFX already live in the film); keep it a low underscore beneath the dialogue. Storybook Scandinavian-folklore palette so all the cues sound like one score. Begin with a gentle fade-in and end with a soft fade-out — never an abrupt start or cut.",
+          "name": null,
+          "file": "trk_19_v1.wav",
+          "status": "ready",
+          "liked": false,
+          "params": {
+            "model": "seed_audio",
+            "format": "wav",
+            "sample_rate": 48000
+          },
+          "ts": "2026-07-08T16:00:33.011Z",
+          "duration": 51,
+          "source": "https://d8j0ntlcm91z4.cloudfront.net/user_38vitaQqa4HdYi7u4JnjNrpYAA8/hf_20260708_155815_384d46d2-9ef6-40e6-9dd3-40a080ccd848.wav",
+          "seedText": "SEED AUDIO PROMPT\ntrack: Cue 9 — At the window  (trk_19)\nversion: v1\nstatus: ready   duration: 51s\ngenerated: 2026-07-08T16:00:33.011Z\n\n── PROMPT ─────────────────────────────────────────\nCreate a background music track that must be 51 seconds long. It should have a start, and an ending that finishes the song not abruptly but gracefully.\n\nNotice this track is melancholic, tender, somber, storybook Scandinavian folk.\n\nUse the following multi-shot prompt as reference for the scene the music plays under:\n- MS-32 (Beat 6 — At the window): Sara stands near the round window; through warm amber glass, tiny and far, Helena sits curled by a small light fading toward dark.\n- MS-33 (Beat 6 — At the window): The King leans near, gently offering a lesson; Sara listens, caught off guard.\n- MS-34 (Beat 6 — At the window): The King speaks softly and poses a turning question; Sara holds still as the words settle.\n- MS-35 (Beat 6 — At the window): The King studies Sara, gives a slow smile, and opens the round window onto the cold night.\n\nTry to make some sound design on the track that has some highs or lows at these second marks: a sparse piano opening 0:00, the cello theme ~0:10, a small swell of longing ~0:30, settle back to a quiet unresolved ache by the end.\n\nInstrumental music only — no voices, no singing, no sound effects or ambience (dialogue and SFX already live in the film); keep it a low underscore beneath the dialogue. Storybook Scandinavian-folklore palette so all the cues sound like one score. Begin with a gentle fade-in and end with a soft fade-out — never an abrupt start or cut.\n\n── CONFIG ─────────────────────────────────────────\nmodel: seed_audio\nformat: wav\nsample_rate: 48000\nspeech_rate: 0\nloudness_rate: 0\npitch_rate: 0\n\n── SOURCE / POST-PROCESSING ───────────────────────\nhttps://d8j0ntlcm91z4.cloudfront.net/user_38vitaQqa4HdYi7u4JnjNrpYAA8/hf_20260708_155815_384d46d2-9ef6-40e6-9dd3-40a080ccd848.wav\n",
+          "seedFile": "trk_19_v1.seed.txt",
+          "seedUrl": "/sound-media/trk_19_v1.seed.txt"
+        }
+      ]
+    },
+    {
+      "id": "trk_20",
+      "name": "Cue 10 — The rescue",
+      "createdAt": "2026-07-08T15:26:35.151Z",
+      "versions": [
+        {
+          "v": 1,
+          "prompt": "Compose a ~63-second underscore with a big dynamic arc for the rescue: Helena and Mote sneak through the night wood, tension builds, and she finally reaches Sara. Start suspenseful and quiet — low pulsing ostinato, ticking hand percussion, held breath — steadily tighten and accelerate, then break into a triumphant full-ensemble statement of the Whistlewood theme as the friends reunite, the Helena and Sara motifs sounding together. Instruments: low ostinato strings, low frame-drum/taiko hits, fiddle & flute, soft horn swell, glockenspiel, choir on the peak. Marks: tense pulse 0:00–0:18, rising drive ~0:25, near-miss spike ~0:38, triumphant theme burst ~0:48, warm resolve to close.\n\nInstrumental background music ONLY — no voices, no singing, no whistling, no sound effects, no bells, no ambience (dialogue and SFX already live in the film). Keep it a low, unobtrusive underscore that leaves room for spoken dialogue. Storybook Scandinavian-folklore palette in a warm D-minor / F-major tonal world so all the cues blend together as one score. Finish gracefully with a soft resolve and gentle fade — never an abrupt cut.",
+          "name": null,
+          "file": "trk_20_v1.wav",
+          "status": "ready",
+          "liked": false,
+          "params": {
+            "model": "seed_audio",
+            "format": "wav",
+            "sample_rate": 48000
+          },
+          "ts": "2026-07-08T15:49:39.394Z",
+          "duration": 63,
+          "source": "https://d8j0ntlcm91z4.cloudfront.net/user_38vitaQqa4HdYi7u4JnjNrpYAA8/hf_20260708_154120_a0440fcd-d3c8-482a-b54a-17bcabacd3ec.wav",
+          "seedText": "SEED AUDIO PROMPT\ntrack: Cue 10 — The rescue  (trk_20)\nversion: v1\nstatus: ready   duration: 63s\ngenerated: 2026-07-08T15:49:39.394Z\n\n── PROMPT ─────────────────────────────────────────\nCompose a ~63-second underscore with a big dynamic arc for the rescue: Helena and Mote sneak through the night wood, tension builds, and she finally reaches Sara. Start suspenseful and quiet — low pulsing ostinato, ticking hand percussion, held breath — steadily tighten and accelerate, then break into a triumphant full-ensemble statement of the Whistlewood theme as the friends reunite, the Helena and Sara motifs sounding together. Instruments: low ostinato strings, low frame-drum/taiko hits, fiddle & flute, soft horn swell, glockenspiel, choir on the peak. Marks: tense pulse 0:00–0:18, rising drive ~0:25, near-miss spike ~0:38, triumphant theme burst ~0:48, warm resolve to close.\n\nInstrumental background music ONLY — no voices, no singing, no whistling, no sound effects, no bells, no ambience (dialogue and SFX already live in the film). Keep it a low, unobtrusive underscore that leaves room for spoken dialogue. Storybook Scandinavian-folklore palette in a warm D-minor / F-major tonal world so all the cues blend together as one score. Finish gracefully with a soft resolve and gentle fade — never an abrupt cut.\n\n── CONFIG ─────────────────────────────────────────\nmodel: seed_audio\nformat: wav\nsample_rate: 48000\nspeech_rate: 0\nloudness_rate: 0\npitch_rate: 0\n\n── SOURCE / POST-PROCESSING ───────────────────────\nhttps://d8j0ntlcm91z4.cloudfront.net/user_38vitaQqa4HdYi7u4JnjNrpYAA8/hf_20260708_154120_a0440fcd-d3c8-482a-b54a-17bcabacd3ec.wav\n",
+          "seedFile": "trk_20_v1.seed.txt",
+          "seedUrl": "/sound-media/trk_20_v1.seed.txt"
+        }
+      ]
+    },
+    {
+      "id": "trk_21",
+      "name": "Cue 11 — Home, changed",
+      "createdAt": "2026-07-08T15:26:35.154Z",
+      "versions": [
+        {
+          "v": 1,
+          "prompt": "Create a background music track that must be 60 seconds long. It should have a start, and an ending that finishes the song not abruptly but gracefully.\n\nNotice this track is tender, hopeful, melancholic, storybook Scandinavian folk.\n\nUse the following multi-shot prompt as reference for the scene the music plays under:\n- MS-43 (Beat 8 — Home, changed): The two friends part at the boundary stone; a tiny glow-bug drifts down between them, warming softly back to life.\n- MS-44 (Beat 8 — Home, changed): Helena glances at the quiet dark bushes, then tells Sara how she nearly lost heart, and how she found her.\n- MS-45 (Beat 8 — Home, changed): The Forest King's face melts back into the leaves and the gold glow fades, leaving the bushes ordinary again.\n- MS-46 (Beat 8 — Home, changed): The friends step back over the boundary stone toward the path; far off, another hollow winks gold — beautiful and tempting.\n- MS-47 (Beat 8 — Home, changed): Sara gently leads her friend home as the little glow lights the way; the two head down the path, chatting happily into the dark.\n- MS-48 (Beat 8 — Home, changed): The view lifts and pulls back over the trees; all of Whistlewood is freckled with tiny hidden gold lights in the dark. Fade out.\n\nTry to make some sound design on the track that has some highs or lows at these second marks: the theme in warm ~0:04, a full tender statement ~0:20, a gentle ritardando ~0:44, a music-box button ~0:52, resolve and fade out.\n\nInstrumental music only — no voices, no singing, no sound effects or ambience (dialogue and SFX already live in the film); keep it a low underscore beneath the dialogue. Storybook Scandinavian-folklore palette so all the cues sound like one score. Begin with a gentle fade-in and end with a soft fade-out — never an abrupt start or cut.",
+          "name": null,
+          "file": "trk_21_v1.wav",
+          "status": "ready",
+          "liked": false,
+          "params": {
+            "model": "seed_audio",
+            "format": "wav",
+            "sample_rate": 48000
+          },
+          "ts": "2026-07-08T16:02:15.221Z",
+          "duration": 60,
+          "source": "https://d8j0ntlcm91z4.cloudfront.net/user_38vitaQqa4HdYi7u4JnjNrpYAA8/hf_20260708_160038_a1da2f13-5b99-401e-9eea-89ccddd6c911.wav",
+          "seedText": "SEED AUDIO PROMPT\ntrack: Cue 11 — Home, changed  (trk_21)\nversion: v1\nstatus: ready   duration: 60s\ngenerated: 2026-07-08T16:02:15.221Z\n\n── PROMPT ─────────────────────────────────────────\nCreate a background music track that must be 60 seconds long. It should have a start, and an ending that finishes the song not abruptly but gracefully.\n\nNotice this track is tender, hopeful, melancholic, storybook Scandinavian folk.\n\nUse the following multi-shot prompt as reference for the scene the music plays under:\n- MS-43 (Beat 8 — Home, changed): The two friends part at the boundary stone; a tiny glow-bug drifts down between them, warming softly back to life.\n- MS-44 (Beat 8 — Home, changed): Helena glances at the quiet dark bushes, then tells Sara how she nearly lost heart, and how she found her.\n- MS-45 (Beat 8 — Home, changed): The Forest King's face melts back into the leaves and the gold glow fades, leaving the bushes ordinary again.\n- MS-46 (Beat 8 — Home, changed): The friends step back over the boundary stone toward the path; far off, another hollow winks gold — beautiful and tempting.\n- MS-47 (Beat 8 — Home, changed): Sara gently leads her friend home as the little glow lights the way; the two head down the path, chatting happily into the dark.\n- MS-48 (Beat 8 — Home, changed): The view lifts and pulls back over the trees; all of Whistlewood is freckled with tiny hidden gold lights in the dark. Fade out.\n\nTry to make some sound design on the track that has some highs or lows at these second marks: the theme in warm ~0:04, a full tender statement ~0:20, a gentle ritardando ~0:44, a music-box button ~0:52, resolve and fade out.\n\nInstrumental music only — no voices, no singing, no sound effects or ambience (dialogue and SFX already live in the film); keep it a low underscore beneath the dialogue. Storybook Scandinavian-folklore palette so all the cues sound like one score. Begin with a gentle fade-in and end with a soft fade-out — never an abrupt start or cut.\n\n── CONFIG ─────────────────────────────────────────\nmodel: seed_audio\nformat: wav\nsample_rate: 48000\nspeech_rate: 0\nloudness_rate: 0\npitch_rate: 0\n\n── SOURCE / POST-PROCESSING ───────────────────────\nhttps://d8j0ntlcm91z4.cloudfront.net/user_38vitaQqa4HdYi7u4JnjNrpYAA8/hf_20260708_160038_a1da2f13-5b99-401e-9eea-89ccddd6c911.wav\n",
+          "seedFile": "trk_21_v1.seed.txt",
+          "seedUrl": "/sound-media/trk_21_v1.seed.txt"
+        }
+      ]
+    }
+  ]
+}

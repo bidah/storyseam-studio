@@ -1,0 +1,31 @@
+SEED AUDIO PROMPT
+track: Cue 7 — The plan & Mote  (trk_17)
+version: v1
+status: ready   duration: 48s
+generated: 2026-07-08T15:58:14.377Z
+
+── PROMPT ─────────────────────────────────────────
+Create a background music track that must be 48 seconds long. It should have a start, and an ending that finishes the song not abruptly but gracefully.
+
+Notice this track is hopeful, magical, friendly, storybook Scandinavian folk.
+
+Use the following multi-shot prompt as reference for the scene the music plays under:
+- MS-22 (Beat 5 — The plan & Mote): Helena stands in the dimming clearing, worried and unsure, then pauses, closes her eyes, and takes one calm breath.
+- MS-23 (Beat 5 — The plan & Mote): As she writes, a soft warm gold glow drifts gently into view over her shoulder — the only warm thing in the cooling dusk.
+- MS-24 (Beat 5 — The plan & Mote): Helena's face lights up with sudden hope as she turns toward the little glow.
+- MS-25 (Beat 5 — The plan & Mote): The tiny glow settles on her fingertip and brightens warmly, filling the scene with gold as she lifts her notebook into the light.
+
+Try to make some sound design on the track that has some highs or lows at these second marks: a tender opening ~0:03, a bright sparkle motif ~0:14, the theme blooms warm ~0:28, a hopeful forward lift into the final bars.
+
+Instrumental music only — no voices, no singing, no sound effects or ambience (dialogue and SFX already live in the film); keep it a low underscore beneath the dialogue. Storybook Scandinavian-folklore palette so all the cues sound like one score. Begin with a gentle fade-in and end with a soft fade-out — never an abrupt start or cut.
+
+── CONFIG ─────────────────────────────────────────
+model: seed_audio
+format: wav
+sample_rate: 48000
+speech_rate: 0
+loudness_rate: 0
+pitch_rate: 0
+
+── SOURCE / POST-PROCESSING ───────────────────────
+https://d8j0ntlcm91z4.cloudfront.net/user_38vitaQqa4HdYi7u4JnjNrpYAA8/hf_20260708_155616_3d1e7bc6-94f7-4648-845e-17d13472caba.wav

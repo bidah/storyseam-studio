@@ -1,0 +1,19 @@
+SEED AUDIO PROMPT
+track: kids wispering talking  (trk_6)
+version: v4 — calm / gentle
+status: ready   duration: 49.032s
+generated: 2026-07-05T16:31:35.333Z
+
+── PROMPT ─────────────────────────────────────────
+Use the Seed Audio prompt to create a sound effect for an animated series for kids. The sound to create is: a CALM, GENTLE, mellow BACKGROUND bed of just a few small kids laughing and playing softly behind the scene — a quiet, relaxed schoolyard in a sunny forest clearing. Soft, occasional light laughter and gentle giggles, a little easygoing chatter and the odd playful call (unintelligible, no clear words), with plenty of calm space and air between sounds; a low, soothing, unhurried hum of a couple of children playing gently. Sparse, soft and peaceful, sitting quietly in the background. Even and constant the whole time — NOT a sudden burst, NOT a crowd bursting out of a door, and NOT distant mumbling. Warm, sunny, outdoor forest-clearing feel, tender wholesome cartoon energy. No music, no bell, no whistles, no adult voices, no foreground dialogue. Based on MS-01 (school-clearing beat). CALM/GENTLE variant (loudness_rate -10). Assembled as 10s + 2s pause + 15s + 2s pause + 20s versions, each fading in/out gracefully.
+
+── CONFIG ─────────────────────────────────────────
+model: seed_audio
+format: wav
+sample_rate: 48000
+speech_rate: 0
+loudness_rate: -10
+pitch_rate: 0
+
+── SOURCE / POST-PROCESSING ───────────────────────
+higgsfield seed_audio job f06f45f2-05fe-48af-afdd-8e1f8c97691a (25s MS-01 calm/gentle bed, loudness -10; cut to 10/15/20s faded versions joined with 2s pauses)

@@ -1,0 +1,29 @@
+SEED AUDIO PROMPT
+track: Cue 5 — Helena searches  (trk_15)
+version: v1
+status: ready   duration: 29s
+generated: 2026-07-08T15:58:10.895Z
+
+── PROMPT ─────────────────────────────────────────
+Create a background music track that must be 29 seconds long. It should have a start, and an ending that finishes the song not abruptly but gracefully.
+
+Notice this track is adventurous, suspenseful, melancholic, storybook Scandinavian folk.
+
+Use the following multi-shot prompt as reference for the scene the music plays under:
+- MS-15 (Beat 4 — Searching the clearing): Helena arrives at the clearing full of bright confidence, scanning the underbrush like a tiny detective.
+- MS-16 (Beat 4 — Searching the clearing): A montage feel — Helena revisits the same spots again and again, her steps quicker and less playful as her cheer quietly fades.
+
+Try to make some sound design on the track that has some highs or lows at these second marks: an uneasy ostinato from 0:00, the fiddle theme enters ~0:06, tension nudges up ~0:18, leave it unresolved and hanging into the next scene.
+
+Instrumental music only — no voices, no singing, no sound effects or ambience (dialogue and SFX already live in the film); keep it a low underscore beneath the dialogue. Storybook Scandinavian-folklore palette so all the cues sound like one score. Begin with a gentle fade-in and end with a soft fade-out — never an abrupt start or cut.
+
+── CONFIG ─────────────────────────────────────────
+model: seed_audio
+format: wav
+sample_rate: 48000
+speech_rate: 0
+loudness_rate: 0
+pitch_rate: 0
+
+── SOURCE / POST-PROCESSING ───────────────────────
+https://d8j0ntlcm91z4.cloudfront.net/user_38vitaQqa4HdYi7u4JnjNrpYAA8/hf_20260708_155610_49dfa62d-4557-484d-b3f5-1782b55159e3.wav

@@ -1,0 +1,38 @@
+SEED AUDIO PROMPT
+track: Helena — where is Sara?  (trk_7)
+version: v6 — retimed 1s / 2s / 2s (clean ref)
+status: ready   duration: 7.944s
+generated: 2026-07-06T02:16:07.419Z
+
+── PROMPT ─────────────────────────────────────────
+@Audio1 Use this EXACT voice — match its timbre, pitch, age and tone precisely. This is Helena, a young elf girl. Generate ONLY her clean spoken dialogue in the same voice as the reference: no music, no sound effects, no background ambience, no other characters — just Helena's voice with the pauses described.
+
+She speaks in this order, with clear silent pauses:
+1) She notices something, says "Oh!", waits about one second looking around, then asks, a little puzzled: "Where is Sara?"
+2) About two seconds of silence.
+3) Brightening as she spots her friend, warmly: "There you are!"
+4) About two seconds of silence.
+5) Curious and surprised at something new: "What is that?"
+
+Exact lines, in order, all in the same Helena voice as the reference:
+"Oh!" ... (about 1 second pause) ... "Where is Sara?"
+(about 2 seconds of silence)
+"There you are!"
+(about 2 seconds of silence)
+"What is that?"
+
+
+
+Voice reference: helena audio ref last CLEAN.mp3 (ffmpeg-denoised).
+
+── CONFIG ─────────────────────────────────────────
+model: seed_audio
+format: wav
+sample_rate: 48000
+speech_rate: 0
+loudness_rate: 0
+pitch_rate: 0
+voice_reference: Helena — cleaned ref (denoised) (trk_7_ref_clean.mp3)
+
+── SOURCE / POST-PROCESSING ───────────────────────
+higgsfield seed_audio job 25c02065-c00c-4400-9011-a111f1e0ab3c (voice-clone of ffmpeg-denoised 'helena audio ref last CLEAN.mp3'; retimed locally to exact 1s/2s/2s pauses)

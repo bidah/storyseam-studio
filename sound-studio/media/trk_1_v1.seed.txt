@@ -1,0 +1,21 @@
+SEED AUDIO PROMPT
+track: Whimsical bed — orchestral theme  (trk_1)
+version: v1 — seed render
+status: ready   duration: 15s
+generated: 2026-07-03T12:51:24.000Z
+
+── PROMPT ─────────────────────────────────────────
+Compose a 15-second whimsical fairytale orchestral cue — the warm opening theme of a storybook children's film. Mood: a sunlit toadstool schoolhouse in a golden forest morning, then two little elf friends setting off together down a mossy path, gently playful and slightly cheeky. Instrumental background music ONLY — no sound effects, no whistling, no voices, no bells, no ambience.
+Style: warm, cinematic storybook orchestral score with one memorable, flowing melodic theme. Lush but gentle strings carry the melody, soft flute and clarinet answering, gentle harp arpeggios, and a light glockenspiel sparkle for magic. Tender, innocent, curious, sunlit.
+Shape: begin warm and inviting as the theme blooms in; lift and flow with graceful playfulness in the middle; in the final few seconds gently slow (ritardando), resolve onto a warm sustained chord, and fade out smoothly to silence — an unhurried, graceful ending, never an abrupt cut.
+
+── CONFIG ─────────────────────────────────────────
+model: seed_audio
+format: wav
+sample_rate: 48000
+speech_rate: 0
+loudness_rate: 0
+pitch_rate: 0
+
+── SOURCE / POST-PROCESSING ───────────────────────
+higgsfield seed_audio job 6e1b013e-b11e-4047-8446-e8dad78398b5

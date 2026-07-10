@@ -1,0 +1,19 @@
+SEED AUDIO PROMPT
+track: kids wispering talking  (trk_6)
+version: v3 — busier / louder
+status: ready   duration: 49.032s
+generated: 2026-07-05T16:31:35.265Z
+
+── PROMPT ─────────────────────────────────────────
+Use the Seed Audio prompt to create a sound effect for an animated series for kids. The sound to create is: a LOUD, BUSY, energetic BACKGROUND bed of a big packed crowd of small kids laughing and playing behind the scene — a bustling schoolyard full of little children at play in a sunny forest clearing. Dense, boisterous, non-stop happy laughter, excited squeals and giggles, lots of overlapping cheerful chatter and playful shouting and calling out (unintelligible, no clear words), a big lively busy hubbub of many kids playing all at once. Full, rich and energetic, but still a background layer with no single voice in front. Even and constant the whole time — NOT a sudden burst, NOT a crowd bursting out of a door, and NOT distant mumbling. Warm, sunny, outdoor forest-clearing feel, wholesome cartoon energy. No music, no bell, no whistles, no adult voices, no foreground dialogue. Based on MS-01 (school-clearing beat). LOUDER/BUSIER variant (loudness_rate +14). Assembled as 10s + 2s pause + 15s + 2s pause + 20s versions, each fading in/out gracefully.
+
+── CONFIG ─────────────────────────────────────────
+model: seed_audio
+format: wav
+sample_rate: 48000
+speech_rate: 0
+loudness_rate: 14
+pitch_rate: 0
+
+── SOURCE / POST-PROCESSING ───────────────────────
+higgsfield seed_audio job fe06984b-01a5-4f04-a1e3-b7548c18645d (24s MS-01 busier/louder bed, loudness +14; cut to 10/15/20s faded versions joined with 2s pauses)

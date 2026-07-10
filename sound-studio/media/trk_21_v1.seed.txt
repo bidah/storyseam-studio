@@ -1,0 +1,33 @@
+SEED AUDIO PROMPT
+track: Cue 11 — Home, changed  (trk_21)
+version: v1
+status: ready   duration: 60s
+generated: 2026-07-08T16:02:15.221Z
+
+── PROMPT ─────────────────────────────────────────
+Create a background music track that must be 60 seconds long. It should have a start, and an ending that finishes the song not abruptly but gracefully.
+
+Notice this track is tender, hopeful, melancholic, storybook Scandinavian folk.
+
+Use the following multi-shot prompt as reference for the scene the music plays under:
+- MS-43 (Beat 8 — Home, changed): The two friends part at the boundary stone; a tiny glow-bug drifts down between them, warming softly back to life.
+- MS-44 (Beat 8 — Home, changed): Helena glances at the quiet dark bushes, then tells Sara how she nearly lost heart, and how she found her.
+- MS-45 (Beat 8 — Home, changed): The Forest King's face melts back into the leaves and the gold glow fades, leaving the bushes ordinary again.
+- MS-46 (Beat 8 — Home, changed): The friends step back over the boundary stone toward the path; far off, another hollow winks gold — beautiful and tempting.
+- MS-47 (Beat 8 — Home, changed): Sara gently leads her friend home as the little glow lights the way; the two head down the path, chatting happily into the dark.
+- MS-48 (Beat 8 — Home, changed): The view lifts and pulls back over the trees; all of Whistlewood is freckled with tiny hidden gold lights in the dark. Fade out.
+
+Try to make some sound design on the track that has some highs or lows at these second marks: the theme in warm ~0:04, a full tender statement ~0:20, a gentle ritardando ~0:44, a music-box button ~0:52, resolve and fade out.
+
+Instrumental music only — no voices, no singing, no sound effects or ambience (dialogue and SFX already live in the film); keep it a low underscore beneath the dialogue. Storybook Scandinavian-folklore palette so all the cues sound like one score. Begin with a gentle fade-in and end with a soft fade-out — never an abrupt start or cut.
+
+── CONFIG ─────────────────────────────────────────
+model: seed_audio
+format: wav
+sample_rate: 48000
+speech_rate: 0
+loudness_rate: 0
+pitch_rate: 0
+
+── SOURCE / POST-PROCESSING ───────────────────────
+https://d8j0ntlcm91z4.cloudfront.net/user_38vitaQqa4HdYi7u4JnjNrpYAA8/hf_20260708_160038_a1da2f13-5b99-401e-9eea-89ccddd6c911.wav

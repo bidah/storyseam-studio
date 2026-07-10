@@ -27,7 +27,7 @@ put_doc () { # <local-json> <docname>
 echo "==> Migrating JSON document stores to R2…"
 put_doc "$ROOT/episode-multishot/selections.json"        selections
 put_doc "$ROOT/episode-multishot/shotlist.json"          shotlist
-put_doc "$ROOT/sound-studio/sounds.json"                 sounds
+put_doc "$ROOT/shot-studio/sound-studio/sounds.json"     sounds
 put_doc "$ROOT/episode-multishot/multishot_bundles.json" episode-manifest
 put_doc "$ROOT/multishot-s1-shots1-4/multishot.json"     multishot
 # (script/p_default.json was already seeded by migrate-projects.sh)
@@ -55,9 +55,9 @@ sync_dir () { # <local-dir> <kind>
 }
 
 echo "==> Syncing media to R2…"
-sync_dir "$ROOT/shot-by-shot/shots"             shots
+sync_dir "$ROOT/_archive/shot-by-shot/shots"    shots
 sync_dir "$ROOT/episode-multishot/generations"  gen
-sync_dir "$ROOT/sound-studio/media"             sound-media
+sync_dir "$ROOT/shot-studio/sound-studio/media" sound-media
 sync_dir "$ROOT/final_selection"                final
 sync_dir "$ROOT/shot-by-shot"                   refs
 # Voice refs + browsable library images → media/p_default/asset/
