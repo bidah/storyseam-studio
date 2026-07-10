@@ -341,6 +341,25 @@ registerCuts(app);
 registerProjects(app);
 registerRender(app);
 
+// --- eve chat agent proxy --------------------------------------------------
+// The chat agent (eve) runs on Vercel; the SPA is served from this Worker and
+// calls /eve/* SAME-ORIGIN (useEveAgent has no host configured), so proxy those
+// through to the eve deployment. Covers every method — GET for /eve/v1/info and
+// the SSE message stream, POST for sessions/turns. Returning the upstream
+// Response verbatim streams the SSE body without buffering. Listed in
+// wrangler.jsonc `run_worker_first` so it beats the SPA asset layer (which would
+// otherwise 405 a POST to a non-asset path).
+const DEFAULT_EVE_ORIGIN = "https://shot-studio-agent.vercel.app";
+app.all("/eve/*", (c) => {
+  const url = new URL(c.req.url);
+  const origin = c.env.EVE_ORIGIN || DEFAULT_EVE_ORIGIN;
+  const target = new URL(url.pathname + url.search, origin);
+  // Canonical Workers reverse-proxy: rebuilding the Request against the eve
+  // origin preserves method, headers, and the (streaming) body, and fetch
+  // derives the upstream Host from `target`.
+  return fetch(new Request(target, c.req.raw));
+});
+
 // --- SPA fallback (Worker Assets) ------------------------------------------
 // Anything not matched above is served from the built SPA. The assets binding's
 // single-page-application not_found_handling returns index.html for client routes.

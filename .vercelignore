@@ -1,0 +1,12 @@
+# Vercel ignores .gitignore — list local-only artifacts here so `eve deploy`
+# doesn't sweep 100+ MB of dev-runtime state into every upload.
+
+# eve durable-workflow runtime state written during local dev runs (~106 MB).
+# Regenerated locally; never belongs in a deployment.
+.workflow-data
+
+# The Cloudflare Worker backend + its node_modules — a separate deploy target.
+worker
+
+# Local media / test renders that don't belong in the agent deployment.
+public/media
