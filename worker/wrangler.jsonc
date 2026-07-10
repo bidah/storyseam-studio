@@ -12,6 +12,10 @@
   //     Daytona ffmpeg sandbox — see src/lib/ffmpeg.js)
   //   DAYTONA_API_KEY                (ffmpeg orchestration)
   //   HIGGSFIELD_MCP_TOKEN           (optional; static-login shortcut)
+  //   EVE_PROXY_SECRET               (signs the x-eve-proxy-user token so the
+  //     eve agent trusts the Better Auth user id across the /eve/* proxy — set
+  //     the SAME value as a Vercel env var on shot-studio-agent; without it the
+  //     agent falls back to anonymous and in-chat Higgsfield sign-in fails)
   "vars": {
     "R2_BUCKET": "shot-studio-uploads",
     "R2_ACCOUNT_ID": "cda687c8b568323a9b535ca44a192131",

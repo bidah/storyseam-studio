@@ -52,6 +52,48 @@ function scriptKey(projectId) {
 
 const newProjectId = () => `p_${crypto.randomUUID().replace(/-/g, "").slice(0, 8)}`;
 
+// --- eve proxy user token --------------------------------------------------
+// The eve agent (on Vercel) is publicly reachable and can't see the Better Auth
+// session cookie (that lives on this Worker's origin). To let a signed-in user
+// reach the agent AS a user — required for the in-chat Higgsfield OAuth sign-in,
+// which needs `principalType: "user"` — the Worker mints a short-lived
+// HMAC-signed token carrying the session user id and hands it to the agent on
+// the `x-eve-proxy-user` header. The agent verifies it with the same shared
+// secret (EVE_PROXY_SECRET) and projects `sub` into a user principal. See
+// agent/channels/eve.ts (proxiedUser).
+const EVE_PROXY_ISSUER = "shot-studio";
+const EVE_PROXY_HEADER = "x-eve-proxy-user";
+const EVE_PROXY_TTL_SECONDS = 300;
+
+function base64url(bytes) {
+  const arr = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
+  let bin = "";
+  for (const b of arr) bin += String.fromCharCode(b);
+  return btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+async function mintEveUserToken(userId, secret) {
+  const enc = new TextEncoder();
+  const payload = base64url(
+    enc.encode(
+      JSON.stringify({
+        sub: String(userId),
+        iss: EVE_PROXY_ISSUER,
+        exp: Math.floor(Date.now() / 1000) + EVE_PROXY_TTL_SECONDS,
+      }),
+    ),
+  );
+  const key = await crypto.subtle.importKey(
+    "raw",
+    enc.encode(secret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+  const sig = await crypto.subtle.sign("HMAC", key, enc.encode(payload));
+  return `${payload}.${base64url(sig)}`;
+}
+
 // "my file (1).PNG" → "my_file_1_.PNG", capped to 80 chars.
 function safeName(raw) {
   let name = "upload";
@@ -350,14 +392,24 @@ registerRender(app);
 // wrangler.jsonc `run_worker_first` so it beats the SPA asset layer (which would
 // otherwise 405 a POST to a non-asset path).
 const DEFAULT_EVE_ORIGIN = "https://shot-studio-agent.vercel.app";
-app.all("/eve/*", (c) => {
+app.all("/eve/*", async (c) => {
   const url = new URL(c.req.url);
   const origin = c.env.EVE_ORIGIN || DEFAULT_EVE_ORIGIN;
   const target = new URL(url.pathname + url.search, origin);
   // Canonical Workers reverse-proxy: rebuilding the Request against the eve
   // origin preserves method, headers, and the (streaming) body, and fetch
   // derives the upstream Host from `target`.
-  return fetch(new Request(target, c.req.raw));
+  const proxied = new Request(target, c.req.raw);
+  // The agent trusts x-eve-proxy-user as an authenticated user id, so it must
+  // only ever come from us: strip any client-supplied copy, then re-add a
+  // freshly-signed one for the Better Auth session user (if any). Without the
+  // secret configured we send nothing and the agent falls back to anonymous.
+  proxied.headers.delete(EVE_PROXY_HEADER);
+  const userId = c.get("userId");
+  if (userId && c.env.EVE_PROXY_SECRET) {
+    proxied.headers.set(EVE_PROXY_HEADER, await mintEveUserToken(userId, c.env.EVE_PROXY_SECRET));
+  }
+  return fetch(proxied);
 });
 
 // --- SPA fallback (Worker Assets) ------------------------------------------
