@@ -336,14 +336,69 @@ async function ensureCutHistory(env, pid, db, genSet) {
 async function nextCutV(env, pid, db) {
   return (await ensureCutHistory(env, pid, db)).reduce((m, g) => Math.max(m, g.v || 0), 0) + 1;
 }
-// Normalized history for the API: existing files only, newest-first, url added.
+// Per-take duration map from the selections DB (populated by the live probe).
+// Used to REPAIR frozen generations whose segments were stitched before their
+// takes had durations cached — otherwise their whole timeline collapses to 0.
+function durByFile(db) {
+  const m = {};
+  for (const entry of Object.values(db.video || {})) {
+    const arr = Array.isArray(entry) ? entry : entry ? [entry] : [];
+    for (const v of arr) if (v?.file && Number(v.dur) > 0) m[v.file] = Number(v.dur);
+  }
+  return m;
+}
+
+// Backfill missing/zero segment durations on a frozen generation from `durMap`
+// and recompute the running start/end timecodes (which the player timeline reads).
+// A generation that already has real durations is returned unchanged.
+function withDurations(gen, durMap) {
+  const segs = gen.segments || [];
+  if (!segs.length || segs.every((s) => Number(s.duration) > 0)) return gen;
+  let cursor = 0;
+  const segments = segs.map((s) => {
+    const duration = Number(s.duration) > 0 ? Number(s.duration) : (durMap[s.file] || 0);
+    const start = cursor;
+    cursor += duration;
+    return { ...s, duration, start, end: cursor };
+  });
+  return {
+    ...gen,
+    segments,
+    totalDuration: Number(gen.totalDuration) > 0 ? gen.totalDuration : cursor,
+  };
+}
+
+// Re-derive each frozen music cue's start/beatEnd from the (repaired) segment
+// timecodes. `cleanMusic` dropped the beat range, so we re-match by track against
+// MUSIC_CUES — a scored version stitched with 0-duration segments had every cue
+// pinned at 0, which the player timeline would otherwise stack at the far left.
+function withMusicTimecodes(gen, segments) {
+  if (!gen.music?.length || !segments?.length) return gen;
+  const present = segments.filter((s) => s.file);
+  const numOf = (s) => bundleNum(s.id);
+  const music = gen.music.map((m) => {
+    const cue = MUSIC_CUES.find((c) => c.track === m.track);
+    if (!cue) return m;
+    const firstSeg = present.find((s) => numOf(s) === cue.first);
+    if (!firstSeg) return m;
+    const inBeat = present.filter((s) => numOf(s) >= cue.first && numOf(s) <= cue.last);
+    return { ...m, start: firstSeg.start, beatEnd: inBeat.length ? inBeat[inBeat.length - 1].end : firstSeg.end };
+  });
+  return { ...gen, music };
+}
+
+// Normalized history for the API: existing files only, newest-first, url added,
+// and frozen 0-duration segments + music cues repaired from live take durations.
 async function getCutHistory(env, pid, db, genSet) {
   const set = genSet || (await listMediaSet(env, pid, "gen"));
   const hist = await ensureCutHistory(env, pid, db, set);
+  const durMap = durByFile(db);
   const out = [];
   for (const g of hist) {
     if (g.file && set.has(g.file)) {
-      out.push({ ...g, url: "/gen/" + g.file, withMusic: g.kind === "scored" });
+      const withSegs = withDurations(g, durMap);
+      const repaired = withMusicTimecodes(withSegs, withSegs.segments);
+      out.push({ ...repaired, url: "/gen/" + g.file, withMusic: g.kind === "scored" });
     }
   }
   return out.sort((a, b) => (b.v || 0) - (a.v || 0));
@@ -418,7 +473,10 @@ export function registerCuts(app) {
       const env = c.env, pid = c.get("projectId");
       const db = await readDB(env, pid);
       if (normalizeVideoSelections(db)) await writeDB(env, pid, db); // stitch the take actually picked
-      const segments = await buildCutSegments(env, pid, { probe: false });
+      // Probe durations here so the FROZEN segments carry real timecodes — the
+      // player timeline reads them. (Probing is cached, so it's ~free once warm;
+      // the concat itself needs only the file order, not the durations.)
+      const segments = await buildCutSegments(env, pid, { probe: true, db });
       const usable = segments.filter((s) => s.file);
       if (!usable.length) return c.json({ error: "No rendered takes to stitch" }, 400);
 
