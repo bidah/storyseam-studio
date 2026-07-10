@@ -90,14 +90,34 @@ export function registerExport(app) {
     }
 
     // 3. Stream a STORE-only zip (media is already compressed; fflate still
-    //    computes the required CRC32). Pipe through a TransformStream so nothing
-    //    buffers on either side.
-    const { readable, writable } = new TransformStream();
-    const writer = writable.getWriter();
+    //    computes the required CRC32) via a PULL-based ReadableStream.
+    //
+    // Architecture note (this is the crux): the producer — reading R2 objects and
+    // feeding them to fflate — MUST run inside the ReadableStream's `pull()`, not
+    // in a side promise handed to `ctx.waitUntil`. Two Workers-platform reasons:
+    //   • `waitUntil` work is capped (~30s after the response). A large archive
+    //     streamed to a distant/slow client takes longer than that, so a waitUntil
+    //     producer gets killed mid-stream and the central directory (emitted last
+    //     by zip.end()) never lands → a truncated, corrupt zip. Driving the work
+    //     from `pull` ties it to the response body's own lifetime, which has no
+    //     such cap while the client keeps reading.
+    //   • I/O (R2 reads) performed in `pull` runs "on behalf of" the response, so
+    //     it stays legal after the handler returns.
+    // Backpressure is automatic: `pull` is only invoked when the consumer wants
+    // more, so nothing buffers — memory stays flat regardless of archive size.
+    //
+    // fflate is push-based (it emits chunks through a callback); we bridge push→pull
+    // with a small `outbox` queue that `pull` drains one chunk at a time, advancing
+    // the producer only when the outbox runs dry.
+    const zipFilename = `shot-studio-${zipSlug(timeline)}-resolve.zip`;
+
+    const outbox = [];          // chunks emitted by fflate, awaiting enqueue
+    let finalSeen = false;      // fflate signalled the last chunk (central dir)
+    let zipErr = null;
     const zip = new Zip((err, chunk, final) => {
-      if (err) { writer.abort(err); return; }
-      writer.write(chunk);
-      if (final) writer.close();
+      if (err) { zipErr = err; return; }
+      if (chunk && chunk.length) outbox.push(chunk);
+      if (final) finalSeen = true;
     });
 
     const addText = (name, text) => {
@@ -106,32 +126,54 @@ export function registerExport(app) {
       f.push(new TextEncoder().encode(text), true);
     };
 
-    // Fill the zip asynchronously; MUST NOT be awaited before returning the
-    // Response (that would buffer the whole archive). Entries are added strictly
-    // one after another — a zip's layout requires sequential entries.
-    const fill = (async () => {
-      addText("project.fcpxml", xml);
-      addText("README.txt", README);
-      for (const { key, zipName } of resolved) {
+    // Producer state, advanced one unit at a time by step().
+    let idx = 0;                // index into `resolved`
+    let current = null;         // { f, reader } for the entry in progress
+    let ended = false;          // zip.end() has been called
+    addText("project.fcpxml", xml);
+    addText("README.txt", README);
+
+    // One unit of producer work; returns false once everything (incl. zip.end)
+    // has been emitted. Each call pushes at most one media chunk into fflate.
+    const step = async () => {
+      if (idx >= resolved.length) {
+        if (!ended) { ended = true; zip.end(); }
+        return false;
+      }
+      if (!current) {
+        const { key, zipName } = resolved[idx];
         const obj = await c.env.BUCKET.get(key);
         const f = new ZipPassThrough(`media/${zipName}`);
         zip.add(f);
-        if (obj && obj.body) {
-          const reader = obj.body.getReader();
-          for (;;) {
-            const { done, value } = await reader.read();
-            if (done) break;
-            f.push(value);
-          }
-        }
-        f.push(new Uint8Array(0), true); // finalize this entry
+        const reader = obj && obj.body ? obj.body.getReader() : null;
+        if (!reader) { f.push(new Uint8Array(0), true); idx++; return true; }
+        current = { f, reader };
       }
-      zip.end();
-    })();
-    c.executionCtx.waitUntil(fill.catch((e) => { try { writer.abort(e); } catch { /* ignore */ } }));
+      const { done, value } = await current.reader.read();
+      if (done) { current.f.push(new Uint8Array(0), true); current = null; idx++; return true; }
+      current.f.push(value); // fflate emits the STORE'd chunk into `outbox`
+      return true;
+    };
 
-    const zipFilename = `shot-studio-${zipSlug(timeline)}-resolve.zip`;
-    return new Response(readable, {
+    const body = new ReadableStream({
+      async pull(controller) {
+        try {
+          // Advance the producer until there's a chunk to emit (or we're done).
+          while (outbox.length === 0 && !finalSeen) {
+            if (zipErr) throw zipErr;
+            await step();
+          }
+          if (zipErr) throw zipErr;
+          if (outbox.length) controller.enqueue(outbox.shift());
+          if (outbox.length === 0 && finalSeen) controller.close();
+        } catch (e) {
+          controller.error(e);
+        }
+      },
+      cancel() { try { current?.reader?.cancel(); } catch { /* ignore */ } },
+    });
+
+    return new Response(body, {
       headers: {
         "content-type": "application/zip",
         "content-disposition": `attachment; filename="${zipFilename}"`,
