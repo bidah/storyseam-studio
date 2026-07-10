@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Outlet, useLocation, useNavigate } from "react-router";
+import { Outlet, useLocation, useNavigate, useRevalidator } from "react-router";
 import { RefreshCw, ExternalLink, Clapperboard, Sun, Moon, LogOut, User } from "lucide-react";
 import { Glowing } from "glowing";
 import { cn } from "@/lib/utils";
@@ -9,7 +9,7 @@ import LoginGate from "@/components/Login";
 import ProjectProvider from "@/components/ProjectProvider";
 import ProjectSwitcher from "@/components/ProjectSwitcher";
 import { onProjectChange } from "@/lib/projectFetch";
-import { clearTabCache } from "@/lib/tabCache";
+import { clearTabCache, invalidateTabCache } from "@/lib/tabCache";
 import { signOut as authSignOut } from "@/lib/auth-client";
 import { AgentProvider } from "@/components/AgentProvider";
 import { Button } from "@/components/ui/button";
@@ -182,9 +182,14 @@ export default function RootLayout() {
   const view = location.pathname.slice(1).split("/")[0] || "script";
   const onScript = view === "script";
 
+  const revalidator = useRevalidator();
   const [shots, setShots] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  // `reloadKey` is the media cache-bust nonce (?v=<n> on video/audio/img src) and
+  // still drives the not-yet-loaderized tabs (Phase 3 converts them one by one).
+  // Data freshness now flows through React Router loader revalidation; the two run
+  // side by side until every tab is on a loader.
   const [reloadKey, setReloadKey] = useState(0);
   const [projectKey, setProjectKey] = useState(0);
   const [modalImage, setModalImage] = useState(null);
@@ -196,15 +201,20 @@ export default function RootLayout() {
     clearTabCache(); // per-tab caches hold the OLD project's payloads — drop them
     setReloadKey((k) => k + 1);
     setProjectKey((k) => k + 1);
+    revalidator.revalidate(); // re-run the active route's loader with the new project
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }), []);
 
   // Live agent edits on any other tab (shot list, episode, cuts, library, sound
-  // studio) → bump reloadKey so every tab refetches and reflects the change with
-  // no manual Refresh. Script/timeline have their own targeted live streams.
+  // studio) → refetch so every tab reflects the change with no manual Refresh.
+  // Script/timeline have their own targeted live streams.
   const dataEdits = useDataLiveEdits();
   useEffect(() => {
     if (dataEdits === 0) return; // ignore the initial value
     setReloadKey((k) => k + 1);
+    invalidateTabCache(); // drop all cached payloads so the loader fetches fresh
+    revalidator.revalidate();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dataEdits]);
 
   // Live Script edits (from the chat agent) → reload the editor + glow the tab.
@@ -246,6 +256,14 @@ export default function RootLayout() {
   useEffect(() => {
     load();
   }, [load]);
+
+  // Header Refresh button: refetch the shots count AND force the active tab's
+  // loader to fetch fresh (invalidate + revalidate is the canonical pair).
+  const refresh = useCallback(() => {
+    invalidateTabCache();
+    revalidator.revalidate();
+    load();
+  }, [load, revalidator]);
 
   // Cross-tab jump: the Complete-cut overlay navigates to `/episode#ep-<id>` or
   // `/sounds#snd-<track>`. The target tab mounts and loads async, so we retry
@@ -311,7 +329,7 @@ export default function RootLayout() {
               <span className="hidden text-xs text-muted-foreground sm:inline">
                 {loading ? "loading…" : `${shots.length} shots`}
               </span>
-              <Button variant="outline" size="sm" onClick={load} disabled={loading}>
+              <Button variant="outline" size="sm" onClick={refresh} disabled={loading}>
                 <RefreshCw size={13} className={cn(loading && "animate-spin")} /> Refresh
               </Button>
               <ThemeToggle />

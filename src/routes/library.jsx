@@ -1,40 +1,40 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
+import { useLoaderData, useRevalidator } from "react-router";
 import { X, Check, Plus, ChevronLeft } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { readTabCache, writeTabCache } from "@/lib/tabCache";
+import { invalidateTabCache } from "@/lib/tabCache";
+import { swr, useRevalidateOnMount } from "@/lib/swr";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Spinner, ErrorNote, ConfirmModal } from "@/components/shared";
+import { ConfirmModal } from "@/components/shared";
 import { useShell } from "@/lib/shellContext";
 
 /* ---------------------------------------------------------------- *
  * Asset library                                                    *
  * ---------------------------------------------------------------- */
 
-function Library({ reloadKey, onView }) {
-  const [folders, setFolders] = useState(() => readTabCache("library") ?? null);
-  const [active, setActive] = useState(null);
-  const [loading, setLoading] = useState(() => readTabCache("library") === undefined);
-  const [error, setError] = useState(null);
-  const [confirm, setConfirm] = useState(null);
-
-  const load = useCallback(() => {
-    if (readTabCache("library") === undefined) setLoading(true);
-    setError(null);
+// Loader: the folder grid + selection state. swr paints the cached payload
+// instantly on a revisit; useRevalidateOnMount refreshes it once.
+export function loader() {
+  return swr("library", () =>
     fetch("/api/library")
       .then((r) => r.json())
       .then((j) => {
         if (j.error) throw new Error(j.error);
-        setFolders(j.folders);
-        writeTabCache("library", j.folders);
-      })
-      .catch((e) => { if (readTabCache("library") === undefined) setError(String(e.message || e)); })
-      .finally(() => setLoading(false));
-  }, []);
-  useEffect(() => {
-    load();
-  }, [load, reloadKey]);
+        return j.folders;
+      }));
+}
 
+function Library({ onView }) {
+  const folders = useLoaderData();
+  const revalidator = useRevalidator();
+  useRevalidateOnMount("library");
+  const [active, setActive] = useState(null);
+  const [confirm, setConfirm] = useState(null);
+
+  // Add/remove an image from final_selection, then refetch (invalidate +
+  // revalidate) so the selection state reflects the server. A failed toggle is
+  // a no-op — the current selection stays as it was.
   const toggle = useCallback(async (im) => {
     try {
       const res = await fetch("/api/library/toggle", {
@@ -42,24 +42,13 @@ function Library({ reloadKey, onView }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ rel: im.rel }),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
-      setFolders((fs) => {
-        const next = fs.map((f) => ({
-          ...f,
-          images: f.images.map((x) => (x.rel === im.rel ? { ...x, selected: data.selected } : x)),
-        }));
-        writeTabCache("library", next); // keep the cache in step with the optimistic toggle
-        return next;
-      });
+      if (!res.ok) throw new Error((await res.json()).error);
+      invalidateTabCache("library");
+      revalidator.revalidate();
     } catch (e) {
-      setError(String(e.message || e));
+      console.error("library toggle failed:", e);
     }
-  }, []);
-
-  if (loading) return <Spinner label="loading library…" />;
-  if (error) return <ErrorNote>{error}</ErrorNote>;
-  if (!folders) return null;
+  }, [revalidator]);
 
   const af = active && folders.find((f) => f.folder === active);
 
@@ -164,6 +153,6 @@ function Library({ reloadKey, onView }) {
 export { Library };
 
 export function Component() {
-  const { reloadKey, setModalImage } = useShell();
-  return <Library reloadKey={reloadKey} onView={setModalImage} />;
+  const { setModalImage } = useShell();
+  return <Library onView={setModalImage} />;
 }

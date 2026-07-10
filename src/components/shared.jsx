@@ -1,4 +1,5 @@
 import { X, TriangleAlert, Loader2 } from "lucide-react";
+import { useRouteError } from "react-router";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -146,4 +147,11 @@ function fmtTime(sec) {
   return `${m}:${String(s % 60).padStart(2, "0")}`;
 }
 
-export { Empty, Eyebrow, Chip, Panel, Spinner, ErrorNote, ImageModal, ConfirmModal, fmtTime };
+// Route-level error boundary for loader failures (React Router `errorElement`).
+// Styled like ErrorNote so a failed tab load reads the same as an inline error.
+function RouteError() {
+  const err = useRouteError();
+  return <ErrorNote>{String(err?.message || err || "Failed to load")}</ErrorNote>;
+}
+
+export { Empty, Eyebrow, Chip, Panel, Spinner, ErrorNote, ImageModal, ConfirmModal, fmtTime, RouteError };

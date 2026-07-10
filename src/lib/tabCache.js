@@ -23,3 +23,11 @@ export function writeTabCache(key, payload) {
 export function clearTabCache() {
   store.clear();
 }
+
+// Drop a single key (or everything, if no key) so the next loader run refetches
+// fresh instead of returning the stale cache. The canonical "data changed" signal
+// is `invalidateTabCache(key)` immediately followed by a router `revalidate()`.
+export function invalidateTabCache(key) {
+  if (key === undefined) store.clear();
+  else store.delete(key);
+}

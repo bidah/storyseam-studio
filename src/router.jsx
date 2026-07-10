@@ -1,5 +1,6 @@
 import { createBrowserRouter, redirect } from "react-router";
 import RootLayout from "@/components/RootLayout";
+import { RouteError } from "@/components/shared";
 import * as script from "@/routes/script";
 import * as shotlist from "@/routes/shotlist";
 import * as shots from "@/routes/shots";
@@ -32,7 +33,7 @@ export const router = createBrowserRouter([
       { path: "episode", Component: episode.Component },
       { path: "cuts", Component: cuts.Component },
       { path: "editor", Component: editor.Component },
-      { path: "library", Component: library.Component },
+      { path: "library", Component: library.Component, loader: library.loader, ErrorBoundary: RouteError },
       { path: "sounds", Component: sounds.Component },
       // Unknown paths fall back to the Script tab.
       { path: "*", loader: () => redirect("/script") },
