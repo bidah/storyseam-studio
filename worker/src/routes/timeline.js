@@ -131,12 +131,24 @@ const findItem = (tl, id) => {
   }
   return null;
 };
-// Lay a track's items end-to-end from frame 0 (gapless), in current array order.
-const repackTrack = (track) => {
+// Lay a track's items end-to-end from frame 0 (gapless), in current array
+// order. Items sharing a `linkId` are LINKED (e.g. a video clip + its separated
+// audio, created by the editor UI): each moved item's linked partners on OTHER
+// tracks shift by the same delta so the pair never drifts apart.
+const repackTrack = (tl, track) => {
+  const deltas = new Map(); // linkId → frame delta of its moved member
   let cur = 0;
   for (const it of track.items) {
+    if (it.linkId) deltas.set(it.linkId, cur - it.from);
     it.from = cur;
     cur += it.durationInFrames;
+  }
+  if (!deltas.size) return;
+  for (const t of tl.tracks) {
+    if (t === track) continue;
+    for (const it of t.items) {
+      if (it.linkId && deltas.has(it.linkId)) it.from = Math.max(0, it.from + deltas.get(it.linkId));
+    }
   }
 };
 
@@ -149,11 +161,24 @@ const repackTrack = (track) => {
 //   { op:"disable", id, disabled }          – grey out + skip an item in playback
 //   { op:"reorder", track, order:[ids] }    – reorder + repack a track gapless
 //   { op:"repack", track }                  – close gaps in a track, gapless
+// move/remove/reorder/repack honor item `linkId` links (see repackTrack).
 function applyTimelineOps(tl, ops) {
   for (const op of ops || []) {
     if (op.op === "move" && op.id != null) {
       const f = findItem(tl, op.id);
-      if (f) f.item.from = Math.max(0, Math.round(op.from || 0));
+      if (f) {
+        const next = Math.max(0, Math.round(op.from || 0));
+        const delta = next - (f.item.from || 0);
+        f.item.from = next;
+        // Linked partners (video clip ↔ its separated audio) move together.
+        if (f.item.linkId && delta) {
+          for (const t of tl.tracks) {
+            for (const it of t.items) {
+              if (it !== f.item && it.linkId === f.item.linkId) it.from = Math.max(0, (it.from || 0) + delta);
+            }
+          }
+        }
+      }
     } else if (op.op === "resize" && op.id != null) {
       const f = findItem(tl, op.id);
       if (f) {
@@ -162,7 +187,12 @@ function applyTimelineOps(tl, ops) {
         f.item.durationInFrames = d;
       }
     } else if (op.op === "remove" && op.id != null) {
-      for (const t of tl.tracks) t.items = t.items.filter((x) => x.id !== op.id);
+      // Removing a linked clip takes its partners with it — deleting a video
+      // clip also deletes its separated audio, and vice versa.
+      const linkId = findItem(tl, op.id)?.item.linkId || null;
+      for (const t of tl.tracks) {
+        t.items = t.items.filter((x) => x.id !== op.id && (!linkId || x.linkId !== linkId));
+      }
     } else if (op.op === "volume" && op.id != null) {
       const f = findItem(tl, op.id);
       if (f) f.item.volume = Math.min(2, Math.max(0, Number(op.volume)));
@@ -179,13 +209,13 @@ function applyTimelineOps(tl, ops) {
         const ordered = op.order.map((id) => byId.get(id)).filter(Boolean);
         for (const it of t.items) if (!ordered.includes(it)) ordered.push(it);
         t.items = ordered;
-        repackTrack(t);
+        repackTrack(tl, t);
       }
     } else if (op.op === "repack" && op.track) {
       const t = tl.tracks.find((x) => x.id === op.track);
       if (t) {
         t.items.sort((a, b) => a.from - b.from);
-        repackTrack(t);
+        repackTrack(tl, t);
       }
     }
   }

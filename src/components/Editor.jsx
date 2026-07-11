@@ -14,7 +14,7 @@ import {
   Film, Music, ChevronLeft, ChevronRight, Layers, Wand2, Volume2, VolumeX, Undo2,
   Eye, EyeOff, Clapperboard, Download, ExternalLink,
   PanelLeftClose, PanelLeftOpen, FolderOpen, Ban, FileDown, Magnet,
-  ZoomIn, ZoomOut, Camera, Images,
+  ZoomIn, ZoomOut, Camera, Images, Link2, Unlink2, AudioLines, GripHorizontal,
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -292,6 +292,15 @@ function withSourceDurations(tl) {
   return tl;
 }
 
+// Every item sharing `linkId` across all tracks (the "link group") — e.g. a
+// video clip plus its separated audio, or any clips linked by hand.
+function linkGroupOf(tl, linkId) {
+  const out = [];
+  if (!tl || !linkId) return out;
+  for (const t of tl.tracks || []) for (const it of t.items || []) if (it.linkId === linkId) out.push(it);
+  return out;
+}
+
 // Empty spans before/between a track's clips (not the trailing space after the
 // last clip). Used to render selectable "gaps" that can be deleted to close up.
 function gapsFor(track) {
@@ -306,8 +315,10 @@ function gapsFor(track) {
 }
 
 // Height of one timeline lane, in px (must match the `h-16` on the lane divs).
-// Used to place the "new channel" drop indicator between lanes.
 const LANE_H = 64;
+// The video and audio lane groups each show at most this many lanes before
+// scrolling vertically (they sit on either side of the fixed divider).
+const MAX_VISIBLE_LANES = 3;
 const SNAP_PX = 8; // magnet pull radius in px (converted to frames at the current zoom)
 
 // Candidate ruler intervals (in seconds) with how many minor ticks subdivide
@@ -351,7 +362,11 @@ function makeTrack(tl, type) {
 }
 
 /* ---- one clip/music block on the timeline ---- */
-function TimelineItem({ item, track, pxPerSec, fps, selected, onSelect, onDragStart, onFadeStart, onToggleDisable, onRemove }) {
+function TimelineItem({
+  item, track, pxPerSec, fps, selected, linkHighlight, multiCount,
+  onSelect, onDragStart, onFadeStart, onToggleDisable, onRemove,
+  onUnlink, onLinkSelected, onDetachAudio,
+}) {
   const left = framesToSec(item.from, fps) * pxPerSec;
   const width = Math.max(6, framesToSec(item.durationInFrames, fps) * pxPerSec);
   const isAudio = track.type === "audio";
@@ -377,11 +392,13 @@ function TimelineItem({ item, track, pxPerSec, fps, selected, onSelect, onDragSt
                 ? "border-violet-500/40 bg-violet-500/20 text-violet-100"
                 : "border-emerald-500/40 bg-emerald-500/20 text-emerald-50",
             selected && "ring-2 ring-primary",
+            linkHighlight && "ring-2 ring-primary/40",
           )}
           style={{ left, width }}
           onPointerDown={(e) => {
             if (e.button !== 0) return; // let right-click open the context menu
-            onSelect(item.id);
+            onSelect(item.id, e);
+            if (e.metaKey || e.ctrlKey) return; // cmd-click only toggles selection
             if (!e.target.dataset?.handle) onDragStart(e, item, track, "move");
           }}
           title={item.name}
@@ -419,6 +436,7 @@ function TimelineItem({ item, track, pxPerSec, fps, selected, onSelect, onDragSt
           >
             {disabled ? <EyeOff size={11} className="shrink-0" /> : isAudio ? <Music size={11} className="shrink-0" /> : <Film size={11} className="shrink-0" />}
             <span className="truncate">{item.name}</span>
+            {item.linkId && <Link2 size={10} className="ml-auto shrink-0 opacity-70" aria-label="Linked clip" />}
           </div>
           {/* fade handles — the classic dots at the card's top corners; drag
               inward to lengthen the fade (the dot sits where the fade ends) */}
@@ -464,6 +482,22 @@ function TimelineItem({ item, track, pxPerSec, fps, selected, onSelect, onDragSt
           <ContextMenuShortcut>D</ContextMenuShortcut>
         </ContextMenuItem>
         <ContextMenuSeparator />
+        {!isAudio && !item.linkId && (
+          <ContextMenuItem onSelect={() => onDetachAudio(item.id)}>
+            <span className="flex items-center gap-2"><AudioLines size={14} /> Detach audio</span>
+          </ContextMenuItem>
+        )}
+        {multiCount >= 2 && (
+          <ContextMenuItem onSelect={onLinkSelected}>
+            <span className="flex items-center gap-2"><Link2 size={14} /> Link selected clips ({multiCount})</span>
+          </ContextMenuItem>
+        )}
+        {item.linkId && (
+          <ContextMenuItem onSelect={() => onUnlink(item.id)}>
+            <span className="flex items-center gap-2"><Unlink2 size={14} /> Unlink</span>
+          </ContextMenuItem>
+        )}
+        {(multiCount >= 2 || item.linkId || !isAudio) && <ContextMenuSeparator />}
         <ContextMenuItem variant="destructive" onSelect={() => onRemove(item.id)}>
           <span className="flex items-center gap-2"><Trash2 size={14} /> Remove</span>
           <ContextMenuShortcut>⌫</ContextMenuShortcut>
@@ -651,11 +685,14 @@ export default function Editor({ reloadKey }) {
   const [cuts, setCuts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [selectedId, setSelectedId] = useState(null);
+  const [selectedId, setSelectedId] = useState(null); // primary selection (inspector)
+  const [selectedIds, setSelectedIds] = useState(() => new Set()); // full multi-selection
   const [selectedGap, setSelectedGap] = useState(null); // { trackId, from, to }
+  const [marquee, setMarquee] = useState(null); // drag-select rect, in lanesWrap coords
   const [pxPerSec, setPxPerSec] = useState(70);
   const [frame, setFrame] = useState(0);
   const [magnet, setMagnet] = useState(true); // snapping toggle — clips snap to nearby edges
+  const [playerH, setPlayerH] = useState(null); // preview height set by the timeline resizer (null = natural)
   const [saveState, setSaveState] = useState("idle"); // idle | saving | saved | error
   // While dragging a card vertically: where it would land on release.
   //   { type: "move", trackId }  – drop onto an existing same-type channel
@@ -702,6 +739,9 @@ export default function Editor({ reloadKey }) {
   const playerWrapRef = useRef(null); // player box — the media pool matches its height
   const [poolH, setPoolH] = useState(null); // measured player height (px) so the pool scrolls internally
   const magnetRef = useRef(true); // live snapping flag, read inside the drag handler
+  const selectedIdsRef = useRef(new Set()); // live multi-selection, read inside drag handlers
+  const videoLabelsRef = useRef(null); // video-group label rail, scroll-synced to its lane group
+  const audioLabelsRef = useRef(null); // audio-group label rail, scroll-synced to its lane group
   const frameRef = useRef(0); // live playhead frame, a snap target during a move drag
   const playingRef = useRef(false); // true while the <Player> is playing, gates auto-follow scroll
   const zoomScrollRef = useRef(null); // pending scrollLeft to apply after a zoom, keeps the playhead anchored
@@ -1022,6 +1062,8 @@ export default function Editor({ reloadKey }) {
     dirtyRef.current = true;
     setTimeline(JSON.parse(snap));
     setSelectedId(null);
+    setSelectedIds(new Set());
+    selectedIdsRef.current = new Set();
     setSelectedGap(null);
     setCanUndo(histRef.current.length > 0);
   }, []);
@@ -1041,7 +1083,7 @@ export default function Editor({ reloadKey }) {
       }
       if ((e.key === "Delete" || e.key === "Backspace") && !typing) {
         if (ctx.selectedGap) { e.preventDefault(); ctx.removeGap?.(ctx.selectedGap.trackId, ctx.selectedGap); }
-        else if (ctx.selectedId) { e.preventDefault(); ctx.removeItem?.(ctx.selectedId); }
+        else if (ctx.hasSelection) { e.preventDefault(); ctx.removeSelected?.(); }
       }
       if ((e.key === "d" || e.key === "D") && !typing && !e.metaKey && !e.ctrlKey && ctx.selectedId) {
         e.preventDefault();
@@ -1070,20 +1112,248 @@ export default function Editor({ reloadKey }) {
     }, silent);
   }, [mutate]);
 
-  const removeItem = useCallback((id) => {
+  // Patch several items in ONE mutation (one state update per drag frame) —
+  // used by linked-clip drags, where the whole group moves/trims together.
+  const mapItems = useCallback((patches, silent) => {
     mutate((tl) => {
-      for (const t of tl.tracks) t.items = t.items.filter((x) => x.id !== id);
+      for (const t of tl.tracks) {
+        for (const it of t.items) {
+          const p = patches.get(it.id);
+          if (p) Object.assign(it, typeof p === "function" ? p(it) : p);
+        }
+      }
+      return tl;
+    }, silent);
+  }, [mutate]);
+
+  // Removing a linked clip takes its partners with it — deleting a video clip
+  // also deletes its separated audio, and vice versa. Removing a member of a
+  // multi-selection removes the whole selection.
+  const removeItem = useCallback((id) => {
+    const sel = selectedIdsRef.current;
+    if (sel.has(id) && sel.size > 1) { removeSelectedRef.current?.(); return; }
+    mutate((tl) => {
+      let linkId = null;
+      for (const t of tl.tracks) {
+        const it = t.items.find((x) => x.id === id);
+        if (it) { linkId = it.linkId || null; break; }
+      }
+      for (const t of tl.tracks) {
+        t.items = t.items.filter((x) => x.id !== id && (!linkId || x.linkId !== linkId));
+      }
       return tl;
     });
     setSelectedId((cur) => (cur === id ? null : cur));
+    setSelectedIds((prev) => {
+      if (!prev.has(id)) return prev;
+      const next = new Set(prev);
+      next.delete(id);
+      selectedIdsRef.current = next;
+      return next;
+    });
+  }, [mutate]);
+  // removeSelected is defined below (it needs mutate); reach it through a ref
+  // so removeItem can delegate without a circular declaration.
+  const removeSelectedRef = useRef(null);
+
+  // Dissolve a clip's link group (every member keeps its position, loses the link).
+  const unlinkItem = useCallback((id) => {
+    mutate((tl) => {
+      let linkId = null;
+      for (const t of tl.tracks) {
+        const it = t.items.find((x) => x.id === id);
+        if (it) { linkId = it.linkId; break; }
+      }
+      if (linkId) for (const it of linkGroupOf(tl, linkId)) delete it.linkId;
+      return tl;
+    });
   }, [mutate]);
 
-  // Selecting a clip and a gap are mutually exclusive.
-  const selectItem = useCallback((id) => { setSelectedId(id); setSelectedGap(null); }, []);
+  // Separate a video clip's audio onto the first audio track as a LINKED audio
+  // item playing the same source file (an <audio> element plays an mp4's audio
+  // track), and mute the video card so the sound isn't doubled.
+  const detachAudio = useCallback((id) => {
+    mutate((tl) => {
+      let vid = null;
+      for (const t of tl.tracks) {
+        const it = t.items.find((x) => x.id === id);
+        if (it) { vid = it; break; }
+      }
+      if (!vid || vid.linkId) return tl;
+      let at = tl.tracks.find((t) => t.type === "audio");
+      if (!at) { at = { id: "music", name: "Music", type: "audio", items: [] }; tl.tracks.push(at); }
+      const linkId = `link_${id}`;
+      at.items.push({
+        id: `${id}_audio`,
+        src: vid.src,
+        name: vid.name,
+        from: vid.from,
+        durationInFrames: vid.durationInFrames,
+        sourceDurationInFrames: vid.sourceDurationInFrames || vid.durationInFrames,
+        volume: vid.muted ? 0 : vid.volume ?? 1,
+        linkId,
+      });
+      vid.linkId = linkId;
+      vid.muted = true;
+      return tl;
+    });
+  }, [mutate]);
+
+  // Repack a track's items end-to-end in the given order, dragging each moved
+  // item's linked partners (on OTHER tracks) along by the same delta so a
+  // video repack never drifts away from its separated audio.
+  const repackWithLinks = (tl, track, ordered) => {
+    const deltas = new Map(); // linkId → frame delta of its moved member
+    let cur = 0;
+    for (const it of ordered) {
+      if (it.linkId) deltas.set(it.linkId, cur - it.from);
+      it.from = cur;
+      cur += it.durationInFrames;
+    }
+    track.items = ordered;
+    if (!deltas.size) return;
+    for (const t of tl.tracks) {
+      if (t === track) continue;
+      for (const it of t.items) {
+        if (it.linkId && deltas.has(it.linkId)) it.from = Math.max(0, it.from + deltas.get(it.linkId));
+      }
+    }
+  };
+
+  // Single entry point for selection changes: keeps the live ref (read inside
+  // pointer handlers, which fire before React commits) in lockstep with state.
+  const applySelection = useCallback((ids, primary) => {
+    selectedIdsRef.current = ids;
+    setSelectedIds(ids);
+    setSelectedId(primary ?? null);
+  }, []);
+
+  // Selecting a clip and a gap are mutually exclusive. Cmd/Ctrl-click toggles
+  // the clip in/out of the multi-selection; a plain click on an UNSELECTED clip
+  // collapses to it, while a plain click on a selected member keeps the whole
+  // selection (so grabbing any member drags the group).
+  const selectItem = useCallback((id, e) => {
+    setSelectedGap(null);
+    const prev = selectedIdsRef.current;
+    const additive = !!e && (e.metaKey || e.ctrlKey);
+    if (additive) {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+        applySelection(next, next.size ? [...next][next.size - 1] : null);
+      } else {
+        next.add(id);
+        applySelection(next, id);
+      }
+    } else {
+      applySelection(prev.has(id) ? prev : new Set([id]), id);
+    }
+  }, [applySelection]);
   const selectGap = useCallback((trackId, gap) => {
     setSelectedGap({ trackId, from: gap.from, to: gap.to });
-    setSelectedId(null);
-  }, []);
+    applySelection(new Set(), null);
+  }, [applySelection]);
+
+  // Remove every selected clip (each taking its linked partners with it) —
+  // the Delete key and the multi-selection inspector use this.
+  const removeSelected = useCallback(() => {
+    const ids = selectedIdsRef.current;
+    if (!ids.size) return;
+    mutate((tl) => {
+      const kill = new Set(ids);
+      for (const t of tl.tracks) {
+        for (const it of t.items) {
+          if (kill.has(it.id) && it.linkId) for (const g of linkGroupOf(tl, it.linkId)) kill.add(g.id);
+        }
+      }
+      for (const t of tl.tracks) t.items = t.items.filter((x) => !kill.has(x.id));
+      return tl;
+    });
+    applySelection(new Set(), null);
+    setSelectedGap(null);
+  }, [mutate, applySelection]);
+  removeSelectedRef.current = removeSelected;
+
+  // Link EXACTLY the selected clips (two videos, video + audio combos, …) into
+  // one fresh group. The selection defines the group: members leave whatever
+  // group they were in before, and any old group left with a single member
+  // dissolves — so relinking never silently drags in unselected clips.
+  const linkSelected = useCallback(() => {
+    const ids = new Set(selectedIdsRef.current);
+    if (ids.size < 2) return;
+    mutate((tl) => {
+      const members = [];
+      for (const t of tl.tracks) for (const it of t.items) if (ids.has(it.id)) members.push(it);
+      if (members.length < 2) return tl;
+      const linkId = `link_${Date.now()}_${members[0].id}`;
+      for (const it of members) it.linkId = linkId;
+      // Dissolve any old group that lost its partners to this one.
+      const counts = new Map();
+      for (const t of tl.tracks) for (const it of t.items) if (it.linkId) counts.set(it.linkId, (counts.get(it.linkId) || 0) + 1);
+      for (const t of tl.tracks) for (const it of t.items) if (it.linkId && counts.get(it.linkId) < 2) delete it.linkId;
+      return tl;
+    });
+  }, [mutate]);
+
+  // Unlink every selected clip: dissolves the link group of each selected
+  // member (the toolbar Link button uses this when the selection is linked).
+  const unlinkSelected = useCallback(() => {
+    const ids = selectedIdsRef.current;
+    if (!ids.size) return;
+    mutate((tl) => {
+      const linkIds = new Set();
+      for (const t of tl.tracks) for (const it of t.items) if (ids.has(it.id) && it.linkId) linkIds.add(it.linkId);
+      if (!linkIds.size) return tl;
+      for (const t of tl.tracks) for (const it of t.items) if (it.linkId && linkIds.has(it.linkId)) delete it.linkId;
+      return tl;
+    });
+  }, [mutate]);
+
+  // Click-drag on empty lane space rubber-band-selects: a translucent white
+  // rectangle follows the mouse and every clip it touches joins the selection
+  // live (Cmd/Ctrl keeps the existing selection and adds to it). Releasing
+  // keeps whatever ended up selected.
+  const startMarquee = useCallback((e) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    const wrap = lanesWrapRef.current;
+    if (!wrap) return;
+    setSelectedGap(null);
+    const additive = e.metaKey || e.ctrlKey;
+    const base = additive ? new Set(selectedIdsRef.current) : new Set();
+    applySelection(new Set(base), base.size ? [...base][base.size - 1] : null);
+    const sx = e.clientX, sy = e.clientY;
+    const onMove = (ev) => {
+      const rect = {
+        left: Math.min(sx, ev.clientX), right: Math.max(sx, ev.clientX),
+        top: Math.min(sy, ev.clientY), bottom: Math.max(sy, ev.clientY),
+      };
+      const wr = wrap.getBoundingClientRect();
+      setMarquee({ x: rect.left - wr.left, y: rect.top - wr.top, w: rect.right - rect.left, h: rect.bottom - rect.top });
+      // Hit-test clips against the live lane rects (tracks vertical group
+      // scroll for free); x spans come from each clip's frame position.
+      const tl = timelineRef.current;
+      const ids = new Set(base);
+      for (const laneEl of wrap.querySelectorAll("[data-lane]")) {
+        const lr = laneEl.getBoundingClientRect();
+        if (lr.bottom < rect.top || lr.top > rect.bottom) continue;
+        const track = tl?.tracks.find((t) => t.id === laneEl.dataset.lane);
+        for (const it of track?.items || []) {
+          const x1 = lr.left + framesToSec(it.from, fps) * pxPerSec;
+          const x2 = x1 + Math.max(6, framesToSec(it.durationInFrames, fps) * pxPerSec);
+          if (x2 >= rect.left && x1 <= rect.right) ids.add(it.id);
+        }
+      }
+      applySelection(ids, ids.size ? [...ids][ids.size - 1] : null);
+    };
+    const onUp = () => {
+      setMarquee(null);
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+  }, [fps, pxPerSec, applySelection]);
 
   // Disable/enable a clip — a disabled clip stays on the timeline (greyed) but is
   // skipped in playback (video shows nothing, audio is silent).
@@ -1091,12 +1361,28 @@ export default function Editor({ reloadKey }) {
     mapItem(id, (it) => ({ disabled: !it.disabled }));
   }, [mapItem]);
 
-  // Delete just this gap: pull every later clip on the track left by its width.
+  // Delete just this gap: pull every later clip on the track left by its width,
+  // and pull each shifted clip's linked partners (on other tracks) along.
   const removeGap = useCallback((trackId, gap) => {
     const w = gap.to - gap.from;
     mutate((tl) => {
       const t = tl.tracks.find((x) => x.id === trackId);
-      if (t) for (const it of t.items) if (it.from >= gap.to - 0.5) it.from -= w;
+      if (!t) return tl;
+      const shifted = new Set(); // linkIds of shifted clips
+      for (const it of t.items) {
+        if (it.from >= gap.to - 0.5) {
+          it.from -= w;
+          if (it.linkId) shifted.add(it.linkId);
+        }
+      }
+      if (shifted.size) {
+        for (const ot of tl.tracks) {
+          if (ot === t) continue;
+          for (const it of ot.items) {
+            if (it.linkId && shifted.has(it.linkId)) it.from = Math.max(0, it.from - w);
+          }
+        }
+      }
       return tl;
     });
     setSelectedGap(null);
@@ -1113,9 +1399,7 @@ export default function Editor({ reloadKey }) {
       const j = i + dir;
       if (i < 0 || j < 0 || j >= items.length) return tl;
       [items[i], items[j]] = [items[j], items[i]];
-      let cur = 0;
-      for (const it of items) { it.from = cur; cur += it.durationInFrames; }
-      t.items = items;
+      repackWithLinks(tl, t, items);
       return tl;
     });
   }, [mutate]);
@@ -1125,10 +1409,7 @@ export default function Editor({ reloadKey }) {
     mutate((tl) => {
       for (const t of tl.tracks) {
         if (t.type !== "video") continue;
-        const items = t.items.slice().sort((a, b) => a.from - b.from);
-        let cur = 0;
-        for (const it of items) { it.from = cur; cur += it.durationInFrames; }
-        t.items = items;
+        repackWithLinks(tl, t, t.items.slice().sort((a, b) => a.from - b.from));
       }
       return tl;
     });
@@ -1143,11 +1424,9 @@ export default function Editor({ reloadKey }) {
     const wrap = lanesWrapRef.current;
     if (!wrap) return null;
     const laneEls = Array.from(wrap.querySelectorAll("[data-lane]"));
-    if (!laneEls.length) return null;
-    const first = laneEls[0].getBoundingClientRect();
-    const last = laneEls[laneEls.length - 1].getBoundingClientRect();
-    if (clientY < first.top) return { type: "new", at: 0 };
-    if (clientY > last.bottom) return { type: "new", at: laneEls.length };
+    const sameEls = laneEls.filter((el) => el.dataset.laneType === itemType);
+    if (!sameEls.length) return null;
+    // Over a lane → move onto it (same type only; own lane is a no-op).
     for (const el of laneEls) {
       const r = el.getBoundingClientRect();
       if (clientY >= r.top && clientY <= r.bottom) {
@@ -1155,6 +1434,18 @@ export default function Editor({ reloadKey }) {
         if (el.dataset.laneType !== itemType) return null;  // no cross-media moves
         return { type: "move", trackId: el.dataset.lane };
       }
+    }
+    // Outside every lane → spawn a new channel at the matching group's border.
+    // `ref`/`side` name the track to insert before/after; `y` places the
+    // indicator line (px from the top of the lanes wrapper).
+    const wrapTop = wrap.getBoundingClientRect().top;
+    const firstR = sameEls[0].getBoundingClientRect();
+    const lastR = sameEls[sameEls.length - 1].getBoundingClientRect();
+    if (clientY < firstR.top) {
+      return { type: "new", ref: sameEls[0].dataset.lane, side: "before", y: firstR.top - wrapTop };
+    }
+    if (clientY > lastR.bottom) {
+      return { type: "new", ref: sameEls[sameEls.length - 1].dataset.lane, side: "after", y: lastR.bottom - wrapTop };
     }
     return null;
   }, []);
@@ -1179,7 +1470,9 @@ export default function Editor({ reloadKey }) {
         srcTrack.items = srcTrack.items.filter((x) => x.id !== id);
         const nt = makeTrack(tl, type);
         nt.items.push(moved);
-        tl.tracks.splice(drop.at, 0, nt);
+        const i = tl.tracks.findIndex((t) => t.id === drop.ref);
+        const at = i < 0 ? tl.tracks.length : drop.side === "after" ? i + 1 : i;
+        tl.tracks.splice(at, 0, nt);
       }
       // Drop any now-empty channel we created earlier; keep the base two always.
       tl.tracks = tl.tracks.filter((t) => t.items.length > 0 || t.id === "video" || t.id === "music");
@@ -1215,30 +1508,51 @@ export default function Editor({ reloadKey }) {
     if (clientX < rect.left || clientX > rect.right || clientY < rect.top || clientY > rect.bottom) return null;
     const x = clientX - rect.left + area.scrollLeft;
     const from = Math.max(0, Math.round((x / pxPerSec) * fps));
-    const first = laneEls[0].getBoundingClientRect();
-    const last = laneEls[laneEls.length - 1].getBoundingClientRect();
-    const EDGE = 14; // px band at the outer borders that spawns a NEW channel
-    // Above the stack (incl. the ruler) or on the top border → new channel first.
-    if (clientY < first.top + EDGE) return { type: "new", at: 0, from, valid: true };
-    // On the bottom border or below the stack → new channel last.
-    if (clientY > last.bottom - EDGE) return { type: "new", at: laneEls.length, from, valid: true };
+    const sameEls = laneEls.filter((el) => el.dataset.laneType === mediaType);
+    if (!sameEls.length) return null;
+    const wrapTop = wrap.getBoundingClientRect().top;
+    const firstEl = sameEls[0];
+    const lastEl = sameEls[sameEls.length - 1];
+    const firstR = firstEl.getBoundingClientRect();
+    const lastR = lastEl.getBoundingClientRect();
+    const EDGE = 14; // px band at the matching group's outer borders that spawns a NEW channel
+    const mkNew = (side) => ({
+      type: "new",
+      ref: (side === "before" ? firstEl : lastEl).dataset.lane,
+      side,
+      from,
+      valid: true,
+      y: (side === "before" ? firstR.top : lastR.bottom) - wrapTop,
+    });
     for (const el of laneEls) {
       const r = el.getBoundingClientRect();
       if (clientY >= r.top && clientY <= r.bottom) {
+        // The outer EDGE band of the matching group still reads as "new channel".
+        if (el === firstEl && clientY < firstR.top + EDGE) return mkNew("before");
+        if (el === lastEl && clientY > lastR.bottom - EDGE) return mkNew("after");
         return { type: "lane", trackId: el.dataset.lane, from, valid: el.dataset.laneType === mediaType };
       }
     }
+    // Outside every lane (ruler, divider, below the stack) → new channel at the
+    // matching group's nearer border.
+    if (clientY < firstR.top) return mkNew("before");
+    if (clientY > lastR.bottom) return mkNew("after");
     return null;
   }, [pxPerSec, fps]);
 
   // Drop a pool clip as a fresh timeline item carrying the media's natural length
   // (also its trim cap). `drop` decides whether it joins an existing lane or
-  // spawns a brand-new matching-type channel at `drop.at`. Selects the new clip.
+  // spawns a brand-new matching-type channel. A VIDEO drop also separates its
+  // audio: a linked audio item (same source file — an <audio> element plays an
+  // mp4's audio track) lands on the first audio track and carries the sound,
+  // while the video card itself is muted. Selects the new clip.
   const addPoolClip = useCallback((item, drop, durationSec) => {
     const newId = `pool_${item.mediaType}_${poolSeqRef.current++}_${Date.now()}`;
     const type = item.mediaType === "audio" ? "audio" : "video";
     mutate((tl) => {
       const dur = Math.max(1, Math.round((durationSec || 3) * (tl.fps || fps)));
+      const isVideo = type === "video";
+      const linkId = isVideo ? `link_${newId}` : undefined;
       const newItem = {
         id: newId,
         src: item.src,
@@ -1247,20 +1561,39 @@ export default function Editor({ reloadKey }) {
         durationInFrames: dur,
         sourceDurationInFrames: dur,
         volume: 1,
+        ...(isVideo ? { muted: true, linkId } : {}),
         ...(item.bundle ? { bundle: item.bundle } : {}),
       };
       if (drop.type === "new") {
         const nt = makeTrack(tl, type);
         nt.items.push(newItem);
-        tl.tracks.splice(Math.min(drop.at, tl.tracks.length), 0, nt);
+        const i = tl.tracks.findIndex((t) => t.id === drop.ref);
+        const at = i < 0 ? tl.tracks.length : drop.side === "after" ? i + 1 : i;
+        tl.tracks.splice(at, 0, nt);
       } else {
         const t = tl.tracks.find((x) => x.id === drop.trackId);
         if (!t) return tl;
         t.items.push(newItem);
       }
+      if (isVideo) {
+        let at = tl.tracks.find((t) => t.type === "audio");
+        if (!at) { at = { id: "music", name: "Music", type: "audio", items: [] }; tl.tracks.push(at); }
+        at.items.push({
+          id: `${newId}_audio`,
+          src: item.src,
+          name: item.name,
+          from: newItem.from,
+          durationInFrames: dur,
+          sourceDurationInFrames: dur,
+          volume: 1,
+          linkId,
+        });
+      }
       return tl;
     });
     setSelectedId(newId);
+    setSelectedIds(new Set([newId]));
+    selectedIdsRef.current = new Set([newId]);
     setSelectedGap(null);
   }, [mutate, fps]);
 
@@ -1307,6 +1640,8 @@ export default function Editor({ reloadKey }) {
       setCanUndo(false);
       setTimeline(withSourceDurations(data.timeline));
       setSelectedId(null);
+      setSelectedIds(new Set());
+      selectedIdsRef.current = new Set();
       setSelectedGap(null);
     } catch (e) {
       setError(String(e.message || e));
@@ -1379,14 +1714,14 @@ export default function Editor({ reloadKey }) {
   // the "pull" feels the same at any zoom. Returns the snapped `from` (the clip's
   // length never changes on a move) and reports the snap point via setSnapLine so
   // a guide can be drawn; null snap point clears it.
-  const snapFrom = useCallback((proposedFrom, dur, draggedId) => {
+  const snapFrom = useCallback((proposedFrom, dur, excludeIds) => {
     const tl = timelineRef.current;
     if (!tl) { setSnapLine(null); return proposedFrom; }
     const thresh = Math.max(1, (SNAP_PX / pxPerSec) * fps);
     const targets = [0, frameRef.current];
     for (const t of tl.tracks || []) {
       for (const it of t.items || []) {
-        if (it.id === draggedId) continue;
+        if (excludeIds.has(it.id)) continue; // the dragged clip + its linked partners move too
         const s = it.from || 0;
         targets.push(s, s + (it.durationInFrames || 0));
       }
@@ -1415,6 +1750,27 @@ export default function Editor({ reloadKey }) {
   const onDragStart = useCallback((e, item, track, mode) => {
     e.preventDefault();
     beginGesture(); // one undo step for the whole drag
+    // The drag's base set: the grabbed clip, or the whole multi-selection when
+    // the grabbed clip belongs to one (move only — trims stay per-clip). Every
+    // member also drags its linked partners. Snapshot each member's
+    // start/length so every pointer move applies one shared delta.
+    const tl = timelineRef.current;
+    const sel = selectedIdsRef.current;
+    const multi = mode === "move" && sel.has(item.id) && sel.size > 1;
+    const baseItems = [];
+    if (multi && tl) {
+      for (const t of tl.tracks) for (const it of t.items) if (sel.has(it.id)) baseItems.push(it);
+    }
+    if (!baseItems.length) baseItems.push(item);
+    const byId = new Map(baseItems.map((it) => [it.id, it]));
+    if (tl) {
+      for (const it of baseItems) {
+        if (it.linkId) for (const g of linkGroupOf(tl, it.linkId)) byId.set(g.id, g);
+      }
+    }
+    const group = [...byId.values()].map((it) => ({
+      id: it.id, startFrom: it.from, startDur: it.durationInFrames, srcDur: it.sourceDurationInFrames,
+    }));
     dragRef.current = {
       id: item.id, mode,
       startX: e.clientX,
@@ -1423,6 +1779,12 @@ export default function Editor({ reloadKey }) {
       srcDur: item.sourceDurationInFrames, // resize cap (undefined = uncapped)
       type: track.type,
       srcTrackId: track.id,
+      group,
+      groupIds: new Set(group.map((g) => g.id)),
+      // The group can't slide further left than its earliest member.
+      minStartFrom: Math.min(...group.map((g) => g.startFrom)),
+      // Vertical channel moves only make sense for a single grabbed clip.
+      allowDrop: !multi,
       drop: null,
     };
     const onMove = (ev) => {
@@ -1431,16 +1793,24 @@ export default function Editor({ reloadKey }) {
       const deltaFrames = ((ev.clientX - d.startX) / pxPerSec) * fps;
       if (d.mode === "move") {
         let nextFrom = Math.max(0, Math.round(d.startFrom + deltaFrames));
-        if (magnetRef.current) nextFrom = snapFrom(nextFrom, d.startDur, d.id);
-        mapItem(d.id, { from: nextFrom }, true);
-        const drop = computeDrop(ev.clientY, d.type, d.srcTrackId);
-        d.drop = drop;
-        setDropTarget(drop);
+        if (magnetRef.current) nextFrom = snapFrom(nextFrom, d.startDur, d.groupIds);
+        const delta = Math.max(nextFrom - d.startFrom, -d.minStartFrom);
+        const patches = new Map(d.group.map((g) => [g.id, { from: Math.max(0, g.startFrom + delta) }]));
+        mapItems(patches, true);
+        if (d.allowDrop) {
+          const drop = computeDrop(ev.clientY, d.type, d.srcTrackId);
+          d.drop = drop;
+          setDropTarget(drop);
+        }
       } else {
-        // Trim shorter freely; never stretch past the clip's real length.
-        let next = Math.max(1, Math.round(d.startDur + deltaFrames));
-        if (d.srcDur) next = Math.min(next, d.srcDur);
-        mapItem(d.id, { durationInFrames: next }, true);
+        // Trim shorter freely; never stretch past each clip's real length.
+        // Linked clips trim together (each clamped to its own source cap).
+        const patches = new Map(d.group.map((g) => {
+          let next = Math.max(1, Math.round(g.startDur + deltaFrames));
+          if (g.srcDur) next = Math.min(next, g.srcDur);
+          return [g.id, { durationInFrames: next }];
+        }));
+        mapItems(patches, true);
       }
     };
     const onUp = () => {
@@ -1454,7 +1824,7 @@ export default function Editor({ reloadKey }) {
     };
     window.addEventListener("pointermove", onMove);
     window.addEventListener("pointerup", onUp);
-  }, [pxPerSec, fps, mapItem, beginGesture, computeDrop, applyDrop, snapFrom]);
+  }, [pxPerSec, fps, mapItems, beginGesture, computeDrop, applyDrop, snapFrom]);
 
   // Drag a fade handle on an audio card: horizontal movement sets the fade
   // length in frames. Fades are clamped so fade-in + fade-out ≤ clip length.
@@ -1549,8 +1919,46 @@ export default function Editor({ reloadKey }) {
     return null;
   }, [timeline, selectedId]);
 
+  // Whether the current selection contains any linked clip. Drives the toolbar
+  // Link button, which always reflects the selection: lit = the selection is
+  // linked (click to unlink); unlit = clickable only when 2+ clips are selected.
+  const selectionLinked = useMemo(() => {
+    if (!timeline || !selectedIds.size) return false;
+    for (const t of timeline.tracks) {
+      for (const it of t.items) if (selectedIds.has(it.id) && it.linkId) return true;
+    }
+    return false;
+  }, [timeline, selectedIds]);
+
+  // Drag the handle above the timeline to resize the preview/timeline split:
+  // pulling it up shrinks the media-pool + player row (the pool tracks the
+  // player's height), giving the timeline more room. Double-click resets.
+  const startTopResize = useCallback((e) => {
+    e.preventDefault();
+    const startY = e.clientY;
+    const startH = playerWrapRef.current?.offsetHeight || 0;
+    const onMove = (ev) =>
+      setPlayerH(Math.max(120, Math.min(900, Math.round(startH + (ev.clientY - startY)))));
+    const onUp = () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+  }, []);
+
   const contentWidth = Math.max(600, durationSec * pxPerSec + 40);
   const playheadX = framesToSec(frame, fps) * pxPerSec;
+
+  // Video and audio lanes render as two groups around a fixed divider. Each
+  // group shows up to MAX_VISIBLE_LANES lanes and scrolls vertically for more
+  // (its label rail scroll-syncs to it).
+  const videoTracks = timeline ? timeline.tracks.filter((t) => t.type === "video") : [];
+  const audioTracks = timeline ? timeline.tracks.filter((t) => t.type === "audio") : [];
+  const vGroupH = Math.max(1, Math.min(videoTracks.length, MAX_VISIBLE_LANES)) * LANE_H;
+  const aGroupH = Math.max(1, Math.min(audioTracks.length, MAX_VISIBLE_LANES)) * LANE_H;
+  const selectedLinkId = selected?.item.linkId || null;
+  const playerAspect = (timeline?.width || 1280) / (timeline?.height || 720);
 
   // Adaptive ruler ticks. Pick the densest interval whose *major* (labelled)
   // ticks stay at least ~72px apart, then emit every minor sub-tick across the
@@ -1627,7 +2035,10 @@ export default function Editor({ reloadKey }) {
   };
 
   // Latest handlers/selection for the mount-once keyboard listener.
-  keyCtxRef.current = { undo, selectedGap, selectedId, removeGap, removeItem, toggleDisable, stepFrame, gotoClip, hasTimeline: !!timeline };
+  keyCtxRef.current = {
+    undo, selectedGap, selectedId, removeGap, removeItem, removeSelected, toggleDisable,
+    stepFrame, gotoClip, hasTimeline: !!timeline, hasSelection: selectedIds.size > 0,
+  };
 
   if (loading && !timeline) return <Spinner label="loading editor…" />;
 
@@ -1800,6 +2211,89 @@ export default function Editor({ reloadKey }) {
     </>
   );
 
+  // One row in a group's label rail (must stay LANE_H tall to mirror its lane).
+  const renderLabel = (t) => (
+    <div key={t.id} className="flex h-16 items-center gap-1.5 border-b px-3 text-xs font-medium">
+      {t.type === "audio" ? <Music size={13} /> : <Film size={13} />} {t.name}
+    </div>
+  );
+
+  // One timeline lane. Rendered by both the video and the audio group.
+  const renderLane = (t) => (
+    <div
+      key={t.id}
+      data-lane={t.id}
+      data-lane-type={t.type}
+      className={cn(
+        "relative h-16 border-b",
+        dropTarget?.type === "move" && dropTarget.trackId === t.id &&
+          "bg-primary/10 ring-2 ring-inset ring-primary/60",
+        poolDrag?.drop?.trackId === t.id && (poolDrag.drop.valid
+          ? "bg-primary/10 ring-2 ring-inset ring-primary/60"
+          : "bg-destructive/10 ring-2 ring-inset ring-destructive/50"),
+      )}
+      onPointerDown={(e) => { if (e.target === e.currentTarget) startMarquee(e); }}
+    >
+      {/* translucent preview of the clip a pool drag would drop here */}
+      {poolDrag?.drop?.valid && poolDrag.drop.trackId === t.id && (
+        <div
+          className={cn(
+            "pointer-events-none absolute top-1 bottom-1 z-10 flex items-center gap-1 overflow-hidden rounded-md border px-1.5 text-[11px] opacity-70",
+            t.type === "audio"
+              ? "border-violet-400/60 bg-violet-500/30 text-violet-100"
+              : "border-emerald-400/60 bg-emerald-500/30 text-emerald-50",
+          )}
+          style={{
+            left: framesToSec(poolDrag.drop.from, fps) * pxPerSec,
+            width: Math.max(6, (poolDrag.durationSec || 3) * pxPerSec),
+          }}
+        >
+          {t.type === "audio" ? <Music size={11} className="shrink-0" /> : <Film size={11} className="shrink-0" />}
+          <span className="truncate">{poolDrag.item.name}</span>
+        </div>
+      )}
+      {/* selectable gaps between video clips */}
+      {t.type === "video" && gapsFor(t).map((g, gi) => {
+        const gsel = selectedGap && selectedGap.trackId === t.id
+          && selectedGap.from === g.from && selectedGap.to === g.to;
+        return (
+          <div
+            key={`gap-${gi}`}
+            className={cn(
+              "absolute top-1 bottom-1 rounded-md border border-dashed transition-colors",
+              gsel
+                ? "border-muted-foreground/60 bg-muted-foreground/30 ring-1 ring-muted-foreground/50"
+                : "border-transparent hover:bg-muted-foreground/10",
+            )}
+            style={{ left: framesToSec(g.from, fps) * pxPerSec, width: Math.max(4, framesToSec(g.to - g.from, fps) * pxPerSec) }}
+            onPointerDown={(e) => { e.stopPropagation(); selectGap(t.id, g); }}
+            title="Gap — click to select, Delete to close it"
+          />
+        );
+      })}
+      {t.items.map((item) => (
+        <TimelineItem
+          key={item.id}
+          item={item}
+          track={t}
+          pxPerSec={pxPerSec}
+          fps={fps}
+          selected={selectedIds.has(item.id)}
+          linkHighlight={!!selectedLinkId && item.linkId === selectedLinkId && !selectedIds.has(item.id)}
+          multiCount={selectedIds.has(item.id) ? selectedIds.size : 0}
+          onSelect={selectItem}
+          onDragStart={onDragStart}
+          onFadeStart={onFadeStart}
+          onToggleDisable={toggleDisable}
+          onRemove={removeItem}
+          onUnlink={unlinkItem}
+          onLinkSelected={linkSelected}
+          onDetachAudio={detachAudio}
+        />
+      ))}
+    </div>
+  );
+
   return (
     <div className="w-full min-w-0 space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -1859,7 +2353,15 @@ export default function Editor({ reloadKey }) {
             />
             <ContextMenu>
               <ContextMenuTrigger asChild>
-                <div ref={playerWrapRef} className="min-w-0 flex-1 self-start overflow-hidden rounded-xl border bg-black">
+                <div
+                  ref={playerWrapRef}
+                  className="min-w-0 self-start overflow-hidden rounded-xl border bg-black"
+                  // Natural mode fills the row (width-driven). Once the timeline
+                  // resizer sets a height, drive the width from it instead.
+                  style={playerH
+                    ? { flex: "0 1 auto", width: Math.round(playerH * playerAspect), maxWidth: "100%" }
+                    : { flex: "1 1 0%" }}
+                >
                   <Player
                     ref={playerRef}
                     component={EditorComposition}
@@ -1881,6 +2383,25 @@ export default function Editor({ reloadKey }) {
                 </ContextMenuItem>
               </ContextMenuContent>
             </ContextMenu>
+          </div>
+
+          {/* Resizer above the timeline: an edge-to-edge divider separating the
+              player section (up) from the timeline (down). Hovering it reveals
+              the drag grip; drag up to shrink the media-pool + player row and
+              give the timeline more room. Double-click resets. */}
+          <div
+            className="group relative -my-2 -top-2.5 flex h-4 cursor-row-resize touch-none items-center"
+            onPointerDown={startTopResize}
+            onDoubleClick={() => setPlayerH(null)}
+            role="separator"
+            aria-orientation="horizontal"
+            aria-label="Resize preview / timeline split"
+            title="Drag to resize the preview / timeline split · double-click to reset"
+          >
+            <div className="h-px w-full bg-border transition-colors group-hover:h-0.5 group-hover:bg-primary/60 group-active:h-0.5 group-active:bg-primary" />
+            <div className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-md border bg-card px-1.5 py-0.5 opacity-0 shadow-sm transition-opacity group-hover:opacity-100 group-active:opacity-100">
+              <GripHorizontal size={13} className="text-muted-foreground" />
+            </div>
           </div>
 
           {/* Timeline toolbar */}
@@ -1906,6 +2427,20 @@ export default function Editor({ reloadKey }) {
                   : "Snapping off — clips move freely. Click to turn on (magnet)."}
               >
                 <Magnet size={14} /> Snap
+              </Button>
+              <Button
+                variant={selectionLinked ? "default" : "outline"}
+                size="sm"
+                onClick={() => (selectionLinked ? unlinkSelected() : linkSelected())}
+                disabled={!selectionLinked && selectedIds.size < 2}
+                aria-pressed={selectionLinked}
+                title={selectionLinked
+                  ? "The selected clips are linked — click to unlink them."
+                  : selectedIds.size >= 2
+                    ? "Link the selected clips so they move, trim and delete together."
+                    : "Select 2+ clips (drag-select or Cmd-click) to link them."}
+              >
+                {selectionLinked ? <Link2 size={14} /> : <Unlink2 size={14} />} Link
               </Button>
               <div className="flex items-center gap-2">
                 <span className="text-xs text-muted-foreground">zoom</span>
@@ -1945,14 +2480,17 @@ export default function Editor({ reloadKey }) {
           {/* Timeline tracks */}
           <div className="overflow-hidden rounded-xl border bg-muted/20">
             <div className="flex">
-              {/* track labels */}
+              {/* track labels — split into video / audio rails that mirror
+                  their lane group's vertical scroll */}
               <div className="w-24 shrink-0 border-r bg-card">
                 <div className="h-7 border-b" />
-                {timeline.tracks.map((t) => (
-                  <div key={t.id} className="flex h-16 items-center gap-1.5 border-b px-3 text-xs font-medium">
-                    {t.type === "audio" ? <Music size={13} /> : <Film size={13} />} {t.name}
-                  </div>
-                ))}
+                <div ref={videoLabelsRef} className="overflow-hidden" style={{ height: vGroupH }}>
+                  {videoTracks.map(renderLabel)}
+                </div>
+                <div className="h-1.5 bg-border" />
+                <div ref={audioLabelsRef} className="overflow-hidden" style={{ height: aGroupH }}>
+                  {audioTracks.map(renderLabel)}
+                </div>
               </div>
               {/* scrollable lane area */}
               <div ref={trackAreaRef} className="relative min-w-0 flex-1 overflow-x-auto">
@@ -1977,8 +2515,10 @@ export default function Editor({ reloadKey }) {
                       </div>
                     ))}
                   </div>
-                  {/* lanes — clicking empty space deselects (seeking is ruler-only).
-                      Wrapped so the "new channel" drop line can position between rows. */}
+                  {/* lanes — the video group above, the audio group below, a
+                      FIXED divider between them. Each group scrolls vertically
+                      past MAX_VISIBLE_LANES lanes (its label rail mirrors the
+                      scroll). Clicking empty lane space deselects. */}
                   <div ref={lanesWrapRef} className="relative">
                   {/* magnet snap guide — a full-height line at the edge being snapped to */}
                   {snapLine != null && (
@@ -1987,81 +2527,35 @@ export default function Editor({ reloadKey }) {
                       style={{ left: framesToSec(snapLine, fps) * pxPerSec }}
                     />
                   )}
-                  {timeline.tracks.map((t) => (
+                  {/* rubber-band drag-select rectangle */}
+                  {marquee && (
                     <div
-                      key={t.id}
-                      data-lane={t.id}
-                      data-lane-type={t.type}
-                      className={cn(
-                        "relative h-16 border-b",
-                        dropTarget?.type === "move" && dropTarget.trackId === t.id &&
-                          "bg-primary/10 ring-2 ring-inset ring-primary/60",
-                        poolDrag?.drop?.trackId === t.id && (poolDrag.drop.valid
-                          ? "bg-primary/10 ring-2 ring-inset ring-primary/60"
-                          : "bg-destructive/10 ring-2 ring-inset ring-destructive/50"),
-                      )}
-                      onPointerDown={(e) => { if (e.target === e.currentTarget) { setSelectedId(null); setSelectedGap(null); } }}
-                    >
-                      {/* translucent preview of the clip a pool drag would drop here */}
-                      {poolDrag?.drop?.valid && poolDrag.drop.trackId === t.id && (
-                        <div
-                          className={cn(
-                            "pointer-events-none absolute top-1 bottom-1 z-10 flex items-center gap-1 overflow-hidden rounded-md border px-1.5 text-[11px] opacity-70",
-                            t.type === "audio"
-                              ? "border-violet-400/60 bg-violet-500/30 text-violet-100"
-                              : "border-emerald-400/60 bg-emerald-500/30 text-emerald-50",
-                          )}
-                          style={{
-                            left: framesToSec(poolDrag.drop.from, fps) * pxPerSec,
-                            width: Math.max(6, (poolDrag.durationSec || 3) * pxPerSec),
-                          }}
-                        >
-                          {t.type === "audio" ? <Music size={11} className="shrink-0" /> : <Film size={11} className="shrink-0" />}
-                          <span className="truncate">{poolDrag.item.name}</span>
-                        </div>
-                      )}
-                      {/* selectable gaps between video clips */}
-                      {t.type === "video" && gapsFor(t).map((g, gi) => {
-                        const gsel = selectedGap && selectedGap.trackId === t.id
-                          && selectedGap.from === g.from && selectedGap.to === g.to;
-                        return (
-                          <div
-                            key={`gap-${gi}`}
-                            className={cn(
-                              "absolute top-1 bottom-1 rounded-md border border-dashed transition-colors",
-                              gsel
-                                ? "border-muted-foreground/60 bg-muted-foreground/30 ring-1 ring-muted-foreground/50"
-                                : "border-transparent hover:bg-muted-foreground/10",
-                            )}
-                            style={{ left: framesToSec(g.from, fps) * pxPerSec, width: Math.max(4, framesToSec(g.to - g.from, fps) * pxPerSec) }}
-                            onPointerDown={(e) => { e.stopPropagation(); selectGap(t.id, g); }}
-                            title="Gap — click to select, Delete to close it"
-                          />
-                        );
-                      })}
-                      {t.items.map((item) => (
-                        <TimelineItem
-                          key={item.id}
-                          item={item}
-                          track={t}
-                          pxPerSec={pxPerSec}
-                          fps={fps}
-                          selected={selectedId === item.id}
-                          onSelect={selectItem}
-                          onDragStart={onDragStart}
-                          onFadeStart={onFadeStart}
-                          onToggleDisable={toggleDisable}
-                          onRemove={removeItem}
-                        />
-                      ))}
-                    </div>
-                  ))}
-                  {/* "new channel" drop line — shown between rows while dragging a
-                      card into the top/bottom grab-band */}
+                      className="pointer-events-none absolute z-40 border border-white/70 bg-white/15"
+                      style={{ left: marquee.x, top: marquee.y, width: marquee.w, height: marquee.h }}
+                    />
+                  )}
+                  <div
+                    className="overflow-y-auto overflow-x-hidden"
+                    style={{ height: vGroupH }}
+                    onScroll={(e) => { if (videoLabelsRef.current) videoLabelsRef.current.scrollTop = e.currentTarget.scrollTop; }}
+                  >
+                    {videoTracks.map(renderLane)}
+                  </div>
+                  {/* the fixed line separating the video and audio track groups */}
+                  <div className="h-1.5 bg-border" />
+                  <div
+                    className="overflow-y-auto overflow-x-hidden"
+                    style={{ height: aGroupH }}
+                    onScroll={(e) => { if (audioLabelsRef.current) audioLabelsRef.current.scrollTop = e.currentTarget.scrollTop; }}
+                  >
+                    {audioTracks.map(renderLane)}
+                  </div>
+                  {/* "new channel" drop line — placed from the live lane rects
+                      at the matching group's border while dragging a card */}
                   {dropTarget?.type === "new" && (
                     <div
                       className="pointer-events-none absolute left-0 right-0 z-30 h-0.5 -translate-y-1/2 bg-primary"
-                      style={{ top: dropTarget.at * LANE_H }}
+                      style={{ top: dropTarget.y }}
                     >
                       <span className="absolute left-2 -top-2.5 rounded bg-primary px-1.5 py-0.5 text-[10px] font-medium text-primary-foreground shadow">
                         new channel
@@ -2072,7 +2566,7 @@ export default function Editor({ reloadKey }) {
                   {poolDrag?.drop?.type === "new" && (
                     <div
                       className="pointer-events-none absolute left-0 right-0 z-30 h-0.5 -translate-y-1/2 bg-primary"
-                      style={{ top: poolDrag.drop.at * LANE_H }}
+                      style={{ top: poolDrag.drop.y }}
                     >
                       <span className="absolute left-2 -top-2.5 rounded bg-primary px-1.5 py-0.5 text-[10px] font-medium text-primary-foreground shadow">
                         new {poolDrag.item.mediaType === "audio" ? "music" : "video"} channel
@@ -2094,16 +2588,39 @@ export default function Editor({ reloadKey }) {
             </div>
           </div>
 
-          {/* Inspector for the selected item */}
-          {selected ? (
+          {/* Inspector for the selected item(s) */}
+          {selectedIds.size > 1 ? (
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border bg-card p-4">
+              <div className="flex items-center gap-2 text-sm font-medium">
+                <Layers size={14} /> {selectedIds.size} clips selected
+                <span className="text-xs font-normal text-muted-foreground">drag any of them to move the group</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <Button variant="outline" size="sm" onClick={linkSelected} title="Link the selected clips so they move, trim and delete together">
+                  <Link2 size={13} /> Link clips
+                </Button>
+                <Button variant="destructive" size="sm" onClick={removeSelected}>
+                  <Trash2 size={13} /> Remove
+                </Button>
+              </div>
+            </div>
+          ) : selected ? (
             <div className="rounded-xl border bg-card p-4">
               <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                 <div className="flex items-center gap-2 text-sm font-medium">
                   {selected.track.type === "audio" ? <Music size={14} /> : <Film size={14} />}
                   <span className="truncate">{selected.item.name}</span>
                   {selected.item.bundle && <Badge variant="secondary" className="font-mono">{selected.item.bundle}</Badge>}
+                  {selected.item.linkId && (
+                    <Badge variant="info" className="gap-1"><Link2 size={11} /> linked</Badge>
+                  )}
                 </div>
                 <div className="flex items-center gap-1.5">
+                  {selected.item.linkId && (
+                    <Button variant="outline" size="sm" onClick={() => unlinkItem(selected.item.id)} title="Unlink from its linked clips">
+                      <Unlink2 size={13} /> Unlink
+                    </Button>
+                  )}
                   {selected.track.id === "video" && (
                     <>
                       <Button variant="outline" size="icon-sm" onClick={() => reorderVideo(selected.item.id, -1)} title="Move earlier" aria-label="Move earlier"><ChevronLeft size={15} /></Button>
@@ -2155,6 +2672,10 @@ export default function Editor({ reloadKey }) {
               Click a clip to trim, reorder, adjust volume or remove it. Drag a clip to move it, or its right edge to trim the end.
               Drag it onto another channel — or up/down past the edge to spawn a new one; higher channels play on top.
               On audio clips, drag the dots at the top corners to fade in / out.
+              Video clips dropped from the pool carry their audio as a separate linked clip on the audio tracks — linked clips
+              always move, trim and delete together; right-click to unlink or detach a clip's audio.
+              Drag on empty timeline space to rubber-band-select clips (Cmd-click adds one at a time), then move them together
+              or right-click → Link selected clips to make the group permanent.
             </p>
           )}
         </>

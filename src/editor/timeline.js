@@ -20,6 +20,10 @@
 // URL (e.g. "/gen/MS-01.mp4") resolved against the app origin. Audio items may
 // carry `fadeInFrames` / `fadeOutFrames` — linear volume ramps at the clip's
 // head/tail, set by dragging the fade handles on the editor's timeline cards.
+// Items may carry a `linkId`: items sharing one are LINKED (e.g. a video clip
+// and its separated audio) and move/trim/delete together while the editor's
+// "Link" toggle is on. An audio item whose `src` is a video file plays that
+// file's audio track (how separated clip audio works).
 
 export const FPS = 24;
 export const WIDTH = 1280;
