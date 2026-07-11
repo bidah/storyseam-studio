@@ -433,6 +433,7 @@ async function mixScore(env, pid, baseFile, layout, gain, outFile) {
       ...layout.flatMap((m, i) => ["-i", r(`m${i}`)]),
       "-filter_complex", filter,
       "-map", "0:v", "-map", "[aout]", "-c:v", "copy", "-c:a", "aac", "-b:a", "192k",
+      "-movflags", "+faststart",
       r("out"),
     ],
   });
@@ -510,7 +511,7 @@ export function registerCuts(app) {
         `rm -rf ${jd} && mkdir -p ${jd} && cd ${jd}`,
         pulls,
         `printf %s ${b64(listContent)} | base64 -d > list.txt`,
-        `ffmpeg ${CONCAT} -c copy -fflags +genpts out.mp4 || ffmpeg ${CONCAT} -c:v libx264 -preset veryfast -crf 18 -c:a aac -b:a 192k -vsync cfr -r 24 out.mp4`,
+        `ffmpeg ${CONCAT} -c copy -fflags +genpts -movflags +faststart out.mp4 || ffmpeg ${CONCAT} -c:v libx264 -preset veryfast -crf 18 -c:a aac -b:a 192k -vsync cfr -r 24 -movflags +faststart out.mp4`,
         `upload_r2 out.mp4 ${outKey}`,
         `rm -rf ${jd}`,
       ].join("\n");

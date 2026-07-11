@@ -40,6 +40,7 @@ import EditorComposition from "@/editor/Composition";
 import { timelineDuration, framesToSec } from "@/editor/timeline";
 import { CLIENT_ID } from "@/lib/clientId";
 import { getProjectId } from "@/lib/projectFetch";
+import { toPreviewSrc } from "@/lib/previewSrc";
 
 /* ---- tiny shared bits (kept local so this file is self-contained) ---- */
 function Spinner({ label }) {
@@ -104,6 +105,38 @@ function captureStillPng(el) {
   }
 }
 
+// Capture a full-resolution still from the ORIGINAL source (the preview <video>
+// plays the 720p proxy, so grabbing from it would yield a 1280×720 frame). Loads
+// the original off-screen, seeks to `timeSec`, and captures at native res.
+// Same-origin media, so the canvas stays untainted. Resolves { image, width,
+// height } or null (unloadable / seek failure / >15s timeout).
+function captureStillFromSource(src, timeSec) {
+  return new Promise((resolve) => {
+    const v = document.createElement("video");
+    let done = false;
+    const finish = (out) => {
+      if (done) return;
+      done = true;
+      v.removeAttribute("src");
+      try { v.load(); } catch { /* releasing the element is best-effort */ }
+      resolve(out);
+    };
+    v.muted = true;
+    v.playsInline = true;
+    v.preload = "auto";
+    v.onerror = () => finish(null);
+    v.onloadeddata = () => {
+      try { v.currentTime = Math.max(0, timeSec || 0); } catch { finish(null); }
+    };
+    v.onseeked = () => {
+      const image = captureStillPng(v);
+      finish(image ? { image, width: v.videoWidth, height: v.videoHeight } : null);
+    };
+    setTimeout(() => finish(null), 15000);
+    v.src = src;
+  });
+}
+
 // Which video clip is showing at composition frame `f`: the first (topmost —
 // earlier tracks win z-order) non-disabled video item whose span covers `f`.
 function itemAtFrame(timeline, f) {
@@ -147,7 +180,9 @@ function getVideoThumb(src) {
     };
     v.onseeked = () => finish(captureVideoFrame(v));
     setTimeout(() => finish(null), 15000);
-    v.src = src;
+    // Load the lightweight proxy for the thumbnail; the cache stays keyed by the
+    // original `src` so callers dedupe regardless of proxy availability.
+    v.src = toPreviewSrc(src);
   }).then((url) => {
     if (url) videoThumbCache.set(src, url);
     else videoThumbCache.delete(src); // transient failure — allow a retry later
@@ -182,7 +217,9 @@ function getAudioPeaks(src) {
   const hit = audioPeaksCache.get(src);
   if (hit) return hit instanceof Float32Array ? Promise.resolve(hit) : hit;
   const p = (async () => {
-    const res = await fetch(src);
+    // Waveforms only need amplitude, so decode the small aac proxy (~96kbps)
+    // instead of pulling the full-quality track. Cache stays keyed by original.
+    const res = await fetch(toPreviewSrc(src));
     if (!res.ok) throw new Error(`fetch ${res.status}`);
     const buf = await res.arrayBuffer();
     peaksAudioCtx ||= new AudioContext();
@@ -864,7 +901,21 @@ export default function Editor({ reloadKey }) {
   // readout re-renders us ~24×/s), which restarts its playback clock and drops
   // it to ~half speed — the videos then run ahead and get seeked back every
   // couple of seconds.
-  const playerInputProps = useMemo(() => ({ tracks: timeline?.tracks }), [timeline]);
+  //
+  // Video clips preview the 720p proxy (toPreviewSrc) so scrubbing moves far
+  // fewer bytes. This rewrite lives ONLY here — the `timeline` state, the
+  // autosaved doc (POST /api/timeline), and the Deliver render all keep the
+  // original srcs, so headless export is untouched and duration stays
+  // authoritative. Audio tracks stay on originals (proxy duration can differ by
+  // ≲1 frame; waveforms use the proxy separately in getAudioPeaks).
+  const playerInputProps = useMemo(() => {
+    const tracks = (timeline?.tracks || []).map((t) =>
+      t.type === "audio"
+        ? t
+        : { ...t, items: (t.items || []).map((it) => ({ ...it, src: toPreviewSrc(it.src) })) },
+    );
+    return { tracks };
+  }, [timeline]);
 
   // `silent` refreshes in place without the full-panel spinner — used by the
   // live SSE reload so an agent edit doesn't flash the editor to a loading state.
@@ -918,17 +969,31 @@ export default function Editor({ reloadKey }) {
     const vids = wrap ? [...wrap.querySelectorAll("video")] : [];
     const painted = vids.filter((v) => v.videoWidth && v.readyState >= 2);
     // Several clips can be premounted at once — prefer the <video> whose source
-    // is the clip showing at the playhead so the frame matches its metadata.
-    const el =
-      (clip && painted.find((v) => (v.currentSrc || v.src || "").includes(clip.src))) ||
-      painted[0] ||
-      vids.find((v) => v.videoWidth);
-    const image = captureStillPng(el);
+    // is the clip showing at the playhead so the frame matches its metadata. The
+    // preview plays the PROXY, so match against the proxy src.
+    const matched = clip && painted.find((v) => (v.currentSrc || v.src || "").includes(toPreviewSrc(clip.src)));
+    const el = matched || painted[0] || vids.find((v) => v.videoWidth);
+    if (!el) { setError("Couldn't grab a still — the frame isn't ready yet (or the media is cross-origin)."); return; }
+
+    // Stills stay FULL-RES: capture from the original at the exact source time
+    // the preview <video> is displaying (matched.currentTime). Fall back to the
+    // on-screen proxy frame (flagged meta.proxy) if the original can't be loaded.
+    let image = null, width = 0, height = 0, fromProxy = false;
+    if (matched && clip?.src) {
+      const full = await captureStillFromSource(clip.src, matched.currentTime);
+      if (full) { image = full.image; width = full.width; height = full.height; }
+    }
+    if (!image) {
+      image = captureStillPng(el);
+      width = el.videoWidth;
+      height = el.videoHeight;
+      fromProxy = true;
+    }
     if (!image) { setError("Couldn't grab a still — the frame isn't ready yet (or the media is cross-origin)."); return; }
 
     const meta = {
-      width: el.videoWidth,
-      height: el.videoHeight,
+      width,
+      height,
       frame: f,
       fps,
       timeSec: framesToSec(f, fps),
@@ -937,6 +1002,7 @@ export default function Editor({ reloadKey }) {
       sourceBundle: clip?.bundle || null,
       clipTimeSec: clip ? framesToSec(f - clip.from, fps) : null,
       cut: timeline?.source || null,
+      ...(fromProxy ? { proxy: true } : {}),
     };
 
     setGrabbing(true);

@@ -39,8 +39,8 @@
     // Router client routes). The APIs live under "/api/*" (matched above).
     "run_worker_first": [
       "/api/*", "/files/*", "/gen/*", "/media/*", "/sound-media/*", "/final/*",
-      "/refs/*", "/multishot-media/*", "/asset/*", "/ingest/*", "/ingest-mpu/*",
-      "/eve/*", "/upload", "/uploads", "/healthz"
+      "/refs/*", "/multishot-media/*", "/stills/*", "/proxy/*", "/asset/*",
+      "/ingest/*", "/ingest-mpu/*", "/eve/*", "/upload", "/uploads", "/healthz"
     ]
   },
   "r2_buckets": [

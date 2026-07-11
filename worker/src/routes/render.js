@@ -110,6 +110,9 @@ export function registerRender(app) {
       "mkdir bundle && tar xzf b.tgz -C bundle",
       `printf %s ${b64(JSON.stringify(inputProps))} | base64 -d > props.json`,
       `cd /app && npx remotion render ${jd}/bundle Editor ${jd}/out.mp4 --props=${jd}/props.json --codec=${codec} --crf=${crf} --scale=${scale} --log=error`,
+      // Move the moov atom to the head so the browser can start playback without
+      // range-fetching the file tail first (stream copy — no re-encode).
+      `ffmpeg -y -i ${jd}/out.mp4 -c copy -movflags +faststart ${jd}/out_fs.mp4 && mv ${jd}/out_fs.mp4 ${jd}/out.mp4`,
       `curl -fsS -X PUT -H "authorization: Bearer ${c.env.INGEST_TOKEN}" -T ${jd}/out.mp4 ${base}/ingest/${outKey}`,
       `rm -rf ${jd}`,
     ].join("\n");

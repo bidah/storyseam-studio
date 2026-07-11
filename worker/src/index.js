@@ -34,9 +34,11 @@ import { registerCuts } from "./routes/cuts.js";
 import { registerProjects, getActiveProject, userCanAccessProject } from "./routes/projects.js";
 import { registerRender } from "./routes/render.js";
 import { registerExport } from "./routes/export.js";
+import { registerAdmin } from "./routes/admin.js";
 import { createAuth } from "./auth.js";
 import { broadcast } from "./lib/broadcast.js";
-import { kindForPrefix, mediaKey, streamKey } from "./lib/media.js";
+import { kindForPrefix, mediaKey, proxyKey, streamKey } from "./lib/media.js";
+import { ensureProxy } from "./lib/proxy.js";
 
 // Durable Object for per-project SSE live-sync (script + timeline channels).
 export { ProjectEvents } from "./sse-do.js";
@@ -240,8 +242,19 @@ app.put("/ingest/*", async (c) => {
   await c.env.BUCKET.put(key, c.req.raw.body, {
     httpMetadata: { contentType: c.req.header("content-type") || "application/octet-stream" },
   });
+  proxyOnIngest(c, key);
   return c.json({ ok: true, key });
 });
+
+// When a gen/multishot mp4 lands in R2, kick off 720p proxy generation in the
+// background so the editor previews it. Skips final/ (overwritable renders) and
+// proxy/ (the encode output itself). ensureProxy dedupes + locks internally.
+function proxyOnIngest(c, key) {
+  const m = /^media\/([^/]+)\/(gen|multishot)\/([^/]+\.mp4)$/.exec(key || "");
+  if (!m) return;
+  const [, pid, kind, file] = m;
+  c.executionCtx.waitUntil(ensureProxy(c.env, { pid, kind, file }));
+}
 
 // --- token-guarded R2 multipart write (for outputs >100MB, the Worker request
 // body cap) — the sandbox splits the file and uploads parts. ---------------
@@ -271,20 +284,20 @@ app.post("/ingest-mpu/complete", async (c) => {
   const body = await c.req.json();
   const mpu = c.env.BUCKET.resumeMultipartUpload(key, uploadId);
   await mpu.complete(body.parts);
+  proxyOnIngest(c, key);
   return c.json({ ok: true, key });
 });
 
 // --- stream an R2 object ---------------------------------------------------
-app.get("/files/*", async (c) => {
+// Delegated to streamKey so this gets Range support (ffmpeg-sandbox `curl`
+// inputs still work — a plain GET returns the full 200 body) and the shared
+// cache policy (immutable for gen/*, no-cache for the overwritable final/*,
+// instead of the old blanket immutable which cached stale re-renders).
+app.get("/files/*", (c) => {
   const key = decodeURIComponent(new URL(c.req.url).pathname.slice("/files/".length));
-  const obj = await c.env.BUCKET.get(key);
-  if (!obj) return c.text("Not found", 404);
-  const headers = new Headers();
-  obj.writeHttpMetadata(headers);
-  headers.set("etag", obj.httpEtag);
-  headers.set("cache-control", "public, max-age=31536000, immutable");
-  headers.set("access-control-allow-origin", "*");
-  return new Response(obj.body, { headers });
+  return streamKey(c.env, key, c.req.header("range"), {
+    ifNoneMatch: c.req.header("if-none-match"),
+  });
 });
 
 // --- live-sync SSE (script + timeline), backed by the ProjectEvents DO -------
@@ -311,7 +324,9 @@ function mediaRoute(prefix) {
   const skip = prefix.length + 2; // "/<prefix>/"
   return (c) => {
     const file = decodeURIComponent(new URL(c.req.url).pathname.slice(skip));
-    return streamKey(c.env, mediaKey(c.get("projectId"), kind, file), c.req.header("range"));
+    return streamKey(c.env, mediaKey(c.get("projectId"), kind, file), c.req.header("range"), {
+      ifNoneMatch: c.req.header("if-none-match"),
+    });
   };
 }
 for (const p of ["media", "gen", "sound-media", "final", "refs", "multishot-media", "stills"]) {
@@ -321,7 +336,40 @@ for (const p of ["media", "gen", "sound-media", "final", "refs", "multishot-medi
 // media/<pid>/asset/. (The library-browse endpoints are ported separately.)
 app.get("/asset/*", (c) => {
   const rel = decodeURIComponent(new URL(c.req.url).pathname.slice("/asset/".length));
-  return streamKey(c.env, `media/${c.get("projectId")}/asset/${rel}`, c.req.header("range"));
+  return streamKey(c.env, `media/${c.get("projectId")}/asset/${rel}`, c.req.header("range"), {
+    ifNoneMatch: c.req.header("if-none-match"),
+  });
+});
+
+// --- 720p preview proxies --------------------------------------------------
+// The editor timeline / cuts page preview a low-bitrate proxy instead of the
+// full-res original (see lib/proxy.js). `/proxy/<prefix>/<file>` serves the
+// proxy if it exists; otherwise it streams the ORIGINAL with a short TTL (so
+// fresh gens play immediately) and kicks off lazy proxy generation in the
+// background. Never a 302 — the client always gets bytes on the first hit.
+const PROXY_PREFIXES = new Set(["gen", "multishot-media", "sound-media"]);
+app.get("/proxy/:prefix/*", async (c) => {
+  const prefix = c.req.param("prefix");
+  const kind = kindForPrefix(prefix);
+  if (!PROXY_PREFIXES.has(prefix) || !kind) return c.text("Not found", 404);
+  const pid = c.get("projectId");
+  const file = decodeURIComponent(
+    new URL(c.req.url).pathname.slice(`/proxy/${prefix}/`.length),
+  );
+  const pKey = proxyKey(pid, kind, file);
+  const range = c.req.header("range");
+  const ifNoneMatch = c.req.header("if-none-match");
+
+  const head = await c.env.BUCKET.head(pKey);
+  if (head) return streamKey(c.env, pKey, range, { ifNoneMatch });
+
+  // No proxy yet — serve the original short-lived and generate one lazily.
+  c.executionCtx.waitUntil(ensureProxy(c.env, { pid, kind, file }));
+  return streamKey(c.env, mediaKey(pid, kind, file), range, {
+    ifNoneMatch,
+    cacheControl: "public, max-age=60",
+    extraHeaders: { "x-proxy": "fallback" },
+  });
 });
 
 // --- ported API route groups (Stage 1+) ------------------------------------
@@ -336,6 +384,7 @@ registerCuts(app);
 registerProjects(app);
 registerRender(app);
 registerExport(app);
+registerAdmin(app);
 
 // --- eve chat agent proxy --------------------------------------------------
 // The chat agent (eve) runs on Vercel; the SPA is served from this Worker and

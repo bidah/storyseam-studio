@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { useNavigate, useLoaderData, useRevalidator } from "react-router";
 import { Empty, Panel, ErrorNote, fmtTime } from "@/components/shared";
+import { toPreviewSrc } from "@/lib/previewSrc";
 
 // A stitched-cut <video> with a live "now playing" overlay. As the cut plays,
 // the top-right chips track which multishot bundle (and, for a scored cut, which
@@ -235,6 +236,11 @@ function CutVersionCard({ gen, bump, navigateTo, latest, compact, olderCount, on
   const when = gen.at ? new Date(gen.at).toLocaleString() : null;
   const scenes = (gen.segments || []).filter((s) => s.file).length;
   const src = `${gen.url}?v=${bump}`;
+  // Preview the 720p proxy (huge for the app's largest file — the full cut).
+  // A fresh stitch plays immediately via the /proxy fallback (original, short
+  // TTL) and silently upgrades once the proxy lands. The download link keeps the
+  // original full-res src.
+  const previewSrc = `${toPreviewSrc(gen.url)}?v=${bump}`;
   return (
     <Panel
       className={latest ? "border-primary/40" : undefined}
@@ -257,7 +263,7 @@ function CutVersionCard({ gen, bump, navigateTo, latest, compact, olderCount, on
     >
       <div className="space-y-3">
         <NowPlayingCut
-          src={src}
+          src={previewSrc}
           segs={gen.segments || []}
           music={gen.music || []}
           withMusic={scored}

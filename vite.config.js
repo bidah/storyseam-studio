@@ -52,6 +52,8 @@ export default defineConfig({
       "/final": api(WORKER),
       "/gen": api(WORKER),
       "/sound-media": api(WORKER),
+      "/proxy": api(WORKER),
+      "/stills": api(WORKER),
       "/files": api(WORKER),
       // The eve agent (chat) dev server. Proxying makes /eve same-origin so
       // useEveAgent() needs no host/CORS config. SSE streaming passes through.

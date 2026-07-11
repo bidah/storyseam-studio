@@ -330,6 +330,10 @@ export function registerEpisode(app) {
     const file = `${bundle}_gen${n}.mp4`;
     // TODO(stage2): put media into R2 via putMedia — download `url` and store it
     // as the "gen" media object for `file` (Express fetched + wrote it to disk).
+    // When implemented, also kick off a preview proxy here:
+    //   c.executionCtx.waitUntil(ensureProxy(c.env, { pid, kind: "gen", file }));
+    // Until then, gens land in R2 only via /ingest* (which already hooks
+    // ensureProxy) or the backfill job / lazy /proxy fallback.
     list.push({ file, name: `gen ${n}`, jobId: jobId || null, source: url, ts: new Date().toISOString() });
     db.video[bundle] = list;
     await writeDB(c.env, pid, db);
