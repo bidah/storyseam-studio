@@ -336,13 +336,20 @@ function CompleteCuts({ navigateTo }) {
   const [bump, setBump] = useState(0);      // media cache-bust for the cut <video>
   const [historyOpen, setHistoryOpen] = useState(false);
 
-  // Re-read the cut whenever the agent finishes a turn (it may have just run
-  // stitch_cuts / score_cut), and bust the <video> cache so the new mp4 shows.
+  // Re-read the cut when the agent finishes a turn (it may have just run
+  // stitch_cuts / score_cut). Fire ONLY on the transition INTO "ready" — the old
+  // version keyed off the unstable `revalidator` object and ran on the steady
+  // "ready" state, so every app-wide revalidation (the SSE firehose, Refresh,
+  // project switch) re-ran it and bumped the media nonce, remounting the <video>
+  // and snapping playback back to 0. Cache-busting now lives in its own effect
+  // below, gated on the cut actually changing.
+  const prevStatus = useRef(agent.status);
   useEffect(() => {
-    if (agent.status === "ready") {
+    const enteredReady = agent.status === "ready" && prevStatus.current !== "ready";
+    prevStatus.current = agent.status;
+    if (enteredReady) {
       invalidateTabCache("cuts");
       revalidator.revalidate();
-      setBump((b) => b + 1);
     }
   }, [agent.status, revalidator]);
 
@@ -376,6 +383,21 @@ function CompleteCuts({ navigateTo }) {
   const history = data.history || [];     // every generation, newest-first
   const out = data.output;                // the latest generation (or null)
   const olderCount = Math.max(0, history.length - 1);
+
+  // Bust the <video> media cache ONLY when a genuinely new render lands — keyed
+  // off the output's identity (url + render time / version), not off every
+  // revalidation. A re-stitch can reuse the same output URL, so we still need the
+  // ?v= nonce; but bumping it on unrelated revalidations changed the <video> key
+  // and tore the element down mid-playback. First render seeds prevSig, so no
+  // bump on mount.
+  const outSig = out ? `${out.url}::${out.at ?? out.v ?? ""}` : "";
+  const prevSig = useRef(outSig);
+  useEffect(() => {
+    if (prevSig.current !== outSig) {
+      prevSig.current = outSig;
+      if (outSig) setBump((b) => b + 1);
+    }
+  }, [outSig]);
 
   return (
     <div className="space-y-4">
