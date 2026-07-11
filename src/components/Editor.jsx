@@ -2018,16 +2018,22 @@ export default function Editor({ reloadKey }) {
     return null;
   }, [timeline, selectedId]);
 
-  // Whether the current selection contains any linked clip. Drives the toolbar
-  // Link button, which always reflects the selection: lit = the selection is
-  // linked (click to unlink); unlit = clickable only when 2+ clips are selected.
-  const selectionLinked = useMemo(() => {
-    if (!timeline || !selectedIds.size) return false;
+  // Every link group touched by the current selection. Selecting ANY member of
+  // a group lights up the WHOLE group's link border — so the highlight tracks
+  // the full selection, not just the primary/inspector clip (otherwise the
+  // border could flicker to only the video or only the audio side).
+  const selectedLinkIds = useMemo(() => {
+    const out = new Set();
+    if (!timeline || !selectedIds.size) return out;
     for (const t of timeline.tracks) {
-      for (const it of t.items) if (selectedIds.has(it.id) && it.linkId) return true;
+      for (const it of t.items) if (selectedIds.has(it.id) && it.linkId) out.add(it.linkId);
     }
-    return false;
+    return out;
   }, [timeline, selectedIds]);
+  // Drives the toolbar Link button, which always reflects the selection: lit =
+  // the selection is linked (click to unlink); unlit = clickable only when 2+
+  // clips are selected.
+  const selectionLinked = selectedLinkIds.size > 0;
 
   // Drag the handle above the timeline to resize the preview/timeline split:
   // pulling it up shrinks the media-pool + player row (the pool tracks the
@@ -2056,7 +2062,6 @@ export default function Editor({ reloadKey }) {
   const audioTracks = timeline ? timeline.tracks.filter((t) => t.type === "audio") : [];
   const vGroupH = Math.max(1, Math.min(videoTracks.length, MAX_VISIBLE_LANES)) * LANE_H;
   const aGroupH = Math.max(1, Math.min(audioTracks.length, MAX_VISIBLE_LANES)) * LANE_H;
-  const selectedLinkId = selected?.item.linkId || null;
   const playerAspect = (timeline?.width || 1280) / (timeline?.height || 720);
 
   // Adaptive ruler ticks. Pick the densest interval whose *major* (labelled)
@@ -2378,7 +2383,7 @@ export default function Editor({ reloadKey }) {
           pxPerSec={pxPerSec}
           fps={fps}
           selected={selectedIds.has(item.id)}
-          linkHighlight={!!selectedLinkId && item.linkId === selectedLinkId && !selectedIds.has(item.id)}
+          linkHighlight={!!item.linkId && selectedLinkIds.has(item.linkId) && !selectedIds.has(item.id)}
           multiCount={selectedIds.has(item.id) ? selectedIds.size : 0}
           onSelect={selectItem}
           onDragStart={onDragStart}
