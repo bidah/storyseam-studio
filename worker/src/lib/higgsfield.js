@@ -23,6 +23,19 @@ const mcpUrl = (env) => env.HIGGSFIELD_MCP_URL || DEFAULT_MCP_URL;
 // refresh — the route maps this to a 401 so the UI can prompt a re-sign-in.
 export class HiggsfieldAuthError extends Error {}
 
+// Only touch bytes on Higgsfield's own delivery hosts (these URLs transit the
+// client and job scripts, so pin them — never a generic fetch/redirect proxy).
+export function isAllowedMediaUrl(u) {
+  try {
+    const url = new URL(String(u || ""));
+    if (url.protocol !== "https:") return false;
+    const h = url.hostname;
+    return h.endsWith(".cloudfront.net") || h === "higgsfield.ai" || h.endsWith(".higgsfield.ai");
+  } catch {
+    return false;
+  }
+}
+
 // `accessTokenExpiresAt` comes back from D1 as whatever Better Auth stored
 // (ISO string or epoch). Treat "can't tell" as not-expired and let the MCP's
 // own 401 be the arbiter.

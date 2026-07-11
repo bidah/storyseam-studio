@@ -50,6 +50,7 @@ export default defineConfig({
       "/refs": api(WORKER),
       "/asset": api(WORKER),
       "/thumb": api(WORKER),
+      "/hf-thumb": api(WORKER),
       "/final": api(WORKER),
       "/gen": api(WORKER),
       "/sound-media": api(WORKER),

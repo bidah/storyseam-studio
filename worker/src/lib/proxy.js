@@ -14,6 +14,10 @@ import { mediaKey, proxyKey } from "./media.js";
 import { uploadFnBash } from "./upload-snippet.js";
 import { getSandbox } from "./ffmpeg.js";
 import { createJob, startSandboxJob } from "./jobs.js";
+import { isAllowedMediaUrl } from "./higgsfield.js";
+
+// Single-quote shell escaping (same helper as routes/admin.js).
+const shq = (s) => `'${String(s).replace(/'/g, "'\\''")}'`;
 
 function workerBase(env) {
   return (env.WORKER_PUBLIC_URL || "https://shot-studio-uploads.rodrigofigueroa-name.workers.dev").replace(/\/+$/, "");
@@ -87,10 +91,12 @@ export async function ensureProxy(env, { pid, kind, file }) {
 
 // Downscale to fit a 640px box, never upscale. libwebp default quality (75).
 const THUMB_SCALE = "scale='min(640,iw)':'min(640,ih)':force_original_aspect_ratio=decrease";
-// Rels with characters outside this set are skipped (they'd need shell/URL
-// escaping through curl + upload_r2); their /thumb/* just keeps serving the
-// original via the fallback.
-const SAFE_REL = /^[A-Za-z0-9._/-]+$/;
+
+// Percent-encode every path segment of an R2 key for use in a /files or
+// /ingest URL (both handlers decodeURIComponent the path). Real asset rels
+// contain spaces ("school kids fill characters/…"), so skipping them isn't an
+// option — encode instead, and shq() handles the shell side.
+const encKey = (k) => k.split("/").map(encodeURIComponent).join("/");
 
 // Batched thumbnail generation for asset-library images. Unlike the per-file
 // ensureProxy, this runs ONE sandbox job for the whole missing set (the library
@@ -100,7 +106,7 @@ const SAFE_REL = /^[A-Za-z0-9._/-]+$/;
 // marker prevents every page load from re-launching the batch while it runs.
 export async function ensureAssetThumbs(env, pid, rels) {
   try {
-    const safe = (rels || []).filter((r) => SAFE_REL.test(r)).slice(0, 500);
+    const safe = (rels || []).filter((r) => !/[\r\n]/.test(r)).slice(0, 500);
     // pid may be null (mediaKey defaults it to p_default) — don't reject it,
     // just keep keys consistent with what listAssets/listProxies resolved.
     if (!safe.length) return;
@@ -116,9 +122,9 @@ export async function ensureAssetThumbs(env, pid, rels) {
       const inKey = mediaKey(pid, "asset", rel);
       const outKey = proxyKey(pid, "asset", rel);
       return (
-        `( set -e; cd ${jd}; curl -fsS -o in "${base}/files/${inKey}"; ` +
+        `( set -e; cd ${jd}; curl -fsS -o in ${shq(`${base}/files/${encKey(inKey)}`)}; ` +
         `ffmpeg -y -i in -frames:v 1 -vf "${THUMB_SCALE}" -c:v libwebp out.webp; ` +
-        `upload_r2 out.webp "${outKey}"; rm -f in out.webp ) || true`
+        `upload_r2 out.webp ${shq(encKey(outKey))}; rm -f in out.webp ) || true`
       );
     });
 
@@ -136,5 +142,54 @@ export async function ensureAssetThumbs(env, pid, rels) {
   } catch {
     // Best-effort: /thumb/* keeps serving originals; the lock expires and the
     // next library load retries.
+  }
+}
+
+// Cached thumbnails for the "Import from Higgsfield" gallery. Higgsfield only
+// exposes rawUrl (full PNG, MBs) and minUrl (`_min.webp` — compressed but
+// FULL-resolution, ~250KB), so a 24-item gallery page is ~6MB. Cache a 640px
+// encode per generation id under `hf-thumbs/<id>.webp` — global, not
+// per-project, because generations belong to the Higgsfield account, not a
+// project. `/hf-thumb/<id>` 302s to the CloudFront minUrl until the encode
+// lands. Called under waitUntil from GET /api/higgsfield/images with the page's
+// {id, minUrl} pairs; existence/lock checks per id happen here in background.
+export async function ensureHfThumbs(env, items) {
+  try {
+    const safe = (items || [])
+      .filter((it) => /^[A-Za-z0-9_-]{1,64}$/.test(it?.id || "") && isAllowedMediaUrl(it?.minUrl))
+      .slice(0, 100);
+    const work = [];
+    for (const it of safe) {
+      const key = `hf-thumbs/${it.id}.webp`;
+      if (await env.BUCKET.head(key)) continue; // already cached
+      const lockKey = `${key}.lock`;
+      if (await lockedRecently(env, lockKey)) continue; // encode in flight
+      await env.BUCKET.put(lockKey, new Uint8Array(0));
+      work.push({ ...it, key });
+    }
+    if (!work.length) return;
+
+    const base = workerBase(env);
+    const jd = `/tmp/hfthumbs_${crypto.randomUUID()}`;
+    const blocks = work.map((it) =>
+      `( set -e; cd ${jd}; curl -fsS -o in ${shq(it.minUrl)}; ` +
+      `ffmpeg -y -i in -frames:v 1 -vf "${THUMB_SCALE}" -c:v libwebp out.webp; ` +
+      `upload_r2 out.webp ${shq(it.key)}; rm -f in out.webp ) || true`
+    );
+
+    const script = [
+      uploadFnBash(),
+      `BASE=${base}`, `TOKEN=${env.INGEST_TOKEN}`,
+      `rm -rf ${jd} && mkdir -p ${jd}`,
+      ...blocks,
+      `rm -rf ${jd}`,
+    ].join("\n");
+
+    const jobId = await createJob(env, "hf-thumbs");
+    const sandbox = await getSandbox(env);
+    await startSandboxJob(env, jobId, sandbox, script, null);
+  } catch {
+    // Best-effort: the gallery keeps redirecting to the full-res minUrl; locks
+    // expire and the next gallery load retries.
   }
 }

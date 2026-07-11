@@ -205,7 +205,7 @@ function PlaceModal({ item, folders, onClose, onDone }) {
           <DialogTitle>Add to library</DialogTitle>
         </DialogHeader>
         <div className="flex items-start gap-3">
-          <img src={item.minUrl} alt="" className="h-20 w-20 shrink-0 rounded-md border object-cover" />
+          <img src={item.thumb || item.minUrl} alt="" className="h-20 w-20 shrink-0 rounded-md border object-cover" />
           <p className="line-clamp-4 text-xs text-muted-foreground">{item.prompt || item.model}</p>
         </div>
         <div className="space-y-2">
@@ -335,7 +335,7 @@ function HiggsfieldImport({ onView }) {
                 className="block w-full"
                 onClick={() => onView({ url: it.rawUrl, name: it.prompt || it.id, role: "asset" })}
               >
-                <img src={it.minUrl} loading="lazy" alt={it.prompt || it.model} className="aspect-square w-full object-cover" />
+                <img src={it.thumb || it.minUrl} loading="lazy" alt={it.prompt || it.model} className="aspect-square w-full object-cover" />
               </button>
               {inLibrary ? (
                 <Badge className="absolute left-1.5 top-1.5"><Check size={11} /> in library</Badge>

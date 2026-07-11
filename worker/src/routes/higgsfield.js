@@ -8,26 +8,15 @@
 // Import writes the full-res image to `media/<pid>/asset/<folder>/<file>` (so
 // it shows up in /api/library) and Higgsfield's ready-made `_min.webp` to the
 // thumb key `media/<pid>/proxy/asset/<folder>/<file>` — no encode needed.
-import { proxyKey } from "../lib/media.js";
+import { proxyKey, streamKey } from "../lib/media.js";
+import { ensureHfThumbs } from "../lib/proxy.js";
 import {
   getHiggsfieldToken,
   forceRefreshHiggsfieldToken,
   mcpToolCall,
   HiggsfieldAuthError,
+  isAllowedMediaUrl,
 } from "../lib/higgsfield.js";
-
-// Only pull bytes from Higgsfield's own delivery hosts (the URLs come from the
-// client, so pin them — the Worker must not be a generic fetch proxy).
-function isAllowedMediaUrl(u) {
-  try {
-    const url = new URL(String(u || ""));
-    if (url.protocol !== "https:") return false;
-    const h = url.hostname;
-    return h.endsWith(".cloudfront.net") || h === "higgsfield.ai" || h.endsWith(".higgsfield.ai");
-  } catch {
-    return false;
-  }
-}
 
 // One path segment, filesystem-tame (mirrors safeName in index.js).
 const cleanSeg = (s) =>
@@ -56,6 +45,27 @@ function basenameFromUrl(u) {
 }
 
 export function registerHiggsfield(app) {
+  // Gallery thumbnail: the cached 640px webp if the encode has landed, else a
+  // short-lived 302 to the (full-res) CloudFront minUrl passed as ?src=. The
+  // redirect is what makes fresh pages paint instantly; the cache is what makes
+  // revisits cheap.
+  app.get("/hf-thumb/:id", async (c) => {
+    const id = c.req.param("id");
+    if (!/^[A-Za-z0-9_-]{1,64}$/.test(id)) return c.text("Not found", 404);
+    const key = `hf-thumbs/${id}.webp`;
+    if (await c.env.BUCKET.head(key)) {
+      return streamKey(c.env, key, c.req.header("range"), {
+        ifNoneMatch: c.req.header("if-none-match"),
+      });
+    }
+    const src = c.req.query("src");
+    if (!isAllowedMediaUrl(src)) return c.text("Not found", 404);
+    return new Response(null, {
+      status: 302,
+      headers: { location: src, "cache-control": "public, max-age=60" },
+    });
+  });
+
   app.get("/api/higgsfield/images", async (c) => {
     const userId = c.get("userId");
     if (!userId) return c.json({ error: "Sign in required" }, 401);
@@ -82,16 +92,25 @@ export function registerHiggsfield(app) {
       }
       const items = (data?.items || [])
         .filter((g) => g.status === "completed" && g?.results?.rawUrl)
-        .map((g) => ({
-          id: g.id,
-          model: g.model,
-          prompt: g.params?.prompt || "",
-          width: g.params?.width || null,
-          height: g.params?.height || null,
-          rawUrl: g.results.rawUrl,
-          minUrl: g.results.minUrl || g.results.rawUrl,
-          createdAt: g.createdAt || null,
-        }));
+        .map((g) => {
+          const minUrl = g.results.minUrl || g.results.rawUrl;
+          return {
+            id: g.id,
+            model: g.model,
+            prompt: g.params?.prompt || "",
+            width: g.params?.width || null,
+            height: g.params?.height || null,
+            rawUrl: g.results.rawUrl,
+            minUrl,
+            // Grid src: cached 640px webp once encoded, 302 → minUrl until then.
+            thumb: `/hf-thumb/${g.id}?src=${encodeURIComponent(minUrl)}`,
+            createdAt: g.createdAt || null,
+          };
+        });
+      // Batch-encode any of this page's thumbs we don't have yet (background).
+      c.executionCtx.waitUntil(
+        ensureHfThumbs(c.env, items.map(({ id, minUrl }) => ({ id, minUrl }))),
+      );
       return c.json({ items, nextCursor: data?.next_cursor ?? null });
     } catch (e) {
       if (e instanceof HiggsfieldAuthError) return c.json({ error: "no_higgsfield_token" }, 401);
