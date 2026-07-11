@@ -14,6 +14,7 @@ import {
   Film, Music, ChevronLeft, ChevronRight, Layers, Wand2, Volume2, VolumeX, Undo2,
   Eye, EyeOff, Clapperboard, Download, ExternalLink,
   PanelLeftClose, PanelLeftOpen, FolderOpen, Ban, FileDown, Magnet,
+  ZoomIn, ZoomOut,
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -667,6 +668,18 @@ export default function Editor({ reloadKey }) {
     setPxPerSec((z) => Math.min(maxZoom, Math.max(minZoom, z)));
   }, [minZoom]);
 
+  // Per-click zoom step for the −/+ buttons flanking the slider. Zoom reads
+  // perceptually as a ratio, so step multiplicatively (25%/click) and clamp to
+  // the same [minZoom, maxZoom] the slider uses. `factor` > 1 zooms in.
+  const ZOOM_STEP = 1.25;
+  const zoomBy = useCallback((factor) => {
+    setPxPerSec((z) => {
+      const next = z * factor;
+      // Round so repeated clicks land on tidy values instead of drifting.
+      return Math.min(maxZoom, Math.max(minZoom, Math.round(next)));
+    });
+  }, [minZoom]);
+
   // MUST be referentially stable across re-renders: a fresh object here makes
   // the <Player> rebuild its internal video config every frame (the playhead
   // readout re-renders us ~24×/s), which restarts its playback clock and drops
@@ -1253,18 +1266,6 @@ export default function Editor({ reloadKey }) {
     window.addEventListener("pointerup", onUp);
   }, [pxPerSec, fps, mapItem, beginGesture]);
 
-  // Click the ruler / empty track area → seek the player there.
-  const seekFromEvent = useCallback((e) => {
-    const el = trackAreaRef.current;
-    if (!el) return;
-    const rect = el.getBoundingClientRect();
-    const x = e.clientX - rect.left + el.scrollLeft;
-    const sec = x / pxPerSec;
-    const f = Math.max(0, Math.min(durationInFrames - 1, Math.round(sec * fps)));
-    playerRef.current?.seekTo(f);
-    setFrame(f);
-  }, [pxPerSec, fps, durationInFrames]);
-
   // Snap targets for the playhead: the timeline start (0) and every clip edge
   // across all tracks (the playhead itself is obviously not a target).
   const playheadTargets = useCallback(() => {
@@ -1605,6 +1606,17 @@ export default function Editor({ reloadKey }) {
               </Button>
               <div className="flex items-center gap-2">
                 <span className="text-xs text-muted-foreground">zoom</span>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className="h-7 w-7"
+                  onClick={() => zoomBy(1 / ZOOM_STEP)}
+                  disabled={pxPerSec <= minZoom}
+                  aria-label="Zoom out"
+                  title="Zoom out"
+                >
+                  <ZoomOut size={14} />
+                </Button>
                 <Slider
                   className="w-28"
                   min={minZoom} max={maxZoom} step={1}
@@ -1612,6 +1624,17 @@ export default function Editor({ reloadKey }) {
                   onValueChange={([v]) => setPxPerSec(v)}
                   aria-label="Timeline zoom"
                 />
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className="h-7 w-7"
+                  onClick={() => zoomBy(ZOOM_STEP)}
+                  disabled={pxPerSec >= maxZoom}
+                  aria-label="Zoom in"
+                  title="Zoom in"
+                >
+                  <ZoomIn size={14} />
+                </Button>
               </div>
             </div>
           </div>
@@ -1631,8 +1654,9 @@ export default function Editor({ reloadKey }) {
               {/* scrollable lane area */}
               <div ref={trackAreaRef} className="relative min-w-0 flex-1 overflow-x-auto">
                 <div style={{ width: contentWidth }}>
-                  {/* ruler */}
-                  <div className="relative h-7 border-b bg-card" onPointerDown={seekFromEvent}>
+                  {/* ruler — press seeks here, and dragging scrubs the playhead
+                      (same continuous drag as grabbing the playhead head). */}
+                  <div className="relative h-7 cursor-ew-resize border-b bg-card" onPointerDown={startScrub}>
                     {Array.from({ length: Math.ceil(durationSec) + 1 }).map((_, s) => (
                       <div key={s} className="absolute top-0 h-full border-l border-border/60" style={{ left: s * pxPerSec }}>
                         <span className="ml-1 text-[10px] text-muted-foreground">{s}s</span>
