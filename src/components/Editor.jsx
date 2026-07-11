@@ -14,7 +14,7 @@ import {
   Film, Music, ChevronLeft, ChevronRight, Layers, Wand2, Volume2, VolumeX, Undo2,
   Eye, EyeOff, Clapperboard, Download, ExternalLink,
   PanelLeftClose, PanelLeftOpen, FolderOpen, Ban, FileDown, Magnet,
-  ZoomIn, ZoomOut,
+  ZoomIn, ZoomOut, Camera, Images,
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -34,6 +34,7 @@ import {
   ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator,
   ContextMenuShortcut, ContextMenuTrigger,
 } from "@/components/ui/context-menu";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 
 import EditorComposition from "@/editor/Composition";
 import { timelineDuration, framesToSec } from "@/editor/timeline";
@@ -85,6 +86,36 @@ function captureVideoFrame(el) {
   } catch {
     return null; // e.g. a frame not yet decoded
   }
+}
+
+// Grab a <video>'s current frame at its FULL native resolution as a PNG data
+// URL — used by "Grab still" (right-click the preview). Returns null if the
+// element isn't a painted video or the canvas is tainted (cross-origin media).
+function captureStillPng(el) {
+  try {
+    if (!el || el.tagName !== "VIDEO" || !el.videoWidth) return null;
+    const c = document.createElement("canvas");
+    c.width = el.videoWidth;
+    c.height = el.videoHeight;
+    c.getContext("2d").drawImage(el, 0, 0);
+    return c.toDataURL("image/png");
+  } catch {
+    return null;
+  }
+}
+
+// Which video clip is showing at composition frame `f`: the first (topmost —
+// earlier tracks win z-order) non-disabled video item whose span covers `f`.
+function itemAtFrame(timeline, f) {
+  if (!timeline) return null;
+  for (const track of timeline.tracks || []) {
+    if (track.type !== "video") continue;
+    for (const item of track.items || []) {
+      if (item.disabled) continue;
+      if (f >= item.from && f < item.from + (item.durationInFrames || 0)) return item;
+    }
+  }
+  return null;
 }
 
 /* ---- first-frame thumbnails for video timeline cards ---- */
@@ -466,8 +497,30 @@ function PoolCard({ item, active, onMeta, onDragStart }) {
   );
 }
 
+/* ---- media pool: one grabbed still ---- */
+// A PNG frame grabbed from the preview. Click to open the full-size inspector.
+function StillCard({ still, onOpen }) {
+  return (
+    <button
+      type="button"
+      onClick={() => onOpen(still)}
+      title={still.sourceName || "Still"}
+      className={cn(
+        "group relative select-none overflow-hidden rounded-md border bg-card text-left transition-shadow",
+        "cursor-pointer hover:border-primary/50 hover:shadow-sm",
+      )}
+    >
+      <img src={still.url} alt="" loading="lazy" className="aspect-video w-full bg-black object-cover" />
+      <div className="flex items-center gap-1 px-1.5 py-1">
+        <Camera size={10} className="shrink-0 text-amber-400" />
+        <span className="truncate text-[10px] font-medium">{still.sourceBundle || still.sourceName || "Still"}</span>
+      </div>
+    </button>
+  );
+}
+
 /* ---- media pool rail (collapsible, ~1/4 width, left of the player) ---- */
-function MediaPool({ pool, collapsed, height, onToggle, dragId, onMeta, onDragStart }) {
+function MediaPool({ pool, stills, collapsed, height, onToggle, dragId, onMeta, onDragStart, tab, onTab, onStillOpen }) {
   const video = pool.video || [];
   const audio = pool.audio || [];
   const total = video.length + audio.length;
@@ -495,46 +548,71 @@ function MediaPool({ pool, collapsed, height, onToggle, dragId, onMeta, onDragSt
       <div className="flex items-center justify-between gap-1 border-b px-2.5 py-1.5">
         <div className="flex items-center gap-1.5 text-xs font-medium">
           <FolderOpen size={13} /> Media pool
-          <Badge variant="muted" className="tabular-nums">{total}</Badge>
         </div>
         <Button variant="ghost" size="icon-sm" onClick={onToggle} title="Collapse media pool" aria-label="Collapse media pool">
           <PanelLeftClose size={16} />
         </Button>
       </div>
-      <div className="min-h-0 flex-1 overflow-y-auto p-2">
-        {total === 0 ? (
-          <p className="px-1 py-6 text-center text-[11px] text-muted-foreground">
-            No generations yet. Render some clips and they'll show up here to drag onto the timeline.
-          </p>
-        ) : (
-          <div className="space-y-3">
-            {video.length > 0 && (
-              <div className="space-y-1.5">
-                <div className="flex items-center gap-1 px-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-                  <Film size={11} /> Video · {video.length}
+      <Tabs value={tab} onValueChange={onTab} className="flex min-h-0 flex-1 flex-col">
+        <TabsList className="mx-2 mt-2 grid grid-cols-2">
+          <TabsTrigger value="media" className="gap-1 text-[11px]">
+            <Film size={11} /> Media <span className="tabular-nums opacity-60">{total}</span>
+          </TabsTrigger>
+          <TabsTrigger value="stills" className="gap-1 text-[11px]">
+            <Images size={11} /> Stills <span className="tabular-nums opacity-60">{stills.length}</span>
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="media" className="min-h-0 flex-1 overflow-y-auto p-2">
+          {total === 0 ? (
+            <p className="px-1 py-6 text-center text-[11px] text-muted-foreground">
+              No generations yet. Render some clips and they'll show up here to drag onto the timeline.
+            </p>
+          ) : (
+            <div className="space-y-3">
+              {video.length > 0 && (
+                <div className="space-y-1.5">
+                  <div className="flex items-center gap-1 px-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                    <Film size={11} /> Video · {video.length}
+                  </div>
+                  <div className="grid grid-cols-2 gap-1.5">
+                    {video.map((it) => (
+                      <PoolCard key={it.id} item={it} active={dragId === it.id} onMeta={onMeta} onDragStart={onDragStart} />
+                    ))}
+                  </div>
                 </div>
-                <div className="grid grid-cols-2 gap-1.5">
-                  {video.map((it) => (
-                    <PoolCard key={it.id} item={it} active={dragId === it.id} onMeta={onMeta} onDragStart={onDragStart} />
-                  ))}
+              )}
+              {audio.length > 0 && (
+                <div className="space-y-1.5">
+                  <div className="flex items-center gap-1 px-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                    <Music size={11} /> Audio · {audio.length}
+                  </div>
+                  <div className="grid grid-cols-2 gap-1.5">
+                    {audio.map((it) => (
+                      <PoolCard key={it.id} item={it} active={dragId === it.id} onMeta={onMeta} onDragStart={onDragStart} />
+                    ))}
+                  </div>
                 </div>
-              </div>
-            )}
-            {audio.length > 0 && (
-              <div className="space-y-1.5">
-                <div className="flex items-center gap-1 px-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-                  <Music size={11} /> Audio · {audio.length}
-                </div>
-                <div className="grid grid-cols-2 gap-1.5">
-                  {audio.map((it) => (
-                    <PoolCard key={it.id} item={it} active={dragId === it.id} onMeta={onMeta} onDragStart={onDragStart} />
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-      </div>
+              )}
+            </div>
+          )}
+        </TabsContent>
+
+        <TabsContent value="stills" className="min-h-0 flex-1 overflow-y-auto p-2">
+          {stills.length === 0 ? (
+            <p className="px-1 py-6 text-center text-[11px] text-muted-foreground">
+              No stills yet. Right-click the preview and choose <span className="whitespace-nowrap font-medium">Grab still</span> to
+              save the current frame here.
+            </p>
+          ) : (
+            <div className="grid grid-cols-2 gap-1.5">
+              {stills.map((s) => (
+                <StillCard key={s.id} still={s} onOpen={onStillOpen} />
+              ))}
+            </div>
+          )}
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }
@@ -558,6 +636,11 @@ export default function Editor({ reloadKey }) {
   // Media pool (draggable source generations) shown left of the player.
   const [pool, setPool] = useState({ video: [], audio: [] });
   const [poolCollapsed, setPoolCollapsed] = useState(false);
+  const [poolTab, setPoolTab] = useState("media"); // "media" | "stills"
+  // Stills grabbed from the preview, plus the currently-inspected still (modal).
+  const [stills, setStills] = useState([]);
+  const [stillModal, setStillModal] = useState(null);
+  const [grabbing, setGrabbing] = useState(false);
   // Active pool→timeline drag: the floating ghost + where it would land.
   //   { item, frameUrl, durationSec, x, y, drop }
   //   drop: null | { trackId, from, valid }
@@ -719,6 +802,74 @@ export default function Editor({ reloadKey }) {
   }, []);
   useEffect(() => { loadPool(); }, [loadPool, reloadKey]);
 
+  // Stills load independently too — same "just what exists" contract as the pool.
+  const loadStills = useCallback(async () => {
+    try {
+      const res = await fetch("/api/stills");
+      const data = await res.json();
+      if (res.ok) setStills(data.stills || []);
+    } catch { /* leave stills empty on failure */ }
+  }, []);
+  useEffect(() => { loadStills(); }, [loadStills, reloadKey]);
+
+  // "Grab still" — capture the preview's current frame as a full-res PNG, tag it
+  // with the clip showing at the playhead + composition provenance, and save it.
+  const grabStill = useCallback(async () => {
+    const f = Math.round(frameRef.current);
+    const clip = itemAtFrame(timeline, f);
+
+    const wrap = playerWrapRef.current;
+    const vids = wrap ? [...wrap.querySelectorAll("video")] : [];
+    const painted = vids.filter((v) => v.videoWidth && v.readyState >= 2);
+    // Several clips can be premounted at once — prefer the <video> whose source
+    // is the clip showing at the playhead so the frame matches its metadata.
+    const el =
+      (clip && painted.find((v) => (v.currentSrc || v.src || "").includes(clip.src))) ||
+      painted[0] ||
+      vids.find((v) => v.videoWidth);
+    const image = captureStillPng(el);
+    if (!image) { setError("Couldn't grab a still — the frame isn't ready yet (or the media is cross-origin)."); return; }
+
+    const meta = {
+      width: el.videoWidth,
+      height: el.videoHeight,
+      frame: f,
+      fps,
+      timeSec: framesToSec(f, fps),
+      sourceName: clip?.name || null,
+      sourceSrc: clip?.src || null,
+      sourceBundle: clip?.bundle || null,
+      clipTimeSec: clip ? framesToSec(f - clip.from, fps) : null,
+      cut: timeline?.source || null,
+    };
+
+    setGrabbing(true);
+    try {
+      const res = await fetch("/api/stills", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ image, meta, clientId: CLIENT_ID }),
+      });
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "save failed");
+      setPoolCollapsed(false);
+      setPoolTab("stills");
+      await loadStills();
+    } catch (e) {
+      setError(`Failed to save still: ${String(e.message || e)}`);
+    } finally {
+      setGrabbing(false);
+    }
+  }, [timeline, fps, loadStills]);
+
+  // Remove a still (its R2 object + record), closing the inspector if it's open.
+  const deleteStill = useCallback(async (id) => {
+    setStills((prev) => prev.filter((s) => s.id !== id)); // optimistic
+    setStillModal((m) => (m?.id === id ? null : m));
+    try {
+      await fetch(`/api/stills/${id}?clientId=${encodeURIComponent(CLIENT_ID)}`, { method: "DELETE" });
+    } catch { /* the SSE firehose / next load reconciles */ }
+  }, []);
+
   useEffect(() => { load(); }, [load, reloadKey]);
 
   // Live-sync: reload when the timeline changes ELSEWHERE (the chat agent's
@@ -841,12 +992,12 @@ export default function Editor({ reloadKey }) {
         ctx.toggleDisable?.(ctx.selectedId);
       }
       // Arrow keys navigate the timeline: Left/Right step the playhead one frame
-      // back/forward; Up/Down jump the selection to the previous/next clip (cut).
+      // back/forward; Up/Down jump to the previous/next clip cut (playhead-anchored).
       if (!typing && ctx.hasTimeline && !e.metaKey && !e.ctrlKey && !e.altKey) {
         if (e.key === "ArrowLeft")  { e.preventDefault(); ctx.stepFrame?.(-1); }
         else if (e.key === "ArrowRight") { e.preventDefault(); ctx.stepFrame?.(1); }
-        else if (e.key === "ArrowUp")   { if (ctx.selectedId) { e.preventDefault(); ctx.gotoClip?.(-1); } }
-        else if (e.key === "ArrowDown") { if (ctx.selectedId) { e.preventDefault(); ctx.gotoClip?.(1); } }
+        else if (e.key === "ArrowUp")   { e.preventDefault(); ctx.gotoClip?.(-1); }
+        else if (e.key === "ArrowDown") { e.preventDefault(); ctx.gotoClip?.(1); }
       }
     };
     window.addEventListener("keydown", onKey);
@@ -1364,13 +1515,28 @@ export default function Editor({ reloadKey }) {
     revealFrame(next);
   };
 
-  // Up/Down jump the selection to the previous/next clip (cut) on its own track
-  // and snap the playhead to that clip's start. Up = back a cut, Down = forward.
+  // Up/Down jump between clip cuts, anchored on the playhead (not the selection,
+  // which may be empty): Up snaps to the previous cut, Down to the next. Every
+  // video clip's start frame is a cut, whether the clips share one lane or are
+  // spread across video/video-2/… tracks. The landed-on clip becomes selected.
   const gotoClip = (dir) => {
-    if (!selected) return;
-    const items = selected.track.items.slice().sort((a, b) => a.from - b.from);
-    const idx = items.findIndex((x) => x.id === selected.item.id);
-    const target = items[idx + dir];
+    if (!timeline) return;
+    const clips = [];
+    for (const t of timeline.tracks) {
+      if (t.type !== "video") continue;
+      for (const it of t.items) clips.push(it);
+    }
+    if (!clips.length) return;
+    clips.sort((a, b) => a.from - b.from || String(a.id).localeCompare(String(b.id)));
+    const f = Math.round(frameRef.current);
+    let target = null;
+    if (dir < 0) {
+      // Previous cut: the last clip that starts strictly before the playhead.
+      for (const c of clips) { if (c.from < f) target = c; else break; }
+    } else {
+      // Next cut: the first clip that starts strictly after the playhead.
+      target = clips.find((c) => c.from > f) || null;
+    }
     if (!target) return;
     selectItem(target.id);
     playerRef.current?.seekTo(Math.round(target.from));
@@ -1597,27 +1763,41 @@ export default function Editor({ reloadKey }) {
           <div className="flex items-start gap-4">
             <MediaPool
               pool={pool}
+              stills={stills}
               collapsed={poolCollapsed}
               height={poolH}
               onToggle={() => setPoolCollapsed((c) => !c)}
               dragId={poolDrag?.item.id}
               onMeta={onPoolMeta}
               onDragStart={startPoolDrag}
+              tab={poolTab}
+              onTab={setPoolTab}
+              onStillOpen={setStillModal}
             />
-            <div ref={playerWrapRef} className="min-w-0 flex-1 self-start overflow-hidden rounded-xl border bg-black">
-              <Player
-                ref={playerRef}
-                component={EditorComposition}
-                inputProps={playerInputProps}
-                durationInFrames={durationInFrames}
-                fps={fps}
-                compositionWidth={timeline.width || 1280}
-                compositionHeight={timeline.height || 720}
-                style={{ width: "100%" }}
-                controls
-                acknowledgeRemotionLicense
-              />
-            </div>
+            <ContextMenu>
+              <ContextMenuTrigger asChild>
+                <div ref={playerWrapRef} className="min-w-0 flex-1 self-start overflow-hidden rounded-xl border bg-black">
+                  <Player
+                    ref={playerRef}
+                    component={EditorComposition}
+                    inputProps={playerInputProps}
+                    durationInFrames={durationInFrames}
+                    fps={fps}
+                    compositionWidth={timeline.width || 1280}
+                    compositionHeight={timeline.height || 720}
+                    style={{ width: "100%" }}
+                    controls
+                    acknowledgeRemotionLicense
+                  />
+                </div>
+              </ContextMenuTrigger>
+              <ContextMenuContent>
+                <ContextMenuItem onSelect={grabStill} disabled={grabbing}>
+                  <Camera size={14} /> Grab still
+                  <ContextMenuShortcut>{fmtTime(framesToSec(frame, fps))}</ContextMenuShortcut>
+                </ContextMenuItem>
+              </ContextMenuContent>
+            </ContextMenu>
           </div>
 
           {/* Timeline toolbar */}
@@ -1914,6 +2094,63 @@ export default function Editor({ reloadKey }) {
           </div>
         </div>
       )}
+
+      {/* Still inspector: full-size grabbed frame + its capture metadata. */}
+      <Dialog open={!!stillModal} onOpenChange={(o) => { if (!o) setStillModal(null); }}>
+        <DialogContent className="max-w-3xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Camera size={16} className="text-amber-400" />
+              {stillModal?.sourceBundle || stillModal?.sourceName || "Grabbed still"}
+            </DialogTitle>
+            <DialogDescription>A frame captured from the editor preview.</DialogDescription>
+          </DialogHeader>
+          {stillModal && (
+            <div className="space-y-3">
+              <img src={stillModal.url} alt="" className="w-full rounded-md border bg-black" />
+              <dl className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
+                <StillMeta label="Source clip" value={stillModal.sourceName} />
+                <StillMeta label="Bundle" value={stillModal.sourceBundle} />
+                <StillMeta label="Timeline time" value={stillModal.timeSec != null ? fmtTime(stillModal.timeSec) : null} />
+                <StillMeta label="Time into clip" value={stillModal.clipTimeSec != null ? fmtTime(stillModal.clipTimeSec) : null} />
+                <StillMeta label="Frame" value={stillModal.frame != null ? `${stillModal.frame} @ ${stillModal.fps || fps}fps` : null} />
+                <StillMeta label="Resolution" value={stillModal.width ? `${stillModal.width} × ${stillModal.height}` : null} />
+                <StillMeta label="Captured" value={stillModal.createdAt ? new Date(stillModal.createdAt).toLocaleString() : null} />
+                <StillMeta label="Source file" value={stillModal.sourceSrc} mono />
+              </dl>
+              <div className="flex items-center justify-between gap-2 pt-1">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-destructive hover:text-destructive"
+                  onClick={() => deleteStill(stillModal.id)}
+                >
+                  <Trash2 size={14} /> Delete
+                </Button>
+                <div className="flex gap-2">
+                  <Button asChild variant="outline" size="sm">
+                    <a href={stillModal.url} target="_blank" rel="noreferrer"><ExternalLink size={14} /> Open</a>
+                  </Button>
+                  <Button asChild variant="outline" size="sm">
+                    <a href={stillModal.url} download={stillModal.file}><Download size={14} /> Download</a>
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
+// One key/value row in the still inspector's metadata list (hidden if empty).
+function StillMeta({ label, value, mono }) {
+  if (value == null || value === "") return null;
+  return (
+    <div className="min-w-0">
+      <dt className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">{label}</dt>
+      <dd className={cn("truncate", mono && "font-mono text-[11px]")} title={String(value)}>{value}</dd>
     </div>
   );
 }
