@@ -35,6 +35,7 @@ import { registerProjects, getActiveProject, userCanAccessProject } from "./rout
 import { registerRender } from "./routes/render.js";
 import { registerExport } from "./routes/export.js";
 import { registerAdmin } from "./routes/admin.js";
+import { registerHiggsfield } from "./routes/higgsfield.js";
 import { createAuth } from "./auth.js";
 import { broadcast } from "./lib/broadcast.js";
 import { kindForPrefix, mediaKey, proxyKey, streamKey } from "./lib/media.js";
@@ -341,6 +342,26 @@ app.get("/asset/*", (c) => {
   });
 });
 
+// --- asset-library image thumbnails ------------------------------------------
+// `/thumb/<rel>` serves the small webp (media/<pid>/proxy/asset/<rel>) if it
+// exists, else the full-res original short-lived as a fallback. Thumbs are
+// written at Higgsfield-import time (from the ready-made minUrl) or batched by
+// ensureAssetThumbs when /api/library spots missing ones — no per-request
+// generation here, so a folder of N images never fans out N sandbox jobs.
+app.get("/thumb/*", async (c) => {
+  const rel = decodeURIComponent(new URL(c.req.url).pathname.slice("/thumb/".length));
+  const pid = c.get("projectId");
+  const range = c.req.header("range");
+  const ifNoneMatch = c.req.header("if-none-match");
+  const tKey = proxyKey(pid, "asset", rel);
+  if (await c.env.BUCKET.head(tKey)) return streamKey(c.env, tKey, range, { ifNoneMatch });
+  return streamKey(c.env, mediaKey(pid, "asset", rel), range, {
+    ifNoneMatch,
+    cacheControl: "public, max-age=60",
+    extraHeaders: { "x-thumb": "fallback" },
+  });
+});
+
 // --- 720p preview proxies --------------------------------------------------
 // The editor timeline / cuts page preview a low-bitrate proxy instead of the
 // full-res original (see lib/proxy.js). `/proxy/<prefix>/<file>` serves the
@@ -385,6 +406,7 @@ registerProjects(app);
 registerRender(app);
 registerExport(app);
 registerAdmin(app);
+registerHiggsfield(app);
 
 // --- eve chat agent proxy --------------------------------------------------
 // The chat agent (eve) runs on Vercel; the SPA is served from this Worker and

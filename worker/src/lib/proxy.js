@@ -84,3 +84,57 @@ export async function ensureProxy(env, { pid, kind, file }) {
     // original. The lock expires and a later request retries.
   }
 }
+
+// Downscale to fit a 640px box, never upscale. libwebp default quality (75).
+const THUMB_SCALE = "scale='min(640,iw)':'min(640,ih)':force_original_aspect_ratio=decrease";
+// Rels with characters outside this set are skipped (they'd need shell/URL
+// escaping through curl + upload_r2); their /thumb/* just keeps serving the
+// original via the fallback.
+const SAFE_REL = /^[A-Za-z0-9._/-]+$/;
+
+// Batched thumbnail generation for asset-library images. Unlike the per-file
+// ensureProxy, this runs ONE sandbox job for the whole missing set (the library
+// page can surface hundreds of images at once) — the caller (/api/library)
+// diffs assets against existing thumbs and passes only the missing rels.
+// `/thumb/<rel>` serves originals until the thumbs land. One project-level lock
+// marker prevents every page load from re-launching the batch while it runs.
+export async function ensureAssetThumbs(env, pid, rels) {
+  try {
+    const safe = (rels || []).filter((r) => SAFE_REL.test(r)).slice(0, 500);
+    // pid may be null (mediaKey defaults it to p_default) — don't reject it,
+    // just keep keys consistent with what listAssets/listProxies resolved.
+    if (!safe.length) return;
+
+    const lockKey = mediaKey(pid, "proxy/asset", ".thumbs.lock");
+    if (await lockedRecently(env, lockKey)) return;
+    await env.BUCKET.put(lockKey, new Uint8Array(0));
+
+    const base = workerBase(env);
+    const jd = `/tmp/thumbs_${crypto.randomUUID()}`;
+    // Per-file subshell chained with && so one bad image skips only itself.
+    const blocks = safe.map((rel) => {
+      const inKey = mediaKey(pid, "asset", rel);
+      const outKey = proxyKey(pid, "asset", rel);
+      return (
+        `( set -e; cd ${jd}; curl -fsS -o in "${base}/files/${inKey}"; ` +
+        `ffmpeg -y -i in -frames:v 1 -vf "${THUMB_SCALE}" -c:v libwebp out.webp; ` +
+        `upload_r2 out.webp "${outKey}"; rm -f in out.webp ) || true`
+      );
+    });
+
+    const script = [
+      uploadFnBash(),
+      `BASE=${base}`, `TOKEN=${env.INGEST_TOKEN}`,
+      `rm -rf ${jd} && mkdir -p ${jd}`,
+      ...blocks,
+      `rm -rf ${jd}`,
+    ].join("\n");
+
+    const jobId = await createJob(env, "thumbs");
+    const sandbox = await getSandbox(env);
+    await startSandboxJob(env, jobId, sandbox, script, null);
+  } catch {
+    // Best-effort: /thumb/* keeps serving originals; the lock expires and the
+    // next library load retries.
+  }
+}

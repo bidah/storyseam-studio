@@ -14,7 +14,8 @@
 // `/media/*`, `/multishot-media/*` streaming routes serve the R2 objects. See the
 // TODO(stage2) markers for the media-copy / build-file work still owed.
 import { readDoc, writeDoc } from "../lib/docs.js";
-import { listMedia } from "../lib/media.js";
+import { listMedia, listProxies } from "../lib/media.js";
+import { ensureAssetThumbs } from "../lib/proxy.js";
 
 // The de-facto selections DB (library picks + per-bundle episode selections).
 const readDB = (env, pid) => readDoc(env, pid, "selections", { library: {}, episode: {} });
@@ -111,6 +112,14 @@ export function registerLibrary(app) {
     const db = await readDB(c.env, pid);
     const rels = await listAssets(c.env, pid);
 
+    // Small-thumb backfill: grids render `/thumb/<rel>` (tiny webp under
+    // media/<pid>/proxy/asset/) instead of the full-res original. Diff assets
+    // against existing thumbs and batch-generate the missing ones in the
+    // background; /thumb/* serves originals until they land.
+    const thumbs = new Set(await listProxies(c.env, pid, "asset"));
+    const missing = rels.filter((r) => !thumbs.has(r));
+    if (missing.length) c.executionCtx.waitUntil(ensureAssetThumbs(c.env, pid, missing));
+
     // Group by containing folder (Node path.dirname of the rel), matching Express.
     const folders = new Map(); // dir -> [{ rel, name }]
     for (const rel of rels) {
@@ -126,11 +135,12 @@ export function registerLibrary(app) {
         return {
           folder: dir,
           count: sorted.length,
-          preview: "/asset/" + sorted[0].rel,
+          preview: "/thumb/" + sorted[0].rel,
           images: sorted.map((im) => ({
             rel: im.rel,
             name: im.name,
             url: "/asset/" + im.rel,
+            thumb: "/thumb/" + im.rel,
             // NOTE: Express also emitted `abs` (the on-disk absolute path). There
             // is no filesystem on the Worker, so `abs` is intentionally dropped.
             selected: !!db.library[im.rel],

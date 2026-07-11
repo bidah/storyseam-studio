@@ -21,6 +21,9 @@
     "R2_ACCOUNT_ID": "cda687c8b568323a9b535ca44a192131",
     "WORKER_PUBLIC_URL": "https://shot-studio-uploads.rodrigofigueroa-name.workers.dev",
     "HIGGSFIELD_CLIENT_ID": "LgvtzrTQ0pgrGOzD",
+    // Higgsfield MCP endpoint — the Worker calls its show_generations tool with
+    // the user's OAuth bearer for the library's "Import from Higgsfield" tab.
+    "HIGGSFIELD_MCP_URL": "https://mcp.higgsfield.ai/mcp",
     // The eve chat agent runs on Vercel; the Worker proxies /eve/* to it so the
     // browser reaches it same-origin (see the /eve/* proxy in src/index.js).
     "EVE_ORIGIN": "https://shot-studio-agent.vercel.app"
@@ -39,7 +42,7 @@
     // Router client routes). The APIs live under "/api/*" (matched above).
     "run_worker_first": [
       "/api/*", "/files/*", "/gen/*", "/media/*", "/sound-media/*", "/final/*",
-      "/refs/*", "/multishot-media/*", "/stills/*", "/proxy/*", "/asset/*",
+      "/refs/*", "/multishot-media/*", "/stills/*", "/proxy/*", "/asset/*", "/thumb/*",
       "/ingest/*", "/ingest-mpu/*", "/eve/*", "/upload", "/uploads", "/healthz"
     ]
   },

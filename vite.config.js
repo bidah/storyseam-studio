@@ -49,6 +49,7 @@ export default defineConfig({
       "/multishot-media": api(WORKER),
       "/refs": api(WORKER),
       "/asset": api(WORKER),
+      "/thumb": api(WORKER),
       "/final": api(WORKER),
       "/gen": api(WORKER),
       "/sound-media": api(WORKER),
