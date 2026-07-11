@@ -7,7 +7,7 @@
 // in sync — the tab re-fetches on the header Refresh, after a chat turn, and
 // live via the /api/timeline/events SSE stream whenever the agent edits.
 
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Player } from "@remotion/player";
 import {
   Loader2, TriangleAlert, RefreshCw, Check, Scissors, Trash2,
@@ -309,6 +309,35 @@ function gapsFor(track) {
 // Used to place the "new channel" drop indicator between lanes.
 const LANE_H = 64;
 const SNAP_PX = 8; // magnet pull radius in px (converted to frames at the current zoom)
+
+// Candidate ruler intervals (in seconds) with how many minor ticks subdivide
+// each major, labelled step. We pick the smallest step whose on-screen spacing
+// clears the label-width target so labels never collide — the classic NLE ruler
+// that gets denser as you zoom in and sparser as you zoom out.
+const TICK_STEPS = [
+  { step: 0.5, minors: 5 }, { step: 1, minors: 4 }, { step: 2, minors: 4 },
+  { step: 5, minors: 5 }, { step: 10, minors: 5 }, { step: 15, minors: 3 },
+  { step: 30, minors: 6 }, { step: 60, minors: 4 }, { step: 120, minors: 4 },
+  { step: 300, minors: 5 }, { step: 600, minors: 5 }, { step: 900, minors: 3 },
+  { step: 1800, minors: 6 }, { step: 3600, minors: 4 },
+];
+
+// Format seconds as a timecode label for the ruler. Below one hour we drop the
+// hours field; when the tick step is sub-second we append a frames field so
+// zoomed-in ticks stay distinct (e.g. 00:02:08:12).
+function formatTimecode(totalSec, fps, withFrames) {
+  const sign = totalSec < 0 ? "-" : "";
+  const t = Math.abs(totalSec);
+  const whole = Math.floor(t);
+  const h = Math.floor(whole / 3600);
+  const m = Math.floor((whole % 3600) / 60);
+  const s = whole % 60;
+  const pad = (n) => String(n).padStart(2, "0");
+  const base = h > 0 ? `${pad(h)}:${pad(m)}:${pad(s)}` : `${pad(m)}:${pad(s)}`;
+  if (!withFrames) return sign + base;
+  const f = Math.round((t - whole) * fps);
+  return `${sign}${base}:${pad(f)}`;
+}
 
 // Build a fresh empty track of the given media type, with an id/name that
 // doesn't collide with existing tracks (video-2, video-3, music-2, …).
@@ -675,6 +704,7 @@ export default function Editor({ reloadKey }) {
   const magnetRef = useRef(true); // live snapping flag, read inside the drag handler
   const frameRef = useRef(0); // live playhead frame, a snap target during a move drag
   const playingRef = useRef(false); // true while the <Player> is playing, gates auto-follow scroll
+  const zoomScrollRef = useRef(null); // pending scrollLeft to apply after a zoom, keeps the playhead anchored
   const [snapLine, setSnapLine] = useState(null); // frame of the active snap guide (null = none)
 
   useEffect(() => { timelineRef.current = timeline; }, [timeline]);
@@ -751,17 +781,43 @@ export default function Editor({ reloadKey }) {
     setPxPerSec((z) => Math.min(maxZoom, Math.max(minZoom, z)));
   }, [minZoom]);
 
+  // Zoom to an absolute px/sec, keeping the playhead pinned as the reference
+  // point — the way every NLE behaves. We hold the playhead at its current
+  // on-screen x while the timeline scales around it; if it's currently off
+  // screen, we bring it to the centre so it never gets lost when zooming.
+  // The new scrollLeft is stashed and applied in a layout effect once the
+  // wider/narrower content has rendered (see below).
+  const zoomTo = useCallback((nextRaw) => {
+    setPxPerSec((prev) => {
+      const next = Math.min(maxZoom, Math.max(minZoom, Math.round(nextRaw)));
+      const el = trackAreaRef.current;
+      if (el && next !== prev) {
+        const view = el.clientWidth;
+        const timeSec = framesToSec(frameRef.current, fps);
+        const viewX = timeSec * prev - el.scrollLeft; // playhead x within the viewport
+        const anchor = viewX < 0 || viewX > view ? view / 2 : viewX;
+        zoomScrollRef.current = Math.max(0, timeSec * next - anchor);
+      }
+      return next;
+    });
+  }, [minZoom, maxZoom, fps]);
+
   // Per-click zoom step for the −/+ buttons flanking the slider. Zoom reads
-  // perceptually as a ratio, so step multiplicatively (25%/click) and clamp to
-  // the same [minZoom, maxZoom] the slider uses. `factor` > 1 zooms in.
+  // perceptually as a ratio, so step multiplicatively (25%/click). `factor` > 1
+  // zooms in. Rounding keeps repeated clicks on tidy values instead of drifting.
   const ZOOM_STEP = 1.25;
   const zoomBy = useCallback((factor) => {
-    setPxPerSec((z) => {
-      const next = z * factor;
-      // Round so repeated clicks land on tidy values instead of drifting.
-      return Math.min(maxZoom, Math.max(minZoom, Math.round(next)));
-    });
-  }, [minZoom]);
+    zoomTo(pxPerSec * factor);
+  }, [zoomTo, pxPerSec]);
+
+  // Apply the playhead-anchored scroll once the new zoom has laid out. Runs
+  // before paint so the view never flashes at the wrong offset.
+  useLayoutEffect(() => {
+    if (zoomScrollRef.current == null) return;
+    const el = trackAreaRef.current;
+    if (el) el.scrollLeft = zoomScrollRef.current;
+    zoomScrollRef.current = null;
+  }, [pxPerSec]);
 
   // MUST be referentially stable across re-renders: a fresh object here makes
   // the <Player> rebuild its internal video config every frame (the playhead
@@ -1496,6 +1552,33 @@ export default function Editor({ reloadKey }) {
   const contentWidth = Math.max(600, durationSec * pxPerSec + 40);
   const playheadX = framesToSec(frame, fps) * pxPerSec;
 
+  // Adaptive ruler ticks. Pick the densest interval whose *major* (labelled)
+  // ticks stay at least ~72px apart, then emit every minor sub-tick across the
+  // timeline. Majors carry a timecode label; minors are just hairlines. This
+  // replaces the old one-label-per-second ruler, which crowded at high zoom and
+  // ran out of resolution at low zoom.
+  const rulerTicks = useMemo(() => {
+    const MIN_LABEL_PX = 72; // keep timecode labels from colliding
+    const chosen =
+      TICK_STEPS.find((c) => c.step * pxPerSec >= MIN_LABEL_PX) ||
+      TICK_STEPS[TICK_STEPS.length - 1];
+    const minorStep = chosen.step / chosen.minors;
+    const withFrames = chosen.step < 1;
+    const total = Math.ceil(durationSec / minorStep);
+    const ticks = [];
+    // Cap the node count so a pathological zoom/length combo can't flood the DOM.
+    for (let i = 0; i <= total && ticks.length < 4000; i++) {
+      const sec = i * minorStep;
+      const major = i % chosen.minors === 0;
+      ticks.push({
+        x: sec * pxPerSec,
+        major,
+        label: major ? formatTimecode(sec, fps, withFrames) : null,
+      });
+    }
+    return ticks;
+  }, [durationSec, pxPerSec, fps]);
+
   // Scroll the track area so a given frame is comfortably in view (used after a
   // keyboard seek, which — unlike playback — doesn't auto-follow the playhead).
   const revealFrame = (f) => {
@@ -1841,7 +1924,7 @@ export default function Editor({ reloadKey }) {
                   className="w-28"
                   min={minZoom} max={maxZoom} step={1}
                   value={[pxPerSec]}
-                  onValueChange={([v]) => setPxPerSec(v)}
+                  onValueChange={([v]) => zoomTo(v)}
                   aria-label="Timeline zoom"
                 />
                 <Button
@@ -1876,10 +1959,21 @@ export default function Editor({ reloadKey }) {
                 <div style={{ width: contentWidth }}>
                   {/* ruler — press seeks here, and dragging scrubs the playhead
                       (same continuous drag as grabbing the playhead head). */}
-                  <div className="relative h-7 cursor-ew-resize border-b bg-card" onPointerDown={startScrub}>
-                    {Array.from({ length: Math.ceil(durationSec) + 1 }).map((_, s) => (
-                      <div key={s} className="absolute top-0 h-full border-l border-border/60" style={{ left: s * pxPerSec }}>
-                        <span className="ml-1 text-[10px] text-muted-foreground">{s}s</span>
+                  <div className="relative h-7 cursor-ew-resize select-none border-b bg-card" onPointerDown={startScrub}>
+                    {rulerTicks.map((t, i) => (
+                      <div
+                        key={i}
+                        className={cn(
+                          "absolute bottom-0 w-px",
+                          t.major ? "top-0 bg-border" : "top-[62%] bg-border/50",
+                        )}
+                        style={{ left: t.x }}
+                      >
+                        {t.label != null && (
+                          <span className="absolute left-1 top-0 text-[10px] tabular-nums text-muted-foreground">
+                            {t.label}
+                          </span>
+                        )}
                       </div>
                     ))}
                   </div>
