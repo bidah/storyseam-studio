@@ -314,7 +314,7 @@ function mediaRoute(prefix) {
     return streamKey(c.env, mediaKey(c.get("projectId"), kind, file), c.req.header("range"));
   };
 }
-for (const p of ["media", "gen", "sound-media", "final", "refs", "multishot-media"]) {
+for (const p of ["media", "gen", "sound-media", "final", "refs", "multishot-media", "stills"]) {
   app.get(`/${p}/*`, mediaRoute(p));
 }
 // The shared asset library (voice refs, browsable images) — per project under

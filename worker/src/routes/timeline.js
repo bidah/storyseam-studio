@@ -18,7 +18,7 @@
 // NOT ported here. The SSE stream (/api/timeline/events) is already wired in
 // index.js.
 import { readDoc, writeDoc } from "../lib/docs.js";
-import { listMedia } from "../lib/media.js";
+import { listMedia, putMedia, mediaKey } from "../lib/media.js";
 import { broadcast } from "../lib/broadcast.js";
 
 // ---------------------------------------------------------------------------
@@ -311,5 +311,62 @@ export function registerTimeline(app) {
     // foreign edit and reload — reflecting agent edits in the UI right away.
     await broadcastTimeline(c, body?.clientId);
     return c.json({ ok: true, timeline: db.editorTimeline });
+  });
+
+  // Stills — frames "grabbed" from the editor preview via right-click. The PNG
+  // bytes live in R2 (media/<pid>/stills/<file>, served at /stills/<file>); the
+  // per-still metadata (source clip, playhead time, resolution, …) lives in the
+  // `stills` doc so the Stills tab in the media pool can list + inspect them.
+  const readStills = (env, pid) => readDoc(env, pid, "stills", { items: [] });
+
+  // List saved stills, newest-first, each with its public media URL.
+  app.get("/api/stills", async (c) => {
+    const pid = c.get("projectId");
+    const doc = await readStills(c.env, pid);
+    const files = new Set(await listMedia(c.env, pid, "stills"));
+    const items = (doc.items || [])
+      .filter((s) => s.file && files.has(s.file)) // hide records whose R2 object is gone
+      .map((s) => ({ ...s, url: "/stills/" + s.file }))
+      .sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")));
+    return c.json({ stills: items });
+  });
+
+  // Save a grabbed still: PNG as a data URL + its metadata. Writes the bytes to
+  // R2 and prepends a record to the `stills` doc.
+  app.post("/api/stills", async (c) => {
+    const pid = c.get("projectId");
+    let body;
+    try { body = await c.req.json(); } catch { body = {}; }
+    const image = body?.image;
+    const meta = body?.meta || {};
+    const m = /^data:image\/png;base64,(.+)$/s.exec(image || "");
+    if (!m) return c.json({ error: "Body must be { image: <png data URL>, meta }" }, 400);
+    // base64 → bytes (atob is available in the Workers runtime)
+    const bin = atob(m[1]);
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+
+    const id = crypto.randomUUID();
+    const file = `still-${id}.png`;
+    await putMedia(c.env, pid, "stills", file, bytes, "image/png");
+
+    const record = { id, file, createdAt: new Date().toISOString(), ...meta };
+    const doc = await readStills(c.env, pid);
+    doc.items = [record, ...(doc.items || [])];
+    await writeDoc(c.env, pid, "stills", doc);
+    // The generic post-mutation middleware broadcasts "data" for /api/* writes.
+    return c.json({ ok: true, still: { ...record, url: "/stills/" + file } });
+  });
+
+  // Delete a still (its R2 object + its metadata record).
+  app.delete("/api/stills/:id", async (c) => {
+    const pid = c.get("projectId");
+    const id = c.req.param("id");
+    const doc = await readStills(c.env, pid);
+    const hit = (doc.items || []).find((s) => s.id === id);
+    if (hit?.file) await c.env.BUCKET.delete(mediaKey(pid, "stills", hit.file));
+    doc.items = (doc.items || []).filter((s) => s.id !== id);
+    await writeDoc(c.env, pid, "stills", doc);
+    return c.json({ ok: true });
   });
 }
