@@ -1210,27 +1210,64 @@ export default function Editor({ reloadKey }) {
     setFrame(f);
   }, [pxPerSec, fps, durationInFrames]);
 
+  // Snap targets for the playhead: the timeline start (0) and every clip edge
+  // across all tracks (the playhead itself is obviously not a target).
+  const playheadTargets = useCallback(() => {
+    const tl = timelineRef.current;
+    const out = [0];
+    for (const t of tl?.tracks || []) {
+      for (const it of t.items || []) {
+        const s = it.from || 0;
+        out.push(s, s + (it.durationInFrames || 0));
+      }
+    }
+    return out;
+  }, []);
+
   // Grab the playhead head and drag to scrub the video (continuous seek).
+  // With the magnet on, the head snaps onto a nearby clip edge and stays stuck
+  // there (a wider release radius = hysteresis) so it doesn't jitter on/off the
+  // edge — you have to pull past it to break free.
   const startScrub = useCallback((e) => {
     e.preventDefault();
     e.stopPropagation();
+    let stuck = null; // frame we're currently snapped to (null = free)
     const move = (ev) => {
       const el = trackAreaRef.current;
       if (!el) return;
       const rect = el.getBoundingClientRect();
       const x = ev.clientX - rect.left + el.scrollLeft;
-      const f = Math.max(0, Math.min(durationInFrames - 1, Math.round((x / pxPerSec) * fps)));
+      const raw = Math.max(0, Math.min(durationInFrames - 1, Math.round((x / pxPerSec) * fps)));
+      let f = raw;
+      if (magnetRef.current) {
+        const enter = Math.max(1, (SNAP_PX / pxPerSec) * fps); // pull-in radius
+        const release = enter * 2; // must move past this to detach (sticky)
+        if (stuck != null && Math.abs(raw - stuck) <= release) {
+          f = stuck; // still within release radius → hold the snap
+        } else {
+          stuck = null;
+          let best = null;
+          for (const target of playheadTargets()) {
+            const d = Math.abs(raw - target);
+            if (d <= enter && (best == null || d < best.d)) best = { t: target, d };
+          }
+          if (best) { stuck = best.t; f = best.t; }
+        }
+        setSnapLine(stuck);
+        f = Math.max(0, Math.min(durationInFrames - 1, f));
+      }
       playerRef.current?.seekTo(f);
       setFrame(f);
     };
     move(e);
     const up = () => {
+      setSnapLine(null);
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", up);
     };
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", up);
-  }, [pxPerSec, fps, durationInFrames]);
+  }, [pxPerSec, fps, durationInFrames, playheadTargets]);
 
   const selected = useMemo(() => {
     if (!timeline || !selectedId) return null;
