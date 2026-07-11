@@ -45,7 +45,16 @@ function VideoItem({ item, zIndex }) {
         src={item.src}
         volume={item.muted ? 0 : item.volume ?? 1}
         pauseWhenBuffering
-        style={{ width: "100%", height: "100%", objectFit: "contain" }}
+        style={{
+          width: "100%",
+          height: "100%",
+          objectFit: "contain",
+          // Mirror the clip in place. scaleX(-1) flips left/right,
+          // scaleY(-1) flips top/bottom; both compose for a 180° mirror.
+          ...(item.flipH || item.flipV
+            ? { transform: `scale(${item.flipH ? -1 : 1}, ${item.flipV ? -1 : 1})` }
+            : {}),
+        }}
       />
     </Sequence>
   );
