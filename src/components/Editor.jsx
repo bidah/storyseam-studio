@@ -575,6 +575,7 @@ export default function Editor({ reloadKey }) {
   const playerRef = useRef(null);
   const dragRef = useRef(null);
   const trackAreaRef = useRef(null);
+  const [areaWidth, setAreaWidth] = useState(0); // visible width of the lane area, for fit-to-window zoom
   const lanesWrapRef = useRef(null); // wraps the stacked lanes, for drop hit-testing
   const dirtyRef = useRef(false); // suppress autosave right after a fetch
   const timelineRef = useRef(null); // latest timeline, for undo snapshots
@@ -589,6 +590,7 @@ export default function Editor({ reloadKey }) {
   const [poolH, setPoolH] = useState(null); // measured player height (px) so the pool scrolls internally
   const magnetRef = useRef(true); // live snapping flag, read inside the drag handler
   const frameRef = useRef(0); // live playhead frame, a snap target during a move drag
+  const playingRef = useRef(false); // true while the <Player> is playing, gates auto-follow scroll
   const [snapLine, setSnapLine] = useState(null); // frame of the active snap guide (null = none)
 
   useEffect(() => { timelineRef.current = timeline; }, [timeline]);
@@ -637,6 +639,33 @@ export default function Editor({ reloadKey }) {
     [timeline],
   );
   const durationSec = framesToSec(durationInFrames, fps);
+
+  // Track the visible lane-area width so the zoom-out floor can fit the whole
+  // project on screen (the ruler adds ~40px of trailing pad; see contentWidth).
+  useEffect(() => {
+    const el = trackAreaRef.current;
+    if (!el) return;
+    const measure = () => setAreaWidth(el.clientWidth);
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [timeline]);
+
+  // Zoom (px/sec) needed to fit the entire timeline in the visible area. This is
+  // the slider's dynamic minimum so "fully zoomed out" always shows every clip.
+  const fitPxPerSec = useMemo(() => {
+    if (!areaWidth || durationSec <= 0) return 20;
+    return Math.max(2, (areaWidth - 40) / durationSec);
+  }, [areaWidth, durationSec]);
+  const minZoom = Math.min(fitPxPerSec, 20); // never force a floor above the default range
+  const maxZoom = 220;
+
+  // Keep the current zoom within the (dynamic) allowed range as the project
+  // length / viewport width — and thus the fit-to-window floor — change.
+  useEffect(() => {
+    setPxPerSec((z) => Math.min(maxZoom, Math.max(minZoom, z)));
+  }, [minZoom]);
 
   // MUST be referentially stable across re-renders: a fresh object here makes
   // the <Player> rebuild its internal video config every frame (the playhead
@@ -722,14 +751,40 @@ export default function Editor({ reloadKey }) {
     return () => clearTimeout(t);
   }, [timeline]);
 
-  // Sync the playhead readout to the <Player>'s current frame.
+  // Sync the playhead readout to the <Player>'s current frame, and — while
+  // playing — keep the playhead in view. Like a real NLE, the view holds still
+  // while the playhead sweeps across it; once the playhead runs off the right
+  // edge of the visible lane area (or gets left behind on the left), we page the
+  // scroll so the playhead lands back in the middle, revealing the upcoming
+  // timeline. It keeps sweeping and re-centers again each time it hits the edge.
+  // Gated on `playingRef` so manual scrubbing/seeking never fights the scroll.
   useEffect(() => {
     const p = playerRef.current;
     if (!p) return;
-    const onFrame = (e) => setFrame(e.detail.frame);
+    const onFrame = (e) => {
+      const f = e.detail.frame;
+      setFrame(f);
+      if (!playingRef.current) return;
+      const el = trackAreaRef.current;
+      if (!el) return;
+      const px = framesToSec(f, fps) * pxPerSec;
+      const view = el.clientWidth;
+      // Out of view (past the right edge or behind the left edge) → re-center.
+      if (px > el.scrollLeft + view || px < el.scrollLeft) {
+        el.scrollLeft = Math.max(0, px - view / 2);
+      }
+    };
+    const onPlay = () => { playingRef.current = true; };
+    const onPause = () => { playingRef.current = false; };
     p.addEventListener("frameupdate", onFrame);
-    return () => p.removeEventListener("frameupdate", onFrame);
-  }, [timeline]);
+    p.addEventListener("play", onPlay);
+    p.addEventListener("pause", onPause);
+    return () => {
+      p.removeEventListener("frameupdate", onFrame);
+      p.removeEventListener("play", onPlay);
+      p.removeEventListener("pause", onPause);
+    };
+  }, [timeline, fps, pxPerSec]);
 
   // Mutate the timeline via a mapper over items and mark dirty for autosave.
   // `silent` skips the undo snapshot — used for the per-frame updates inside a
@@ -1552,7 +1607,7 @@ export default function Editor({ reloadKey }) {
                 <span className="text-xs text-muted-foreground">zoom</span>
                 <Slider
                   className="w-28"
-                  min={20} max={220} step={5}
+                  min={minZoom} max={maxZoom} step={1}
                   value={[pxPerSec]}
                   onValueChange={([v]) => setPxPerSec(v)}
                   aria-label="Timeline zoom"
