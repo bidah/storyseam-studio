@@ -15,6 +15,7 @@ import {
   Eye, EyeOff, Clapperboard, Download, ExternalLink,
   PanelLeftClose, PanelLeftOpen, FolderOpen, Ban, FileDown, Magnet,
   ZoomIn, ZoomOut, Camera, Images, Link2, Unlink2, AudioLines, GripHorizontal,
+  FlipHorizontal2, FlipVertical2,
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -630,7 +631,7 @@ function MediaPool({ pool, stills, collapsed, height, onToggle, dragId, onMeta, 
 
   if (collapsed) {
     return (
-      <div style={style} className="flex max-h-[70vh] w-9 shrink-0 flex-col items-center gap-2 rounded-xl border bg-muted/20 py-2">
+      <div data-editor-region="library" style={style} className="flex max-h-[70vh] w-9 shrink-0 flex-col items-center gap-2 rounded-xl border bg-muted/20 py-2">
         <Button variant="ghost" size="icon-sm" onClick={onToggle} title="Show media pool" aria-label="Show media pool">
           <PanelLeftOpen size={16} />
         </Button>
@@ -644,7 +645,7 @@ function MediaPool({ pool, stills, collapsed, height, onToggle, dragId, onMeta, 
   }
 
   return (
-    <div style={style} className="flex max-h-[70vh] w-1/4 min-w-[170px] max-w-[300px] shrink-0 flex-col overflow-hidden rounded-xl border bg-muted/20">
+    <div data-editor-region="library" style={style} className="flex max-h-[70vh] w-1/4 min-w-[170px] max-w-[300px] shrink-0 flex-col overflow-hidden rounded-xl border bg-muted/20">
       <div className="flex items-center justify-between gap-1 border-b px-2.5 py-1.5">
         <div className="flex items-center gap-1.5 text-xs font-medium">
           <FolderOpen size={13} /> Media pool
@@ -781,6 +782,10 @@ export default function Editor({ reloadKey }) {
   const audioLabelsRef = useRef(null); // audio-group label rail, scroll-synced to its lane group
   const frameRef = useRef(0); // live playhead frame, a snap target during a move drag
   const playingRef = useRef(false); // true while the <Player> is playing, gates auto-follow scroll
+  // Which editor region the pointer last landed in — drives whether Space toggles
+  // playback. Space works after clicking the preview or timeline, but not the media
+  // pool. (Remotion's own Space handler is focus-scoped and drops after any click.)
+  const spaceAllowedRef = useRef(true);
   const zoomScrollRef = useRef(null); // pending scrollLeft to apply after a zoom, keeps the playhead anchored
   const [snapLine, setSnapLine] = useState(null); // frame of the active snap guide (null = none)
 
@@ -1155,6 +1160,14 @@ export default function Editor({ reloadKey }) {
         e.preventDefault();
         ctx.toggleDisable?.(ctx.selectedId);
       }
+      // Space toggles playback when the last click was in the preview or timeline
+      // (not the media pool). We drive the Remotion player imperatively because its
+      // built-in Space handling only fires while the player itself holds focus.
+      if ((e.code === "Space" || e.key === " ") && !typing && !e.metaKey && !e.ctrlKey && !e.altKey && spaceAllowedRef.current) {
+        e.preventDefault();
+        playerRef.current?.toggle?.();
+        return;
+      }
       // Arrow keys navigate the timeline: Left/Right step the playhead one frame
       // back/forward; Up/Down jump to the previous/next clip cut (playhead-anchored).
       if (!typing && ctx.hasTimeline && !e.metaKey && !e.ctrlKey && !e.altKey) {
@@ -1164,8 +1177,18 @@ export default function Editor({ reloadKey }) {
         else if (e.key === "ArrowDown") { e.preventDefault(); ctx.gotoClip?.(1); }
       }
     };
+    // Track the last-clicked editor region so Space knows whether to toggle
+    // playback. Only marked regions change it; clicks elsewhere leave it as-is.
+    const onPointerDown = (e) => {
+      const el = e.target?.closest?.("[data-editor-region]");
+      if (el) spaceAllowedRef.current = el.dataset.editorRegion !== "library";
+    };
     window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    window.addEventListener("pointerdown", onPointerDown, true);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("pointerdown", onPointerDown, true);
+    };
   }, []);
 
   const mapItem = useCallback((id, patch, silent) => {
@@ -1191,6 +1214,16 @@ export default function Editor({ reloadKey }) {
       return tl;
     }, silent);
   }, [mutate]);
+
+  // Flip the clip at the playhead horizontally / vertically. Like "Grab still",
+  // it acts on whichever video clip is showing at the current frame; the mirror
+  // is a per-clip flag the composition renders as a CSS transform.
+  const flipClipAtPlayhead = useCallback((axis) => {
+    const clip = itemAtFrame(timeline, Math.round(frameRef.current));
+    if (!clip) { setError("No clip at the playhead to flip."); return; }
+    const key = axis === "v" ? "flipV" : "flipH";
+    mapItem(clip.id, (it) => ({ [key]: !it[key] }));
+  }, [timeline, mapItem]);
 
   // Removing a linked clip takes its partners with it — deleting a video clip
   // also deletes its separated audio, and vice versa. Removing a member of a
@@ -2421,6 +2454,7 @@ export default function Editor({ reloadKey }) {
               <ContextMenuTrigger asChild>
                 <div
                   ref={playerWrapRef}
+                  data-editor-region="preview"
                   className="min-w-0 self-start overflow-hidden rounded-xl border bg-black"
                   // Natural mode fills the row (width-driven). Once the timeline
                   // resizer sets a height, drive the width from it instead.
@@ -2438,6 +2472,7 @@ export default function Editor({ reloadKey }) {
                     compositionHeight={timeline.height || 720}
                     style={{ width: "100%" }}
                     controls
+                    spaceKeyToPlayOrPause={false}
                     acknowledgeRemotionLicense
                   />
                 </div>
@@ -2447,6 +2482,22 @@ export default function Editor({ reloadKey }) {
                   <Camera size={14} /> Grab still
                   <ContextMenuShortcut>{fmtTime(framesToSec(frame, fps))}</ContextMenuShortcut>
                 </ContextMenuItem>
+                {(() => {
+                  const clip = itemAtFrame(timeline, Math.round(frame));
+                  return (
+                    <>
+                      <ContextMenuSeparator />
+                      <ContextMenuItem onSelect={() => flipClipAtPlayhead("h")} disabled={!clip}>
+                        <FlipHorizontal2 size={14} /> Flip horizontal
+                        {clip?.flipH && <ContextMenuShortcut><Check size={14} /></ContextMenuShortcut>}
+                      </ContextMenuItem>
+                      <ContextMenuItem onSelect={() => flipClipAtPlayhead("v")} disabled={!clip}>
+                        <FlipVertical2 size={14} /> Flip vertical
+                        {clip?.flipV && <ContextMenuShortcut><Check size={14} /></ContextMenuShortcut>}
+                      </ContextMenuItem>
+                    </>
+                  );
+                })()}
               </ContextMenuContent>
             </ContextMenu>
           </div>
@@ -2544,7 +2595,7 @@ export default function Editor({ reloadKey }) {
           </div>
 
           {/* Timeline tracks */}
-          <div className="overflow-hidden rounded-xl border bg-muted/20">
+          <div data-editor-region="timeline" className="overflow-hidden rounded-xl border bg-muted/20">
             <div className="flex">
               {/* track labels — split into video / audio rails that mirror
                   their lane group's vertical scroll */}
