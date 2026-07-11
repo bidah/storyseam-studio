@@ -840,6 +840,14 @@ export default function Editor({ reloadKey }) {
         e.preventDefault();
         ctx.toggleDisable?.(ctx.selectedId);
       }
+      // Arrow keys navigate the timeline: Left/Right step the playhead one frame
+      // back/forward; Up/Down jump the selection to the previous/next clip (cut).
+      if (!typing && ctx.hasTimeline && !e.metaKey && !e.ctrlKey && !e.altKey) {
+        if (e.key === "ArrowLeft")  { e.preventDefault(); ctx.stepFrame?.(-1); }
+        else if (e.key === "ArrowRight") { e.preventDefault(); ctx.stepFrame?.(1); }
+        else if (e.key === "ArrowUp")   { if (ctx.selectedId) { e.preventDefault(); ctx.gotoClip?.(-1); } }
+        else if (e.key === "ArrowDown") { if (ctx.selectedId) { e.preventDefault(); ctx.gotoClip?.(1); } }
+      }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -1337,8 +1345,40 @@ export default function Editor({ reloadKey }) {
   const contentWidth = Math.max(600, durationSec * pxPerSec + 40);
   const playheadX = framesToSec(frame, fps) * pxPerSec;
 
+  // Scroll the track area so a given frame is comfortably in view (used after a
+  // keyboard seek, which — unlike playback — doesn't auto-follow the playhead).
+  const revealFrame = (f) => {
+    const el = trackAreaRef.current;
+    if (!el) return;
+    const px = framesToSec(f, fps) * pxPerSec;
+    const view = el.clientWidth;
+    if (px > el.scrollLeft + view - 24 || px < el.scrollLeft + 24) {
+      el.scrollLeft = Math.max(0, px - view / 2);
+    }
+  };
+
+  // Left/Right nudge the playhead one frame back/forward in the video.
+  const stepFrame = (delta) => {
+    const next = Math.max(0, Math.min(durationInFrames - 1, Math.round(frameRef.current) + delta));
+    playerRef.current?.seekTo(next);
+    revealFrame(next);
+  };
+
+  // Up/Down jump the selection to the previous/next clip (cut) on its own track
+  // and snap the playhead to that clip's start. Up = back a cut, Down = forward.
+  const gotoClip = (dir) => {
+    if (!selected) return;
+    const items = selected.track.items.slice().sort((a, b) => a.from - b.from);
+    const idx = items.findIndex((x) => x.id === selected.item.id);
+    const target = items[idx + dir];
+    if (!target) return;
+    selectItem(target.id);
+    playerRef.current?.seekTo(Math.round(target.from));
+    revealFrame(target.from);
+  };
+
   // Latest handlers/selection for the mount-once keyboard listener.
-  keyCtxRef.current = { undo, selectedGap, selectedId, removeGap, removeItem, toggleDisable };
+  keyCtxRef.current = { undo, selectedGap, selectedId, removeGap, removeItem, toggleDisable, stepFrame, gotoClip, hasTimeline: !!timeline };
 
   if (loading && !timeline) return <Spinner label="loading editor…" />;
 
