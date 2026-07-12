@@ -290,16 +290,20 @@ function AgentMessage({ message, atts, canRespond, onRespond }) {
   );
 }
 
-// A HITL request is pending when some tool part carries an inputRequest with no
-// matching inputResponse yet (drives the composer placeholder).
-function hasPendingRequest(messages) {
+// The latest HITL request still awaiting an answer — a tool part carrying an
+// inputRequest with no matching inputResponse yet. Drives the composer
+// placeholder and lets a typed answer be routed back to the right requestId
+// (including a request proxied up from a subagent, e.g. story-architect asking
+// which arc). Returns the request object, or null when nothing is pending.
+function pendingRequest(messages) {
+  let found = null;
   for (const m of messages) {
     for (const part of m.parts || []) {
       const eve = part?.toolMetadata?.eve;
-      if (eve?.inputRequest && !eve.inputResponse) return true;
+      if (eve?.inputRequest && !eve.inputResponse) found = eve.inputRequest;
     }
   }
-  return false;
+  return found;
 }
 
 // The agent is "thinking" while a turn is in flight and the current assistant
@@ -437,7 +441,8 @@ export default function AgentChat() {
 
   const messages = agent.data?.messages ?? [];
   const isBusy = agent.status === "submitted" || agent.status === "streaming";
-  const pending = useMemo(() => hasPendingRequest(messages), [messages]);
+  const pendingReq = useMemo(() => pendingRequest(messages), [messages]);
+  const pending = !!pendingReq;
   const thinking = useMemo(() => isThinking(messages, isBusy), [messages, isBusy]);
 
   const uploading = attachments.some((a) => a.state === "uploading");
@@ -527,6 +532,13 @@ export default function AgentChat() {
     }
   };
 
+  const clearComposer = () => {
+    setText("");
+    attachments.forEach((a) => a.previewUrl && URL.revokeObjectURL(a.previewUrl));
+    setAttachments([]);
+    setAtBottom(true);
+  };
+
   const submit = async () => {
     if (!canSend) return;
     const t = text.trim();
@@ -535,6 +547,21 @@ export default function AgentChat() {
       name: a.name,
       contentType: a.contentType,
     }));
+
+    // A parked HITL request (eve `ask_question`) only resumes when the answer is
+    // delivered as an inputResponse to its requestId — a plain message does not
+    // reach a parked session. This matters most for a request proxied up from a
+    // subagent (e.g. story-architect asking which arc): a message goes to the
+    // root session and the child stays parked forever, so the delegation "never
+    // comes back". When something is pending and the user typed a free-text
+    // answer, route it as the response instead of a new message. (HITL answers
+    // are text-only in eve, so fall through to a normal message if images are
+    // attached.)
+    if (pendingReq && t && sent.length === 0) {
+      clearComposer();
+      await agent.send({ inputResponses: [{ requestId: pendingReq.requestId, text: t }] });
+      return;
+    }
 
     // Build the eve message: image parts + optional text, or a plain string.
     let message;
@@ -552,10 +579,7 @@ export default function AgentChat() {
     // composer. (Turn events + cursor persist via the session's onFinish.)
     sentAttachmentsRef.current.push(sent);
     conv.saveAttachments(conv.activeId, sentAttachmentsRef.current);
-    setText("");
-    attachments.forEach((a) => a.previewUrl && URL.revokeObjectURL(a.previewUrl));
-    setAttachments([]);
-    setAtBottom(true);
+    clearComposer();
 
     await agent.send({ message });
   };
