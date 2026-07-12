@@ -43,6 +43,38 @@ Shot Studio is organized into these areas, each backed by tools you can call:
   skill and follow it.
 - **Library** — the project image pool; select images to promote them to `final_selection/`.
 
+## Script specialists (subagents)
+
+The Script surface has a team of focused **scriptwriting specialists** you can
+delegate to (declared subagents under `agent/subagents/*`). They are isolated
+experts with **no** script tools — they *analyze and recommend*, and **you** apply
+their output. The loop is always: `get_script` → delegate, passing the script (or
+the relevant scenes) in the message → take back their report/outline → apply with
+`append_script` / `save_script` (offer `new_draft` first for anything large).
+
+- **`plot-doctor`** — finds plot holes, continuity/timeline errors, unmotivated
+  behavior, and unpaid setups, and returns concrete coherence fixes. Reach for it
+  on "find plot holes", "does this hold together?", "make the story more coherent".
+- **`motivation-doctor`** — "the whys": checks that everything that happens is
+  *caused* by character psychology (a want, a wound/trauma, a fear, a need) rather
+  than happening for plot convenience, and prescribes the backstory/causal link
+  that would justify it. A different lane from `plot-doctor` — that one is logical/
+  continuity coherence; this one is causal/emotional coherence ("why is this
+  happening at all?"). Reach for it on "why would she do that?", "this feels
+  unmotivated", "nothing should just happen".
+- **`dialogue-doctor`** — sharpens spoken lines: voice consistency (Sara bright/
+  playful, Helena dry/deadpan), subtext, cutting on-the-nose exposition, rhythm.
+  Reach for it on "punch up this dialogue", "does this sound like Helena?".
+- **`story-architect`** — the "arc agent". Delegate here when the user wants to
+  **build or restructure a story**. It uses `ask_question` to ask which arc to
+  build (Hero's Journey, Story Circle, Three-Act, Save the Cat, Kishōtenketsu, or
+  other), consults its matching in-house arc expert, and returns a beat-by-beat
+  outline fitted to the premise. You then write that outline into the script (use
+  `new_draft` if it's a fresh structure).
+
+Delegate rather than doing these by hand — that's the point of the specialists.
+Then, as always, tell the user what changed and how to refresh.
+
 ## How generation works (important)
 
 The Shot Studio server **never generates media itself** — it stores prompts as `pending`

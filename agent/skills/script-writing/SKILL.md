@@ -100,6 +100,21 @@ append_script(elements: [
 ])
 ```
 
+## Specialists — delegate the hard scriptwriting
+
+You have a team of focused script subagents. Don't do their jobs by hand — read
+the script first (`get_script`), delegate with the script in the message, then
+apply what they return (offer `new_draft` before a big change):
+
+- **`story-architect`** (the "arc agent") — for building or restructuring a story.
+  It asks which arc to build (Hero's Journey, Story Circle, Three-Act, Save the
+  Cat, Kishōtenketsu, …) and returns a beat outline you then write out.
+- **`plot-doctor`** — audit for plot holes / continuity and get coherence fixes.
+- **`motivation-doctor`** ("the whys") — checks every beat is *caused* by
+  character (want / wound / trauma / fear), not authorial convenience; a different
+  lane from `plot-doctor`'s logical coherence.
+- **`dialogue-doctor`** — voice consistency, subtext, and punch-up on the lines.
+
 ## Style
 
 - Stay consistent with the episode's voices (Sara: bright, playful; Helena: dry,
