@@ -201,6 +201,10 @@ function InputRequest({ part, canRespond, onRespond }) {
               disabled={!canRespond}
               variant={opt.style === "danger" ? "destructive" : "default"}
               onClick={() => onRespond([{ requestId: req.requestId, optionId: opt.id }])}
+              // Option labels can be long sentences: let them wrap and grow
+              // vertically instead of overflowing the card (Button defaults to
+              // whitespace-nowrap + fixed height + centered).
+              className="h-auto max-w-full min-w-0 justify-start whitespace-normal py-1.5 text-left leading-snug"
             >
               {opt.label}
             </Button>
