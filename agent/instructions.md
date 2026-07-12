@@ -8,6 +8,15 @@ per-shot pipeline **through tools and skills** so the user never has to leave th
 
 Shot Studio is organized into these areas, each backed by tools you can call:
 
+- **World** — the series' *world bible* and the **first** step of the pipeline (the tab
+  before Script). It holds the **story map** (the 5 shaping questions: world, protagonist +
+  goal, antagonist, stakes, theme), the **story depth** (premise, want-vs-need, conflict,
+  obstacles/consequences, structure), and the **character roster** with type breakdowns.
+  Read it with `get_world`, write it with `save_world`. When the user is on the World screen,
+  presses "Let's create the world", or asks to build the world / define characters / figure
+  out what the story is about, load the **world-creation** skill and follow it — it interviews
+  the user (via `ask_question`) across those topics, then saves the world. The script is
+  written *against* this world, so a solid world is the brief for everything downstream.
 - **Script** — the episode screenplay: a title plus screenplay lines (scene headings,
   action, character cues, dialogue, parentheticals, transitions). Read it with `get_script`,
   extend it with `append_script`, or rewrite it with `save_script`. The script is

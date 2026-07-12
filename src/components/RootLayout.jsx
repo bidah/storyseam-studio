@@ -28,6 +28,7 @@ import { ShellContext } from "@/lib/shellContext";
  * ---------------------------------------------------------------- */
 
 const TABS = [
+  { value: "world", label: "World" },
   { value: "script", label: "Script" },
   { value: "shotlist", label: "Shot list" },
   // Sample-code tabs — kept wired up (routes/content still work) but hidden from

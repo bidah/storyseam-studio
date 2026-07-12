@@ -18,7 +18,8 @@ export const router = createBrowserRouter([
     Component: RootLayout,
     id: "root",
     children: [
-      { index: true, loader: () => redirect("/script") },
+      { index: true, loader: () => redirect("/world") },
+      { path: "world", lazy: () => import("@/routes/world"), ErrorBoundary: RouteError },
       { path: "script", lazy: () => import("@/routes/script") },
       { path: "shotlist", lazy: () => import("@/routes/shotlist"), ErrorBoundary: RouteError },
       { path: "shots", lazy: () => import("@/routes/shots") },

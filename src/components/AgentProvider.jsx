@@ -273,6 +273,28 @@ export function renderEpisodeMessage(bundle, prompt) {
     .join("\n");
 }
 
+// Build the chat turn that kicks off world-building — the "Let's create the
+// world" button on the World tab. Routed through the agent (the world-creation
+// skill) so it interviews the user across the story map, story depth, and
+// character roster, then writes the result back with save_world.
+export function createWorldMessage() {
+  return [
+    `Let's build the world for this series. Load the world-creation skill and follow it.`,
+    ``,
+    `Interview me with ask_question (a few focused questions at a time, building on my`,
+    `answers) across all of it: the world / where it takes place, the protagonist and`,
+    `their main goal, the antagonist, the stakes if they fail, and the theme; then the`,
+    `deeper story — the premise (what it's really about beneath the plot), each main`,
+    `character's want vs. need, the central conflict and why the audience should care,`,
+    `the obstacles the protagonist faces and the consequences of failure, and the story`,
+    `structure. Also build the character roster with type breakdowns.`,
+    ``,
+    `When you have enough, call save_world to write it into the World tab (call get_world`,
+    `first if a world already exists so you don't clobber it). Then tell me to review it`,
+    `on the World tab and that I can edit any field directly.`,
+  ].join("\n");
+}
+
 // Build the chat turn that generates the granular shot list from the signed
 // script. Routed through the agent (the shot-list skill) like the Render buttons.
 export function generateShotListMessage() {
