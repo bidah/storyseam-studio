@@ -22,7 +22,8 @@ import {
   Trash2,
   Check,
 } from "lucide-react";
-import { Streamdown } from "streamdown";
+import { Streamdown, defaultRemarkPlugins } from "streamdown";
+import remarkBreaks from "remark-breaks";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import {
@@ -63,6 +64,29 @@ import { Marker, MarkerIcon, MarkerContent } from "@/components/ui/marker";
 // (VITE_UPLOAD_URL) — an R2-backed endpoint that also records each upload in
 // D1 — and falls back to the local Express endpoint when it isn't configured.
 const UPLOAD_ENDPOINT = import.meta.env.VITE_UPLOAD_URL || "/api/upload";
+
+// Shared markdown renderer for anything the agent authors (text parts *and* the
+// prompt of an inline input-request card). eve emits paragraphs and numbered
+// questions separated by single newlines; plain Markdown treats those as soft
+// breaks and collapses them onto one line, so we add `remark-breaks` to render
+// each newline as a visual line break. Keeping one component means the card and
+// the chat body always format identically.
+const MARKDOWN_REMARK_PLUGINS = [...Object.values(defaultRemarkPlugins), remarkBreaks];
+const MARKDOWN_CLASS =
+  "space-y-2 break-words text-sm leading-relaxed [&_a]:text-primary [&_a]:underline [&_code]:rounded [&_code]:bg-muted [&_code]:px-1 [&_code]:py-0.5 [&_code]:text-xs [&_ol]:list-decimal [&_ol]:pl-5 [&_pre]:overflow-x-auto [&_pre]:rounded-md [&_pre]:bg-muted [&_pre]:p-2 [&_ul]:list-disc [&_ul]:pl-5";
+
+function Markdown({ text, animating = false, className }) {
+  return (
+    <Streamdown
+      animated={{ animation: "fadeIn", duration: 180, sep: "word" }}
+      isAnimating={animating}
+      remarkPlugins={MARKDOWN_REMARK_PLUGINS}
+      className={cn(MARKDOWN_CLASS, className)}
+    >
+      {text}
+    </Streamdown>
+  );
+}
 
 function prettySize(n) {
   if (typeof n !== "number") return "";
@@ -162,7 +186,7 @@ function InputRequest({ part, canRespond, onRespond }) {
 
   return (
     <div className="space-y-2 rounded-lg border border-amber-500/30 bg-amber-500/5 p-3">
-      {req.prompt ? <p className="text-sm text-muted-foreground">{req.prompt}</p> : null}
+      {req.prompt ? <Markdown text={req.prompt} className="text-muted-foreground" /> : null}
       {res ? (
         <p className="text-sm font-medium">
           Responded: {selected?.label ?? res.text ?? res.optionId}
@@ -195,13 +219,7 @@ function MessagePart({ part, canRespond, onRespond }) {
       return null;
     case "text":
       return part.text ? (
-        <Streamdown
-          animated={{ animation: "fadeIn", duration: 180, sep: "word" }}
-          isAnimating={part.state === "streaming"}
-          className="space-y-2 break-words text-sm leading-relaxed [&_a]:text-primary [&_a]:underline [&_code]:rounded [&_code]:bg-muted [&_code]:px-1 [&_code]:py-0.5 [&_code]:text-xs [&_ol]:list-decimal [&_ol]:pl-5 [&_pre]:overflow-x-auto [&_pre]:rounded-md [&_pre]:bg-muted [&_pre]:p-2 [&_ul]:list-disc [&_ul]:pl-5"
-        >
-          {part.text}
-        </Streamdown>
+        <Markdown text={part.text} animating={part.state === "streaming"} />
       ) : null;
     case "reasoning":
       return part.text ? (
