@@ -3,13 +3,17 @@ import { z } from "zod";
 import { api } from "../lib/api.js";
 import { docToElements, elementsToDoc, SCRIPT_ELEMENT_TYPES } from "../lib/script.js";
 
-// The model sees this as `append_script`. Adds lines to the end of the current
-// screenplay without touching what's already there — the safe way to keep
-// writing (e.g. "add the next scene").
+// The model sees this as `append_script`. Proposes adding lines to the end of the
+// current screenplay without touching what's already there — the safe way to keep
+// writing (e.g. "add the next scene"). Staged as a PROPOSAL the user reviews.
 export default defineTool({
   description:
-    "Append screenplay lines to the END of the current script without overwriting existing content. Adds to the PINNED draft only — the active version. Each element is { type, text } (scene_heading, action, character, dialogue, parenthetical, transition). Use this to continue writing; use save_script only when you intend to replace the whole document. Autosaves; appears when the editor reloads.",
+    "Propose appending screenplay lines to the END of the current script without overwriting existing content. Staged as a proposal against the PINNED draft (the active version) — the user reviews the diff and accepts (in bulk or per line) before it commits. Each element is { type, text } (scene_heading, action, character, dialogue, parenthetical, transition). Use this to continue writing; use save_script only when you intend to replace the whole document.",
   inputSchema: z.object({
+    summary: z
+      .string()
+      .optional()
+      .describe("One short line describing what you added, shown in the review header (e.g. 'Added the bridge scene')."),
     elements: z
       .array(
         z.object({
@@ -20,13 +24,21 @@ export default defineTool({
       .min(1)
       .describe("Ordered screenplay lines to add after the current last line."),
   }),
-  async execute({ elements }) {
-    const cur = await api<{ title?: string; doc?: unknown }>("/api/script");
-    const combined = [...docToElements(cur.doc), ...elements];
-    await api("/api/script", {
+  async execute({ summary, elements }) {
+    const cur = await api<{ title?: string; doc?: unknown; proposal?: { proposedDoc?: unknown } | null }>("/api/script");
+    // Build on top of any still-pending proposal so successive appends stack; the
+    // diff the user sees is always against the committed doc (the server snapshots
+    // that as the proposal's baseDoc).
+    const base = cur.proposal?.proposedDoc ?? cur.doc;
+    const combined = [...docToElements(base), ...elements];
+    await api("/api/script/proposal", {
       method: "PUT",
-      body: { title: cur.title || "", doc: elementsToDoc(combined) },
+      body: {
+        proposedDoc: elementsToDoc(combined),
+        title: cur.title || "",
+        note: summary || `Added ${elements.length} line${elements.length === 1 ? "" : "s"}`,
+      },
     });
-    return { ok: true, added: elements.length, lineCount: combined.length };
+    return { ok: true, proposed: true, added: elements.length, lineCount: combined.length };
   },
 });

@@ -24,6 +24,7 @@ export default defineTool({
       draftName?: string;
       pinnedId?: string;
       drafts?: DraftMeta[];
+      proposal?: unknown;
     }>("/api/script");
     const elements = docToElements(data.doc);
     return {
@@ -31,6 +32,9 @@ export default defineTool({
       elements,
       lineCount: elements.length,
       updatedAt: data.updatedAt ?? null,
+      // A previous proposal of yours is still awaiting the user's review (they
+      // haven't accepted/rejected it yet). Your next proposal will supersede it.
+      pendingProposal: !!data.proposal,
       pinnedDraft: data.draftName ?? null,
       drafts: (data.drafts || []).map((d) => ({
         name: d.name,

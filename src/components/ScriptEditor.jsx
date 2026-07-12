@@ -36,6 +36,7 @@ import {
   Screenplay, SlashCommand, buildInitialContent,
   SP_TYPES, SP_LABELS, SP_PLACEHOLDERS,
 } from "@/components/notes";
+import ScriptDiffReview from "@/components/ScriptDiffReview";
 
 // "2m ago" / "just now" — compact relative time for the drafts list.
 function relTime(iso) {
@@ -661,6 +662,18 @@ export default function ScriptEditor({ reloadKey = 0, liveKey = 0 }) {
       <div className="flex items-center gap-2 p-6 text-sm text-muted-foreground">
         <Loader2 size={16} className="animate-spin" /> loading script…
       </div>
+    );
+  }
+  // A pending agent proposal takes over the tab: review the before→after diff and
+  // accept (in bulk or per line) or discard before editing resumes. Keyed on the
+  // proposal's timestamp so a re-proposal (SSE) remounts with the fresh diff.
+  if (stored.proposal) {
+    return (
+      <ScriptDiffReview
+        key={`prop:${stored.proposal.createdAt || ""}`}
+        stored={stored}
+        reload={reload}
+      />
     );
   }
   // Remount the editor when the pinned draft or its content changes (Refresh, a

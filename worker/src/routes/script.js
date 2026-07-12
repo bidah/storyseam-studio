@@ -9,6 +9,7 @@ import { broadcast } from "../lib/broadcast.js";
 import {
   nowIso,
   makeDraft,
+  makeProposal,
   pinnedDraft,
   draftMeta,
   metaList,
@@ -47,6 +48,9 @@ export function registerScript(app) {
         draftName: d.name,
         pinnedId: store.pinnedId,
         drafts: metaList(store),
+        // A staged agent edit awaiting review (before/after docs for the diff),
+        // or null. Present → the Script tab renders the accept/reject diff view.
+        proposal: d.proposal || null,
         // Pipeline gate: the pinned draft's sign-off + whether a shot list already
         // exists (so the Script tab can enable/disable "Generate shot list").
         signed: !!sign,
@@ -92,6 +96,7 @@ export function registerScript(app) {
       d.doc = doc ?? null;
       d.updatedAt = nowIso();
       d.clientId = clientId ?? null;
+      d.proposal = null; // a direct save supersedes any pending agent proposal
       await writeStore(c.env, pid, store);
       // Editing the script invalidates its sign-off — it must be re-signed before
       // the shot list can be (re)generated from it.
@@ -99,6 +104,82 @@ export function registerScript(app) {
       if (db.scriptSignoff?.[d.id]) { delete db.scriptSignoff[d.id]; await writeDB(c.env, pid, db); }
       await broadcastScript(c, pid, { updatedAt: d.updatedAt, clientId: clientId ?? null, pinnedId: store.pinnedId });
       return c.json({ ok: true, updatedAt: d.updatedAt, draftId: d.id });
+    } catch (e) {
+      return c.json({ error: String(e.message || e) }, 500);
+    }
+  });
+
+  // --- Agent edit proposals (review before commit) --------------------------
+  // Stage a full proposed doc against the PINNED draft WITHOUT committing it. The
+  // draft's `doc` is untouched; the Script tab renders a before→after diff and the
+  // human accepts (in bulk or per line) or rejects. Used by the agent's
+  // save_script / append_script tools so their edits are reviewable, not silent.
+  app.put("/api/script/proposal", async (c) => {
+    const pid = c.get("projectId");
+    try {
+      let body;
+      try { body = await c.req.json(); } catch { body = {}; }
+      const { proposedDoc, title, note, clientId } = body || {};
+      const store = await readStore(c.env, pid);
+      const d = pinnedDraft(store);
+      d.proposal = makeProposal({
+        baseDoc: d.doc ?? null,
+        proposedDoc: proposedDoc ?? null,
+        proposedTitle: typeof title === "string" ? title : d.title,
+        note,
+        source: "eve",
+        baseUpdatedAt: d.updatedAt,
+      });
+      await writeStore(c.env, pid, store);
+      // proposal:true tells open Script tabs to flip into the review/diff view.
+      await broadcastScript(c, pid, { updatedAt: d.updatedAt, clientId: clientId ?? null, pinnedId: store.pinnedId, proposal: true });
+      return c.json({ ok: true, draftId: d.id });
+    } catch (e) {
+      return c.json({ error: String(e.message || e) }, 500);
+    }
+  });
+
+  // Accept a pending proposal. The client sends the RESOLVED doc (the proposed
+  // doc with the human's per-line accept/reject applied), which becomes the
+  // committed content — accepting invalidates the sign-off just like a save.
+  app.post("/api/script/proposal/accept", async (c) => {
+    const pid = c.get("projectId");
+    try {
+      let body;
+      try { body = await c.req.json(); } catch { body = {}; }
+      const { doc, title, clientId } = body || {};
+      const store = await readStore(c.env, pid);
+      const d = pinnedDraft(store);
+      if (!d.proposal) return c.json({ error: "no pending proposal" }, 409);
+      d.doc = doc ?? d.proposal.proposedDoc ?? d.doc ?? null;
+      if (typeof title === "string") d.title = title;
+      d.proposal = null;
+      d.updatedAt = nowIso();
+      d.clientId = clientId ?? null;
+      await writeStore(c.env, pid, store);
+      const db = await readDB(c.env, pid);
+      if (db.scriptSignoff?.[d.id]) { delete db.scriptSignoff[d.id]; await writeDB(c.env, pid, db); }
+      await broadcastScript(c, pid, { updatedAt: d.updatedAt, clientId: clientId ?? null, pinnedId: store.pinnedId });
+      return c.json({ ok: true, updatedAt: d.updatedAt, draftId: d.id });
+    } catch (e) {
+      return c.json({ error: String(e.message || e) }, 500);
+    }
+  });
+
+  // Reject (discard) a pending proposal — the committed content is left untouched.
+  app.post("/api/script/proposal/reject", async (c) => {
+    const pid = c.get("projectId");
+    try {
+      let body;
+      try { body = await c.req.json(); } catch { body = {}; }
+      const clientId = body?.clientId ?? null;
+      const store = await readStore(c.env, pid);
+      const d = pinnedDraft(store);
+      if (!d.proposal) return c.json({ ok: true, draftId: d.id });
+      d.proposal = null;
+      await writeStore(c.env, pid, store);
+      await broadcastScript(c, pid, { updatedAt: d.updatedAt, clientId, pinnedId: store.pinnedId, proposal: false });
+      return c.json({ ok: true, draftId: d.id });
     } catch (e) {
       return c.json({ error: String(e.message || e) }, 500);
     }

@@ -3,17 +3,23 @@ import { z } from "zod";
 import { api } from "../lib/api.js";
 import { elementsToDoc, SCRIPT_ELEMENT_TYPES } from "../lib/script.js";
 
-// The model sees this as `save_script`. Replaces the WHOLE screenplay — read it
-// first with get_script if you only mean to tweak part of it (or use
-// append_script to add without overwriting).
+// The model sees this as `save_script`. Proposes a WHOLE-screenplay replacement —
+// read it first with get_script if you only mean to tweak part of it (or use
+// append_script to add without overwriting). The edit is staged as a PROPOSAL the
+// user reviews (accept/reject, in bulk or per line) on the Script tab; it does
+// not commit until they accept.
 export default defineTool({
   description:
-    "Replace the entire screenplay on the Script tab with a new title + list of screenplay lines. Writes to the PINNED draft only — the active version; other drafts are untouched. Each element is { type, text } where type is one of scene_heading, action, character, dialogue, parenthetical, transition. This OVERWRITES the pinned draft — call get_script first if you're revising existing content. The change autosaves and appears when the user's editor reloads. To keep the old text as a separate version, create a new draft with new_draft first, then save into it.",
+    "Propose replacing the entire screenplay on the Script tab with a new title + list of screenplay lines. The edit is STAGED as a proposal against the PINNED draft (the active version; other drafts untouched) and the user reviews a before→after diff and accepts it in bulk or per line — it is NOT committed until they accept. Each element is { type, text } where type is one of scene_heading, action, character, dialogue, parenthetical, transition. This proposes replacing everything — call get_script first if you're revising existing content. To keep the old text as a separate version, create a new draft with new_draft first, then propose into it.",
   inputSchema: z.object({
     title: z
       .string()
       .optional()
       .describe("Script title. Omit to keep the current title unchanged."),
+    summary: z
+      .string()
+      .optional()
+      .describe("One short line describing the change, shown to the user in the review header (e.g. 'Rewrote scene 3')."),
     elements: z
       .array(
         z.object({
@@ -23,7 +29,7 @@ export default defineTool({
       )
       .describe("The full ordered list of screenplay lines, top to bottom."),
   }),
-  async execute({ title, elements }) {
+  async execute({ title, summary, elements }) {
     // Preserve the existing title when the caller omits one.
     let nextTitle = title;
     if (nextTitle === undefined) {
@@ -31,10 +37,10 @@ export default defineTool({
       nextTitle = cur.title || "";
     }
     const doc = elementsToDoc(elements);
-    await api("/api/script", {
+    await api("/api/script/proposal", {
       method: "PUT",
-      body: { title: nextTitle, doc },
+      body: { proposedDoc: doc, title: nextTitle, note: summary || "Rewrote the screenplay" },
     });
-    return { ok: true, title: nextTitle, lineCount: elements.length };
+    return { ok: true, proposed: true, title: nextTitle, lineCount: elements.length };
   },
 });

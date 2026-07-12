@@ -37,7 +37,23 @@ export function countLines(doc) {
 
 export function makeDraft({ name, title = "", doc = null, clientId = null }) {
   const ts = nowIso();
-  return { id: newDraftId(), name: name || "Draft 1", title, doc, createdAt: ts, updatedAt: ts, clientId };
+  return { id: newDraftId(), name: name || "Draft 1", title, doc, createdAt: ts, updatedAt: ts, clientId, proposal: null };
+}
+
+// A staged agent edit awaiting human review. It sits ALONGSIDE the draft's
+// committed `doc` (never replaces it) so the Script tab can render a before→after
+// diff and accept it in bulk or per line. `baseDoc` snapshots the committed doc
+// at propose time so the diff stays stable even if the human keeps editing.
+export function makeProposal({ baseDoc = null, proposedDoc = null, proposedTitle = null, note = null, source = "eve", baseUpdatedAt = null }) {
+  return {
+    baseDoc,
+    proposedDoc,
+    proposedTitle: typeof proposedTitle === "string" ? proposedTitle : null,
+    note: typeof note === "string" ? note : null,
+    source: source || "eve",
+    baseUpdatedAt: baseUpdatedAt || null,
+    createdAt: nowIso(),
+  };
 }
 
 // Accept any of: a v2 store, a legacy single { title, doc } record, or {} /
@@ -52,6 +68,7 @@ export function normalizeStore(obj) {
       createdAt: d.createdAt || nowIso(),
       updatedAt: d.updatedAt || d.createdAt || nowIso(),
       clientId: d.clientId ?? null,
+      proposal: d.proposal ?? null,
     }));
     const pinnedId = drafts.some((d) => d.id === obj.pinnedId) ? obj.pinnedId : drafts[0].id;
     return { v: 2, pinnedId, drafts };
