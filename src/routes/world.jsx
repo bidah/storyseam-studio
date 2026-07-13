@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useLoaderData, useRevalidator } from "react-router";
 import {
   Globe, Users, BookOpen, Sparkles, Wand2, UserPlus, Trash2, Loader2,
-  ImagePlus, X,
+  ImagePlus, X, Maximize2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { invalidateTabCache } from "@/lib/tabCache";
@@ -53,7 +53,7 @@ const CHAR_FIELDS = [
  * Inline-editable field — saves on blur (only when changed)         *
  * ---------------------------------------------------------------- */
 
-function WorldField({ value, onCommit, placeholder, rows = 3, mono }) {
+function WorldField({ value, onCommit, placeholder, rows = 3, mono, autoGrow, big }) {
   const [v, setV] = useState(value ?? "");
   const [saving, setSaving] = useState(false);
   useEffect(() => { setV(value ?? ""); }, [value]);
@@ -62,6 +62,31 @@ function WorldField({ value, onCommit, placeholder, rows = 3, mono }) {
     setSaving(true);
     try { await onCommit(v); } finally { setSaving(false); }
   };
+  const base = cn(
+    "w-full rounded-md border border-transparent bg-transparent px-2 py-1.5 leading-relaxed hover:border-border focus:border-primary focus:bg-background focus:outline-none",
+    big ? "text-base leading-7" : "text-sm",
+    mono && "font-mono",
+  );
+  // autoGrow: a mirror div in the same grid cell sizes the box to the content
+  // height, so the textarea grows to fit everything — no max-height, no inner
+  // scroll. Used by the "Expand" modal so each field shows its whole value.
+  if (autoGrow) {
+    return (
+      <div className="relative grid">
+        <textarea
+          value={v}
+          placeholder={placeholder}
+          onChange={(e) => setV(e.target.value)}
+          onBlur={commit}
+          className={cn(base, "col-start-1 row-start-1 resize-none overflow-hidden")}
+        />
+        <div aria-hidden className={cn(base, "col-start-1 row-start-1 whitespace-pre-wrap break-words invisible")}>
+          {(v || placeholder || "") + "\n"}
+        </div>
+        {saving && <Loader2 size={14} className="absolute right-2 top-2 animate-spin text-muted-foreground" />}
+      </div>
+    );
+  }
   return (
     <div className="relative">
       <textarea
@@ -70,10 +95,7 @@ function WorldField({ value, onCommit, placeholder, rows = 3, mono }) {
         placeholder={placeholder}
         onChange={(e) => setV(e.target.value)}
         onBlur={commit}
-        className={cn(
-          "w-full resize-y rounded-md border border-transparent bg-transparent px-2 py-1.5 text-sm leading-relaxed hover:border-border focus:border-primary focus:bg-background focus:outline-none",
-          mono && "font-mono",
-        )}
+        className={cn(base, "resize-y")}
       />
       {saving && <Loader2 size={12} className="absolute right-2 top-2 animate-spin text-muted-foreground" />}
     </div>
@@ -81,13 +103,43 @@ function WorldField({ value, onCommit, placeholder, rows = 3, mono }) {
 }
 
 // A labelled prompt row (used for the story map + story depth).
-function PromptRow({ label, hint, value, onCommit, rows }) {
+function PromptRow({ label, hint, value, onCommit, rows, big, autoGrow }) {
   return (
     <div className="space-y-1">
-      <Eyebrow className="normal-case tracking-normal text-foreground/80">{label}</Eyebrow>
-      {hint && <p className="px-0.5 text-xs text-muted-foreground">{hint}</p>}
-      <WorldField value={value} onCommit={onCommit} placeholder="—" rows={rows} />
+      <Eyebrow className={cn("normal-case tracking-normal text-foreground/80", big && "text-sm")}>{label}</Eyebrow>
+      {hint && <p className={cn("px-0.5 text-muted-foreground", big ? "text-sm" : "text-xs")}>{hint}</p>}
+      <WorldField value={value} onCommit={onCommit} placeholder="—" rows={rows} big={big} autoGrow={autoGrow} />
     </div>
+  );
+}
+
+/* ---------------------------------------------------------------- *
+ * Expand — a header button that opens a big, fully-editable modal    *
+ * showing every field at a larger size with no inner scrolling.      *
+ * ---------------------------------------------------------------- */
+
+function ExpandSection({ title, icon, children }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <Button
+        variant="ghost"
+        size="sm"
+        onClick={() => setOpen(true)}
+        aria-label={`Expand ${typeof title === "string" ? title : "section"}`}
+        className="text-muted-foreground"
+      >
+        <Maximize2 size={13} /> Expand
+      </Button>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-4xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">{icon} {title}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-6">{children}</div>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
 
@@ -176,7 +228,7 @@ function CharacterSheetPicker({ open, onOpenChange, onPick }) {
  * Character card                                                    *
  * ---------------------------------------------------------------- */
 
-function CharacterCard({ char, onField, onRemove }) {
+function CharacterCard({ char, onField, onRemove, expanded }) {
   const { setModalImage } = useShell();
   const [pickerOpen, setPickerOpen] = useState(false);
   const sheet = char.sheetImage;
@@ -187,7 +239,10 @@ function CharacterCard({ char, onField, onRemove }) {
           defaultValue={char.name}
           placeholder="Character name"
           onBlur={(e) => e.target.value !== char.name && onField("name", e.target.value)}
-          className="min-w-0 flex-1 rounded-md border border-transparent bg-transparent px-1.5 py-0.5 text-sm font-semibold hover:border-border focus:border-primary focus:bg-background focus:outline-none"
+          className={cn(
+            "min-w-0 flex-1 rounded-md border border-transparent bg-transparent px-1.5 py-0.5 font-semibold hover:border-border focus:border-primary focus:bg-background focus:outline-none",
+            expanded ? "text-lg" : "text-sm",
+          )}
         />
         {char.archetype && <Badge variant="secondary" className="shrink-0">{char.archetype}</Badge>}
         <Button
@@ -239,14 +294,19 @@ function CharacterCard({ char, onField, onRemove }) {
         </div>
       )}
 
-      <div className="grid gap-2 sm:grid-cols-2">
+      <div className={cn("grid gap-2", !expanded && "sm:grid-cols-2")}>
         {CHAR_FIELDS.map((f) => (
-          <label key={f.key} className={cn("space-y-0.5", !f.short && "sm:col-span-2")}>
-            <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">{f.label}</span>
+          <label key={f.key} className={cn("space-y-0.5", !expanded && !f.short && "sm:col-span-2")}>
+            <span className={cn(
+              "font-semibold uppercase tracking-wide text-muted-foreground",
+              expanded ? "text-xs" : "text-[10px]",
+            )}>{f.label}</span>
             <WorldField
               value={char[f.key]}
               placeholder={f.placeholder}
-              rows={f.short ? 2 : 2}
+              rows={2}
+              big={expanded}
+              autoGrow={expanded}
               onCommit={(val) => onField(f.key, val)}
             />
           </label>
@@ -343,7 +403,21 @@ function World() {
       {error && <ErrorNote>{error}</ErrorNote>}
 
       {/* Title + logline */}
-      <Panel title={<span className="flex items-center gap-2"><Sparkles size={15} className="text-primary" /> The series</span>}>
+      <Panel
+        title={<span className="flex items-center gap-2"><Sparkles size={15} className="text-primary" /> The series</span>}
+        meta={
+          <ExpandSection title="The series" icon={<Sparkles size={18} className="text-primary" />}>
+            <div className="space-y-1">
+              <Eyebrow className="text-sm normal-case tracking-normal text-foreground/80">Title</Eyebrow>
+              <WorldField value={world.title} onCommit={(v) => patchWorld({ title: v })} placeholder="Untitled world" big autoGrow />
+            </div>
+            <div className="space-y-1">
+              <Eyebrow className="text-sm normal-case tracking-normal text-foreground/80">Logline</Eyebrow>
+              <WorldField value={world.logline} onCommit={(v) => patchWorld({ logline: v })} placeholder="One sentence that captures the series." big autoGrow />
+            </div>
+          </ExpandSection>
+        }
+      >
         <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
           <div className="space-y-1">
             <Eyebrow className="normal-case tracking-normal text-foreground/80">Title</Eyebrow>
@@ -360,7 +434,16 @@ function World() {
         {/* Story map — the 5 shaping questions */}
         <Panel
           title={<span className="flex items-center gap-2"><Globe size={15} className="text-primary" /> Story map</span>}
-          meta={<Badge variant="outline">{mapFilled}/{MAP.length}</Badge>}
+          meta={
+            <div className="flex items-center gap-2">
+              <Badge variant="outline">{mapFilled}/{MAP.length}</Badge>
+              <ExpandSection title="Story map" icon={<Globe size={18} className="text-primary" />}>
+                {MAP.map((m) => (
+                  <PromptRow key={m.key} label={m.label} hint={m.hint} value={world.map?.[m.key]} onCommit={(v) => setMap(m.key, v)} big autoGrow />
+                ))}
+              </ExpandSection>
+            </div>
+          }
         >
           <div className="space-y-4">
             {MAP.map((m) => (
@@ -372,7 +455,17 @@ function World() {
         {/* Story depth — the core elements */}
         <Panel
           title={<span className="flex items-center gap-2"><BookOpen size={15} className="text-primary" /> Story depth</span>}
-          meta={<Badge variant="outline">{depthFilled}/{DEPTH.length}</Badge>}
+          meta={
+            <div className="flex items-center gap-2">
+              <Badge variant="outline">{depthFilled}/{DEPTH.length}</Badge>
+              <ExpandSection title="Story depth" icon={<BookOpen size={18} className="text-primary" />}>
+                <p className="text-sm text-muted-foreground">Understand the story — the core elements beneath the plot.</p>
+                {DEPTH.map((d) => (
+                  <PromptRow key={d.key} label={d.label} hint={d.hint} value={world.depth?.[d.key]} onCommit={(v) => setDepth(d.key, v)} big autoGrow />
+                ))}
+              </ExpandSection>
+            </div>
+          }
         >
           <p className="mb-3 text-xs text-muted-foreground">Understand the story — the core elements beneath the plot.</p>
           <div className="space-y-4">
@@ -387,9 +480,24 @@ function World() {
       <Panel
         title={<span className="flex items-center gap-2"><Users size={15} className="text-primary" /> Characters</span>}
         meta={
-          <Button variant="outline" size="sm" onClick={addChar}>
-            <UserPlus size={13} /> Add character
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" onClick={addChar}>
+              <UserPlus size={13} /> Add character
+            </Button>
+            {characters.length > 0 && (
+              <ExpandSection title="Characters" icon={<Users size={18} className="text-primary" />}>
+                {characters.map((char) => (
+                  <CharacterCard
+                    key={char.id}
+                    char={char}
+                    expanded
+                    onField={(key, val) => setChar(char.id, key, val)}
+                    onRemove={setConfirm}
+                  />
+                ))}
+              </ExpandSection>
+            )}
+          </div>
         }
       >
         {characters.length === 0 ? (
