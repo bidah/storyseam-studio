@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useLoaderData, useRevalidator } from "react-router";
 import {
   Globe, Users, BookOpen, Sparkles, Wand2, UserPlus, Trash2, Loader2,
-  ImagePlus, X, Maximize2,
+  ImagePlus, X, Maximize2, Mic,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { invalidateTabCache } from "@/lib/tabCache";
@@ -225,13 +225,115 @@ function CharacterSheetPicker({ open, onOpenChange, onPick }) {
 }
 
 /* ---------------------------------------------------------------- *
+ * Voice picker — attach a liked Sound Studio voice to a character.   *
+ * Voices are tracks with kind "voice"; likes live per audio version, *
+ * so we surface every liked voice take. Fetches /api/sounds on open. *
+ * ---------------------------------------------------------------- */
+
+// Mirror of trackKind() in sounds.jsx: prefer the explicit kind, else sniff the
+// v1 prompt for the voice builder's fixed lead-in (older, kind-less tracks).
+const VOICE_RE = /^\s*(@audio\d|use a seed audio voice reference to voice-act)/i;
+function isVoiceTrack(t) {
+  if (t.kind === "voice") return true;
+  if (t.kind === "sfx" || t.kind === "music") return false;
+  const v1 = (t.versions || []).find((v) => v.v === 1) || (t.versions || [])[0];
+  return VOICE_RE.test(v1?.prompt || "");
+}
+
+function VoicePicker({ open, onOpenChange, onPick }) {
+  const [tracks, setTracks] = useState(null); // null = loading
+  const [error, setError] = useState(null);
+  const [q, setQ] = useState("");
+
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    setTracks(null);
+    setError(null);
+    setQ("");
+    fetch("/api/sounds")
+      .then((r) => r.json())
+      .then((j) => {
+        if (cancelled) return;
+        if (j.error) throw new Error(j.error);
+        setTracks(j.tracks || []);
+      })
+      .catch((e) => { if (!cancelled) setError(String(e.message || e)); });
+    return () => { cancelled = true; };
+  }, [open]);
+
+  // Every liked voice take across the Sound Studio, flattened into pickable
+  // options. A search term filters by track name.
+  const voices = useMemo(() => {
+    const all = (tracks || [])
+      .filter(isVoiceTrack)
+      .flatMap((t) =>
+        (t.versions || [])
+          .filter((v) => v.liked && v.url)
+          .map((v) => ({
+            trackId: t.id,
+            v: v.v,
+            name: t.name || v.name || "Untitled voice",
+            url: v.url,
+          })),
+      );
+    const term = q.trim().toLowerCase();
+    return term ? all.filter((o) => o.name.toLowerCase().includes(term)) : all;
+  }, [tracks, q]);
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>Attach a voice</DialogTitle>
+        </DialogHeader>
+        <p className="text-xs text-muted-foreground">
+          Your liked voices from the Sound Studio — like a voice take on the Sounds tab to see it here.
+        </p>
+        <Input
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          placeholder="Search liked voices…"
+          className="h-8 text-sm"
+        />
+        {error && <ErrorNote>{error}</ErrorNote>}
+        {tracks === null && !error ? (
+          <div className="py-10"><Spinner /></div>
+        ) : voices.length === 0 && !error ? (
+          <div className="rounded-lg border border-dashed p-8 text-center">
+            <Empty>no liked voices yet — generate a voice on the Sounds tab and tap the heart to like a take.</Empty>
+          </div>
+        ) : (
+          <div className="max-h-[60vh] space-y-2 overflow-y-auto pr-1">
+            {voices.map((o) => (
+              <div key={`${o.trackId}:${o.v}`} className="flex items-center gap-3 rounded-lg border p-2">
+                <Mic size={16} className="shrink-0 text-primary" />
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-sm font-medium">
+                    {o.name} <span className="text-muted-foreground">v{o.v}</span>
+                  </div>
+                  <audio controls src={o.url} preload="none" className="mt-1 h-8 w-full" />
+                </div>
+                <Button size="sm" className="shrink-0" onClick={() => onPick(o)}>Select</Button>
+              </div>
+            ))}
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/* ---------------------------------------------------------------- *
  * Character card                                                    *
  * ---------------------------------------------------------------- */
 
 function CharacterCard({ char, onField, onRemove, expanded }) {
   const { setModalImage } = useShell();
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [voiceOpen, setVoiceOpen] = useState(false);
   const sheet = char.sheetImage;
+  const voiceRef = char.voiceRef;
   return (
     <div className="rounded-lg border p-3">
       <div className="mb-2 flex items-center gap-2">
@@ -294,6 +396,40 @@ function CharacterCard({ char, onField, onRemove, expanded }) {
         </div>
       )}
 
+      {/* Voice: a liked Sound Studio take attached as this character's voice.
+          Sits with the character sheet as the two linked assets of a character. */}
+      {voiceRef ? (
+        <div className="mb-2 flex items-center gap-3 rounded-lg border bg-muted/60 p-2">
+          <Mic size={16} className="shrink-0 text-primary" />
+          <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+            <span className="truncate text-sm font-medium">
+              {voiceRef.name || "Voice"}
+              {voiceRef.v != null && <span className="text-muted-foreground"> · v{voiceRef.v}</span>}
+            </span>
+            {voiceRef.url && <audio controls src={voiceRef.url} preload="none" className="h-8 w-full max-w-sm" />}
+            <div className="flex items-center gap-1.5">
+              <Button variant="outline" size="sm" onClick={() => setVoiceOpen(true)}>
+                <Mic size={13} /> Change voice
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => onField("voiceRef", null)}
+                className="text-muted-foreground hover:text-destructive"
+              >
+                <X size={14} /> Unlink
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : (
+        <div className="mb-2">
+          <Button variant="outline" size="sm" onClick={() => setVoiceOpen(true)}>
+            <Mic size={13} /> Attach voice
+          </Button>
+        </div>
+      )}
+
       <div className={cn("grid gap-2", !expanded && "sm:grid-cols-2")}>
         {CHAR_FIELDS.map((f) => (
           <label key={f.key} className={cn("space-y-0.5", !expanded && !f.short && "sm:col-span-2")}>
@@ -319,6 +455,15 @@ function CharacterCard({ char, onField, onRemove, expanded }) {
         onPick={(im) => {
           onField("sheetImage", { rel: im.rel, url: im.url, thumb: im.thumb, name: im.name });
           setPickerOpen(false);
+        }}
+      />
+
+      <VoicePicker
+        open={voiceOpen}
+        onOpenChange={setVoiceOpen}
+        onPick={(o) => {
+          onField("voiceRef", { trackId: o.trackId, v: o.v, name: o.name, url: o.url });
+          setVoiceOpen(false);
         }}
       />
     </div>

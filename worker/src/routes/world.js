@@ -42,12 +42,26 @@ function normalizeSheetImage(raw) {
   return { rel, url, thumb: str(raw.thumb), name: str(raw.name) };
 }
 
+// A voice attached to a character: a liked take from the Sound Studio. We snapshot
+// the display name and the playable `url` (relative `/sound-media/<file>`) plus the
+// source track id + version so the original take can be found again. Anything
+// unshaped (or an explicit unlink) normalizes to null.
+function normalizeVoiceRef(raw) {
+  if (!raw || typeof raw !== "object") return null;
+  const url = str(raw.url);
+  const trackId = str(raw.trackId);
+  if (!url && !trackId) return null;
+  const v = Number(raw.v);
+  return { trackId, v: Number.isFinite(v) ? v : null, name: str(raw.name), url };
+}
+
 // Coerce one character into the canonical shape, minting an id if missing.
 function normalizeChar(raw, i = 0) {
   const c = raw || {};
   const out = { id: str(c.id) || `char-${Date.now().toString(36)}-${i}` };
   for (const f of CHAR_FIELDS) out[f] = str(c[f]);
   out.sheetImage = normalizeSheetImage(c.sheetImage);
+  out.voiceRef = normalizeVoiceRef(c.voiceRef);
   return out;
 }
 
