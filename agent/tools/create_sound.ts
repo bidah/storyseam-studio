@@ -9,12 +9,18 @@ export default defineTool({
   inputSchema: z.object({
     prompt: z.string().min(1).describe("The Seed Audio text prompt for this sound."),
     name: z.string().optional().describe("Optional display name for the track."),
+    kind: z
+      .enum(["music", "sfx", "voice"])
+      .optional()
+      .describe(
+        "Which Sound Studio tab the track belongs to: 'music' (background music), 'sfx' (sound effect), or 'voice' (voice-acting line). Always set this — voice lines and sound effects are invisible on their tab without it.",
+      ),
     params: z
       .record(z.string(), z.unknown())
       .optional()
       .describe("Optional Seed Audio params (duration, etc.); defaults are used if omitted."),
   }),
-  async execute({ prompt, name, params }) {
-    return await api("/api/sounds", { method: "POST", body: { prompt, name, params } });
+  async execute({ prompt, name, kind, params }) {
+    return await api("/api/sounds", { method: "POST", body: { prompt, name, kind, params } });
   },
 });

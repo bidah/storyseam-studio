@@ -560,6 +560,10 @@ const voicePrompt = (character, lines) =>
 const VOICE_RE = /^\s*(@audio\d|use a seed audio voice reference to voice-act)/i;
 
 function trackKind(t) {
+  // Tracks store their tab explicitly since the `kind` field landed; older
+  // tracks fall back to sniffing the v1 prompt for the builders' fixed lead-ins
+  // (fragile — agent-authored prompts rarely match, which is why kind exists).
+  if (t.kind === "voice" || t.kind === "sfx" || t.kind === "music") return t.kind;
   const v1 = (t.versions || []).find((v) => v.v === 1) || (t.versions || [])[0];
   const p = v1?.prompt || "";
   if (VOICE_RE.test(p)) return "voice";
@@ -830,14 +834,14 @@ function SoundStudio() {
     revalidator.revalidate();
   };
 
-  const createTrack = async ({ name, prompt }) => {
+  const createTrack = async ({ name, prompt, kind }) => {
     if (!prompt.trim()) return;
     setBusy(true);
     setError(null);
     try {
       await soundApi("/api/sounds", {
         method: "POST",
-        body: JSON.stringify({ name, prompt }),
+        body: JSON.stringify({ name, prompt, kind }),
       });
       setShowNew(false);
       refetch();
@@ -899,7 +903,7 @@ function SoundStudio() {
             <NewSoundBuilder
               bundles={bundles}
               busy={busy}
-              onCreate={createTrack}
+              onCreate={(t) => createTrack({ ...t, kind: "music" })}
               onCancel={() => setShowNew(false)}
             />
           )}
@@ -918,7 +922,11 @@ function SoundStudio() {
             </Button>
           </div>
           {showNew && (
-            <SfxBuilder busy={busy} onCreate={createTrack} onCancel={() => setShowNew(false)} />
+            <SfxBuilder
+              busy={busy}
+              onCreate={(t) => createTrack({ ...t, kind: "sfx" })}
+              onCancel={() => setShowNew(false)}
+            />
           )}
           <TrackList
             loading={false}
@@ -935,7 +943,11 @@ function SoundStudio() {
             </Button>
           </div>
           {showNew && (
-            <VoiceBuilder busy={busy} onCreate={createTrack} onCancel={() => setShowNew(false)} />
+            <VoiceBuilder
+              busy={busy}
+              onCreate={(t) => createTrack({ ...t, kind: "voice" })}
+              onCancel={() => setShowNew(false)}
+            />
           )}
           <TrackList
             loading={false}
