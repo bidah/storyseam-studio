@@ -42,7 +42,7 @@
     // Router client routes). The APIs live under "/api/*" (matched above).
     "run_worker_first": [
       "/api/*", "/files/*", "/gen/*", "/media/*", "/sound-media/*", "/final/*",
-      "/refs/*", "/multishot-media/*", "/stills/*", "/proxy/*", "/asset/*", "/thumb/*", "/hf-thumb/*",
+      "/refs/*", "/multishot-media/*", "/stills/*", "/storyboard-media/*", "/proxy/*", "/asset/*", "/thumb/*", "/hf-thumb/*",
       "/ingest/*", "/ingest-mpu/*", "/eve/*", "/upload", "/uploads", "/healthz"
     ]
   },

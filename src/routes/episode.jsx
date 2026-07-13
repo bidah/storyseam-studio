@@ -4,7 +4,7 @@ import { X, Check, Plus, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, Rota
 import { cn } from "@/lib/utils";
 import { invalidateTabCache } from "@/lib/tabCache";
 import { swr, useRevalidateOnMount } from "@/lib/swr";
-import { useAgent, agentIsBusy, renderEpisodeMessage, trimMessage } from "@/components/AgentProvider";
+import { useAgent, agentIsBusy, renderEpisodeMessage, renderStoryboardMessage, renderStoryboardAllMessage, trimMessage } from "@/components/AgentProvider";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
@@ -618,10 +618,138 @@ function PromptModal({ bundle, body, fullPrefix, assigned, audioAssigned, edited
 }
 
 /* ---------------------------------------------------------------- *
+ * Storyboard stills (per shot) — the image stage before video      *
+ * ---------------------------------------------------------------- */
+
+// A carousel of the generated stills for ONE shot (multiple angle takes), with
+// select + preview. The image counterpart of EpVideoRail (no trim/scrub).
+function EpStillRail({ stills, reloadKey, onView, onToggle }) {
+  const selFile = stills.find((v) => v.selected)?.file;
+  const [i, setI] = useState(() => {
+    const s = stills.findIndex((v) => v.selected);
+    return s >= 0 ? s : stills.length - 1;
+  });
+  useEffect(() => {
+    const s = stills.findIndex((v) => v.selected);
+    setI(s >= 0 ? s : stills.length - 1);
+  }, [selFile, stills.length]);
+  const idx = Math.min(i, stills.length - 1);
+  const g = stills[idx];
+  const prev = () => setI((n) => (n - 1 + stills.length) % stills.length);
+  const next = () => setI((n) => (n + 1) % stills.length);
+  const src = `${g.url}?v=${reloadKey}`;
+
+  return (
+    <div className="rounded-xl border bg-muted/30 p-2">
+      <div className="mb-1.5 flex items-center justify-between gap-2">
+        <span className="truncate text-[11px] font-medium">
+          {g.name}
+          {g.angle ? <span className="text-muted-foreground"> · {g.angle}</span> : null}
+        </span>
+        <div className="flex shrink-0 items-center gap-1">
+          <Button variant="outline" size="icon-xs" onClick={prev} disabled={stills.length < 2} aria-label="Previous"><ChevronLeft size={13} /></Button>
+          <span className="text-[11px] tabular-nums text-muted-foreground">{idx + 1} / {stills.length}</span>
+          <Button variant="outline" size="icon-xs" onClick={next} disabled={stills.length < 2} aria-label="Next"><ChevronRight size={13} /></Button>
+        </div>
+      </div>
+      <div className={cn("relative overflow-hidden rounded-lg", g.selected && "ring-2 ring-primary")}>
+        <button className="block w-full" onClick={() => onView({ url: src, name: g.name, role: "still" })}>
+          <img src={src} loading="lazy" alt={g.name} className="aspect-video w-full bg-black object-cover" />
+        </button>
+        <button
+          className={cn(
+            "absolute left-2 top-2 flex size-6 items-center justify-center rounded-full border-2 border-white/80 shadow transition-colors",
+            g.selected ? "bg-primary text-primary-foreground" : "bg-black/50 text-transparent hover:bg-black/70"
+          )}
+          title={g.selected ? "selected still — click to unselect" : "select this still"}
+          onClick={() => onToggle(g.file, !g.selected)}
+        >
+          <Check size={14} />
+        </button>
+        {g.selected && <Badge className="absolute right-2 top-2">selected</Badge>}
+      </div>
+      {stills.length > 1 && (
+        <div className="mt-1.5 flex flex-wrap justify-center gap-1.5">
+          {stills.map((v, k) => (
+            <button
+              key={v.file || k}
+              className={cn(
+                "size-2 rounded-full transition-colors",
+                k === idx ? "bg-primary" : v.selected ? "bg-primary/50" : "bg-muted-foreground/30 hover:bg-muted-foreground/60"
+              )}
+              onClick={() => setI(k)}
+              title={`${v.name}${v.angle ? ` — ${v.angle}` : ""}${v.selected ? " (selected)" : ""}`}
+              aria-label={v.name}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// One shot row in Images mode: the shot details + an optional angle hint + the
+// render control ("Render still" / "New angle") and this shot's stills carousel.
+function StoryboardShot({ s, stills, reloadKey, onView, onToggleStill, onRender, agentBusy }) {
+  const [angle, setAngle] = useState("");
+  const hasStills = stills.length > 0;
+  const dlg = s.dialogue && !/\(no dialogue\)/i.test(s.dialogue) ? s.dialogue : null;
+  const doRender = () => onRender(s, angle.trim());
+
+  return (
+    <li className="rounded-lg border bg-muted/30 p-3">
+      <div className="mb-1 flex flex-wrap items-center gap-2 text-xs">
+        <Badge variant="secondary" className="font-mono">{s.id}</Badge>
+        <span className="text-muted-foreground">{s.dur}s</span>
+        <span className="text-muted-foreground">{s.location}</span>
+        <span className="text-muted-foreground">{s.camera}</span>
+        {hasStills && <Badge variant="success"><ImageIcon size={11} /> {stills.length}</Badge>}
+      </div>
+      <div className="grid gap-3 sm:grid-cols-[1.4fr_1fr]">
+        <div className="min-w-0">
+          <div className="text-sm">{s.summary}</div>
+          {dlg && (
+            <div className="mt-1 flex items-start gap-1.5 text-xs text-muted-foreground">
+              <Speech size={13} className="mt-0.5 shrink-0" /> {dlg}
+            </div>
+          )}
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <Input
+              value={angle}
+              onChange={(e) => setAngle(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter" && !agentBusy) doRender(); }}
+              placeholder={hasStills ? "new angle / variation…" : "angle (optional)"}
+              className="h-8 max-w-[220px] text-xs"
+            />
+            <Button
+              size="sm"
+              onClick={doRender}
+              disabled={agentBusy}
+              title={agentBusy ? "Agent is busy — wait for the current turn to finish" : hasStills ? "Generate another take (e.g. a different angle)" : "Generate a storyboard still for this shot with Nano Banana Pro"}
+            >
+              {agentBusy ? <Loader2 size={13} className="animate-spin" /> : hasStills ? <RotateCcw size={13} /> : <ImageIcon size={13} />}
+              {hasStills ? "New angle" : "Render still"}
+            </Button>
+          </div>
+        </div>
+        {hasStills && (
+          <EpStillRail
+            stills={stills}
+            reloadKey={reloadKey}
+            onView={onView}
+            onToggle={(file, selected) => onToggleStill(s.id, file, selected)}
+          />
+        )}
+      </div>
+    </li>
+  );
+}
+
+/* ---------------------------------------------------------------- *
  * Episode bundle card                                              *
  * ---------------------------------------------------------------- */
 
-function EpisodeBundle({ b, flat, picked, onOpenPicker, onRemove, onView, audioMap, audioPicked, onOpenAudio, vids, reloadKey, onToggleVideo, override, onEditPrompt, onResetPrompt, signoff, onSign }) {
+function EpisodeBundle({ b, flat, picked, onOpenPicker, onRemove, onView, audioMap, audioPicked, onOpenAudio, vids, reloadKey, onToggleVideo, stills, onToggleStill, override, onEditPrompt, onResetPrompt, signoff, onSign }) {
   const [open, setOpen] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
   const [signOpen, setSignOpen] = useState(false);
@@ -629,6 +757,12 @@ function EpisodeBundle({ b, flat, picked, onOpenPicker, onRemove, onView, audioM
   const signedCount = signoff ? ["images", "prompt", "audio"].filter((k) => signoff[k]).length : 0;
   const fullySigned = signedCount === 3;
   const hasVid = Array.isArray(vids) && vids.length > 0;
+  // Storyboard (Images) vs Video mode. Default to Video when takes already exist
+  // (don't hide finished work), else Images — the storyboard step comes first.
+  const [mode, setMode] = useState(() => (hasVid ? "video" : "images"));
+  const isImg = mode === "images";
+  const stillsFor = (shotId) => (stills && stills[shotId]) || [];
+  const stillCount = stills ? Object.values(stills).reduce((n, arr) => n + (arr?.length || 0), 0) : 0;
   const edited = typeof override === "string";
   const assigned = [...picked].map((rel) => flat.get(rel)).filter(Boolean);
   const audioAssigned = [...audioPicked].map((rel) => audioMap.get(rel)).filter(Boolean);
@@ -666,6 +800,25 @@ function EpisodeBundle({ b, flat, picked, onOpenPicker, onRemove, onView, audioM
       setRenderErr(String(e.message || e));
     }
   };
+  // Storyboard: generate a still for one shot (optionally a specific angle) or
+  // for every shot in the bundle. Reuses the composed image-reference block so
+  // the agent locks the same character/location refs as the video render.
+  const requestStill = async (shot, angle) => {
+    setRenderErr(null);
+    try {
+      await agent.send({ message: renderStoryboardMessage(b, shot, refBlock, angle) });
+    } catch (e) {
+      setRenderErr(String(e.message || e));
+    }
+  };
+  const requestAllStills = async () => {
+    setRenderErr(null);
+    try {
+      await agent.send({ message: renderStoryboardAllMessage(b, refBlock) });
+    } catch (e) {
+      setRenderErr(String(e.message || e));
+    }
+  };
 
   return (
     <Card id={`ep-${b.id}`} className="scroll-mt-24 gap-0 py-0">
@@ -678,34 +831,60 @@ function EpisodeBundle({ b, flat, picked, onOpenPicker, onRemove, onView, audioM
           <Badge variant="outline">{b.shots.length} shots</Badge>
           <Badge variant={b.durationEst > 15 ? "warning" : "muted"}>~{b.durationEst}s → {b.duration}s</Badge>
           {assigned.length > 0 && <Badge variant="success">{assigned.length} refs</Badge>}
-          {hasVid && <Badge variant="success"><Play size={11} fill="currentColor" /> {vids.length} rendered</Badge>}
-          {signedCount === 3 ? (
-            <Badge variant="success"><Check size={11} /> signed</Badge>
-          ) : signedCount > 0 ? (
-            <Badge variant="warning">{signedCount}/3 signed</Badge>
-          ) : null}
-          <Button variant="outline" size="sm" onClick={() => setSignOpen(true)} title="revision signing">
-            <PenLine size={13} /> revision signing
-          </Button>
-          <Button
-            size="sm"
-            onClick={requestRender}
-            disabled={!fullySigned || agentBusy}
-            title={
-              !fullySigned
-                ? "Sign off images, prompt, and audio before rendering"
-                : agentBusy
-                ? "Agent is busy — wait for the current turn to finish"
-                : "Render this bundle with Seedance via the studio agent"
-            }
-          >
-            {agentBusy ? <Loader2 size={13} className="animate-spin" /> : <Wand2 size={13} />} Render
-          </Button>
+          {isImg
+            ? stillCount > 0 && <Badge variant="success"><ImageIcon size={11} /> {stillCount} stills</Badge>
+            : hasVid && <Badge variant="success"><Play size={11} fill="currentColor" /> {vids.length} rendered</Badge>}
+
+          {/* Images (storyboard) vs Video (Seedance) mode for this bundle */}
+          <div className="flex items-center rounded-md border p-0.5">
+            <Button variant={isImg ? "default" : "ghost"} size="sm" className="h-7 gap-1.5 px-2.5" onClick={() => setMode("images")} title="Storyboard stills (Nano Banana Pro)">
+              <ImageIcon size={13} /> Images
+            </Button>
+            <Button variant={!isImg ? "default" : "ghost"} size="sm" className="h-7 gap-1.5 px-2.5" onClick={() => setMode("video")} title="Seedance video render">
+              <Play size={11} fill="currentColor" /> Video
+            </Button>
+          </div>
+
+          {isImg ? (
+            <Button
+              size="sm"
+              onClick={requestAllStills}
+              disabled={agentBusy}
+              title={agentBusy ? "Agent is busy — wait for the current turn to finish" : "Generate a storyboard still for every shot in this bundle"}
+            >
+              {agentBusy ? <Loader2 size={13} className="animate-spin" /> : <ImageIcon size={13} />} Render all stills
+            </Button>
+          ) : (
+            <>
+              {signedCount === 3 ? (
+                <Badge variant="success"><Check size={11} /> signed</Badge>
+              ) : signedCount > 0 ? (
+                <Badge variant="warning">{signedCount}/3 signed</Badge>
+              ) : null}
+              <Button variant="outline" size="sm" onClick={() => setSignOpen(true)} title="revision signing">
+                <PenLine size={13} /> revision signing
+              </Button>
+              <Button
+                size="sm"
+                onClick={requestRender}
+                disabled={!fullySigned || agentBusy}
+                title={
+                  !fullySigned
+                    ? "Sign off images, prompt, and audio before rendering"
+                    : agentBusy
+                    ? "Agent is busy — wait for the current turn to finish"
+                    : "Render this bundle with Seedance via the studio agent"
+                }
+              >
+                {agentBusy ? <Loader2 size={13} className="animate-spin" /> : <Wand2 size={13} />} Render
+              </Button>
+            </>
+          )}
           {renderErr && <span className="w-full text-xs text-destructive">{renderErr}</span>}
         </div>
       </CardHeader>
 
-      <CardContent className={cn("grid gap-4 p-4", hasVid && "lg:grid-cols-[2fr_1fr]")}>
+      <CardContent className={cn("grid gap-4 p-4", !isImg && hasVid && "lg:grid-cols-[2fr_1fr]")}>
         <div className="min-w-0 space-y-4">
           <div className="text-xs text-muted-foreground">
             <span className="font-semibold uppercase tracking-wide">scene needs:</span>{" "}
@@ -740,82 +919,103 @@ function EpisodeBundle({ b, flat, picked, onOpenPicker, onRemove, onView, audioM
             </Button>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2">
-            {audioAssigned.length === 0 ? (
-              <Empty>no voice reference chosen</Empty>
-            ) : (
-              audioAssigned.map((a) => (
-                <Badge key={a.rel} variant="secondary" className="h-7" title={a.rel}>
-                  <Volume2 size={12} /> {a.label}
-                  {a.order && a.order.length > 1 && (
-                    <em className="ml-1 not-italic text-muted-foreground">({a.order.map((n, i) => `${i + 1}=${n}`).join(", ")})</em>
-                  )}
-                </Badge>
-              ))
-            )}
-            <Button variant="outline" size="sm" onClick={() => onOpenAudio(b)}>
-              <Volume2 size={14} /> choose audio references
-            </Button>
-          </div>
-
-          <ol className="space-y-2">
-            {b.shots.map((s) => (
-              <li key={s.id} className="rounded-lg border bg-muted/30 p-3">
-                <div className="mb-1 flex flex-wrap items-center gap-2 text-xs">
-                  <Badge variant="secondary" className="font-mono">{s.id}</Badge>
-                  <span className="text-muted-foreground">{s.dur}s</span>
-                  <span className="text-muted-foreground">{s.location}</span>
-                  <span className="text-muted-foreground">{s.camera}</span>
-                </div>
-                <div className="text-sm">{s.summary}</div>
-                {!/\(no dialogue\)/i.test(s.dialogue) && s.dialogue && (
-                  <div className="mt-1 flex items-start gap-1.5 text-xs text-muted-foreground">
-                    <Speech size={13} className="mt-0.5 shrink-0" /> {s.dialogue}
-                  </div>
-                )}
-              </li>
-            ))}
-          </ol>
-
-          <div className="space-y-2">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <span className="flex items-center gap-2 text-xs text-muted-foreground">
-                skill prompt — click to edit, auto-saves
-                {edited ? (
-                  <Badge variant="warning"><Pencil size={11} /> edited</Badge>
-                ) : (
-                  <Badge variant="success">live</Badge>
-                )}
-              </span>
-              <div className="flex items-center gap-2">
-                {edited && (
-                  <Button variant="outline" size="sm" onClick={() => onResetPrompt(b.id)} title="discard edits, return to the auto-composed prompt">
-                    <RotateCcw size={13} /> reset to live
-                  </Button>
-                )}
-                <Button variant="outline" size="sm" onClick={() => setModalOpen(true)} title="open the full-screen prompt editor">
-                  <Maximize2 size={13} /> edit
-                </Button>
-                <CopyButton text={displayPrompt} />
-              </div>
-            </div>
-            <Textarea
-              className={cn(
-                "cursor-pointer resize-none font-mono text-xs leading-relaxed",
-                open ? "[field-sizing:content] overflow-hidden" : "h-[400px] overflow-hidden [field-sizing:fixed]"
+          {!isImg && (
+            <div className="flex flex-wrap items-center gap-2">
+              {audioAssigned.length === 0 ? (
+                <Empty>no voice reference chosen</Empty>
+              ) : (
+                audioAssigned.map((a) => (
+                  <Badge key={a.rel} variant="secondary" className="h-7" title={a.rel}>
+                    <Volume2 size={12} /> {a.label}
+                    {a.order && a.order.length > 1 && (
+                      <em className="ml-1 not-italic text-muted-foreground">({a.order.map((n, i) => `${i + 1}=${n}`).join(", ")})</em>
+                    )}
+                  </Badge>
+                ))
               )}
-              value={displayPrompt}
-              readOnly
-              onClick={() => setModalOpen(true)}
-              title="click to open the full-screen editor"
-            />
-            <Button variant="ghost" size="sm" className="text-muted-foreground" onClick={() => setOpen((o) => !o)}>
-              {open ? <><ChevronUp size={13} /> collapse</> : <><ChevronDown size={13} /> expand prompt</>}
-            </Button>
-          </div>
+              <Button variant="outline" size="sm" onClick={() => onOpenAudio(b)}>
+                <Volume2 size={14} /> choose audio references
+              </Button>
+            </div>
+          )}
+
+          {isImg ? (
+            <ol className="space-y-2">
+              {b.shots.map((s) => (
+                <StoryboardShot
+                  key={s.id}
+                  s={s}
+                  stills={stillsFor(s.id)}
+                  reloadKey={reloadKey}
+                  onView={onView}
+                  onToggleStill={(shotId, file, selected) => onToggleStill(b.id, shotId, file, selected)}
+                  onRender={requestStill}
+                  agentBusy={agentBusy}
+                />
+              ))}
+            </ol>
+          ) : (
+            <ol className="space-y-2">
+              {b.shots.map((s) => (
+                <li key={s.id} className="rounded-lg border bg-muted/30 p-3">
+                  <div className="mb-1 flex flex-wrap items-center gap-2 text-xs">
+                    <Badge variant="secondary" className="font-mono">{s.id}</Badge>
+                    <span className="text-muted-foreground">{s.dur}s</span>
+                    <span className="text-muted-foreground">{s.location}</span>
+                    <span className="text-muted-foreground">{s.camera}</span>
+                  </div>
+                  <div className="text-sm">{s.summary}</div>
+                  {!/\(no dialogue\)/i.test(s.dialogue) && s.dialogue && (
+                    <div className="mt-1 flex items-start gap-1.5 text-xs text-muted-foreground">
+                      <Speech size={13} className="mt-0.5 shrink-0" /> {s.dialogue}
+                    </div>
+                  )}
+                </li>
+              ))}
+            </ol>
+          )}
+
+          {!isImg && (
+            <div className="space-y-2">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="flex items-center gap-2 text-xs text-muted-foreground">
+                  skill prompt — click to edit, auto-saves
+                  {edited ? (
+                    <Badge variant="warning"><Pencil size={11} /> edited</Badge>
+                  ) : (
+                    <Badge variant="success">live</Badge>
+                  )}
+                </span>
+                <div className="flex items-center gap-2">
+                  {edited && (
+                    <Button variant="outline" size="sm" onClick={() => onResetPrompt(b.id)} title="discard edits, return to the auto-composed prompt">
+                      <RotateCcw size={13} /> reset to live
+                    </Button>
+                  )}
+                  <Button variant="outline" size="sm" onClick={() => setModalOpen(true)} title="open the full-screen prompt editor">
+                    <Maximize2 size={13} /> edit
+                  </Button>
+                  <CopyButton text={displayPrompt} />
+                </div>
+              </div>
+              <Textarea
+                className={cn(
+                  "cursor-pointer resize-none font-mono text-xs leading-relaxed",
+                  open ? "[field-sizing:content] overflow-hidden" : "h-[400px] overflow-hidden [field-sizing:fixed]"
+                )}
+                value={displayPrompt}
+                readOnly
+                onClick={() => setModalOpen(true)}
+                title="click to open the full-screen editor"
+              />
+              <Button variant="ghost" size="sm" className="text-muted-foreground" onClick={() => setOpen((o) => !o)}>
+                {open ? <><ChevronUp size={13} /> collapse</> : <><ChevronDown size={13} /> expand prompt</>}
+              </Button>
+            </div>
+          )}
         </div>
 
-        {hasVid && (
+        {!isImg && hasVid && (
           <aside className="min-w-0 lg:sticky lg:top-[124px] lg:self-start">
             <EpVideoRail bundleId={b.id} vids={vids} reloadKey={reloadKey} onToggleVideo={onToggleVideo} />
           </aside>
@@ -916,15 +1116,17 @@ function Episode({ reloadKey, onView }) {
   const [videos, setVideos] = useState(payload.ep.video || {});
   const [prompts, setPrompts] = useState(payload.ep.prompts || {});
   const [signoffs, setSignoffs] = useState(payload.ep.signoffs || {});
+  const [stills, setStills] = useState(payload.st?.stills || {}); // { bundle: { shot: [takes] } }
   const promptTimers = useRef({});
   const agent = useAgent();
 
   // Apply one fetched payload to every state slice.
-  const applyPayload = useCallback(({ ep, lib, fn, au }) => {
+  const applyPayload = useCallback(({ ep, lib, fn, au, st }) => {
     setData(ep.episode);
     setVideos(ep.video || {});
     setPrompts(ep.prompts || {});
     setSignoffs(ep.signoffs || {});
+    setStills(st?.stills || {});
     setFolders(lib.folders || []);
     const m = {};
     for (const [k, v] of Object.entries(fn.episode || {})) m[k] = new Set(v);
@@ -1021,6 +1223,23 @@ function Episode({ reloadKey, onView }) {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ bundle, file, selected }),
+    }).catch(() => {});
+  }, []);
+
+  // Pick one still take for a shot (single-selection per shot, like video).
+  const onToggleStill = useCallback((bundle, shot, file, selected) => {
+    setStills((all) => {
+      const bag = { ...(all[bundle] || {}) };
+      const arr = (bag[shot] || []).map((g) =>
+        g.file === file ? { ...g, selected } : selected ? { ...g, selected: false } : g
+      );
+      bag[shot] = arr;
+      return { ...all, [bundle]: bag };
+    });
+    fetch("/api/storyboard/select", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ bundle, shot, file, selected }),
     }).catch(() => {});
   }, []);
 
@@ -1122,6 +1341,8 @@ function Episode({ reloadKey, onView }) {
             vids={videos[b.id] || []}
             reloadKey={reloadKey}
             onToggleVideo={onToggleVideo}
+            stills={stills[b.id] || {}}
+            onToggleStill={onToggleStill}
             override={prompts[b.id]}
             onEditPrompt={onEditPrompt}
             onResetPrompt={onResetPrompt}
@@ -1180,14 +1401,15 @@ function Episode({ reloadKey, onView }) {
 // from the shell for the EpVideoRail <video> ?v= cache-bust.
 export function loader() {
   return swr("episode", async () => {
-    const [ep, lib, fn, au] = await Promise.all([
+    const [ep, lib, fn, au, st] = await Promise.all([
       fetch("/api/episode").then((r) => r.json()),
       fetch("/api/library").then((r) => r.json()),
       fetch("/api/final").then((r) => r.json()),
       fetch("/api/audio").then((r) => r.json()),
+      fetch("/api/storyboard").then((r) => r.json()),
     ]);
     if (ep.error) throw new Error(ep.error);
-    return { ep, lib, fn, au };
+    return { ep, lib, fn, au, st };
   });
 }
 

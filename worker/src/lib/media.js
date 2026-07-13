@@ -12,7 +12,7 @@
 // The Worker streams these back (with HTTP range support for video/audio
 // seeking); writers (ffmpeg/remotion outputs, sound attach, uploads) put here.
 
-const KINDS = new Set(["shots", "gen", "sound-media", "final", "refs", "multishot", "stills"]);
+const KINDS = new Set(["shots", "gen", "sound-media", "final", "refs", "multishot", "stills", "storyboard"]);
 
 export function mediaKey(projectId, kind, file) {
   const pid = String(projectId || "p_default").replace(/[^a-zA-Z0-9._-]/g, "") || "p_default";
@@ -30,6 +30,7 @@ export function kindForPrefix(prefix) {
     refs: "refs",
     "multishot-media": "multishot",
     stills: "stills",
+    "storyboard-media": "storyboard",
   };
   return map[prefix] || null;
 }

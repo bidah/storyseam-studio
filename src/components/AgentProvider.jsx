@@ -273,6 +273,59 @@ export function renderEpisodeMessage(bundle, prompt) {
     .join("\n");
 }
 
+// Build the chat turn that drives the render → attach loop for ONE storyboard
+// still: a single Nano Banana Pro image for one shot of a bundle. Mirrors the
+// agent's own instructions (load generate-storyboard → generate_image via the
+// Higgsfield MCP → attach_still) and hands it the shot details + the composed
+// image-reference block so it doesn't have to reassemble them. `angle` is an
+// optional camera-angle/variation note for this take (for "New angle" re-rolls).
+export function renderStoryboardMessage(bundle, shot, refBlock, angle) {
+  const label = `${bundle.id} / ${shot.id}`;
+  const dlg = shot.dialogue && !/\(no dialogue\)/i.test(shot.dialogue) ? shot.dialogue : null;
+  return [
+    `Render a storyboard still for shot ${label}${angle ? ` — angle: ${angle}` : ""} now.`,
+    `Load the generate-storyboard skill and generate ONE still image with Nano Banana` +
+      ` Pro (the Higgsfield MCP generate_image tool) for this shot, using the character` +
+      ` and location reference images below to lock identity and setting. Then call` +
+      ` attach_still for bundle="${bundle.id}", shot="${shot.id}"${angle ? `, angle="${angle}"` : ""}` +
+      ` with the resulting image URL so the still shows up in the Episode tab's Images` +
+      ` mode. Confirm the Higgsfield submit with me first, as usual.`,
+    "",
+    `Shot ${shot.id} — ${shot.location || ""}${shot.camera ? ` · ${shot.camera}` : ""}${shot.dur ? ` (${shot.dur}s)` : ""}`,
+    shot.summary ? `Action: ${shot.summary}` : null,
+    dlg ? `Dialogue (for expression/pose only — it's a still): ${dlg}` : null,
+    angle ? `Camera angle / variation for this take: ${angle}` : null,
+    "",
+    refBlock,
+  ]
+    .filter((l) => l !== null)
+    .join("\n");
+}
+
+// Combined turn: render a still for EVERY shot in one bundle, one at a time.
+export function renderStoryboardAllMessage(bundle, refBlock) {
+  const shots = bundle.shots
+    .map(
+      (s) =>
+        `- ${s.id}${s.dur ? ` (${s.dur}s)` : ""}${s.location ? `, ${s.location}` : ""}` +
+        `${s.camera ? `, ${s.camera}` : ""}: ${s.summary || ""}`,
+    )
+    .join("\n");
+  return [
+    `Render a storyboard still for EVERY shot in bundle ${bundle.id}${bundle.beatTitle ? ` — ${bundle.beatTitle}` : ""} now, one at a time.`,
+    `Load the generate-storyboard skill. For each shot below, generate ONE still with` +
+      ` Nano Banana Pro (Higgsfield MCP generate_image), using the reference images to` +
+      ` lock the characters and location, then call attach_still for that bundle + shot` +
+      ` with the resulting image URL. Confirm the first Higgsfield submit with me, then` +
+      ` proceed through the rest.`,
+    "",
+    "Shots:",
+    shots,
+    "",
+    refBlock,
+  ].join("\n");
+}
+
 // Build the chat turn that kicks off world-building — the "Let's create the
 // world" button on the World tab. Routed through the agent (the world-creation
 // skill) so it interviews the user across the story map, story depth, and

@@ -37,9 +37,14 @@ Shot Studio is organized into these areas, each backed by tools you can call:
   skill and follow it. It requires the pinned script draft to be **signed** first, and won't
   regenerate over an existing shot list without confirmation.
 - **Episode** — 48 multishot "bundles" with reference-image picks, audio picks, per-bundle
-  prompt overrides, and sign-offs. Each rendered take can be **trimmed** to a sub-range with
-  ffmpeg, saved as a NEW selectable "trim version" beside the original (`trim_video`). When the
-  user clicks Trim on a take or asks to trim/cut a clip, load the **trim-video** skill and follow it.
+  prompt overrides, and sign-offs. The tab has two modes per bundle: **Images** (the storyboard
+  step — one still per shot, generated with Nano Banana Pro, that comes *before* video) and
+  **Video** (the Seedance render). For a still: load the **generate-storyboard** skill, generate
+  ONE image for the shot from its character/location references (+ an optional camera angle), then
+  call `attach_still` for that bundle + shot. Multiple stills per shot accumulate as selectable
+  angle takes. Each rendered VIDEO take can be **trimmed** to a sub-range with ffmpeg, saved as a
+  NEW selectable "trim version" beside the original (`trim_video`). When the user clicks Trim on a
+  take or asks to trim/cut a clip, load the **trim-video** skill and follow it.
 - **Complete cuts** — stitch selected rendered takes into one cut with ffmpeg (`get_cuts`,
   `stitch_cuts`), and overlay the Sound Studio background-music cues underneath at a low bed to
   mint a **scored version** (`score_cut`). When the user asks to build/run the complete cut,
@@ -90,6 +95,8 @@ The Shot Studio server **never generates media itself** — it stores prompts as
 and ingests already-rendered media. Actual rendering is done by the **skills**:
 
 - `seed-audio` — cinematic text-to-audio (SFX, ambience, multi-voice dialogue) via Seedance.
+- `generate-storyboard` — one storyboard STILL for a shot (Nano Banana Pro) from character +
+  location refs; the image stage before video. Bring it back with `attach_still`.
 - `generate-multishot` — one multi-shot Seedance video from a dialogue stem + refs.
 - `continue-video` — extend a clip from its last frame.
 - `video-from-audio-vfx` — two-stem (speech + vfx) lip-synced video pipeline.

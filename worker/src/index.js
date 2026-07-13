@@ -37,6 +37,7 @@ import { registerRender } from "./routes/render.js";
 import { registerExport } from "./routes/export.js";
 import { registerAdmin } from "./routes/admin.js";
 import { registerHiggsfield } from "./routes/higgsfield.js";
+import { registerStoryboard } from "./routes/storyboard.js";
 import { createAuth } from "./auth.js";
 import { broadcast } from "./lib/broadcast.js";
 import { kindForPrefix, mediaKey, proxyKey, streamKey } from "./lib/media.js";
@@ -331,7 +332,7 @@ function mediaRoute(prefix) {
     });
   };
 }
-for (const p of ["media", "gen", "sound-media", "final", "refs", "multishot-media", "stills"]) {
+for (const p of ["media", "gen", "sound-media", "final", "refs", "multishot-media", "stills", "storyboard-media"]) {
   app.get(`/${p}/*`, mediaRoute(p));
 }
 // The shared asset library (voice refs, browsable images) — per project under
@@ -409,6 +410,7 @@ registerRender(app);
 registerExport(app);
 registerAdmin(app);
 registerHiggsfield(app);
+registerStoryboard(app);
 
 // --- eve chat agent proxy --------------------------------------------------
 // The chat agent (eve) runs on Vercel; the SPA is served from this Worker and
