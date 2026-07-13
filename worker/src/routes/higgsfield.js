@@ -44,7 +44,75 @@ function basenameFromUrl(u) {
   }
 }
 
+// Verify the HMAC assertion the eve agent sends to the token-bridge endpoint
+// (payload `{ sub, iss: "shot-studio-agent", exp }`, signed with the shared
+// EVE_PROXY_SECRET — the reverse direction of the `x-eve-proxy-user` header).
+const AGENT_ASSERTION_ISSUER = "shot-studio-agent";
+
+function b64urlDecode(input) {
+  const b64 = input.replace(/-/g, "+").replace(/_/g, "/") + "=".repeat((4 - (input.length % 4)) % 4);
+  const bin = atob(b64);
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out.buffer;
+}
+
+async function verifyAgentAssertion(token, secret) {
+  const dot = token.indexOf(".");
+  if (dot < 1) return null;
+  const payloadPart = token.slice(0, dot);
+  const enc = new TextEncoder();
+  const key = await crypto.subtle.importKey(
+    "raw", enc.encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["verify"],
+  );
+  let sig;
+  try { sig = b64urlDecode(token.slice(dot + 1)); } catch { return null; }
+  if (!(await crypto.subtle.verify("HMAC", key, sig, enc.encode(payloadPart)))) return null;
+  let payload;
+  try { payload = JSON.parse(new TextDecoder().decode(b64urlDecode(payloadPart))); } catch { return null; }
+  if (payload.iss !== AGENT_ASSERTION_ISSUER) return null;
+  if (typeof payload.sub !== "string" || !payload.sub) return null;
+  if (typeof payload.exp !== "number" || payload.exp * 1000 < Date.now()) return null;
+  return { sub: payload.sub };
+}
+
+// `accessTokenExpiresAt` is whatever Better Auth stored (ISO string or epoch);
+// normalize to epoch ms, or null when unparsable.
+function expiryMs(v) {
+  if (v == null || v === "") return null;
+  const t = typeof v === "number" ? (v < 1e12 ? v * 1000 : v) : Date.parse(v);
+  return Number.isFinite(t) ? t : null;
+}
+
 export function registerHiggsfield(app) {
+  // Token bridge for the eve agent: exchange a signed agent assertion for the
+  // signed-in user's live Higgsfield bearer (refreshed here as needed). This is
+  // what lets the render skills reuse the app login's Higgsfield credential
+  // instead of requiring a second, agent-only sign-in. 401 means the user has
+  // no usable credential — the agent then falls back to its interactive OAuth.
+  app.get("/api/agent/higgsfield-token", async (c) => {
+    const secret = c.env.EVE_PROXY_SECRET;
+    const bearer = (c.req.header("authorization") || "").replace(/^Bearer\s+/i, "");
+    const claims = secret && bearer ? await verifyAgentAssertion(bearer, secret) : null;
+    if (!claims) return c.json({ error: "unauthorized" }, 401);
+
+    const force = c.req.query("force") === "1";
+    const token = force
+      ? await forceRefreshHiggsfieldToken(c.env, claims.sub)
+      : await getHiggsfieldToken(c.env, claims.sub);
+    if (!token) return c.json({ error: "no_higgsfield_token" }, 401);
+
+    // Report the stored expiry so the agent's token cache can re-fetch in time;
+    // cap at 10 minutes so a missing/far-future expiry still cycles through the
+    // refresh logic here regularly.
+    const row = await c.env.DB.prepare(
+      "SELECT accessTokenExpiresAt FROM account WHERE userId = ? AND providerId = 'higgsfield'",
+    ).bind(claims.sub).first();
+    const cap = Date.now() + 10 * 60_000;
+    const stored = expiryMs(row?.accessTokenExpiresAt);
+    return c.json({ token, expiresAt: stored ? Math.min(stored, cap) : cap });
+  });
+
   // Gallery thumbnail: the cached 640px webp if the encode has landed, else a
   // short-lived 302 to the (full-res) CloudFront minUrl passed as ?src=. The
   // redirect is what makes fresh pages paint instantly; the cache is what makes

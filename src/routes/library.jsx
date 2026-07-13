@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useLoaderData, useRevalidator } from "react-router";
-import { X, Check, Plus, ChevronLeft, ImageDown, Loader2, Folder, FolderPlus, Pencil, Trash2 } from "lucide-react";
+import { X, Check, Plus, ChevronLeft, ImageDown, KeyRound, Loader2, Folder, FolderPlus, Pencil, Trash2 } from "lucide-react";
+import { authClient } from "@/lib/auth-client";
 import { cn } from "@/lib/utils";
 import { invalidateTabCache } from "@/lib/tabCache";
 import { swr, useRevalidateOnMount } from "@/lib/swr";
@@ -455,9 +456,19 @@ function HiggsfieldImport({ onView }) {
   }, [revalidator]);
 
   if (needsAuth) {
+    // Expired/missing Higgsfield credential: re-run the OAuth flow in place
+    // (same provider as the app login) — refreshes the stored token without
+    // logging the user out of Shot Studio.
     return (
-      <div className="rounded-xl border border-dashed p-8 text-center text-sm text-muted-foreground">
-        Sign in with Higgsfield to browse your generated images here.
+      <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed p-8 text-center text-sm text-muted-foreground">
+        <p>Your Higgsfield session expired. Authenticate again to browse your generated images here.</p>
+        <Button
+          onClick={() =>
+            authClient.signIn.oauth2({ providerId: "higgsfield", callbackURL: "/library" })
+          }
+        >
+          <KeyRound size={14} /> Authenticate with Higgsfield
+        </Button>
       </div>
     );
   }

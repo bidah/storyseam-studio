@@ -10,16 +10,21 @@ import {
   currentToken,
   type StartState,
 } from "../lib/higgsfield-oauth.js";
+import { workerHiggsfieldToken } from "../lib/worker-token.js";
 
 // Higgsfield MCP — the generation backend our skills (seed-audio,
 // generate-multishot, continue-video, video-from-audio-vfx) drive to render
 // audio/video.
 //
 // The endpoint is an OAuth 2.0 protected resource (no API key): unauthenticated
-// calls get a `401 Bearer`. The user signs in from the chat panel via an
-// authorization-code + PKCE flow the first time a render tool runs; eve hosts
-// the redirect callback and caches the resulting bearer. See
-// `agent/lib/higgsfield-oauth.ts` for the flow.
+// calls get a `401 Bearer`. Token resolution order:
+//   1. HIGGSFIELD_MCP_TOKEN env — pre-provisioned static bearer (CI/service).
+//   2. Worker token bridge (`agent/lib/worker-token.ts`) — the app login IS
+//      "Sign in with Higgsfield", so the Worker holds and refreshes the user's
+//      bearer; the agent fetches it with an EVE_PROXY_SECRET-signed assertion.
+//   3. Interactive OAuth from the chat panel (authorization-code + PKCE; eve
+//      hosts the redirect callback) — the fallback when the bridge has no
+//      credential for this principal. See `agent/lib/higgsfield-oauth.ts`.
 //
 // Until HIGGSFIELD_MCP_URL is set, this points at a harmless localhost
 // placeholder so the agent still boots (generation tools just won't resolve).
@@ -43,6 +48,11 @@ export default defineMcpClientConnection({
     ? { getToken: async () => ({ token: staticToken }) }
     : defineInteractiveAuthorization<StartState>({
         async getToken({ principal }) {
+          // The app login IS "Sign in with Higgsfield", so the Worker already
+          // holds (and refreshes) this user's Higgsfield bearer — reuse it
+          // instead of demanding a second, agent-only sign-in.
+          const bridged = await workerHiggsfieldToken(principal);
+          if (bridged) return bridged;
           const tok = await currentToken(url, principalKey(principal));
           if (tok) return tok;
           throw new ConnectionAuthorizationRequiredError("higgsfield");
