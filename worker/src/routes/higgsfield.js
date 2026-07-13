@@ -128,7 +128,13 @@ export function registerHiggsfield(app) {
     if (!isAllowedMediaUrl(rawUrl)) return c.json({ error: "Bad image URL" }, 400);
 
     const dir = cleanFolder(folder);
-    const base = cleanSeg(name) || cleanSeg(basenameFromUrl(rawUrl));
+    let base = cleanSeg(name) || cleanSeg(basenameFromUrl(rawUrl));
+    // A custom name may omit the extension ("elara_closeup") — borrow it from
+    // the delivery URL's file name.
+    if (!/\.(png|jpe?g|webp|gif)$/i.test(base)) {
+      const ext = (/\.(png|jpe?g|webp|gif)$/i.exec(cleanSeg(basenameFromUrl(rawUrl))) || [""])[0];
+      base += ext;
+    }
     if (!/\.(png|jpe?g|webp|gif)$/i.test(base)) return c.json({ error: "Not an image file" }, 400);
     const rel = dir ? `${dir}/${base}` : base;
     const safePid = String(pid || "p_default").replace(/[^a-zA-Z0-9._-]/g, "") || "p_default";

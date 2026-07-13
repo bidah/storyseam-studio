@@ -14,7 +14,7 @@
 // `/media/*`, `/multishot-media/*` streaming routes serve the R2 objects. See the
 // TODO(stage2) markers for the media-copy / build-file work still owed.
 import { readDoc, writeDoc } from "../lib/docs.js";
-import { listMedia, listProxies } from "../lib/media.js";
+import { listMedia, listProxies, proxyKey } from "../lib/media.js";
 import { ensureAssetThumbs } from "../lib/proxy.js";
 
 // The de-facto selections DB (library picks + per-bundle episode selections).
@@ -182,6 +182,92 @@ export function registerLibrary(app) {
     }
     await writeDB(c.env, pid, db);
     return c.json({ ok: true, rel, selected });
+  });
+
+  // Drop a rel from db.library + every per-bundle episode pick (shared by
+  // remove; mirrors the deselect branch of /toggle).
+  const deselectRel = async (env, pid, rel) => {
+    const db = await readDB(env, pid);
+    if (!db.library?.[rel]) return;
+    delete db.library[rel];
+    for (const k of Object.keys(db.episode || {})) {
+      db.episode[k] = (db.episode[k] || []).filter((r) => r !== rel);
+    }
+    await writeDB(env, pid, db);
+  };
+
+  // Delete an asset image from the library outright: the R2 original + its
+  // thumb, plus its final_selection / episode membership if it was selected.
+  app.post("/api/library/remove", async (c) => {
+    const pid = c.get("projectId");
+    let body;
+    try { body = await c.req.json(); } catch { body = {}; }
+    const { rel } = body || {};
+    if (typeof rel !== "string") return c.json({ error: "Missing 'rel'" }, 400);
+    const key = assetKey(pid, rel);
+    if (!(await c.env.BUCKET.head(key))) return c.json({ error: "Bad path" }, 400);
+
+    await c.env.BUCKET.delete(key);
+    await c.env.BUCKET.delete(proxyKey(pid, "asset", cleanRel(rel)));
+    await deselectRel(c.env, pid, rel);
+    return c.json({ ok: true, rel });
+  });
+
+  // Rename an asset image (same folder, new basename) so assets can carry
+  // meaningful names — e.g. the character they show — instead of the opaque
+  // Higgsfield delivery file names. Moves the R2 original + thumb and rewrites
+  // the rel inside db.library / episode picks so selections survive the rename.
+  app.post("/api/library/rename", async (c) => {
+    const pid = c.get("projectId");
+    let body;
+    try { body = await c.req.json(); } catch { body = {}; }
+    const { rel, name } = body || {};
+    if (typeof rel !== "string" || typeof name !== "string" || !name.trim())
+      return c.json({ error: "Missing 'rel'/'name'" }, 400);
+
+    // One filesystem-tame basename segment (mirrors cleanSeg in higgsfield.js);
+    // keep the original extension when the new name doesn't spell one.
+    let base = name
+      .replace(/[^A-Za-z0-9 ._-]/g, "_")
+      .replace(/^[. ]+|[. ]+$/g, "")
+      .slice(0, 80)
+      .trim();
+    if (!IMG_RE.test(base)) {
+      const ext = (IMG_RE.exec(baseOf(cleanRel(rel))) || [""])[0];
+      base += ext;
+    }
+    if (!base || !IMG_RE.test(base)) return c.json({ error: "Not an image name" }, 400);
+
+    const dir = dirOf(cleanRel(rel));
+    const newRel = dir === "." ? base : `${dir}/${base}`;
+    if (newRel === cleanRel(rel)) return c.json({ ok: true, rel: newRel, name: base });
+
+    const oldKey = assetKey(pid, rel);
+    const newKey = assetKey(pid, newRel);
+    const obj = await c.env.BUCKET.get(oldKey);
+    if (!obj) return c.json({ error: "Bad path" }, 400);
+    if (await c.env.BUCKET.head(newKey)) return c.json({ error: "An image with that name already exists" }, 409);
+
+    await c.env.BUCKET.put(newKey, obj.body, { httpMetadata: obj.httpMetadata });
+    await c.env.BUCKET.delete(oldKey);
+
+    // Move the thumb too (best-effort — ensureAssetThumbs regenerates if lost).
+    const th = await c.env.BUCKET.get(proxyKey(pid, "asset", cleanRel(rel)));
+    if (th) {
+      await c.env.BUCKET.put(proxyKey(pid, "asset", newRel), th.body, { httpMetadata: th.httpMetadata });
+      await c.env.BUCKET.delete(proxyKey(pid, "asset", cleanRel(rel)));
+    }
+
+    const db = await readDB(c.env, pid);
+    if (db.library?.[rel]) {
+      delete db.library[rel];
+      db.library[newRel] = true;
+      for (const k of Object.keys(db.episode || {})) {
+        db.episode[k] = (db.episode[k] || []).map((r) => (r === rel ? newRel : r));
+      }
+      await writeDB(c.env, pid, db);
+    }
+    return c.json({ ok: true, rel: newRel, name: base });
   });
 
   // -------------------------------------------------------------------------

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useLoaderData, useRevalidator } from "react-router";
-import { X, Check, Plus, ChevronLeft, ImageDown, Loader2, Folder, FolderPlus } from "lucide-react";
+import { X, Check, Plus, ChevronLeft, ImageDown, Loader2, Folder, FolderPlus, Pencil, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { invalidateTabCache } from "@/lib/tabCache";
 import { swr, useRevalidateOnMount } from "@/lib/swr";
@@ -35,7 +35,8 @@ function Library({ onView }) {
   const revalidator = useRevalidator();
   useRevalidateOnMount("library");
   const [active, setActive] = useState(null);
-  const [confirm, setConfirm] = useState(null);
+  const [confirm, setConfirm] = useState(null); // { type: "deselect" | "delete", im }
+  const [rename, setRename] = useState(null); // image being renamed
 
   // Add/remove an image from final_selection, then refetch (invalidate +
   // revalidate) so the selection state reflects the server. A failed toggle is
@@ -52,6 +53,23 @@ function Library({ onView }) {
       revalidator.revalidate();
     } catch (e) {
       console.error("library toggle failed:", e);
+    }
+  }, [revalidator]);
+
+  // Delete the image from the asset library entirely (R2 original + thumb +
+  // selection membership) — always behind the ConfirmModal.
+  const removeAsset = useCallback(async (im) => {
+    try {
+      const res = await fetch("/api/library/remove", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ rel: im.rel }),
+      });
+      if (!res.ok) throw new Error((await res.json()).error);
+      invalidateTabCache("library");
+      revalidator.revalidate();
+    } catch (e) {
+      console.error("library remove failed:", e);
     }
   }, [revalidator]);
 
@@ -83,25 +101,43 @@ function Library({ onView }) {
               <button className="block w-full" onClick={() => onView({ url: im.url, name: im.rel, role: "asset" })}>
                 <img src={im.thumb || im.url} loading="lazy" alt={im.name} className="aspect-square w-full object-cover" />
               </button>
-              {im.selected ? (
+              <div className="absolute right-1.5 top-1.5 flex flex-col items-end gap-1.5">
+                {im.selected ? (
+                  <Button
+                    variant="destructive" size="icon-xs"
+                    className="rounded-full opacity-90"
+                    title="remove from final_selection" aria-label="remove from final_selection"
+                    onClick={() => setConfirm({ type: "deselect", im })}
+                  >
+                    <X size={13} />
+                  </Button>
+                ) : (
+                  <Button
+                    size="icon-xs"
+                    className="rounded-full opacity-0 transition-opacity group-hover:opacity-90"
+                    title="add to final_selection" aria-label="add to final_selection"
+                    onClick={() => toggle(im)}
+                  >
+                    <Plus size={14} />
+                  </Button>
+                )}
+                <Button
+                  variant="secondary" size="icon-xs"
+                  className="rounded-full opacity-0 transition-opacity group-hover:opacity-90"
+                  title="rename" aria-label="rename"
+                  onClick={() => setRename(im)}
+                >
+                  <Pencil size={12} />
+                </Button>
                 <Button
                   variant="destructive" size="icon-xs"
-                  className="absolute right-1.5 top-1.5 rounded-full opacity-90"
-                  title="remove from final_selection" aria-label="remove from final_selection"
-                  onClick={() => setConfirm(im)}
+                  className="rounded-full opacity-0 transition-opacity group-hover:opacity-90"
+                  title="delete from library" aria-label="delete from library"
+                  onClick={() => setConfirm({ type: "delete", im })}
                 >
-                  <X size={13} />
+                  <Trash2 size={12} />
                 </Button>
-              ) : (
-                <Button
-                  size="icon-xs"
-                  className="absolute right-1.5 top-1.5 rounded-full opacity-0 transition-opacity group-hover:opacity-90"
-                  title="add to final_selection" aria-label="add to final_selection"
-                  onClick={() => toggle(im)}
-                >
-                  <Plus size={14} />
-                </Button>
-              )}
+              </div>
               {im.selected && <Badge className="absolute left-1.5 top-1.5">selected</Badge>}
               <figcaption className="truncate px-2 py-1 text-[11px] text-muted-foreground">{im.name}</figcaption>
             </figure>
@@ -110,15 +146,32 @@ function Library({ onView }) {
 
         <ConfirmModal
           open={!!confirm}
-          title="Remove from selection?"
-          message={confirm ? `"${confirm.name}" will be removed from final_selection (and any shots it was assigned to).` : ""}
-          confirmLabel="Remove"
+          title={confirm?.type === "delete" ? "Delete from library?" : "Remove from selection?"}
+          message={
+            !confirm ? "" : confirm.type === "delete"
+              ? `"${confirm.im.name}" will be permanently deleted from the asset library${confirm.im.selected ? ", final_selection, and any shots it was assigned to" : ""}.`
+              : `"${confirm.im.name}" will be removed from final_selection (and any shots it was assigned to).`
+          }
+          confirmLabel={confirm?.type === "delete" ? "Delete" : "Remove"}
           onCancel={() => setConfirm(null)}
           onConfirm={() => {
-            toggle(confirm);
+            if (confirm.type === "delete") removeAsset(confirm.im);
+            else toggle(confirm.im);
             setConfirm(null);
           }}
         />
+
+        {rename && (
+          <RenameModal
+            im={rename}
+            onClose={() => setRename(null)}
+            onDone={() => {
+              setRename(null);
+              invalidateTabCache("library");
+              revalidator.revalidate();
+            }}
+          />
+        )}
       </div>
     );
   }
@@ -157,6 +210,66 @@ function Library({ onView }) {
   );
 }
 
+// Rename an asset in place. Meaningful names (e.g. the character shown) beat
+// the opaque Higgsfield file names when auto-assigning images on the Episode
+// tab. The extension can be omitted — the server keeps the original one.
+function RenameModal({ im, onClose, onDone }) {
+  const [name, setName] = useState(im.name);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState(null);
+
+  const doRename = async () => {
+    if (busy || !name.trim() || name.trim() === im.name) return;
+    setBusy(true);
+    setErr(null);
+    try {
+      const res = await fetch("/api/library/rename", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ rel: im.rel, name: name.trim() }),
+      });
+      const j = await res.json();
+      if (!res.ok) throw new Error(j.error || `HTTP ${res.status}`);
+      onDone(j);
+    } catch (e) {
+      setErr(String(e.message || e));
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Dialog open onOpenChange={(o) => !o && !busy && onClose()}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Rename asset</DialogTitle>
+        </DialogHeader>
+        <div className="flex items-center gap-3">
+          <img src={im.thumb || im.url} alt="" className="h-14 w-14 shrink-0 rounded-md border object-cover" />
+          <Input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && doRename()}
+            autoFocus
+            className="h-8 text-sm"
+          />
+        </div>
+        <p className="text-xs text-muted-foreground">
+          Use a name that says what the image shows (e.g. <span className="font-medium">elara_courtroom_closeup</span>)
+          so it's easy to match when assigning images on the Episode tab.
+        </p>
+        {err && <ErrorNote>{err}</ErrorNote>}
+        <DialogFooter>
+          <Button variant="outline" disabled={busy} onClick={onClose}>Cancel</Button>
+          <Button disabled={busy || !name.trim() || name.trim() === im.name} onClick={doRename}>
+            {busy ? <Loader2 size={14} className="animate-spin" /> : <Pencil size={14} />}
+            Rename
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 /* ---------------------------------------------------------------- *
  * Import from Higgsfield                                           *
  * ---------------------------------------------------------------- */
@@ -176,6 +289,7 @@ function urlBasename(u) {
 function PlaceModal({ item, folders, onClose, onDone }) {
   const [folder, setFolder] = useState(folders[0]?.folder ?? "");
   const [newFolder, setNewFolder] = useState("");
+  const [name, setName] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState(null);
   const dest = newFolder.trim() || folder;
@@ -187,7 +301,10 @@ function PlaceModal({ item, folders, onClose, onDone }) {
       const res = await fetch("/api/higgsfield/import", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ rawUrl: item.rawUrl, minUrl: item.minUrl, folder: dest }),
+        body: JSON.stringify({
+          rawUrl: item.rawUrl, minUrl: item.minUrl, folder: dest,
+          ...(name.trim() ? { name: name.trim() } : {}),
+        }),
       });
       const j = await res.json();
       if (!res.ok) throw new Error(j.error || `HTTP ${res.status}`);
@@ -238,6 +355,18 @@ function PlaceModal({ item, folders, onClose, onDone }) {
             />
           </div>
         </div>
+        <div className="space-y-2">
+          <div className="text-xs font-medium text-muted-foreground">Name (optional)</div>
+          <div className="flex items-center gap-2">
+            <Pencil size={14} className="shrink-0 text-muted-foreground" />
+            <Input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="e.g. elara_courtroom_closeup — helps Episode auto-assign"
+              className="h-8 text-sm"
+            />
+          </div>
+        </div>
         {err && <ErrorNote>{err}</ErrorNote>}
         <DialogFooter>
           <Button variant="outline" disabled={busy} onClick={onClose}>Cancel</Button>
@@ -261,13 +390,15 @@ function HiggsfieldImport({ onView }) {
   const [needsAuth, setNeedsAuth] = useState(false);
   const [pick, setPick] = useState(null); // item awaiting a folder choice
   const [imported, setImported] = useState({}); // id -> rel (this session)
+  const [confirm, setConfirm] = useState(null); // { item, rel } awaiting removal
 
-  // Basenames already in the library — imported files keep the Higgsfield file
-  // name, so a match means "this generation is already in the library".
-  const libraryNames = useMemo(() => {
-    const s = new Set();
-    for (const f of folders) for (const im of f.images) s.add(im.name);
-    return s;
+  // Basename -> rel for everything in the library. Un-renamed imports keep the
+  // Higgsfield file name, so a match means "this generation is already in the
+  // library" (a custom-named import is only tracked via `imported` this session).
+  const libraryByName = useMemo(() => {
+    const m = new Map();
+    for (const f of folders) for (const im of f.images) m.set(im.name, im.rel);
+    return m;
   }, [folders]);
 
   const load = useCallback(async (cursor) => {
@@ -300,6 +431,29 @@ function HiggsfieldImport({ onView }) {
     revalidator.revalidate();
   }, [revalidator]);
 
+  // Undo an import: delete the copied asset from the library (the Higgsfield
+  // generation itself is untouched) so the tile goes back to its plus button.
+  const removeImport = useCallback(async ({ item, rel }) => {
+    try {
+      const res = await fetch("/api/library/remove", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ rel }),
+      });
+      if (!res.ok) throw new Error((await res.json()).error);
+      setImported((m) => {
+        if (!(item.id in m)) return m;
+        const next = { ...m };
+        delete next[item.id];
+        return next;
+      });
+      invalidateTabCache("library");
+      revalidator.revalidate();
+    } catch (e) {
+      setError(String(e.message || e));
+    }
+  }, [revalidator]);
+
   if (needsAuth) {
     return (
       <div className="rounded-xl border border-dashed p-8 text-center text-sm text-muted-foreground">
@@ -322,7 +476,8 @@ function HiggsfieldImport({ onView }) {
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
         {items.map((it) => {
-          const inLibrary = imported[it.id] || libraryNames.has(urlBasename(it.rawUrl));
+          // Truthy = the library rel of this generation's imported copy.
+          const inLibrary = imported[it.id] || libraryByName.get(urlBasename(it.rawUrl)) || null;
           return (
             <figure
               key={it.id}
@@ -338,7 +493,17 @@ function HiggsfieldImport({ onView }) {
                 <img src={it.thumb || it.minUrl} loading="lazy" alt={it.prompt || it.model} className="aspect-square w-full object-cover" />
               </button>
               {inLibrary ? (
-                <Badge className="absolute left-1.5 top-1.5"><Check size={11} /> in library</Badge>
+                <>
+                  <Badge className="absolute left-1.5 top-1.5"><Check size={11} /> in library</Badge>
+                  <Button
+                    variant="destructive" size="icon-xs"
+                    className="absolute right-1.5 top-1.5 rounded-full opacity-0 transition-opacity group-hover:opacity-90"
+                    title="remove from library" aria-label="remove from library"
+                    onClick={() => setConfirm({ item: it, rel: inLibrary })}
+                  >
+                    <Trash2 size={12} />
+                  </Button>
+                </>
               ) : (
                 <Button
                   size="icon-xs"
@@ -379,6 +544,18 @@ function HiggsfieldImport({ onView }) {
           onDone={onImported}
         />
       )}
+
+      <ConfirmModal
+        open={!!confirm}
+        title="Remove from library?"
+        message={confirm ? `"${confirm.rel}" will be deleted from the asset library (and dropped from final_selection if it was selected). The Higgsfield generation itself is untouched.` : ""}
+        confirmLabel="Remove"
+        onCancel={() => setConfirm(null)}
+        onConfirm={() => {
+          removeImport(confirm);
+          setConfirm(null);
+        }}
+      />
     </div>
   );
 }
