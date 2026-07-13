@@ -118,12 +118,12 @@ function CharacterSheetPicker({ open, onOpenChange, onPick }) {
     return () => { cancelled = true; };
   }, [open]);
 
-  // Flatten the selected images across folders (final_selection only), tagging
-  // each with its folder so the caption reads sensibly. A search term filters by
-  // name or folder.
+  // Flatten every asset-library image across folders (the project's own library,
+  // never the raw Higgsfield one), tagging each with its folder so the caption
+  // reads sensibly. A search term filters by name or folder.
   const images = useMemo(() => {
     const all = (folders || []).flatMap((f) =>
-      f.images.filter((im) => im.selected).map((im) => ({ ...im, folder: f.folder })),
+      f.images.map((im) => ({ ...im, folder: f.folder })),
     );
     const term = q.trim().toLowerCase();
     return term
@@ -148,7 +148,7 @@ function CharacterSheetPicker({ open, onOpenChange, onPick }) {
           <div className="py-10"><Spinner /></div>
         ) : images.length === 0 && !error ? (
           <div className="rounded-lg border border-dashed p-8 text-center">
-            <Empty>no selected images in the asset library yet — select images on the Library tab.</Empty>
+            <Empty>no images in the asset library yet — add some on the Library tab.</Empty>
           </div>
         ) : (
           <div className="grid max-h-[60vh] grid-cols-3 gap-3 overflow-y-auto pr-1 sm:grid-cols-4 md:grid-cols-5">
@@ -156,10 +156,11 @@ function CharacterSheetPicker({ open, onOpenChange, onPick }) {
               <button
                 key={im.rel}
                 onClick={() => onPick(im)}
-                className="group overflow-hidden rounded-lg border border-border bg-muted text-left transition-colors hover:border-primary/60"
+                className="group relative overflow-hidden rounded-lg border border-border bg-muted text-left transition-colors hover:border-primary/60"
                 title={`${im.folder} / ${im.name}`}
               >
                 <img src={im.thumb || im.url} loading="lazy" alt={im.name} className="aspect-square w-full object-cover" />
+                {im.selected && <Badge className="absolute left-1 top-1 px-1.5 py-0 text-[9px]">selected</Badge>}
                 <div className="truncate px-1.5 py-1 text-[10px] text-muted-foreground">{im.name}</div>
               </button>
             ))}
