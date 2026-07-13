@@ -199,9 +199,10 @@ function CharacterCard({ char, onField, onRemove }) {
         </Button>
       </div>
 
-      {/* Character sheet: the linked library image + link/change/unlink controls */}
-      <div className="mb-2 flex items-center gap-2">
-        {sheet && (
+      {/* Character sheet: once linked, the thumbnail + its controls live together
+          in a contrasting gray card so they read as one unit. */}
+      {sheet ? (
+        <div className="mb-2 flex items-center gap-3 rounded-lg border bg-muted/60 p-2">
           <button
             type="button"
             onClick={() => setPickerOpen(true)}
@@ -211,25 +212,30 @@ function CharacterCard({ char, onField, onRemove }) {
             <img
               src={sheet.thumb || sheet.url}
               alt={sheet.name || `${char.name || "character"} sheet`}
-              className="h-14 w-14 object-cover"
+              className="h-28 w-28 object-cover"
             />
           </button>
-        )}
-        <Button variant="outline" size="sm" onClick={() => setPickerOpen(true)}>
-          <ImagePlus size={13} /> {sheet ? "Change character sheet" : "Link character sheet"}
-        </Button>
-        {sheet && (
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            aria-label="Unlink character sheet"
-            onClick={() => onField("sheetImage", null)}
-            className="text-muted-foreground hover:text-destructive"
-          >
-            <X size={14} />
+          <div className="flex min-w-0 flex-col items-start gap-1.5">
+            <Button variant="outline" size="sm" onClick={() => setPickerOpen(true)}>
+              <ImagePlus size={13} /> Change character sheet
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => onField("sheetImage", null)}
+              className="text-muted-foreground hover:text-destructive"
+            >
+              <X size={14} /> Unlink
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <div className="mb-2">
+          <Button variant="outline" size="sm" onClick={() => setPickerOpen(true)}>
+            <ImagePlus size={13} /> Link character sheet
           </Button>
-        )}
-      </div>
+        </div>
+      )}
 
       <div className="grid gap-2 sm:grid-cols-2">
         {CHAR_FIELDS.map((f) => (
