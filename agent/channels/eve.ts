@@ -152,7 +152,12 @@ export default eveChannel({
   events: {
     "turn.started": (_data, _channel, ctx) => {
       const projectId = ctx.session.auth.current?.attributes?.projectId;
-      setProjectId(typeof projectId === "string" ? projectId : null);
+      // Only overwrite when the turn actually carries a project id. An
+      // inputResponses-only resume (HITL answers) skips `onMessage`, so its auth
+      // has no projectId attribute — resetting to null here would make every
+      // post-interview tool call (e.g. save_world) fall back to the wrong
+      // project. Keep the id from the message that started the conversation.
+      if (typeof projectId === "string" && projectId) setProjectId(projectId);
     },
   },
 });
