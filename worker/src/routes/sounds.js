@@ -98,13 +98,15 @@ export function registerSounds(app) {
     const { name, prompt, params, kind } = body || {};
     if (typeof prompt !== "string" || !prompt.trim())
       return c.json({ error: "Missing 'prompt'" }, 400);
+    if (!TRACK_KINDS.has(kind))
+      return c.json({ error: "Missing 'kind' — must be 'music', 'sfx', or 'voice' (picks the Sound Studio tab)" }, 400);
     const res = await updateSounds(c.env, pid, (db) => {
       db.seq = (db.seq || 0) + 1;
       const now = new Date().toISOString();
       const track = {
         id: `trk_${db.seq}`,
         name: (name && name.trim()) || `sound ${db.seq}`,
-        ...(TRACK_KINDS.has(kind) ? { kind } : {}),
+        kind,
         createdAt: now,
         versions: [{
           v: 1, prompt: prompt.trim(), name: null, file: null,

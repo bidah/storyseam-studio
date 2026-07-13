@@ -11,9 +11,8 @@ export default defineTool({
     name: z.string().optional().describe("Optional display name for the track."),
     kind: z
       .enum(["music", "sfx", "voice"])
-      .optional()
       .describe(
-        "Which Sound Studio tab the track belongs to: 'music' (background music), 'sfx' (sound effect), or 'voice' (voice-acting line). Always set this — voice lines and sound effects are invisible on their tab without it.",
+        "Which Sound Studio tab the track belongs to: 'music' (background music), 'sfx' (sound effect), or 'voice' (voice-acting line).",
       ),
     params: z
       .record(z.string(), z.unknown())
