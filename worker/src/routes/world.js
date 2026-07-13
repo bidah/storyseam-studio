@@ -29,11 +29,25 @@ function emptyWorld() {
 
 const str = (v) => (v == null ? "" : String(v));
 
+// A linked character-sheet image, pulled from the project asset library (never
+// the raw Higgsfield library). We keep the library `rel` (canonical id) plus the
+// full-res `url`, small `thumb`, and display `name` so the World tab can render a
+// thumbnail without another lookup. Anything unshaped (or an explicit unlink)
+// normalizes to null.
+function normalizeSheetImage(raw) {
+  if (!raw || typeof raw !== "object") return null;
+  const url = str(raw.url);
+  const rel = str(raw.rel);
+  if (!url && !rel) return null;
+  return { rel, url, thumb: str(raw.thumb), name: str(raw.name) };
+}
+
 // Coerce one character into the canonical shape, minting an id if missing.
 function normalizeChar(raw, i = 0) {
   const c = raw || {};
   const out = { id: str(c.id) || `char-${Date.now().toString(36)}-${i}` };
   for (const f of CHAR_FIELDS) out[f] = str(c[f]);
+  out.sheetImage = normalizeSheetImage(c.sheetImage);
   return out;
 }
 

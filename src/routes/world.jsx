@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useLoaderData, useRevalidator } from "react-router";
 import {
   Globe, Users, BookOpen, Sparkles, Wand2, UserPlus, Trash2, Loader2,
+  ImagePlus, X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { invalidateTabCache } from "@/lib/tabCache";
@@ -9,7 +10,9 @@ import { swr, useRevalidateOnMount } from "@/lib/swr";
 import { useAgent, agentIsBusy, createWorldMessage } from "@/components/AgentProvider";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Empty, Eyebrow, Panel, ErrorNote, ConfirmModal } from "@/components/shared";
+import { Input } from "@/components/ui/input";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Empty, Eyebrow, Panel, Spinner, ErrorNote, ConfirmModal } from "@/components/shared";
 
 /* ---------------------------------------------------------------- *
  * Section definitions — the pieces of the world bible               *
@@ -88,10 +91,92 @@ function PromptRow({ label, hint, value, onCommit, rows }) {
 }
 
 /* ---------------------------------------------------------------- *
+ * Character-sheet picker — pick a linked image from the project's    *
+ * asset library (the selected/final_selection images, never the raw  *
+ * Higgsfield library). Fetches /api/library lazily on open.          *
+ * ---------------------------------------------------------------- */
+
+function CharacterSheetPicker({ open, onOpenChange, onPick }) {
+  const [folders, setFolders] = useState(null); // null = loading
+  const [error, setError] = useState(null);
+  const [q, setQ] = useState("");
+
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    setFolders(null);
+    setError(null);
+    setQ("");
+    fetch("/api/library")
+      .then((r) => r.json())
+      .then((j) => {
+        if (cancelled) return;
+        if (j.error) throw new Error(j.error);
+        setFolders(j.folders || []);
+      })
+      .catch((e) => { if (!cancelled) setError(String(e.message || e)); });
+    return () => { cancelled = true; };
+  }, [open]);
+
+  // Flatten the selected images across folders (final_selection only), tagging
+  // each with its folder so the caption reads sensibly. A search term filters by
+  // name or folder.
+  const images = useMemo(() => {
+    const all = (folders || []).flatMap((f) =>
+      f.images.filter((im) => im.selected).map((im) => ({ ...im, folder: f.folder })),
+    );
+    const term = q.trim().toLowerCase();
+    return term
+      ? all.filter((im) => `${im.name} ${im.folder}`.toLowerCase().includes(term))
+      : all;
+  }, [folders, q]);
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-3xl">
+        <DialogHeader>
+          <DialogTitle>Link character sheet</DialogTitle>
+        </DialogHeader>
+        <Input
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          placeholder="Search the selected asset library…"
+          className="h-8 text-sm"
+        />
+        {error && <ErrorNote>{error}</ErrorNote>}
+        {folders === null && !error ? (
+          <div className="py-10"><Spinner /></div>
+        ) : images.length === 0 && !error ? (
+          <div className="rounded-lg border border-dashed p-8 text-center">
+            <Empty>no selected images in the asset library yet — select images on the Library tab.</Empty>
+          </div>
+        ) : (
+          <div className="grid max-h-[60vh] grid-cols-3 gap-3 overflow-y-auto pr-1 sm:grid-cols-4 md:grid-cols-5">
+            {images.map((im) => (
+              <button
+                key={im.rel}
+                onClick={() => onPick(im)}
+                className="group overflow-hidden rounded-lg border border-border bg-muted text-left transition-colors hover:border-primary/60"
+                title={`${im.folder} / ${im.name}`}
+              >
+                <img src={im.thumb || im.url} loading="lazy" alt={im.name} className="aspect-square w-full object-cover" />
+                <div className="truncate px-1.5 py-1 text-[10px] text-muted-foreground">{im.name}</div>
+              </button>
+            ))}
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/* ---------------------------------------------------------------- *
  * Character card                                                    *
  * ---------------------------------------------------------------- */
 
 function CharacterCard({ char, onField, onRemove }) {
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const sheet = char.sheetImage;
   return (
     <div className="rounded-lg border p-3">
       <div className="mb-2 flex items-center gap-2">
@@ -112,6 +197,39 @@ function CharacterCard({ char, onField, onRemove }) {
           <Trash2 size={14} />
         </Button>
       </div>
+
+      {/* Character sheet: the linked library image + link/change/unlink controls */}
+      <div className="mb-2 flex items-center gap-2">
+        {sheet && (
+          <button
+            type="button"
+            onClick={() => setPickerOpen(true)}
+            title="Change character sheet"
+            className="shrink-0 overflow-hidden rounded-md border transition-colors hover:border-primary/60"
+          >
+            <img
+              src={sheet.thumb || sheet.url}
+              alt={sheet.name || `${char.name || "character"} sheet`}
+              className="h-14 w-14 object-cover"
+            />
+          </button>
+        )}
+        <Button variant="outline" size="sm" onClick={() => setPickerOpen(true)}>
+          <ImagePlus size={13} /> {sheet ? "Change character sheet" : "Link character sheet"}
+        </Button>
+        {sheet && (
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label="Unlink character sheet"
+            onClick={() => onField("sheetImage", null)}
+            className="text-muted-foreground hover:text-destructive"
+          >
+            <X size={14} />
+          </Button>
+        )}
+      </div>
+
       <div className="grid gap-2 sm:grid-cols-2">
         {CHAR_FIELDS.map((f) => (
           <label key={f.key} className={cn("space-y-0.5", !f.short && "sm:col-span-2")}>
@@ -125,6 +243,15 @@ function CharacterCard({ char, onField, onRemove }) {
           </label>
         ))}
       </div>
+
+      <CharacterSheetPicker
+        open={pickerOpen}
+        onOpenChange={setPickerOpen}
+        onPick={(im) => {
+          onField("sheetImage", { rel: im.rel, url: im.url, thumb: im.thumb, name: im.name });
+          setPickerOpen(false);
+        }}
+      />
     </div>
   );
 }
