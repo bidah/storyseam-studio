@@ -8,6 +8,7 @@ import { cn } from "@/lib/utils";
 import { invalidateTabCache } from "@/lib/tabCache";
 import { swr, useRevalidateOnMount } from "@/lib/swr";
 import { useAgent, agentIsBusy, createWorldMessage } from "@/components/AgentProvider";
+import { useShell } from "@/lib/shellContext";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -176,6 +177,7 @@ function CharacterSheetPicker({ open, onOpenChange, onPick }) {
  * ---------------------------------------------------------------- */
 
 function CharacterCard({ char, onField, onRemove }) {
+  const { setModalImage } = useShell();
   const [pickerOpen, setPickerOpen] = useState(false);
   const sheet = char.sheetImage;
   return (
@@ -205,8 +207,8 @@ function CharacterCard({ char, onField, onRemove }) {
         <div className="mb-2 flex items-center gap-3 rounded-lg border bg-muted/60 p-2">
           <button
             type="button"
-            onClick={() => setPickerOpen(true)}
-            title="Change character sheet"
+            onClick={() => setModalImage({ url: sheet.url, name: sheet.name || `${char.name || "character"} sheet`, role: "asset" })}
+            title="View full image"
             className="shrink-0 overflow-hidden rounded-md border transition-colors hover:border-primary/60"
           >
             <img
