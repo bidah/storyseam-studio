@@ -10,6 +10,7 @@
 // don't trip CORS.
 
 import { CLIENT_ID } from "@/lib/clientId";
+import { getAgentModel } from "@/lib/agentModel";
 
 const STORAGE_KEY = "shot-studio:projectId";
 
@@ -58,6 +59,11 @@ export function installProjectScope() {
       // Tag this tab's own writes so the live-sync firehose can tell them apart
       // from the chat agent's writes (only the latter trigger a refetch).
       headers.set("x-client-id", CLIENT_ID);
+      // Tell the eve agent which model the picker has selected. Only the /eve
+      // proxy path cares (the Worker API ignores it), so scope it there. Read
+      // fresh per request so switching the picker applies to the next turn.
+      const path = url.startsWith("/") ? url : url.slice(window.location.origin.length);
+      if (path.startsWith("/eve")) headers.set("x-eve-model", getAgentModel());
       // Send the Better Auth session cookie with every same-origin API call.
       init = { credentials: "include", ...(init || {}), headers };
     }

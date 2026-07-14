@@ -21,6 +21,8 @@ import {
   MessageSquare,
   Trash2,
   Check,
+  ChevronDown,
+  Cpu,
 } from "lucide-react";
 import { Streamdown, defaultRemarkPlugins } from "streamdown";
 import remarkBreaks from "remark-breaks";
@@ -44,6 +46,14 @@ import {
   AttachmentAction,
 } from "@/components/ui/attachment";
 import { Marker, MarkerIcon, MarkerContent } from "@/components/ui/marker";
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+} from "@/components/ui/dropdown-menu";
+import { AGENT_MODELS, useAgentModel, setAgentModel } from "@/lib/agentModel";
 
 // ---------------------------------------------------------------------------
 // Chat rendering mirrors eve's canonical approach (its scaffolded web template):
@@ -406,6 +416,41 @@ function ChatHistorySheet({ conv }) {
   );
 }
 
+// Compact model picker for the composer. Reflects the localStorage-backed
+// selection and writes it back; the fetch shim carries it to the agent on the
+// next turn. Disabled mid-turn so a switch can't land halfway through a reply.
+function ModelPicker({ disabled }) {
+  const modelId = useAgentModel();
+  const active = AGENT_MODELS.find((m) => m.id === modelId) ?? AGENT_MODELS[0];
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          size="sm"
+          variant="ghost"
+          disabled={disabled}
+          className="h-7 gap-1 px-2 text-xs text-muted-foreground hover:text-foreground"
+          aria-label={`Model: ${active.label}`}
+        >
+          <Cpu size={13} />
+          <span className="font-medium">{active.label}</span>
+          <ChevronDown size={13} className="opacity-60" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start" className="w-52">
+        <DropdownMenuRadioGroup value={modelId} onValueChange={setAgentModel}>
+          {AGENT_MODELS.map((m) => (
+            <DropdownMenuRadioItem key={m.id} value={m.id} className="flex-col items-start gap-0">
+              <span className="text-sm font-medium">{m.label}</span>
+              <span className="text-[11px] text-muted-foreground">{m.hint}</span>
+            </DropdownMenuRadioItem>
+          ))}
+        </DropdownMenuRadioGroup>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
 export default function AgentChat() {
   // Shared session: the same instance the sound-studio Render buttons drive.
   const agent = useAgent();
@@ -735,6 +780,10 @@ export default function AgentChat() {
             ))}
           </AttachmentGroup>
         ) : null}
+
+        <div className="mb-1.5 flex items-center">
+          <ModelPicker disabled={isBusy} />
+        </div>
 
         <div className="flex items-end gap-2">
           <input

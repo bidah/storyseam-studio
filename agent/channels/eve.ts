@@ -1,6 +1,6 @@
 import { eveChannel } from "eve/channels/eve";
 import { none, vercelOidc } from "eve/channels/auth";
-import { setProjectId } from "../lib/context";
+import { setModelId, setProjectId } from "../lib/context";
 
 // Local dev: the browser reaches the agent through the Vite dev-server proxy
 // (`/eve` on :3333 → this server on :2000), so requests arrive same-origin from
@@ -145,19 +145,32 @@ export default eveChannel({
   onMessage: (ctx) => {
     const caller = ctx.eve.caller;
     if (!caller) return { auth: null };
-    const projectId = ctx.eve.request.headers.get("x-project-id");
-    if (!projectId) return { auth: caller };
-    return { auth: { ...caller, attributes: { ...caller.attributes, projectId } } };
+    // Two per-turn hints ride in on headers: the project the browser is viewing
+    // (x-project-id) and the model the picker has selected (x-eve-model). Both
+    // get stamped onto the caller's auth attributes here (which survive into the
+    // dispatched session) and copied into durable state by `turn.started`.
+    const headers = ctx.eve.request.headers;
+    const projectId = headers.get("x-project-id");
+    const modelId = headers.get("x-eve-model");
+    if (!projectId && !modelId) return { auth: caller };
+    const attributes = { ...caller.attributes };
+    if (projectId) attributes.projectId = projectId;
+    if (modelId) attributes.modelId = modelId;
+    return { auth: { ...caller, attributes } };
   },
   events: {
     "turn.started": (_data, _channel, ctx) => {
-      const projectId = ctx.session.auth.current?.attributes?.projectId;
-      // Only overwrite when the turn actually carries a project id. An
+      const attrs = ctx.session.auth.current?.attributes;
+      // Only overwrite when the turn actually carries the attribute. An
       // inputResponses-only resume (HITL answers) skips `onMessage`, so its auth
-      // has no projectId attribute — resetting to null here would make every
+      // has neither attribute — resetting to null here would make every
       // post-interview tool call (e.g. save_world) fall back to the wrong
-      // project. Keep the id from the message that started the conversation.
+      // project, and would drop the picked model back to the default mid-chat.
+      // Keep whatever the message that started the conversation set.
+      const projectId = attrs?.projectId;
       if (typeof projectId === "string" && projectId) setProjectId(projectId);
+      const modelId = attrs?.modelId;
+      if (typeof modelId === "string" && modelId) setModelId(modelId);
     },
   },
 });
