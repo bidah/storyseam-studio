@@ -4,6 +4,7 @@
 import { betterAuth } from "better-auth";
 import { genericOAuth } from "better-auth/plugins";
 import { withCloudflare } from "better-auth-cloudflare";
+import { expo } from "@better-auth/expo";
 
 // Higgsfield has no userinfo endpoint — identity comes from the OIDC id_token.
 // Decode the JWT payload (base64url → JSON), padding + UTF-8-safe for workerd.
@@ -39,12 +40,18 @@ export function createAuth(env, cf, baseURL) {
           baseURL,
           "http://localhost:3333",
           "https://shot-studio-uploads.rodrigofigueroa-name.workers.dev",
+          // The Expo mobile app (scheme + dev-client URLs).
+          "mobileapp://",
+          "exp://",
         ].filter(Boolean),
         rateLimit: { enabled: true, window: 60, max: 100 },
         // "Sign in with Higgsfield" — the same OAuth server the render skills
         // use, so one login yields both the app account AND the per-user
         // Higgsfield token (stored on the account row's accessToken).
         plugins: [
+          // Lets the Expo app authenticate: accepts the mobile scheme origin,
+          // returns the session cookie in a way the RN client can persist.
+          expo(),
           genericOAuth({
             config: [
               {
