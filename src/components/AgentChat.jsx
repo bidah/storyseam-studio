@@ -336,6 +336,31 @@ function isThinking(messages, busy) {
   return !hasContent;
 }
 
+// The agent is "working" while a turn is in flight and the current assistant
+// message's most recent visible content is a tool call (a badge) with no text
+// after it — the model has fired tools and is now silently deciding what to do
+// next. Without this, the last card is just a stack of tool badges with no sign
+// the turn is still live. Returns the trailing tool's name (for the label), or
+// null. Distinct from `isThinking` (nothing rendered yet) and suppressed while a
+// HITL request is pending (there the user must answer, not wait).
+function workingTool(messages, busy, pending) {
+  if (!busy || pending) return null;
+  const last = messages[messages.length - 1];
+  if (!last || last.role === "user") return null;
+  let trailing = null;
+  for (const p of last.parts || []) {
+    if (
+      (p.type === "text" && p.text?.trim()) ||
+      (p.type === "reasoning" && p.text?.trim()) ||
+      p.type === "dynamic-tool" ||
+      p.type === "authorization"
+    ) {
+      trailing = p;
+    }
+  }
+  return trailing?.type === "dynamic-tool" ? trailing.toolName || "tool" : null;
+}
+
 // Compact "2m" / "3h" / "5d" relative time for the chat list.
 function relTime(ts) {
   if (!ts) return "";
@@ -493,6 +518,10 @@ export default function AgentChat() {
   const pendingReq = useMemo(() => pendingRequest(messages), [messages]);
   const pending = !!pendingReq;
   const thinking = useMemo(() => isThinking(messages, isBusy), [messages, isBusy]);
+  const working = useMemo(
+    () => workingTool(messages, isBusy, pending),
+    [messages, isBusy, pending],
+  );
 
   const uploading = attachments.some((a) => a.state === "uploading");
   const doneAttachments = attachments.filter((a) => a.state === "done");
@@ -503,7 +532,7 @@ export default function AgentChat() {
   useEffect(() => {
     const el = scrollRef.current;
     if (el && atBottom) el.scrollTop = el.scrollHeight;
-  }, [messages, agent.status, thinking, attachments, atBottom]);
+  }, [messages, agent.status, thinking, working, attachments, atBottom]);
 
   const onScroll = () => {
     const el = scrollRef.current;
@@ -717,6 +746,13 @@ export default function AgentChat() {
                 <Loader2 className="animate-spin" />
               </MarkerIcon>
               <MarkerContent className="shimmer">Thinking…</MarkerContent>
+            </Marker>
+          ) : working ? (
+            <Marker>
+              <MarkerIcon>
+                <Loader2 className="animate-spin" />
+              </MarkerIcon>
+              <MarkerContent className="shimmer">Agent is working…</MarkerContent>
             </Marker>
           ) : null}
 
