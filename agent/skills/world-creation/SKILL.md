@@ -46,7 +46,10 @@ The world bible has four parts:
    | `obstacles` | The obstacles the protagonist faces, and the consequences if they fail. |
    | `structure` | How the story is shaped (the arc / beats). |
 4. **Characters** (`characters[]`) — the roster, each a *type breakdown*:
-   `{ name, archetype, role, want, need, traits, arc, voice, appearance }`.
+   `{ name, archetype, role, want, need, traits, arc, voice, appearance }`, plus two
+   optional linked assets set with dedicated tools (not `save_world`): a
+   **`sheetImage`** (a portrait from the project library) and a **`voiceRef`** (a
+   liked Sound Studio take). See "Attaching a character sheet & voice" below.
 
 ## How to run the interview
 
@@ -75,6 +78,38 @@ The world bible has four parts:
    summarize the highlights in a line or two, and remind them they can **edit any
    field directly** there (or ask you to refine it). The tab live-updates via its
    Refresh button.
+
+## Attaching a character sheet & voice
+
+Each character can carry a **portrait** (`sheetImage`, from the project asset library)
+and a **voice** (`voiceRef`, a liked Sound Studio take), both shown on the World tab.
+The user can set these by hand there, but you can do it for them on request ("give
+Sara a character sheet", "attach a voice to Helena", "which of these fits X?"). These
+use per-character tools that edit one character in place — **do not** re-`save_world`
+afterwards (that would need you to carry the refs back through the whole object).
+
+The rule for both: **when more than one option could fit, preview and let the user
+pick — never guess.**
+
+**Character sheet (image):**
+1. `get_world` to get the character's `id`.
+2. `list_library` to see the asset-library images (each has a `rel`, `url`, `thumb`).
+3. Narrow to the plausible portraits for that character. If exactly one fits, attach
+   it. If several do, **show the thumbnails as markdown previews** — e.g.
+   `1. ![](/thumb/<rel>)` … — and `ask_question` which one (one option per image).
+4. `attach_character_sheet({ characterId, rel })`. Unlink with `{ characterId, clear: true }`.
+
+**Voice:**
+1. `get_world` for the `id`.
+2. `list_character_voices` — the liked voice takes, each `{ trackId, v, name, url }`.
+   If it's empty, tell the user to like a voice take on the Sounds tab first (only
+   liked voice takes are attachable).
+3. If several fit, list them with their playable `url`s so the user can hear each,
+   then `ask_question` which one.
+4. `attach_character_voice({ characterId, trackId, v })`. Unlink with `{ characterId, clear: true }`.
+
+Then, as always, tell the user what you linked and that the World tab refreshes via its
+Refresh button.
 
 ## Style
 

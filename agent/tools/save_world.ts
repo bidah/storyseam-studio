@@ -44,6 +44,30 @@ export default defineTool({
           arc: z.string().optional().describe("How they change over the story."),
           voice: z.string().optional().describe("How they speak."),
           appearance: z.string().optional().describe("Look / design notes."),
+          sheetImage: z
+            .object({
+              rel: z.string().optional(),
+              url: z.string().optional(),
+              thumb: z.string().optional(),
+              name: z.string().optional(),
+            })
+            .nullable()
+            .optional()
+            .describe(
+              "Linked character-sheet image. PRESERVE whatever get_world returned (pass it back unchanged) so a full-world save doesn't wipe it; use attach_character_sheet to set/change it, or null to unlink.",
+            ),
+          voiceRef: z
+            .object({
+              trackId: z.string().optional(),
+              v: z.number().nullable().optional(),
+              name: z.string().optional(),
+              url: z.string().optional(),
+            })
+            .nullable()
+            .optional()
+            .describe(
+              "Attached voice take. PRESERVE whatever get_world returned (pass it back unchanged) so a full-world save doesn't wipe it; use attach_character_voice to set/change it, or null to unlink.",
+            ),
         }),
       )
       .optional()
