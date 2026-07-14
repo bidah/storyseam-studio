@@ -44,6 +44,7 @@ export default defineConfig({
       // Live-update SSE streams — must come BEFORE "/api" and disable buffering.
       "/api/script/events": sse(WORKER),
       "/api/timeline/events": sse(WORKER),
+      "/api/data/events": sse(WORKER),
       "/api": api(WORKER),
       "/media": api(WORKER),
       "/multishot-media": api(WORKER),

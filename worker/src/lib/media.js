@@ -12,10 +12,12 @@
 // The Worker streams these back (with HTTP range support for video/audio
 // seeking); writers (ffmpeg/remotion outputs, sound attach, uploads) put here.
 
+import { normalizeProjectId } from "./docs.js";
+
 const KINDS = new Set(["shots", "gen", "sound-media", "final", "refs", "multishot", "stills", "storyboard"]);
 
 export function mediaKey(projectId, kind, file) {
-  const pid = String(projectId || "p_default").replace(/[^a-zA-Z0-9._-]/g, "") || "p_default";
+  const pid = normalizeProjectId(projectId);
   const f = String(file || "").replace(/^\/+/, "").replace(/\.\.(\/|\\|$)/g, ""); // no traversal
   return `media/${pid}/${kind}/${f}`;
 }

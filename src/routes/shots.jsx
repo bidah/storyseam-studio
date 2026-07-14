@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
+import { useLoaderData } from "react-router";
 import { Check, Speech, Star, Leaf, Circle, Save, Loader2 } from "lucide-react";
+import { swr, useRevalidateOnMount } from "@/lib/swr";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
@@ -217,9 +219,21 @@ function Shots({ shots, error, reloadKey }) {
 
 export { Shots };
 
-// Route entry: the fallback "shots" table pulls its data from the header's
-// /api/shots fetch, shared via the RootLayout shell context.
+// Route entry: loaderized like the other data tabs, so the live-sync firehose
+// (invalidateTabCache + revalidate in RootLayout) refreshes it too. Load errors
+// render through the route ErrorBoundary; `reloadKey` stays the media nonce.
+export function loader() {
+  return swr("shots", async () => {
+    const res = await fetch("/api/shots");
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "Failed to load");
+    return data.shots;
+  });
+}
+
 export function Component() {
-  const { shots, error, reloadKey } = useShell();
-  return <Shots shots={shots} error={error} reloadKey={reloadKey} />;
+  const shots = useLoaderData();
+  useRevalidateOnMount("shots");
+  const { reloadKey } = useShell();
+  return <Shots shots={shots} error={null} reloadKey={reloadKey} />;
 }

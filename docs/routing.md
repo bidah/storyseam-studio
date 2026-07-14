@@ -59,7 +59,9 @@ changes.
 `useRevalidator().revalidate()` re-runs the active route's loader. `RootLayout`
 wires the same pair to the three global "data changed" signals:
 
-- the `/api/data/events` SSE firehose (agent edits on other tabs),
+- the `/api/data/events` SSE firehose (agent edits on other tabs) — how that
+  stream works end-to-end (emission, the `ProjectEvents` DO, reconnect resync,
+  project scoping) is documented in **`docs/live-sync.md`**,
 - the header **Refresh** button,
 - **project switch** (`onProjectChange` → `clearTabCache()` + revalidate).
 

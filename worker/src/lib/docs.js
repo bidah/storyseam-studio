@@ -5,9 +5,16 @@
 // and `sounds.json`. Each store is a whole document (read-modify-write), exactly
 // how the Express code treated them, so this is a near-mechanical port.
 
+// Canonical project-key fallback. Storage (docKey/mediaKey), broadcast, and the
+// SSE subscribe route must all resolve a missing/invalid projectId to the SAME
+// key — otherwise a write can land in `p_default` while its live-sync event is
+// keyed (or skipped) elsewhere and open tabs never hear about the change.
+export function normalizeProjectId(projectId) {
+  return String(projectId || "p_default").replace(/[^a-zA-Z0-9._-]/g, "") || "p_default";
+}
+
 export function docKey(projectId, name) {
-  const safe = String(projectId || "p_default").replace(/[^a-zA-Z0-9._-]/g, "") || "p_default";
-  return `state/${safe}/${name}.json`;
+  return `state/${normalizeProjectId(projectId)}/${name}.json`;
 }
 
 export async function readDoc(env, projectId, name, fallback = null) {

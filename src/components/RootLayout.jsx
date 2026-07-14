@@ -3,7 +3,7 @@ import { Outlet, useLocation, useNavigate, useRevalidator } from "react-router";
 import { RefreshCw, ExternalLink, Clapperboard, Sun, Moon, LogOut, User } from "lucide-react";
 import { Glowing } from "glowing";
 import { cn } from "@/lib/utils";
-import { CLIENT_ID } from "@/lib/clientId";
+import { useProjectEvents } from "@/lib/useProjectEvents";
 import AgentChat from "@/components/AgentChat";
 import LoginGate from "@/components/Login";
 import ProjectProvider from "@/components/ProjectProvider";
@@ -64,47 +64,6 @@ function useGlow(selector, active, options) {
     const glow = new Glowing(el, options);
     return () => glow.remove();
   }, [selector, active, options]);
-}
-
-// Subscribe to the Script live-update stream. Returns a counter that bumps on
-// every edit made ELSEWHERE (the chat agent) — not this tab's own saves — so the
-// Script editor can reload and the tab can glow.
-function useScriptLiveEdits() {
-  const [edits, setEdits] = useState(0);
-  useEffect(() => {
-    const es = new EventSource("/api/script/events");
-    es.onmessage = (e) => {
-      try {
-        const data = JSON.parse(e.data);
-        if (data.clientId !== CLIENT_ID) setEdits((n) => n + 1);
-      } catch {
-        /* ignore malformed frames / heartbeats */
-      }
-    };
-    return () => es.close();
-  }, []);
-  return edits;
-}
-
-// Subscribe to the generic live-sync firehose (every /api mutation except script
-// & timeline, which have their own streams). Returns a counter that bumps on each
-// change made ELSEWHERE (the chat agent) — not this tab's own writes — so the
-// whole app can refetch and reflect the agent's edits without a manual Refresh.
-function useDataLiveEdits() {
-  const [edits, setEdits] = useState(0);
-  useEffect(() => {
-    const es = new EventSource("/api/data/events");
-    es.onmessage = (e) => {
-      try {
-        const data = JSON.parse(e.data);
-        if (data.clientId !== CLIENT_ID) setEdits((n) => n + 1);
-      } catch {
-        /* ignore malformed frames / heartbeats */
-      }
-    };
-    return () => es.close();
-  }, []);
-  return edits;
 }
 
 function ThemeToggle() {
@@ -184,9 +143,10 @@ export default function RootLayout() {
   const onScript = view === "script";
 
   const revalidator = useRevalidator();
+  // Header shot count only — the shots ROUTE is loaderized (swr key "shots")
+  // and surfaces its own load errors through the route ErrorBoundary.
   const [shots, setShots] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
   // `reloadKey` is the media cache-bust nonce (?v=<n> on video/audio/img src) and
   // still drives the not-yet-loaderized tabs (Phase 3 converts them one by one).
   // Data freshness now flows through React Router loader revalidation; the two run
@@ -195,34 +155,60 @@ export default function RootLayout() {
   const [projectKey, setProjectKey] = useState(0);
   const [modalImage, setModalImage] = useState(null);
 
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/shots");
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to load");
+      setShots(data.shots);
+      setReloadKey((k) => k + 1);
+    } catch {
+      /* header count only — the shots route reports its own load errors */
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
   // Switching projects (from the header ProjectSwitcher) changes the id in the
   // fetch shim; re-fetch every tab and remount the body so no stale project
   // data lingers.
   useEffect(() => onProjectChange(() => {
     clearTabCache(); // per-tab caches hold the OLD project's payloads — drop them
-    setReloadKey((k) => k + 1);
+    setReloadKey((k) => k + 1); // bust media even if the header refetch fails
     setProjectKey((k) => k + 1);
     revalidator.revalidate(); // re-run the active route's loader with the new project
+    load(); // header shot count belongs to the new project too
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }), []);
 
   // Live agent edits on any other tab (shot list, episode, cuts, library, sound
   // studio) → refetch so every tab reflects the change with no manual Refresh.
-  // Script/timeline have their own targeted live streams.
-  const dataEdits = useDataLiveEdits();
+  // Script/timeline have their own targeted live streams. `resyncs` counts too:
+  // after an SSE reconnect, events may have been missed, so refetch as well.
+  const dataEvents = useProjectEvents("/api/data/events");
+  const dataEdits = dataEvents.edits + dataEvents.resyncs;
   useEffect(() => {
     if (dataEdits === 0) return; // ignore the initial value
     setReloadKey((k) => k + 1);
     invalidateTabCache(); // drop all cached payloads so the loader fetches fresh
     revalidator.revalidate();
+    load(); // keep the header shot count live too
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dataEdits]);
 
   // Live Script edits (from the chat agent) → reload the editor + glow the tab.
-  const scriptEdits = useScriptLiveEdits();
+  // The glow keys on real edits only; the editor reload (scriptEdits via
+  // ShellContext) also keys on resyncs so a reconnect refetches the document.
+  const scriptEvents = useProjectEvents("/api/script/events");
+  const scriptEdits = scriptEvents.edits + scriptEvents.resyncs;
   const [scriptGlow, setScriptGlow] = useState(false);
   useEffect(() => {
-    if (scriptEdits === 0) return; // ignore the initial value
+    if (scriptEvents.edits === 0) return; // ignore the initial value
     if (onScript) {
       // Already looking at it (it live-updates) — just a brief pulse.
       setScriptGlow(true);
@@ -232,31 +218,11 @@ export default function RootLayout() {
     // Editing happened on another tab — glow until the user opens the Script tab.
     setScriptGlow(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- mirror old viewRef behavior: fire only on new edits
-  }, [scriptEdits]);
+  }, [scriptEvents.edits]);
   useEffect(() => {
     if (onScript) setScriptGlow(false);
   }, [onScript]);
   useGlow('[data-script-tab="true"]', scriptGlow, GLOW_OPTS);
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await fetch("/api/shots");
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Failed to load");
-      setShots(data.shots);
-      setReloadKey((k) => k + 1);
-    } catch (e) {
-      setError(String(e.message || e));
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    load();
-  }, [load]);
 
   // Header Refresh button: refetch the shots count AND force the active tab's
   // loader to fetch fresh (invalidate + revalidate is the canonical pair).
@@ -291,9 +257,11 @@ export default function RootLayout() {
     return () => clearTimeout(timer);
   }, [location.hash, location.key]);
 
+  // `shots`/`error` left the shell when the shots route was loaderized — the
+  // local state above only feeds the header count now.
   const shell = useMemo(
-    () => ({ reloadKey, scriptEdits, setModalImage, shots, error }),
-    [reloadKey, scriptEdits, shots, error],
+    () => ({ reloadKey, scriptEdits, setModalImage }),
+    [reloadKey, scriptEdits],
   );
 
   return (

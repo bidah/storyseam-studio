@@ -12,6 +12,12 @@ export async function api<T = unknown>(
   const projectId = getProjectId();
   const headers = new Headers(init?.body ? { "content-type": "application/json" } : undefined);
   if (projectId) headers.set("x-project-id", projectId);
+  else if (init?.method && init.method !== "GET") {
+    // The Worker falls back to p_default for both the write AND its live-sync
+    // broadcast, so this still works — but a missing project id on a mutation
+    // usually means the turn context was lost (see docs/live-sync.md).
+    console.warn(`[shot-studio api] ${init.method} ${path} without a project id`);
+  }
 
   const res = await fetch(`${BASE}${path}`, {
     method: init?.method ?? "GET",

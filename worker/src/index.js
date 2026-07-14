@@ -40,6 +40,7 @@ import { registerHiggsfield } from "./routes/higgsfield.js";
 import { registerStoryboard } from "./routes/storyboard.js";
 import { createAuth } from "./auth.js";
 import { broadcast } from "./lib/broadcast.js";
+import { normalizeProjectId } from "./lib/docs.js";
 import { kindForPrefix, mediaKey, proxyKey, streamKey } from "./lib/media.js";
 import { ensureProxy } from "./lib/proxy.js";
 
@@ -187,7 +188,14 @@ app.use("*", async (c, next) => {
     c.env,
     c.get("projectId"),
     "data",
-    { path: p, clientId: c.req.header("x-client-id") || null, at: Date.now() },
+    {
+      path: p,
+      // Coarse resource key ("sounds", "world", "episode", …) so the client can
+      // move from invalidate-everything to targeted invalidation later.
+      resource: p.split("/")[2] || null,
+      clientId: c.req.header("x-client-id") || null,
+      at: Date.now(),
+    },
     c.executionCtx,
   );
 });
@@ -306,7 +314,12 @@ app.get("/files/*", (c) => {
 // --- live-sync SSE (script + timeline), backed by the ProjectEvents DO -------
 function eventsRoute(channel) {
   return (c) => {
-    const stub = c.env.PROJECT_EVENTS.get(c.env.PROJECT_EVENTS.idFromName(c.get("projectId")));
+    // normalizeProjectId: subscribe with the SAME key broadcast() and the doc
+    // stores use, so a null-project subscriber and a null-project writer meet
+    // on the p_default DO instead of silently diverging.
+    const stub = c.env.PROJECT_EVENTS.get(
+      c.env.PROJECT_EVENTS.idFromName(normalizeProjectId(c.get("projectId"))),
+    );
     return stub.fetch(`https://do/subscribe?channel=${channel}`);
   };
 }

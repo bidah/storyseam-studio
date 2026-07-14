@@ -13,7 +13,7 @@
 // (`/asset/<rel>`, `/media/<file>`, `/multishot-media/<file>`) — the `/asset/*`,
 // `/media/*`, `/multishot-media/*` streaming routes serve the R2 objects. See the
 // TODO(stage2) markers for the media-copy / build-file work still owed.
-import { readDoc, writeDoc } from "../lib/docs.js";
+import { normalizeProjectId, readDoc, writeDoc } from "../lib/docs.js";
 import { listMedia, listProxies, proxyKey } from "../lib/media.js";
 import { ensureAssetThumbs } from "../lib/proxy.js";
 
@@ -30,10 +30,7 @@ const cleanRel = (rel) =>
   String(rel || "").replace(/^\/+/, "").replace(/\.\.(\/|\\|$)/g, "");
 
 // The R2 key of a browsable asset-library image (served at `/asset/<rel>`).
-const assetKey = (pid, rel) => {
-  const safe = String(pid || "p_default").replace(/[^a-zA-Z0-9._-]/g, "") || "p_default";
-  return `media/${safe}/asset/${cleanRel(rel)}`;
-};
+const assetKey = (pid, rel) => `media/${normalizeProjectId(pid)}/asset/${cleanRel(rel)}`;
 
 // Directory portion of a rel ("a/b/img.png" -> "a/b"; "img.png" -> "." as Node's
 // path.dirname did, which the Express handler used as the folder key).
@@ -49,8 +46,7 @@ const baseOf = (rel) => {
 // List every browsable asset-library image (rel = key sans `media/<pid>/asset/`).
 // Replaces the Express recursive fs scan of the repo (scanLibrary()).
 async function listAssets(env, pid) {
-  const safe = String(pid || "p_default").replace(/[^a-zA-Z0-9._-]/g, "") || "p_default";
-  const prefix = `media/${safe}/asset/`;
+  const prefix = `media/${normalizeProjectId(pid)}/asset/`;
   const out = [];
   let cursor;
   do {
