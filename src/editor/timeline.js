@@ -11,12 +11,19 @@
 //   {
 //     fps: 24, width: 1280, height: 720,
 //     tracks: [
-//       { id, name, type: "video", items: [ { id, src, from, durationInFrames, name, bundle } ] },
-//       { id, name, type: "audio", items: [ { id, src, from, durationInFrames, name, volume,
+//       { id, name, type: "video", items: [ { id, src, from, durationInFrames, offsetFrames?, name, bundle } ] },
+//       { id, name, type: "audio", items: [ { id, src, from, durationInFrames, offsetFrames?, name, volume,
 //                                             fadeInFrames?, fadeOutFrames? } ] },
 //     ],
 //   }
-// `from` / `durationInFrames` are integer frame counts. `src` is a root-relative
+// `from` / `durationInFrames` are integer frame counts. `offsetFrames` is the
+// SOURCE IN-POINT: the item plays source frames [offsetFrames, offsetFrames +
+// durationInFrames) at timeline position [from, from + durationInFrames).
+// Absent means 0 (play from the start of the source — every pre-offset doc).
+// Invariant when the source length is known: offsetFrames + durationInFrames
+// ≤ sourceDurationInFrames. Splitting a clip at the playhead produces a right
+// half whose offsetFrames is advanced by the left half's length.
+// `src` is a root-relative
 // URL (e.g. "/gen/MS-01.mp4") resolved against the app origin. Audio items may
 // carry `fadeInFrames` / `fadeOutFrames` — linear volume ramps at the clip's
 // head/tail, set by dragging the fade handles on the editor's timeline cards.

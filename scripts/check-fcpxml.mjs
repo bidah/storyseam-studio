@@ -33,6 +33,10 @@ const timeline = {
         { id: "v1", src: "/gen/MS-01.mp4", name: "MS-01 · A & B", from: 0, durationInFrames: 240, sourceDurationInFrames: 240, volume: 1 },
         { id: "v2", src: "/gen/MS-02.mp4", name: "MS-02 <hero>", from: 240, durationInFrames: 120, sourceDurationInFrames: 300, volume: 1 },
         { id: "v3", src: "/gen/MS-01.mp4", name: "MS-01 reused", from: 360, durationInFrames: 120, sourceDurationInFrames: 240, volume: 0.5 },
+        // A split's right half: source in-point at 90 frames. No
+        // sourceDurationInFrames on purpose — the asset duration must fall
+        // back to covering offset + duration (90 + 110 = 200).
+        { id: "v4", src: "/gen/SPLIT.mp4", name: "Split right half", from: 480, durationInFrames: 110, offsetFrames: 90, volume: 1 },
       ],
     },
     {
@@ -103,14 +107,27 @@ ok(laneOf("Overlap A") !== null && laneOf("Overlap B") !== null && laneOf("Overl
 ok(xml.includes("MS-01 · A &amp; B"), "& escaped in clip name (· passes through)");
 ok(xml.includes("MS-02 &lt;hero&gt;"), "< > escaped in clip name");
 
-// 9. Manifest deduped (5 unique kept srcs: MS-01, MS-02, OVL-A, OVL-B, bed, hit = 6).
-const expectSrcs = ["/gen/MS-01.mp4", "/gen/MS-02.mp4", "/gen/OVL-A.mp4", "/gen/OVL-B.mp4", "/sound-media/bed.mp3", "/sound-media/hit.mp3"];
+// 9. Manifest deduped (7 unique kept srcs).
+const expectSrcs = ["/gen/MS-01.mp4", "/gen/MS-02.mp4", "/gen/SPLIT.mp4", "/gen/OVL-A.mp4", "/gen/OVL-B.mp4", "/sound-media/bed.mp3", "/sound-media/hit.mp3"];
 ok(media.length === expectSrcs.length && expectSrcs.every((s) => media.some((m) => m.src === s)),
   `manifest has ${expectSrcs.length} deduped srcs (got ${media.length})`);
 
 // 10. Audio asset flags.
 ok(/name="bed\.mp3"[^>]*hasVideo="0" hasAudio="1" audioSources="1"/.test(xml.replace(/\s+/g, " ")),
   "sound-media asset flagged audio-only");
+
+// 11. Source in-point (offsetFrames): the split clip's asset-clip carries
+//     start="90/24s", and its asset's duration covers offset + duration (200).
+{
+  const flat = xml.replace(/\s+/g, " ");
+  const m = /<asset-clip [^>]*name="Split right half"[^>]*/.exec(flat);
+  ok(m && / start="90\/24s"/.test(m[0]), `split clip start="90/24s" (${m ? m[0].match(/start="[^"]*"/)?.[0] : "clip missing"})`);
+  const a = /<asset [^>]*name="SPLIT\.mp4"[^>]*/.exec(flat);
+  ok(a && /duration="200\/24s"/.test(a[0]), `SPLIT.mp4 asset duration covers offset+duration (${a ? a[0].match(/duration="[^"]*"/)?.[0] : "asset missing"})`);
+  // Untrimmed clips keep a zero start.
+  const v2 = /<asset-clip [^>]*name="MS-02 &lt;hero&gt;"[^>]*/.exec(flat);
+  ok(v2 && / start="0\/24s"/.test(v2[0]), "untrimmed clip start stays 0/24s");
+}
 
 // Optional: xmllint well-formedness (no DTD available, syntax only).
 try {

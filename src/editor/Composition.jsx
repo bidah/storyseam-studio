@@ -44,6 +44,9 @@ function VideoItem({ item, zIndex }) {
       <Clip
         src={item.src}
         volume={item.muted ? 0 : item.volume ?? 1}
+        // Source in-point: skip the first offsetFrames of the media (a split's
+        // right half plays the continuation, not the source from frame 0).
+        trimBefore={item.offsetFrames || undefined}
         pauseWhenBuffering
         style={{
           width: "100%",
@@ -85,7 +88,9 @@ function AudioItem({ item }) {
       premountFor={Math.round(fps * PREMOUNT_SECONDS)}
       name={item.name || "music"}
     >
-      <Audio src={item.src} volume={volume} pauseWhenBuffering />
+      {/* trimBefore = source in-point. The frame passed to a volume callback
+          stays clip-relative under trimBefore, so the fade math above holds. */}
+      <Audio src={item.src} volume={volume} trimBefore={item.offsetFrames || undefined} pauseWhenBuffering />
     </Sequence>
   );
 }

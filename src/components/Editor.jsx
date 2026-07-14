@@ -13,7 +13,7 @@ import {
   Loader2, TriangleAlert, RefreshCw, Check, Scissors, Trash2,
   Film, Music, ChevronLeft, ChevronRight, Layers, Wand2, Volume2, VolumeX, Undo2,
   Eye, EyeOff, Clapperboard, Download, ExternalLink,
-  PanelLeftClose, PanelLeftOpen, FolderOpen, Ban, FileDown, Magnet,
+  PanelLeftClose, PanelLeftOpen, FolderOpen, Ban, FileDown, FoldHorizontal, Magnet,
   ZoomIn, ZoomOut, Camera, Images, Link2, Unlink2, AudioLines, GripHorizontal,
   FlipHorizontal2, FlipVertical2,
 } from "lucide-react";
@@ -152,14 +152,35 @@ function itemAtFrame(timeline, f) {
   return null;
 }
 
+// Whether a split at frame `f` would cut anything: a selected clip strictly
+// containing `f` (both halves ≥ 1 frame), or — when the selection doesn't
+// apply — any non-disabled clip strictly containing it. Mirrors the targeting
+// of splitAtPlayhead so the toolbar button greys out exactly when S no-ops.
+function splittableAt(timeline, f, sel) {
+  if (!timeline) return false;
+  let any = false;
+  for (const track of timeline.tracks || []) {
+    for (const it of track.items || []) {
+      const from = it.from || 0;
+      if (!(f > from && f < from + (it.durationInFrames || 0))) continue;
+      if (sel?.has(it.id)) return true;
+      if (!it.disabled) any = true;
+    }
+  }
+  return any;
+}
+
 /* ---- first-frame thumbnails for video timeline cards ---- */
 // One thumbnail per source URL, captured client-side from an offscreen <video>
 // (same-origin /gen/ files, so the canvas isn't tainted). Cached for the whole
 // session — every timeline card and future card with the same src reuses it.
 const videoThumbCache = new Map(); // src → dataURL | Promise<dataURL|null>
 
-function getVideoThumb(src) {
-  const hit = videoThumbCache.get(src);
+function getVideoThumb(src, atSec = 0) {
+  // A clip with a source in-point (a split's right half) thumbnails at that
+  // time, cached under its own key; plain clips keep the src-only key.
+  const key = atSec ? `${src}#${atSec}` : src;
+  const hit = videoThumbCache.get(key);
   if (hit) return typeof hit === "string" ? Promise.resolve(hit) : hit;
   const p = new Promise((resolve) => {
     const v = document.createElement("video");
@@ -176,8 +197,12 @@ function getVideoThumb(src) {
     v.preload = "auto";
     v.onerror = () => finish(null);
     v.onloadeddata = () => {
-      // Nudge off frame 0 — some encodes paint black until the first real frame.
-      try { v.currentTime = Math.min(0.1, (v.duration || 1) / 2); } catch { finish(null); }
+      // Seek to the in-point; with none, nudge off frame 0 — some encodes
+      // paint black until the first real frame.
+      const t = atSec > 0
+        ? Math.min(atSec, Math.max(0, (v.duration || atSec) - 0.05))
+        : Math.min(0.1, (v.duration || 1) / 2);
+      try { v.currentTime = t; } catch { finish(null); }
     };
     v.onseeked = () => finish(captureVideoFrame(v));
     setTimeout(() => finish(null), 15000);
@@ -185,26 +210,28 @@ function getVideoThumb(src) {
     // original `src` so callers dedupe regardless of proxy availability.
     v.src = toPreviewSrc(src);
   }).then((url) => {
-    if (url) videoThumbCache.set(src, url);
-    else videoThumbCache.delete(src); // transient failure — allow a retry later
+    if (url) videoThumbCache.set(key, url);
+    else videoThumbCache.delete(key); // transient failure — allow a retry later
     return url;
   });
-  videoThumbCache.set(src, p);
+  videoThumbCache.set(key, p);
   return p;
 }
 
 // Latest cached thumbnail for a video src (null while capturing / for audio).
-function useVideoThumb(src) {
-  const cached = src ? videoThumbCache.get(src) : null;
+// While a new in-point's capture is in flight the previous thumb stays up.
+function useVideoThumb(src, atSec = 0) {
+  const key = src ? (atSec ? `${src}#${atSec}` : src) : null;
+  const cached = key ? videoThumbCache.get(key) : null;
   const [thumb, setThumb] = useState(typeof cached === "string" ? cached : null);
   useEffect(() => {
-    if (!src) { setThumb(null); return undefined; }
-    const hit = videoThumbCache.get(src);
+    if (!key) { setThumb(null); return undefined; }
+    const hit = videoThumbCache.get(key);
     if (typeof hit === "string") { setThumb(hit); return undefined; }
     let on = true;
-    getVideoThumb(src).then((url) => { if (on) setThumb(url); });
+    getVideoThumb(src, atSec).then((url) => { if (on) setThumb(url); });
     return () => { on = false; };
-  }, [src]);
+  }, [key, src, atSec]);
   return thumb;
 }
 
@@ -272,8 +299,10 @@ function useAudioPeaks(src) {
 
 // The waveform painted across an audio card, with the fade envelope on top:
 // the faded region is dimmed and bounded by the classic diagonal volume line.
-// `trimFraction` is how much of the source the card currently shows (end-trim).
-function Waveform({ peaks, width, trimFraction, fadeInPx, fadeOutPx, disabled }) {
+// `winStart`/`winEnd` (0..1 fractions of the source) bound the slice the card
+// currently plays — [offsetFrames, offsetFrames + durationInFrames) — so a
+// split or head-trimmed clip shows its own contiguous piece of the source.
+function Waveform({ peaks, width, winStart = 0, winEnd = 1, fadeInPx, fadeOutPx, disabled }) {
   const ref = useRef(null);
   useEffect(() => {
     const canvas = ref.current;
@@ -289,11 +318,13 @@ function Waveform({ peaks, width, trimFraction, fadeInPx, fadeOutPx, disabled })
     const h = canvas.height;
     const mid = h / 2;
     ctx.clearRect(0, 0, W, h);
-    const n = Math.max(1, Math.round(peaks.length * Math.min(1, Math.max(0.001, trimFraction || 1))));
+    const n = peaks.length;
+    const w0 = Math.max(0, Math.min(winStart || 0, 1));
+    const w1 = Math.max(w0 + 0.001, Math.min(winEnd == null ? 1 : winEnd, 1));
     ctx.fillStyle = disabled ? "rgba(161,161,170,0.45)" : "rgba(196,181,253,0.8)"; // zinc-400 / violet-300
     for (let x = 0; x < W; x++) {
-      const i0 = Math.floor((x / W) * n);
-      const i1 = Math.max(i0 + 1, Math.ceil(((x + 1) / W) * n));
+      const i0 = Math.floor((w0 + (x / W) * (w1 - w0)) * n);
+      const i1 = Math.max(i0 + 1, Math.ceil((w0 + ((x + 1) / W) * (w1 - w0)) * n));
       let a = 0;
       for (let i = i0; i < i1 && i < n; i++) if (peaks[i] > a) a = peaks[i];
       const half = Math.max(a, 0.02) * (mid - dpr);
@@ -312,18 +343,25 @@ function Waveform({ peaks, width, trimFraction, fadeInPx, fadeOutPx, disabled })
       if (fo > 0) { ctx.moveTo(W - fo, 0); ctx.lineTo(W, h); }
       ctx.stroke();
     }
-  }, [peaks, width, trimFraction, fadeInPx, fadeOutPx, disabled]);
+  }, [peaks, width, winStart, winEnd, fadeInPx, fadeOutPx, disabled]);
   return <canvas ref={ref} aria-hidden className="pointer-events-none absolute inset-0 h-full w-full" />;
 }
 
-// Backfill each video clip's natural source length so it can't be stretched
-// past its real duration (legacy timelines saved before this field existed).
+// Normalize a loaded timeline: backfill each video clip's natural source
+// length so it can't be stretched past its real duration (legacy timelines
+// saved before the field existed), and normalize every item's `offsetFrames`
+// (source in-point — absent means 0), defensively clamping the duration to
+// what's left of the source past the in-point.
 function withSourceDurations(tl) {
   if (!tl) return tl;
   for (const t of tl.tracks || []) {
-    if (t.type === "video") {
-      for (const it of t.items) {
-        if (it.sourceDurationInFrames == null) it.sourceDurationInFrames = it.durationInFrames;
+    for (const it of t.items || []) {
+      if (t.type === "video" && it.sourceDurationInFrames == null) {
+        it.sourceDurationInFrames = it.durationInFrames;
+      }
+      it.offsetFrames = Math.max(0, Math.round(it.offsetFrames || 0));
+      if (it.sourceDurationInFrames && it.offsetFrames + it.durationInFrames > it.sourceDurationInFrames) {
+        it.durationInFrames = Math.max(1, it.sourceDurationInFrames - it.offsetFrames);
       }
     }
   }
@@ -401,22 +439,26 @@ function makeTrack(tl, type) {
 
 /* ---- one clip/music block on the timeline ---- */
 function TimelineItem({
-  item, track, pxPerSec, fps, selected, linkHighlight, multiCount,
+  item, track, pxPerSec, fps, selected, linkHighlight, multiCount, canSplit,
   onSelect, onDragStart, onFadeStart, onToggleDisable, onRemove,
-  onUnlink, onLinkSelected, onDetachAudio,
+  onUnlink, onLinkSelected, onDetachAudio, onSplit,
 }) {
   const left = framesToSec(item.from, fps) * pxPerSec;
   const width = Math.max(6, framesToSec(item.durationInFrames, fps) * pxPerSec);
   const isAudio = track.type === "audio";
   const disabled = !!item.disabled;
-  const thumb = useVideoThumb(!isAudio ? item.src : null);
+  // Thumbnail at the clip's in-point, quantized to whole seconds so a left-trim
+  // drag doesn't spawn a capture per frame (the stale thumb shows meanwhile).
+  const thumbAtSec = isAudio ? 0 : Math.round(framesToSec(item.offsetFrames || 0, fps));
+  const thumb = useVideoThumb(!isAudio ? item.src : null, thumbAtSec);
   const peaks = useAudioPeaks(isAudio ? item.src : null);
   const fadeInPx = framesToSec(item.fadeInFrames || 0, fps) * pxPerSec;
   const fadeOutPx = framesToSec(item.fadeOutFrames || 0, fps) * pxPerSec;
-  // Waveform slice: end-trimming a clip shows only the played part of the source.
-  const trimFraction = item.sourceDurationInFrames
-    ? item.durationInFrames / item.sourceDurationInFrames
-    : 1;
+  // Waveform window: the slice of the source the card currently plays —
+  // [offsetFrames, offsetFrames + durationInFrames) of the full source.
+  const srcDur = item.sourceDurationInFrames || 0;
+  const winStart = srcDur ? Math.min(1, (item.offsetFrames || 0) / srcDur) : 0;
+  const winEnd = srcDur ? Math.min(1, ((item.offsetFrames || 0) + item.durationInFrames) / srcDur) : 1;
   const hasArt = isAudio ? !!peaks : !!thumb;
   return (
     <ContextMenu>
@@ -459,7 +501,8 @@ function TimelineItem({
             <Waveform
               peaks={peaks}
               width={width}
-              trimFraction={trimFraction}
+              winStart={winStart}
+              winEnd={winEnd}
               fadeInPx={fadeInPx}
               fadeOutPx={fadeOutPx}
               disabled={disabled}
@@ -502,6 +545,13 @@ function TimelineItem({
               />
             </>
           )}
+          {/* left-edge trim handle — slides the in-point (head trim) */}
+          <div
+            data-handle="resize-start"
+            onPointerDown={(e) => { e.stopPropagation(); onSelect(item.id); onDragStart(e, item, track, "resize-start"); }}
+            className="absolute inset-y-0 left-0 w-2 cursor-ew-resize bg-black/25 opacity-0 transition-opacity group-hover:opacity-100"
+            title="Drag to trim the start"
+          />
           {/* right-edge resize handle */}
           <div
             data-handle="resize"
@@ -512,6 +562,11 @@ function TimelineItem({
         </div>
       </ContextMenuTrigger>
       <ContextMenuContent>
+        <ContextMenuItem onSelect={() => onSplit(item.id)} disabled={!canSplit}>
+          <span className="flex items-center gap-2"><Scissors size={14} /> Split at playhead</span>
+          <ContextMenuShortcut>S</ContextMenuShortcut>
+        </ContextMenuItem>
+        <ContextMenuSeparator />
         <ContextMenuItem onSelect={() => onToggleDisable(item.id)}>
           <span className="flex items-center gap-2">
             {disabled ? <Eye size={14} /> : <EyeOff size={14} />}
@@ -1160,6 +1215,12 @@ export default function Editor({ reloadKey }) {
         e.preventDefault();
         ctx.toggleDisable?.(ctx.selectedId);
       }
+      // S splits ("razors") the clip(s) under the playhead in two.
+      if ((e.key === "s" || e.key === "S") && !typing && !e.metaKey && !e.ctrlKey && !e.altKey) {
+        e.preventDefault();
+        ctx.splitAtPlayhead?.();
+        return;
+      }
       // Space toggles playback when the last click was in the preview or timeline
       // (not the media pool). We drive the Remotion player imperatively because its
       // built-in Space handling only fires while the player itself holds focus.
@@ -1288,6 +1349,9 @@ export default function Editor({ reloadKey }) {
         name: vid.name,
         from: vid.from,
         durationInFrames: vid.durationInFrames,
+        // Same in-point as the video, or the detached audio would play the
+        // wrong sound under a split/head-trimmed clip.
+        offsetFrames: vid.offsetFrames || 0,
         sourceDurationInFrames: vid.sourceDurationInFrames || vid.durationInFrames,
         volume: vid.muted ? 0 : vid.volume ?? 1,
         linkId,
@@ -1352,6 +1416,93 @@ export default function Editor({ reloadKey }) {
     setSelectedGap({ trackId, from: gap.from, to: gap.to });
     applySelection(new Set(), null);
   }, [applySelection]);
+
+  // Split ("razor") the clip(s) under the playhead into two independent clips.
+  // Metadata-only: the right half is a NEW item whose `offsetFrames` (source
+  // in-point) is advanced by the left half's length, so both halves play their
+  // own piece of the same source file. Targets the selected clips strictly
+  // containing the playhead — or, when the selection doesn't apply, every
+  // non-disabled clip under it (razor-across-tracks); linked partners split at
+  // the same frame. The whole plan (right-half ids, fresh linkIds) is computed
+  // up front so the state updater stays pure (StrictMode runs it twice) and
+  // the right halves can be selected afterwards — split-then-Delete trims a
+  // tail in two keystrokes. Nothing to cut → no-op with no undo entry.
+  const splitSeqRef = useRef(0);
+  const splitAtPlayhead = useCallback((targetId) => {
+    const tl = timelineRef.current;
+    if (!tl) return;
+    const f = Math.round(frameRef.current);
+    // Strictly inside: a cut at a clip edge would leave a zero-length half.
+    const inside = (it) => f > (it.from || 0) && f < (it.from || 0) + (it.durationInFrames || 0);
+    const all = [];
+    for (const t of tl.tracks || []) for (const it of t.items || []) all.push(it);
+    const sel = selectedIdsRef.current;
+    let base;
+    if (targetId != null) {
+      base = all.filter((it) => it.id === targetId && inside(it));
+    } else {
+      base = all.filter((it) => sel.has(it.id) && inside(it));
+      if (!base.length) base = all.filter((it) => !it.disabled && inside(it));
+    }
+    // Linked partners (video ↔ its separated audio) split together.
+    const byId = new Map(base.map((it) => [it.id, it]));
+    for (const it of base) {
+      if (it.linkId) for (const g of linkGroupOf(tl, it.linkId)) if (inside(g)) byId.set(g.id, g);
+    }
+    const targets = [...byId.values()];
+    if (!targets.length) return;
+    // Right halves that came from one link group stay linked to EACH OTHER
+    // under a fresh linkId; a lone right half is unlinked (keeping the old id
+    // would tether it to the left group).
+    const rightLinkFor = new Map(); // old linkId → fresh linkId
+    for (const it of targets) {
+      if (!it.linkId || rightLinkFor.has(it.linkId)) continue;
+      if (targets.filter((x) => x.linkId === it.linkId).length >= 2) {
+        rightLinkFor.set(it.linkId, `link_split_${Date.now()}_${rightLinkFor.size}`);
+      }
+    }
+    const used = new Set(all.map((it) => it.id));
+    const plan = new Map(); // id → { leftDur, rightId, rightLinkId }
+    for (const it of targets) {
+      let rightId;
+      do rightId = `${it.id}_r${++splitSeqRef.current}`; while (used.has(rightId));
+      used.add(rightId);
+      plan.set(it.id, {
+        leftDur: f - (it.from || 0),
+        rightId,
+        rightLinkId: it.linkId ? rightLinkFor.get(it.linkId) || null : null,
+      });
+    }
+    mutate((next) => {
+      for (const t of next.tracks) {
+        // Walk backwards so splicing the right half in never shifts unvisited items.
+        for (let i = t.items.length - 1; i >= 0; i--) {
+          const it = t.items[i];
+          const p = plan.get(it.id);
+          if (!p) continue;
+          const right = {
+            ...it,
+            id: p.rightId,
+            from: f,
+            durationInFrames: (it.durationInFrames || 0) - p.leftDur,
+            offsetFrames: (it.offsetFrames || 0) + p.leftDur,
+          };
+          delete right.fadeInFrames; // fade-in belongs to the left half
+          if (p.rightLinkId) right.linkId = p.rightLinkId; else delete right.linkId;
+          if (right.fadeOutFrames) right.fadeOutFrames = Math.min(right.fadeOutFrames, right.durationInFrames);
+          it.durationInFrames = p.leftDur;
+          if (it.fadeInFrames) it.fadeInFrames = Math.min(it.fadeInFrames, p.leftDur);
+          delete it.fadeOutFrames; // fade-out belongs to the right half
+          t.items.splice(i + 1, 0, right);
+        }
+      }
+      return next;
+    });
+    const rightIds = targets.map((it) => plan.get(it.id).rightId);
+    const primary = plan.get(targetId ?? targets[0].id)?.rightId ?? rightIds[0];
+    applySelection(new Set(rightIds), primary);
+    setSelectedGap(null);
+  }, [mutate, applySelection]);
 
   // Remove every selected clip (each taking its linked partners with it) —
   // the Delete key and the multi-selection inspector use this.
@@ -1869,6 +2020,7 @@ export default function Editor({ reloadKey }) {
     }
     const group = [...byId.values()].map((it) => ({
       id: it.id, startFrom: it.from, startDur: it.durationInFrames, srcDur: it.sourceDurationInFrames,
+      offset: it.offsetFrames || 0,
     }));
     dragRef.current = {
       id: item.id, mode,
@@ -1901,12 +2053,33 @@ export default function Editor({ reloadKey }) {
           d.drop = drop;
           setDropTarget(drop);
         }
+      } else if (d.mode === "resize-start") {
+        // Head trim: slide the left edge, advancing the source in-point so the
+        // remaining media keeps its timing (the clip's END stays anchored).
+        // Dragging left re-extends into previously trimmed-off media, down to
+        // the source start. One shared delta keeps grouped/linked edges
+        // aligned; the clamps take the tightest member's limits.
+        let delta = Math.round(deltaFrames);
+        if (magnetRef.current) delta = snapFrom(d.startFrom + delta, 0, d.groupIds) - d.startFrom;
+        let lo = -Infinity, hi = Infinity;
+        for (const g of d.group) {
+          lo = Math.max(lo, -g.offset, -g.startFrom); // offsetFrames ≥ 0, from ≥ 0
+          hi = Math.min(hi, g.startDur - 1);          // durationInFrames ≥ 1
+        }
+        delta = lo > hi ? 0 : Math.max(lo, Math.min(hi, delta));
+        const patches = new Map(d.group.map((g) => [g.id, {
+          from: g.startFrom + delta,
+          offsetFrames: g.offset + delta,
+          durationInFrames: g.startDur - delta,
+        }]));
+        mapItems(patches, true);
       } else {
-        // Trim shorter freely; never stretch past each clip's real length.
-        // Linked clips trim together (each clamped to its own source cap).
+        // Trim shorter freely; never stretch past each clip's real length,
+        // measured from its in-point. Linked clips trim together (each
+        // clamped to its own source cap).
         const patches = new Map(d.group.map((g) => {
           let next = Math.max(1, Math.round(g.startDur + deltaFrames));
-          if (g.srcDur) next = Math.min(next, g.srcDur);
+          if (g.srcDur) next = Math.min(next, Math.max(1, g.srcDur - g.offset));
           return [g.id, { durationInFrames: next }];
         }));
         mapItems(patches, true);
@@ -2141,7 +2314,7 @@ export default function Editor({ reloadKey }) {
   // Latest handlers/selection for the mount-once keyboard listener.
   keyCtxRef.current = {
     undo, selectedGap, selectedId, removeGap, removeItem, removeSelected, toggleDisable,
-    stepFrame, gotoClip, hasTimeline: !!timeline, hasSelection: selectedIds.size > 0,
+    stepFrame, gotoClip, splitAtPlayhead, hasTimeline: !!timeline, hasSelection: selectedIds.size > 0,
   };
 
   if (loading && !timeline) return <Spinner label="loading editor…" />;
@@ -2385,6 +2558,7 @@ export default function Editor({ reloadKey }) {
           selected={selectedIds.has(item.id)}
           linkHighlight={!!item.linkId && selectedLinkIds.has(item.linkId) && !selectedIds.has(item.id)}
           multiCount={selectedIds.has(item.id) ? selectedIds.size : 0}
+          canSplit={Math.round(frame) > item.from && Math.round(frame) < item.from + item.durationInFrames}
           onSelect={selectItem}
           onDragStart={onDragStart}
           onFadeStart={onFadeStart}
@@ -2393,6 +2567,7 @@ export default function Editor({ reloadKey }) {
           onUnlink={unlinkItem}
           onLinkSelected={linkSelected}
           onDetachAudio={detachAudio}
+          onSplit={splitAtPlayhead}
         />
       ))}
     </div>
@@ -2536,8 +2711,17 @@ export default function Editor({ reloadKey }) {
               <Button variant="outline" size="sm" onClick={undo} disabled={!canUndo} title="Undo last timeline edit (⌘Z)">
                 <Undo2 size={14} /> Undo
               </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => splitAtPlayhead()}
+                disabled={!splittableAt(timeline, Math.round(frame), selectedIds)}
+                title="Split the clip(s) at the playhead (S)"
+              >
+                <Scissors size={14} /> Split
+              </Button>
               <Button variant="outline" size="sm" onClick={closeGapsAll} title="Lay video clips end-to-end on every channel, removing gaps">
-                <Scissors size={14} /> Close gaps
+                <FoldHorizontal size={14} /> Close gaps
               </Button>
               <Button
                 variant={magnet ? "default" : "outline"}
@@ -2761,6 +2945,12 @@ export default function Editor({ reloadKey }) {
                   <div className="mb-1 text-muted-foreground">Duration</div>
                   <div className="tabular-nums">{framesToSec(selected.item.durationInFrames, fps).toFixed(2)}s</div>
                 </div>
+                {(selected.item.offsetFrames || 0) > 0 && (
+                  <div className="text-xs">
+                    <div className="mb-1 text-muted-foreground">Source in</div>
+                    <div className="tabular-nums">{fmtTime(framesToSec(selected.item.offsetFrames, fps))}</div>
+                  </div>
+                )}
                 {selected.track.type === "audio" && (
                   <div className="text-xs">
                     <div className="mb-1 text-muted-foreground">Fade in / out</div>
@@ -2791,7 +2981,8 @@ export default function Editor({ reloadKey }) {
             </div>
           ) : (
             <p className="text-center text-xs text-muted-foreground">
-              Click a clip to trim, reorder, adjust volume or remove it. Drag a clip to move it, or its right edge to trim the end.
+              Click a clip to trim, reorder, adjust volume or remove it. Drag a clip to move it, its right edge to trim the end,
+              or its left edge to trim the start. Press S (or the Split button) to cut the clip(s) under the playhead in two.
               Drag it onto another channel — or up/down past the edge to spawn a new one; higher channels play on top.
               On audio clips, drag the dots at the top corners to fade in / out.
               Video clips dropped from the pool carry their audio as a separate linked clip on the audio tracks — linked clips

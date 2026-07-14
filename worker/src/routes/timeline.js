@@ -87,6 +87,9 @@ async function buildTimelineFromCut(env, pid, db, v) {
         // The clip's natural (full source) length in frames — a video can be
         // trimmed shorter but never stretched past this on the timeline.
         sourceDurationInFrames: secFrames(s.duration),
+        // Source in-point (frames skipped at the head of the source). Fresh
+        // cut clips always start at 0; splits/head-trims advance it.
+        offsetFrames: 0,
         volume: 1,
       };
     });
@@ -154,7 +157,22 @@ const repackTrack = (tl, track) => {
 
 // Apply a list of edit ops to a timeline in place. Ops:
 //   { op:"move", id, from }                 – set an item's start frame
-//   { op:"resize", id, durationInFrames }   – set an item's length
+//   { op:"resize", id, durationInFrames, edge? } – set an item's length. Default
+//                                             edge "end" trims the tail (capped
+//                                             by the source length past the
+//                                             in-point); edge:"start" trims or
+//                                             re-extends the HEAD — the clip's
+//                                             end stays anchored and its
+//                                             `offsetFrames` (source in-point)
+//                                             slides with the start.
+//   { op:"split", id, at }                  – razor the clip in two at absolute
+//                                             timeline frame `at` (strictly
+//                                             inside the clip). The right half
+//                                             is a NEW item continuing at the
+//                                             same source position; linked
+//                                             partners containing `at` split
+//                                             too, their right halves sharing a
+//                                             fresh linkId.
 //   { op:"remove", id }                     – delete an item
 //   { op:"volume", id, volume }             – set gain (0..2, 1 = unity)
 //   { op:"mute", id, muted }                – mute/unmute an item
@@ -182,9 +200,73 @@ function applyTimelineOps(tl, ops) {
     } else if (op.op === "resize" && op.id != null) {
       const f = findItem(tl, op.id);
       if (f) {
-        let d = Math.max(1, Math.round(op.durationInFrames || 1));
-        if (f.item.sourceDurationInFrames) d = Math.min(d, f.item.sourceDurationInFrames); // can't exceed source length
-        f.item.durationInFrames = d;
+        const it = f.item;
+        const off = it.offsetFrames || 0;
+        const d = Math.max(1, Math.round(op.durationInFrames || 1));
+        if (op.edge === "start") {
+          // Head trim/extend, end anchored: the start slides by the duration
+          // change and the source in-point follows. Clamps: offsetFrames ≥ 0
+          // (can't extend before the source start), from ≥ 0, duration ≥ 1.
+          const delta = Math.max(
+            Math.max(-off, -(it.from || 0)),
+            Math.min((it.durationInFrames || 1) - 1, (it.durationInFrames || 0) - d),
+          );
+          it.from = (it.from || 0) + delta;
+          it.offsetFrames = off + delta;
+          it.durationInFrames = (it.durationInFrames || 0) - delta;
+        } else {
+          // End trim: never exceed what's left of the source past the in-point.
+          it.durationInFrames = it.sourceDurationInFrames
+            ? Math.min(d, Math.max(1, it.sourceDurationInFrames - off))
+            : d;
+        }
+      }
+    } else if (op.op === "split" && op.id != null) {
+      // Razor the clip (and its linked partners under the cut) in two at
+      // absolute frame `at`. Metadata-only: the right half plays the same
+      // source from an advanced in-point. `at` outside the clip's strict
+      // interior (both halves ≥ 1 frame) → tolerant no-op like the other ops.
+      const f = findItem(tl, op.id);
+      const at = Math.round(op.at);
+      const inside = (it) => at > (it.from || 0) && at < (it.from || 0) + (it.durationInFrames || 0);
+      if (f && Number.isFinite(at) && inside(f.item)) {
+        const targets = [f.item];
+        if (f.item.linkId) {
+          for (const t of tl.tracks) {
+            for (const it of t.items) {
+              if (it !== f.item && it.linkId === f.item.linkId && inside(it)) targets.push(it);
+            }
+          }
+        }
+        // ≥2 right halves from one link group stay linked to each other under
+        // a fresh linkId; a lone right half is unlinked (the old id would
+        // tether it to the left group).
+        const rightLinkId = targets.length >= 2 ? `link_split_${Date.now()}` : null;
+        const targetIds = new Set(targets.map((it) => it.id));
+        for (const t of tl.tracks) {
+          // Walk backwards so splicing a right half in never shifts unvisited items.
+          for (let i = t.items.length - 1; i >= 0; i--) {
+            const it = t.items[i];
+            if (!targetIds.has(it.id)) continue;
+            const leftDur = at - (it.from || 0);
+            let rightId = `${it.id}_r${Date.now().toString(36)}`;
+            for (let n = 2; findItem(tl, rightId); n++) rightId = `${it.id}_r${Date.now().toString(36)}_${n}`;
+            const right = {
+              ...it,
+              id: rightId,
+              from: at,
+              durationInFrames: (it.durationInFrames || 0) - leftDur,
+              offsetFrames: (it.offsetFrames || 0) + leftDur,
+            };
+            delete right.fadeInFrames; // fade-in belongs to the left half
+            if (rightLinkId) right.linkId = rightLinkId; else delete right.linkId;
+            if (right.fadeOutFrames) right.fadeOutFrames = Math.min(right.fadeOutFrames, right.durationInFrames);
+            it.durationInFrames = leftDur;
+            if (it.fadeInFrames) it.fadeInFrames = Math.min(it.fadeInFrames, leftDur);
+            delete it.fadeOutFrames; // fade-out belongs to the right half
+            t.items.splice(i + 1, 0, right);
+          }
+        }
       }
     } else if (op.op === "remove" && op.id != null) {
       // Removing a linked clip takes its partners with it — deleting a video
@@ -305,7 +387,7 @@ export function registerTimeline(app) {
     const db = await readSelections(c.env, pid);
     db.editorTimeline = timeline;
     await writeSelections(c.env, pid, db);
-    await broadcastTimeline(c, clientId);
+    await broadcastTimeline(c, pid, clientId);
     return c.json({ ok: true, timeline });
   });
 
@@ -320,7 +402,7 @@ export function registerTimeline(app) {
     if (!timeline) return c.json({ error: "No matching cut generation to load" }, 404);
     db.editorTimeline = timeline;
     await writeSelections(c.env, pid, db);
-    await broadcastTimeline(c, body?.clientId);
+    await broadcastTimeline(c, pid, body?.clientId);
     return c.json({ ok: true, timeline });
   });
 
@@ -339,7 +421,7 @@ export function registerTimeline(app) {
     await writeSelections(c.env, pid, db);
     // The chat agent has no clientId, so open Editor tabs treat this as a
     // foreign edit and reload — reflecting agent edits in the UI right away.
-    await broadcastTimeline(c, body?.clientId);
+    await broadcastTimeline(c, pid, body?.clientId);
     return c.json({ ok: true, timeline: db.editorTimeline });
   });
 

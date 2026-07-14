@@ -5,9 +5,10 @@ description: >-
   cut shown in the Editor tab (Remotion <Player>). Use when the user wants to
   "edit the video", "open/edit the cut in the editor", "reorder the clips",
   "move/trim a clip on the timeline", "make the music quieter/louder", "drop a
-  shot from the edit", or otherwise change the editor timeline by chatting. Loads
-  a complete cut into the timeline and applies non-destructive edits (move,
-  trim/resize, reorder, remove, volume/mute) that show up live in the Editor tab.
+  shot from the edit", "split/cut a clip in two", or otherwise change the editor
+  timeline by chatting. Loads a complete cut into the timeline and applies
+  non-destructive edits (move, trim/resize, split, reorder, remove, volume/mute)
+  that show up live in the Editor tab.
 ---
 
 # Edit video (Remotion editor timeline)
@@ -36,8 +37,12 @@ baked complete-cut mp4s (that's the complete-cut / stitch skill).
      for the latest cut. Confirm which cut you loaded (`cuts` lists the versions,
      their clip/music counts, and whether they have music).
    - If `timeline` already exists, use its items. Each track (`video`, `music`)
-     lists items with `id`, `name`, `from` (start frame), `durationInFrames`, and
-     `volume`. Note the `id`s and order — every edit op targets an item by `id`.
+     lists items with `id`, `name`, `from` (start frame), `durationInFrames`,
+     `volume`, and optionally `offsetFrames` — the clip's **source in-point**
+     (how many frames of the source file are skipped at its head; absent = 0.
+     Set by splits and head trims — the item plays source frames
+     `[offsetFrames, offsetFrames + durationInFrames)`). Note the `id`s and
+     order — every edit op targets an item by `id`.
 2. **Translate the request into ops**, then call `edit_timeline` with the `ops`
    array. Times are **frames** — convert seconds with `frames = round(seconds * fps)`
    (fps is in the timeline, usually 24, so 2s = 48 frames).
@@ -45,6 +50,15 @@ baked complete-cut mp4s (that's the complete-cut / stitch skill).
      full new order; it repacks the video track gapless automatically).
    - Move a clip to a new start → `{ op:'move', id, from }`.
    - Trim/extend a clip's end → `{ op:'resize', id, durationInFrames }`.
+   - Trim/extend a clip's start → `{ op:'resize', id, durationInFrames, edge:'start' }`
+     (the clip's end stays anchored; its source in-point slides with the start).
+   - Split a clip in two at a time → `{ op:'split', id, at: round(seconds * fps) }`.
+     `at` is the **absolute timeline frame** and must fall strictly inside the clip.
+     The right half is a **new item** continuing seamlessly at the same source
+     position — re-read the returned timeline for its id before editing it. A
+     clip's linked partner (e.g. its detached audio) splits at the same frame
+     automatically. Typical "cut out the middle" flow: split at both ends of the
+     unwanted span, `remove` the middle piece, then `repack` to close the gap.
    - Drop a clip or music cue → `{ op:'remove', id }`.
    - Music/clip volume → `{ op:'volume', id, volume }` (1 = unity, 0.5 = half,
      0 = silent; music beds are quiet by default, ~0.08). Or `{ op:'mute', id, muted:true }`.

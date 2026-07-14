@@ -13,15 +13,26 @@
 //   {
 //     fps: 24, width: 1280, height: 720,
 //     tracks: [
-//       { id, name, type: "video", items: [ { id, src, from, durationInFrames, name, bundle } ] },
-//       { id, name, type: "audio", items: [ { id, src, from, durationInFrames, name, volume,
+//       { id, name, type: "video", items: [ { id, src, from, durationInFrames, offsetFrames?, name, bundle } ] },
+//       { id, name, type: "audio", items: [ { id, src, from, durationInFrames, offsetFrames?, name, volume,
 //                                             fadeInFrames?, fadeOutFrames? } ] },
 //     ],
 //   }
-// `from` / `durationInFrames` are integer frame counts. `src` is a root-relative
+// `from` / `durationInFrames` are integer frame counts. `offsetFrames` is the
+// SOURCE IN-POINT: the item plays source frames [offsetFrames, offsetFrames +
+// durationInFrames) at timeline position [from, from + durationInFrames).
+// Absent means 0 (play from the start of the source — every pre-offset doc).
+// Invariant when the source length is known: offsetFrames + durationInFrames
+// ≤ sourceDurationInFrames. Splitting a clip at the playhead produces a right
+// half whose offsetFrames is advanced by the left half's length.
+// `src` is a root-relative
 // URL (e.g. "/gen/MS-01.mp4") resolved against the app origin. Audio items may
 // carry `fadeInFrames` / `fadeOutFrames` — linear volume ramps at the clip's
 // head/tail, set by dragging the fade handles on the editor's timeline cards.
+// Items may carry a `linkId`: items sharing one are LINKED (e.g. a video clip
+// and its separated audio) and move/trim/delete together while the editor's
+// "Link" toggle is on. An audio item whose `src` is a video file plays that
+// file's audio track (how separated clip audio works).
 
 export const FPS = 24;
 export const WIDTH = 1280;

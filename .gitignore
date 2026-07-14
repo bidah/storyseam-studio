@@ -9,3 +9,4 @@ dist
 .workflow-data
 .vercel
 .env*
+worker/editor.tar.gz
