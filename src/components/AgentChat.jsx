@@ -781,10 +781,6 @@ export default function AgentChat() {
           </AttachmentGroup>
         ) : null}
 
-        <div className="mb-1.5 flex items-center">
-          <ModelPicker disabled={isBusy} />
-        </div>
-
         <div className="flex items-end gap-2">
           <input
             ref={fileInputRef}
@@ -833,6 +829,10 @@ export default function AgentChat() {
               {uploading ? <Loader2 size={15} className="animate-spin" /> : <Send size={15} />}
             </Button>
           )}
+        </div>
+
+        <div className="mt-1.5 flex items-center">
+          <ModelPicker disabled={isBusy} />
         </div>
       </div>
     </aside>
