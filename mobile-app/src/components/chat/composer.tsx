@@ -89,7 +89,7 @@ export function Composer({
 
   return (
     <KeyboardStickyView offset={{ closed: 0, opened: insets.bottom }}>
-      <View className="px-3" style={{ paddingBottom: Math.max(insets.bottom, 8) }}>
+      <View style={{ paddingHorizontal: 15, paddingBottom: Math.max(insets.bottom, 8) + 5 }}>
         <GlassSurface
           glassEffectStyle="regular"
           fallbackColor={chatColors.card}
@@ -171,16 +171,17 @@ export function Composer({
                   accessibilityRole="button"
                   accessibilityLabel={sending ? 'Sending' : 'Send'}
                   disabled={!canSend}
+                  style={{ backgroundColor: chatColors.higgsfield }}
                   className={cn(
-                    'h-9 w-9 items-center justify-center rounded-full bg-primary active:opacity-80',
+                    'h-9 w-9 items-center justify-center rounded-full active:opacity-80',
                     !canSend && 'opacity-40',
                   )}
                   onPress={submit}
                 >
                   {sending ? (
-                    <ActivityIndicator size="small" color={chatColors.primaryForeground} />
+                    <ActivityIndicator size="small" color={chatColors.higgsfieldForeground} />
                   ) : (
-                    <ArrowUp size={18} color={chatColors.primaryForeground} />
+                    <ArrowUp size={18} color={chatColors.higgsfieldForeground} />
                   )}
                 </Pressable>
               )}

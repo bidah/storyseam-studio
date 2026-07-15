@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import { View } from 'react-native';
-import { ScreenHeader } from '@/components/screen-header';
 import { Segmented } from '@/components/ui/segmented';
 import { ImportSection } from '@/components/assets/import-section';
 import { LibrarySection } from '@/components/assets/library-section';
@@ -15,7 +14,6 @@ export default function AssetsTab() {
 
   return (
     <View className="flex-1 bg-background">
-      <ScreenHeader title="Assets" />
       <View className="px-4 pt-3">
         <Segmented<Seg>
           options={[

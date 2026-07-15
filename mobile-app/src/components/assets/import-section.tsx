@@ -18,6 +18,7 @@ import { toast } from 'sonner-native';
 import { Check, KeyRound } from 'lucide-react-native';
 import { Empty, ErrorNote, Loading } from '@/components/ui/empty';
 import { ApiError, mediaUrl, postJson } from '@/lib/api';
+import { createPickerRequest } from '@/lib/picker-bus';
 import { useHiggsfieldImages, useInvalidate, useProjectResource } from '@/lib/queries';
 import type { HfItem, LibraryFolder } from './types';
 
@@ -75,54 +76,13 @@ export function ImportSection() {
     }
   };
 
-  const promptNewFolder = (item: HfItem) => {
-    if (Platform.OS !== 'ios') {
-      // No Alert.prompt off-iOS — fall back to a sensible default folder.
-      doImport(item, 'higgsfield');
-      return;
-    }
-    Alert.prompt(
-      'New folder',
-      'Name the library folder this image lands in.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Import',
-          onPress: (t?: string) => {
-            const folder = t?.trim();
-            if (folder) doImport(item, folder);
-          },
-        },
-      ],
-      'plain-text',
-      'higgsfield',
-    );
-  };
-
-  const chooseDestination = (item: HfItem) => {
-    const folders = lib.data?.folders ?? [];
-    if (Platform.OS === 'ios') {
-      const labels = folders.map((f) => (f.folder === '.' ? '(library root)' : f.folder));
-      const options = [...labels, 'New folder…', 'Cancel'];
-      ActionSheetIOS.showActionSheetWithOptions(
-        { title: 'Add to library — pick a folder', options, cancelButtonIndex: options.length - 1 },
-        (i) => {
-          if (i === options.length - 1) return;
-          if (i === labels.length) return promptNewFolder(item);
-          doImport(item, folders[i].folder);
-        },
-      );
-    } else {
-      // RN Alert caps buttons on Android — offer the first folder + new folder.
-      const first = folders[0];
-      Alert.alert('Add to library', 'Pick a destination', [
-        ...(first
-          ? [{ text: first.folder === '.' ? '(library root)' : first.folder, onPress: () => doImport(item, first.folder) }]
-          : []),
-        { text: 'New folder (higgsfield)', onPress: () => doImport(item, 'higgsfield') },
-        { text: 'Cancel', style: 'cancel' as const },
-      ]);
-    }
+  // Pick a destination folder through the formSheet (src/app/import-folder.tsx),
+  // which resolves the chosen (or freshly typed) folder name via the picker bus.
+  const chooseDestination = async (item: HfItem) => {
+    const { requestId, promise } = createPickerRequest();
+    router.push({ pathname: '/import-folder', params: { requestId } });
+    const folder = (await promise) as string | null;
+    if (folder) doImport(item, folder);
   };
 
   const removeImported = (item: HfItem, rel: string) => {

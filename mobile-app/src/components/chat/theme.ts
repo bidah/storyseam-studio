@@ -13,4 +13,8 @@ export const chatColors = {
   primaryForeground: '#ecfdf5',
   destructive: '#dc2626',
   amber: '#f59e0b',
+  // Higgsfield brand — lime-yellow accent (web app's --primary, #CBF74E).
+  // Foreground is near-black so glyphs on the bright accent stay legible.
+  higgsfield: '#CBF74E',
+  higgsfieldForeground: '#1a2e05',
 } as const;

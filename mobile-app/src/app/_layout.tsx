@@ -104,6 +104,24 @@ export default function RootLayout() {
                   }}
                 />
                 <Stack.Screen
+                  name="character"
+                  options={{
+                    presentation: 'formSheet',
+                    sheetAllowedDetents: [0.9, 1],
+                    sheetGrabberVisible: true,
+                    sheetCornerRadius: 24,
+                  }}
+                />
+                <Stack.Screen
+                  name="import-folder"
+                  options={{
+                    presentation: 'formSheet',
+                    sheetAllowedDetents: [0.6, 1],
+                    sheetGrabberVisible: true,
+                    sheetCornerRadius: 24,
+                  }}
+                />
+                <Stack.Screen
                   name="viewer"
                   options={{
                     presentation: 'fullScreenModal',

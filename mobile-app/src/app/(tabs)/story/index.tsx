@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { View } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
-import { ScreenHeader } from '@/components/screen-header';
 import { Segmented } from '@/components/ui/segmented';
 import { WorldSurface } from '@/components/story/world';
 import { ScriptSurface } from '@/components/story/script';
@@ -26,7 +25,6 @@ export default function StoryScreen() {
 
   return (
     <View className="flex-1 bg-background">
-      <ScreenHeader title="Story" />
       <View className="px-4 pt-3">
         <Segmented options={SEGMENTS} value={seg} onChange={setSeg} />
       </View>

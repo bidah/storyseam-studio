@@ -55,7 +55,11 @@ export default function TabsLayout() {
     <ProjectGate>
       <AgentProvider>
         <LiveSync />
-        <NativeTabs backgroundColor="#0a0a0b" labelStyle={{ selected: { color: '#10b981' } }}>
+        <NativeTabs
+          backgroundColor="#0a0a0b"
+          iconColor={{ selected: '#CBF74E' }}
+          labelStyle={{ selected: { color: '#CBF74E' } }}
+        >
           <NativeTabs.Trigger name="chat">
             <NativeTabs.Trigger.Label>Chat</NativeTabs.Trigger.Label>
             <NativeTabs.Trigger.Icon sf="bubble.left.and.text.bubble.right" />

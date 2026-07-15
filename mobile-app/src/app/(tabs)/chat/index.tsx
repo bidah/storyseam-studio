@@ -19,9 +19,10 @@ import { useReanimatedKeyboardAnimation } from 'react-native-keyboard-controller
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import { ArrowDown, CircleAlert, Sparkles } from 'lucide-react-native';
+import { Stack } from 'expo-router';
 import { agentIsBusy, useAgent, useConversations } from '@/lib/agent/provider';
 import { uploadFile } from '@/lib/api';
-import { ChatHeader } from '@/components/chat/chat-header';
+import { ChatHeaderRight } from '@/components/chat/chat-header';
 import { Composer, type LocalAttachment } from '@/components/chat/composer';
 import { ConversationsOverlay } from '@/components/chat/conversations-overlay';
 import { isThinking, pendingRequest, workingTool } from '@/components/chat/helpers';
@@ -248,13 +249,19 @@ export default function ChatScreen() {
 
   return (
     <View className="flex-1 bg-background">
-      <ChatHeader
-        busy={busy}
-        errored={errored}
-        onHistoryPress={() => setHistoryOpen((v) => !v)}
-        onNewChat={() => {
-          Haptics.selectionAsync().catch(() => {});
-          conv.newChat();
+      <Stack.Screen
+        options={{
+          headerRight: () => (
+            <ChatHeaderRight
+              busy={busy}
+              errored={errored}
+              onHistoryPress={() => setHistoryOpen((v) => !v)}
+              onNewChat={() => {
+                Haptics.selectionAsync().catch(() => {});
+                conv.newChat();
+              }}
+            />
+          ),
         }}
       />
 

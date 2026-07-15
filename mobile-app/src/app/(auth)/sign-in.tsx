@@ -37,6 +37,19 @@ export default function SignIn() {
         callbackURL: '/chat',
       });
       if (error) throw new Error(error.message || 'OAuth failed');
+      // The Expo deep-link flow stores the session cookie *during* the call but
+      // never navigates — without this the browser closes and we sit on the
+      // sign-in screen (parity with email sign-in's router.replace). Confirm the
+      // session actually landed first; a dismissed browser resolves without error
+      // and leaves no session, so we shouldn't bounce into the app in that case.
+      const { data: session } = await authClient.getSession({
+        query: { disableCookieCache: true },
+      });
+      if (session) {
+        router.replace('/chat');
+      } else {
+        toast.error('Higgsfield sign-in didn’t complete');
+      }
     } catch (e: any) {
       toast.error(e?.message || 'Higgsfield sign-in failed');
     } finally {

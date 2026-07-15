@@ -4,7 +4,6 @@ import { File, Paths } from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 import { History, Music, Play, RefreshCw, Share2, TriangleAlert } from 'lucide-react-native';
 import { toast } from 'sonner-native';
-import { ScreenHeader } from '@/components/screen-header';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, Eyebrow } from '@/components/ui/card';
@@ -305,10 +304,5 @@ export default function CutsScreen() {
     );
   }
 
-  return (
-    <View className="flex-1 bg-background">
-      <ScreenHeader title="Cuts" />
-      {body}
-    </View>
-  );
+  return <View className="flex-1 bg-background">{body}</View>;
 }
