@@ -362,6 +362,29 @@ export function generateShotListMessage() {
   ].join("\n");
 }
 
+// Build the chat turn for an inline "change this passage" request from the Script
+// tab: the user drag-selected a range of the screenplay and typed the change they
+// want. Routed through the agent (the script-writing skill) so it proposes the
+// edit as a diff scoped to that passage — propose → confirm → apply, like every
+// other script change.
+export function scriptEditRequest(selectedText, instruction) {
+  return [
+    `The user is on the Script tab and has selected these lines of the screenplay that need to change:`,
+    ``,
+    `"""`,
+    selectedText,
+    `"""`,
+    ``,
+    `The specific request is: ${instruction}`,
+    ``,
+    `Load the script-writing skill and follow it: call get_script to read the current pinned` +
+      ` draft, locate this exact passage, and propose an edit that applies the request to just` +
+      ` these lines while leaving the rest of the script untouched. Propose it as a diff` +
+      ` (save_script / append_script) and confirm before applying — don't commit it until the` +
+      ` user says so.`,
+  ].join("\n");
+}
+
 // Build the chat turn that (re)stitches the complete cut. Routed through the
 // agent — like every other mutation — so it uses the same get_cuts → stitch_cuts
 // flow (which runs ffmpeg locally) and picks up whatever takes are currently

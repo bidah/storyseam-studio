@@ -37,6 +37,7 @@ import {
   SP_TYPES, SP_LABELS, SP_PLACEHOLDERS,
 } from "@/components/notes";
 import ScriptDiffReview from "@/components/ScriptDiffReview";
+import ScriptSelectionAsk from "@/components/ScriptSelectionAsk";
 
 // "2m ago" / "just now" — compact relative time for the drafts list.
 function relTime(iso) {
@@ -611,6 +612,9 @@ function Editor({ initial, drafts, pinnedId, currentName, reload, signed: signed
       <div className="notes-editor rounded-xl border bg-card px-6 py-8 sm:px-10">
         <EditorContent editor={editor} />
       </div>
+
+      {/* Drag-select a passage → "Ask agent to change this" bubble → chat proposal. */}
+      <ScriptSelectionAsk editor={editor} />
     </div>
   );
 }
