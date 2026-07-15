@@ -1,4 +1,4 @@
-import { Text, View } from 'react-native';
+import { Pressable, Text, View } from 'react-native';
 import { cn } from '@/lib/utils';
 
 // Native screenplay renderer for the Script tab. The web app edits the script
@@ -109,13 +109,33 @@ export function ScreenplayLine({
   }
 }
 
-export function ScreenplayView({ doc }: { doc: PMNode | null | undefined }) {
+export function ScreenplayView({
+  doc,
+  onEditLine,
+}: {
+  doc: PMNode | null | undefined;
+  // When provided, each non-empty block becomes tappable — the Script tab opens
+  // an edit sheet that routes the rewrite through the agent (see script.tsx).
+  onEditLine?: (line: ScriptLine, index: number) => void;
+}) {
   const lines = docLines(doc);
   return (
     <View className="gap-1">
-      {lines.map((l, i) => (
-        <ScreenplayLine key={i} line={l} />
-      ))}
+      {lines.map((l, i) =>
+        onEditLine && l.text.trim() ? (
+          <Pressable
+            key={i}
+            accessibilityRole="button"
+            accessibilityLabel={`Edit ${SP_LABELS[l.type] || 'line'}: ${l.text}`}
+            className="rounded-md active:bg-secondary/50"
+            onPress={() => onEditLine(l, i)}
+          >
+            <ScreenplayLine line={l} />
+          </Pressable>
+        ) : (
+          <ScreenplayLine key={i} line={l} />
+        ),
+      )}
     </View>
   );
 }

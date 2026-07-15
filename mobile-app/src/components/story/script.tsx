@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Modal,
   Pressable,
@@ -9,6 +9,7 @@ import {
   View,
 } from 'react-native';
 import * as Haptics from 'expo-haptics';
+import { router } from 'expo-router';
 import { toast } from 'sonner-native';
 import {
   CircleCheck,
@@ -20,21 +21,23 @@ import {
   Pin,
   Plus,
   Trash2,
+  Wand2,
   X,
 } from 'lucide-react-native';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
+import { Segmented } from '@/components/ui/segmented';
 import { Empty, ErrorNote, Loading } from '@/components/ui/empty';
 import { deleteJson, patchJson, postJson, putJson } from '@/lib/api';
 import { CLIENT_ID } from '@/lib/client-id';
 import { agentIsBusy, useAgent } from '@/lib/agent/provider';
-import { generateShotListMessage } from '@/lib/agent/messages';
+import { generateShotListMessage, scriptEditRequest, scriptRewriteRequest } from '@/lib/agent/messages';
 import { useInvalidate, useProjectResource } from '@/lib/queries';
 import { cn } from '@/lib/utils';
 import { EditableField } from './field';
-import { ScreenplayView, docLines, type PMNode } from './screenplay';
+import { ScreenplayView, SP_LABELS, docLines, type PMNode, type ScriptLine } from './screenplay';
 import { ScriptProposalReview } from './script-review';
 
 // Script sub-surface — native, read-only screenplay renderer of the pinned
@@ -307,6 +310,144 @@ function SignModal({
 }
 
 /* ------------------------------------------------------------------ *
+ * Edit-passage sheet — tap a screenplay block → edit its text here →  *
+ * the rewrite is routed to the chat agent as a reviewable proposal    *
+ * (the mobile take on the web Script tab's "Ask agent" selection box). *
+ * ------------------------------------------------------------------ */
+
+type EditMode = 'edit' | 'ask';
+
+const EDIT_MODES: { value: EditMode; label: string }[] = [
+  { value: 'edit', label: 'Edit' },
+  { value: 'ask', label: 'Ask agent' },
+];
+
+function EditPassageModal({
+  line,
+  busy,
+  onClose,
+  onSend,
+}: {
+  line: ScriptLine | null;
+  busy: boolean;
+  onClose: () => void;
+  onSend: (message: string) => void;
+}) {
+  const [mode, setMode] = useState<EditMode>('edit');
+  const [draft, setDraft] = useState(''); // Edit tab: the rewritten passage text
+  const [instruction, setInstruction] = useState(''); // Ask tab: the change to request
+
+  // Fresh block tapped → reset both drafts and land on the Edit tab.
+  useEffect(() => {
+    setDraft(line?.text ?? '');
+    setInstruction('');
+    setMode('edit');
+  }, [line]);
+
+  const original = line?.text ?? '';
+  const label = line ? (SP_LABELS[line.type] || 'line').toLowerCase() : 'line';
+  const rewritten = draft.trim();
+  const canEdit = rewritten.length > 0 && rewritten !== original.trim();
+  const canAsk = instruction.trim().length > 0;
+  const canSend = mode === 'edit' ? canEdit : canAsk;
+
+  const submit = () => {
+    if (!canSend || busy) return;
+    onSend(
+      mode === 'edit'
+        ? scriptRewriteRequest(original, rewritten)
+        : scriptEditRequest(original, instruction.trim()),
+    );
+  };
+
+  return (
+    <Modal
+      visible={!!line}
+      animationType="slide"
+      presentationStyle="formSheet"
+      onRequestClose={onClose}
+    >
+      <View className="flex-1 bg-background px-4 pt-5">
+        <View className="mb-3 flex-row items-center justify-between">
+          <View className="flex-row items-center gap-2">
+            <Wand2 size={16} color={PRIMARY} />
+            <Text className="text-lg font-semibold text-foreground">Change passage</Text>
+          </View>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Cancel change"
+            className="h-9 w-9 items-center justify-center rounded-full active:opacity-60"
+            onPress={onClose}
+          >
+            <X size={18} color={MUTED} />
+          </Pressable>
+        </View>
+
+        <Segmented options={EDIT_MODES} value={mode} onChange={setMode} className="mb-3" />
+
+        {mode === 'edit' ? (
+          <>
+            <Text className="mb-2 text-[13px] leading-5 text-muted-foreground">
+              Rewrite this {label} directly. The agent applies your exact text as a reviewable
+              proposal — nothing changes until you accept it.
+            </Text>
+            <TextInput
+              autoFocus
+              multiline
+              value={draft}
+              onChangeText={setDraft}
+              placeholder="Rewrite this passage…"
+              placeholderTextColor="#71717a"
+              className="min-h-32 rounded-xl border border-primary bg-card px-3 py-2.5 text-[15px] leading-6 text-foreground"
+              textAlignVertical="top"
+            />
+          </>
+        ) : (
+          <>
+            <Text className="mb-2 text-[13px] leading-5 text-muted-foreground">
+              Ask the agent to change this {label}. Describe what you want — it proposes the edit as
+              a reviewable diff.
+            </Text>
+            {/* The passage being changed, shown fixed for reference. */}
+            <View className="mb-3 rounded-xl border border-border bg-secondary/40 px-3 py-2.5">
+              <Text className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                {SP_LABELS[line?.type ?? ''] || 'Passage'}
+              </Text>
+              <Text className="text-[14px] leading-5 text-foreground">{original}</Text>
+            </View>
+            <TextInput
+              autoFocus
+              multiline
+              value={instruction}
+              onChangeText={setInstruction}
+              placeholder="Describe the change… (e.g. make this line angrier, tighten it, fix the slug)"
+              placeholderTextColor="#71717a"
+              className="min-h-24 rounded-xl border border-primary bg-card px-3 py-2.5 text-[15px] leading-6 text-foreground"
+              textAlignVertical="top"
+            />
+          </>
+        )}
+
+        <Button
+          className="mt-4"
+          title={mode === 'edit' ? 'Send rewrite' : 'Ask agent'}
+          disabled={!canSend || busy}
+          loading={busy}
+          onPress={submit}
+        >
+          {!busy ? <Wand2 size={15} color="white" /> : null}
+        </Button>
+        <Text className="mt-2 text-center text-[11px] text-muted-foreground">
+          {busy
+            ? 'Agent is busy — finish the current turn first.'
+            : 'Opens the Chat tab to watch it apply.'}
+        </Text>
+      </View>
+    </Modal>
+  );
+}
+
+/* ------------------------------------------------------------------ *
  * Surface                                                             *
  * ------------------------------------------------------------------ */
 
@@ -318,6 +459,7 @@ export function ScriptSurface() {
   const [draftsOpen, setDraftsOpen] = useState(false);
   const [signOpen, setSignOpen] = useState(false);
   const [reviewOpen, setReviewOpen] = useState(false);
+  const [editLine, setEditLine] = useState<ScriptLine | null>(null);
 
   if (isPending) return <Loading />;
   if (error) return <ErrorNote message={String((error as any)?.message || error)} onRetry={refetch} />;
@@ -362,6 +504,17 @@ export function ScriptSurface() {
     agent.send({ message: generateShotListMessage() }).catch(() => {});
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
     toast('Sent to agent — watch the Chat tab');
+  };
+
+  // Tapped a screenplay block and either rewrote it or asked for a change → route
+  // the request (built by the sheet) to the agent as a reviewable proposal, then
+  // jump to the Chat tab to watch it stream.
+  const sendEdit = (message: string) => {
+    agent.send({ message }).catch(() => {});
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+    setEditLine(null);
+    toast('Sent to agent — review the proposal here when it lands');
+    router.navigate('/(tabs)/chat');
   };
 
   const hasBody = docLines(script.doc).some((l) => l.text.trim());
@@ -435,10 +588,11 @@ export function ScriptSurface() {
           className="mb-2"
         />
 
-        {/* Screenplay body (read-only — edits are agent-driven via proposals) */}
+        {/* Screenplay body — tap any block to rewrite it; the change is routed
+            to the agent and lands back here as a reviewable proposal. */}
         {hasBody ? (
           <Card className="px-4 py-5">
-            <ScreenplayView doc={script.doc} />
+            <ScreenplayView doc={script.doc} onEditLine={(line) => setEditLine(line)} />
           </Card>
         ) : (
           <Empty
@@ -458,6 +612,12 @@ export function ScriptSurface() {
         visible={signOpen}
         onClose={() => setSignOpen(false)}
         onSigned={(by) => toggleSign(true, by)}
+      />
+      <EditPassageModal
+        line={editLine}
+        busy={agentBusy}
+        onClose={() => setEditLine(null)}
+        onSend={sendEdit}
       />
     </View>
   );

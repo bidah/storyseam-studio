@@ -104,6 +104,53 @@ export function createWorldMessage() {
   ].join('\n');
 }
 
+// Inline "change this passage" request from the Script tab's edit sheet (Ask
+// agent tab): the user tapped a block of the screenplay and typed the change
+// they want. Verbatim port of the web AgentProvider's scriptEditRequest — routed
+// through the agent (the script-writing skill) so it proposes the edit as a diff
+// scoped to that passage — propose → confirm → apply, like every other change.
+export function scriptEditRequest(selectedText: string, instruction: string) {
+  return [
+    `The user is on the Script tab and has selected these lines of the screenplay that need to change:`,
+    ``,
+    `"""`,
+    selectedText,
+    `"""`,
+    ``,
+    `The specific request is: ${instruction}`,
+    ``,
+    `Load the script-writing skill and follow it: call get_script to read the current pinned` +
+      ` draft, locate this exact passage, and propose an edit that applies the request to just` +
+      ` these lines while leaving the rest of the script untouched. Propose it as a diff` +
+      ` (save_script / append_script) and confirm before applying — don't commit it until the` +
+      ` user says so.`,
+  ].join('\n');
+}
+
+// The Script tab edit sheet's other mode (Edit tab): the user rewrote the block's
+// text directly rather than describing a change. Same propose → confirm → apply
+// contract, but the agent is handed the exact new text to swap in.
+export function scriptRewriteRequest(original: string, edited: string) {
+  return [
+    `The user is on the Script tab and tapped this passage of the screenplay to edit it inline:`,
+    ``,
+    `Original:`,
+    `"""`,
+    original,
+    `"""`,
+    ``,
+    `They rewrote it to read:`,
+    `"""`,
+    edited,
+    `"""`,
+    ``,
+    `Load the script-writing skill and follow it: call get_script to read the current pinned` +
+      ` draft, locate this exact passage, and propose replacing it with the rewritten version` +
+      ` while leaving the rest of the script untouched. Propose it as a diff (save_script /` +
+      ` append_script) and confirm before applying — don't commit it until I say so.`,
+  ].join('\n');
+}
+
 export function generateShotListMessage() {
   return [
     `Generate the shot list from the script now — the pinned draft is signed.`,
