@@ -128,6 +128,15 @@ export default function RootLayout() {
                     contentStyle: { backgroundColor: 'black' },
                   }}
                 />
+                <Stack.Screen
+                  name="editor"
+                  options={{
+                    presentation: 'fullScreenModal',
+                    contentStyle: { backgroundColor: '#0B0B0F' },
+                    animation: 'slide_from_bottom',
+                    gestureEnabled: false,
+                  }}
+                />
               </Stack>
               <Toaster theme="dark" position="top-center" />
             </View>

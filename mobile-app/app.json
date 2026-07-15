@@ -11,7 +11,8 @@
       "icon": "./assets/images/icon.png",
       "bundleIdentifier": "com.bidah.shot-studio-mobile",
       "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "CADisableMinimumFrameDurationOnPhone": true
       }
     },
     "android": {

@@ -1,8 +1,17 @@
 import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
 import { RefreshControl, ScrollView, Text, View } from 'react-native';
 import { File, Paths } from 'expo-file-system';
+import { router } from 'expo-router';
 import * as Sharing from 'expo-sharing';
-import { History, Music, Play, RefreshCw, Share2, TriangleAlert } from 'lucide-react-native';
+import {
+  History,
+  Music,
+  Play,
+  RefreshCw,
+  Share2,
+  SlidersHorizontal,
+  TriangleAlert,
+} from 'lucide-react-native';
 import { toast } from 'sonner-native';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -94,6 +103,12 @@ export default function CutsScreen() {
   const stitch = () => sendToAgent(stitchCutMessage(data?.range, usable.length || undefined));
   const score = () => sendToAgent(scoreCutMessage(data?.range));
 
+  // Open a complete-cut version in the full-screen timeline editor. The editor
+  // route POSTs /api/timeline/from-cut to build a fresh editable timeline from
+  // this version, then loads it — parity with the web studio's editor.
+  const openInEditor = (v: number) =>
+    router.push({ pathname: '/editor', params: { v: String(v) } });
+
   const share = async (gen: CutGen) => {
     if (sharingV != null) return;
     setSharingV(gen.v);
@@ -165,7 +180,15 @@ export default function CutsScreen() {
               ) : (
                 <Badge variant="warning" label="older version" />
               )}
-              <View className="ml-auto">
+              <View className="ml-auto flex-row items-center gap-1">
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  accessibilityLabel={`Open cut v${activeGen.v} in editor`}
+                  onPress={() => openInEditor(activeGen.v)}
+                >
+                  <SlidersHorizontal size={18} color="#fafafa" />
+                </Button>
                 <Button
                   size="icon"
                   variant="ghost"
@@ -282,6 +305,14 @@ export default function CutsScreen() {
                           }}
                         >
                           <Play size={16} color={isActive ? '#10b981' : '#fafafa'} />
+                        </Button>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          accessibilityLabel={`Open v${g.v} in editor`}
+                          onPress={() => openInEditor(g.v)}
+                        >
+                          <SlidersHorizontal size={16} color="#fafafa" />
                         </Button>
                         <Button
                           size="icon"
