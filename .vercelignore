@@ -5,8 +5,28 @@
 # Regenerated locally; never belongs in a deployment.
 .workflow-data
 
+# eve's local runtime/cache dir — grows into the GBs across dev runs. Vercel
+# builds the agent itself (`npx eve build`), so this is pure local state. Left
+# in, its file COUNT alone overflows the 10 MB deployment-manifest limit and the
+# deploy fails with "Request body too large" long before any bytes upload.
+.eve
+
+# Local build outputs. Vercel runs the build remotely, so uploading ours is
+# waste: `.output` is `eve build`'s (~49 MB), `dist/` is the Vite front-end
+# (the Worker serves that, not this project).
+.output
+dist
+
 # The Cloudflare Worker backend + its node_modules — a separate deploy target.
 worker
+
+# Other deploy targets / platforms that share this repo but not this project:
+# the Expo app (~1.5 GB with its node_modules) and the Vercel render function.
+mobile-app
+render-fn
+
+# Agent/skill tooling for local Claude Code sessions.
+.claude
 
 # Local media / test renders that don't belong in the agent deployment.
 public/media
