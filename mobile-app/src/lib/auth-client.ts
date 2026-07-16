@@ -20,3 +20,32 @@ export const authClient = createAuthClient({
 });
 
 export const { signIn, signUp, signOut, useSession } = authClient;
+
+// Confirms a sign-in/sign-up actually produced a session, and seeds the
+// session *atom* with it before the caller navigates into (tabs).
+//
+// Why seeding is required: the (tabs) guard redirects to /sign-in the moment
+// `useSession` reports `{ data: null, isPending: false }` — and that is
+// exactly the stale value the atom holds after the boot-time bounce
+// (index → /chat → no session → /sign-in). While the auth screens are up
+// nothing subscribes to the atom, so the `$sessionSignal` notify fired when
+// the OAuth deep-link cookie lands never triggers a refetch. Navigating on a
+// verified session without seeding loses the race: the guard's first render
+// reads the stale null and bounces back to /sign-in (the "first Higgsfield
+// login lands on the login page, second one works" bug — the second works
+// only because the bounced mount's late refetch populated the atom).
+export async function confirmSignedIn(): Promise<boolean> {
+  const { data } = await authClient.getSession({ query: { disableCookieCache: true } });
+  if (!data) return false;
+  const sessionAtom = (authClient as any).$store?.atoms?.session;
+  if (sessionAtom) {
+    sessionAtom.set({
+      ...sessionAtom.get(),
+      data,
+      error: null,
+      isPending: false,
+      isRefetching: false,
+    });
+  }
+  return true;
+}

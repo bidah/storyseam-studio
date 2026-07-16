@@ -4,7 +4,7 @@ import { router } from 'expo-router';
 import { toast } from 'sonner-native';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { authClient } from '@/lib/auth-client';
+import { authClient, confirmSignedIn } from '@/lib/auth-client';
 
 export default function SignUp() {
   const [name, setName] = useState('');
@@ -22,6 +22,7 @@ export default function SignUp() {
         password,
       });
       if (error) throw new Error(error.message || 'Sign-up failed');
+      await confirmSignedIn();
       router.replace('/chat');
     } catch (e: any) {
       toast.error(e?.message || 'Sign-up failed');

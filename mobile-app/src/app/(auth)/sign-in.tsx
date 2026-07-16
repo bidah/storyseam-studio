@@ -5,7 +5,7 @@ import { Clapperboard } from 'lucide-react-native';
 import { toast } from 'sonner-native';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { authClient } from '@/lib/auth-client';
+import { authClient, confirmSignedIn } from '@/lib/auth-client';
 
 export default function SignIn() {
   const [email, setEmail] = useState('');
@@ -19,6 +19,7 @@ export default function SignIn() {
     try {
       const { error } = await authClient.signIn.email({ email: email.trim(), password });
       if (error) throw new Error(error.message || 'Sign-in failed');
+      await confirmSignedIn();
       router.replace('/chat');
     } catch (e: any) {
       toast.error(e?.message || 'Sign-in failed');
@@ -42,10 +43,7 @@ export default function SignIn() {
       // sign-in screen (parity with email sign-in's router.replace). Confirm the
       // session actually landed first; a dismissed browser resolves without error
       // and leaves no session, so we shouldn't bounce into the app in that case.
-      const { data: session } = await authClient.getSession({
-        query: { disableCookieCache: true },
-      });
-      if (session) {
+      if (await confirmSignedIn()) {
         router.replace('/chat');
       } else {
         toast.error('Higgsfield sign-in didn’t complete');
