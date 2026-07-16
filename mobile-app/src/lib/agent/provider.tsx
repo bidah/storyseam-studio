@@ -9,7 +9,7 @@ import {
   useState,
   type ReactNode,
 } from 'react';
-import { usePathname } from 'expo-router';
+import { router, usePathname } from 'expo-router';
 import { useEveAgent } from 'eve/react';
 import { API_ORIGIN } from '../env';
 import { useProjectStore } from '../project';
@@ -246,4 +246,23 @@ export function useConversations() {
 // Is the agent mid-turn (can't accept a new `send`)?
 export function agentIsBusy(agent: any) {
   return agent?.status === 'submitted' || agent?.status === 'streaming';
+}
+
+// Drive the agent from anywhere in the UI and reveal the Chat tab so the user
+// lands where the turn streams in. On the web app chat is an always-visible
+// side panel, so a bare `agent.send` is enough; on mobile chat is its own tab,
+// so every "drive the agent from a button" surface (World/Script/Render/
+// Stitch/Trim/Score/Sound…) must navigate to Chat. This is the single
+// mechanism for that — prefer it over calling `agent.send` directly from those
+// surfaces. Returns the send promise (rejects if the agent is mid-turn; the
+// button should already be disabled via `agentIsBusy`).
+export function useSendToAgent() {
+  const agent = useAgent();
+  return useCallback(
+    (message: string) => {
+      router.navigate('/(tabs)/chat');
+      return agent?.send?.({ message });
+    },
+    [agent],
+  );
 }

@@ -31,7 +31,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Empty, ErrorNote, Loading } from '@/components/ui/empty';
 import { Segmented } from '@/components/ui/segmented';
-import { agentIsBusy, useAgent } from '@/lib/agent/provider';
+import { agentIsBusy, useAgent, useSendToAgent } from '@/lib/agent/provider';
 import { renderAllPendingMessage, renderSoundMessage } from '@/lib/agent/messages';
 import { deleteJson, mediaUrl, patchJson, postJson } from '@/lib/api';
 import { useInvalidate, useProjectResource } from '@/lib/queries';
@@ -104,9 +104,10 @@ function VersionRow({
       },
     ]);
 
+  const sendToAgent = useSendToAgent();
   const requestRender = async () => {
     try {
-      await agent.send({ message: renderSoundMessage(track, ver) });
+      await sendToAgent(renderSoundMessage(track, ver));
       toast(SENT_TOAST);
     } catch (e: any) {
       toast.error(`Agent send failed: ${e?.message || e}`);
@@ -360,9 +361,10 @@ export function SoundsSection() {
   const togglePlay = (key: string, url: string) =>
     setNowPlaying((cur) => (cur?.key === key ? null : { key, url }));
 
+  const sendToAgent = useSendToAgent();
   const renderAll = async () => {
     try {
-      await agent.send({ message: renderAllPendingMessage(tracks) });
+      await sendToAgent(renderAllPendingMessage(tracks));
       toast(SENT_TOAST);
     } catch (e: any) {
       toast.error(`Agent send failed: ${e?.message || e}`);

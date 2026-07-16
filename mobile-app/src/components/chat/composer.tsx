@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, TextInput, View } from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import { KeyboardStickyView } from 'react-native-keyboard-controller';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
@@ -7,8 +7,10 @@ import * as Haptics from 'expo-haptics';
 import * as Crypto from 'expo-crypto';
 import { Image } from 'expo-image';
 import { toast } from 'sonner-native';
-import { ArrowUp, CircleStop, ImagePlus, X } from 'lucide-react-native';
+import { router } from 'expo-router';
+import { ArrowUp, ChevronDown, CircleStop, ImagePlus, X } from 'lucide-react-native';
 import { cn } from '@/lib/utils';
+import { AGENT_MODELS, useAgentModelStore } from '@/lib/agent-model';
 import { GlassSurface } from './glass-surface';
 import { chatColors } from './theme';
 
@@ -36,6 +38,8 @@ export function Composer({
   onSubmit: (text: string, atts: LocalAttachment[]) => Promise<void>;
 }) {
   const insets = useSafeAreaInsets();
+  const modelId = useAgentModelStore((s) => s.model);
+  const model = AGENT_MODELS.find((m) => m.id === modelId) ?? AGENT_MODELS[0];
   const [text, setText] = useState('');
   const [atts, setAtts] = useState<LocalAttachment[]>([]);
   const [sending, setSending] = useState(false);
@@ -151,6 +155,18 @@ export function Composer({
               onPress={pick}
             >
               <ImagePlus size={17} color={chatColors.mutedForeground} />
+            </Pressable>
+
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={`Model: ${model.label}`}
+              className="ml-2 h-9 flex-row items-center gap-1 rounded-full border border-border px-3 active:opacity-60"
+              onPress={() => router.push('/model-picker')}
+            >
+              <Text className="text-[13px] font-medium text-foreground" numberOfLines={1}>
+                {model.label}
+              </Text>
+              <ChevronDown size={13} color={chatColors.mutedForeground} />
             </Pressable>
 
             <View className="ml-auto">

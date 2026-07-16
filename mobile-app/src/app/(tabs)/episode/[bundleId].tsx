@@ -37,7 +37,7 @@ import { Empty, ErrorNote, Loading } from '@/components/ui/empty';
 import { Input } from '@/components/ui/input';
 import { Segmented } from '@/components/ui/segmented';
 import { mediaUrl, postJson, toPreviewSrc } from '@/lib/api';
-import { agentIsBusy, useAgent } from '@/lib/agent/provider';
+import { agentIsBusy, useAgent, useSendToAgent } from '@/lib/agent/provider';
 import {
   renderEpisodeMessage,
   renderStoryboardAllMessage,
@@ -492,16 +492,17 @@ export default function BundleDetail() {
 
   // --- agent sends -----------------------------------------------------------
 
+  const send = useSendToAgent();
   const sendToAgent = useCallback(
     async (message: string) => {
       try {
-        await agent.send({ message });
+        await send(message);
         toast.success('Sent to agent — watch the Chat tab');
       } catch (e: any) {
         toast.error(String(e?.message || e));
       }
     },
-    [agent],
+    [send],
   );
 
   const requestRender = useCallback(() => {

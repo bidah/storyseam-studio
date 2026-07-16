@@ -2,8 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
-  Keyboard,
   Pressable,
+  StyleSheet,
   Text,
   View,
   type NativeScrollEvent,
@@ -22,7 +22,7 @@ import { ArrowDown, CircleAlert, Sparkles } from 'lucide-react-native';
 import { Stack } from 'expo-router';
 import { agentIsBusy, useAgent, useConversations } from '@/lib/agent/provider';
 import { uploadFile } from '@/lib/api';
-import { ChatHeaderRight } from '@/components/chat/chat-header';
+import { ChatHeaderRight, useChatHeaderItems } from '@/components/chat/chat-header';
 import { Composer, type LocalAttachment } from '@/components/chat/composer';
 import { ConversationsOverlay } from '@/components/chat/conversations-overlay';
 import { isThinking, pendingRequest, workingTool } from '@/components/chat/helpers';
@@ -32,6 +32,17 @@ import type { AgentMessage, SentAttachment } from '@/components/chat/types';
 
 // The eve agent chat — native port of the web AgentChat.jsx on the shared
 // AgentProvider session (the same instance other tabs' Render buttons drive).
+//
+// The transcript is an *inverted* FlatList. On this stack (Expo SDK 57 /
+// RN 0.86 / React 19 / New Architecture / NativeWind / React Compiler) every
+// imperative scroll path is dead — FlatList.scrollToEnd/scrollToOffset are
+// no-ops (the inner ScrollView ref never attaches), a plain ScrollView ref
+// resolves to a bare native node with no scroll methods, and reanimated's
+// scrollTo reports an uninitialized ref. Only native gestures scroll. An
+// inverted list sidesteps all of that: data is newest-first, so the newest
+// message rests at the visual bottom by construction — the chat opens at the
+// latest and stays pinned as the agent streams, with no ref calls. "Jump to
+// latest" remounts the list (key bump), which lands back at the newest.
 
 const SUGGESTIONS = [
   "Let's create the world",
@@ -94,10 +105,12 @@ export default function ChatScreen() {
   const agent = useAgent();
   const conv = useConversations();
   const insets = useSafeAreaInsets();
-  const listRef = useRef<FlatList<Row>>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
-  const [atBottom, setAtBottom] = useState(true);
-  const atBottomRef = useRef(true);
+  // Inverted list: scroll offset 0 == newest at the visual bottom. atNewest
+  // drives the "jump to latest" button (shown only when scrolled up into
+  // history). remountKey bumps to snap back to the newest (see jumpToLatest).
+  const [atNewest, setAtNewest] = useState(true);
+  const [remountKey, setRemountKey] = useState(0);
   // One entry per user turn (ordinal-aligned to user messages): the images
   // that turn was sent with, re-rendered into its bubble.
   const sentAttachmentsRef = useRef<SentAttachment[][]>([]);
@@ -105,43 +118,26 @@ export default function ChatScreen() {
   const activeId: string = conv.activeId;
   const getInitial = conv.getInitial as (id: string) => { attachments?: unknown };
 
-  // On mount / chat switch: reseed the attachments record and land at the end
-  // of the restored transcript. The agent session itself is swapped in by
-  // AgentProvider — this only resets client-side view state.
+  // On mount / chat switch: reseed the attachments record. The inverted list
+  // rests at the newest message by construction, so there's nothing to scroll.
   useEffect(() => {
     const initial = getInitial(activeId);
     sentAttachmentsRef.current = Array.isArray(initial.attachments)
       ? (initial.attachments as SentAttachment[][])
       : [];
-    atBottomRef.current = true;
-    setAtBottom(true);
+    setAtNewest(true);
     setHistoryOpen(false);
-    requestAnimationFrame(() => listRef.current?.scrollToEnd({ animated: false }));
+    setRemountKey((k) => k + 1);
   }, [activeId, getInitial]);
-
-  // Keep the latest content visible when the keyboard slides up.
-  useEffect(() => {
-    const scroll = () => {
-      if (atBottomRef.current) {
-        requestAnimationFrame(() => listRef.current?.scrollToEnd({ animated: true }));
-      }
-    };
-    const subs = [
-      Keyboard.addListener('keyboardWillShow', scroll),
-      Keyboard.addListener('keyboardDidShow', scroll),
-    ];
-    return () => subs.forEach((s) => s.remove());
-  }, []);
 
   const messages: AgentMessage[] = agent?.data?.messages ?? [];
   const busy = agentIsBusy(agent);
-  const errored = agent?.status === 'error';
   const pendingReq = useMemo(() => pendingRequest(messages), [messages]);
   const pending = !!pendingReq;
   const thinking = useMemo(() => isThinking(messages, busy), [messages, busy]);
   const working = useMemo(() => workingTool(messages, busy, pending), [messages, busy, pending]);
 
-  // Ordinal-align each user message with the images it was sent with.
+  // Ordinal-align each user message with the images it was sent with (oldest→newest).
   const rows = useMemo<Row[]>(() => {
     let ordinal = -1;
     return messages.map((m, i) => {
@@ -154,8 +150,12 @@ export default function ChatScreen() {
     });
   }, [messages]);
 
+  // Inverted FlatList wants newest first.
+  const data = useMemo(() => rows.slice().reverse(), [rows]);
+
   // The composer rides the keyboard via a transform, so the list reserves
-  // matching space at its end (keyboardHeight is negative while open).
+  // matching space at the newest (visual-bottom) edge — which, for an inverted
+  // list, is the ListHeaderComponent (keyboardHeight is negative while open).
   const { height: keyboardHeight } = useReanimatedKeyboardAnimation();
   const bottomInset = insets.bottom;
   const spacerStyle = useAnimatedStyle(() => ({
@@ -216,12 +216,26 @@ export default function ChatScreen() {
         : t;
 
       recordAttachments(sent);
-      atBottomRef.current = true;
-      setAtBottom(true);
+      // Snap to the newest so the sent turn (and the reply) are in view.
+      if (!atNewest) setRemountKey((k) => k + 1);
+      setAtNewest(true);
       void agent?.send?.({ message });
     },
-    [agent, pendingReq, recordAttachments],
+    [agent, pendingReq, recordAttachments, atNewest],
   );
+
+  // Inverted list: y ≈ 0 means we're at the newest message.
+  const onScroll = useCallback((e: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const near = e.nativeEvent.contentOffset.y < 80;
+    setAtNewest((prev) => (prev === near ? prev : near));
+  }, []);
+
+  // Imperative scroll is a no-op on this stack (see file header), so snap to the
+  // newest by remounting the inverted list — it lands at offset 0 (newest).
+  const jumpToLatest = useCallback(() => {
+    setAtNewest(true);
+    setRemountKey((k) => k + 1);
+  }, []);
 
   const renderItem = useCallback(
     ({ item }: { item: Row }) => (
@@ -230,79 +244,68 @@ export default function ChatScreen() {
     [busy, onRespond],
   );
 
-  const onScroll = useCallback((e: NativeSyntheticEvent<NativeScrollEvent>) => {
-    const { contentOffset, contentSize, layoutMeasurement } = e.nativeEvent;
-    const near = contentSize.height - contentOffset.y - layoutMeasurement.height < 80;
-    atBottomRef.current = near;
-    setAtBottom((prev) => (prev === near ? prev : near));
-  }, []);
+  const errorMessage = agent?.error ? String(agent.error?.message ?? agent.error) : null;
 
-  const jumpToLatest = useCallback(() => {
-    atBottomRef.current = true;
-    setAtBottom(true);
-    listRef.current?.scrollToEnd({ animated: true });
-  }, []);
-
-  const errorMessage = agent?.error
-    ? String(agent.error?.message ?? agent.error)
-    : null;
+  const onHistoryPress = useCallback(() => setHistoryOpen((v) => !v), []);
+  const onNewChat = useCallback(() => {
+    Haptics.selectionAsync().catch(() => {});
+    conv.newChat();
+  }, [conv]);
+  // Native bar button items on iOS, the <ChatHeaderRight> row elsewhere — see
+  // src/components/chat/chat-header.tsx.
+  const headerItems = useChatHeaderItems({ onHistoryPress, onNewChat });
 
   return (
     <View className="flex-1 bg-background">
       <Stack.Screen
         options={{
+          unstable_headerRightItems: () => headerItems,
           headerRight: () => (
-            <ChatHeaderRight
-              busy={busy}
-              errored={errored}
-              onHistoryPress={() => setHistoryOpen((v) => !v)}
-              onNewChat={() => {
-                Haptics.selectionAsync().catch(() => {});
-                conv.newChat();
-              }}
-            />
+            <ChatHeaderRight onHistoryPress={onHistoryPress} onNewChat={onNewChat} />
           ),
         }}
       />
 
       <View className="relative min-h-0 flex-1">
-        <FlatList
-          ref={listRef}
-          data={rows}
-          keyExtractor={(r) => r.key}
-          renderItem={renderItem}
-          className="flex-1"
-          contentContainerClassName="flex-grow gap-4 py-4"
-          keyboardShouldPersistTaps="handled"
-          keyboardDismissMode="interactive"
-          onScroll={onScroll}
-          scrollEventThrottle={32}
-          onContentSizeChange={() => {
-            if (atBottomRef.current) listRef.current?.scrollToEnd({ animated: true });
-          }}
-          ListEmptyComponent={<EmptyChat onSuggest={sendQuick} />}
-          ListFooterComponent={
-            <>
-              {thinking ? (
-                <ShimmerRow label="Thinking…" />
-              ) : working ? (
-                <ShimmerRow label="Agent is working…" />
-              ) : null}
-              {errorMessage ? (
-                <View className="mx-4 mt-2 flex-row items-start gap-2 rounded-xl border border-destructive/40 bg-destructive/10 p-3">
-                  <CircleAlert size={15} color={chatColors.destructive} style={{ marginTop: 2 }} />
-                  <View className="min-w-0 flex-1">
-                    <Text className="text-sm font-medium text-foreground">Agent error</Text>
-                    <Text className="text-xs text-muted-foreground">{errorMessage}</Text>
+        {rows.length === 0 ? (
+          <EmptyChat onSuggest={sendQuick} />
+        ) : (
+          <FlatList
+            key={remountKey}
+            inverted
+            data={data}
+            keyExtractor={(r) => r.key}
+            renderItem={renderItem}
+            style={styles.list}
+            contentContainerStyle={styles.listContent}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="interactive"
+            onScroll={onScroll}
+            scrollEventThrottle={16}
+            // Inverted → ListHeaderComponent renders at the visual bottom (newest).
+            ListHeaderComponent={
+              <>
+                {thinking ? (
+                  <ShimmerRow label="Thinking…" />
+                ) : working ? (
+                  <ShimmerRow label="Agent is working…" />
+                ) : null}
+                {errorMessage ? (
+                  <View className="mx-4 mt-2 flex-row items-start gap-2 rounded-xl border border-destructive/40 bg-destructive/10 p-3">
+                    <CircleAlert size={15} color={chatColors.destructive} style={{ marginTop: 2 }} />
+                    <View className="min-w-0 flex-1">
+                      <Text className="text-sm font-medium text-foreground">Agent error</Text>
+                      <Text className="text-xs text-muted-foreground">{errorMessage}</Text>
+                    </View>
                   </View>
-                </View>
-              ) : null}
-              <Animated.View style={spacerStyle} />
-            </>
-          }
-        />
+                ) : null}
+                <Animated.View style={spacerStyle} />
+              </>
+            }
+          />
+        )}
 
-        {!atBottom && rows.length > 0 ? (
+        {!atNewest && rows.length > 0 ? (
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Jump to latest"
@@ -323,3 +326,8 @@ export default function ChatScreen() {
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  list: { flex: 1 },
+  listContent: { flexGrow: 1, gap: 16, paddingVertical: 16 },
+});

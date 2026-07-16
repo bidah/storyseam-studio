@@ -18,7 +18,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardTitle } from '@/components/ui/card';
 import { Empty, ErrorNote, Loading } from '@/components/ui/empty';
 import { mediaUrl, postJson, putJson } from '@/lib/api';
-import { agentIsBusy, useAgent } from '@/lib/agent/provider';
+import { agentIsBusy, useAgent, useSendToAgent } from '@/lib/agent/provider';
 import { createWorldMessage } from '@/lib/agent/messages';
 import { useInvalidate, useProjectResource } from '@/lib/queries';
 import { EditableField } from './field';
@@ -132,6 +132,7 @@ export function WorldSurface() {
   const invalidate = useInvalidate();
   const agent = useAgent();
   const agentBusy = agentIsBusy(agent);
+  const sendToAgent = useSendToAgent();
 
   const run = async (fn: () => Promise<unknown>) => {
     try {
@@ -146,7 +147,7 @@ export function WorldSurface() {
   const addChar = () => run(() => postJson('/api/world/character', {}));
 
   const createWithAgent = () => {
-    agent.send({ message: createWorldMessage() }).catch(() => {});
+    sendToAgent(createWorldMessage()).catch(() => {});
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
     toast('Sent to agent — watch the Chat tab');
   };

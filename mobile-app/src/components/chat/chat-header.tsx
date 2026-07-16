@@ -1,46 +1,47 @@
-import { Pressable, Text, View } from 'react-native';
-import { router } from 'expo-router';
+import { Pressable, View } from 'react-native';
+import type { NativeStackHeaderItem } from 'expo-router/build/react-navigation/native-stack/types';
 import { History, SquarePen } from 'lucide-react-native';
-import { cn } from '@/lib/utils';
-import { AGENT_MODELS, useAgentModelStore } from '@/lib/agent-model';
 import { chatColors } from './theme';
 
-// Right-side controls for the Chat tab's native header: model pill (with a
-// status dot) · chat history · new chat. The project switcher sits in
-// headerLeft (shared, see header-buttons.tsx).
-export function ChatHeaderRight({
-  busy,
-  errored,
-  onHistoryPress,
-  onNewChat,
-}: {
-  busy: boolean;
-  errored: boolean;
+// Right-side controls for the Chat tab's native header: chat history · new chat.
+// The project switcher sits on the left (shared, see header-buttons.tsx); the
+// model selector lives in the composer, next to the attach button.
+//
+// iOS gets native bar button items so the navigation bar's own glass capsule IS
+// the button chrome (see header-buttons.tsx for why); Android/web falls back to
+// the <Pressable> row below.
+
+type ChatHeaderProps = {
   onHistoryPress: () => void;
   onNewChat: () => void;
-}) {
-  const modelId = useAgentModelStore((s) => s.model);
-  const active = AGENT_MODELS.find((m) => m.id === modelId) ?? AGENT_MODELS[0];
+};
 
+export function useChatHeaderItems({
+  onHistoryPress,
+  onNewChat,
+}: ChatHeaderProps): NativeStackHeaderItem[] {
+  return [
+    {
+      type: 'button',
+      label: '',
+      icon: { type: 'sfSymbol', name: 'clock.arrow.circlepath' },
+      accessibilityLabel: 'Chat history',
+      onPress: onHistoryPress,
+    },
+    {
+      type: 'button',
+      label: '',
+      icon: { type: 'sfSymbol', name: 'square.and.pencil' },
+      accessibilityLabel: 'New chat',
+      onPress: onNewChat,
+    },
+  ];
+}
+
+// Android/web fallback for useChatHeaderItems.
+export function ChatHeaderRight({ onHistoryPress, onNewChat }: ChatHeaderProps) {
   return (
     <View className="flex-row items-center gap-1">
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={`Model: ${active.label}`}
-        className="flex-row items-center gap-1.5 rounded-full bg-secondary px-2.5 py-1.5 active:opacity-70"
-        onPress={() => router.push('/model-picker')}
-      >
-        <View
-          className={cn(
-            'h-2 w-2 rounded-full',
-            errored ? 'bg-destructive' : busy ? 'bg-primary' : 'bg-muted-foreground/40',
-          )}
-        />
-        <Text className="max-w-24 text-[13px] font-semibold text-foreground" numberOfLines={1}>
-          {active.label}
-        </Text>
-      </Pressable>
-
       <Pressable
         accessibilityRole="button"
         accessibilityLabel="Chat history"

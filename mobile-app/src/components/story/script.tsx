@@ -9,7 +9,6 @@ import {
   View,
 } from 'react-native';
 import * as Haptics from 'expo-haptics';
-import { router } from 'expo-router';
 import { toast } from 'sonner-native';
 import {
   CircleCheck,
@@ -32,7 +31,7 @@ import { Segmented } from '@/components/ui/segmented';
 import { Empty, ErrorNote, Loading } from '@/components/ui/empty';
 import { deleteJson, patchJson, postJson, putJson } from '@/lib/api';
 import { CLIENT_ID } from '@/lib/client-id';
-import { agentIsBusy, useAgent } from '@/lib/agent/provider';
+import { agentIsBusy, useAgent, useSendToAgent } from '@/lib/agent/provider';
 import { generateShotListMessage, scriptEditRequest, scriptRewriteRequest } from '@/lib/agent/messages';
 import { useInvalidate, useProjectResource } from '@/lib/queries';
 import { cn } from '@/lib/utils';
@@ -456,6 +455,7 @@ export function ScriptSurface() {
   const invalidate = useInvalidate();
   const agent = useAgent();
   const agentBusy = agentIsBusy(agent);
+  const sendToAgent = useSendToAgent();
   const [draftsOpen, setDraftsOpen] = useState(false);
   const [signOpen, setSignOpen] = useState(false);
   const [reviewOpen, setReviewOpen] = useState(false);
@@ -501,7 +501,7 @@ export function ScriptSurface() {
   };
 
   const generate = () => {
-    agent.send({ message: generateShotListMessage() }).catch(() => {});
+    sendToAgent(generateShotListMessage()).catch(() => {});
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
     toast('Sent to agent — watch the Chat tab');
   };
@@ -510,11 +510,10 @@ export function ScriptSurface() {
   // the request (built by the sheet) to the agent as a reviewable proposal, then
   // jump to the Chat tab to watch it stream.
   const sendEdit = (message: string) => {
-    agent.send({ message }).catch(() => {});
+    sendToAgent(message).catch(() => {});
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
     setEditLine(null);
     toast('Sent to agent — review the proposal here when it lands');
-    router.navigate('/(tabs)/chat');
   };
 
   const hasBody = docLines(script.doc).some((l) => l.text.trim());

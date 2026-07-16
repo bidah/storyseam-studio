@@ -6,10 +6,10 @@ import * as Sharing from 'expo-sharing';
 import {
   History,
   Music,
+  Pencil,
   Play,
   RefreshCw,
   Share2,
-  SlidersHorizontal,
   TriangleAlert,
 } from 'lucide-react-native';
 import { toast } from 'sonner-native';
@@ -19,7 +19,7 @@ import { Card, Eyebrow } from '@/components/ui/card';
 import { Empty, ErrorNote, Loading } from '@/components/ui/empty';
 import { CutPlayer } from '@/components/cuts/cut-player';
 import { fmtTime, segDuration, type CutGen, type CutsPayload } from '@/components/cuts/types';
-import { agentIsBusy, useAgent } from '@/lib/agent/provider';
+import { agentIsBusy, useAgent, useSendToAgent } from '@/lib/agent/provider';
 import { scoreCutMessage, stitchCutMessage } from '@/lib/agent/messages';
 import { mediaUrl } from '@/lib/api';
 import { useInvalidate, useProjectResource } from '@/lib/queries';
@@ -74,17 +74,18 @@ export default function CutsScreen() {
     }
   }, [refetch]);
 
+  const send = useSendToAgent();
   const sendToAgent = useCallback(
     async (message: string) => {
       try {
-        const turn = agent.send({ message });
+        const turn = send(message);
         toast('Sent to agent — watch the Chat tab');
         await turn;
       } catch (e: any) {
         toast.error(String(e?.message || e));
       }
     },
-    [agent],
+    [send],
   );
 
   const segs = data?.segments ?? [];
@@ -187,7 +188,7 @@ export default function CutsScreen() {
                   accessibilityLabel={`Open cut v${activeGen.v} in editor`}
                   onPress={() => openInEditor(activeGen.v)}
                 >
-                  <SlidersHorizontal size={18} color="#fafafa" />
+                  <Pencil size={18} color="#fafafa" />
                 </Button>
                 <Button
                   size="icon"
@@ -312,7 +313,7 @@ export default function CutsScreen() {
                           accessibilityLabel={`Open v${g.v} in editor`}
                           onPress={() => openInEditor(g.v)}
                         >
-                          <SlidersHorizontal size={16} color="#fafafa" />
+                          <Pencil size={16} color="#fafafa" />
                         </Button>
                         <Button
                           size="icon"
