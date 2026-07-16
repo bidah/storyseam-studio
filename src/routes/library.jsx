@@ -245,7 +245,7 @@ function RenameModal({ im, onClose, onDone }) {
           <DialogTitle>Rename asset</DialogTitle>
         </DialogHeader>
         <div className="flex items-center gap-3">
-          <img src={im.thumb || im.url} alt="" className="h-14 w-14 shrink-0 rounded-md border object-cover" />
+          <img src={im.thumb || im.url} alt="" className="h-14 w-14 shrink-0 rounded-md object-cover" />
           <Input
             value={name}
             onChange={(e) => setName(e.target.value)}
@@ -323,7 +323,7 @@ function PlaceModal({ item, folders, onClose, onDone }) {
           <DialogTitle>Add to library</DialogTitle>
         </DialogHeader>
         <div className="flex items-start gap-3">
-          <img src={item.thumb || item.minUrl} alt="" className="h-20 w-20 shrink-0 rounded-md border object-cover" />
+          <img src={item.thumb || item.minUrl} alt="" className="h-20 w-20 shrink-0 rounded-md object-cover" />
           <p className="line-clamp-4 text-xs text-muted-foreground">{item.prompt || item.model}</p>
         </div>
         <div className="space-y-2">

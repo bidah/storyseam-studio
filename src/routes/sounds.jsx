@@ -13,7 +13,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Empty, Chip, Panel, Spinner, ErrorNote } from "@/components/shared";
+import { Empty, Chip, Panel, Spinner, ErrorNote, IconSwap } from "@/components/shared";
 
 /* ---------------------------------------------------------------- *
  * Sound studio                                                     *
@@ -447,7 +447,7 @@ function NewSoundBuilder({ bundles, busy, onCreate, onCancel }) {
                         className="flex flex-1 items-center gap-2 text-left text-sm"
                         onClick={() => toggleExpand(b.id)}
                       >
-                        {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                        <IconSwap active={open} on={<ChevronDown size={14} />} off={<ChevronRight size={14} />} />
                         <strong className="font-mono">{b.id}</strong>
                         <span className="truncate text-muted-foreground">
                           {b.beatTitle} · shots {b.shots[0]?.id}–{b.shots[b.shots.length - 1]?.id}
@@ -520,7 +520,7 @@ function NewSoundBuilder({ bundles, busy, onCreate, onCancel }) {
             <Plus size={13} /> Create (pending render)
           </Button>
           <Button variant="outline" onClick={copy} disabled={!promptText.trim()}>
-            {copied ? <Check size={13} /> : <Copy size={13} />} {copied ? "Copied" : "Copy prompt"}
+            <IconSwap active={copied} on={<Check size={13} />} off={<Copy size={13} />} /> {copied ? "Copied" : "Copy prompt"}
           </Button>
           <Button variant="ghost" onClick={onCancel} disabled={busy}>Cancel</Button>
           <span className={cn("text-xs", over ? "font-semibold text-destructive" : "text-muted-foreground")}>
@@ -685,7 +685,7 @@ function SfxBuilder({ busy, onCreate, onCancel }) {
             <Plus size={13} /> Create (pending render)
           </Button>
           <Button variant="outline" onClick={copy} disabled={!promptText.trim()}>
-            {copied ? <Check size={13} /> : <Copy size={13} />} {copied ? "Copied" : "Copy prompt"}
+            <IconSwap active={copied} on={<Check size={13} />} off={<Copy size={13} />} /> {copied ? "Copied" : "Copy prompt"}
           </Button>
           <Button variant="ghost" onClick={onCancel} disabled={busy}>Cancel</Button>
           <span className={cn("text-xs", over ? "font-semibold text-destructive" : "text-muted-foreground")}>
@@ -786,7 +786,7 @@ function VoiceBuilder({ busy, onCreate, onCancel }) {
             <Plus size={13} /> Create (pending render)
           </Button>
           <Button variant="outline" onClick={copy} disabled={!promptText.trim()}>
-            {copied ? <Check size={13} /> : <Copy size={13} />} {copied ? "Copied" : "Copy prompt"}
+            <IconSwap active={copied} on={<Check size={13} />} off={<Copy size={13} />} /> {copied ? "Copied" : "Copy prompt"}
           </Button>
           <Button variant="ghost" onClick={onCancel} disabled={busy}>Cancel</Button>
           <span className={cn("text-xs", over ? "font-semibold text-destructive" : "text-muted-foreground")}>

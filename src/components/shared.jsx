@@ -154,4 +154,28 @@ function RouteError() {
   return <ErrorNote>{String(err?.message || err || "Failed to load")}</ErrorNote>;
 }
 
-export { Empty, Eyebrow, Chip, Panel, Spinner, ErrorNote, ImageModal, ConfirmModal, fmtTime, RouteError };
+// Cross-fades between two icons on a state change. Both icons stay mounted
+// (one absolutely positioned over the other), so exit animates as well as
+// enter — no motion library needed. `off` defines the layout box; `on`
+// overlays it. Values are fixed by the better-ui skill: scale 0.25 → 1,
+// opacity 0 → 1, blur 4px → 0.
+function IconSwap({ on, off, active, className }) {
+  const shared = "transition-[opacity,filter,scale] duration-300 ease-[cubic-bezier(0.2,0,0,1)]";
+  const shown = "scale-100 opacity-100 blur-0";
+  const hidden = "scale-[0.25] opacity-0 blur-[4px]";
+  return (
+    <span className={cn("relative inline-flex items-center justify-center", className)}>
+      <span
+        aria-hidden={!active}
+        className={cn("absolute inset-0 flex items-center justify-center", shared, active ? shown : hidden)}
+      >
+        {on}
+      </span>
+      <span aria-hidden={active} className={cn(shared, active ? hidden : shown)}>
+        {off}
+      </span>
+    </span>
+  );
+}
+
+export { Empty, Eyebrow, Chip, Panel, Spinner, ErrorNote, ImageModal, ConfirmModal, fmtTime, RouteError, IconSwap };

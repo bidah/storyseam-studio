@@ -15,7 +15,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Separator } from "@/components/ui/separator";
 import { Slider } from "@/components/ui/slider";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Empty, Eyebrow, Chip, ErrorNote, ConfirmModal } from "@/components/shared";
+import { Empty, Eyebrow, Chip, ErrorNote, ConfirmModal, IconSwap } from "@/components/shared";
 import { useShell } from "@/lib/shellContext";
 
 /* ---------------------------------------------------------------- *
@@ -57,7 +57,7 @@ function CopyButton({ text, label = "copy prompt" }) {
   }, [text]);
   return (
     <Button variant={copied ? "secondary" : "outline"} size="sm" onClick={onCopy}>
-      {copied ? <><Check size={13} /> copied</> : <><Copy size={13} /> {label}</>}
+      <IconSwap active={copied} on={<Check size={13} />} off={<Copy size={13} />} /> {copied ? "copied" : label}
     </Button>
   );
 }
@@ -1074,7 +1074,7 @@ function AudioPickerModal({ bundle, audioRefs, picked, open, onToggle, onClose }
                   title={on ? "remove from this shot" : "use in this shot"}
                   onClick={() => onToggle(bundle.id, a.rel, !on)}
                 >
-                  {on ? <Check size={14} /> : <Plus size={14} />}
+                  <IconSwap active={on} on={<Check size={14} />} off={<Plus size={14} />} />
                 </Button>
                 <div className="min-w-0 flex-1 space-y-1.5">
                   <div className="flex items-center gap-2 text-sm font-medium">

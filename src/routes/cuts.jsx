@@ -28,7 +28,7 @@ function NowPlayingCut({ src, segs, music, withMusic, navigateTo }) {
 
   const chip =
     "pointer-events-auto flex items-center gap-1.5 rounded-md bg-black/70 px-2.5 py-1.5 " +
-    "text-xs font-medium text-white shadow-sm backdrop-blur transition hover:bg-black/85";
+    "text-xs font-medium text-white shadow-sm backdrop-blur transition-colors hover:bg-black/85";
 
   // Fall back to the last segment's end when the browser hasn't reported the
   // real container duration yet, so dots still lay out before playback starts.
@@ -166,7 +166,7 @@ function NowPlayingCut({ src, segs, music, withMusic, navigateTo }) {
                       seek(mk.seekTo);
                     }}
                     className={cn(
-                      "block h-2.5 w-2.5 rounded-full border border-black/40 shadow-sm transition hover:scale-125",
+                      "block h-2.5 w-2.5 rounded-full border border-black/40 shadow-sm transition-transform hover:scale-125",
                       isShot ? "bg-primary" : "bg-sky-400",
                       !isShot && "translate-y-2" // sound dots sit on a lower row so they don't overlap shot dots
                     )}

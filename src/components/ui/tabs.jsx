@@ -113,7 +113,7 @@ function TabsList({
         aria-hidden
         data-slot="tabs-indicator"
         className={cn(
-          "pointer-events-none absolute rounded-md bg-primary shadow-sm transition-all duration-300 ease-in-out",
+          "pointer-events-none absolute rounded-md bg-primary shadow-sm transition-[left,top,width,height,opacity] duration-300 ease-in-out",
           "group-data-[variant=line]/tabs-list:bg-transparent group-data-[variant=line]/tabs-list:shadow-none group-data-[variant=line]/tabs-list:rounded-none group-data-[variant=line]/tabs-list:border-b-2 group-data-[variant=line]/tabs-list:border-b-primary",
           !indicator.ready && "opacity-0"
         )}

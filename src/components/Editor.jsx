@@ -37,6 +37,7 @@ import {
 } from "@/components/ui/context-menu";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 
+import { IconSwap } from "@/components/shared";
 import EditorComposition from "@/editor/Composition";
 import { timelineDuration, framesToSec } from "@/editor/timeline";
 import { CLIENT_ID } from "@/lib/clientId";
@@ -2963,7 +2964,11 @@ export default function Editor({ reloadKey }) {
                 )}
                 <div className="text-xs">
                   <div className="mb-1 flex items-center gap-1 text-muted-foreground">
-                    {selected.item.muted || selected.item.volume === 0 ? <VolumeX size={12} /> : <Volume2 size={12} />} Volume
+                    <IconSwap
+                      active={selected.item.muted || selected.item.volume === 0}
+                      on={<VolumeX size={12} />}
+                      off={<Volume2 size={12} />}
+                    /> Volume
                   </div>
                   <div className="flex items-center gap-2">
                     <Slider

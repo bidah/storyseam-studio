@@ -155,6 +155,17 @@
     height: 36px;
   }
 
+  /* Subtle inset outline on images for consistent depth. Pure black/white
+     only — a tinted neutral picks up the surface underneath and reads as
+     dirt on the image edge. outline (not border) keeps layout size intact. */
+  img {
+    outline: 1px solid oklch(0 0 0 / 0.1);
+    outline-offset: -1px;
+  }
+  .dark img {
+    outline-color: oklch(1 0 0 / 0.1);
+  }
+
   /* Refined scrollbars */
   * {
     scrollbar-width: thin;
