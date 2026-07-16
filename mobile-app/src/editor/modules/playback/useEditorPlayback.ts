@@ -25,6 +25,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useVideoPlayer, type VideoPlayer, type VideoSource } from "expo-video";
 import { useSharedValue, type SharedValue } from "react-native-reanimated";
 import {
+  isImageItem,
   itemAtFrame,
   timelineDuration,
   framesToSec,
@@ -34,6 +35,24 @@ import {
 
 const AUDIO_SLOTS = 2; // simultaneous music/audio-track items supported
 
+/** An audio item that actually has something to load (see `reconcileAudio`). */
+type PlayableAudio = TimelineItem & { src: string };
+const isPlayableAudio = (it: TimelineItem): it is PlayableAudio => !!it.src;
+
+// What the picture surface is showing, as a comparable key. It includes `src`
+// and not just `id` because swapping a still's take (the agent's regenerate
+// flow) replaces the src of an item that keeps its id — keying on id alone
+// would leave the old picture on screen.
+const pictureKey = (it: TimelineItem | null): string | null =>
+  it ? `${it.id}:${it.src ?? ""}` : null;
+
+/**
+ * What the picture lane is showing at the playhead. `item` may be a video clip
+ * (playing through `player`) OR an animatic image item — a storyboard still, or
+ * a slate with `src: null`. Images never touch `player`: expo-video cannot play
+ * a JPEG and would take the whole preview down on a null source, so the
+ * composition draws them itself and reads `item.kind` to decide.
+ */
 export interface ActiveVideo {
   player: VideoPlayer;
   item: TimelineItem | null;
@@ -101,9 +120,9 @@ export function useEditorPlayback(
   // read inside `applyFrame` so that hook stays stable across clip switches —
   // otherwise the running rAF play-loop would capture a stale `applyFrame`.
   const [activeVideoItem, setActiveVideoItem] = useState<TimelineItem | null>(null);
-  const activeVideoIdRef = useRef<string | null>(null);
+  const activeKeyRef = useRef<string | null>(null);
   const setActiveVideo = useCallback((it: TimelineItem | null) => {
-    activeVideoIdRef.current = it?.id ?? null;
+    activeKeyRef.current = pictureKey(it);
     setActiveVideoItem(it);
   }, []);
   const videoSrcRef = useRef<string | null>(null);
@@ -126,11 +145,14 @@ export function useEditorPlayback(
   // video player).
   const reconcileAudio = useCallback(
     (tl: Timeline | null, frame: number, isPlaying: boolean, seek: boolean) => {
-      const active: TimelineItem[] = [];
+      const active: PlayableAudio[] = [];
       for (const t of tl?.tracks || []) {
         if (t.type !== "audio") continue;
         for (const it of t.items) {
           if (it.disabled) continue;
+          // A srcless audio item (detach-audio on a slate produces one) has
+          // nothing to load; handing null to the player kills the preview.
+          if (!isPlayableAudio(it)) continue;
           if (frame >= it.from && frame < it.from + it.durationInFrames) active.push(it);
         }
       }
@@ -188,13 +210,21 @@ export function useEditorPlayback(
       const item = itemAtFrame(tl, Math.round(f));
       const local = item ? f - item.from : 0;
 
-      if (!item) {
+      // An image item covers the frame with a still (or a slate) — there is no
+      // video to drive, so park the player and let the composition draw it.
+      // `videoSrcRef` is cleared so returning to a video counts as a switch and
+      // gets a fresh replace + seek + transport, rather than a paused player
+      // that the clock would then read as stalled. A srcless VIDEO item is
+      // malformed rather than expected, but it parks the same way — better a
+      // held frame than a player torn down by a null source.
+      if (!item || isImageItem(item) || !item.src) {
         if (videoSrcRef.current !== null) {
           try {
             videoPlayer.pause();
           } catch {}
+          videoSrcRef.current = null;
         }
-        if (activeVideoIdRef.current !== null) setActiveVideo(null);
+        if (activeKeyRef.current !== pictureKey(item ?? null)) setActiveVideo(item ?? null);
       } else {
         const switched = videoSrcRef.current !== item.src;
         if (switched) {
@@ -203,7 +233,7 @@ export function useEditorPlayback(
           } catch {}
           videoSrcRef.current = item.src;
           setActiveVideo(item);
-        } else if (activeVideoIdRef.current !== item.id) {
+        } else if (activeKeyRef.current !== pictureKey(item)) {
           setActiveVideo(item);
         }
         // Video carries its own audio unless muted / detached (cheap, per-frame).
@@ -277,7 +307,11 @@ export function useEditorPlayback(
       const cur = frameRef.current;
       const item = itemAtFrame(tl, Math.round(cur));
       let f: number;
-      if (item && videoSrcRef.current === item.src) {
+      // `!isImageItem` is load-bearing, not belt-and-braces: a slate's src is
+      // null and the parked player's is too, so a bare src comparison would
+      // match and make a paused player the clock — the playhead would freeze on
+      // every slate.
+      if (item && !isImageItem(item) && videoSrcRef.current === item.src) {
         let vt = 0;
         try {
           vt = videoPlayer.currentTime;

@@ -20,31 +20,68 @@
 // `from` / `durationInFrames` are integer frame counts. Items may carry a
 // `linkId`: items sharing one are LINKED (e.g. a video clip and its separated
 // audio) and move/trim/delete together.
+//
+// MEDIA KIND IS THE ITEM'S, NOT THE TRACK'S. A `type: "video"` track is the
+// PICTURE lane; what each item on it actually is comes from `item.kind`:
+//
+//   kind?: "video" | "image"     // absent ⇒ "video" (every pre-animatic doc)
+//
+// A `kind: "image"` item is a storyboard still held on screen for
+// `durationInFrames` — the animatic's picture (worker/src/routes/animatic.js
+// builds it). Stills and videos are PEERS on one picture lane on purpose: a
+// still is a placeholder for that shot's video, and the upgrade (generate the
+// video, drop it in the same slot, keep the timing) must not require moving
+// tracks.
+//
+// Image items differ from video in ways this editor must respect:
+//   • `sourceDurationInFrames` is ALWAYS absent — an image has no natural
+//     length, so its duration is free (absent already means "uncapped resize"
+//     to `trimItem`, which is exactly right).
+//   • `src` may be `null` ⇒ a SLATE: a shot with no still generated yet. It is
+//     an ordinary item (movable/trimmable) that renders as a labelled
+//     placeholder, so a half-generated animatic keeps correct timing and shows
+//     its holes instead of going black.
+//   • It must never reach `expo-video` — the playback engine branches on kind.
+// Image items carry `shot` + `stillFile` provenance (which shot's picture slot
+// this is, and which take is on screen).
+//
+// The web's third image invariant — `offsetFrames` (source in-point) is always
+// 0 — has no analogue here: this editor has no in-point trimming or split, so
+// the model carries no `offsetFrames` at all.
 
 export const FPS = 24;
 export const WIDTH = 1280;
 export const HEIGHT = 720;
 
 export type TrackType = "video" | "audio";
+export type MediaKind = "video" | "image";
 
 /**
  * A single clip on a track. `src` on the web is a root-relative URL; on native
  * it is either a remote URL or a bundled `require(...)` module id resolved by
- * the backend's `mediaUrl`. Everything else matches the web contract.
+ * the backend's `mediaUrl`. It is `null` only on a SLATE (see above).
+ * Everything else matches the web contract.
  */
 export interface TimelineItem {
   id: string;
-  src: string;
+  src: string | null;
   name: string;
   from: number;
   durationInFrames: number;
   sourceDurationInFrames?: number;
+  /** Absent ⇒ "video". See the media-kind note above. */
+  kind?: MediaKind;
+  /** Image provenance: the shot whose picture slot this is. */
+  shot?: string;
+  /** Image provenance: which storyboard take is on screen — null on a slate. */
+  stillFile?: string | null;
   volume?: number;
   muted?: boolean;
   disabled?: boolean;
   flipH?: boolean;
   flipV?: boolean;
-  bundle?: string;
+  /** Null (not absent) on animatic items whose shot matched no bundle. */
+  bundle?: string | null;
   linkId?: string;
   // audio-only
   fadeInFrames?: number;
@@ -69,6 +106,26 @@ export interface Timeline {
 export const secToFrames = (sec: number, fps = FPS): number =>
   Math.max(1, Math.round((sec || 0) * fps));
 export const framesToSec = (frames: number, fps = FPS): number => (frames || 0) / fps;
+
+// --- media kind ---------------------------------------------------------
+// One definition of "is this an image", used by the composition, the playback
+// engine and the timeline strip — mirroring `isImageItem` in the web's
+// src/editor/timeline.js and `isImage` in worker/src/routes/timeline.js. `kind`
+// absent ⇒ video, so every saved doc reads correctly forever.
+export const isImageItem = (item?: TimelineItem | null): boolean => item?.kind === "image";
+// A slate is an image item with no still yet — it renders as a placeholder.
+export const isSlateItem = (item?: TimelineItem | null): boolean =>
+  isImageItem(item) && !item?.src;
+
+// Enforce the image invariants on one item (idempotent). Applied when a
+// timeline is LOADED (`withSourceDurations`), so an agent-written or
+// hand-edited doc can't produce an image that claims a source length it does
+// not have. This is the net under the ops, not their enforcement.
+export function normalizeItemKind(item: TimelineItem): TimelineItem {
+  if (!isImageItem(item)) return item;
+  delete item.sourceDurationInFrames;
+  return item;
+}
 
 // Longest track end → composition length (never 0).
 export function timelineDuration(timeline: Timeline | null): {
@@ -139,12 +196,21 @@ export function gapsFor(track: Track): { from: number; to: number }[] {
 }
 
 // Backfill each video clip's natural source length so it can't be stretched
-// past its real duration.
+// past its real duration — and hold the image invariants (see the media-kind
+// note at the top) for everything loaded into the editor.
+//
+// Images are SKIPPED, not backfilled: a still has no natural length, so capping
+// it at whatever duration the animatic happened to give it would make the one
+// resize the user actually wants — holding a picture longer — impossible.
 export function withSourceDurations(tl: Timeline | null): Timeline | null {
   if (!tl) return tl;
   for (const t of tl.tracks || []) {
     if (t.type === "video") {
       for (const it of t.items) {
+        if (isImageItem(it)) {
+          normalizeItemKind(it);
+          continue;
+        }
         if (it.sourceDurationInFrames == null) it.sourceDurationInFrames = it.durationInFrames;
       }
     }

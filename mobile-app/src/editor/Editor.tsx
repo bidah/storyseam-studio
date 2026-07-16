@@ -275,7 +275,7 @@ export function Editor({ onClose }: { onClose?: () => void } = {}) {
 
       {/* Preview */}
       <View style={styles.preview}>
-        <EditorComposition video={playback.video} />
+        <EditorComposition video={playback.video} imageUrl={backend.mediaUrl} />
         <View style={styles.previewOverlay} pointerEvents="box-none">
           <Timecode frameSV={playback.frameSV} fps={timeline?.fps || 24} />
           <Pressable style={styles.playBtn} onPress={playback.toggle} hitSlop={16}>

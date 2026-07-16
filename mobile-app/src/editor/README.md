@@ -15,7 +15,8 @@ A thin composition root (`Editor.tsx`) owns shared state and wires independent
 ```
 Editor.tsx                 composition root — state + wiring
 core/timeline.ts           the shared timeline model (single source of truth)
-core/Composition.tsx       EditorComposition — the native video surface
+core/Composition.tsx       EditorComposition — the native picture surface
+                           (video clip / storyboard still / slate)
 modules/timeline           editable surface + gestures + pure ops   → README
 modules/media              media pool + thumb/peak helpers          → README
 modules/playback           the expo-video playback engine           → README

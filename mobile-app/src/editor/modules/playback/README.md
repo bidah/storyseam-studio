@@ -17,9 +17,15 @@ frame-navigation math is ported **verbatim** from web.
 | `nextCut(timeline, frame, dir)` | next/previous cut boundary (**verbatim** from web) |
 | `clampFrame(frame, durationInFrames)` | clamp into the playable range (**verbatim** from web) |
 
-`EditorComposition` (the preview surface — an `expo-video` `VideoView`
-letterboxed on black, applying `flipH` / `flipV` on the active clip) lives in
-`@/editor/core/Composition` and consumes `playback.video`.
+`EditorComposition` (the preview surface — letterboxed on black, applying
+`flipH` / `flipV` on the active clip) lives in `@/editor/core/Composition` and
+consumes `playback.video`. It has three states, because the picture lane carries
+videos and animatic stills as peers (`item.kind`, see `core/timeline.ts`): an
+`expo-video` `VideoView` for a video clip, an `expo-image` `Image` for a
+storyboard still, and a labelled placeholder for a **slate** (`src: null` — a
+shot with no still yet). Images never reach the video player: `useEditorPlayback`
+parks it over image spans and falls back to the wall clock, so a JPEG or a null
+source can never take the preview down.
 
 ## `EditorPlayback` return
 

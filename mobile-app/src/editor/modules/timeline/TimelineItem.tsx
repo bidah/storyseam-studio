@@ -15,10 +15,12 @@ import Animated, {
   useAnimatedStyle,
   useSharedValue,
 } from "react-native-reanimated";
+import { Image } from "expo-image";
 import { SymbolView } from "expo-symbols";
 import type { Track, TimelineItem as TItem } from "@/editor/core/timeline";
-import { framesToSec } from "@/editor/core/timeline";
+import { framesToSec, isImageItem, isSlateItem } from "@/editor/core/timeline";
 import { EditorTheme } from "@/editor/theme";
+import { useBackend } from "@/editor/providers/backend";
 import { LANE_H } from "./ruler";
 import { Waveform } from "./Waveform";
 import { useAudioPeaks, colorForSrc } from "@/editor/modules/media/thumbs";
@@ -61,12 +63,18 @@ function TimelineItemImpl({
   onRequestActions,
 }: TimelineItemProps) {
   const isAudio = track.type === "audio";
+  // The picture lane holds videos and animatic stills as peers — the ITEM's
+  // kind decides, not the track's (see core/timeline.ts).
+  const isImage = isImageItem(item);
+  const isSlate = isSlateItem(item);
+  const backend = useBackend();
   const secLeft = framesToSec(item.from, fps);
   const secDur = framesToSec(item.durationInFrames, fps);
   const left = secLeft * pxPerSec;
   const width = Math.max(HANDLE_W + 8, secDur * pxPerSec);
 
   const peaks = useAudioPeaks(isAudio ? item.src : "");
+  const thumbUri = isImage && item.src ? backend.mediaUrl(item.src) : null;
 
   // Live drag offsets (UI thread) so the card follows the finger with no React
   // render per frame; the model is updated via runOnJS on update/end.
@@ -152,13 +160,17 @@ function TimelineItemImpl({
     width: width + trimW.value,
   }));
 
+  // A slate is a HOLE in the picture — it reads as an empty panel rather than a
+  // clip, so scanning the lane shows which shots still need a still.
   const baseColor = isAudio
     ? selected
       ? EditorTheme.clipAudioSelected
       : EditorTheme.clipAudio
-    : selected
-      ? EditorTheme.clipVideoSelected
-      : EditorTheme.clipVideo;
+    : isSlate
+      ? EditorTheme.panelRaised
+      : selected
+        ? EditorTheme.clipVideoSelected
+        : EditorTheme.clipVideo;
 
   return (
     <Animated.View
@@ -172,7 +184,10 @@ function TimelineItemImpl({
             ? "#fff"
             : linkHighlight
               ? EditorTheme.link
-              : "transparent",
+              : isSlate
+                ? EditorTheme.border
+                : "transparent",
+          borderStyle: isSlate && !selected ? "dashed" : "solid",
           opacity: item.disabled ? 0.4 : 1,
         },
         cardStyle,
@@ -180,9 +195,21 @@ function TimelineItemImpl({
     >
       <GestureDetector gesture={body}>
         <View style={styles.fill}>
-          {!isAudio && (
-            <View style={[styles.filmstrip, { backgroundColor: colorForSrc(item.src) }]} />
-          )}
+          {/* Picture lane: a still shows its actual image, a video its color
+              tint (no cheap native poster), a slate neither — it stays an empty
+              dashed card. */}
+          {!isAudio && !isSlate ? (
+            thumbUri ? (
+              <Image
+                source={{ uri: thumbUri }}
+                style={styles.filmstrip}
+                contentFit="cover"
+                transition={0}
+              />
+            ) : (
+              <View style={[styles.filmstrip, { backgroundColor: colorForSrc(item.src) }]} />
+            )
+          ) : null}
           {isAudio && (
             <View style={styles.wave}>
               <Waveform
@@ -198,7 +225,15 @@ function TimelineItemImpl({
           <View style={styles.labelRow}>
             {item.muted && <SymbolView name="speaker.slash.fill" size={10} tintColor="#fff" />}
             {item.linkId && <SymbolView name="link" size={10} tintColor={EditorTheme.link} />}
-            <Text numberOfLines={1} style={styles.label}>
+            {isSlate ? (
+              <SymbolView name="rectangle.dashed" size={10} tintColor={EditorTheme.textDim} />
+            ) : isImage ? (
+              <SymbolView name="photo" size={10} tintColor="#fff" />
+            ) : null}
+            <Text
+              numberOfLines={1}
+              style={[styles.label, isSlate && { color: EditorTheme.textDim }]}
+            >
               {item.name}
             </Text>
             {multiCount > 1 && selected && (

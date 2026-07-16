@@ -41,13 +41,15 @@ export function getAudioPeaks(src: string, count = 400): Float32Array {
   return out;
 }
 
-export function useAudioPeaks(src: string, count = 400): Float32Array {
-  return useMemo(() => getAudioPeaks(src, count), [src, count]);
+export function useAudioPeaks(src: string | null | undefined, count = 400): Float32Array {
+  return useMemo(() => getAudioPeaks(src || "", count), [src, count]);
 }
 
-// A deterministic tint for a clip lacking a real thumbnail.
-export function colorForSrc(src: string): string {
-  const h = hash(src) % 360;
+// A deterministic tint for a clip lacking a real thumbnail. `src` is nullable
+// because a slate (an animatic image item with no still yet) has none — it
+// tints by name instead, so every slate doesn't collapse to the same color.
+export function colorForSrc(src: string | null | undefined): string {
+  const h = hash(src || "") % 360;
   return `hsl(${h}, 45%, 42%)`;
 }
 

@@ -23,6 +23,10 @@ export const RESOURCES = {
   cuts: '/api/episode/cuts',
   library: '/api/library',
   sounds: '/api/sounds',
+  radio: '/api/radio',
+  // The animatic's coverage counts (how many shots have a still yet). Derived
+  // from the same shot list as `radio`, so the two never disagree.
+  animatic: '/api/animatic',
 } as const;
 
 export type ResourceKey = keyof typeof RESOURCES;

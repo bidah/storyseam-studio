@@ -163,6 +163,36 @@ export function generateShotListMessage() {
   ].join('\n');
 }
 
+// Render every line of one radio scene — the Radio screen's "Render scene".
+// Verbatim port of the web AgentProvider's renderRadioSceneMessage. Each line's
+// reference clip is the ABSOLUTE /files/ url (voiceRef.refUrl): the project-
+// scoped /sound-media/ one 404s for the agent's sandbox, which sends no project
+// header.
+export function renderRadioSceneMessage(scene: any, lines: any[]) {
+  const rows = lines.map((l) => {
+    const clip = l.voiceRef?.refUrl || l.voiceRef?.url;
+    const voice = clip
+      ? `voiced by ${l.voiceRef.name || 'their voice'} (reference clip: ${clip})`
+      : `NO VOICE CAST — skip or ask me to cast a voice first`;
+    return `- line ${l.id} — ${l.character || '?'} ${voice}: "${l.text}"`;
+  });
+  return [
+    `Render the radio dialogue for scene "${scene.beatTitle || scene.beat}" now.`,
+    `Load the radio skill and follow it. For EACH line below, voice it with Seed Audio` +
+      ` using that character's reference voice clip so the character sounds consistent,` +
+      ` then attach it and call attach_radio_take with the line id so it shows up under` +
+      ` the line on the Radio tab. Confirm the first Higgsfield submit with me, then` +
+      ` proceed through the rest of the scene.`,
+    '',
+    'Lines (in order):',
+    ...rows,
+    '',
+    `Each line's reference clip is an absolute public URL — download it directly (curl/web_fetch)` +
+      ` and upload it as the Seed Audio audio_references clip (@Audio1) so the voice matches.` +
+      ` Keep each take to just the spoken line, clean (no music, no SFX).`,
+  ].join('\n');
+}
+
 export function stitchCutMessage(range: any, count?: number) {
   const span = range?.from ? ` (${range.from} → ${range.to})` : '';
   return [

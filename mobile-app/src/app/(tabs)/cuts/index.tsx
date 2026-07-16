@@ -1,13 +1,15 @@
 import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
-import { RefreshControl, ScrollView, Text, View } from 'react-native';
+import { Pressable, RefreshControl, ScrollView, Text, View } from 'react-native';
 import { File, Paths } from 'expo-file-system';
 import { router } from 'expo-router';
 import * as Sharing from 'expo-sharing';
 import {
+  ChevronRight,
   History,
   Music,
   Pencil,
   Play,
+  Radio,
   RefreshCw,
   Share2,
   TriangleAlert,
@@ -161,6 +163,24 @@ export default function CutsScreen() {
             </Badge>
           ) : null}
         </View>
+
+        {/* Radio version + animatic — the other two ways to fill the Editor
+            (dialogue only, or dialogue under the storyboard's stills). */}
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Open the radio version and animatic"
+          className="flex-row items-center gap-3 rounded-2xl border border-border bg-card px-3 py-3 active:bg-secondary"
+          onPress={() => router.push('/cuts/radio')}
+        >
+          <Radio size={16} color="#10b981" />
+          <View className="flex-1">
+            <Text className="text-sm font-semibold text-foreground">Radio version</Text>
+            <Text className="text-xs text-muted-foreground">
+              Voice the dialogue, then build the animatic
+            </Text>
+          </View>
+          <ChevronRight size={16} color="#a1a1aa" />
+        </Pressable>
 
         {/* Latest (or user-picked) generation */}
         {activeGen ? (

@@ -8,6 +8,10 @@ export default function CutsLayout() {
   return (
     <Stack screenOptions={{ contentStyle: { backgroundColor: '#0a0a0b' } }}>
       <Stack.Screen name="index" options={headerOptions} />
+      {/* Radio + animatic live under Cuts rather than as a sixth tab: iOS
+          collapses past five into a "More" list, and both of this screen's
+          outputs land in the Editor, which Cuts already opens. */}
+      <Stack.Screen name="radio" options={{ title: 'Radio version', headerBackTitle: 'Cuts' }} />
     </Stack>
   );
 }
