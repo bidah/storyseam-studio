@@ -49,6 +49,9 @@
   "r2_buckets": [
     { "binding": "BUCKET", "bucket_name": "shot-studio-uploads" }
   ],
+  // Workers AI — powers the /api/transcribe Whisper speech-to-text endpoint
+  // (the mobile chat composer's voice-message mic).
+  "ai": { "binding": "AI" },
   // KV for Better Auth (sessions secondary storage + rate limiting).
   "kv_namespaces": [
     { "binding": "AUTH_KV", "id": "4be9b787dc844a14a14d242b54ef7ca2" }

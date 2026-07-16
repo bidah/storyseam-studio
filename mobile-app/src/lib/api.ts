@@ -93,3 +93,25 @@ export async function uploadFile(uri: string, name: string, mime: string) {
   if (!res.ok) throw new ApiError(res.status, `upload failed (${res.status})`);
   return (await res.json()) as { url: string; key: string; size: number };
 }
+
+// Speech-to-text: send a recorded audio file (local URI from expo-audio) to the
+// Worker's Whisper endpoint (Cloudflare Workers AI) and get back the transcript.
+export async function transcribeAudio(uri: string, mime = 'audio/m4a') {
+  const bytes = await new File(uri).bytes();
+  const res = await apiFetch('/api/transcribe', {
+    method: 'POST',
+    headers: { 'content-type': mime },
+    body: bytes as unknown as BodyInit,
+  });
+  if (!res.ok) {
+    let message = `transcription failed (${res.status})`;
+    try {
+      const data: any = await res.json();
+      if (data?.error) message = String(data.error);
+    } catch {
+      /* non-JSON error body */
+    }
+    throw new ApiError(res.status, message);
+  }
+  return (await res.json()) as { text: string };
+}
