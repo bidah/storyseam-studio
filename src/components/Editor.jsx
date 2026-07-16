@@ -15,7 +15,7 @@ import {
   Eye, EyeOff, Clapperboard, Download, ExternalLink,
   PanelLeftClose, PanelLeftOpen, FolderOpen, Ban, FileDown, FoldHorizontal, Magnet,
   ZoomIn, ZoomOut, Camera, Images, Link2, Unlink2, AudioLines, GripHorizontal,
-  FlipHorizontal2, FlipVertical2,
+  FlipHorizontal2, FlipVertical2, Radio,
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -777,6 +777,7 @@ function MediaPool({ pool, stills, collapsed, height, onToggle, dragId, onMeta, 
 export default function Editor({ reloadKey }) {
   const [timeline, setTimeline] = useState(null);
   const [cuts, setCuts] = useState([]);
+  const [radioVersions, setRadioVersions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [selectedId, setSelectedId] = useState(null); // primary selection (inspector)
@@ -992,6 +993,7 @@ export default function Editor({ reloadKey }) {
       setCanUndo(false);
       setTimeline(withSourceDurations(data.timeline));
       setCuts(data.cuts || []);
+      setRadioVersions(data.radioVersions || []);
     } catch (e) {
       setError(String(e.message || e));
     } finally {
@@ -1901,6 +1903,34 @@ export default function Editor({ reloadKey }) {
     }
   }, []);
 
+  // Load a stored radio version (audio-only dialogue timeline built on the Radio
+  // tab) into the editor, replacing the working timeline. Mirrors loadCut.
+  const loadRadio = useCallback(async (v) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/timeline/from-radio", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ v, clientId: CLIENT_ID }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to load radio version");
+      dirtyRef.current = false;
+      histRef.current = [];
+      setCanUndo(false);
+      setTimeline(withSourceDurations(data.timeline));
+      setSelectedId(null);
+      setSelectedIds(new Set());
+      selectedIdsRef.current = new Set();
+      setSelectedGap(null);
+    } catch (e) {
+      setError(String(e.message || e));
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
   // Render the current timeline to an mp4 via Remotion (server-side). Sends the
   // live in-editor timeline (not just the saved one) plus the chosen options so
   // what you see is what gets delivered.
@@ -2333,13 +2363,13 @@ export default function Editor({ reloadKey }) {
               Load a stitched cut's clips and music into the editor. This replaces the current timeline.
             </DialogDescription>
           </DialogHeader>
-          {cuts.length === 0 ? (
+          {cuts.length === 0 && radioVersions.length === 0 ? (
             <p className="py-6 text-center text-sm text-muted-foreground">No stitched cuts yet.</p>
           ) : (
             <div className="-mx-1 max-h-[60vh] space-y-1 overflow-y-auto px-1">
               {cuts.map((c) => (
                 <button
-                  key={c.v}
+                  key={`cut-${c.v}`}
                   onClick={() => { loadCut(c.v); setCutPickerOpen(false); }}
                   className="flex w-full items-center gap-2 rounded-md border px-3 py-2 text-left text-sm transition-colors hover:bg-accent hover:text-accent-foreground"
                 >
@@ -2348,6 +2378,17 @@ export default function Editor({ reloadKey }) {
                   <span className="text-xs text-muted-foreground">
                     {c.clips} clips{c.withMusic ? ` · ${c.music} music` : ""}
                   </span>
+                </button>
+              ))}
+              {radioVersions.map((r) => (
+                <button
+                  key={`radio-${r.v}`}
+                  onClick={() => { loadRadio(r.v); setCutPickerOpen(false); }}
+                  className="flex w-full items-center gap-2 rounded-md border px-3 py-2 text-left text-sm transition-colors hover:bg-accent hover:text-accent-foreground"
+                >
+                  <Badge variant="info" className="font-mono gap-1"><Radio size={11} /> v{r.v}</Badge>
+                  <span className="flex-1 font-medium">{r.name || `radio version v${r.v}`}</span>
+                  <span className="text-xs text-muted-foreground">{r.clips} lines</span>
                 </button>
               ))}
             </div>

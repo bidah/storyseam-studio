@@ -385,6 +385,35 @@ export function scriptEditRequest(selectedText, instruction) {
   ].join("\n");
 }
 
+// Build the chat turn that renders one Radio-version scene: for each dialogue
+// line, voice it with Seed Audio using the character's favorited voiceRef as the
+// reference clip, then link the take back to the line. Mirrors the agent's radio
+// skill (create_sound → seed-audio → attach_sound → attach_radio_take).
+export function renderRadioSceneMessage(scene, lines) {
+  const rows = lines.map((l) => {
+    const clip = l.voiceRef?.refUrl || l.voiceRef?.url;
+    const voice = clip
+      ? `voiced by ${l.voiceRef.name || "their voice"} (reference clip: ${clip})`
+      : `NO VOICE CAST — skip or ask me to cast a voice first`;
+    return `- line ${l.id} — ${l.character || "?"} ${voice}: "${l.text}"`;
+  });
+  return [
+    `Render the radio dialogue for scene "${scene.beatTitle || scene.beat}" now.`,
+    `Load the radio skill and follow it. For EACH line below, voice it with Seed Audio` +
+      ` using that character's reference voice clip so the character sounds consistent,` +
+      ` then attach it and call attach_radio_take with the line id so it shows up under` +
+      ` the line on the Radio tab. Confirm the first Higgsfield submit with me, then` +
+      ` proceed through the rest of the scene.`,
+    "",
+    "Lines (in order):",
+    ...rows,
+    "",
+    `Each line's reference clip is an absolute public URL — download it directly (curl/web_fetch)` +
+      ` and upload it as the Seed Audio audio_references clip (@Audio1) so the voice matches.` +
+      ` Keep each take to just the spoken line, clean (no music, no SFX).`,
+  ].join("\n");
+}
+
 // Build the chat turn that (re)stitches the complete cut. Routed through the
 // agent — like every other mutation — so it uses the same get_cuts → stitch_cuts
 // flow (which runs ffmpeg locally) and picks up whatever takes are currently

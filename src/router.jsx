@@ -22,6 +22,7 @@ export const router = createBrowserRouter([
       { path: "world", lazy: () => import("@/routes/world"), ErrorBoundary: RouteError },
       { path: "script", lazy: () => import("@/routes/script") },
       { path: "shotlist", lazy: () => import("@/routes/shotlist"), ErrorBoundary: RouteError },
+      { path: "radio", lazy: () => import("@/routes/radio"), ErrorBoundary: RouteError },
       { path: "shots", lazy: () => import("@/routes/shots"), ErrorBoundary: RouteError },
       { path: "multishot", lazy: () => import("@/routes/multishot"), ErrorBoundary: RouteError },
       { path: "episode", lazy: () => import("@/routes/episode"), ErrorBoundary: RouteError },

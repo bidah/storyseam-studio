@@ -31,6 +31,7 @@ const TABS = [
   { value: "world", label: "World" },
   { value: "script", label: "Script" },
   { value: "shotlist", label: "Shot list" },
+  { value: "radio", label: "Radio" },
   // Sample-code tabs — kept wired up (routes/content still work) but hidden from
   // the top menu. Drop `hidden` to surface them again.
   { value: "shots", label: "Shots", hidden: true },

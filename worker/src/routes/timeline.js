@@ -328,7 +328,31 @@ export function registerTimeline(app) {
       music: (g.music || []).length,
       totalDuration: g.totalDuration || 0,
     }));
-    return c.json({ timeline: db.editorTimeline || null, cuts });
+    // Radio versions — audio-only timelines assembled on the Radio tab and sent
+    // here (see routes/radio.js). Listed alongside cuts so the editor's history
+    // can load them back; the full timeline is stored inline on each entry.
+    const radioVersions = (Array.isArray(db.radioVersions) ? db.radioVersions : []).map((r) => ({
+      v: r.v,
+      name: r.name || `radio version v${r.v}`,
+      at: r.at || null,
+      clips: r.clips || (r.timeline?.tracks?.find((t) => t.type === "audio")?.items?.length || 0),
+    }));
+    return c.json({ timeline: db.editorTimeline || null, cuts, radioVersions });
+  });
+
+  // Load a stored radio version into the editor (replaces the working timeline).
+  app.post("/api/timeline/from-radio", async (c) => {
+    const pid = c.get("projectId");
+    let body;
+    try { body = await c.req.json(); } catch { body = {}; }
+    const db = await readSelections(c.env, pid);
+    const list = Array.isArray(db.radioVersions) ? db.radioVersions : [];
+    const entry = body?.v != null ? list.find((r) => r.v === Number(body.v)) : list[list.length - 1];
+    if (!entry || !entry.timeline) return c.json({ error: "No matching radio version to load" }, 404);
+    db.editorTimeline = entry.timeline;
+    await writeSelections(c.env, pid, db);
+    await broadcastTimeline(c, pid, body?.clientId);
+    return c.json({ ok: true, timeline: entry.timeline });
   });
 
   // Media pool for the editor — every video generation on disk (+ every Sound

@@ -1,0 +1,297 @@
+// Radio-version endpoints (/api/radio*). The "radio version" is the audio-only
+// pass of the episode: every scene's dialogue voiced with each character's
+// favorited Sound Studio voice (rendered with Seed Audio via the agent), laid
+// out in order so it can be sent into the Editor as a new "radio version"
+// timeline.
+//
+// STRUCTURE is DERIVED, never stored: the scenes + lines come fresh from the
+// shot list (grouped by `beat`), so the radio view always tracks the shots. The
+// radio doc `state/<pid>/radio.json` stores ONLY user intent + render results:
+//   { casting:   { <CHARKEY>: voiceRef|null },   // per-character voice override
+//     lineEdits: { <lineId>: { character?, text? } },
+//     takes:     { <lineId>: { trackId, v, at } } }  // the rendered voice take
+// Casting is seeded from the World character `voiceRef` (name match) and can be
+// overridden here. A line's voice = its speaker's casting.
+//
+// The final "send to editor" builds an audio-only timeline from the rendered
+// takes and appends it to `db.radioVersions` in the selections doc, then loads
+// it as the editor's working timeline (mirrors /api/timeline/from-cut).
+import { readDoc, writeDoc, updateDoc } from "../lib/docs.js";
+import { normalizeShot } from "../lib/shots.js";
+import { listMedia, mediaKey } from "../lib/media.js";
+import { broadcast } from "../lib/broadcast.js";
+
+const TL_FPS = 24;
+const NO_DIALOGUE = /^\(?\s*no dialogue\s*\)?\.?$/i;
+const charKey = (s) => String(s || "").trim().toUpperCase();
+const secFrames = (sec) => Math.max(1, Math.round((sec || 0) * TL_FPS));
+
+const readRadio = (env, pid) =>
+  readDoc(env, pid, "radio", { casting: {}, lineEdits: {}, takes: {} });
+const updateRadio = (env, pid, mutate) =>
+  updateDoc(env, pid, "radio", { casting: {}, lineEdits: {}, takes: {} }, mutate);
+
+async function readShots(env, pid) {
+  const obj = await readDoc(env, pid, "shotlist", null);
+  return (obj?.shots || []).map(normalizeShot);
+}
+
+// The voiced line for a shot, or null when the shot has no spoken dialogue.
+// Speaker attribution from free-text shot data: a "NAME:" prefix wins, else the
+// lone on-screen character, else the first on-screen character (user-editable).
+function deriveLine(shot) {
+  const raw = String(shot.dialogue || "").trim();
+  if (!raw || NO_DIALOGUE.test(raw)) return null;
+  const chars = Array.isArray(shot.characters) ? shot.characters.filter(Boolean) : [];
+  let character = chars.length === 1 ? chars[0] : chars[0] || "";
+  let text = raw;
+  const m = /^\s*([A-Za-z][A-Za-z0-9 .'’-]{0,30}?):\s*(.+)$/s.exec(raw);
+  if (m) {
+    const named = m[1].trim();
+    const hit = chars.find((c) => charKey(c) === charKey(named));
+    character = hit || named;
+    text = m[2].trim();
+  }
+  return { id: `sh${shot.n}`, shotId: shot.id, shotN: shot.n, character, text };
+}
+
+// Resolve a { trackId, v } take against the sounds doc → playable status.
+function resolveTake(sdb, soundFiles, take) {
+  if (!take || !take.trackId) return null;
+  const t = (sdb.tracks || []).find((x) => x.id === take.trackId);
+  const ver = t && (t.versions || []).find((v) => v.v === Number(take.v));
+  if (!ver) return { trackId: take.trackId, v: take.v ?? null, status: "missing", url: null, duration: 0, ready: false };
+  const ready = ver.status === "ready" && !!ver.file && soundFiles.has(ver.file);
+  return {
+    trackId: take.trackId,
+    v: ver.v,
+    status: ver.status || "pending",
+    url: ver.file ? "/sound-media/" + ver.file : null,
+    duration: ver.duration || 0,
+    ready,
+  };
+}
+
+// Build the derived radio view: scenes (from shots, grouped by beat) with each
+// line's resolved speaker, voice (casting), and rendered take. Also the per-
+// character casting roster with its source (world vs override).
+async function buildRadioView(env, pid) {
+  const [shots, radio, world, sdb] = await Promise.all([
+    readShots(env, pid),
+    readRadio(env, pid),
+    readDoc(env, pid, "world", { characters: [] }),
+    readDoc(env, pid, "sounds", { tracks: [] }),
+  ]);
+  const soundFiles = new Set(await listMedia(env, pid, "sound-media"));
+
+  // World voiceRef by character name (the casting seed).
+  const worldVoice = new Map();
+  for (const ch of world.characters || []) {
+    const key = charKey(ch.name);
+    if (key && ch.voiceRef && ch.voiceRef.url && !worldVoice.has(key)) worldVoice.set(key, ch.voiceRef);
+  }
+  const casting = radio.casting || {};
+  const lineEdits = radio.lineEdits || {};
+  const takes = radio.takes || {};
+
+  // Attach an ABSOLUTE, publicly-fetchable reference-clip URL to a voiceRef. The
+  // stored `url` is the project-scoped `/sound-media/<file>` (needs the project
+  // header), which the render agent's bash sandbox can't fetch. `/files/<r2key>`
+  // is not auth-gated and encodes the project in the key, so the agent can pull
+  // the clip to upload it to Seed Audio as the voice reference.
+  const publicBase = String(env.WORKER_PUBLIC_URL || "").replace(/\/+$/, "");
+  const withRefUrl = (vref) => {
+    if (!vref) return null;
+    const m = vref.url && /\/sound-media\/(.+)$/.exec(vref.url);
+    const refUrl = m && publicBase ? `${publicBase}/files/${mediaKey(pid, "sound-media", m[1])}` : null;
+    return { ...vref, refUrl };
+  };
+
+  // The effective voice for a character key: override wins (incl. explicit
+  // null = cleared), else the World seed, else none.
+  const voiceFor = (key) => {
+    if (Object.prototype.hasOwnProperty.call(casting, key)) return { voiceRef: withRefUrl(casting[key] || null), source: "override" };
+    if (worldVoice.has(key)) return { voiceRef: withRefUrl(worldVoice.get(key)), source: "world" };
+    return { voiceRef: null, source: null };
+  };
+
+  const scenes = [];
+  const speakers = new Set();
+  for (const shot of shots) {
+    const derived = deriveLine(shot);
+    if (!derived) continue;
+    const edit = lineEdits[derived.id] || {};
+    const character = edit.character != null ? edit.character : derived.character;
+    const text = edit.text != null ? edit.text : derived.text;
+    const key = charKey(character);
+    if (key) speakers.add(character);
+    const { voiceRef } = voiceFor(key);
+    const line = {
+      id: derived.id,
+      shotId: derived.shotId,
+      shotN: derived.shotN,
+      character,
+      text,
+      voiceRef,
+      take: resolveTake(sdb, soundFiles, takes[derived.id]),
+    };
+    const last = scenes[scenes.length - 1];
+    if (!last || last.beat !== shot.beat) {
+      scenes.push({ beat: shot.beat, beatTitle: shot.beatTitle, lines: [line] });
+    } else {
+      last.lines.push(line);
+    }
+  }
+
+  // Casting roster: one entry per distinct speaker across the script.
+  const roster = [...speakers]
+    .sort((a, b) => a.localeCompare(b))
+    .map((character) => {
+      const { voiceRef, source } = voiceFor(charKey(character));
+      return { character, voiceRef, source };
+    });
+
+  const readyLines = scenes.reduce((n, s) => n + s.lines.filter((l) => l.take?.ready).length, 0);
+  const totalLines = scenes.reduce((n, s) => n + s.lines.length, 0);
+  return { generatedAt: radio.generatedAt || null, scenes, casting: roster, totalLines, readyLines };
+}
+
+// Assemble an audio-only timeline from the rendered takes, gapless in
+// scene→line order on a single "Dialogue" track (plus an empty video track so
+// the Editor's video lane still exists). Mirrors buildTimelineFromCut's shape.
+function buildRadioTimeline(view) {
+  const items = [];
+  let cursor = 0;
+  for (const scene of view.scenes) {
+    for (const line of scene.lines) {
+      if (!line.take?.ready || !line.take.url) continue;
+      const words = String(line.text || "").split(/\s+/).filter(Boolean).length;
+      const dur = line.take.duration > 0 ? line.take.duration : Math.max(1.2, words / 2.6);
+      const durationInFrames = secFrames(dur);
+      const label = `${line.character || "?"}: ${String(line.text || "").slice(0, 40)}`;
+      items.push({
+        id: `rl_${line.id}`,
+        src: line.take.url,
+        name: label,
+        from: cursor,
+        durationInFrames,
+        sourceDurationInFrames: durationInFrames,
+        offsetFrames: 0,
+        volume: 1,
+      });
+      cursor += durationInFrames;
+    }
+  }
+  return {
+    fps: TL_FPS,
+    width: 1280,
+    height: 720,
+    source: { kind: "radio", at: new Date().toISOString() },
+    tracks: [
+      { id: "video", name: "Video", type: "video", items: [] },
+      { id: "dialogue", name: "Dialogue", type: "audio", items },
+    ],
+    _itemCount: items.length,
+  };
+}
+
+export function registerRadio(app) {
+  // The derived radio view (scenes from the shot list + casting + takes).
+  app.get("/api/radio", async (c) => {
+    const pid = c.get("projectId");
+    return c.json(await buildRadioView(c.env, pid));
+  });
+
+  // Set a character's voice (override). Body: { character, voiceRef|null }.
+  // voiceRef null clears it (won't fall back to the World seed).
+  app.put("/api/radio/casting", async (c) => {
+    const pid = c.get("projectId");
+    let body;
+    try { body = await c.req.json(); } catch { return c.json({ error: "Invalid JSON body" }, 400); }
+    const key = charKey(body?.character);
+    if (!key) return c.json({ error: "character required" }, 400);
+    const voiceRef = body?.voiceRef && typeof body.voiceRef === "object"
+      ? {
+          trackId: String(body.voiceRef.trackId || ""),
+          v: Number.isFinite(Number(body.voiceRef.v)) ? Number(body.voiceRef.v) : null,
+          name: String(body.voiceRef.name || ""),
+          url: String(body.voiceRef.url || ""),
+        }
+      : null;
+    await updateRadio(c.env, pid, (db) => {
+      db.casting = db.casting || {};
+      db.casting[key] = voiceRef;
+    });
+    return c.json({ ok: true });
+  });
+
+  // Edit one derived line (speaker and/or text). Body: { character?, text? }.
+  app.put("/api/radio/line/:id", async (c) => {
+    const pid = c.get("projectId");
+    const id = c.req.param("id");
+    let body;
+    try { body = await c.req.json(); } catch { return c.json({ error: "Invalid JSON body" }, 400); }
+    await updateRadio(c.env, pid, (db) => {
+      db.lineEdits = db.lineEdits || {};
+      const cur = db.lineEdits[id] || {};
+      if (typeof body.character === "string") cur.character = body.character;
+      if (typeof body.text === "string") cur.text = body.text;
+      db.lineEdits[id] = cur;
+    });
+    return c.json({ ok: true });
+  });
+
+  // Record the rendered voice take for a line (the agent calls this after
+  // attach_sound). Body: { trackId, v }.
+  app.put("/api/radio/take/:id", async (c) => {
+    const pid = c.get("projectId");
+    const id = c.req.param("id");
+    let body;
+    try { body = await c.req.json(); } catch { return c.json({ error: "Invalid JSON body" }, 400); }
+    const trackId = String(body?.trackId || "");
+    const v = Number(body?.v);
+    if (!trackId || !Number.isFinite(v)) return c.json({ error: "trackId and v required" }, 400);
+    await updateRadio(c.env, pid, (db) => {
+      db.takes = db.takes || {};
+      db.takes[id] = { trackId, v, at: new Date().toISOString() };
+      db.generatedAt = new Date().toISOString();
+    });
+    return c.json({ ok: true });
+  });
+
+  // Build the audio-only timeline from the rendered takes and send it to the
+  // Editor: append a named "radio version" to db.radioVersions and load it as
+  // the working timeline. Broadcasts on the timeline channel so an open Editor
+  // reloads (the generic /api/* firehose also fires "data" for the Radio tab).
+  app.post("/api/radio/to-editor", async (c) => {
+    const pid = c.get("projectId");
+    const view = await buildRadioView(c.env, pid);
+    const timeline = buildRadioTimeline(view);
+    if (!timeline._itemCount) {
+      return c.json({ error: "No rendered dialogue yet — render a scene first." }, 400);
+    }
+    delete timeline._itemCount;
+
+    const db = await readDoc(c.env, pid, "selections", { library: {}, episode: {} });
+    db.radioVersions = Array.isArray(db.radioVersions) ? db.radioVersions : [];
+    const v = db.radioVersions.length + 1;
+    const at = new Date().toISOString();
+    const entry = {
+      v,
+      name: `radio version v${v}`,
+      at,
+      clips: timeline.tracks.find((t) => t.id === "dialogue").items.length,
+      timeline,
+    };
+    db.radioVersions.push(entry);
+    db.editorTimeline = timeline;
+    await writeDoc(c.env, pid, "selections", db);
+
+    await broadcast(
+      c.env, pid, "timeline",
+      { at, clientId: null },
+      c.executionCtx,
+    );
+    return c.json({ ok: true, version: { v, name: entry.name, at, clips: entry.clips }, timeline });
+  });
+}

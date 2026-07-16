@@ -25,6 +25,7 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { registerWorld } from "./routes/world.js";
 import { registerShotlist } from "./routes/shotlist.js";
+import { registerRadio } from "./routes/radio.js";
 import { registerScript } from "./routes/script.js";
 import { registerSounds } from "./routes/sounds.js";
 import { registerEpisode } from "./routes/episode.js";
@@ -411,6 +412,7 @@ app.get("/proxy/:prefix/*", async (c) => {
 // --- ported API route groups (Stage 1+) ------------------------------------
 registerWorld(app);
 registerShotlist(app);
+registerRadio(app);
 registerScript(app);
 registerSounds(app);
 registerEpisode(app);
