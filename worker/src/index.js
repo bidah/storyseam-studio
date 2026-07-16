@@ -40,6 +40,7 @@ import { registerExport } from "./routes/export.js";
 import { registerAdmin } from "./routes/admin.js";
 import { registerHiggsfield } from "./routes/higgsfield.js";
 import { registerStoryboard } from "./routes/storyboard.js";
+import { registerTranscribe } from "./routes/transcribe.js";
 import { createAuth } from "./auth.js";
 import { broadcast } from "./lib/broadcast.js";
 import { normalizeProjectId } from "./lib/docs.js";
@@ -428,6 +429,7 @@ registerExport(app);
 registerAdmin(app);
 registerHiggsfield(app);
 registerStoryboard(app);
+registerTranscribe(app);
 
 // --- eve chat agent proxy --------------------------------------------------
 // The chat agent (eve) runs on Vercel; the SPA is served from this Worker and
