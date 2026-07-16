@@ -9,25 +9,37 @@ export default defineTool({
     "- move: set a clip's start frame — { op:'move', id, from }\n" +
     "- resize: set a clip's length in frames — { op:'resize', id, durationInFrames, edge? }. Default edge 'end' trims/extends the tail; edge:'start' trims/extends the HEAD (the clip's end stays anchored and its source in-point `offsetFrames` slides with the start)\n" +
     "- split: razor a clip in two at an absolute timeline frame — { op:'split', id, at }. `at` must fall strictly inside the clip (both halves ≥ 1 frame). The right half is a NEW item continuing at the same source position (its `offsetFrames` advances by the left half's length); linked partners under the cut split too. Re-read the returned timeline for the right half's id\n" +
+    "- replace: swap an item's MEDIA in place, keeping its position, length, kind and links — { op:'replace', id, src, stillFile?, name? }. This is how a still you just generated lands on the animatic: the Editor puts a SLATE (an empty picture slot) on the timeline when the user asks for a still, and you fill it with the url + file returned by attach_still. Never use move/remove to place a generated still — replace keeps the timing the user set\n" +
     "- remove: delete a clip/music item — { op:'remove', id }\n" +
     "- volume: set gain 0..2 (1 = unity, 0 = silent) — { op:'volume', id, volume }\n" +
     "- mute: mute/unmute an item — { op:'mute', id, muted }\n" +
     "- disable: disable/enable a clip — skipped in playback but kept on the timeline (greyed) — { op:'disable', id, disabled }\n" +
     "- reorder: set the play order of a track then close gaps — { op:'reorder', track:'video', order:[id,id,...] }\n" +
     "- repack: close gaps in a track so clips play back-to-back — { op:'repack', track:'video' }\n" +
-    "Track ids are 'video' and 'music'. Reordering video clips almost always wants a following repack (reorder already repacks). Returns { ok, timeline } with the updated timeline.",
+    "Track ids are 'video' and 'music' on a cut, 'picture' and 'dialogue' on an animatic. Reordering video clips almost always wants a following repack (reorder already repacks). " +
+    "An item with kind:'image' is a storyboard STILL held on screen (the animatic's picture); one with kind:'image' and no src is a SLATE — a shot whose still isn't generated yet. Stills have no source timeline, so resize on them is uncapped and split just holds the same frame either side. " +
+    "Returns { ok, timeline } with the updated timeline.",
   inputSchema: z.object({
     ops: z
       .array(
         z.object({
           op: z
-            .enum(["move", "resize", "split", "remove", "volume", "mute", "disable", "reorder", "repack"])
+            .enum(["move", "resize", "split", "replace", "remove", "volume", "mute", "disable", "reorder", "repack"])
             .describe("The edit operation."),
           id: z
             .string()
             .optional()
-            .describe("Target item id (for move/resize/split/remove/volume/mute/disable)."),
-          track: z.string().optional().describe("Target track id 'video' or 'music' (for reorder/repack)."),
+            .describe("Target item id (for move/resize/split/replace/remove/volume/mute/disable)."),
+          track: z.string().optional().describe("Target track id — 'video'/'music' on a cut, 'picture'/'dialogue' on an animatic (for reorder/repack)."),
+          src: z
+            .string()
+            .optional()
+            .describe("New media URL (for replace), e.g. the `url` attach_still returned."),
+          stillFile: z
+            .string()
+            .optional()
+            .describe("The still take's `file` (for replace) — records which take is on screen so the Editor can offer to swap takes."),
+          name: z.string().optional().describe("New label for the item (for replace)."),
           from: z.number().optional().describe("Start frame (for move)."),
           durationInFrames: z.number().optional().describe("Length in frames (for resize)."),
           edge: z

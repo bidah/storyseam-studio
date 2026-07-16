@@ -20,6 +20,7 @@ import { readDoc, writeDoc, updateDoc } from "../lib/docs.js";
 import { normalizeShot } from "../lib/shots.js";
 import { listMedia, mediaKey } from "../lib/media.js";
 import { broadcast } from "../lib/broadcast.js";
+import { appendCapped, nextVersion, MAX_VERSIONS } from "../lib/versions.js";
 
 const TL_FPS = 24;
 const NO_DIALOGUE = /^\(?\s*no dialogue\s*\)?\.?$/i;
@@ -75,7 +76,11 @@ function resolveTake(sdb, soundFiles, take) {
 // Build the derived radio view: scenes (from shots, grouped by beat) with each
 // line's resolved speaker, voice (casting), and rendered take. Also the per-
 // character casting roster with its source (world vs override).
-async function buildRadioView(env, pid) {
+//
+// Exported because the animatic (routes/animatic.js) is this view plus the
+// storyboard's pictures — it needs the same resolved lines/takes and must not
+// re-derive them, or the two would drift apart.
+export async function buildRadioView(env, pid) {
   const [shots, radio, world, sdb] = await Promise.all([
     readShots(env, pid),
     readRadio(env, pid),
@@ -274,7 +279,7 @@ export function registerRadio(app) {
 
     const db = await readDoc(c.env, pid, "selections", { library: {}, episode: {} });
     db.radioVersions = Array.isArray(db.radioVersions) ? db.radioVersions : [];
-    const v = db.radioVersions.length + 1;
+    const v = nextVersion(db.radioVersions);
     const at = new Date().toISOString();
     const entry = {
       v,
@@ -283,7 +288,9 @@ export function registerRadio(app) {
       clips: timeline.tracks.find((t) => t.id === "dialogue").items.length,
       timeline,
     };
-    db.radioVersions.push(entry);
+    // Bounded history: this drops the OLDEST versions past the cap, and they are
+    // gone for good — so say so in the response rather than reporting a bare ok.
+    const { pruned } = appendCapped(db.radioVersions, entry);
     db.editorTimeline = timeline;
     await writeDoc(c.env, pid, "selections", db);
 
@@ -292,6 +299,11 @@ export function registerRadio(app) {
       { at, clientId: null },
       c.executionCtx,
     );
-    return c.json({ ok: true, version: { v, name: entry.name, at, clips: entry.clips }, timeline });
+    return c.json({
+      ok: true,
+      version: { v, name: entry.name, at, clips: entry.clips },
+      ...(pruned ? { pruned, warning: `Dropped the ${pruned} oldest radio version(s) — only the ${MAX_VERSIONS} most recent are kept.` } : {}),
+      timeline,
+    });
   });
 }

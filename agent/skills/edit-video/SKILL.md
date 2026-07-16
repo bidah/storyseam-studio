@@ -36,13 +36,23 @@ baked complete-cut mp4s (that's the complete-cut / stitch skill).
      `load_cut_into_editor` first — with `v` if they named a version, else omit
      for the latest cut. Confirm which cut you loaded (`cuts` lists the versions,
      their clip/music counts, and whether they have music).
-   - If `timeline` already exists, use its items. Each track (`video`, `music`)
-     lists items with `id`, `name`, `from` (start frame), `durationInFrames`,
-     `volume`, and optionally `offsetFrames` — the clip's **source in-point**
-     (how many frames of the source file are skipped at its head; absent = 0.
-     Set by splits and head trims — the item plays source frames
+   - If `timeline` already exists, use its items. Each track (`video`/`music` on
+     a cut, `picture`/`dialogue` on an animatic) lists items with `id`, `name`,
+     `from` (start frame), `durationInFrames`, `volume`, and optionally
+     `offsetFrames` — the clip's **source in-point** (how many frames of the
+     source file are skipped at its head; absent = 0. Set by splits and head
+     trims — the item plays source frames
      `[offsetFrames, offsetFrames + durationInFrames)`). Note the `id`s and
      order — every edit op targets an item by `id`.
+   - An item with **`kind: "image"`** is a storyboard STILL held on screen (the
+     animatic's picture), and one with `kind:"image"` and **no `src` is a SLATE**
+     — a shot whose still hasn't been generated yet. A still has no source
+     timeline: its `offsetFrames` is always 0, it has no `sourceDurationInFrames`
+     (so resizing it is uncapped — it holds for as long as you like), and
+     splitting it just holds the same frame either side of the cut. Image items
+     carry `shot` (which shot's picture slot this is) and `stillFile` (which take
+     is showing). To fill a slate, generate with the **generate-storyboard**
+     skill and use `replace` — never `move`/`remove`.
 2. **Translate the request into ops**, then call `edit_timeline` with the `ops`
    array. Times are **frames** — convert seconds with `frames = round(seconds * fps)`
    (fps is in the timeline, usually 24, so 2s = 48 frames).

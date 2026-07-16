@@ -173,6 +173,14 @@ const repackTrack = (tl, track) => {
 //                                             partners containing `at` split
 //                                             too, their right halves sharing a
 //                                             fresh linkId.
+//   { op:"insert", trackId, item }          – add an item to a track. Used to
+//                                             RESERVE a picture slot (a slate)
+//                                             before its still exists.
+//   { op:"replace", id, src, stillFile?, name? } – swap an item's MEDIA in
+//                                             place, keeping its position,
+//                                             length, kind and links. How a
+//                                             generated still lands in the slot
+//                                             the Editor reserved for it.
 //   { op:"remove", id }                     – delete an item
 //   { op:"volume", id, volume }             – set gain (0..2, 1 = unity)
 //   { op:"mute", id, muted }                – mute/unmute an item
@@ -180,6 +188,14 @@ const repackTrack = (tl, track) => {
 //   { op:"reorder", track, order:[ids] }    – reorder + repack a track gapless
 //   { op:"repack", track }                  – close gaps in a track, gapless
 // move/remove/reorder/repack honor item `linkId` links (see repackTrack).
+//
+// IMAGE ITEMS (`kind:"image"` — the animatic's stills, see routes/animatic.js)
+// have no source timeline: `offsetFrames` stays 0 and `sourceDurationInFrames`
+// stays absent. `resize edge:"start"` and `split` both do in-point math, so both
+// branch on `isImage` — otherwise a head-trimmed or split still would try to
+// seek into media that has no frames to seek to. Mirrors src/editor/timeline.js.
+const isImage = (it) => it?.kind === "image";
+
 function applyTimelineOps(tl, ops) {
   for (const op of ops || []) {
     if (op.op === "move" && op.id != null) {
@@ -207,15 +223,15 @@ function applyTimelineOps(tl, ops) {
           // Head trim/extend, end anchored: the start slides by the duration
           // change and the source in-point follows. Clamps: offsetFrames ≥ 0
           // (can't extend before the source start), from ≥ 0, duration ≥ 1.
-          const delta = Math.max(
-            Math.max(-off, -(it.from || 0)),
-            Math.min((it.durationInFrames || 1) - 1, (it.durationInFrames || 0) - d),
-          );
+          // An image has no source start to bump into, so only from ≥ 0 binds.
+          const lo = isImage(it) ? -(it.from || 0) : Math.max(-off, -(it.from || 0));
+          const delta = Math.max(lo, Math.min((it.durationInFrames || 1) - 1, (it.durationInFrames || 0) - d));
           it.from = (it.from || 0) + delta;
-          it.offsetFrames = off + delta;
+          if (!isImage(it)) it.offsetFrames = off + delta;
           it.durationInFrames = (it.durationInFrames || 0) - delta;
         } else {
           // End trim: never exceed what's left of the source past the in-point.
+          // An image has no source length — it holds for as long as you want.
           it.durationInFrames = it.sourceDurationInFrames
             ? Math.min(d, Math.max(1, it.sourceDurationInFrames - off))
             : d;
@@ -256,7 +272,8 @@ function applyTimelineOps(tl, ops) {
               id: rightId,
               from: at,
               durationInFrames: (it.durationInFrames || 0) - leftDur,
-              offsetFrames: (it.offsetFrames || 0) + leftDur,
+              // Both halves of a split still hold the same frame from in-point 0.
+              offsetFrames: isImage(it) ? 0 : (it.offsetFrames || 0) + leftDur,
             };
             delete right.fadeInFrames; // fade-in belongs to the left half
             if (rightLinkId) right.linkId = rightLinkId; else delete right.linkId;
@@ -266,6 +283,44 @@ function applyTimelineOps(tl, ops) {
             delete it.fadeOutFrames; // fade-out belongs to the right half
             t.items.splice(i + 1, 0, right);
           }
+        }
+      }
+    } else if (op.op === "insert" && op.trackId != null && op.item && op.item.id) {
+      // Add an item to a track. Normalized here rather than trusted: an inserted
+      // image must obey the image invariants (no in-point, no source cap) even
+      // if the caller sent otherwise, and a duplicate id would make every
+      // id-keyed op ambiguous.
+      const t = tl.tracks.find((x) => x.id === op.trackId);
+      if (t && !findItem(tl, op.item.id)) {
+        const it = { ...op.item };
+        it.from = Math.max(0, Math.round(it.from || 0));
+        it.durationInFrames = Math.max(1, Math.round(it.durationInFrames || 1));
+        if (isImage(it)) {
+          it.offsetFrames = 0;
+          delete it.sourceDurationInFrames;
+          if (!it.src) it.src = null; // explicit: a slate, not a broken clip
+        } else {
+          it.offsetFrames = Math.max(0, Math.round(it.offsetFrames || 0));
+        }
+        t.items.push(it);
+      }
+    } else if (op.op === "replace" && op.id != null) {
+      // Swap the media under an item, keeping everything about its place in the
+      // edit: `from`, `durationInFrames`, `kind`, `linkId`, flips, disabled.
+      // This is how a freshly generated still fills the slate the Editor put on
+      // the timeline when the user asked for it — the slot is reserved first,
+      // the picture arrives later, and the timing never moves.
+      const f = findItem(tl, op.id);
+      if (f && typeof op.src === "string" && op.src) {
+        const it = f.item;
+        it.src = op.src;
+        if (typeof op.name === "string" && op.name) it.name = op.name;
+        if (op.stillFile !== undefined) it.stillFile = op.stillFile || null;
+        if (isImage(it)) {
+          // Re-assert the image invariants: a slate that just became a real
+          // still must not inherit a stale in-point or source cap.
+          it.offsetFrames = 0;
+          delete it.sourceDurationInFrames;
         }
       }
     } else if (op.op === "remove" && op.id != null) {
@@ -337,7 +392,17 @@ export function registerTimeline(app) {
       at: r.at || null,
       clips: r.clips || (r.timeline?.tracks?.find((t) => t.type === "audio")?.items?.length || 0),
     }));
-    return c.json({ timeline: db.editorTimeline || null, cuts, radioVersions });
+    // Animatic versions — picture (storyboard stills) + dialogue timelines built
+    // on the Radio tab (see routes/animatic.js). Same inline-timeline shape as
+    // radio versions, plus the coverage counts they were built with.
+    const animaticVersions = (Array.isArray(db.animaticVersions) ? db.animaticVersions : []).map((r) => ({
+      v: r.v,
+      name: r.name || `animatic v${r.v}`,
+      at: r.at || null,
+      clips: r.clips || (r.timeline?.tracks?.find((t) => t.type === "video")?.items?.length || 0),
+      coverage: r.coverage || null,
+    }));
+    return c.json({ timeline: db.editorTimeline || null, cuts, radioVersions, animaticVersions });
   });
 
   // Load a stored radio version into the editor (replaces the working timeline).
@@ -349,6 +414,21 @@ export function registerTimeline(app) {
     const list = Array.isArray(db.radioVersions) ? db.radioVersions : [];
     const entry = body?.v != null ? list.find((r) => r.v === Number(body.v)) : list[list.length - 1];
     if (!entry || !entry.timeline) return c.json({ error: "No matching radio version to load" }, 404);
+    db.editorTimeline = entry.timeline;
+    await writeSelections(c.env, pid, db);
+    await broadcastTimeline(c, pid, body?.clientId);
+    return c.json({ ok: true, timeline: entry.timeline });
+  });
+
+  // Load a stored animatic version into the editor. Mirrors from-radio.
+  app.post("/api/timeline/from-animatic", async (c) => {
+    const pid = c.get("projectId");
+    let body;
+    try { body = await c.req.json(); } catch { body = {}; }
+    const db = await readSelections(c.env, pid);
+    const list = Array.isArray(db.animaticVersions) ? db.animaticVersions : [];
+    const entry = body?.v != null ? list.find((r) => r.v === Number(body.v)) : list[list.length - 1];
+    if (!entry || !entry.timeline) return c.json({ error: "No matching animatic version to load" }, 404);
     db.editorTimeline = entry.timeline;
     await writeSelections(c.env, pid, db);
     await broadcastTimeline(c, pid, body?.clientId);

@@ -37,6 +37,12 @@ const timeline = {
         // sourceDurationInFrames on purpose — the asset duration must fall
         // back to covering offset + duration (90 + 110 = 200).
         { id: "v4", src: "/gen/SPLIT.mp4", name: "Split right half", from: 480, durationInFrames: 110, offsetFrames: 90, volume: 1 },
+        // Animatic picture items on the same lane as footage: a storyboard
+        // still (an image — picture but no audio track), and a SLATE (a shot
+        // whose still isn't generated yet, src:null) which must not reach the
+        // export at all.
+        { id: "img1", kind: "image", src: "/storyboard-media/MS-01_MS-012_gen1.png", name: "MS-012 · still 1", from: 590, durationInFrames: 48, shot: "MS-012", bundle: "MS-01" },
+        { id: "slate1", kind: "image", src: null, name: "MS-013 · no still", from: 638, durationInFrames: 48, shot: "MS-013", bundle: "MS-01" },
       ],
     },
     {
@@ -89,8 +95,13 @@ ok(/amount="-96dB"/.test(xml), "muted clip → -96dB");
 //    longest usage (240 source frames).
 const ms01Assets = (xml.match(/<asset [^>]*name="MS-01\.mp4"/g) || []).length;
 ok(ms01Assets === 1, `MS-01.mp4 deduped to a single <asset> (found ${ms01Assets})`);
-const ms01Clips = (xml.replace(/\s+/g, " ").match(/<asset-clip [^>]*name="MS-01[^"]*"/g) || []).length;
-ok(ms01Clips === 2, `MS-01 referenced by 2 asset-clips (found ${ms01Clips})`);
+// Count clips by the asset id they REFERENCE, not by a name prefix — clip names
+// aren't unique-prefixed (e.g. "MS-012 · still 1" starts with "MS-01").
+const ms01Id = (/<asset id="(a\d+)"[^>]*name="MS-01\.mp4"/.exec(xml.replace(/\s+/g, " ")) || [])[1];
+const ms01Clips = ms01Id
+  ? (xml.replace(/\s+/g, " ").match(new RegExp(`<asset-clip [^>]*ref="${ms01Id}"`, "g")) || []).length
+  : 0;
+ok(ms01Clips === 2, `MS-01.mp4 asset referenced by 2 asset-clips (found ${ms01Clips})`);
 
 // 7. Overlap guard: the two overlapping clips land on different lanes.
 // asset-clip attrs are ordered ref, lane, offset… — pull lane for each overlap clip.
@@ -107,8 +118,9 @@ ok(laneOf("Overlap A") !== null && laneOf("Overlap B") !== null && laneOf("Overl
 ok(xml.includes("MS-01 · A &amp; B"), "& escaped in clip name (· passes through)");
 ok(xml.includes("MS-02 &lt;hero&gt;"), "< > escaped in clip name");
 
-// 9. Manifest deduped (7 unique kept srcs).
-const expectSrcs = ["/gen/MS-01.mp4", "/gen/MS-02.mp4", "/gen/SPLIT.mp4", "/gen/OVL-A.mp4", "/gen/OVL-B.mp4", "/sound-media/bed.mp3", "/sound-media/hit.mp3"];
+// 9. Manifest deduped (8 unique kept srcs — the still is one of them; the
+//    slate contributes none because it has no media).
+const expectSrcs = ["/gen/MS-01.mp4", "/gen/MS-02.mp4", "/gen/SPLIT.mp4", "/gen/OVL-A.mp4", "/gen/OVL-B.mp4", "/sound-media/bed.mp3", "/sound-media/hit.mp3", "/storyboard-media/MS-01_MS-012_gen1.png"];
 ok(media.length === expectSrcs.length && expectSrcs.every((s) => media.some((m) => m.src === s)),
   `manifest has ${expectSrcs.length} deduped srcs (got ${media.length})`);
 
@@ -127,6 +139,24 @@ ok(/name="bed\.mp3"[^>]*hasVideo="0" hasAudio="1" audioSources="1"/.test(xml.rep
   // Untrimmed clips keep a zero start.
   const v2 = /<asset-clip [^>]*name="MS-02 &lt;hero&gt;"[^>]*/.exec(flat);
   ok(v2 && / start="0\/24s"/.test(v2[0]), "untrimmed clip start stays 0/24s");
+}
+
+// 12. Animatic stills: an image asset must declare picture but NO audio (a PNG
+//     flagged hasAudio="1" makes Resolve conform a track that doesn't exist),
+//     hold at source in-point 0, and slates must be absent entirely.
+{
+  const flat = xml.replace(/\s+/g, " ");
+  const a = /<asset [^>]*name="MS-01_MS-012_gen1\.png"[^>]*/.exec(flat);
+  ok(a && /hasVideo="1" hasAudio="0"/.test(a[0]),
+    `still asset flagged picture-only (${a ? a[0].match(/hasVideo="[^"]*" hasAudio="[^"]*"/)?.[0] : "asset missing"})`);
+  // No sourceDurationInFrames on an image → the asset must still cover its use.
+  ok(a && /duration="48\/24s"/.test(a[0]),
+    `still asset duration covers its usage (${a ? a[0].match(/duration="[^"]*"/)?.[0] : "asset missing"})`);
+  const clip = /<asset-clip [^>]*name="MS-012 · still 1"[^>]*/.exec(flat);
+  ok(clip && / start="0\/24s"/.test(clip[0]), "still clip holds from source in-point 0");
+  ok(clip && / offset="590\/24s"/.test(clip[0]), "still clip keeps its timeline position");
+  ok(!/MS-013/.test(xml) && !media.some((m) => m.src == null),
+    "slate (image item with no still) is excluded from the export");
 }
 
 // Optional: xmllint well-formedness (no DTD available, syntax only).

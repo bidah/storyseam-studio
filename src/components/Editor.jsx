@@ -16,6 +16,9 @@ import {
   PanelLeftClose, PanelLeftOpen, FolderOpen, Ban, FileDown, FoldHorizontal, Magnet,
   ZoomIn, ZoomOut, Camera, Images, Link2, Unlink2, AudioLines, GripHorizontal,
   FlipHorizontal2, FlipVertical2, Radio,
+  // Aliased: a bare `Image` import would shadow the DOM's global Image
+  // constructor for this whole module.
+  Image as ImageIcon, ImageOff, Sparkles, Plus, RefreshCcwDot,
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -24,6 +27,7 @@ import { Badge } from "@/components/ui/badge";
 import { Slider } from "@/components/ui/slider";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { Separator } from "@/components/ui/separator";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
@@ -34,12 +38,14 @@ import {
 import {
   ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator,
   ContextMenuShortcut, ContextMenuTrigger,
+  ContextMenuSub, ContextMenuSubContent, ContextMenuSubTrigger,
 } from "@/components/ui/context-menu";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 
 import { IconSwap } from "@/components/shared";
 import EditorComposition from "@/editor/Composition";
-import { timelineDuration, framesToSec } from "@/editor/timeline";
+import { timelineDuration, framesToSec, isImageItem, isSlateItem, normalizeItemKind } from "@/editor/timeline";
+import { useAgent, agentIsBusy, renderAnimaticStillMessage } from "@/components/AgentProvider";
 import { CLIENT_ID } from "@/lib/clientId";
 import { getProjectId } from "@/lib/projectFetch";
 import { toPreviewSrc } from "@/lib/previewSrc";
@@ -353,10 +359,17 @@ function Waveform({ peaks, width, winStart = 0, winEnd = 1, fadeInPx, fadeOutPx,
 // saved before the field existed), and normalize every item's `offsetFrames`
 // (source in-point — absent means 0), defensively clamping the duration to
 // what's left of the source past the in-point.
+//
+// IMAGE ITEMS ARE EXEMPT from both. A still has no natural length (its duration
+// is whatever the animatic gave it) and no source timeline to seek into, so
+// `normalizeItemKind` strips both fields instead. Backfilling
+// `sourceDurationInFrames` here would silently cap every still at its current
+// length and make it un-extendable.
 function withSourceDurations(tl) {
   if (!tl) return tl;
   for (const t of tl.tracks || []) {
     for (const it of t.items || []) {
+      if (isImageItem(it)) { normalizeItemKind(it); continue; }
       if (t.type === "video" && it.sourceDurationInFrames == null) {
         it.sourceDurationInFrames = it.durationInFrames;
       }
@@ -442,16 +455,21 @@ function makeTrack(tl, type) {
 function TimelineItem({
   item, track, pxPerSec, fps, selected, linkHighlight, multiCount, canSplit,
   onSelect, onDragStart, onFadeStart, onToggleDisable, onRemove,
-  onUnlink, onLinkSelected, onDetachAudio, onSplit,
+  onUnlink, onLinkSelected, onDetachAudio, onSplit, onNewStill, onSwapTake, takes,
 }) {
   const left = framesToSec(item.from, fps) * pxPerSec;
   const width = Math.max(6, framesToSec(item.durationInFrames, fps) * pxPerSec);
   const isAudio = track.type === "audio";
+  const isImage = isImageItem(item);
+  const isSlate = isSlateItem(item);
   const disabled = !!item.disabled;
   // Thumbnail at the clip's in-point, quantized to whole seconds so a left-trim
   // drag doesn't spawn a capture per frame (the stale thumb shows meanwhile).
+  // A still needs no capture — the image IS the thumbnail, and probing a PNG
+  // through a <video> element would just fail.
   const thumbAtSec = isAudio ? 0 : Math.round(framesToSec(item.offsetFrames || 0, fps));
-  const thumb = useVideoThumb(!isAudio ? item.src : null, thumbAtSec);
+  const videoThumb = useVideoThumb(!isAudio && !isImage ? item.src : null, thumbAtSec);
+  const thumb = isImage ? item.src : videoThumb;
   const peaks = useAudioPeaks(isAudio ? item.src : null);
   const fadeInPx = framesToSec(item.fadeInFrames || 0, fps) * pxPerSec;
   const fadeOutPx = framesToSec(item.fadeOutFrames || 0, fps) * pxPerSec;
@@ -471,7 +489,13 @@ function TimelineItem({
               ? "border-muted-foreground/30 bg-muted-foreground/15 text-muted-foreground line-through decoration-muted-foreground/50"
               : isAudio
                 ? "border-violet-500/40 bg-violet-500/20 text-violet-100"
-                : "border-emerald-500/40 bg-emerald-500/20 text-emerald-50",
+                // Picture lane, three states at a glance: amber = a shot still
+                // waiting on art, sky = a storyboard still, emerald = real footage.
+                : isSlate
+                  ? "border-amber-500/50 bg-amber-500/15 text-amber-100"
+                  : isImage
+                    ? "border-sky-500/40 bg-sky-500/20 text-sky-50"
+                    : "border-emerald-500/40 bg-emerald-500/20 text-emerald-50",
             selected && "ring-2 ring-primary",
             linkHighlight && "ring-2 ring-primary/40",
           )}
@@ -482,9 +506,18 @@ function TimelineItem({
             if (e.metaKey || e.ctrlKey) return; // cmd-click only toggles selection
             if (!e.target.dataset?.handle) onDragStart(e, item, track, "move");
           }}
+          // The LANE is also a ContextMenuTrigger ("Add scene here…"), and Radix's
+          // trigger only calls preventDefault on contextmenu — it never stops
+          // propagation — so without this the event bubbles and BOTH menus open,
+          // the lane's landing on top and hiding every per-clip action. Stop the
+          // bubble, but never preventDefault here: Radix composes our handler
+          // BEFORE its own and skips opening if the default was prevented, which
+          // would kill this clip's own menu instead.
+          onContextMenu={(e) => e.stopPropagation()}
           title={item.name}
         >
-          {/* filmstrip: the clip's first frame tiled across the card */}
+          {/* filmstrip: the clip's first frame tiled across the card. For a
+              still this IS the correct filmstrip — every frame is that frame. */}
           {!isAudio && thumb && !disabled && (
             <div
               aria-hidden
@@ -494,6 +527,18 @@ function TimelineItem({
                 backgroundSize: "auto 100%",
                 backgroundRepeat: "repeat-x",
                 backgroundPosition: "left center",
+              }}
+            />
+          )}
+          {/* slate: a picture slot with no still generated yet — hatched so an
+              unfilled hole is obvious at a glance, and not mistaken for footage */}
+          {isSlate && !disabled && (
+            <div
+              aria-hidden
+              className="pointer-events-none absolute inset-0 opacity-40"
+              style={{
+                backgroundImage:
+                  "repeating-linear-gradient(45deg, transparent 0 6px, rgba(251,191,36,0.35) 6px 12px)",
               }}
             />
           )}
@@ -516,7 +561,17 @@ function TimelineItem({
               hasArt && !disabled && "bg-gradient-to-b from-black/60 to-transparent",
             )}
           >
-            {disabled ? <EyeOff size={11} className="shrink-0" /> : isAudio ? <Music size={11} className="shrink-0" /> : <Film size={11} className="shrink-0" />}
+            {disabled ? (
+              <EyeOff size={11} className="shrink-0" />
+            ) : isAudio ? (
+              <Music size={11} className="shrink-0" />
+            ) : isSlate ? (
+              <ImageOff size={11} className="shrink-0" />
+            ) : isImage ? (
+              <ImageIcon size={11} className="shrink-0" />
+            ) : (
+              <Film size={11} className="shrink-0" />
+            )}
             <span className="truncate">{item.name}</span>
             {item.linkId && <Link2 size={10} className="ml-auto shrink-0 opacity-70" aria-label="Linked clip" />}
           </div>
@@ -563,6 +618,39 @@ function TimelineItem({
         </div>
       </ContextMenuTrigger>
       <ContextMenuContent>
+        {/* Storyboard actions. On a picture item these come first — filling a
+            slate is the whole point of the animatic. `item.shot` is the
+            provenance the modal needs; a clip with no shot (e.g. a pool drop)
+            has no storyboard context, so the entry is hidden rather than
+            offered-then-failed. */}
+        {item.shot && (
+          <>
+            <ContextMenuItem onSelect={() => onNewStill?.(item.id)}>
+              <span className="flex items-center gap-2">
+                <Sparkles size={14} />
+                {isSlate ? "Generate still…" : isImage ? "New still…" : "New still from this shot…"}
+              </span>
+            </ContextMenuItem>
+            {isImage && takes?.length > 1 && (
+              <ContextMenuSub>
+                <ContextMenuSubTrigger>
+                  <span className="flex items-center gap-2"><RefreshCcwDot size={14} /> Swap take</span>
+                </ContextMenuSubTrigger>
+                <ContextMenuSubContent>
+                  {takes.map((t) => (
+                    <ContextMenuItem key={t.file} onSelect={() => onSwapTake?.(item.id, t)} disabled={t.file === item.stillFile}>
+                      <span className="flex items-center gap-2">
+                        <img src={t.url} alt="" className="h-6 w-10 rounded-sm bg-black object-cover" />
+                        {t.angle || t.name}
+                      </span>
+                    </ContextMenuItem>
+                  ))}
+                </ContextMenuSubContent>
+              </ContextMenuSub>
+            )}
+            <ContextMenuSeparator />
+          </>
+        )}
         <ContextMenuItem onSelect={() => onSplit(item.id)} disabled={!canSplit}>
           <span className="flex items-center gap-2"><Scissors size={14} /> Split at playhead</span>
           <ContextMenuShortcut>S</ContextMenuShortcut>
@@ -576,7 +664,9 @@ function TimelineItem({
           <ContextMenuShortcut>D</ContextMenuShortcut>
         </ContextMenuItem>
         <ContextMenuSeparator />
-        {!isAudio && !item.linkId && (
+        {/* Images have no audio track to detach — a still would clone a PNG (or,
+            for a slate, `null`) onto an audio lane, which <Audio> rejects. */}
+        {!isAudio && !isImage && !item.linkId && (
           <ContextMenuItem onSelect={() => onDetachAudio(item.id)}>
             <span className="flex items-center gap-2"><AudioLines size={14} /> Detach audio</span>
           </ContextMenuItem>
@@ -673,6 +763,312 @@ function StillCard({ still, onOpen }) {
         <span className="truncate text-[10px] font-medium">{still.sourceBundle || still.sourceName || "Still"}</span>
       </div>
     </button>
+  );
+}
+
+/* ---- Scene modal: author ONE shot's still, from the timeline ----------------
+ *
+ * Opened from a picture item's context menu ("New still…" / "Generate still…")
+ * or from empty picture-lane space ("Add scene here…"). It is the SAME component
+ * for both: the only difference is whether the slot already exists.
+ *
+ * It exists because "generate a still for this slot" needs context the timeline
+ * doesn't hold — the shot's action/camera/dialogue, the bundle's reference
+ * images, and (crucially) the prompt a previous take was made from. It reads
+ * that live from /api/shotlist + /api/storyboard rather than trusting the item,
+ * because the shot may have been rewritten since the still was generated.
+ */
+function SceneDialog({ open, target, onOpenChange, onGenerate, busy }) {
+  const [shot, setShot] = useState(null);
+  const [takes, setTakes] = useState([]);
+  const [prompt, setPrompt] = useState("");
+  const [angle, setAngle] = useState("");
+  const [reuse, setReuse] = useState(null); // a take to pass back as a reference
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState(null);
+  // For "add", the lane only SUGGESTS a shot — the user picks. Generating against
+  // the wrong shot writes a take into an unrelated shot's list, so this must not
+  // be a silent default.
+  const [pickedShot, setPickedShot] = useState(null);
+
+  useEffect(() => { setPickedShot(null); }, [target?.shot, target?.itemId]);
+
+  const options = target?.shots || null; // [{ shot, bundle, … }] — "add" only
+  const chosen = pickedShot ? options?.find((o) => o.shot === pickedShot) : null;
+  const shotId = chosen?.shot || target?.shot || null;
+  const bundleId = chosen?.bundle ?? target?.bundle ?? null;
+
+  // Compose the default prompt the way the generate-storyboard skill does, from
+  // the shot as it reads NOW. Used when no take has a stored prompt to reuse.
+  const composeDefault = useCallback((s) => {
+    if (!s) return "";
+    const dlg = s.dialogue && !/\(no dialogue\)/i.test(s.dialogue) ? s.dialogue : null;
+    return [
+      "A single cinematic storyboard keyframe. Match the attached reference images for the location and each character — keep their exact appearance.",
+      s.camera ? `Camera: ${s.camera}.` : null,
+      s.action ? `Action at this instant: ${s.action}` : null,
+      s.location ? `Setting: ${s.location}.` : null,
+      dlg ? `The character is mid-line ("${dlg}") — use it for expression and pose only; this is one frame, not a sequence.` : null,
+    ].filter(Boolean).join("\n");
+  }, []);
+
+  // Load the shot + its takes whenever the modal opens on a new slot.
+  useEffect(() => {
+    if (!open || !shotId) return;
+    let cancelled = false;
+    setLoading(true); setErr(null); setReuse(null); setAngle("");
+    (async () => {
+      try {
+        const [slRes, sbRes] = await Promise.all([fetch("/api/shotlist"), fetch("/api/storyboard")]);
+        const sl = await slRes.json();
+        const sb = sbRes.ok ? await sbRes.json() : { stills: {} };
+        if (cancelled) return;
+        const s = (sl.shots || []).find((x) => x.id === shotId) || null;
+        const list = (bundleId && sb.stills?.[bundleId]?.[shotId]) || [];
+        setShot(s);
+        setTakes(list);
+        // Prefill from the take on screen, else the newest take, else compose
+        // fresh from the shot. A stored prompt is what makes this a real
+        // "regenerate with edits" rather than a guess.
+        const current = list.find((t) => t.file === target?.stillFile);
+        const seed = current || list[list.length - 1] || null;
+        setPrompt(seed?.prompt || composeDefault(s));
+      } catch (e) {
+        if (!cancelled) setErr(String(e.message || e));
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [open, shotId, bundleId, target?.stillFile, composeDefault]);
+
+  const stale = shot && takes.length
+    ? (() => {
+        const snap = takes[takes.length - 1]?.shotSnapshot;
+        return snap && (snap.action || "") !== (shot.action || "");
+      })()
+    : false;
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-2xl">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <ImageIcon size={16} className="text-sky-400" />
+            {target?.mode === "add" ? "Add scene" : "New still"} — {bundleId || "?"} / {shotId || "?"}
+          </DialogTitle>
+          <DialogDescription>
+            {target?.mode === "add"
+              ? "Reserves a slot on the picture track now; the still drops into it when the agent finishes."
+              : "Generates another take for this shot and swaps it into this slot. Existing takes are kept."}
+          </DialogDescription>
+        </DialogHeader>
+
+        {loading ? (
+          <div className="py-8"><Spinner label="loading shot…" /></div>
+        ) : err ? (
+          <ErrorNote>{err}</ErrorNote>
+        ) : !shot ? (
+          <p className="py-6 text-center text-sm text-muted-foreground">
+            Shot {shotId} isn’t in the shot list any more — it may have been renamed or removed.
+          </p>
+        ) : (
+          <div className="space-y-3">
+            {/* Which shot this scene is. Only "add" can choose — an existing
+                item's shot is fixed by the slot it occupies. */}
+            {options && (
+              <div>
+                <Label htmlFor="scene-shot" className="text-xs">Shot</Label>
+                <select
+                  id="scene-shot"
+                  value={shotId || ""}
+                  onChange={(e) => setPickedShot(e.target.value)}
+                  className="mt-1 h-8 w-full rounded-md border border-input bg-transparent px-2 text-xs shadow-xs outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
+                >
+                  {options.map((o) => (
+                    <option key={o.shot} value={o.shot}>
+                      {o.shot}{o.bundle ? ` · ${o.bundle}` : ""}{o.still ? " — has a still" : ""}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+            {/* shot context, live from the shot list */}
+            <div className="rounded-md border bg-muted/30 p-2.5 text-xs">
+              <div className="flex flex-wrap items-center gap-1.5">
+                <Badge variant="outline" className="font-mono">{shot.id}</Badge>
+                {shot.location && <Badge variant="muted">{shot.location}</Badge>}
+                {shot.camera && <Badge variant="muted">{shot.camera}</Badge>}
+                {shot.dur > 0 && <Badge variant="muted">{shot.dur}s</Badge>}
+              </div>
+              {shot.action && <p className="mt-1.5 text-muted-foreground">{shot.action}</p>}
+              {shot.dialogue && !/\(no dialogue\)/i.test(shot.dialogue) && (
+                <p className="mt-1 text-muted-foreground"><span className="font-medium">Dialogue:</span> {shot.dialogue}</p>
+              )}
+            </div>
+
+            {stale && (
+              <p className="flex items-center gap-1.5 text-xs text-amber-400">
+                <TriangleAlert size={12} /> the shot’s action changed since the last take was generated — the prompt below may be out of date.
+              </p>
+            )}
+
+            {/* takes: swap instantly, or reuse one as a reference for a variation */}
+            {takes.length > 0 && (
+              <div>
+                <p className="mb-1 text-xs font-medium text-muted-foreground">
+                  {takes.length} take{takes.length > 1 ? "s" : ""} — click to reuse as a reference for the new generation
+                </p>
+                <div className="flex gap-1.5 overflow-x-auto pb-1">
+                  {takes.map((t) => (
+                    <button
+                      key={t.file}
+                      type="button"
+                      onClick={() => setReuse(reuse?.file === t.file ? null : t)}
+                      title={t.angle || t.name}
+                      className={cn(
+                        "relative shrink-0 overflow-hidden rounded border transition-shadow",
+                        reuse?.file === t.file ? "border-primary ring-2 ring-primary" : "hover:border-primary/50",
+                        t.file === target?.stillFile && "ring-1 ring-sky-500/60",
+                      )}
+                    >
+                      <img src={t.url} alt="" className="h-16 w-28 bg-black object-cover" />
+                      <span className="absolute inset-x-0 bottom-0 truncate bg-black/60 px-1 text-[9px] text-white">
+                        {t.angle || t.name}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div>
+              <Label htmlFor="scene-prompt" className="text-xs">Prompt</Label>
+              <Textarea
+                id="scene-prompt"
+                value={prompt}
+                onChange={(e) => setPrompt(e.target.value)}
+                rows={6}
+                className="mt-1 text-xs"
+              />
+            </div>
+            <div>
+              <Label htmlFor="scene-angle" className="text-xs">Angle / variation note (optional)</Label>
+              <Input
+                id="scene-angle"
+                value={angle}
+                onChange={(e) => setAngle(e.target.value)}
+                placeholder="e.g. low-angle CU"
+                className="mt-1 h-8 text-xs"
+              />
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-1">
+              <Button variant="ghost" size="sm" onClick={() => onOpenChange(false)}>Cancel</Button>
+              <Button
+                size="sm"
+                disabled={busy || !prompt.trim()}
+                // `bundleId` (not target.bundle) — the picker may have moved the
+                // shot, and the bundle must follow it or the still is attached
+                // under a bundle the animatic join never reads.
+                onClick={() => onGenerate({ shot, bundle: bundleId, prompt: prompt.trim(), angle: angle.trim(), reuse })}
+              >
+                {busy ? <><Loader2 size={13} className="animate-spin" /> asking the agent…</> : <><Sparkles size={13} /> Generate</>}
+              </Button>
+            </div>
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/* ---- Audio modal: drop a Sound Studio track onto an audio lane --------------
+ *
+ * The pool rail can already drag audio in, but a drag can't say "here, at this
+ * exact frame" from a right-click, and the pool only lists each track's LATEST
+ * render. This lists every ready version, grouped by kind, and inserts at the
+ * frame that was right-clicked.
+ */
+function AudioDialog({ open, onOpenChange, onPick }) {
+  const [tracks, setTracks] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState(null);
+
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    setLoading(true); setErr(null);
+    (async () => {
+      try {
+        const res = await fetch("/api/sounds");
+        const d = await res.json();
+        if (cancelled) return;
+        if (!res.ok) throw new Error(d.error || "Failed to load sounds");
+        // Only versions whose media actually exists are insertable — the route
+        // already drops the rest, and a version with no url would be a dead clip.
+        const rows = [];
+        for (const t of d.tracks || []) {
+          for (const v of t.versions || []) {
+            if (v.status === "ready" && v.url) {
+              rows.push({
+                key: `${t.id}_v${v.v}`,
+                trackId: t.id,
+                kind: t.kind || "sfx",
+                name: t.name || t.id,
+                v: v.v,
+                url: v.url,
+                duration: v.duration || 0,
+                liked: !!v.liked,
+              });
+            }
+          }
+        }
+        setTracks(rows);
+      } catch (e) {
+        if (!cancelled) setErr(String(e.message || e));
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [open]);
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2"><Music size={16} className="text-violet-400" /> Add audio</DialogTitle>
+          <DialogDescription>Drops a Sound Studio take onto this lane at the point you clicked.</DialogDescription>
+        </DialogHeader>
+        {loading ? (
+          <div className="py-8"><Spinner label="loading sounds…" /></div>
+        ) : err ? (
+          <ErrorNote>{err}</ErrorNote>
+        ) : !tracks.length ? (
+          <p className="py-6 text-center text-sm text-muted-foreground">
+            No rendered sounds yet — make one in the Sound studio first.
+          </p>
+        ) : (
+          <div className="-mx-1 max-h-[60vh] space-y-1 overflow-y-auto px-1">
+            {tracks.map((t) => (
+              <button
+                key={t.key}
+                onClick={() => onPick(t)}
+                className="flex w-full items-center gap-2 rounded-md border px-3 py-2 text-left text-sm transition-colors hover:bg-accent hover:text-accent-foreground"
+              >
+                <Badge variant="muted" className="font-mono">v{t.v}</Badge>
+                <span className="flex-1 truncate font-medium">{t.name}</span>
+                <Badge variant="outline">{t.kind}</Badge>
+                <span className="w-12 text-right text-xs text-muted-foreground">
+                  {t.duration ? `${t.duration.toFixed(1)}s` : "—"}
+                </span>
+              </button>
+            ))}
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -778,6 +1174,12 @@ export default function Editor({ reloadKey }) {
   const [timeline, setTimeline] = useState(null);
   const [cuts, setCuts] = useState([]);
   const [radioVersions, setRadioVersions] = useState([]);
+  const [animaticVersions, setAnimaticVersions] = useState([]);
+  // The Scene modal's target: { mode:"add"|"new", shot, bundle, stillFile?, itemId? }.
+  const [sceneTarget, setSceneTarget] = useState(null);
+  const [sceneBusy, setSceneBusy] = useState(false);
+  // The Audio modal's target lane: { trackId, from }.
+  const [audioTarget, setAudioTarget] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [selectedId, setSelectedId] = useState(null); // primary selection (inspector)
@@ -801,6 +1203,9 @@ export default function Editor({ reloadKey }) {
   // Stills grabbed from the preview, plus the currently-inspected still (modal).
   const [stills, setStills] = useState([]);
   const [stillModal, setStillModal] = useState(null);
+  // The Scene modal drives generation through the chat agent (same pipeline the
+  // Episode tab uses) rather than a bespoke render endpoint.
+  const agent = useAgent();
   const [grabbing, setGrabbing] = useState(false);
   // Active pool→timeline drag: the floating ghost + where it would land.
   //   { item, frameUrl, durationSec, x, y, drop }
@@ -843,6 +1248,7 @@ export default function Editor({ reloadKey }) {
   // playback. Space works after clicking the preview or timeline, but not the media
   // pool. (Remotion's own Space handler is focus-scoped and drops after any click.)
   const spaceAllowedRef = useRef(true);
+  const laneMenuRef = useRef(null); // { trackId, from } of the last lane right-click
   const zoomScrollRef = useRef(null); // pending scrollLeft to apply after a zoom, keeps the playhead anchored
   const [snapLine, setSnapLine] = useState(null); // frame of the active snap guide (null = none)
 
@@ -994,6 +1400,7 @@ export default function Editor({ reloadKey }) {
       setTimeline(withSourceDurations(data.timeline));
       setCuts(data.cuts || []);
       setRadioVersions(data.radioVersions || []);
+      setAnimaticVersions(data.animaticVersions || []);
     } catch (e) {
       setError(String(e.message || e));
     } finally {
@@ -1021,6 +1428,31 @@ export default function Editor({ reloadKey }) {
     } catch { /* leave stills empty on failure */ }
   }, []);
   useEffect(() => { loadStills(); }, [loadStills, reloadKey]);
+
+  // Storyboard takes for "Swap take", keyed `<bundle>/<shot>` — the same
+  // composite key db.stills uses. Keying by shot alone would let a shot id that
+  // appears under two bundles (which the positional pack ids make possible)
+  // overwrite the other's takes and offer the wrong images.
+  // Distinct from `stills` above, which is the grabbed-frames pool: these are
+  // the generated per-shot keyframes the animatic's picture track shows.
+  const [takesByShot, setTakesByShot] = useState({});
+  const loadTakes = useCallback(async () => {
+    try {
+      const res = await fetch("/api/storyboard");
+      if (!res.ok) return;
+      const data = await res.json();
+      const bag = {};
+      for (const [bundle, shots] of Object.entries(data.stills || {})) {
+        for (const [shot, list] of Object.entries(shots || {})) {
+          bag[`${bundle}/${shot}`] = (list || []).map((t) => ({ ...t, bundle, shot }));
+        }
+      }
+      setTakesByShot(bag);
+    } catch { /* the menu just won't offer takes */ }
+  }, []);
+  // reloadKey covers the Refresh button and project switch; the agent attaching a
+  // new take also fires the /api/data firehose, which bumps it.
+  useEffect(() => { loadTakes(); }, [loadTakes, reloadKey]);
 
   // "Grab still" — capture the preview's current frame as a full-res PNG, tag it
   // with the clip showing at the playhead + composition provenance, and save it.
@@ -1342,7 +1774,10 @@ export default function Editor({ reloadKey }) {
         const it = t.items.find((x) => x.id === id);
         if (it) { vid = it; break; }
       }
-      if (!vid || vid.linkId) return tl;
+      // An image has no audio to detach: cloning its src onto an audio track
+      // would hand <Audio> a PNG — or `null` for a slate, which throws and takes
+      // the whole preview down. The menu hides the entry; this is the backstop.
+      if (!vid || vid.linkId || isImageItem(vid)) return tl;
       let at = tl.tracks.find((t) => t.type === "audio");
       if (!at) { at = { id: "music", name: "Music", type: "audio", items: [] }; tl.tracks.push(at); }
       const linkId = `link_${id}`;
@@ -1431,6 +1866,216 @@ export default function Editor({ reloadKey }) {
   // the right halves can be selected afterwards — split-then-Delete trims a
   // tail in two keystrokes. Nothing to cut → no-op with no undo entry.
   const splitSeqRef = useRef(0);
+  // The timeline frame under a cursor X — same math the pool-drop uses, so a
+  // right-click "add here" lands exactly where a drag would have.
+  const frameAtClientX = useCallback((clientX) => {
+    const area = trackAreaRef.current;
+    if (!area) return 0;
+    const rect = area.getBoundingClientRect();
+    const x = clientX - rect.left + area.scrollLeft;
+    return Math.max(0, Math.round((x / pxPerSec) * fps));
+  }, [pxPerSec, fps]);
+
+  // Add an empty channel above/below a track. Previously only reachable by
+  // dragging a pool clip onto the group's outer edge band, which is not
+  // discoverable; the lane menu makes it a normal action.
+  const addChannel = useCallback((track, side) => {
+    mutate((tl) => {
+      const nt = makeTrack(tl, track.type);
+      const i = tl.tracks.findIndex((x) => x.id === track.id);
+      const at = i < 0 ? tl.tracks.length : side === "after" ? i + 1 : i;
+      tl.tracks.splice(at, 0, nt);
+      return tl;
+    });
+  }, [mutate]);
+
+  // Which shot a new scene on this lane belongs to. The picture track is per
+  // SHOT, so "add a scene" must resolve a shot before it can prompt for a still.
+  // We SUGGEST the shot after the nearest picture item at/before the click (the
+  // common case: "the animatic skipped this shot, put it back") — but the modal
+  // always lets the user pick, because the suggestion is a guess and generating
+  // against the wrong shot pollutes an unrelated shot's take list.
+  //
+  // Bundles come from /api/animatic, NOT from /api/shotlist's `packs`: packs are
+  // re-packed positionally and disagree with the episode manifest, which is what
+  // the stills join treats as authoritative (worker/src/lib/stills.js). Attaching
+  // under a pack id the join never looks in would silently orphan the still.
+  const openSceneForLane = useCallback(async (track) => {
+    const from = laneMenuRef.current?.from ?? Math.round(frameRef.current);
+    const tl = timelineRef.current;
+    const t = tl?.tracks.find((x) => x.id === track.id);
+    const prior = (t?.items || [])
+      .filter((it) => isImageItem(it) && it.shot && (it.from || 0) <= from)
+      .sort((a, b) => (b.from || 0) - (a.from || 0))[0] || null;
+    try {
+      const res = await fetch("/api/animatic");
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to read the shot list");
+      const shots = data.shotsDetail || [];
+      if (!shots.length) { setError("No shot list yet — write one first."); return; }
+      let i = 0;
+      if (prior) {
+        const at = shots.findIndex((s) => s.shot === prior.shot);
+        // Past the last shot there is no "next" — suggest the last one rather
+        // than silently re-offering it as if it were a new slot.
+        if (at >= 0) i = Math.min(at + 1, shots.length - 1);
+      }
+      setSceneTarget({
+        mode: "add",
+        trackId: track.id,
+        from,
+        shot: shots[i].shot,
+        bundle: shots[i].bundle,
+        shots, // the picker's options
+      });
+    } catch (e) {
+      setError(String(e.message || e));
+    }
+  }, []);
+
+  // Insert a Sound Studio take on the audio lane that was right-clicked, at the
+  // frame under the cursor. A plain local edit: the media already exists, so
+  // there's no agent round-trip and nothing to reserve.
+  const addAudioAt = useCallback((pick) => {
+    const t = audioTarget;
+    if (!t) return;
+    const id = `snd_${pick.trackId}_v${pick.v}_${Date.now().toString(36)}`;
+    const dur = Math.max(1, Math.round((pick.duration > 0 ? pick.duration : 3) * fps));
+    mutate((tl) => {
+      const track = tl.tracks.find((x) => x.id === t.trackId);
+      if (!track) return tl;
+      track.items.push({
+        id,
+        src: pick.url,
+        name: `${pick.name} · v${pick.v}`,
+        track: pick.trackId,
+        from: Math.max(0, Math.round(t.from || 0)),
+        durationInFrames: dur,
+        sourceDurationInFrames: dur,
+        offsetFrames: 0,
+        volume: 1,
+      });
+      return tl;
+    });
+    applySelection(new Set([id]), id);
+    setAudioTarget(null);
+  }, [audioTarget, fps, mutate, applySelection]);
+
+  // "New still…" on an existing picture item — the item already knows its shot.
+  const openSceneForItem = useCallback((itemId) => {
+    const tl = timelineRef.current;
+    const it = tl?.tracks.flatMap((t) => t.items).find((x) => x.id === itemId);
+    if (!it) return;
+    if (!it.shot) {
+      setError("This clip isn't tied to a shot, so there's no storyboard context to generate from.");
+      return;
+    }
+    setSceneTarget({ mode: "new", itemId, shot: it.shot, bundle: it.bundle, stillFile: it.stillFile });
+  }, []);
+
+  // Swap which TAKE an image item shows, with no generation — takes already
+  // exist in db.stills, so this is a pure metadata edit.
+  const swapTake = useCallback((itemId, take) => {
+    mapItem(itemId, { src: take.url, stillFile: take.file, name: take.name ? `${take.shot || ""} · ${take.name}`.trim() : undefined });
+  }, [mapItem]);
+
+  // Generate a still for a picture slot. ONE mechanism serves both "add a scene
+  // here" and "re-roll this still":
+  //
+  //   1. Make sure an item exists — for "add", insert a SLATE right now, so the
+  //      slot (and the timing the user chose) is reserved and visible instantly,
+  //      and is undoable/autosaved like any edit.
+  //   2. Hand the agent that item's id. It generates, calls attach_still (which
+  //      keeps every take), and finishes with edit_timeline `replace` — filling
+  //      THIS item and leaving from/durationInFrames alone.
+  //
+  // The agent's write carries no clientId, so the open editor live-reloads and
+  // the picture simply appears in place. Nothing here polls or waits.
+  const generateStill = useCallback(async ({ shot, bundle, prompt, angle, reuse }) => {
+    const t = sceneTarget;
+    if (!t) return;
+    if (!bundle) {
+      setError(`Shot ${shot?.id} doesn't belong to any bundle, so its still has nowhere to live. Rebuild the shot list from the episode first.`);
+      return;
+    }
+    setSceneBusy(true);
+    setError(null);
+    try {
+      let itemId = t.itemId;
+      if (t.mode === "add") {
+        itemId = `pic_${shot.id.replace(/[^a-zA-Z0-9_-]/g, "")}_${Date.now().toString(36)}`;
+        // The insert op applies to the timeline the SERVER holds, and the reply
+        // replaces our local state wholesale — so any edit the debounced (and
+        // un-retried) autosave hasn't landed yet would be silently thrown away.
+        // Flush first, and bail rather than destroy work if the flush fails.
+        if (dirtyRef.current) {
+          const saved = await fetch("/api/timeline", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ timeline: timelineRef.current, clientId: CLIENT_ID }),
+          });
+          if (!saved.ok) throw new Error("Couldn't save your latest edits, so the scene wasn't added. Try again.");
+          dirtyRef.current = false;
+        }
+        // Insert through the SERVER, not a local mutate + autosave. Autosave is
+        // debounced 600ms, so a local-only slate may not exist server-side by
+        // the time the agent's `replace` lands — and `replace` on a missing id
+        // is a tolerant no-op, i.e. the still would vanish silently. Going
+        // through /api/timeline/edit makes the slot durable before the agent is
+        // even asked, and stamping CLIENT_ID keeps our own broadcast from
+        // bouncing back as a foreign reload.
+        const res = await fetch("/api/timeline/edit", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            clientId: CLIENT_ID,
+            ops: [{
+              op: "insert",
+              trackId: t.trackId,
+              item: {
+                id: itemId,
+                kind: "image",
+                src: null, // a slate until the agent replaces it
+                name: `${shot.id}${shot.action ? ` · ${shot.action.slice(0, 40)}` : ""}`,
+                from: Math.max(0, Math.round(t.from || 0)),
+                durationInFrames: Math.max(1, Math.round((shot.dur > 0 ? shot.dur : 2) * fps)),
+                bundle,
+                shot: shot.id,
+                stillFile: null,
+              },
+            }],
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Could not add the scene");
+        // The insert is a tolerant no-op on an unknown track, so confirm the slot
+        // actually exists before telling the agent to fill it — otherwise the
+        // generation lands nowhere and the user just sees nothing happen.
+        const landed = (data.timeline?.tracks || []).some((tr) => (tr.items || []).some((x) => x.id === itemId));
+        if (!landed) throw new Error("Couldn't add the scene to that lane — try again.");
+        pushHistory();
+        dirtyRef.current = false; // the flush above means the server has this exact timeline
+        setTimeline(withSourceDurations(data.timeline));
+        applySelection(new Set([itemId]), itemId);
+      }
+      await agent.send({
+        message: renderAnimaticStillMessage({
+          bundle,
+          shot,
+          itemId,
+          prompt,
+          angle,
+          reuse,
+        }),
+      });
+      setSceneTarget(null);
+    } catch (e) {
+      setError(String(e.message || e));
+    } finally {
+      setSceneBusy(false);
+    }
+  }, [sceneTarget, fps, applySelection, agent, pushHistory]);
+
   const splitAtPlayhead = useCallback((targetId) => {
     const tl = timelineRef.current;
     if (!tl) return;
@@ -1488,7 +2133,10 @@ export default function Editor({ reloadKey }) {
             id: p.rightId,
             from: f,
             durationInFrames: (it.durationInFrames || 0) - p.leftDur,
-            offsetFrames: (it.offsetFrames || 0) + p.leftDur,
+            // An image has no source timeline, so both halves keep in-point 0 and
+            // simply hold the same still — splitting a still is a legitimate way
+            // to hold one frame across a cut point.
+            offsetFrames: isImageItem(it) ? 0 : (it.offsetFrames || 0) + p.leftDur,
           };
           delete right.fadeInFrames; // fade-in belongs to the left half
           if (p.rightLinkId) right.linkId = p.rightLinkId; else delete right.linkId;
@@ -1727,8 +2375,19 @@ export default function Editor({ reloadKey }) {
         const at = i < 0 ? tl.tracks.length : drop.side === "after" ? i + 1 : i;
         tl.tracks.splice(at, 0, nt);
       }
-      // Drop any now-empty channel we created earlier; keep the base two always.
-      tl.tracks = tl.tracks.filter((t) => t.items.length > 0 || t.id === "video" || t.id === "music");
+      // Drop any now-empty channel we created earlier, but never the BASE lane of
+      // each kind — the timeline must always offer one picture and one audio lane
+      // to drop onto. The base ids differ per source ("video"/"music" from a cut,
+      // "picture"/"dialogue" from an animatic), so keep the FIRST track of each
+      // type rather than matching hardcoded ids: an animatic built before any
+      // voice takes exist has an empty Dialogue lane, and an id whitelist would
+      // silently delete it on the first cross-track drag.
+      const baseIds = new Set();
+      for (const type of ["video", "audio"]) {
+        const first = tl.tracks.find((t) => t.type === type);
+        if (first) baseIds.add(first.id);
+      }
+      tl.tracks = tl.tracks.filter((t) => t.items.length > 0 || baseIds.has(t.id));
       return tl;
     }, true);
   }, [mutate]);
@@ -1903,19 +2562,20 @@ export default function Editor({ reloadKey }) {
     }
   }, []);
 
-  // Load a stored radio version (audio-only dialogue timeline built on the Radio
-  // tab) into the editor, replacing the working timeline. Mirrors loadCut.
-  const loadRadio = useCallback(async (v) => {
+  // Replace the working timeline with a stored version from `path` (a radio
+  // pass, an animatic). Same shape as loadCut: a fresh document, so history and
+  // selection reset and the autosave dirty flag clears.
+  const loadVersion = useCallback(async (path, v, label) => {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/timeline/from-radio", {
+      const res = await fetch(path, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ v, clientId: CLIENT_ID }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Failed to load radio version");
+      if (!res.ok) throw new Error(data.error || `Failed to load ${label}`);
       dirtyRef.current = false;
       histRef.current = [];
       setCanUndo(false);
@@ -1930,6 +2590,11 @@ export default function Editor({ reloadKey }) {
       setLoading(false);
     }
   }, []);
+
+  // A stored radio version: the audio-only dialogue timeline built on the Radio tab.
+  const loadRadio = useCallback((v) => loadVersion("/api/timeline/from-radio", v, "radio version"), [loadVersion]);
+  // A stored animatic: that same dialogue plus each shot's still on the picture track.
+  const loadAnimatic = useCallback((v) => loadVersion("/api/timeline/from-animatic", v, "animatic"), [loadVersion]);
 
   // Render the current timeline to an mp4 via Remotion (server-side). Sends the
   // live in-editor timeline (not just the saved one) plus the chosen options so
@@ -2052,6 +2717,10 @@ export default function Editor({ reloadKey }) {
     const group = [...byId.values()].map((it) => ({
       id: it.id, startFrom: it.from, startDur: it.durationInFrames, srcDur: it.sourceDurationInFrames,
       offset: it.offsetFrames || 0,
+      // An image has no source media: its in-point stays 0 and its head can be
+      // re-extended as far as the timeline allows (no trimmed-off media to run
+      // out of). Snapshot it so the drag clamps can tell the two cases apart.
+      isImage: isImageItem(it),
     }));
     dragRef.current = {
       id: item.id, mode,
@@ -2094,13 +2763,17 @@ export default function Editor({ reloadKey }) {
         if (magnetRef.current) delta = snapFrom(d.startFrom + delta, 0, d.groupIds) - d.startFrom;
         let lo = -Infinity, hi = Infinity;
         for (const g of d.group) {
-          lo = Math.max(lo, -g.offset, -g.startFrom); // offsetFrames ≥ 0, from ≥ 0
+          // An image's head is limited only by the timeline start (from ≥ 0);
+          // real media also can't back up past its own source start
+          // (offsetFrames ≥ 0).
+          lo = Math.max(lo, g.isImage ? -g.startFrom : Math.max(-g.offset, -g.startFrom));
           hi = Math.min(hi, g.startDur - 1);          // durationInFrames ≥ 1
         }
         delta = lo > hi ? 0 : Math.max(lo, Math.min(hi, delta));
         const patches = new Map(d.group.map((g) => [g.id, {
           from: g.startFrom + delta,
-          offsetFrames: g.offset + delta,
+          // Images stay pinned at in-point 0 — there is nothing to seek into.
+          offsetFrames: g.isImage ? 0 : g.offset + delta,
           durationInFrames: g.startDur - delta,
         }]));
         mapItems(patches, true);
@@ -2363,7 +3036,7 @@ export default function Editor({ reloadKey }) {
               Load a stitched cut's clips and music into the editor. This replaces the current timeline.
             </DialogDescription>
           </DialogHeader>
-          {cuts.length === 0 && radioVersions.length === 0 ? (
+          {cuts.length === 0 && radioVersions.length === 0 && animaticVersions.length === 0 ? (
             <p className="py-6 text-center text-sm text-muted-foreground">No stitched cuts yet.</p>
           ) : (
             <div className="-mx-1 max-h-[60vh] space-y-1 overflow-y-auto px-1">
@@ -2377,6 +3050,21 @@ export default function Editor({ reloadKey }) {
                   <span className="flex-1 font-medium">{c.kind === "scored" ? "scored" : "stitch"}</span>
                   <span className="text-xs text-muted-foreground">
                     {c.clips} clips{c.withMusic ? ` · ${c.music} music` : ""}
+                  </span>
+                </button>
+              ))}
+              {animaticVersions.map((a) => (
+                <button
+                  key={`animatic-${a.v}`}
+                  onClick={() => { loadAnimatic(a.v); setCutPickerOpen(false); }}
+                  className="flex w-full items-center gap-2 rounded-md border px-3 py-2 text-left text-sm transition-colors hover:bg-accent hover:text-accent-foreground"
+                >
+                  <Badge variant="info" className="font-mono gap-1"><Clapperboard size={11} /> v{a.v}</Badge>
+                  <span className="flex-1 font-medium">{a.name || `animatic v${a.v}`}</span>
+                  <span className="text-xs text-muted-foreground">
+                    {a.coverage
+                      ? `${a.coverage.withStill}/${a.coverage.shots} stills`
+                      : `${a.clips} shots`}
                   </span>
                 </button>
               ))}
@@ -2538,81 +3226,114 @@ export default function Editor({ reloadKey }) {
   );
 
   // One timeline lane. Rendered by both the video and the audio group.
+  //
+  // Right-clicking EMPTY lane space opens the lane menu (add a scene / audio at
+  // that frame). A right-click on a CLIP is stopped from bubbling by
+  // TimelineItem (see its onContextMenu) so only the clip's own menu opens —
+  // Radix does not do that for us. Left-drag still marquee-selects, because
+  // TimelineItem's pointerdown ignores non-left buttons.
   const renderLane = (t) => (
-    <div
-      key={t.id}
-      data-lane={t.id}
-      data-lane-type={t.type}
-      className={cn(
-        "relative h-16 border-b",
-        dropTarget?.type === "move" && dropTarget.trackId === t.id &&
-          "bg-primary/10 ring-2 ring-inset ring-primary/60",
-        poolDrag?.drop?.trackId === t.id && (poolDrag.drop.valid
-          ? "bg-primary/10 ring-2 ring-inset ring-primary/60"
-          : "bg-destructive/10 ring-2 ring-inset ring-destructive/50"),
-      )}
-      onPointerDown={(e) => { if (e.target === e.currentTarget) startMarquee(e); }}
-    >
-      {/* translucent preview of the clip a pool drag would drop here */}
-      {poolDrag?.drop?.valid && poolDrag.drop.trackId === t.id && (
+    <ContextMenu key={t.id}>
+      <ContextMenuTrigger asChild>
         <div
+          data-lane={t.id}
+          data-lane-type={t.type}
           className={cn(
-            "pointer-events-none absolute top-1 bottom-1 z-10 flex items-center gap-1 overflow-hidden rounded-md border px-1.5 text-[11px] opacity-70",
-            t.type === "audio"
-              ? "border-violet-400/60 bg-violet-500/30 text-violet-100"
-              : "border-emerald-400/60 bg-emerald-500/30 text-emerald-50",
+            "relative h-16 border-b",
+            dropTarget?.type === "move" && dropTarget.trackId === t.id &&
+              "bg-primary/10 ring-2 ring-inset ring-primary/60",
+            poolDrag?.drop?.trackId === t.id && (poolDrag.drop.valid
+              ? "bg-primary/10 ring-2 ring-inset ring-primary/60"
+              : "bg-destructive/10 ring-2 ring-inset ring-destructive/50"),
           )}
-          style={{
-            left: framesToSec(poolDrag.drop.from, fps) * pxPerSec,
-            width: Math.max(6, (poolDrag.durationSec || 3) * pxPerSec),
-          }}
+          onPointerDown={(e) => { if (e.target === e.currentTarget) startMarquee(e); }}
+          // Remember WHERE the menu was opened — Radix's onSelect gives no event, so
+          // the frame under the cursor has to be captured here.
+          onContextMenu={(e) => { laneMenuRef.current = { trackId: t.id, from: frameAtClientX(e.clientX) }; }}
         >
-          {t.type === "audio" ? <Music size={11} className="shrink-0" /> : <Film size={11} className="shrink-0" />}
-          <span className="truncate">{poolDrag.item.name}</span>
+          {/* translucent preview of the clip a pool drag would drop here */}
+          {poolDrag?.drop?.valid && poolDrag.drop.trackId === t.id && (
+            <div
+              className={cn(
+                "pointer-events-none absolute top-1 bottom-1 z-10 flex items-center gap-1 overflow-hidden rounded-md border px-1.5 text-[11px] opacity-70",
+                t.type === "audio"
+                  ? "border-violet-400/60 bg-violet-500/30 text-violet-100"
+                  : "border-emerald-400/60 bg-emerald-500/30 text-emerald-50",
+              )}
+              style={{
+                left: framesToSec(poolDrag.drop.from, fps) * pxPerSec,
+                width: Math.max(6, (poolDrag.durationSec || 3) * pxPerSec),
+              }}
+            >
+              {t.type === "audio" ? <Music size={11} className="shrink-0" /> : <Film size={11} className="shrink-0" />}
+              <span className="truncate">{poolDrag.item.name}</span>
+            </div>
+          )}
+          {/* selectable gaps between video clips */}
+          {t.type === "video" && gapsFor(t).map((g, gi) => {
+            const gsel = selectedGap && selectedGap.trackId === t.id
+              && selectedGap.from === g.from && selectedGap.to === g.to;
+            return (
+              <div
+                key={`gap-${gi}`}
+                className={cn(
+                  "absolute top-1 bottom-1 rounded-md border border-dashed transition-colors",
+                  gsel
+                    ? "border-muted-foreground/60 bg-muted-foreground/30 ring-1 ring-muted-foreground/50"
+                    : "border-transparent hover:bg-muted-foreground/10",
+                )}
+                style={{ left: framesToSec(g.from, fps) * pxPerSec, width: Math.max(4, framesToSec(g.to - g.from, fps) * pxPerSec) }}
+                onPointerDown={(e) => { e.stopPropagation(); selectGap(t.id, g); }}
+                title="Gap — click to select, Delete to close it"
+              />
+            );
+          })}
+          {t.items.map((item) => (
+            <TimelineItem
+              key={item.id}
+              item={item}
+              track={t}
+              pxPerSec={pxPerSec}
+              fps={fps}
+              selected={selectedIds.has(item.id)}
+              linkHighlight={!!item.linkId && selectedLinkIds.has(item.linkId) && !selectedIds.has(item.id)}
+              multiCount={selectedIds.has(item.id) ? selectedIds.size : 0}
+              canSplit={Math.round(frame) > item.from && Math.round(frame) < item.from + item.durationInFrames}
+              onSelect={selectItem}
+              onDragStart={onDragStart}
+              onFadeStart={onFadeStart}
+              onToggleDisable={toggleDisable}
+              onRemove={removeItem}
+              onUnlink={unlinkItem}
+              onLinkSelected={linkSelected}
+              onDetachAudio={detachAudio}
+              onSplit={splitAtPlayhead}
+              onNewStill={openSceneForItem}
+              onSwapTake={swapTake}
+              takes={item.shot && item.bundle ? takesByShot[`${item.bundle}/${item.shot}`] : undefined}
+            />
+          ))}
         </div>
-      )}
-      {/* selectable gaps between video clips */}
-      {t.type === "video" && gapsFor(t).map((g, gi) => {
-        const gsel = selectedGap && selectedGap.trackId === t.id
-          && selectedGap.from === g.from && selectedGap.to === g.to;
-        return (
-          <div
-            key={`gap-${gi}`}
-            className={cn(
-              "absolute top-1 bottom-1 rounded-md border border-dashed transition-colors",
-              gsel
-                ? "border-muted-foreground/60 bg-muted-foreground/30 ring-1 ring-muted-foreground/50"
-                : "border-transparent hover:bg-muted-foreground/10",
-            )}
-            style={{ left: framesToSec(g.from, fps) * pxPerSec, width: Math.max(4, framesToSec(g.to - g.from, fps) * pxPerSec) }}
-            onPointerDown={(e) => { e.stopPropagation(); selectGap(t.id, g); }}
-            title="Gap — click to select, Delete to close it"
-          />
-        );
-      })}
-      {t.items.map((item) => (
-        <TimelineItem
-          key={item.id}
-          item={item}
-          track={t}
-          pxPerSec={pxPerSec}
-          fps={fps}
-          selected={selectedIds.has(item.id)}
-          linkHighlight={!!item.linkId && selectedLinkIds.has(item.linkId) && !selectedIds.has(item.id)}
-          multiCount={selectedIds.has(item.id) ? selectedIds.size : 0}
-          canSplit={Math.round(frame) > item.from && Math.round(frame) < item.from + item.durationInFrames}
-          onSelect={selectItem}
-          onDragStart={onDragStart}
-          onFadeStart={onFadeStart}
-          onToggleDisable={toggleDisable}
-          onRemove={removeItem}
-          onUnlink={unlinkItem}
-          onLinkSelected={linkSelected}
-          onDetachAudio={detachAudio}
-          onSplit={splitAtPlayhead}
-        />
-      ))}
-    </div>
+      </ContextMenuTrigger>
+      <ContextMenuContent>
+        {t.type === "video" ? (
+          <ContextMenuItem onSelect={() => openSceneForLane(t)} disabled={agentIsBusy(agent)}>
+            <span className="flex items-center gap-2"><Plus size={14} /> Add scene here…</span>
+          </ContextMenuItem>
+        ) : (
+          <ContextMenuItem onSelect={() => setAudioTarget({ trackId: t.id, from: laneMenuRef.current?.from ?? 0 })}>
+            <span className="flex items-center gap-2"><Music size={14} /> Add audio here…</span>
+          </ContextMenuItem>
+        )}
+        <ContextMenuSeparator />
+        <ContextMenuItem onSelect={() => addChannel(t, "before")}>
+          <span className="flex items-center gap-2"><Plus size={14} /> Add {t.type === "audio" ? "audio" : "video"} channel above</span>
+        </ContextMenuItem>
+        <ContextMenuItem onSelect={() => addChannel(t, "after")}>
+          <span className="flex items-center gap-2"><Plus size={14} /> Add {t.type === "audio" ? "audio" : "video"} channel below</span>
+        </ContextMenuItem>
+      </ContextMenuContent>
+    </ContextMenu>
   );
 
   return (
@@ -3070,6 +3791,21 @@ export default function Editor({ reloadKey }) {
       )}
 
       {/* Still inspector: full-size grabbed frame + its capture metadata. */}
+      {/* Author one shot's still, from the timeline (lane menu / item menu). */}
+      <SceneDialog
+        open={!!sceneTarget}
+        target={sceneTarget}
+        busy={sceneBusy}
+        onOpenChange={(o) => { if (!o) setSceneTarget(null); }}
+        onGenerate={generateStill}
+      />
+      {/* Drop an existing Sound Studio take onto an audio lane. */}
+      <AudioDialog
+        open={!!audioTarget}
+        onOpenChange={(o) => { if (!o) setAudioTarget(null); }}
+        onPick={addAudioAt}
+      />
+
       <Dialog open={!!stillModal} onOpenChange={(o) => { if (!o) setStillModal(null); }}>
         <DialogContent className="max-w-3xl">
           <DialogHeader>

@@ -54,9 +54,14 @@ async function getRenderSandbox(env) {
 
 // Rewrite timeline media srcs (/gen/…, /sound-media/…) to the Worker's public
 // /files/media/<pid>/<kind>/… so the sandbox's headless Chrome can fetch them.
+// Root-relative media prefix → R2 media kind. EVERY prefix an item's `src` can
+// carry must be here: a miss leaves the src root-relative, which resolves
+// against nothing in the headless renderer and fails to load. `/storyboard-media/`
+// is how animatic picture items (kind:"image") reference their stills.
 const PREFIX_KIND = {
   "/gen/": "gen", "/sound-media/": "sound-media", "/media/": "shots",
   "/final/": "final", "/multishot-media/": "multishot", "/refs/": "refs",
+  "/storyboard-media/": "storyboard", "/stills/": "stills",
 };
 function absolutizeTracks(tracks, base, pid) {
   return (tracks || []).map((t) => ({

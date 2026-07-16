@@ -302,6 +302,60 @@ export function renderStoryboardMessage(bundle, shot, refBlock, angle) {
     .join("\n");
 }
 
+// Build the chat turn for generating a still FROM THE EDITOR, into a picture slot
+// that already exists on the timeline (a slate the user just created, or a still
+// being re-rolled). Same generate → attach_still loop as renderStoryboardMessage,
+// plus a closing `edit_timeline` replace so the image lands in THAT item —
+// keeping the position and duration the user set. The agent's write carries no
+// clientId, so the open Editor live-reloads and the still simply appears.
+//
+// `prompt` is the user's (possibly edited) prompt from the modal. `reuse` is a
+// take whose image should be passed as an extra reference — the "reuse this
+// image, give me a variation" path.
+//
+// Unlike renderStoryboardMessage (called from the Episode tab, which HAS the
+// bundle's picked references in hand), the Editor doesn't know them — so the
+// agent is told to look them up with get_episode rather than being handed a
+// reference block that would be a guess.
+export function renderAnimaticStillMessage({ bundle, shot, itemId, prompt, angle, reuse }) {
+  const label = `${bundle} / ${shot.id}`;
+  const dlg = shot.dialogue && !/\(no dialogue\)/i.test(shot.dialogue) ? shot.dialogue : null;
+  // A reused take must be handed over as its `refUrl` — the absolute /files/ URL
+  // that encodes the project in the R2 key. Its `url` is the project-scoped
+  // /storyboard-media/ path, which needs a header the image model doesn't send,
+  // so it would resolve against p_default and 404 for every other project (and
+  // the model would then quietly generate WITHOUT the reference).
+  const reuseUrl = reuse?.refUrl || null;
+  return [
+    `Generate a storyboard still for shot ${label} and put it on the animatic's timeline${angle ? ` — angle: ${angle}` : ""}.`,
+    `Load the generate-storyboard skill and generate ONE still image with Nano Banana` +
+      ` Pro (the Higgsfield MCP generate_image tool) for this shot. Call get_episode first` +
+      ` and pass bundle ${bundle}'s chosen character/location reference images as` +
+      ` image_references, so identity and setting stay locked to the rest of the episode.`,
+    reuseUrl
+      ? `ALSO pass this existing take as an image reference and keep its framing — the user wants a VARIATION of it, not a new composition: ${reuseUrl}`
+      : reuse
+        ? `The user asked for a variation of an existing take, but its reference URL isn't available — say so and ask before generating something unrelated.`
+        : null,
+    "",
+    `Then, in this order:`,
+    `1. attach_still with bundle="${bundle}", shot="${shot.id}"${angle ? `, angle="${angle}"` : ""}, and pass` +
+      ` the prompt you used, the model id you resolved, and the refs you passed — so this take can be re-rolled later.`,
+    `2. edit_timeline with [{ op: "replace", id: "${itemId}", src: "<the attach_still url>", stillFile: "<the attach_still file>", name: "${shot.id} · <take name>" }]` +
+      ` — this drops the image into the picture slot already waiting for it on the timeline. Do NOT move or resize it; the user set that timing.`,
+    `Confirm the Higgsfield submit with me first, as usual.`,
+    "",
+    `Shot ${shot.id} — ${shot.location || ""}${shot.camera ? ` · ${shot.camera}` : ""}${shot.dur ? ` (${shot.dur}s)` : ""}`,
+    shot.action || shot.summary ? `Action: ${shot.action || shot.summary}` : null,
+    dlg ? `Dialogue (for expression/pose only — it's a still): ${dlg}` : null,
+    "",
+    `Prompt to use (the user may have edited this — use it as written):`,
+    prompt,
+  ]
+    .filter((l) => l !== null)
+    .join("\n");
+}
+
 // Combined turn: render a still for EVERY shot in one bundle, one at a time.
 export function renderStoryboardAllMessage(bundle, refBlock) {
   const shots = bundle.shots

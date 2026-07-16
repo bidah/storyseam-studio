@@ -9,6 +9,12 @@ The header tabs are the workflow: **Script**, **Shot list**, **Episode**,
 **Complete cuts**, **Editor**, **Library**, **Sound studio** — plus a project
 switcher and the **Studio agent** chat panel on the right.
 
+The **Radio** tab is the audio-only pass (every line voiced), and **Build
+animatic** there joins it to the storyboard: each shot's still on a picture
+track, timed to the voiced dialogue, so the episode can be watched before any
+video is rendered. Shots with no still yet become labelled *slates* you can fill
+by right-clicking the timeline. Design record: [`docs/prd-animatic.md`](docs/prd-animatic.md).
+
 Each tab is a real **URL route** (`/script`, `/episode`, …) — React Router v7 in
 data mode, with per-route lazy loading + loader-driven SWR caching. Architecture,
 the revalidation rule, and gotchas are in [`docs/routing.md`](docs/routing.md).

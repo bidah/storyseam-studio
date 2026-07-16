@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useLoaderData, useNavigate, useRevalidator } from "react-router";
 import {
   Radio as RadioIcon, Mic, Loader2, Film, Send, X, AudioLines, CircleAlert,
+  Clapperboard, Image as ImageIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { invalidateTabCache } from "@/lib/tabCache";
@@ -190,6 +191,7 @@ function RadioStudio() {
   useRevalidateOnMount("radio");
   const [error, setError] = useState(null);
   const [sending, setSending] = useState(false);
+  const [building, setBuilding] = useState(false);
 
   const refetch = useCallback(() => {
     invalidateTabCache("radio");
@@ -224,9 +226,24 @@ function RadioStudio() {
     finally { setSending(false); }
   };
 
+  // The animatic: this radio pass PLUS each shot's storyboard still on a picture
+  // track. Unlike "Send to editor" it covers every shot (silent ones included),
+  // so it works — as an all-slate outline — before any still exists.
+  const buildAnimatic = async () => {
+    setBuilding(true); setError(null);
+    try {
+      const res = await fetch("/api/animatic/to-editor", { method: "POST" });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "Build failed");
+      navigate("/editor");
+    } catch (e) { setError(String(e.message || e)); }
+    finally { setBuilding(false); }
+  };
+
   const scenes = data.scenes || [];
   const casting = data.casting || [];
   const uncast = casting.filter((c) => !c.voiceRef).length;
+  const animatic = data.animatic || null;
 
   return (
     <div className="space-y-4">
@@ -240,14 +257,38 @@ function RadioStudio() {
               The audio-only pass — every scene's dialogue voiced with each character's cast voice, then sent to the Editor as its own timeline.
             </p>
           </div>
-          <Button onClick={sendToEditor} disabled={sending || !data.readyLines}>
-            {sending ? <><Loader2 size={14} className="animate-spin" /> sending…</> : <><Send size={14} /> Send to editor</>}
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" onClick={sendToEditor} disabled={sending || building || !data.readyLines}
+              title="Send just the voiced dialogue to the Editor as an audio-only timeline">
+              {sending ? <><Loader2 size={14} className="animate-spin" /> sending…</> : <><Send size={14} /> Send to editor</>}
+            </Button>
+            <Button onClick={buildAnimatic} disabled={building || sending || !animatic?.shots}
+              title={
+                animatic?.shots
+                  ? `Build the animatic: ${animatic.shots} shots — ${animatic.withStill} with a still, ${animatic.slates} slate${animatic.slates === 1 ? "" : "s"}`
+                  : "Write a shot list first"
+              }>
+              {building ? <><Loader2 size={14} className="animate-spin" /> building…</> : <><Clapperboard size={14} /> Build animatic</>}
+            </Button>
+          </div>
         </div>
         <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
           <Badge variant="outline">{scenes.length} scenes</Badge>
           <Badge variant="info"><AudioLines size={11} /> {data.readyLines || 0}/{data.totalLines || 0} lines rendered</Badge>
+          {animatic?.shots > 0 && (
+            <Badge variant={animatic.withStill ? "info" : "muted"}>
+              <ImageIcon size={11} /> {animatic.withStill}/{animatic.shots} shots with a still
+            </Badge>
+          )}
           {uncast > 0 && <Badge variant="warning"><CircleAlert size={11} /> {uncast} character{uncast > 1 ? "s" : ""} without a voice</Badge>}
+          {/* A shot that belongs to no bundle can't be matched to a still. In
+              practice this means the shot list's ids have drifted away from the
+              episode manifest's — show it rather than quietly building slates. */}
+          {animatic?.unmatched > 0 && (
+            <Badge variant="warning">
+              <CircleAlert size={11} /> {animatic.unmatched} shot{animatic.unmatched > 1 ? "s" : ""} not in any bundle
+            </Badge>
+          )}
           {agentBusy && <Badge variant="warning"><Loader2 size={11} className="animate-spin" /> agent working…</Badge>}
           <span>scenes come from the Shot list; cast a favorited voice per character, render a scene, then send the whole thing to the Editor.</span>
         </div>
@@ -308,13 +349,22 @@ function RadioStudio() {
   );
 }
 
-// Loader: the derived radio view (scenes from the shot list + casting + takes).
+// Loader: the derived radio view (scenes from the shot list + casting + takes),
+// plus the animatic's coverage counts (how many shots have a still yet) so the
+// build button can say what it will produce. The animatic view is derived from
+// the same shot list, so it never disagrees with the scenes below it.
 export function loader() {
   return swr("radio", async () => {
-    const res = await fetch("/api/radio");
-    const json = await res.json();
-    if (!res.ok) throw new Error(json.error || "Failed to load");
-    return json;
+    const [radioRes, animaticRes] = await Promise.all([
+      fetch("/api/radio"),
+      // Coverage is a nice-to-have: a failure here must not break the tab.
+      fetch("/api/animatic").catch(() => null),
+    ]);
+    const json = await radioRes.json();
+    if (!radioRes.ok) throw new Error(json.error || "Failed to load");
+    let animatic = null;
+    if (animaticRes?.ok) animatic = await animaticRes.json().catch(() => null);
+    return { ...json, animatic };
   });
 }
 

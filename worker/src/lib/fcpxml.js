@@ -18,7 +18,13 @@
 //  • Video track i → lane i+1; audio track j → lane -(j+1). Overlapping clips in
 //    one lane spill to a synthetic extra lane (Resolve can't stack them otherwise).
 //  • No transitions/titles/effects. A clip's `start` attribute carries its
-//    source in-point (`offsetFrames`) — 0s for untrimmed heads.
+//    source in-point (`offsetFrames`) — 0s for untrimmed heads, and always 0s
+//    for a still (an image has no source timeline to seek into).
+//  • Stills (animatic picture items, `kind:"image"`) export as ordinary
+//    asset-clips over an image asset flagged hasAudio="0". SLATES (image items
+//    with no still generated yet, `src: null`) are dropped by the `it.src`
+//    filter below: they're a working placeholder, not a deliverable, and there
+//    is no asset to reference.
 
 // --- small helpers ---------------------------------------------------------
 
@@ -40,6 +46,13 @@ const prefixOf = (src) => (/^\/([^/]+)\//.exec(src || "") || [])[1] || null;
 // Music/audio media lives under /sound-media/; everything else (/gen/, /media/…)
 // is a generated video clip that carries baked-in audio.
 const isAudioSrc = (src) => /^\/sound-media\//.test(src || "");
+
+// A still image (an animatic picture item, /storyboard-media/…, or a grabbed
+// frame, /stills/…). It has PICTURE BUT NO AUDIO — declaring hasAudio="1" on a
+// PNG makes Resolve try to conform an audio track that doesn't exist. Matched on
+// the file extension rather than the prefix so any future image source is
+// covered by the same rule.
+const isImageSrc = (src) => /\.(png|jpe?g|webp|gif|bmp|tiff?)$/i.test(String(src || "").split(/[?#]/)[0]);
 
 const round1 = (n) => {
   const r = Math.round(n * 10) / 10;
@@ -162,7 +175,9 @@ export function timelineToFcpxml(timeline, opts = {}) {
     const dur = rt(assetDur.get(src));
     const flags = isAudioSrc(src)
       ? `hasVideo="0" hasAudio="1" audioSources="1" audioChannels="2" audioRate="48000"`
-      : `hasVideo="1" hasAudio="1"`;
+      : isImageSrc(src)
+        ? `hasVideo="1" hasAudio="0"`
+        : `hasVideo="1" hasAudio="1"`;
     return (
       `    <asset id="${id}" name="${esc(zipName)}" start="0s" duration="${dur}" ${flags} format="r1">\n` +
       `      <media-rep kind="original-media" src="./media/${esc(zipName)}"/>\n` +

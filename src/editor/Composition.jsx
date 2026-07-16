@@ -2,17 +2,21 @@
 // Editor tab; also renderable headlessly. It is a pure function of `tracks`
 // (passed as inputProps) — every timeline edit re-renders the preview live.
 //
-// Video-type track items become full-frame <Video> clips (object-fit: contain
-// on black). Audio-type items become <Audio> beds mixed under everything.
+// Picture-track items become full-frame clips (object-fit: contain on black):
+// <Video> for footage, <Img> for a storyboard still (`kind:"image"` — the
+// animatic), or a labelled slate when an image item has no still yet. Which one
+// is decided PER ITEM, not per track — see src/editor/timeline.js. Audio-type
+// items become <Audio> beds mixed under everything.
 
 import React from "react";
+import { isImageItem, isSlateItem } from "./timeline.js";
 // Native <Video>/<Audio> (HTML media elements) — smoother realtime playback and
 // audio in the <Player> preview than the WebCodecs-based @remotion/media path,
 // which stutters/repeats audio while buffering during scrubbing. (These are
 // marked deprecated in v4 but remain the right choice for a realtime editor.)
 // For the headless render (/api/render) we swap to <OffthreadVideo>, which is
 // frame-accurate and doesn't rely on realtime <video> playback.
-import { AbsoluteFill, Sequence, Video, Audio, OffthreadVideo, getRemotionEnvironment, useVideoConfig } from "remotion";
+import { AbsoluteFill, Img, Sequence, Video, Audio, OffthreadVideo, getRemotionEnvironment, useVideoConfig } from "remotion";
 
 // How far ahead of the playhead a clip is mounted (invisible + muted) so its
 // <video> element can fetch + decode BEFORE it's on screen. Without this, each
@@ -63,6 +67,73 @@ function VideoItem({ item, zIndex }) {
   );
 }
 
+// Mirror transform shared by video and image clips.
+const flipStyle = (item) =>
+  item.flipH || item.flipV
+    ? { transform: `scale(${item.flipH ? -1 : 1}, ${item.flipV ? -1 : 1})` }
+    : {};
+
+// A storyboard still held for the item's duration — the animatic's picture.
+// <Img> manages its own delayRender, so the headless render never captures a
+// half-loaded image. No trimBefore/volume/pauseWhenBuffering: a still has no
+// source timeline to seek into, no audio, and nothing to buffer.
+function ImageItem({ item, zIndex }) {
+  const { fps } = useVideoConfig();
+  return (
+    // Same wrapper rules as VideoItem: premountFor REQUIRES the Sequence's own
+    // absolute-fill wrapper, and zIndex on it makes the higher timeline row win.
+    <Sequence
+      from={item.from}
+      durationInFrames={item.durationInFrames}
+      premountFor={Math.round(fps * PREMOUNT_SECONDS)}
+      name={item.name || item.shot || "still"}
+      style={{ zIndex }}
+    >
+      <Img
+        src={item.src}
+        style={{ width: "100%", height: "100%", objectFit: "contain", ...flipStyle(item) }}
+      />
+    </Sequence>
+  );
+}
+
+// A picture slot whose still hasn't been generated yet. Deliberately legible
+// rather than black: the animatic should hold correct timing and SHOW its holes.
+// Pure DOM — no asset to load, so it renders identically headless.
+function SlateItem({ item, zIndex }) {
+  const { fps } = useVideoConfig();
+  const label = item.shot || item.bundle || "";
+  return (
+    <Sequence
+      from={item.from}
+      durationInFrames={item.durationInFrames}
+      premountFor={Math.round(fps * PREMOUNT_SECONDS)}
+      name={label ? `slate ${label}` : "slate"}
+      style={{ zIndex }}
+    >
+      <AbsoluteFill
+        style={{
+          backgroundColor: "#18181b", // zinc-900 — reads as "intentionally empty"
+          alignItems: "center",
+          justifyContent: "center",
+          gap: 12,
+          padding: 48,
+          textAlign: "center",
+          fontFamily: "ui-sans-serif, system-ui, sans-serif",
+        }}
+      >
+        {label && (
+          <div style={{ color: "#fbbf24", fontSize: 40, fontWeight: 600, letterSpacing: 1 }}>{label}</div>
+        )}
+        <div style={{ color: "#a1a1aa", fontSize: 22 }}>no still yet</div>
+        {item.name && (
+          <div style={{ color: "#71717a", fontSize: 18, maxWidth: "80%" }}>{item.name}</div>
+        )}
+      </AbsoluteFill>
+    </Sequence>
+  );
+}
+
 function AudioItem({ item }) {
   const { fps } = useVideoConfig();
   const base = item.muted ? 0 : item.volume ?? 1;
@@ -104,13 +175,13 @@ export function EditorComposition({ tracks = [] }) {
       {tracks.map((track, ti) =>
         (track.items || [])
           .filter((item) => !item.disabled) // disabled clips are skipped in playback
-          .map((item) =>
-            track.type === "audio" ? (
-              <AudioItem key={item.id} item={item} />
-            ) : (
-              <VideoItem key={item.id} item={item} zIndex={n - ti} />
-            )
-          )
+          .map((item) => {
+            if (track.type === "audio") return <AudioItem key={item.id} item={item} />;
+            // Picture lane: the item decides what it is.
+            if (isSlateItem(item)) return <SlateItem key={item.id} item={item} zIndex={n - ti} />;
+            if (isImageItem(item)) return <ImageItem key={item.id} item={item} zIndex={n - ti} />;
+            return <VideoItem key={item.id} item={item} zIndex={n - ti} />;
+          })
       )}
     </AbsoluteFill>
   );

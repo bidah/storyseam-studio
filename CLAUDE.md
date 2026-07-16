@@ -23,6 +23,35 @@ not for data. Do NOT loaderize the Script (TipTap) or Editor (Remotion) surfaces
 they own their document state. Full route tree, gotchas, and the Worker
 `run_worker_first` caveat: **`docs/routing.md`**.
 
+## Timeline model (Editor / animatic)
+
+`src/editor/timeline.js` is the canonical shape and is **vendored** into
+`render-fn/` — after editing anything in `src/editor/*`, run
+`cd render-fn && npm run sync`, or the Vercel render path silently renders the old
+composition.
+
+**Media kind belongs to the ITEM, not the track.** A `type:"video"` track is the
+*picture* lane; `item.kind` decides what each item is (absent ⇒ `"video"`):
+
+- `kind:"image"` — a storyboard still held on screen (the animatic's picture).
+  It has **no source timeline**: `offsetFrames` is always 0 and
+  `sourceDurationInFrames` is always absent (so resize is uncapped). Any code
+  doing in-point math (head-trim, split) **must** branch on it — `isImageItem()`
+  in `src/editor/timeline.js`, `isImage()` in `worker/src/routes/timeline.js`.
+- `kind:"image"` with `src:null` — a **slate**: a shot whose still isn't
+  generated yet. An ordinary item that renders as a labelled placeholder.
+- Stills and videos are peers on one picture lane on purpose: a still is a
+  placeholder for that shot's video, so the upgrade must not cross tracks.
+
+Two unrelated things are called "still": **storyboard stills**
+(`db.stills[bundle][shot]`, `/storyboard-media/`, per shot, has takes — this is
+the animatic's picture) and **grabbed stills** (`state/<pid>/stills.json`,
+`/stills/`, frames captured from the preview). Don't mix them up.
+
+**Shot ids are a public key space.** `shot.id` keys `db.stills`; rewriting it
+orphans generated media. `POST /api/shotlist` preserves stored ids and warns
+when it has to invent one — never "fix" that by renumbering.
+
 ## UI stack
 
 The front-end is built on **Tailwind CSS v4** + **shadcn/ui** (New York style, zinc base,

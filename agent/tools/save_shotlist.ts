@@ -6,12 +6,17 @@ import { api } from "../lib/api.js";
 // first with get_shotlist if you only mean to tweak part of it.
 export default defineTool({
   description:
-    "Replace the entire Shot list on the Shot list tab with a new ordered list of shots (the granular per-shot breakdown that auto-packs into <=15s multishot bundles). Writes shotlist.json and OVERWRITES all shots — call get_shotlist first if revising. Each shot's `beat`/`beatTitle` and `location` drive the packing (a bundle never crosses a beat or location and never exceeds 15s), so keep consecutive same-location shots grouped and give a realistic `dur`. `prompt` is the Seedance prompt (fold any 2D-directing intent directly into it). Returns the shot count and the resulting <=15s pack preview.",
+    "Replace the entire Shot list on the Shot list tab with a new ordered list of shots (the granular per-shot breakdown that auto-packs into <=15s multishot bundles). Writes shotlist.json and OVERWRITES all shots — call get_shotlist first if revising. ALWAYS carry each existing shot's `id` through unchanged: shot ids key generated media that lives elsewhere (storyboard stills, the animatic's picture track), so inventing new ids for existing shots orphans that media. Only omit `id` for a genuinely NEW shot. Each shot's `beat`/`beatTitle` and `location` drive the packing (a bundle never crosses a beat or location and never exceeds 15s), so keep consecutive same-location shots grouped and give a realistic `dur`. `prompt` is the Seedance prompt (fold any 2D-directing intent directly into it). Returns the shot count, how many ids were preserved vs auto-numbered, any warnings, and the resulting <=15s pack preview.",
   inputSchema: z.object({
     shots: z
       .array(
         z.object({
-          id: z.string().optional().describe("Shot id, e.g. \"01\". Omit to auto-number."),
+          id: z
+            .string()
+            .optional()
+            .describe(
+              "Shot id, e.g. \"MS-012\". REQUIRED for any shot that already exists — copy it verbatim from get_shotlist. It keys this shot's storyboard stills; changing it orphans them. Omit ONLY for a brand-new shot (it will be auto-numbered).",
+            ),
           beat: z.string().describe("Beat code, e.g. \"B1\" — packing boundary."),
           beatTitle: z.string().optional().describe("Human beat title, e.g. \"Beat 1 — School clearing\"."),
           dur: z.number().describe("Estimated shot length in seconds (drives the <=15s packing)."),

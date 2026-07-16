@@ -99,20 +99,50 @@ Repeat until `status:"completed"`; read `result_url`. Stills render fast (~10–
 
 Call `attach_still` with the bundle id, the shot id, the `result_url`, and — if a
 specific camera angle/variation was requested — the `angle` note, so the take is
-labeled in the carousel:
+labeled in the carousel.
+
+**Always record HOW you made it** (`prompt`, `model`, `refs`). These are what let
+a human re-roll this take later without reconstructing your intent: the Editor's
+"New still…" modal prefills its prompt box from `prompt`. Passing them is not
+optional bookkeeping — omit them and the take is a dead end.
 
 ```jsonc
 attach_still {
   "bundle": "MS-01",
   "shot": "MS-012",
   "url": "<result_url>",
-  "angle": "low-angle CU"   // optional; include when this take is a specific angle/variation
+  "angle": "low-angle CU",       // optional; include when this take is a specific angle/variation
+  "prompt": "<the EXACT prompt text you sent to the model>",
+  "model": "<the model id you resolved via models_explore>",
+  "refs": [                       // the references you actually passed
+    { "key": "helena", "role": "character", "url": "<ref url>" }
+  ],
+  "shotSnapshot": { "location": "school-clearing", "camera": "CU", "action": "Helena turns", "dur": 3 }
 }
 ```
 
 The Worker downloads the image into R2 and appends it as a new take for that shot;
 it appears in the Episode tab's **Images mode** and can be selected as the chosen
 still. Do NOT call `attach_episode_video` (that's for the Seedance video).
+
+## Step 7 — only when asked: put it on the animatic's timeline
+
+When the request names a timeline **item id** (it came from the Editor's
+"Add scene" / "New still" flow), finish by dropping the image into that item:
+
+```jsonc
+edit_timeline { "ops": [
+  { "op": "replace", "id": "<the item id from the request>",
+    "src": "<the url attach_still returned>",
+    "stillFile": "<the file attach_still returned>",
+    "name": "MS-012 · still 2" }
+]}
+```
+
+`replace` swaps the media and nothing else — the slot's position and duration are
+what the user set, so never `move`/`resize`/`remove` to place a still. The Editor
+reloads on its own and the picture appears in place. If no item id was given, stop
+after `attach_still`.
 
 ## Interaction rules
 
