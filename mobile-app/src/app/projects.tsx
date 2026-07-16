@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { FlatList, Pressable, Text, View } from 'react-native';
+import { Pressable, Text, View } from 'react-native';
 import { router } from 'expo-router';
 import { Check, FolderPlus, Pencil } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
@@ -66,69 +66,69 @@ export default function ProjectsSheet() {
     }
   };
 
+  const projects = data?.projects || [];
+
+  // Mirrors the model picker: a plain list of rows, no scroll container. A
+  // FlatList here renders its scroll view over the sheet's own content (the
+  // eyebrow ends up underneath it), and the project count never needs
+  // virtualising.
   return (
     <View className="flex-1 bg-background px-5 pt-6">
       <Eyebrow>Projects</Eyebrow>
-      <FlatList
-        data={data?.projects || []}
-        keyExtractor={(p) => p.id}
-        renderItem={({ item }) => (
-          <Pressable
-            className="flex-row items-center justify-between rounded-xl px-3 py-3.5 active:bg-secondary"
-            onPress={() => activate(item)}
-            onLongPress={() => {
-              setRenaming(item);
-              setName(item.name);
-            }}
-          >
-            <Text className="flex-1 text-[15px] font-medium text-foreground" numberOfLines={1}>
-              {item.name}
-            </Text>
-            {item.id === projectId ? <Check size={18} color="#10b981" /> : null}
-          </Pressable>
-        )}
-        ItemSeparatorComponent={() => <View className="h-px bg-border/60" />}
-        ListFooterComponent={
-          <View className="mt-4 gap-3 pb-8">
-            {creating || renaming ? (
-              <View className="gap-2">
-                <Input
-                  autoFocus
-                  placeholder={renaming ? 'Rename project' : 'New project name'}
-                  value={name}
-                  onChangeText={setName}
-                  onSubmitEditing={renaming ? rename : create}
-                />
-                <View className="flex-row gap-2">
-                  <Button
-                    className="flex-1"
-                    title={renaming ? 'Rename' : 'Create'}
-                    onPress={renaming ? rename : create}
-                  />
-                  <Button
-                    className="flex-1"
-                    variant="outline"
-                    title="Cancel"
-                    onPress={() => {
-                      setCreating(false);
-                      setRenaming(null);
-                      setName('');
-                    }}
-                  />
-                </View>
-              </View>
-            ) : (
-              <Button variant="secondary" title="New project" onPress={() => setCreating(true)}>
-                <FolderPlus size={16} color="#fafafa" />
-              </Button>
-            )}
-            <View className="flex-row items-center justify-center gap-1">
-              <Pencil size={11} color="#71717a" />
-              <Text className="text-xs text-muted-foreground">Long-press a project to rename</Text>
+      {projects.map((p) => (
+        <Pressable
+          key={p.id}
+          className="flex-row items-center justify-between rounded-xl px-3 py-3.5 active:bg-secondary"
+          onPress={() => activate(p)}
+          onLongPress={() => {
+            setRenaming(p);
+            setName(p.name);
+          }}
+        >
+          <Text className="flex-1 text-[15px] font-medium text-foreground" numberOfLines={1}>
+            {p.name}
+          </Text>
+          {p.id === projectId ? <Check size={18} color="#10b981" /> : null}
+        </Pressable>
+      ))}
+      <View className="mt-4 gap-3">
+        {creating || renaming ? (
+          <View className="gap-2">
+            <Input
+              autoFocus
+              placeholder={renaming ? 'Rename project' : 'New project name'}
+              value={name}
+              onChangeText={setName}
+              onSubmitEditing={renaming ? rename : create}
+            />
+            <View className="flex-row gap-2">
+              <Button
+                className="flex-1"
+                title={renaming ? 'Rename' : 'Create'}
+                onPress={renaming ? rename : create}
+              />
+              <Button
+                className="flex-1"
+                variant="outline"
+                title="Cancel"
+                onPress={() => {
+                  setCreating(false);
+                  setRenaming(null);
+                  setName('');
+                }}
+              />
             </View>
           </View>
-        }
-      />
+        ) : (
+          <Button variant="secondary" title="New project" onPress={() => setCreating(true)}>
+            <FolderPlus size={16} color="#fafafa" />
+          </Button>
+        )}
+        <View className="flex-row items-center justify-center gap-1">
+          <Pencil size={11} color="#71717a" />
+          <Text className="text-xs text-muted-foreground">Long-press a project to rename</Text>
+        </View>
+      </View>
     </View>
   );
 }

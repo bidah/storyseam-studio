@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { FlatList, Pressable, Text, View, useWindowDimensions } from 'react-native';
+import { Pressable, ScrollView, Text, View, useWindowDimensions } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Image } from 'expo-image';
 import { Check, ChevronLeft } from 'lucide-react-native';
@@ -41,17 +41,21 @@ export default function LibraryPickerSheet() {
 
   if (isPending) return <Loading />;
 
+  // A FlatList can't share a formSheet with sibling chrome: its scroll view
+  // takes the sheet's bounds and draws over anything laid out beside it (the
+  // eyebrow), dropping the wrapper's padding too. A plain scroll view that owns
+  // its padding is the shape that behaves here (same as the character sheet).
   return (
-    <View className="flex-1 bg-background px-4 pt-6">
+    <ScrollView className="flex-1 bg-background" contentContainerClassName="px-4 pb-8 pt-6">
+      <Eyebrow>Pick from library</Eyebrow>
       {!current ? (
         <>
-          <Eyebrow>Pick from library</Eyebrow>
-          <FlatList
-            data={folders}
-            keyExtractor={(f: any) => f.folder}
-            ListEmptyComponent={<Empty title="Library is empty" hint="Import assets on the Assets tab first." />}
-            renderItem={({ item }: any) => (
+          {folders.length === 0 ? (
+            <Empty title="Library is empty" hint="Import assets on the Assets tab first." />
+          ) : (
+            folders.map((item: any) => (
               <Pressable
+                key={item.folder}
                 className="mb-2 flex-row items-center gap-3 rounded-xl border border-border bg-card p-2.5 active:bg-secondary"
                 onPress={() => setFolder(item.folder)}
               >
@@ -65,8 +69,8 @@ export default function LibraryPickerSheet() {
                   <Text className="text-[12px] text-muted-foreground">{item.count} images</Text>
                 </View>
               </Pressable>
-            )}
-          />
+            ))
+          )}
         </>
       ) : (
         <>
@@ -87,16 +91,12 @@ export default function LibraryPickerSheet() {
               />
             ) : null}
           </View>
-          <FlatList
-            data={current.images || []}
-            numColumns={3}
-            keyExtractor={(img: any) => img.rel}
-            columnWrapperClassName="gap-2"
-            contentContainerClassName="gap-2 pb-8"
-            renderItem={({ item }: any) => {
+          <View className="flex-row flex-wrap gap-2">
+            {(current.images || []).map((item: any) => {
               const selected = picked.includes(item.rel);
               return (
                 <Pressable
+                  key={item.rel}
                   onPress={() => {
                     if (!multi) return finish([item.rel]);
                     setPicked((prev) =>
@@ -116,10 +116,10 @@ export default function LibraryPickerSheet() {
                   ) : null}
                 </Pressable>
               );
-            }}
-          />
+            })}
+          </View>
         </>
       )}
-    </View>
+    </ScrollView>
   );
 }

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { FlatList, Pressable, Text, TextInput, View } from 'react-native';
+import { Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Folder, FolderRoot } from 'lucide-react-native';
 import { Button } from '@/components/ui/button';
@@ -34,37 +34,41 @@ export default function ImportFolderSheet() {
   const trimmed = name.trim();
 
   return (
-    <View className="flex-1 bg-background px-4 pt-5">
+    // A list can't share a formSheet with sibling chrome — its scroll view takes
+    // the sheet's bounds and draws over anything beside it (here the eyebrow
+    // above and the new-folder form below). One scroll view owns the whole
+    // sheet instead, so the form scrolls with the list rather than staying
+    // pinned to the bottom.
+    <ScrollView
+      className="flex-1 bg-background"
+      contentContainerClassName="px-4 pb-6 pt-5"
+      keyboardShouldPersistTaps="handled"
+    >
       <Eyebrow>Add to library</Eyebrow>
       <Text className="mb-3 mt-0.5 text-[13px] text-muted-foreground">
         Pick a destination folder for this image.
       </Text>
 
-      <FlatList
-        data={folders}
-        keyExtractor={(f) => f.folder}
-        className="flex-1"
-        keyboardShouldPersistTaps="handled"
-        renderItem={({ item }) => {
-          const root = item.folder === '.';
-          return (
-            <Pressable
-              className="mb-2 flex-row items-center gap-3 rounded-xl border border-border bg-card p-3 active:bg-secondary"
-              onPress={() => pick(item.folder)}
-            >
-              <View className="h-9 w-9 items-center justify-center rounded-full bg-secondary">
-                {root ? <FolderRoot size={16} color="#a1a1aa" /> : <Folder size={16} color="#a1a1aa" />}
-              </View>
-              <Text className="flex-1 text-[15px] font-medium text-foreground" numberOfLines={1}>
-                {root ? '(library root)' : item.folder}
-              </Text>
-              <Text className="text-[12px] text-muted-foreground">{item.count}</Text>
-            </Pressable>
-          );
-        }}
-      />
+      {folders.map((item) => {
+        const root = item.folder === '.';
+        return (
+          <Pressable
+            key={item.folder}
+            className="mb-2 flex-row items-center gap-3 rounded-xl border border-border bg-card p-3 active:bg-secondary"
+            onPress={() => pick(item.folder)}
+          >
+            <View className="h-9 w-9 items-center justify-center rounded-full bg-secondary">
+              {root ? <FolderRoot size={16} color="#a1a1aa" /> : <Folder size={16} color="#a1a1aa" />}
+            </View>
+            <Text className="flex-1 text-[15px] font-medium text-foreground" numberOfLines={1}>
+              {root ? '(library root)' : item.folder}
+            </Text>
+            <Text className="text-[12px] text-muted-foreground">{item.count}</Text>
+          </Pressable>
+        );
+      })}
 
-      <View className="gap-2 border-t border-border pt-3">
+      <View className="mt-3 gap-2 border-t border-border pt-3">
         <Eyebrow>New folder</Eyebrow>
         <TextInput
           value={name}
@@ -92,6 +96,6 @@ export default function ImportFolderSheet() {
           />
         </View>
       </View>
-    </View>
+    </ScrollView>
   );
 }
