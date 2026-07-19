@@ -8,7 +8,9 @@ import { useProjectStore } from '@/lib/project';
 import { useProjects } from '@/lib/queries';
 import { useDataEvents } from '@/lib/sse';
 
-// Live-sync subscriber — mounted once the project is resolved.
+// Live-sync subscriber — mounted once the project is resolved. Deliberately
+// OUTSIDE <AgentProvider>, which renders null until the eve session publishes an
+// agent: live-sync must not wait on the chat session to come up.
 function LiveSync() {
   useDataEvents();
   return null;
@@ -53,10 +55,9 @@ export default function TabsLayout() {
 
   return (
     <ProjectGate>
+      <LiveSync />
       <AgentProvider>
-        <LiveSync />
         <NativeTabs
-          backgroundColor="#0a0a0b"
           iconColor={{ selected: '#CBF74E' }}
           labelStyle={{ selected: { color: '#CBF74E' } }}
         >
