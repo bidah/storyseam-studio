@@ -1,24 +1,20 @@
 import { Stack } from 'expo-router';
-import {
-  HEADER_BASE,
-  ProjectSwitcherButton,
-  useProjectSwitcherItem,
-} from '@/components/header-buttons';
+import { BurgerButton, HEADER_BASE, useBurgerItem } from '@/components/header-buttons';
 
 // Nested Stack so the Chat tab gets a native expo-router header. The message
 // stream reads better with a compact title than a large one, so large title is
-// off here; project switcher lives on the left, history + new chat are set from
-// the screen (they need live chat state).
+// off here; the burger (drawer) lives on the left, history + new chat are set
+// from the screen (they need live chat state).
 export default function ChatLayout() {
-  const projectItem = useProjectSwitcherItem();
+  const burgerItem = useBurgerItem();
   return (
     <Stack
       screenOptions={{
         ...HEADER_BASE,
         headerLargeTitle: false,
         title: 'Chat',
-        unstable_headerLeftItems: () => [projectItem],
-        headerLeft: () => <ProjectSwitcherButton />,
+        unstable_headerLeftItems: () => [burgerItem],
+        headerLeft: () => <BurgerButton />,
       }}
     />
   );

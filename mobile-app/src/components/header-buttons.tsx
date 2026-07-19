@@ -1,13 +1,12 @@
-import { Pressable, Text, View } from 'react-native';
-import { router } from 'expo-router';
+import { Pressable, View } from 'react-native';
 import type {
   NativeStackHeaderItem,
   NativeStackNavigationOptions,
 } from 'expo-router/build/react-navigation/native-stack/types';
-import { ChevronDown, RefreshCw, Settings2 } from 'lucide-react-native';
+import { Menu, RefreshCw } from 'lucide-react-native';
 import { useQueryClient } from '@tanstack/react-query';
+import { openDrawer } from '@/lib/drawer';
 import { useProjectStore } from '@/lib/project';
-import { useProjects } from '@/lib/queries';
 
 // Shared native-header building blocks. Each tab nests its own Stack (so it gets
 // an expo-router native header); these describe the controls that used to live
@@ -30,24 +29,21 @@ const MUTED = '#a1a1aa';
 const BG = '#0a0a0b';
 const FG = '#fafafa';
 
-// Project switcher — headerLeft item on every tab. Opens the projects sheet.
-// Label-only: the glass capsule is the affordance, and a bar button item can
-// only lead with its icon, where a chevron would read backwards.
-export function useProjectSwitcherItem(): NativeStackHeaderItem {
-  const projectId = useProjectStore((s) => s.projectId);
-  const { data } = useProjects();
-  const project = data?.projects?.find((p) => p.id === projectId);
+// Burger — headerLeft item on every tab. Opens the navigation drawer, which now
+// holds the project selector (first row) and Settings (TOO-11).
+export function useBurgerItem(): NativeStackHeaderItem {
   return {
     type: 'button',
-    label: project?.name || 'Project',
-    accessibilityLabel: 'Switch project',
-    onPress: () => router.push('/projects'),
+    label: '',
+    icon: { type: 'sfSymbol', name: 'line.3.horizontal' },
+    accessibilityLabel: 'Open menu',
+    onPress: () => openDrawer(),
   };
 }
 
-// Refresh + settings — headerRight items on the content tabs. Refresh
-// invalidates the whole project scope (+ account), matching the old
-// ScreenHeader behaviour.
+// Refresh — the sole headerRight item on the content tabs now that Settings has
+// moved into the drawer. Invalidates the whole project scope (+ account),
+// matching the old ScreenHeader behaviour.
 export function useTabActionItems(): NativeStackHeaderItem[] {
   const projectId = useProjectStore((s) => s.projectId);
   const queryClient = useQueryClient();
@@ -62,32 +58,19 @@ export function useTabActionItems(): NativeStackHeaderItem[] {
         queryClient.invalidateQueries({ queryKey: ['account'] });
       },
     },
-    {
-      type: 'button',
-      label: '',
-      icon: { type: 'sfSymbol', name: 'gearshape' },
-      accessibilityLabel: 'Settings',
-      onPress: () => router.push('/settings'),
-    },
   ];
 }
 
-// Android/web fallback for useProjectSwitcherItem.
-export function ProjectSwitcherButton() {
-  const projectId = useProjectStore((s) => s.projectId);
-  const { data } = useProjects();
-  const project = data?.projects?.find((p) => p.id === projectId);
+// Android/web fallback for useBurgerItem.
+export function BurgerButton() {
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel="Switch project"
-      className="flex-row items-center gap-1 rounded-full bg-secondary px-3 py-1.5 active:opacity-70"
-      onPress={() => router.push('/projects')}
+      accessibilityLabel="Open menu"
+      className="h-9 w-9 items-center justify-center rounded-full active:opacity-60"
+      onPress={() => openDrawer()}
     >
-      <Text className="max-w-36 text-[13px] font-semibold text-foreground" numberOfLines={1}>
-        {project?.name || 'Project'}
-      </Text>
-      <ChevronDown size={14} color={MUTED} />
+      <Menu size={22} color={FG} />
     </Pressable>
   );
 }
@@ -108,14 +91,6 @@ export function TabHeaderActions() {
         }}
       >
         <RefreshCw size={17} color={MUTED} />
-      </Pressable>
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel="Settings"
-        className="h-9 w-9 items-center justify-center rounded-full active:opacity-60"
-        onPress={() => router.push('/settings')}
-      >
-        <Settings2 size={18} color={MUTED} />
       </Pressable>
     </View>
   );
@@ -142,14 +117,14 @@ export const HEADER_BASE = {
 // function because the items read the active project and the query client, and
 // the `unstable_header*Items` callbacks run outside a component, so they can't.
 export function useTabHeaderOptions(title: string): NativeStackNavigationOptions {
-  const projectItem = useProjectSwitcherItem();
+  const burgerItem = useBurgerItem();
   const actionItems = useTabActionItems();
   return {
     ...HEADER_BASE,
     title,
-    unstable_headerLeftItems: () => [projectItem],
+    unstable_headerLeftItems: () => [burgerItem],
     unstable_headerRightItems: () => actionItems,
-    headerLeft: () => <ProjectSwitcherButton />,
+    headerLeft: () => <BurgerButton />,
     headerRight: () => <TabHeaderActions />,
   };
 }
