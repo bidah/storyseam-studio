@@ -12,9 +12,20 @@
 // attachments are client-only (eve's projection drops image parts), so each
 // chat also carries the ordinal-aligned attachment record the composer needs to
 // re-render thumbnails.
+//
+// Chats are SCOPED PER PROJECT: every chat carries the `projectId` it belongs
+// to, the history list is filtered to the current project, and the last-active
+// chat is remembered per project (`activeByProject`) so switching projects
+// reopens the conversation we were on there — or a fresh one if that project has
+// none yet. The current project id comes from the projectFetch shim (a plain
+// module value, readable without React), so this store can scope itself without
+// depending on the ProjectProvider that lives below the AgentProvider.
 // ---------------------------------------------------------------------------
 
-const KEY = "shotStudio.chats.v1";
+import { getProjectId } from "@/lib/projectFetch";
+
+const KEY = "shotStudio.chats.v2";
+const LEGACY_KEY = "shotStudio.chats.v1";
 const MAX_CHATS = 50;
 
 function uid() {
@@ -29,11 +40,18 @@ function safeParse(raw) {
   }
 }
 
-// A blank conversation with an empty eve cursor.
-export function makeChat(title = "New chat") {
+// `activeByProject` is keyed by project id; a null/unknown project (e.g. before
+// the project list has loaded) maps to "" so there's always a stable key.
+function pidKey(pid) {
+  return pid || "";
+}
+
+// A blank conversation with an empty eve cursor, tagged to a project.
+export function makeChat(projectId = null, title = "New chat") {
   const now = Date.now();
   return {
     id: uid(),
+    projectId: projectId ?? null,
     title,
     createdAt: now,
     updatedAt: now,
@@ -43,26 +61,113 @@ export function makeChat(title = "New chat") {
   };
 }
 
-// Normalize whatever is in localStorage into a valid store, or seed a fresh one.
-export function loadStore() {
-  let raw = null;
+// The chats belonging to one project, in `order` (most-recent-first).
+export function chatsForProject(store, pid) {
+  const want = pid ?? null;
+  return store.order.map((id) => store.chats[id]).filter((c) => c && c.projectId === want);
+}
+
+// The active chat id for a project, or null if it has none / a stale pointer.
+export function activeChatId(store, pid) {
+  const want = pid ?? null;
+  const id = store.activeByProject[pidKey(pid)];
+  if (id && store.chats[id] && store.chats[id].projectId === want) return id;
+  return chatsForProject(store, pid)[0]?.id ?? null;
+}
+
+// Guarantee a project has a valid active chat: keep the current pointer if it's
+// still valid, otherwise adopt that project's most-recent chat, otherwise mint a
+// fresh blank one. Returns the same store reference when nothing changed.
+export function withActiveForProject(store, pid) {
+  const key = pidKey(pid);
+  const cur = store.activeByProject[key];
+  if (cur && store.chats[cur] && store.chats[cur].projectId === (pid ?? null)) return store;
+  const existing = chatsForProject(store, pid)[0];
+  if (existing) {
+    return { ...store, activeByProject: { ...store.activeByProject, [key]: existing.id } };
+  }
+  const c = makeChat(pid ?? null);
+  return {
+    activeByProject: { ...store.activeByProject, [key]: c.id },
+    order: [c.id, ...store.order],
+    chats: { ...store.chats, [c.id]: c },
+  };
+}
+
+// Cap the total number of stored chats, but never drop a chat that some project
+// still points at as its active conversation.
+export function trimStore(store) {
+  if (store.order.length <= MAX_CHATS) return store;
+  const actives = new Set(Object.values(store.activeByProject));
+  const kept = [];
+  const dropped = [];
+  for (const id of store.order) {
+    if (kept.length < MAX_CHATS || actives.has(id)) kept.push(id);
+    else dropped.push(id);
+  }
+  if (dropped.length === 0) return store;
+  const chats = { ...store.chats };
+  for (const id of dropped) delete chats[id];
+  return { ...store, order: kept, chats };
+}
+
+// Drop order entries with no chat, default missing projectIds, and prune
+// activeByProject pointers that no longer resolve.
+function normalize(parsed) {
+  const chats = parsed?.chats && typeof parsed.chats === "object" ? parsed.chats : {};
+  const order = (Array.isArray(parsed?.order) ? parsed.order : []).filter((id) => chats[id]);
+  const cleanChats = {};
+  for (const id of order) {
+    const c = chats[id];
+    cleanChats[id] = c.projectId === undefined ? { ...c, projectId: null } : c;
+  }
+  const activeByProject = {};
+  const src = parsed?.activeByProject && typeof parsed.activeByProject === "object" ? parsed.activeByProject : {};
+  for (const [k, id] of Object.entries(src)) {
+    if (cleanChats[id]) activeByProject[k] = id;
+  }
+  return { activeByProject, order, chats: cleanChats };
+}
+
+// Migrate a v1 store (one global list, single `activeId`, no projectId) into the
+// v2 per-project shape by stamping every existing chat with the CURRENT project
+// — we can't know which project each really belonged to, so they all land under
+// the project that's active at migration time.
+function migrateV1(parsed, pid) {
+  const want = pid ?? null;
+  const oldChats = parsed?.chats && typeof parsed.chats === "object" ? parsed.chats : {};
+  const order = (Array.isArray(parsed?.order) ? parsed.order : []).filter((id) => oldChats[id]);
+  const chats = {};
+  for (const id of order) chats[id] = { ...oldChats[id], projectId: want };
+  const activeByProject = {};
+  if (order.length) {
+    activeByProject[pidKey(pid)] = chats[parsed.activeId] ? parsed.activeId : order[0];
+  }
+  return { activeByProject, order, chats };
+}
+
+function readRaw(key) {
   try {
-    raw = localStorage.getItem(KEY);
+    return localStorage.getItem(key);
   } catch {
-    /* private mode / disabled storage */
+    return null; // private mode / disabled storage
   }
-  const parsed = raw ? safeParse(raw) : null;
-  const chats = parsed?.chats && typeof parsed.chats === "object" ? parsed.chats : null;
-  const order = Array.isArray(parsed?.order) ? parsed.order.filter((id) => chats?.[id]) : [];
-  if (!chats || order.length === 0) {
-    const c = makeChat();
-    return { activeId: c.id, order: [c.id], chats: { [c.id]: c } };
+}
+
+// Normalize whatever is in localStorage into a valid store (migrating a legacy
+// v1 store if that's all there is), then guarantee the current project has a
+// live active chat so the session runner always has something to run.
+export function loadStore() {
+  const pid = getProjectId();
+  const parsed = safeParse(readRaw(KEY));
+  let store;
+  if (parsed && parsed.chats && parsed.activeByProject && Array.isArray(parsed.order)) {
+    store = normalize(parsed);
+  } else {
+    const legacy = safeParse(readRaw(LEGACY_KEY));
+    store = legacy && legacy.chats ? migrateV1(legacy, pid) : { activeByProject: {}, order: [], chats: {} };
   }
-  const activeId = chats[parsed.activeId] ? parsed.activeId : order[0];
-  // Keep only chats referenced by `order`, in that order.
-  const kept = {};
-  for (const id of order) kept[id] = chats[id];
-  return { activeId, order, chats: kept };
+  return withActiveForProject(store, pid);
 }
 
 export function persistStore(store) {

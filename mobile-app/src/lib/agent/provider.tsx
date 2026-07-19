@@ -12,13 +12,16 @@ import {
 import { router, usePathname } from 'expo-router';
 import { useEveAgent } from 'eve/react';
 import { API_ORIGIN } from '../env';
-import { useProjectStore } from '../project';
+import { getProjectId, useProjectStore } from '../project';
 import {
-  CHATS_LIMIT,
+  activeChatId,
+  chatsForProject,
   deriveTitle,
   loadStore,
   makeChat,
   persistStore,
+  trimStore,
+  withActiveForProject,
   type Chat,
   type ChatStore,
 } from './chat-store';
@@ -42,10 +45,15 @@ function useConversationManager() {
   const storeRef = useRef<ChatStore | null>(null);
   storeRef.current = store;
 
-  // Hydrate once from AsyncStorage.
+  // The current project (chats and history are scoped to it). The whole app
+  // renders behind a boot gate that awaits project hydration, so `getProjectId()`
+  // is already correct when the store loads below.
+  const pid = useProjectStore((s) => s.projectId);
+
+  // Hydrate once from AsyncStorage, scoped to the project active at load time.
   useEffect(() => {
     let alive = true;
-    loadStore().then((s) => {
+    loadStore(getProjectId()).then((s) => {
       if (alive) setStore(s);
     });
     return () => {
@@ -63,35 +71,50 @@ function useConversationManager() {
     });
   }, []);
 
+  // Switching to a project reopens its last-active chat, or mints a fresh one if
+  // it has none yet — the core of "chat is per project".
+  useEffect(() => {
+    if (!store) return;
+    update((prev) => withActiveForProject(prev, pid));
+  }, [pid, store, update]);
+
   const newChat = useCallback(() => {
     update((prev) => {
-      const c = makeChat();
-      const order = [c.id, ...prev.order].slice(0, CHATS_LIMIT);
-      const chats: Record<string, Chat> = { [c.id]: c };
-      for (const id of order) if (prev.chats[id]) chats[id] = prev.chats[id];
-      return { activeId: c.id, order, chats };
+      const c = makeChat(pid ?? null);
+      return trimStore({
+        activeByProject: { ...prev.activeByProject, [pid || '']: c.id },
+        order: [c.id, ...prev.order],
+        chats: { ...prev.chats, [c.id]: c },
+      });
     });
-  }, [update]);
+  }, [update, pid]);
 
   const switchChat = useCallback(
     (id: string) =>
-      update((prev) => (prev.chats[id] && id !== prev.activeId ? { ...prev, activeId: id } : prev)),
+      update((prev) => {
+        const chat = prev.chats[id];
+        if (!chat) return prev;
+        const key = chat.projectId || '';
+        if (prev.activeByProject[key] === id) return prev;
+        return { ...prev, activeByProject: { ...prev.activeByProject, [key]: id } };
+      }),
     [update],
   );
 
   const deleteChat = useCallback(
     (id: string) =>
       update((prev) => {
-        if (!prev.chats[id]) return prev;
+        const chat = prev.chats[id];
+        if (!chat) return prev;
         const order = prev.order.filter((x) => x !== id);
         const chats = { ...prev.chats };
         delete chats[id];
-        if (order.length === 0) {
-          const c = makeChat();
-          return { activeId: c.id, order: [c.id], chats: { [c.id]: c } };
+        const activeByProject = { ...prev.activeByProject };
+        for (const k of Object.keys(activeByProject)) {
+          if (activeByProject[k] === id) delete activeByProject[k];
         }
-        const activeId = id === prev.activeId ? order[0] : prev.activeId;
-        return { activeId, order, chats };
+        // If that emptied the chat's project, hand it a fresh blank one.
+        return withActiveForProject({ activeByProject, order, chats }, chat.projectId);
       }),
     [update],
   );
@@ -143,15 +166,14 @@ function useConversationManager() {
     };
   }, []);
 
-  const list = useMemo(
-    () => (store ? store.order.map((id) => store.chats[id]).filter(Boolean) : []),
-    [store],
-  );
+  // History and active selection are scoped to the current project.
+  const list = useMemo(() => (store ? chatsForProject(store, pid) : []), [store, pid]);
+  const activeId = useMemo(() => (store ? activeChatId(store, pid) : null), [store, pid]);
 
   return useMemo(
     () => ({
       hydrated: !!store,
-      activeId: store?.activeId ?? null,
+      activeId,
       list,
       newChat,
       switchChat,
@@ -161,7 +183,7 @@ function useConversationManager() {
       saveAttachments,
       getInitial,
     }),
-    [store, list, newChat, switchChat, deleteChat, saveTurn, saveSession, saveAttachments, getInitial],
+    [store, activeId, list, newChat, switchChat, deleteChat, saveTurn, saveSession, saveAttachments, getInitial],
   );
 }
 
@@ -205,15 +227,8 @@ export function AgentProvider({ children }: { children: ReactNode }) {
   // Which surface the user is on — forwarded to the agent every turn.
   const view = pathname.slice(1).split('/')[0] || 'chat';
 
-  // New project → fresh conversation (parity with the web app).
-  const projectId = useProjectStore((s) => s.projectId);
-  const lastPid = useRef<string | null>(null);
-  const { hydrated, newChat } = conv;
-  useEffect(() => {
-    if (!hydrated || !projectId) return;
-    if (lastPid.current && lastPid.current !== projectId) newChat();
-    lastPid.current = projectId;
-  }, [projectId, hydrated, newChat]);
+  // Per-project chat scoping (restore the last chat on project switch) is handled
+  // inside the conversation manager — see `useConversationManager`.
 
   return (
     <ConversationsContext.Provider value={conv}>

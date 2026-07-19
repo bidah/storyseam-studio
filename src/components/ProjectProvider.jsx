@@ -2,7 +2,6 @@ import React, {
   createContext, useCallback, useContext, useEffect, useMemo, useState,
 } from "react";
 import { getProjectId, setProjectId } from "@/lib/projectFetch";
-import { useConversations } from "@/components/AgentProvider";
 
 // Context for the active project + the project list. Wraps the app so any tab
 // (and the header switcher) can read/switch projects. The active project id is
@@ -33,7 +32,6 @@ export default function ProjectProvider({ children }) {
   const [currentId, setCurrentId] = useState(getProjectId());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const { newChat } = useConversations();
 
   // Tell the server which project is active so the agent + media follow.
   const activate = useCallback(async (id) => {
@@ -79,12 +77,11 @@ export default function ProjectProvider({ children }) {
   const create = useCallback(async (name) => {
     const { project } = await api("/api/projects", "POST", { name });
     await load();
+    // Switching to the new project auto-opens a fresh chat for it (chats are
+    // scoped per project now — see the AgentProvider conversation manager).
     await switchTo(project.id);
-    // A fresh project starts with a blank chat — don't carry the previous
-    // project's conversation history into it.
-    newChat();
     return project;
-  }, [load, switchTo, newChat]);
+  }, [load, switchTo]);
 
   const rename = useCallback(async (id, name) => {
     await api(`/api/projects/${id}`, "PATCH", { name });
