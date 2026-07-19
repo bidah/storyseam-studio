@@ -313,8 +313,18 @@ function ShotlistGate({ draftId, signed, shotlistExists, onSignedChange }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ signed: next, by: by ?? null }),
       });
-      if (res.ok) { onSignedChange(next); return true; }
-      return false;
+      if (!res.ok) return false;
+      const body = await res.json().catch(() => ({}));
+      onSignedChange(next);
+      // Signing does NOT bump the draft's `updatedAt`, and the tab cache is only
+      // rewritten by a GET /api/script — so without this write-through a remount
+      // (tab switch) would re-seed from a stale `signed: false` and the button
+      // would come back, needing a second sign to stick.
+      const cached = readTabCache("script");
+      if (cached) {
+        writeTabCache("script", { ...cached, signed: next, signedAt: next ? body.signedAt ?? null : null });
+      }
+      return true;
     } catch {
       return false;
     } finally {
@@ -456,6 +466,10 @@ function Editor({ initial, drafts, pinnedId, currentName, reload, signed: signed
   // Local sign-off mirror: editing clears the server-side sign-off, so drop it
   // whenever we autosave; the Sign button sets it back.
   const [signed, setSigned] = useState(!!signedInit);
+  // The editor is keyed on `${pinnedId}:${updatedAt}`, which signing leaves
+  // untouched — so a fresh sign-off arriving from a revalidation does NOT remount
+  // us and would never reach this state. Track the prop explicitly instead.
+  useEffect(() => setSigned(!!signedInit), [signedInit]);
   const [spType, setSpType] = useState(null); // current screenplay type, or null
   const [title, setTitle] = useState(initial.title);
   const titleRef = useRef(initial.title);
