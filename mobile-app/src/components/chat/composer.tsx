@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Animated, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
-import { KeyboardStickyView } from 'react-native-keyboard-controller';
+import { KeyboardController, KeyboardStickyView } from 'react-native-keyboard-controller';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import * as Haptics from 'expo-haptics';
@@ -90,6 +90,9 @@ export function Composer({
       await onSubmit(text, atts);
       setText('');
       setAtts([]);
+      // Drop focus so the keyboard slides away and the agent's reply gets the
+      // full screen — the message is already sent (TOO-8).
+      KeyboardController.dismiss();
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       toast.error(`Send failed: ${msg}`);
