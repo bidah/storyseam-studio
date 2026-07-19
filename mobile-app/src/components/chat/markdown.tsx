@@ -24,14 +24,14 @@ const remendConfig: RemendOptions = {
 
 // Dark-theme style for the native renderer (it can't read NativeWind classes).
 const baseStyle: MarkdownStyle = {
-  paragraph: { color: chatColors.foreground, fontSize: 15, lineHeight: 22, marginTop: 4, marginBottom: 4 },
+  paragraph: { color: chatColors.foreground, fontSize: 16, lineHeight: 24, marginTop: 4, marginBottom: 4 },
   h1: { color: chatColors.foreground, fontSize: 22, fontWeight: '700' },
   h2: { color: chatColors.foreground, fontSize: 19, fontWeight: '700' },
   h3: { color: chatColors.foreground, fontSize: 17, fontWeight: '600' },
-  h4: { color: chatColors.foreground, fontSize: 15, fontWeight: '600' },
-  h5: { color: chatColors.foreground, fontSize: 15, fontWeight: '600' },
-  h6: { color: chatColors.foreground, fontSize: 15, fontWeight: '600' },
-  list: { color: chatColors.foreground, fontSize: 15, lineHeight: 22, bulletColor: chatColors.mutedForeground, markerColor: chatColors.mutedForeground },
+  h4: { color: chatColors.foreground, fontSize: 16, fontWeight: '600' },
+  h5: { color: chatColors.foreground, fontSize: 16, fontWeight: '600' },
+  h6: { color: chatColors.foreground, fontSize: 16, fontWeight: '600' },
+  list: { color: chatColors.foreground, fontSize: 16, lineHeight: 24, bulletColor: chatColors.mutedForeground, markerColor: chatColors.mutedForeground },
   blockquote: {
     color: chatColors.mutedForeground,
     borderColor: chatColors.border,

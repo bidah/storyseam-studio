@@ -276,7 +276,7 @@ export const MessageRow = memo(function MessageRow({
       <View className="items-end px-4">
         {text ? (
           <View className="max-w-[88%] rounded-2xl bg-secondary px-3.5 py-2.5">
-            <Text className="text-[15px] leading-[21px] text-foreground" selectable>
+            <Text className="text-[16px] leading-[23px] text-foreground" selectable>
               {text}
             </Text>
           </View>
