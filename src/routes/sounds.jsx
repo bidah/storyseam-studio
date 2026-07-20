@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useLoaderData, useRevalidator } from "react-router";
+import { useLoaderData, useRevalidator, useSearchParams } from "react-router";
 import { Check, Plus, ChevronDown, ChevronRight, RotateCcw, Volume2, Speech, Copy, Heart, Music, Save, Clock, Download, Trash2, FileText, Loader2, Wand2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { invalidateTabCache } from "@/lib/tabCache";
@@ -821,11 +821,30 @@ function SoundStudio() {
   const revalidator = useRevalidator();
   useRevalidateOnMount("sounds");
   const [error, setError] = useState(null); // createTrack (mutation) error
-  const [tab, setTab] = useState("music");
-  const [showNew, setShowNew] = useState(false);
+  const [searchParams, setSearchParams] = useSearchParams();
+  // Deep link: `/sounds?new=<kind>` (e.g. the Radio casting modal's "Create
+  // voice" button) opens that kind's tab with its builder already expanded.
+  const initialNew = searchParams.get("new");
+  const [tab, setTab] = useState(
+    initialNew === "voice" || initialNew === "sfx" || initialNew === "music" ? initialNew : "music",
+  );
+  const [showNew, setShowNew] = useState(
+    initialNew === "voice" || initialNew === "sfx" || initialNew === "music",
+  );
   const [busy, setBusy] = useState(false);
   const agent = useAgent();
   const agentBusy = agentIsBusy(agent);
+
+  // Consume the `?new=` param once it has seeded the initial tab/builder, so a
+  // refresh or later navigation doesn't keep forcing the builder back open.
+  useEffect(() => {
+    if (searchParams.has("new")) {
+      const next = new URLSearchParams(searchParams);
+      next.delete("new");
+      setSearchParams(next, { replace: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Any track/version mutation (create/rename/delete/like, agent renders) →
   // refetch the sounds loader so the list reflects the change.

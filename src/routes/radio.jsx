@@ -2,11 +2,11 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useLoaderData, useNavigate, useRevalidator } from "react-router";
 import {
   Radio as RadioIcon, Mic, Loader2, Film, Send, X, AudioLines, CircleAlert,
-  Clapperboard, Image as ImageIcon,
+  Clapperboard, Image as ImageIcon, Check, Plus,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { invalidateTabCache } from "@/lib/tabCache";
-import { swr, useRevalidateOnMount } from "@/lib/swr";
+import { swr, useRevalidateOnMount, useRevalidateOnAgentIdle } from "@/lib/swr";
 import { useAgent, agentIsBusy, renderRadioSceneMessage } from "@/components/AgentProvider";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -15,8 +15,10 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Empty, Panel, Spinner, ErrorNote } from "@/components/shared";
 
 /* ---------------------------------------------------------------- *
- * Voice picker — pick a liked Sound Studio voice for a character.    *
- * Mirrors the World tab's VoicePicker (kind "voice", liked takes).   *
+ * Casting dialog — one character's casting surface. Opened from its  *
+ * compact card: shows the current cast voice (clearable) plus the    *
+ * liked Sound Studio voices to pick from, and a shortcut into the    *
+ * Sound Studio to create a brand-new voice.                          *
  * ---------------------------------------------------------------- */
 
 const VOICE_RE = /^\s*(@audio\d|use a seed audio voice reference to voice-act)/i;
@@ -27,10 +29,12 @@ function isVoiceTrack(t) {
   return VOICE_RE.test(v1?.prompt || "");
 }
 
-function VoicePicker({ open, onOpenChange, onPick, character }) {
+function CastingDialog({ open, onOpenChange, onCast, entry }) {
+  const navigate = useNavigate();
   const [tracks, setTracks] = useState(null);
   const [error, setError] = useState(null);
   const [q, setQ] = useState("");
+  const { character, voiceRef, source } = entry;
 
   useEffect(() => {
     if (!open) return;
@@ -55,35 +59,63 @@ function VoicePicker({ open, onOpenChange, onPick, character }) {
     return term ? all.filter((o) => o.name.toLowerCase().includes(term)) : all;
   }, [tracks, q]);
 
+  const pick = (o) => { onCast(character, { trackId: o.trackId, v: o.v, name: o.name, url: o.url }); onOpenChange(false); };
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-2xl">
         <DialogHeader>
-          <DialogTitle>Cast a voice{character ? ` for ${character}` : ""}</DialogTitle>
+          <DialogTitle className="flex items-center gap-2">
+            Cast a voice for <Badge variant="secondary" className="font-mono">{character}</Badge>
+          </DialogTitle>
         </DialogHeader>
-        <p className="text-xs text-muted-foreground">
-          Your liked voices from the Sound Studio — like a voice take on the Sounds tab to see it here.
-        </p>
+
+        {/* Currently cast voice — audio + clear live here, off the compact card. */}
+        {voiceRef && (
+          <div className="flex flex-wrap items-center gap-3 rounded-lg border bg-muted/30 p-2.5">
+            <Badge variant="success" className="gap-1"><Check size={11} /> Casted</Badge>
+            <span className="text-sm font-medium">{voiceRef.name || "Voice"}{voiceRef.v != null && <span className="text-muted-foreground"> · v{voiceRef.v}</span>}</span>
+            {source === "world" && <Badge variant="muted" className="text-[10px]">from World</Badge>}
+            {voiceRef.url && <audio controls src={voiceRef.url} preload="none" className="h-8 max-w-[220px]" />}
+            <Button variant="ghost" size="sm" className="ml-auto text-muted-foreground hover:text-destructive" onClick={() => onCast(character, null)}>
+              <X size={14} /> Clear
+            </Button>
+          </div>
+        )}
+
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-xs text-muted-foreground">
+            Your liked voices from the Sound Studio — like a voice take on the Sounds tab to see it here.
+          </p>
+          <Button variant="outline" size="sm" className="shrink-0" onClick={() => navigate("/sounds?new=voice")}>
+            <Plus size={13} /> Create voice
+          </Button>
+        </div>
         <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search liked voices…" className="h-8 text-sm" />
         {error && <ErrorNote>{error}</ErrorNote>}
         {tracks === null && !error ? (
           <div className="py-10"><Spinner /></div>
         ) : voices.length === 0 && !error ? (
           <div className="rounded-lg border border-dashed p-8 text-center">
-            <Empty>no liked voices yet — generate a voice on the Sounds tab and tap the heart to like a take.</Empty>
+            <Empty>no liked voices yet — generate a voice on the Sounds tab and tap the heart to like a take, or create one now.</Empty>
           </div>
         ) : (
-          <div className="max-h-[60vh] space-y-2 overflow-y-auto pr-1">
-            {voices.map((o) => (
-              <div key={`${o.trackId}:${o.v}`} className="flex items-center gap-3 rounded-lg border p-2">
-                <Mic size={16} className="shrink-0 text-primary" />
-                <div className="min-w-0 flex-1">
-                  <div className="truncate text-sm font-medium">{o.name} <span className="text-muted-foreground">v{o.v}</span></div>
-                  <audio controls src={o.url} preload="none" className="mt-1 h-8 w-full" />
+          <div className="max-h-[50vh] space-y-2 overflow-y-auto pr-1">
+            {voices.map((o) => {
+              const active = voiceRef && voiceRef.trackId === o.trackId && voiceRef.v === o.v;
+              return (
+                <div key={`${o.trackId}:${o.v}`} className={cn("flex items-center gap-3 rounded-lg border p-2", active && "border-primary/60 bg-primary/5")}>
+                  <Mic size={16} className="shrink-0 text-primary" />
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-sm font-medium">{o.name} <span className="text-muted-foreground">v{o.v}</span></div>
+                    <audio controls src={o.url} preload="none" className="mt-1 h-8 w-full" />
+                  </div>
+                  <Button size="sm" variant={active ? "outline" : "default"} className="shrink-0" onClick={() => pick(o)}>
+                    {active ? <><Check size={13} /> Cast</> : "Select"}
+                  </Button>
                 </div>
-                <Button size="sm" className="shrink-0" onClick={() => onPick(o)}>Select</Button>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </DialogContent>
@@ -92,37 +124,32 @@ function VoicePicker({ open, onOpenChange, onPick, character }) {
 }
 
 /* ---------------------------------------------------------------- *
- * Casting row — one character + its cast voice.                     *
+ * Casting card — one compact row per character so the whole cast      *
+ * fits the sidebar without scrolling. Click anywhere to open the      *
+ * casting dialog; the right-hand pill doubles as the status: amber    *
+ * "Cast" when unassigned, green "Casted" when a voice is set.         *
  * ---------------------------------------------------------------- */
 
-function CastingRow({ entry, onCast }) {
+function CastingCard({ entry, onCast }) {
   const [open, setOpen] = useState(false);
-  const { character, voiceRef, source } = entry;
+  const { character, voiceRef } = entry;
   return (
-    <div className="flex flex-wrap items-center gap-3 rounded-lg border p-2.5">
-      <Badge variant="secondary" className="font-mono">{character}</Badge>
-      {voiceRef ? (
-        <>
-          <Mic size={15} className="shrink-0 text-primary" />
-          <span className="text-sm font-medium">{voiceRef.name || "Voice"}{voiceRef.v != null && <span className="text-muted-foreground"> · v{voiceRef.v}</span>}</span>
-          {source === "world" && <Badge variant="muted" className="text-[10px]">from World</Badge>}
-          {voiceRef.url && <audio controls src={voiceRef.url} preload="none" className="h-8 max-w-[220px]" />}
-          <div className="ml-auto flex items-center gap-1.5">
-            <Button variant="outline" size="sm" onClick={() => setOpen(true)}><Mic size={13} /> Change</Button>
-            <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-destructive" onClick={() => onCast(character, null)}>
-              <X size={14} /> Clear
-            </Button>
-          </div>
-        </>
-      ) : (
-        <>
-          <span className="text-sm text-muted-foreground">no voice cast</span>
-          <Button variant="outline" size="sm" className="ml-auto" onClick={() => setOpen(true)}><Mic size={13} /> Cast voice</Button>
-        </>
-      )}
-      <VoicePicker open={open} onOpenChange={setOpen} character={character}
-        onPick={(o) => { onCast(character, { trackId: o.trackId, v: o.v, name: o.name, url: o.url }); setOpen(false); }} />
-    </div>
+    <>
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        title={voiceRef ? `${voiceRef.name || "Voice"}${voiceRef.v != null ? ` · v${voiceRef.v}` : ""}` : "No voice cast — click to cast"}
+        className="flex w-full items-center gap-2 rounded-lg border px-2.5 py-1.5 text-left transition-colors hover:border-primary/40 hover:bg-accent/40"
+      >
+        <Badge variant="secondary" className="min-w-0 max-w-full truncate font-mono">{character}</Badge>
+        {voiceRef ? (
+          <Badge variant="success" className="ml-auto shrink-0 gap-1"><Check size={11} /> Casted</Badge>
+        ) : (
+          <Badge variant="warning" className="ml-auto shrink-0 gap-1"><Mic size={11} /> Cast</Badge>
+        )}
+      </button>
+      <CastingDialog open={open} onOpenChange={setOpen} entry={entry} onCast={onCast} />
+    </>
   );
 }
 
@@ -193,13 +220,14 @@ function RadioStudio() {
   const [sending, setSending] = useState(false);
   const [building, setBuilding] = useState(false);
 
+  const revalidate = revalidator.revalidate;
   const refetch = useCallback(() => {
     invalidateTabCache("radio");
-    revalidator.revalidate();
-  }, [revalidator]);
+    revalidate();
+  }, [revalidate]);
 
   // The agent just rendered/attached takes → refresh when its turn ends.
-  useEffect(() => { if (agent.status === "ready") refetch(); }, [agent.status, refetch]);
+  useRevalidateOnAgentIdle("radio", agent.status);
 
   const mutate = useCallback(async (path, body) => {
     setError(null);
@@ -334,8 +362,8 @@ function RadioStudio() {
               {casting.length === 0 ? (
                 <Empty>no speaking characters found in the shot list.</Empty>
               ) : (
-                <div className="space-y-2">
-                  {casting.map((entry) => <CastingRow key={entry.character} entry={entry} onCast={cast} />)}
+                <div className="space-y-1.5">
+                  {casting.map((entry) => <CastingCard key={entry.character} entry={entry} onCast={cast} />)}
                 </div>
               )}
               <p className="mt-2 px-1 text-[11px] text-muted-foreground">
