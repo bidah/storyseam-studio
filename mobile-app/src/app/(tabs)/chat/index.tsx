@@ -21,7 +21,7 @@ import Animated, {
   withRepeat,
   withTiming,
 } from 'react-native-reanimated';
-import { useReanimatedKeyboardAnimation } from 'react-native-keyboard-controller';
+import { KeyboardController, useReanimatedKeyboardAnimation } from 'react-native-keyboard-controller';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import { ArrowDown, CircleAlert, Sparkles } from 'lucide-react-native';
@@ -91,8 +91,16 @@ function ShimmerRow({ label }: { label: string }) {
 }
 
 function EmptyChat({ onSuggest }: { onSuggest: (s: string) => void }) {
+  // The empty state has no scrollable list, so it lacks the transcript's
+  // keyboardDismissMode. Tapping the background dismisses the keyboard (nested
+  // suggestion Pressables still handle their own taps); accessible={false} keeps
+  // this from reading as a button.
   return (
-    <View className="flex-1 items-center justify-center gap-2 px-8">
+    <Pressable
+      accessible={false}
+      onPress={() => KeyboardController.dismiss()}
+      className="flex-1 items-center justify-center gap-2 px-8"
+    >
       <Sparkles size={22} color={chatColors.mutedForeground} />
       <Text className="text-center text-base font-medium text-foreground">
         Ask me to build the episode
@@ -113,7 +121,7 @@ function EmptyChat({ onSuggest }: { onSuggest: (s: string) => void }) {
           </Pressable>
         ))}
       </View>
-    </View>
+    </Pressable>
   );
 }
 
