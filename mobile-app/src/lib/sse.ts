@@ -28,6 +28,7 @@ export function useDataEvents() {
     let retryTimer: ReturnType<typeof setTimeout> | undefined;
     let controller: AbortController | undefined;
     let everConnected = false;
+    let failures = 0;
 
     const invalidateAll = () => {
       queryClient.invalidateQueries({ queryKey: [projectId] });
@@ -42,6 +43,8 @@ export function useDataEvents() {
           { headers: { accept: 'text/event-stream' }, signal: controller.signal },
         );
         if (!res.ok || !res.body) throw new Error(`SSE ${res.status}`);
+        if (failures > 0) console.warn(`[live-sync] reconnected after ${failures} failure(s)`);
+        failures = 0;
         // Anything broadcast while we were away is lost — refetch once per
         // (re)connect, except the very first connect of a fresh mount.
         if (everConnected) invalidateAll();
@@ -73,8 +76,19 @@ export function useDataEvents() {
           }
         }
         throw new Error('SSE stream ended');
-      } catch {
+      } catch (err) {
         if (disposed) return;
+        // Never swallow this silently. A permanently-failing stream (a 403 from
+        // the ownership guard because the cookie didn't survive the fetch shim,
+        // a bad origin) is otherwise indistinguishable from "connected and
+        // idle": the UI simply stops updating and only pull-to-refresh works.
+        failures += 1;
+        if (failures === 1 || failures % 10 === 0) {
+          console.warn(
+            `[live-sync] /api/data/events disconnected (attempt ${failures}), retrying in ${RETRY_MS}ms:`,
+            (err as Error)?.message || err,
+          );
+        }
         clearTimeout(retryTimer);
         retryTimer = setTimeout(connect, RETRY_MS);
       }
