@@ -9,12 +9,19 @@
 // `x-eve-model` header the same way.)
 import { useSyncExternalStore } from "react";
 
-// Option ids are the anthropic model ids; the flue specifier is `anthropic/<id>`
-// (see getAgentModelSpecifier). Keep in lockstep with flue-agent/src/lib/models.ts.
+// The chat models. `spec` is the full flue specifier sent as the x-flue-model
+// header; `id` is the short handle persisted in localStorage. The Cloudflare
+// Workers AI models (`cloudflare/@cf/…`) need no external key and auto-route
+// through CF AI Gateway; the Claude models (`anthropic/…`) need ANTHROPIC_API_KEY
+// on the flue worker (and ANTHROPIC_GATEWAY_URL to also route via CF AI Gateway).
+// Keep in lockstep with flue-agent/src/lib/models.ts + mobile agent-model.ts.
 export const AGENT_MODELS = [
-  { id: "claude-sonnet-5", label: "Sonnet 5", hint: "Fast · default" },
-  { id: "claude-opus-4.6", label: "Opus 4.6", hint: "Most capable" },
-  { id: "claude-fable-5", label: "Fable 5", hint: "Creative" },
+  { id: "kimi-k2.6", spec: "cloudflare/@cf/moonshotai/kimi-k2.6", label: "Kimi K2.6", hint: "Default · economical" },
+  { id: "gpt-oss-120b", spec: "cloudflare/@cf/openai/gpt-oss-120b", label: "GPT-OSS 120B", hint: "Reasoning" },
+  { id: "glm-4.7-flash", spec: "cloudflare/@cf/zai-org/glm-4.7-flash", label: "GLM 4.7 Flash", hint: "Fast · 131k ctx" },
+  { id: "claude-sonnet-5", spec: "anthropic/claude-sonnet-5", label: "Sonnet 5", hint: "Claude · needs key" },
+  { id: "claude-opus-4.6", spec: "anthropic/claude-opus-4.6", label: "Opus 4.6", hint: "Claude · most capable" },
+  { id: "claude-fable-5", spec: "anthropic/claude-fable-5", label: "Fable 5", hint: "Claude · creative" },
 ];
 
 export const DEFAULT_AGENT_MODEL = AGENT_MODELS[0].id;
@@ -40,10 +47,11 @@ export function getAgentModel() {
   return current;
 }
 
-// The full flue model specifier for the current selection, e.g.
-// `anthropic/claude-sonnet-5` — the value sent as the `x-flue-model` header.
+// The full flue model specifier for the current selection (e.g.
+// `cloudflare/@cf/moonshotai/kimi-k2.6`) — the value sent as `x-flue-model`.
 export function getAgentModelSpecifier() {
-  return `anthropic/${current}`;
+  const m = AGENT_MODELS.find((m) => m.id === current);
+  return (m ?? AGENT_MODELS[0]).spec;
 }
 
 export function setAgentModel(id) {

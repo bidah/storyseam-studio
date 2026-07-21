@@ -18,7 +18,7 @@ import { fetch as expoFetch } from 'expo/fetch';
 import { API_ORIGIN } from './env';
 import { CLIENT_ID } from './client-id';
 import { getProjectId } from './project';
-import { getAgentModel } from './agent-model';
+import { getAgentModelSpecifier } from './agent-model';
 
 function needsStreaming(path: string) {
   return path.startsWith('/eve') || /\/api\/(data|script|timeline)\/events/.test(path);
@@ -53,7 +53,7 @@ export function installFetchShim() {
     const pid = getProjectId();
     if (pid && !headers.has('x-project-id')) headers.set('x-project-id', pid);
     headers.set('x-client-id', CLIENT_ID);
-    if (path.startsWith('/eve')) headers.set('x-flue-model', getAgentModel());
+    if (path.startsWith('/eve')) headers.set('x-flue-model', getAgentModelSpecifier());
     if (!headers.has('cookie')) {
       const cookie = getSessionCookie();
       if (cookie) headers.set('cookie', cookie);

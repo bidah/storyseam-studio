@@ -10,14 +10,23 @@
 // reads it back here as the turn's model. History stays UNIFIED — same instance
 // id regardless of model.
 
-// The web picker's option ids are the anthropic model ids; the flue specifier is
-// `anthropic/<id>`. Keep these three in lockstep with src/lib/agentModel.js.
-export const DEFAULT_MODEL = "anthropic/claude-sonnet-5";
+// Default + allowed models are Cloudflare Workers AI specifiers (`cloudflare/@cf/…`):
+// they run ON Cloudflare (no external provider key), are billed to the Worker
+// account (with a free tier), and flue auto-routes them through Cloudflare AI
+// Gateway. All three support function calling (required for the agent's tools).
+// Keep these in lockstep with src/lib/agentModel.js + mobile-app/src/lib/agent-model.ts.
+export const DEFAULT_MODEL = "cloudflare/@cf/moonshotai/kimi-k2.6";
 
 // The only model specifiers a client may select. Anything else is ignored and
 // the conversation falls back to DEFAULT_MODEL, so a client can never push an
 // arbitrary model string to the provider.
 export const ALLOWED_MODELS = new Set<string>([
+  // Cloudflare Workers AI — no external key, auto CF AI Gateway.
+  "cloudflare/@cf/moonshotai/kimi-k2.6",
+  "cloudflare/@cf/openai/gpt-oss-120b",
+  "cloudflare/@cf/zai-org/glm-4.7-flash",
+  // Anthropic Claude — need ANTHROPIC_API_KEY on this worker (+ ANTHROPIC_GATEWAY_URL
+  // to route via CF AI Gateway). Selecting one without the key errors on that turn.
   "anthropic/claude-sonnet-5",
   "anthropic/claude-opus-4.6",
   "anthropic/claude-fable-5",
