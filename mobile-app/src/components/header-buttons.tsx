@@ -1,49 +1,116 @@
 import { Pressable, View } from 'react-native';
+import { router } from 'expo-router';
 import type {
   NativeStackHeaderItem,
+  NativeStackHeaderItemMenuAction,
   NativeStackNavigationOptions,
 } from 'expo-router/build/react-navigation/native-stack/types';
-import { Menu, RefreshCw } from 'lucide-react-native';
+import { FolderKanban, RefreshCw } from 'lucide-react-native';
+import * as Haptics from 'expo-haptics';
 import { useQueryClient } from '@tanstack/react-query';
-import { openDrawer } from '@/lib/drawer';
+import { postJson } from '@/lib/api';
 import { useProjectStore } from '@/lib/project';
+import { useProjects, type Project } from '@/lib/queries';
 
 // Shared native-header building blocks. Each tab nests its own Stack (so it gets
 // an expo-router native header); these describe the controls that used to live
-// in the custom ScreenHeader — project switcher (left) + refresh/settings
-// (right).
+// in the custom ScreenHeader — the menu (left) + refresh (right).
 //
 // On iOS the controls are NATIVE bar button items (`unstable_headerLeftItems` /
-// `unstable_headerRightItems` → UIBarButtonItem), not React views: on iOS 26 the
-// navigation bar draws its own liquid-glass capsule around header items, so a
-// React <Pressable> carrying its own pill background renders a pill inside a
-// pill. Native items also collapse into an overflow menu when they don't fit and
-// animate with the bar. The options are iOS-only and override headerLeft /
+// `unstable_headerRightItems` → UIBarButtonItem), not React views. On iOS 26 a
+// `type:'menu'` item MORPHS open with the system liquid-glass effect (the same
+// native path as expo-router's <Stack.Toolbar.Menu>), so the burger is now a
+// context menu instead of the old JS slide-in drawer. Native items also collapse
+// into an overflow menu when they don't fit and animate with the bar. These
+// `unstable_header*Items` options are iOS-only and override headerLeft /
 // headerRight there; the <Pressable> versions below remain the Android/web
 // fallback.
 //
-// Items take SF Symbols, not lucide glyphs (a native item can't host a React
-// icon); icon-only items pass an empty label plus an accessibilityLabel.
+// Menu items take SF Symbols, not lucide glyphs (a native item can't host a
+// React icon); icon-only bar buttons pass an empty label + accessibilityLabel.
 
 const MUTED = '#a1a1aa';
 const BG = '#0a0a0b';
 const FG = '#fafafa';
 
-// Burger — headerLeft item on every tab. Opens the navigation drawer, which now
-// holds the project selector (first row) and Settings (TOO-11).
-export function useBurgerItem(): NativeStackHeaderItem {
-  return {
-    type: 'button',
-    label: '',
-    icon: { type: 'sfSymbol', name: 'line.3.horizontal' },
-    accessibilityLabel: 'Open menu',
-    onPress: () => openDrawer(),
+// Switch the active project the same way the /projects sheet does: flip the
+// stored id (every request header + media URL follows), drop the whole query
+// cache so no stale cross-project data survives, and mirror it server-side.
+function useSwitchProject() {
+  const projectId = useProjectStore((s) => s.projectId);
+  const setProjectId = useProjectStore((s) => s.setProjectId);
+  const queryClient = useQueryClient();
+  return (p: Project) => {
+    if (p.id === projectId) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+    setProjectId(p.id);
+    queryClient.clear();
+    postJson(`/api/projects/${p.id}/activate`).catch(() => {});
   };
 }
 
-// Refresh — the sole headerRight item on the content tabs now that Settings has
-// moved into the drawer. Invalidates the whole project scope (+ account),
-// matching the old ScreenHeader behaviour.
+// The menu — headerLeft item on every tab. On iOS it's a native `type:'menu'`
+// bar button that opens the liquid-glass context menu. Projects live in a nested
+// (non-inline) SUBMENU so the first tap shows a compact menu — Projects + Settings
+// — and you drill INTO "Projects" to switch project or manage them, rather than
+// spilling every project into the first level. Replaces the old openDrawer burger.
+export function useMenuItem(): NativeStackHeaderItem {
+  const projectId = useProjectStore((s) => s.projectId);
+  const { data } = useProjects();
+  const switchProject = useSwitchProject();
+  const projects = data?.projects ?? [];
+
+  const projectActions: NativeStackHeaderItemMenuAction[] = projects.map((p) => ({
+    type: 'action',
+    label: p.name,
+    // Single-selection menu ⇒ the active project shows a checkmark.
+    state: p.id === projectId ? 'on' : 'off',
+    onPress: () => switchProject(p),
+  }));
+
+  return {
+    type: 'menu',
+    label: '',
+    icon: { type: 'sfSymbol', name: 'line.3.horizontal' },
+    accessibilityLabel: 'Menu',
+    menu: {
+      items: [
+        {
+          // Non-inline submenu → tapping "Projects" opens a second level.
+          type: 'submenu',
+          label: 'Projects',
+          icon: { type: 'sfSymbol', name: 'folder' },
+          items: [
+            ...projectActions,
+            {
+              // Inline section pinned under the project list.
+              type: 'submenu',
+              inline: true,
+              label: '',
+              items: [
+                {
+                  type: 'action',
+                  label: 'Manage projects…',
+                  icon: { type: 'sfSymbol', name: 'slider.horizontal.3' },
+                  onPress: () => router.push('/projects'),
+                },
+              ],
+            },
+          ],
+        },
+        {
+          type: 'action',
+          label: 'Settings',
+          icon: { type: 'sfSymbol', name: 'gearshape' },
+          onPress: () => router.push('/settings'),
+        },
+      ],
+    },
+  };
+}
+
+// Refresh — the sole headerRight item on the content tabs. Invalidates the whole
+// project scope (+ account), matching the old ScreenHeader behaviour.
 export function useTabActionItems(): NativeStackHeaderItem[] {
   const projectId = useProjectStore((s) => s.projectId);
   const queryClient = useQueryClient();
@@ -61,16 +128,17 @@ export function useTabActionItems(): NativeStackHeaderItem[] {
   ];
 }
 
-// Android/web fallback for useBurgerItem.
-export function BurgerButton() {
+// Android/web fallback for useMenuItem — no native menu there, so degrade to a
+// button that opens the /projects sheet (project switch + Settings live inside).
+export function MenuButton() {
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel="Open menu"
+      accessibilityLabel="Menu"
       className="h-9 w-9 items-center justify-center rounded-full active:opacity-60"
-      onPress={() => openDrawer()}
+      onPress={() => router.push('/projects')}
     >
-      <Menu size={22} color={FG} />
+      <FolderKanban size={20} color={FG} />
     </Pressable>
   );
 }
@@ -112,19 +180,19 @@ export const HEADER_BASE = {
   contentStyle: { backgroundColor: BG },
 } satisfies NativeStackNavigationOptions;
 
-// Full options for a content tab's root screen: shared styling + title +
-// project switcher (left) + refresh/settings (right). A hook rather than a plain
-// function because the items read the active project and the query client, and
-// the `unstable_header*Items` callbacks run outside a component, so they can't.
+// Full options for a content tab's root screen: shared styling + title + the
+// menu (left) + refresh (right). A hook rather than a plain function because the
+// items read the active project and the query client, and the
+// `unstable_header*Items` callbacks run outside a component, so they can't.
 export function useTabHeaderOptions(title: string): NativeStackNavigationOptions {
-  const burgerItem = useBurgerItem();
+  const menuItem = useMenuItem();
   const actionItems = useTabActionItems();
   return {
     ...HEADER_BASE,
     title,
-    unstable_headerLeftItems: () => [burgerItem],
+    unstable_headerLeftItems: () => [menuItem],
     unstable_headerRightItems: () => actionItems,
-    headerLeft: () => <BurgerButton />,
+    headerLeft: () => <MenuButton />,
     headerRight: () => <TabHeaderActions />,
   };
 }

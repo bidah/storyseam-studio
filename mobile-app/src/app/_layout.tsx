@@ -9,7 +9,6 @@ import * as SplashScreen from 'expo-splash-screen';
 import { colorScheme } from 'nativewind';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Toaster } from 'sonner-native';
-import { AppDrawer } from '@/components/app-drawer';
 import { hydrateAgentModel } from '@/lib/agent-model';
 import { hydrateProjectId } from '@/lib/project';
 
@@ -139,7 +138,6 @@ export default function RootLayout() {
                   }}
                 />
               </Stack>
-              <AppDrawer />
               <Toaster theme="dark" position="top-center" />
             </View>
           </ThemeProvider>
