@@ -3,6 +3,7 @@ import { router } from 'expo-router';
 import type {
   NativeStackHeaderItem,
   NativeStackHeaderItemMenuAction,
+  NativeStackHeaderItemMenuSubmenu,
   NativeStackNavigationOptions,
 } from 'expo-router/build/react-navigation/native-stack/types';
 import { FolderKanban, RefreshCw } from 'lucide-react-native';
@@ -59,6 +60,7 @@ export function useMenuItem(): NativeStackHeaderItem {
   const { data } = useProjects();
   const switchProject = useSwitchProject();
   const projects = data?.projects ?? [];
+  const currentName = projects.find((p) => p.id === projectId)?.name;
 
   const projectActions: NativeStackHeaderItemMenuAction[] = projects.map((p) => ({
     type: 'action',
@@ -68,44 +70,66 @@ export function useMenuItem(): NativeStackHeaderItem {
     onPress: () => switchProject(p),
   }));
 
+  const items: (NativeStackHeaderItemMenuAction | NativeStackHeaderItemMenuSubmenu)[] = [];
+
+  // Pinned context header at the very top: which project are we in. `disabled`
+  // ⇒ a non-tappable label, not a switch target — the actual switching lives in
+  // the Projects submenu below. Only shown once the active project is known.
+  if (currentName) {
+    items.push({
+      type: 'submenu',
+      inline: true,
+      label: '',
+      items: [
+        {
+          type: 'action',
+          label: currentName,
+          icon: { type: 'sfSymbol', name: 'folder.fill' },
+          disabled: true,
+          onPress: () => {},
+        },
+      ],
+    });
+  }
+
+  items.push(
+    {
+      // Non-inline submenu → tapping "Projects" opens a second level.
+      type: 'submenu',
+      label: 'Projects',
+      icon: { type: 'sfSymbol', name: 'folder' },
+      items: [
+        ...projectActions,
+        {
+          // Inline section pinned under the project list.
+          type: 'submenu',
+          inline: true,
+          label: '',
+          items: [
+            {
+              type: 'action',
+              label: 'Manage projects…',
+              icon: { type: 'sfSymbol', name: 'slider.horizontal.3' },
+              onPress: () => router.push('/projects'),
+            },
+          ],
+        },
+      ],
+    },
+    {
+      type: 'action',
+      label: 'Settings',
+      icon: { type: 'sfSymbol', name: 'gearshape' },
+      onPress: () => router.push('/settings'),
+    },
+  );
+
   return {
     type: 'menu',
     label: '',
     icon: { type: 'sfSymbol', name: 'line.3.horizontal' },
     accessibilityLabel: 'Menu',
-    menu: {
-      items: [
-        {
-          // Non-inline submenu → tapping "Projects" opens a second level.
-          type: 'submenu',
-          label: 'Projects',
-          icon: { type: 'sfSymbol', name: 'folder' },
-          items: [
-            ...projectActions,
-            {
-              // Inline section pinned under the project list.
-              type: 'submenu',
-              inline: true,
-              label: '',
-              items: [
-                {
-                  type: 'action',
-                  label: 'Manage projects…',
-                  icon: { type: 'sfSymbol', name: 'slider.horizontal.3' },
-                  onPress: () => router.push('/projects'),
-                },
-              ],
-            },
-          ],
-        },
-        {
-          type: 'action',
-          label: 'Settings',
-          icon: { type: 'sfSymbol', name: 'gearshape' },
-          onPress: () => router.push('/settings'),
-        },
-      ],
-    },
+    menu: { items },
   };
 }
 
