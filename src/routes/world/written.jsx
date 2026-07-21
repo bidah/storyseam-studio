@@ -14,6 +14,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Empty, Eyebrow, Panel, Spinner, ErrorNote, ConfirmModal } from "@/components/shared";
+import MediaPicker from "@/components/MediaPicker";
 
 /* ---------------------------------------------------------------- *
  * Section definitions — the pieces of the world bible               *
@@ -143,86 +144,6 @@ function ExpandSection({ title, icon, children }) {
   );
 }
 
-/* ---------------------------------------------------------------- *
- * Character-sheet picker — pick a linked image from the project's    *
- * asset library (the selected/final_selection images, never the raw  *
- * Higgsfield library). Fetches /api/library lazily on open.          *
- * ---------------------------------------------------------------- */
-
-function CharacterSheetPicker({ open, onOpenChange, onPick }) {
-  const [folders, setFolders] = useState(null); // null = loading
-  const [error, setError] = useState(null);
-  const [q, setQ] = useState("");
-
-  useEffect(() => {
-    if (!open) return;
-    let cancelled = false;
-    setFolders(null);
-    setError(null);
-    setQ("");
-    fetch("/api/library")
-      .then((r) => r.json())
-      .then((j) => {
-        if (cancelled) return;
-        if (j.error) throw new Error(j.error);
-        setFolders(j.folders || []);
-      })
-      .catch((e) => { if (!cancelled) setError(String(e.message || e)); });
-    return () => { cancelled = true; };
-  }, [open]);
-
-  // Flatten every asset-library image across folders (the project's own library,
-  // never the raw Higgsfield one), tagging each with its folder so the caption
-  // reads sensibly. A search term filters by name or folder.
-  const images = useMemo(() => {
-    const all = (folders || []).flatMap((f) =>
-      f.images.map((im) => ({ ...im, folder: f.folder })),
-    );
-    const term = q.trim().toLowerCase();
-    return term
-      ? all.filter((im) => `${im.name} ${im.folder}`.toLowerCase().includes(term))
-      : all;
-  }, [folders, q]);
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-3xl">
-        <DialogHeader>
-          <DialogTitle>Link character sheet</DialogTitle>
-        </DialogHeader>
-        <Input
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          placeholder="Search the selected asset library…"
-          className="h-8 text-sm"
-        />
-        {error && <ErrorNote>{error}</ErrorNote>}
-        {folders === null && !error ? (
-          <div className="py-10"><Spinner /></div>
-        ) : images.length === 0 && !error ? (
-          <div className="rounded-lg border border-dashed p-8 text-center">
-            <Empty>no images in the asset library yet — add some on the Library tab.</Empty>
-          </div>
-        ) : (
-          <div className="grid max-h-[60vh] grid-cols-3 gap-3 overflow-y-auto pr-1 sm:grid-cols-4 md:grid-cols-5">
-            {images.map((im) => (
-              <button
-                key={im.rel}
-                onClick={() => onPick(im)}
-                className="group relative overflow-hidden rounded-lg border border-border bg-muted text-left transition-colors hover:border-primary/60"
-                title={`${im.folder} / ${im.name}`}
-              >
-                <img src={im.thumb || im.url} loading="lazy" alt={im.name} className="aspect-square w-full object-cover" />
-                {im.selected && <Badge className="absolute left-1 top-1 px-1.5 py-0 text-[9px]">selected</Badge>}
-                <div className="truncate px-1.5 py-1 text-[10px] text-muted-foreground">{im.name}</div>
-              </button>
-            ))}
-          </div>
-        )}
-      </DialogContent>
-    </Dialog>
-  );
-}
 
 /* ---------------------------------------------------------------- *
  * Voice picker — attach a liked Sound Studio voice to a character.   *
@@ -449,12 +370,14 @@ function CharacterCard({ char, onField, onRemove, expanded }) {
         ))}
       </div>
 
-      <CharacterSheetPicker
+      <MediaPicker
         open={pickerOpen}
         onOpenChange={setPickerOpen}
-        onPick={(im) => {
-          onField("sheetImage", { rel: im.rel, url: im.url, thumb: im.thumb, name: im.name });
-          setPickerOpen(false);
+        title="Link character sheet"
+        sources={["library"]}
+        multiple={false}
+        onAdd={([im]) => {
+          if (im) onField("sheetImage", { rel: im.rel, url: im.url, thumb: im.thumb, name: im.name });
         }}
       />
 

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useLoaderData, useRevalidator } from "react-router";
 import {
   Wand2, Loader2, Sparkles, ImagePlus, X, Plus, Trash2, RefreshCw,
@@ -19,7 +19,8 @@ import {
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
-import { Empty, Eyebrow, Panel, Spinner, ErrorNote, ConfirmModal } from "@/components/shared";
+import { Empty, Eyebrow, Panel, ErrorNote, ConfirmModal } from "@/components/shared";
+import MediaPicker from "@/components/MediaPicker";
 
 const ASPECTS = ["16:9", "9:16", "1:1", "4:3", "3:4", "21:9"];
 const COUNTS = [1, 2, 3, 4];
@@ -27,65 +28,6 @@ const COUNTS = [1, 2, 3, 4];
 // choices use sentinels mapped back to "" (server resolves the default model).
 const NO_PRESET = "__none__";
 const DEFAULT_MODEL = "__default__";
-
-/* ---------------------------------------------------------------- *
- * Reference picker — pick a library image to condition generation.  *
- * Same source as the written world's CharacterSheetPicker.          *
- * ---------------------------------------------------------------- */
-
-function LibraryPicker({ open, onOpenChange, onPick }) {
-  const [folders, setFolders] = useState(null);
-  const [error, setError] = useState(null);
-  const [q, setQ] = useState("");
-
-  useEffect(() => {
-    if (!open) return;
-    let cancelled = false;
-    setFolders(null); setError(null); setQ("");
-    fetch("/api/library")
-      .then((r) => r.json())
-      .then((j) => { if (cancelled) return; if (j.error) throw new Error(j.error); setFolders(j.folders || []); })
-      .catch((e) => { if (!cancelled) setError(String(e.message || e)); });
-    return () => { cancelled = true; };
-  }, [open]);
-
-  const images = useMemo(() => {
-    const all = (folders || []).flatMap((f) => f.images.map((im) => ({ ...im, folder: f.folder })));
-    const term = q.trim().toLowerCase();
-    return term ? all.filter((im) => `${im.name} ${im.folder}`.toLowerCase().includes(term)) : all;
-  }, [folders, q]);
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-3xl">
-        <DialogHeader><DialogTitle>Add a reference image</DialogTitle></DialogHeader>
-        <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search the asset library…" className="h-8 text-sm" />
-        {error && <ErrorNote>{error}</ErrorNote>}
-        {folders === null && !error ? (
-          <div className="py-10"><Spinner /></div>
-        ) : images.length === 0 && !error ? (
-          <div className="rounded-lg border border-dashed p-8 text-center">
-            <Empty>no images in the asset library yet — generate some, or import on the Library tab.</Empty>
-          </div>
-        ) : (
-          <div className="grid max-h-[60vh] grid-cols-3 gap-3 overflow-y-auto pr-1 sm:grid-cols-4 md:grid-cols-5">
-            {images.map((im) => (
-              <button
-                key={im.rel}
-                onClick={() => onPick({ kind: "library", rel: im.rel, url: im.url, thumb: im.thumb || im.url, name: im.name })}
-                className="group relative overflow-hidden rounded-lg border border-border bg-muted text-left transition-colors hover:border-primary/60"
-                title={`${im.folder} / ${im.name}`}
-              >
-                <img src={im.thumb || im.url} loading="lazy" alt={im.name} className="aspect-square w-full object-cover" />
-                <div className="truncate px-1.5 py-1 text-[10px] text-muted-foreground">{im.name}</div>
-              </button>
-            ))}
-          </div>
-        )}
-      </DialogContent>
-    </Dialog>
-  );
-}
 
 /* ---------------------------------------------------------------- *
  * Prompt library — choose a preset (fills the prompt) and edit them. *
@@ -314,7 +256,13 @@ function Visual() {
         method: "POST",
         body: JSON.stringify({
           prompt, model, count: Number(count), aspectRatio, presetId,
-          refs: refs.map((r) => ({ kind: r.kind, rel: r.rel, genId: r.genId })),
+          // Library/generation refs resolve to an ungated /files url server-side
+          // from rel/genId; PC uploads already carry an absolute /files url, so
+          // forward it directly (the server imports whatever `url` it's given).
+          refs: refs.map((r) => ({
+            kind: r.kind, rel: r.rel, genId: r.genId,
+            ...(r.kind === "upload" ? { url: r.url } : {}),
+          })),
         }),
       });
       refetch();
@@ -474,7 +422,25 @@ function Visual() {
         onSaveToLibrary={saveToLibrary}
         onDelete={del}
       />
-      <LibraryPicker open={pickRef} onOpenChange={setPickRef} onPick={(r) => { setRefs((cur) => [...cur, r]); setPickRef(false); }} />
+      <MediaPicker
+        open={pickRef}
+        onOpenChange={setPickRef}
+        onAdd={(items) => setRefs((cur) => [
+          ...cur,
+          ...items.map((it) => ({
+            kind: it.source, // "library" | "generation" | "upload"
+            rel: it.rel,
+            genId: it.genId,
+            // Uploads pass their absolute url to generate; library/generation
+            // refs are resolved server-side from rel/genId.
+            url: it.source === "upload" ? it.refUrl : undefined,
+            // Prefer the durable /files url for the chip (upload object URLs are
+            // revoked when the picker reopens).
+            thumb: it.source === "upload" ? (it.refUrl || it.thumb) : (it.thumb || it.url),
+            name: it.name,
+          })),
+        ])}
+      />
       <PromptLibraryDialog open={editPrompts} onOpenChange={setEditPrompts} prompts={prompts} onSave={savePrompts} />
     </div>
   );

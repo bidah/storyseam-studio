@@ -57,6 +57,7 @@ import {
   transcribeAudio,
   formatDuration,
 } from "@/lib/useVoiceRecording";
+import MediaPicker from "@/components/MediaPicker";
 
 // ---------------------------------------------------------------------------
 // Chat rendering walks every part of every flue message in order and renders
@@ -510,8 +511,8 @@ export default function AgentChat() {
   const [transcribing, setTranscribing] = useState(false);
   const [voiceError, setVoiceError] = useState(null);
   const scrollRef = useRef(null);
-  const fileInputRef = useRef(null);
   const taRef = useRef(null);
+  const [pickerOpen, setPickerOpen] = useState(false);
   // One entry per user turn (ordinal-aligned to user messages): the images that
   // turn was sent with, so they can be re-rendered in the bubble.
   const sentAttachmentsRef = useRef([]);
@@ -619,6 +620,51 @@ export default function AgentChat() {
     entries.forEach((e, i) => uploadOne(files[i], e.id));
   }
 
+  // Items picked from the MediaPicker (asset gallery, Visual World generations,
+  // or a fresh PC upload). Each becomes a "done" attachment: uploads already
+  // carry the raw File + durable url; library/generation picks are fetched
+  // in-app (same-origin, authenticated) so submit() can base64 their bytes for
+  // flue, and reuse their ungated `refUrl` as the persisted bubble thumbnail.
+  async function addPickedItems(items) {
+    const entries = await Promise.all(
+      (items || []).map(async (it) => {
+        try {
+          let file = it.file;
+          if (!file) {
+            const res = await fetch(it.url);
+            if (!res.ok) throw new Error(`Fetch failed (${res.status})`);
+            const blob = await res.blob();
+            file = new File([blob], it.name || "image", { type: blob.type || "image/png" });
+          }
+          return {
+            id: crypto.randomUUID(),
+            name: it.name || "image",
+            size: file.size,
+            contentType: file.type || "image/png",
+            file,
+            state: "done",
+            url: it.refUrl || it.url,
+            previewUrl: it.thumb || it.url,
+            error: null,
+          };
+        } catch (e) {
+          return {
+            id: crypto.randomUUID(),
+            name: it.name || "image",
+            size: 0,
+            contentType: "image/png",
+            file: null,
+            state: "error",
+            url: null,
+            previewUrl: it.thumb || it.url || null,
+            error: String(e.message || e),
+          };
+        }
+      }),
+    );
+    setAttachments((prev) => [...prev, ...entries]);
+  }
+
   function removeAttachment(id) {
     setAttachments((prev) => {
       const gone = prev.find((a) => a.id === id);
@@ -626,11 +672,6 @@ export default function AgentChat() {
       return prev.filter((a) => a.id !== id);
     });
   }
-
-  const onPick = (e) => {
-    addFiles(e.target.files);
-    e.target.value = ""; // allow re-picking the same file
-  };
 
   const onPaste = (e) => {
     const imgs = Array.from(e.clipboardData?.files || []).filter((f) =>
@@ -930,20 +971,12 @@ export default function AgentChat() {
           </div>
         ) : (
           <div className="flex items-end gap-2">
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/*"
-              multiple
-              hidden
-              onChange={onPick}
-            />
             <Button
               size="icon"
               variant="ghost"
-              onClick={() => fileInputRef.current?.click()}
+              onClick={() => setPickerOpen(true)}
               aria-label="Attach image"
-              title="Attach image"
+              title="Attach a reference — gallery, Visual world, or your computer"
             >
               <Paperclip size={16} />
             </Button>
@@ -997,6 +1030,13 @@ export default function AgentChat() {
           <ModelPicker disabled={isBusy} />
         </div>
       </div>
+
+      <MediaPicker
+        open={pickerOpen}
+        onOpenChange={setPickerOpen}
+        onAdd={addPickedItems}
+        title="Attach reference images"
+      />
     </aside>
   );
 }
