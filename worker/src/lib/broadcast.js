@@ -25,10 +25,20 @@ async function fanOut(env, projectId, channel, payload) {
         signal: AbortSignal.timeout(BROADCAST_TIMEOUT_MS),
       });
       if (res.ok) return;
-    } catch {
-      /* retry once, then give up — clients also resync on SSE reconnect */
+      console.error(
+        `[live-sync] broadcast ${channel}@${projectId} attempt ${attempt + 1} → HTTP ${res.status}`,
+      );
+    } catch (err) {
+      // retry once, then give up — clients also resync on SSE reconnect
+      console.error(
+        `[live-sync] broadcast ${channel}@${projectId} attempt ${attempt + 1} threw:`,
+        err?.message || err,
+      );
     }
   }
+  console.error(
+    `[live-sync] broadcast ${channel}@${projectId} DROPPED after ${RETRIES + 1} attempts`,
+  );
 }
 
 // Fire-and-forget when `ctx.waitUntil` is available (the normal request path);

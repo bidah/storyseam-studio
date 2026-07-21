@@ -11,9 +11,13 @@
 //   - "script"   → GET /api/script/events   (was scriptClients / broadcastScript)
 //   - "timeline" → GET /api/timeline/events  (was timelineClients / broadcastTimeline)
 //
-// Wire format matches Express exactly: `: connected`, a `: ping` heartbeat
-// (~25s), and `data: <json>` frames. Payload shape is unchanged, e.g.
-// { at, clientId } — browsers ignore the echo of their own clientId.
+// Wire format: `: connected` greeting, an `event: ping\ndata: {"seq":<n>}\n\n`
+// heartbeat (~25s, plus one immediately on connect), and unnamed
+// `data: <json>\n\n` broadcast frames. Broadcast payloads keep their shape
+// (e.g. { at, clientId }) plus an added `seq` — browsers ignore the echo of
+// their own clientId. Named ping frames never fire `EventSource.onmessage`, so
+// they can't be mistaken for edits; clients use them for a liveness watchdog
+// and to detect a broadcast that silently never arrived (seq gap).
 //
 // Internal HTTP contract (spoken only by worker/src/index.js, never the browser):
 //   GET  /subscribe?channel=script|timeline   → text/event-stream (one client)
@@ -36,6 +40,10 @@ export class ProjectEvents extends DurableObject {
     // A single shared heartbeat timer, live only while at least one writer is
     // open, so an idle project keeps no timers.
     this.heartbeat = null;
+    // channel -> monotonic broadcast counter. In-memory only: eviction drops
+    // every socket and each reconnect forces a client resync, so a seq reset is
+    // absorbed by the client's reset-on-reconnect rule. No DO storage.
+    this.seq = new Map();
   }
 
   fetch(request) {
@@ -63,6 +71,9 @@ export class ProjectEvents extends DurableObject {
 
     // Opening greeting (matches Express `res.write(": connected\n\n")`).
     this.write(channel, writer, ": connected\n\n");
+    // Also send one real ping immediately so a fresh client arms its liveness
+    // watchdog with a parseable frame straight away, not 25s later.
+    this.write(channel, writer, this.pingFrame(channel));
 
     this.ensureHeartbeat();
 
@@ -93,7 +104,12 @@ export class ProjectEvents extends DurableObject {
         headers: { "Content-Type": "application/json" },
       });
     }
-    const frame = `data: ${JSON.stringify(payload)}\n\n`;
+    // Stamp a monotonic per-channel seq so clients can spot a silently-missed
+    // broadcast (a ping later carries the same counter — a ping seq ahead of the
+    // last data frame a client saw means it missed an event).
+    const seq = (this.seq.get(channel) || 0) + 1;
+    this.seq.set(channel, seq);
+    const frame = `data: ${JSON.stringify({ ...payload, seq })}\n\n`;
     const set = this.channels.get(channel);
     let sent = 0;
     if (set) {
@@ -139,11 +155,20 @@ export class ProjectEvents extends DurableObject {
     return n;
   }
 
+  // A named ping frame carrying the channel's current broadcast seq. Named
+  // (`event: ping`) so it never fires the browser's `onmessage` — clients use it
+  // only for the liveness watchdog and seq gap detection.
+  pingFrame(channel) {
+    const seq = this.seq.get(channel) || 0;
+    return `event: ping\ndata: {"seq":${seq}}\n\n`;
+  }
+
   ensureHeartbeat() {
     if (this.heartbeat) return;
     this.heartbeat = setInterval(() => {
       for (const [channel, set] of this.channels) {
-        for (const writer of set) this.write(channel, writer, ": ping\n\n");
+        const frame = this.pingFrame(channel);
+        for (const writer of set) this.write(channel, writer, frame);
       }
     }, HEARTBEAT_MS);
   }

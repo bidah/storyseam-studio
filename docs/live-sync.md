@@ -15,8 +15,11 @@ something — a Sound Studio track, a character, a shot prompt — open tabs oft
 did **not** update; users had to press the header Refresh button.
 
 The investigation (2026-07) found the pipeline design was sound but the
-transport had seven independent holes, each sufficient to produce "UI doesn't
-update". All are fixed; they are documented below so they don't regress.
+transport had nine independent holes, each sufficient to produce "UI doesn't
+update". All are fixed; they are documented below so they don't regress. Holes
+1–7 were the first pass; holes 8–9 (zombie-OPEN streams, silent broadcast
+drops) were the two silent-by-construction modes closed in the follow-up
+hardening pass.
 
 ## Architecture
 
@@ -66,12 +69,17 @@ browser tab A ──POST /api/... ─────▶   │ writes R2/D1
 ### The `ProjectEvents` Durable Object (`worker/src/sse-do.js`)
 
 One instance per project. `GET /subscribe?channel=…` opens an SSE client
-(`TransformStream` writer held in memory); `POST /broadcast?channel=…` frames
-the JSON body as `data: <json>\n\n` and writes to every subscriber. A shared
-25s timer writes `: ping` comment heartbeats (comments are invisible to
-`EventSource.onmessage` but keep intermediaries from killing the connection).
-No hibernation, no storage, **no replay buffer**: if the instance is evicted
-the sockets drop and clients reconnect — catch-up is the client's job (below).
+(`TransformStream` writer held in memory); `POST /broadcast?channel=…` stamps a
+monotonic per-channel `seq` into the JSON body, frames it as `data: <json>\n\n`,
+and writes to every subscriber. A shared 25s timer writes **named**
+`event: ping\ndata: {"seq":<n>}\n\n` heartbeat frames (and one is written
+immediately on subscribe). Named events never fire `EventSource.onmessage`, so
+they can't be mistaken for edits; clients use them for a liveness **watchdog**
+and to detect a silently-missed broadcast (a ping `seq` ahead of the last data
+frame a client saw). The per-channel `seq` counter is in-memory only. No
+hibernation, no storage, **no replay buffer**: if the instance is evicted the
+sockets drop, the seq resets, and clients reconnect — catch-up is the client's
+job (below), and every reconnect forces a resync so a seq reset is harmless.
 
 ### Subscriber (browser)
 
@@ -80,9 +88,15 @@ the sockets drop and clients reconnect — catch-up is the client's job (below).
   Returns `{ edits, resyncs }`:
   - `edits` — a change made elsewhere (own writes echo-suppressed by comparing
     `payload.clientId` to this tab's `CLIENT_ID`).
-  - `resyncs` — the stream reconnected after an error; events may have been
-    missed, so callers must refetch on it too (cosmetic reactions like the
-    Script tab glow ignore it).
+  - `resyncs` — the stream reconnected after an error, OR the seq gap check
+    fired (a data frame or ping revealed a missed broadcast without a
+    disconnect); events may have been missed, so callers must refetch on it too
+    (cosmetic reactions like the Script tab glow ignore it).
+  - The hook also listens for the named `ping` event to feed a **watchdog**
+    (`WATCHDOG_MS = 60s`, ~2.4× the 25s heartbeat): if no frame — edit or ping —
+    arrives within that window the stream is presumed zombie-OPEN and is torn
+    down + rebuilt (which bumps `resyncs`). `onerror` never fires on a dead TCP
+    path, so the watchdog is the only thing that catches it while foregrounded.
 - Reaction (`src/components/RootLayout.jsx`): on `edits + resyncs` →
   `setReloadKey` (media nonce), `invalidateTabCache()` (whole store),
   `revalidator.revalidate()` (active route's loader reruns), plus `load()`
@@ -117,6 +131,8 @@ the sockets drop and clients reconnect — catch-up is the client's job (below).
 | 5 | **Fire-and-forget broadcast with a 2s abort** — a cold DO start blew the window and dropped the event silently. | 10s timeout + one retry, still under `waitUntil` (off the critical path). |
 | 6 | **Shots tab wasn't loaderized** — it read RootLayout's local `/api/shots` state, which the SSE effect never refreshed. | `src/routes/shots.jsx` has a `loader()` on swr key `"shots"`; RootLayout keeps `load()` only for the header count and calls it from the SSE + project-switch effects. |
 | 7 | **Editor never subscribes to `/api/timeline/events`.** The Remotion editor owns its document state (see `docs/routing.md`) and has no live stream. | **Known gap, out of scope** — documented here so it's a decision, not a surprise. |
+| 8 | **Zombie-OPEN EventSource.** The 25s heartbeats were SSE *comments* (`: ping`), invisible to the `EventSource` API. A dead TCP path that never surfaces an `onerror` left `readyState === OPEN` forever; the client believed it was connected and the fatal-CLOSED / visibilitychange recovery paths never fired (observed: `/api/data/events` healthy while `/api/script/events` silently dead). | Heartbeats are now named `event: ping` **frames**. Both clients (`useProjectEvents.js`, mobile `sse.ts`) run a `WATCHDOG_MS = 60s` liveness timer fed by every frame; on a trip they tear down + rebuild, forcing a resync. |
+| 9 | **Silent broadcast drop.** `broadcast.js`'s `fanOut()` retried twice and swallowed every error with an empty `catch {}` — a double failure meant the event was gone with nothing in `wrangler tail`. | `fanOut()` now `console.error`s each failed attempt (HTTP status or thrown message) and a final `DROPPED` line, so every lost fan-out is attributable from logs. |
 
 ## Design decisions
 
@@ -126,9 +142,26 @@ the sockets drop and clients reconnect — catch-up is the client's job (below).
   one revalidate. Monotonic ids, a storage-backed ring, and `Last-Event-ID`
   plumbing would buy nothing today. Revisit only if payloads ever become
   data-bearing (targeted patches).
-- **Heartbeats stay SSE comments.** They exist to keep intermediaries from
-  closing an idle stream, not for client liveness: dead TCP surfaces through
-  `onerror`/auto-reconnect, and zombie streams are caught on `visibilitychange`.
+- **Heartbeats are named `event: ping` frames (was: SSE comments).** Originally
+  they were `: ping` comments — invisible to the `EventSource` API — on the
+  theory that dead TCP always surfaces through `onerror`/auto-reconnect and
+  zombie streams are caught on `visibilitychange`. That theory had a hole
+  (#8): a dead-but-never-errored path stays `readyState === OPEN` forever while
+  foregrounded. Pings are now real frames carrying a per-channel `seq`, feeding
+  a client-side liveness watchdog and seq-gap detection. They stay **named** so
+  they never fire `onmessage` — broadcast frames remain unnamed, so the edit
+  path and echo suppression are untouched. The opening `: connected` comment is
+  kept (harmless, matches the Express legacy).
+- **Self-healing via `seq`, not `Last-Event-ID`.** Each broadcast carries a
+  monotonic per-channel counter; pings carry the current value. A client that
+  sees a data-frame gap (`seq !== last + 1`) or a ping `seq` ahead of its last
+  data frame knows it missed a broadcast and resyncs — converging within one
+  heartbeat (~25s) of a silent loss, *without* a disconnect. In-memory only: a
+  DO eviction resets `seq`, but eviction also drops every socket, and reconnect
+  already forces a resync, so the reset is absorbed (clients reset `lastSeq` to
+  `null` on every connect). **Limit:** a broadcast that never reached the DO at
+  all (hole #9 double-failure) never increments `seq`, so `seq` can't detect it —
+  hole #9's logging is the mitigation there.
 - **`normalizeProjectId` is the invariant.** Storage (`docKey`, `mediaKey`,
   library asset keys), the broadcast DO name, and the subscribe DO name all
   resolve a missing/invalid project id to the same `p_default` key. Any new
@@ -164,7 +197,21 @@ of the pieces:
    Vercel logs if not).
 7. **Shots + header count**: an agent shot edit updates the shots table and the
    "N shots" header without Refresh.
-8. **Prod**: `npm run worker:deploy`, then repeat 2–4 against the deployed origin.
+8. **Ping visibility**: `curl -N '<worker>/api/data/events?projectId=<pid>'` →
+   an `event: ping` frame immediately on connect and again within ~25s. Repeat
+   through the dev proxy (`:3333`) to confirm unbuffered pass-through.
+9. **Watchdog**: temporarily raise `HEARTBEAT_MS` in `sse-do.js` to ~10 min,
+   open a tab → within ~60s the console shows `[live-sync] watchdog reconnect`
+   (web) / `watchdog: no frames for 60s` (mobile) and a refetch fires. Restore
+   the constant.
+10. **No ping-as-edit regression**: leave tabs idle on Script + Sounds for 2 min
+    → no Script glow, no refetch storm, no mobile `invalidateAll` spam.
+11. **Broadcast logging**: point `PROJECT_EVENTS` at a bogus binding (or stop the
+    DO) and make a write → `wrangler tail` shows the per-attempt errors and the
+    `DROPPED` line.
+12. **Seq gap**: two tabs; throttle tab B offline just long enough to miss one
+    edit from tab A but not error the stream → tab B refetches on the next ping.
+13. **Prod**: `npm run worker:deploy`, then repeat 2–4 against the deployed origin.
 
 ## Future work
 
