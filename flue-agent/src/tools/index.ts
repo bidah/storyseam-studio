@@ -119,3 +119,32 @@ export function createTools(api: Api): ToolDefinition[] {
     signBundle(api),
   ];
 }
+
+// Read-only "ingestion" tools — one or more per app section — that let ANY
+// delegated subagent (or a skill/action running inside one) pull the current
+// content of any section itself, instead of relying on the parent to paste it
+// into the prompt (long pastes get truncated by the model). These never mutate;
+// the parent still applies any recommended changes with the write tools above.
+export function createReadTools(api: Api): ToolDefinition[] {
+  return [
+    // World / Script / Drafts
+    getWorld(api),
+    getScript(api),
+    listDrafts(api),
+    // Shotlist / Episode
+    getShotlist(api),
+    listShots(api),
+    getEpisode(api),
+    getMultishot(api),
+    // References / Sound / Radio
+    listAudioRefs(api),
+    listSounds(api),
+    getRadio(api),
+    // Cuts / Editor timeline
+    getCuts(api),
+    getTimeline(api),
+    // Library / Characters
+    listLibrary(api),
+    listCharacterVoices(api),
+  ];
+}

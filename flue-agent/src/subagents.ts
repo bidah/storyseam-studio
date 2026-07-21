@@ -1,4 +1,7 @@
-import { defineAgentProfile } from "@flue/runtime";
+import { defineAgentProfile, type AgentProfile } from "@flue/runtime";
+
+import type { Api } from "./lib/api.js";
+import { createReadTools } from "./tools/index.js";
 
 import dialogueDoctor from "./subagents/dialogue-doctor.md" with { type: "markdown" };
 import motivationDoctor from "./subagents/motivation-doctor.md" with { type: "markdown" };
@@ -11,9 +14,12 @@ import storyCircle from "./subagents/story-circle.md" with { type: "markdown" };
 import threeAct from "./subagents/three-act.md" with { type: "markdown" };
 
 // Script-specialist subagents ported from the eve agent (agent/subagents/*).
-// Advisor pattern: none carry script tools — they analyze/recommend and the
-// parent (whistlewood) applies their output. model/thinkingLevel are OMITTED so
-// each profile inherits the parent's defaults.
+// Advisor pattern: they analyze/recommend and the parent (whistlewood) applies
+// their output — none carry *write* tools. They DO carry read-only context
+// tools (get_script/get_world/get_shotlist) so each pulls the full pinned draft
+// itself instead of relying on the parent to inline the whole script into the
+// `task` prompt (long verbatim copies get truncated by the parent model).
+// model/thinkingLevel are OMITTED so each profile inherits the parent's defaults.
 
 // --- story-architect's nested arc experts -------------------------------------
 
@@ -54,44 +60,58 @@ const threeActProfile = defineAgentProfile({
 
 // --- top-level script specialists ---------------------------------------------
 
-const dialogueDoctorProfile = defineAgentProfile({
-  name: "dialogue_doctor",
-  description:
-    "Dialogue doctor for the screenplay. Delegate to it to sharpen spoken lines: keep each character's voice consistent, add subtext (say less, imply more), cut on-the-nose exposition, tune rhythm, and punch up flat exchanges. Pass the lines or scene in the message; it returns before/after rewrites with a one-line reason for each. It reviews and rewrites the dialogue it is given — it does not edit the script itself.",
-  instructions: dialogueDoctor,
-});
+// Every specialist gets the full read-only ingestion tool set (script, world,
+// shotlist, episode, sounds, radio, cuts, timeline, library, characters, …), so
+// it can pull the current content of any app section itself rather than depend
+// on the parent to paste it into the delegation prompt (long pastes get
+// truncated by the model). These are reads only — the advisors still never
+// write; the parent applies their recommendations.
+export function createSubagents(api: Api): AgentProfile[] {
+  const readTools = createReadTools(api);
 
-const motivationDoctorProfile = defineAgentProfile({
-  name: "motivation_doctor",
-  description:
-    "Motivation & causality doctor — the 'why' behind everything that happens. Delegate to it to check that every action, choice, reversal, and event is *caused* — rooted in a character's want, wound/trauma, fear, or need — rather than occurring for plot convenience. It surfaces unmotivated beats and 'and then' coincidences and prescribes the backstory/trauma or causal link that would justify or replace them. A different lane from plot-doctor (logical/continuity coherence) and story-architect (structure). Pass the script or scene in the message; it returns the missing 'whys' with fixes. It analyzes and recommends — it does not edit the script itself.",
-  instructions: motivationDoctor,
-});
+  const dialogueDoctorProfile = defineAgentProfile({
+    name: "dialogue_doctor",
+    description:
+      "Dialogue doctor for the screenplay. Delegate to it to sharpen spoken lines: keep each character's voice consistent, add subtext (say less, imply more), cut on-the-nose exposition, tune rhythm, and punch up flat exchanges. It calls get_script to read the current pinned draft itself, so you need only name the scene/beats to focus on — no need to paste the script. It returns before/after rewrites with a one-line reason for each. It reviews and rewrites the dialogue — it does not edit the script itself.",
+    instructions: dialogueDoctor,
+    tools: readTools,
+  });
 
-const plotDoctorProfile = defineAgentProfile({
-  name: "plot_doctor",
-  description:
-    "Plot-hole & continuity doctor for the screenplay. Delegate to it to audit the script for logical gaps, plot holes, continuity/timeline errors, unmotivated character behavior, unplanted setups and unpaid payoffs, and to get concrete, coherence-restoring fixes. Pass the current script (or the scenes in question) in the message; it returns a prioritized issue list with a suggested fix for each. It analyzes and recommends — it does not edit the script itself.",
-  instructions: plotDoctor,
-});
+  const motivationDoctorProfile = defineAgentProfile({
+    name: "motivation_doctor",
+    description:
+      "Motivation & causality doctor — the 'why' behind everything that happens. Delegate to it to check that every action, choice, reversal, and event is *caused* — rooted in a character's want, wound/trauma, fear, or need — rather than occurring for plot convenience. It surfaces unmotivated beats and 'and then' coincidences and prescribes the backstory/trauma or causal link that would justify or replace them. A different lane from plot-doctor (logical/continuity coherence) and story-architect (structure). It calls get_script to read the current pinned draft itself — no need to paste the script. It returns the missing 'whys' with fixes. It analyzes and recommends — it does not edit the script itself.",
+    instructions: motivationDoctor,
+    tools: readTools,
+  });
 
-const storyArchitectProfile = defineAgentProfile({
-  name: "story_architect",
-  description:
-    "Story architect for building a new story or restructuring an existing one. Delegate here when the user wants to plot/outline a story, choose a narrative structure, or map the episode to an arc. It asks the user which arc to build (hero's journey, story circle, three-act, save-the-cat, kishotenketsu, or other), then consults the matching in-house arc expert and returns a beat-by-beat outline fitted to the premise. It outlines — the root writes the outline into the script.",
-  instructions: storyArchitect,
-  subagents: [
-    herosJourneyProfile,
-    storyCircleProfile,
-    threeActProfile,
-    saveTheCatProfile,
-    kishotenketsuProfile,
-  ],
-});
+  const plotDoctorProfile = defineAgentProfile({
+    name: "plot_doctor",
+    description:
+      "Plot-hole & continuity doctor for the screenplay. Delegate to it to audit the script for logical gaps, plot holes, continuity/timeline errors, unmotivated character behavior, unplanted setups and unpaid payoffs, and to get concrete, coherence-restoring fixes. It calls get_script to read the current pinned draft itself — no need to paste the script; just name any scenes to focus on. It returns a prioritized issue list with a suggested fix for each. It analyzes and recommends — it does not edit the script itself.",
+    instructions: plotDoctor,
+    tools: readTools,
+  });
 
-export const subagents = [
-  dialogueDoctorProfile,
-  motivationDoctorProfile,
-  plotDoctorProfile,
-  storyArchitectProfile,
-];
+  const storyArchitectProfile = defineAgentProfile({
+    name: "story_architect",
+    description:
+      "Story architect for building a new story or restructuring an existing one. Delegate here when the user wants to plot/outline a story, choose a narrative structure, or map the episode to an arc. It asks the user which arc to build (hero's journey, story circle, three-act, save-the-cat, kishotenketsu, or other), then consults the matching in-house arc expert and returns a beat-by-beat outline fitted to the premise. When restructuring an existing episode it calls get_script to read the current pinned draft itself. It outlines — the root writes the outline into the script.",
+    instructions: storyArchitect,
+    tools: readTools,
+    subagents: [
+      herosJourneyProfile,
+      storyCircleProfile,
+      threeActProfile,
+      saveTheCatProfile,
+      kishotenketsuProfile,
+    ],
+  });
+
+  return [
+    dialogueDoctorProfile,
+    motivationDoctorProfile,
+    plotDoctorProfile,
+    storyArchitectProfile,
+  ];
+}

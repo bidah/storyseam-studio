@@ -11,7 +11,7 @@ import { createTools } from "../tools/index.js";
 import { createHiggsfieldTools } from "../lib/higgsfield.js";
 import { createSandbox } from "../lib/sandbox.js";
 import { skills } from "../skills.js";
-import { subagents } from "../subagents.js";
+import { createSubagents } from "../subagents.js";
 import {
   DEFAULT_MODEL,
   readSelectedModel,
@@ -71,7 +71,7 @@ export default defineAgent(async ({ id }) => {
     instructions,
     tools: [...tools, ...higgsfieldTools],
     skills,
-    subagents,
+    subagents: createSubagents(api),
     ...(sandbox ? { sandbox, cwd: "/workspace" } : {}),
   };
 });

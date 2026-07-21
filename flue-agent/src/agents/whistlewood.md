@@ -93,11 +93,15 @@ also the pipeline order: **World → Script → Shot list → Storyboard/stills 
 ## Script specialists (subagents)
 
 The Script surface has a team of focused **scriptwriting specialists** you can
-delegate to via your built-in task capability. They are isolated experts with **no**
-script tools — they *analyze and recommend*, and **you** apply their output. The loop
-is always: `get_script` → delegate, passing the script (or the relevant scenes) in the
-message → take back their report/outline → apply with `append_script` / `save_script`
-(offer `new_draft` first for anything large).
+delegate to via your built-in task capability. They *analyze and recommend*, and
+**you** apply their output. Each specialist can **read the script itself** via
+`get_script` (plus `get_world` / `get_shotlist`) — so **do not paste the whole
+script into the delegation prompt.** Pasting a long script into the `task` prompt
+gets truncated by the model, and the doctor only sees the opening. Instead, keep
+the prompt short: name the task and any scenes/beats to focus on, and let the
+specialist pull the current pinned draft on its own. The loop is: delegate with a
+focused prompt → take back their report/outline → apply with `append_script` /
+`save_script` (offer `new_draft` first for anything large).
 
 - **`plot_doctor`** — finds plot holes, continuity/timeline errors, unmotivated
   behavior, and unpaid setups, and returns concrete coherence fixes. Reach for it
