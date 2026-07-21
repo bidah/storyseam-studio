@@ -1,9 +1,6 @@
-import type { AgentMessage, MessagePart } from './types';
+import type { AgentMessage, MessagePart, QuestionState } from './types';
 
 // Ports of the web AgentChat.jsx derivations — same semantics, typed.
-// flue has no blocking HITL: the agent asks questions as plain assistant text
-// and the user answers with a normal next message, so there is no input-request
-// scan here.
 
 // Does this part render anything visible in the transcript?
 function isVisible(p: MessagePart | undefined): boolean {
@@ -57,4 +54,31 @@ export function userText(message: AgentMessage): string {
     .filter((p) => p.type === 'text')
     .map((p) => p.text || '')
     .join('');
+}
+
+// Resolve the answer state of every `ask_question` card. flue has no server-side
+// `inputResponse`, so "answered" is derived from the transcript: a question is
+// answered by the first user message after it (its text is the answer); the one
+// unanswered question — the last with no user message following — is `pendingId`
+// (the only card whose buttons stay live). Port of the web `deriveQA`.
+export function deriveQA(messages: AgentMessage[]): QuestionState {
+  const answered = new Map<string, string>();
+  let pendingId: string | null = null;
+  for (let i = 0; i < messages.length; i++) {
+    const m = messages[i];
+    if (m.role !== 'assistant') continue;
+    for (const p of m.parts || []) {
+      if (p.type !== 'dynamic-tool' || p.toolName !== 'ask_question' || !p.toolCallId) continue;
+      let ans: string | null = null;
+      for (let j = i + 1; j < messages.length; j++) {
+        if (messages[j].role === 'user') {
+          ans = userText(messages[j]).trim();
+          break;
+        }
+      }
+      if (ans) answered.set(p.toolCallId, ans);
+      else pendingId = p.toolCallId;
+    }
+  }
+  return { pendingId, answered };
 }

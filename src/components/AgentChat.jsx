@@ -55,10 +55,14 @@ import { AGENT_MODELS, useAgentModel, setAgentModel } from "@/lib/agentModel";
 // ---------------------------------------------------------------------------
 // Chat rendering walks every part of every flue message in order and renders
 // each by `type` (`text`, `reasoning`, `dynamic-tool`, `file`), instead of
-// scanning only the last message. flue has no blocking HITL: the agent asks
-// questions as plain assistant text and the user answers with a normal next
-// message, so there is no inline input-request card and no `inputResponses`
-// resume path — just the ordinary composer send.
+// scanning only the last message.
+//
+// Interactive questions: flue has no BLOCKING HITL (a tool can't suspend a turn),
+// so the `ask_question` tool is a non-blocking recreation — its `dynamic-tool`
+// part renders as a `QuestionCard` with clickable options (see `QuestionCard` /
+// `deriveQA`). Because there is no server-side `inputResponse`, the answer is
+// just the next ordinary user message: clicking an option sends its label, and a
+// typed reply works the same way. No `inputResponses` resume path.
 //
 // Attachments: images picked from the composer are uploaded to Cloudflare R2
 // (POST /api/upload) for a durable thumbnail URL, and sent to flue as base64
@@ -83,11 +87,16 @@ const UPLOAD_ENDPOINT = import.meta.env.VITE_UPLOAD_URL || "/api/upload";
 const MARKDOWN_REMARK_PLUGINS = [...Object.values(defaultRemarkPlugins), remarkBreaks];
 const MARKDOWN_CLASS =
   "space-y-2 break-words text-sm leading-relaxed [&_a]:text-primary [&_a]:underline [&_code]:rounded [&_code]:bg-muted [&_code]:px-1 [&_code]:py-0.5 [&_code]:text-xs [&_ol]:list-decimal [&_ol]:pl-5 [&_pre]:overflow-x-auto [&_pre]:rounded-md [&_pre]:bg-muted [&_pre]:p-2 [&_ul]:list-disc [&_ul]:pl-5";
+// Hoisted to a stable reference: Streamdown keys an internal animation effect on
+// this object, so a fresh `{…}` literal per render makes that effect re-fire
+// every render while `isAnimating` (i.e. during streaming) — a setState loop
+// that trips React's "Maximum update depth exceeded" guard.
+const MARKDOWN_ANIMATION = { animation: "fadeIn", duration: 180, sep: "word" };
 
 function Markdown({ text, animating = false, className }) {
   return (
     <Streamdown
-      animated={{ animation: "fadeIn", duration: 180, sep: "word" }}
+      animated={MARKDOWN_ANIMATION}
       isAnimating={animating}
       remarkPlugins={MARKDOWN_REMARK_PLUGINS}
       className={cn(MARKDOWN_CLASS, className)}
@@ -136,6 +145,48 @@ function ToolChip({ part }) {
   );
 }
 
+// An `ask_question` tool call, rendered as an interactive card (flue's
+// non-blocking recreation of eve's HITL question). The tool's `input` carries
+// `{ question, options: [{ id, label, style }] }`. flue can't suspend a turn, so
+// there is no `inputResponse` on the part: a card is answerable only while it's
+// the pending question (the last one with no user message after it), and once
+// answered it collapses to "Responded: …" using that following user message
+// (`answer`). Clicking an option sends its `label` as the next message; a typed
+// reply in the composer works too (it's just the next user message).
+function QuestionCard({ part, pending, answer, canRespond, onRespond }) {
+  const input = part.input || {};
+  const question = typeof input.question === "string" ? input.question : "";
+  const options = Array.isArray(input.options) ? input.options : [];
+  const variantFor = (style) =>
+    style === "danger" ? "destructive" : style === "primary" ? "default" : "secondary";
+  return (
+    <div className="space-y-2 rounded-lg border border-amber-500/30 bg-amber-500/5 p-3">
+      {question ? <Markdown text={question} className="text-muted-foreground" /> : null}
+      {answer ? (
+        <p className="text-sm font-medium">Responded: {answer}</p>
+      ) : options.length ? (
+        <div className="flex flex-wrap gap-1.5">
+          {options.map((opt) => (
+            <Button
+              key={opt.id ?? opt.label}
+              size="sm"
+              type="button"
+              disabled={!pending || !canRespond}
+              variant={variantFor(opt.style)}
+              onClick={() => onRespond?.(opt.label)}
+              className="h-auto max-w-full min-w-0 justify-start whitespace-normal py-1.5 text-left leading-snug"
+            >
+              {opt.label}
+            </Button>
+          ))}
+        </div>
+      ) : (
+        <p className="text-xs text-muted-foreground">Type your answer below to continue.</p>
+      )}
+    </div>
+  );
+}
+
 // A flue `file` part — an attachment carried on a message. Historical bytes
 // aren't served, but a durably-recorded attachment (or an optimistic local echo)
 // carries a `url` we can render; images inline, everything else as a chip.
@@ -157,7 +208,7 @@ function FilePart({ part }) {
   );
 }
 
-function MessagePart({ part }) {
+function MessagePart({ part, qa, canRespond, onRespond }) {
   switch (part.type) {
     case "text":
       return part.text ? (
@@ -171,12 +222,53 @@ function MessagePart({ part }) {
         </details>
       ) : null;
     case "dynamic-tool":
-      return <ToolChip part={part} />;
+      return part.toolName === "ask_question" ? (
+        <QuestionCard
+          part={part}
+          pending={qa?.pendingId === part.toolCallId}
+          answer={qa?.answered.get(part.toolCallId)}
+          canRespond={canRespond}
+          onRespond={onRespond}
+        />
+      ) : (
+        <ToolChip part={part} />
+      );
     case "file":
       return <FilePart part={part} />;
     default:
       return null;
   }
+}
+
+// Resolve the answer state of every `ask_question` card in the thread. flue has
+// no `inputResponse` channel, so "answered" is derived from the transcript: a
+// question is answered by the first user message after it (its text is the
+// answer); the one unanswered question — the last with no user message following
+// — is `pendingId` (the only card whose buttons stay live).
+function deriveQA(messages) {
+  const answered = new Map();
+  let pendingId = null;
+  for (let i = 0; i < messages.length; i++) {
+    const m = messages[i];
+    if (m.role !== "assistant") continue;
+    for (const p of m.parts || []) {
+      if (p.type !== "dynamic-tool" || p.toolName !== "ask_question") continue;
+      let ans = null;
+      for (let j = i + 1; j < messages.length; j++) {
+        if (messages[j].role === "user") {
+          ans = (messages[j].parts || [])
+            .filter((x) => x.type === "text")
+            .map((x) => x.text)
+            .join("")
+            .trim();
+          break;
+        }
+      }
+      if (ans) answered.set(p.toolCallId, ans);
+      else pendingId = p.toolCallId;
+    }
+  }
+  return { answered, pendingId };
 }
 
 // Thumbnails for the images a user turn was sent with, rendered back into the
@@ -197,7 +289,7 @@ function SentAttachments({ atts }) {
   );
 }
 
-function AgentMessage({ message, atts }) {
+function AgentMessage({ message, atts, qa, canRespond, onRespond }) {
   const isUser = message.role === "user";
   if (isUser) {
     const text = (message.parts || [])
@@ -218,7 +310,13 @@ function AgentMessage({ message, atts }) {
   return (
     <div className="flex flex-col gap-2">
       {(message.parts || []).map((part, i) => (
-        <MessagePart key={part.toolCallId ?? `${part.type}:${i}`} part={part} />
+        <MessagePart
+          key={part.toolCallId ?? `${part.type}:${i}`}
+          part={part}
+          qa={qa}
+          canRespond={canRespond}
+          onRespond={onRespond}
+        />
       ))}
     </div>
   );
@@ -435,6 +533,8 @@ export default function AgentChat() {
   const isBusy = agent.status === "submitted" || agent.status === "streaming";
   const thinking = useMemo(() => isThinking(messages, isBusy), [messages, isBusy]);
   const working = useMemo(() => workingTool(messages, isBusy), [messages, isBusy]);
+  // Interactive `ask_question` cards: which one is pending vs already answered.
+  const qa = useMemo(() => deriveQA(messages), [messages]);
 
   const uploading = attachments.some((a) => a.state === "uploading");
   const doneAttachments = attachments.filter((a) => a.state === "done");
@@ -566,6 +666,18 @@ export default function AgentChat() {
     await agent.send({ message: t, images });
   };
 
+  // Answer a pending `ask_question` card by clicking an option: send its label as
+  // the next user message. Push an (empty) attachments entry first so the
+  // ordinal-aligned `sentAttachmentsRef` stays in step with the new user message
+  // (every user turn — typed or clicked — must have a matching entry).
+  const onRespond = async (label) => {
+    if (isBusy || !label) return;
+    sentAttachmentsRef.current.push([]);
+    conv.saveAttachments(conv.activeId, sentAttachmentsRef.current);
+    setAtBottom(true);
+    await agent.send({ message: label });
+  };
+
   return (
     <aside className="flex h-dvh w-[495px] shrink-0 flex-col border-l bg-card">
       <header className="flex h-[61px] shrink-0 items-center gap-2 border-b px-4">
@@ -627,7 +739,16 @@ export default function AgentChat() {
               return messages.map((m) => {
                 if (m.role === "user") userOrdinal += 1;
                 const atts = m.role === "user" ? sentAttachmentsRef.current[userOrdinal] : null;
-                return <AgentMessage key={m.id} message={m} atts={atts} />;
+                return (
+                  <AgentMessage
+                    key={m.id}
+                    message={m}
+                    atts={atts}
+                    qa={qa}
+                    canRespond={!isBusy}
+                    onRespond={onRespond}
+                  />
+                );
               });
             })()
           )}

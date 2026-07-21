@@ -32,7 +32,7 @@ import { uploadFile } from '@/lib/api';
 import { ChatHeaderRight, useChatHeaderItems } from '@/components/chat/chat-header';
 import { Composer, type LocalAttachment } from '@/components/chat/composer';
 import { ConversationsOverlay } from '@/components/chat/conversations-overlay';
-import { isThinking, workingTool } from '@/components/chat/helpers';
+import { deriveQA, isThinking, workingTool } from '@/components/chat/helpers';
 import { MessageRow } from '@/components/chat/message';
 import { chatColors } from '@/components/chat/theme';
 import type { AgentMessage, SentAttachment } from '@/components/chat/types';
@@ -165,6 +165,9 @@ export default function ChatScreen() {
   const busy = agentIsBusy(agent);
   const thinking = useMemo(() => isThinking(messages, busy), [messages, busy]);
   const working = useMemo(() => workingTool(messages, busy), [messages, busy]);
+  // Interactive `ask_question` cards: which one is pending vs already answered.
+  const qa = useMemo(() => deriveQA(messages), [messages]);
+  const canRespond = !busy;
 
   // Ordinal-align each user message with the images it was sent with (oldest→newest).
   const rows = useMemo<Row[]>(() => {
@@ -207,6 +210,22 @@ export default function ChatScreen() {
       void agent?.send?.({ message: text });
     },
     [agent, recordAttachments],
+  );
+
+  // Answer a pending `ask_question` card by tapping an option: send its label as
+  // the next user message. Records an (empty) attachments entry first so the
+  // ordinal-aligned record stays in step with the new user message, and snaps to
+  // the newest so the reply is in view.
+  const onRespond = useCallback(
+    (label: string) => {
+      if (busy || !label) return;
+      Haptics.selectionAsync().catch(() => {});
+      recordAttachments([]);
+      if (!atNewest) setRemountKey((k) => k + 1);
+      setAtNewest(true);
+      void agent?.send?.({ message: label });
+    },
+    [agent, recordAttachments, busy, atNewest],
   );
 
   // Composer submit. flue takes images out-of-band as base64 `{ data, mimeType }`
@@ -276,8 +295,16 @@ export default function ChatScreen() {
   );
 
   const renderItem = useCallback(
-    ({ item }: { item: Row }) => <MessageRow message={item.message} atts={item.atts} />,
-    [],
+    ({ item }: { item: Row }) => (
+      <MessageRow
+        message={item.message}
+        atts={item.atts}
+        qa={qa}
+        canRespond={canRespond}
+        onRespond={onRespond}
+      />
+    ),
+    [qa, canRespond, onRespond],
   );
 
   const errorMessage = agent?.error ? String(agent.error?.message ?? agent.error) : null;
@@ -359,7 +386,12 @@ export default function ChatScreen() {
         ) : null}
       </View>
 
-      <Composer pending={false} busy={busy} onStop={() => agent?.stop?.()} onSubmit={submit} />
+      <Composer
+        pending={!!qa.pendingId && !busy}
+        busy={busy}
+        onStop={() => agent?.stop?.()}
+        onSubmit={submit}
+      />
     </View>
   );
 }

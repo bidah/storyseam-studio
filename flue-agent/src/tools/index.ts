@@ -3,6 +3,8 @@
 import type { ToolDefinition } from "@flue/runtime";
 import type { Api } from "../lib/api.js";
 
+// Interaction (no api — asks the user via an interactive chat card)
+import { askQuestion } from "./ask_question.js";
 // World / Script / Drafts / Shotlist / Episode
 import { getWorld } from "./get_world.js";
 import { saveWorld } from "./save_world.js";
@@ -59,6 +61,8 @@ import { signBundle } from "./sign_bundle.js";
 
 export function createTools(api: Api): ToolDefinition[] {
   return [
+    // Interaction
+    askQuestion(),
     // World / Script / Drafts
     getWorld(api),
     saveWorld(api),

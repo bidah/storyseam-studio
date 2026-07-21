@@ -1,18 +1,103 @@
 import { memo, useState } from 'react';
 import { ActivityIndicator, Pressable, Text, View } from 'react-native';
 import { Image } from 'expo-image';
+import * as Haptics from 'expo-haptics';
 import { Check, ChevronRight, FileText, Wrench } from 'lucide-react-native';
 import { cn } from '@/lib/utils';
 import { ChatMarkdown } from './markdown';
 import { chatColors } from './theme';
-import type { AgentMessage, MessagePart, SentAttachment } from './types';
+import type {
+  AgentMessage,
+  AskQuestionInput,
+  MessagePart,
+  QuestionState,
+  SentAttachment,
+} from './types';
 import { userText } from './helpers';
 
 // Renderers for each flue part type — a native port of the web AgentChat.jsx
 // message walk: every part of every message renders in order, by `type`
-// (`text`, `reasoning`, `dynamic-tool`, `file`). flue has no blocking HITL — the
-// agent asks questions as plain assistant text and the user replies with the
-// next message — so there is no input-request card and no `inputResponses` path.
+// (`text`, `reasoning`, `dynamic-tool`, `file`).
+//
+// Interactive questions: flue has no BLOCKING HITL, so the `ask_question` tool
+// is a non-blocking recreation — its `dynamic-tool` part renders as a
+// `QuestionCard` with clickable options. There is no server-side `inputResponse`,
+// so the answer is just the next user message: tapping an option sends its label
+// (a typed reply works the same way), and `deriveQA` resolves pending/answered.
+
+// Alpha-suffixed hex helpers for the amber question card (chatColors are 6-digit
+// hex; RN accepts 8-digit #RRGGBBAA).
+const AMBER_BORDER = `${chatColors.amber}55`;
+const AMBER_BG = `${chatColors.amber}14`;
+
+// An `ask_question` tool call, rendered as an interactive card. `part.input` is
+// `{ question, options: [{ id, label, style }] }`. Answerable only while it's the
+// pending question; once answered it collapses to "Responded: …" from the
+// following user message (`answer`).
+function QuestionCard({
+  part,
+  pending,
+  answer,
+  canRespond,
+  onRespond,
+}: {
+  part: MessagePart;
+  pending: boolean;
+  answer?: string;
+  canRespond: boolean;
+  onRespond?: (label: string) => void;
+}) {
+  const input = (part.input || {}) as AskQuestionInput;
+  const question = typeof input.question === 'string' ? input.question : '';
+  const options = Array.isArray(input.options) ? input.options : [];
+  const answerable = pending && canRespond;
+  return (
+    <View
+      className="gap-2 self-stretch rounded-xl border p-3"
+      style={{ borderColor: AMBER_BORDER, backgroundColor: AMBER_BG }}
+    >
+      {question ? <ChatMarkdown text={question} /> : null}
+      {answer ? (
+        <Text className="text-[15px] font-medium text-foreground">Responded: {answer}</Text>
+      ) : options.length ? (
+        <View className="flex-row flex-wrap gap-2">
+          {options.map((opt, i) => {
+            const label = opt.label || opt.id || '';
+            const danger = opt.style === 'danger';
+            return (
+              <Pressable
+                key={opt.id ?? `${label}:${i}`}
+                accessibilityRole="button"
+                accessibilityLabel={label}
+                disabled={!answerable}
+                onPress={() => {
+                  Haptics.selectionAsync().catch(() => {});
+                  onRespond?.(label);
+                }}
+                className={cn(
+                  'rounded-lg border px-3 py-2 active:opacity-70',
+                  danger ? 'border-destructive/50 bg-destructive/10' : 'border-border bg-secondary',
+                  !answerable && 'opacity-50',
+                )}
+              >
+                <Text
+                  className={cn(
+                    'text-[14px] font-medium',
+                    danger ? 'text-destructive' : 'text-foreground',
+                  )}
+                >
+                  {label}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      ) : (
+        <Text className="text-[12px] text-muted-foreground">Type your answer below to continue.</Text>
+      )}
+    </View>
+  );
+}
 
 // A compact chip for a flue `dynamic-tool` part. `state` is one of
 // input-available / output-available / output-error.
@@ -100,14 +185,34 @@ function FilePart({ part }: { part: MessagePart }) {
   );
 }
 
-function PartView({ part }: { part: MessagePart }) {
+function PartView({
+  part,
+  qa,
+  canRespond,
+  onRespond,
+}: {
+  part: MessagePart;
+  qa?: QuestionState;
+  canRespond: boolean;
+  onRespond?: (label: string) => void;
+}) {
   switch (part.type) {
     case 'text':
       return part.text ? <ChatMarkdown text={part.text} streaming={part.state === 'streaming'} /> : null;
     case 'reasoning':
       return <ReasoningRow part={part} />;
     case 'dynamic-tool':
-      return <ToolChip part={part} />;
+      return part.toolName === 'ask_question' ? (
+        <QuestionCard
+          part={part}
+          pending={qa?.pendingId === part.toolCallId}
+          answer={part.toolCallId ? qa?.answered.get(part.toolCallId) : undefined}
+          canRespond={canRespond}
+          onRespond={onRespond}
+        />
+      ) : (
+        <ToolChip part={part} />
+      );
     case 'file':
       return <FilePart part={part} />;
     default:
@@ -139,9 +244,15 @@ function SentAttachments({ atts }: { atts: SentAttachment[] | null }) {
 export const MessageRow = memo(function MessageRow({
   message,
   atts,
+  qa,
+  canRespond,
+  onRespond,
 }: {
   message: AgentMessage;
   atts: SentAttachment[] | null;
+  qa?: QuestionState;
+  canRespond: boolean;
+  onRespond?: (label: string) => void;
 }) {
   if (message.role === 'user') {
     const text = userText(message);
@@ -161,7 +272,13 @@ export const MessageRow = memo(function MessageRow({
   return (
     <View className="gap-2 px-4">
       {(message.parts || []).map((part, i) => (
-        <PartView key={part.toolCallId ?? `${part.type ?? 'part'}:${i}`} part={part} />
+        <PartView
+          key={part.toolCallId ?? `${part.type ?? 'part'}:${i}`}
+          part={part}
+          qa={qa}
+          canRespond={canRespond}
+          onRespond={onRespond}
+        />
       ))}
     </View>
   );
