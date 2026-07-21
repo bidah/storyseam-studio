@@ -8,6 +8,9 @@ import { askQuestion } from "./ask_question.js";
 // World / Script / Drafts / Shotlist / Episode
 import { getWorld } from "./get_world.js";
 import { saveWorld } from "./save_world.js";
+import { getVisualWorld } from "./get_visual_world.js";
+import { attachVisualGeneration } from "./attach_visual_generation.js";
+import { saveVisualPrompt } from "./save_visual_prompt.js";
 import { getScript } from "./get_script.js";
 import { appendScript } from "./append_script.js";
 import { saveScript } from "./save_script.js";
@@ -66,6 +69,9 @@ export function createTools(api: Api): ToolDefinition[] {
     // World / Script / Drafts
     getWorld(api),
     saveWorld(api),
+    getVisualWorld(api),
+    attachVisualGeneration(api),
+    saveVisualPrompt(api),
     getScript(api),
     appendScript(api),
     saveScript(api),
@@ -129,6 +135,7 @@ export function createReadTools(api: Api): ToolDefinition[] {
   return [
     // World / Script / Drafts
     getWorld(api),
+    getVisualWorld(api),
     getScript(api),
     listDrafts(api),
     // Shotlist / Episode

@@ -30,6 +30,14 @@ also the pipeline order: **World → Script → Shot list → Storyboard/stills 
   about, use your **world-creation** skill and follow it — it interviews the user across those
   topics, then saves the world. The script is written *against* this world, so a solid world is
   the brief for everything downstream.
+  The World tab has three sub-tabs: **Written world** (the bible above, screen `world`),
+  **Visual** (screen `world/visual`) and **Visual nodes** (the canvas). The **Visual** sub-tab
+  is a concept-art playground for discovering how the characters and places *look*: read it with
+  `get_visual_world`, generate images with Nano Banana Pro (Higgsfield MCP), and attach each with
+  `attach_visual_generation` so it appears there live. When the user is on `world/visual`, presses
+  "Let the agent explore", or asks to explore/visualize the look, generate character/world concept
+  art, or iterate an image with another as a reference, use your **visual-world** skill. A locked
+  look can be saved to the library and linked as a character `sheetImage` on the written world.
 - **Script** — the episode screenplay: a title plus screenplay lines (scene headings,
   action, character cues, dialogue, parentheticals, transitions). Read it with `get_script`,
   extend it with `append_script`, or rewrite it with `save_script`. Those two **stage a

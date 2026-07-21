@@ -40,6 +40,7 @@ import { registerExport } from "./routes/export.js";
 import { registerAdmin } from "./routes/admin.js";
 import { registerHiggsfield } from "./routes/higgsfield.js";
 import { registerStoryboard } from "./routes/storyboard.js";
+import { registerVisualWorld } from "./routes/visual-world.js";
 import { registerTranscribe } from "./routes/transcribe.js";
 import { createAuth } from "./auth.js";
 import { broadcast } from "./lib/broadcast.js";
@@ -352,7 +353,7 @@ function mediaRoute(prefix) {
     });
   };
 }
-for (const p of ["media", "gen", "sound-media", "final", "refs", "multishot-media", "stills", "storyboard-media"]) {
+for (const p of ["media", "gen", "sound-media", "final", "refs", "multishot-media", "stills", "storyboard-media", "visual-media"]) {
   app.get(`/${p}/*`, mediaRoute(p));
 }
 // The shared asset library (voice refs, browsable images) — per project under
@@ -433,6 +434,7 @@ registerExport(app);
 registerAdmin(app);
 registerHiggsfield(app);
 registerStoryboard(app);
+registerVisualWorld(app);
 registerTranscribe(app);
 
 // --- flue chat agent proxy -------------------------------------------------

@@ -14,7 +14,7 @@
 
 import { normalizeProjectId } from "./docs.js";
 
-const KINDS = new Set(["shots", "gen", "sound-media", "final", "refs", "multishot", "stills", "storyboard"]);
+const KINDS = new Set(["shots", "gen", "sound-media", "final", "refs", "multishot", "stills", "storyboard", "visual"]);
 
 export function mediaKey(projectId, kind, file) {
   const pid = normalizeProjectId(projectId);
@@ -33,6 +33,7 @@ export function kindForPrefix(prefix) {
     "multishot-media": "multishot",
     stills: "stills",
     "storyboard-media": "storyboard",
+    "visual-media": "visual",
   };
   return map[prefix] || null;
 }

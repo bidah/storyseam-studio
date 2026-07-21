@@ -14,9 +14,11 @@ import shotList from "./skills/shot-list/SKILL.md" with { type: "skill" };
 import trimVideo from "./skills/trim-video/SKILL.md" with { type: "skill" };
 import videoFromAudioVfx from "./skills/video-from-audio-vfx/SKILL.md" with { type: "skill" };
 import worldCreation from "./skills/world-creation/SKILL.md" with { type: "skill" };
+import visualWorld from "./skills/visual-world/SKILL.md" with { type: "skill" };
 
 export const skills = [
   worldCreation,
+  visualWorld,
   scriptWriting,
   shotList,
   generateStoryboard,

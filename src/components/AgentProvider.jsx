@@ -463,6 +463,26 @@ export function createWorldMessage() {
   ].join("\n");
 }
 
+// Build the chat turn that kicks off the VISUAL world exploration — the "Let the
+// agent explore the look" button on the World › Visual sub-tab. Routed through the
+// agent (the visual-world skill) so it generates character/place concept images
+// with Nano Banana Pro and attaches each one so it lands live on the Visual tab.
+export function createVisualWorldMessage(hint) {
+  return [
+    `Let's explore the VISUAL world for this series — how the characters and places`,
+    `actually look. Load the visual-world skill and follow it.`,
+    ``,
+    hint ? `Focus: ${hint}` : `Start from the written world (get_world) and the visual world so far` +
+      ` (get_visual_world). Propose a few characters/places to visualize, then generate`,
+    `concept images with Nano Banana Pro (Higgsfield MCP generate_image), using the 2D`,
+    `prompt preset for the house style. Generate a small batch, and when the user likes a`,
+    `direction, iterate by passing a chosen image back as an image reference.`,
+    ``,
+    `Attach every result with attach_visual_generation so it appears on the World › Visual`,
+    `tab immediately. Keep the chat concise; the images do the talking.`,
+  ].join("\n");
+}
+
 // Build the chat turn that generates the granular shot list from the signed
 // script. Routed through the agent (the shot-list skill) like the Render buttons.
 export function generateShotListMessage() {

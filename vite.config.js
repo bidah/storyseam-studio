@@ -57,6 +57,7 @@ export default defineConfig({
       "/sound-media": api(WORKER),
       "/proxy": api(WORKER),
       "/stills": api(WORKER),
+      "/visual-media": api(WORKER),
       "/files": api(WORKER),
       // The flue chat agent. /eve/* is same-origin so useFlueAgent() needs no
       // host/CORS config; the Worker (wrangler dev) owns /eve/*, injecting the

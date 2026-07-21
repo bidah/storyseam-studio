@@ -28,7 +28,17 @@ export const router = createBrowserRouter([
     id: "root",
     children: [
       { index: true, loader: () => redirect("/world") },
-      { path: "world", lazy: () => import("@/routes/world"), ErrorBoundary: RouteError, HydrateFallback: fallback("world") },
+      {
+        path: "world",
+        lazy: () => import("@/routes/world/layout"),
+        ErrorBoundary: RouteError,
+        HydrateFallback: fallback("world"),
+        children: [
+          { index: true, lazy: () => import("@/routes/world/written") },
+          { path: "visual", lazy: () => import("@/routes/world/visual") },
+          { path: "nodes", lazy: () => import("@/routes/world/nodes") },
+        ],
+      },
       { path: "script", lazy: () => import("@/routes/script") },
       { path: "shotlist", lazy: () => import("@/routes/shotlist"), ErrorBoundary: RouteError, HydrateFallback: fallback("shotlist") },
       { path: "radio", lazy: () => import("@/routes/radio"), ErrorBoundary: RouteError, HydrateFallback: fallback("radio") },
