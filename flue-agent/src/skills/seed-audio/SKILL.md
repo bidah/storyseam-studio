@@ -15,7 +15,7 @@ description: >-
 # Seed Audio 1.0 (Higgsfield)
 
 **Model ID:** `seed_audio` · **Provider:** ByteDance · **Output:** audio
-**Accessed via:** Higgsfield MCP → `mcp__claude_ai_higgsfield__generate_audio`
+**Accessed via:** Higgsfield MCP → `mcp__higgsfield__generate_audio`
 
 > 🏷 **Stem naming (check net):** when a scene is split into a speech pass and an
 > effects pass, save the outputs as `<base>-dialog.<ext>` (voices only, no
@@ -60,15 +60,12 @@ for narration, `text2speech_v2_elevenlabs` for general VO).
 
 ## Workflow
 
-### 1. Load the MCP tools
+### 1. The MCP tools are already available
 
-If the Higgsfield tools are deferred, load them in one call. Include the upload
-tools when you plan to use a voice reference:
-
-```
-ToolSearch query:
-"select:mcp__claude_ai_higgsfield__generate_audio,mcp__claude_ai_higgsfield__job_status,mcp__claude_ai_higgsfield__balance,mcp__claude_ai_higgsfield__media_upload,mcp__claude_ai_higgsfield__media_confirm"
-```
+The Higgsfield MCP tools (`mcp__higgsfield__generate_audio`,
+`mcp__higgsfield__job_status`, `mcp__higgsfield__balance`,
+`mcp__higgsfield__media_upload`, `mcp__higgsfield__media_confirm`) are registered
+on the agent — call them directly, no loading step needed.
 
 ### 2. Validate the prompt length BEFORE submitting (MANDATORY)
 
@@ -102,7 +99,7 @@ validate_seed_audio_prompt "$PROMPT" || exit 1
 
 ### 3. Submit the generation
 
-Call `mcp__claude_ai_higgsfield__generate_audio` with `model: "seed_audio"`.
+Call `mcp__higgsfield__generate_audio` with `model: "seed_audio"`.
 `prompt` is the only required field.
 
 ```jsonc
@@ -125,7 +122,7 @@ errors, just submit the real job).
 ### 4. Poll for the result
 
 ```
-mcp__claude_ai_higgsfield__job_status  { "jobId": "<id>", "sync": true }
+mcp__higgsfield__job_status  { "jobId": "<id>", "sync": true }
 ```
 
 `sync: true` waits up to ~25s server-side and returns on a terminal state.

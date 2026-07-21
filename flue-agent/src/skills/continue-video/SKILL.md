@@ -5,17 +5,17 @@ description: Continue a video with Higgsfield Seedance 2.0 via the Higgsfield MC
 
 # Continue Video (Higgsfield Seedance 2.0 — via the Higgsfield MCP)
 
-Generate the next shot of a video by starting from the **last frame** of a reference clip, with per-character voice references, character sheets, and an `@`-reference-aware prompt. Built on the **Higgsfield MCP** (`mcp__claude_ai_higgsfield__*`), model `seedance_2_0`.
+Generate the next shot of a video by starting from the **last frame** of a reference clip, with per-character voice references, character sheets, and an `@`-reference-aware prompt. Built on the **Higgsfield MCP** (`mcp__higgsfield__*`), model `seedance_2_0`.
 
 > **Always use the Higgsfield MCP, never the `higgsfield` CLI.** The CLI cannot pass multiple reference images to Seedance — its `--image` flag maps to the single `start_image` slot, so 2+ references fail with `'medias' can contain at most one start_image`. The MCP `generate_video` tool takes a proper `medias[]` array with a `role` per item, which is how Seedance does character/location referencing. (`ffmpeg` for local frame extraction / re-encode is still fine.)
 
-## Load the MCP tools first
+## The MCP tools are already available
 
-If the Higgsfield tools are deferred, load them in ONE call:
-
-```
-ToolSearch "select:mcp__claude_ai_higgsfield__generate_video,mcp__claude_ai_higgsfield__job_status,mcp__claude_ai_higgsfield__media_upload,mcp__claude_ai_higgsfield__media_confirm,mcp__claude_ai_higgsfield__media_import_url,mcp__claude_ai_higgsfield__models_explore,mcp__claude_ai_higgsfield__balance"
-```
+The Higgsfield MCP tools (`mcp__higgsfield__generate_video`,
+`mcp__higgsfield__job_status`, `mcp__higgsfield__media_upload`,
+`mcp__higgsfield__media_confirm`, `mcp__higgsfield__media_import_url`,
+`mcp__higgsfield__models_explore`, `mcp__higgsfield__balance`) are registered on
+the agent — call them directly, no loading step needed.
 
 ## Flags
 
@@ -123,7 +123,7 @@ Without `--confirm`, submit directly.
 Preflight cost if useful (`get_cost:true`), then submit:
 
 ```jsonc
-mcp__claude_ai_higgsfield__generate_video {
+mcp__higgsfield__generate_video {
   "params": {
     "model": "seedance_2_0",
     "prompt": "RESOLVED_PROMPT",
@@ -147,7 +147,7 @@ mcp__claude_ai_higgsfield__generate_video {
 ## Step 5b — Poll
 
 ```jsonc
-mcp__claude_ai_higgsfield__job_status { "jobId": "<id>", "sync": true }
+mcp__higgsfield__job_status { "jobId": "<id>", "sync": true }
 ```
 
 Repeat until `status:"completed"`; read `result_url` (use `raw_data:true` for the raw payload). Video renders typically 60–180s.

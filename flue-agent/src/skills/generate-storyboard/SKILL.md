@@ -8,7 +8,7 @@ description: Generate ONE storyboard STILL image for a single shot with Nano Ban
 Generate a single **storyboard still** for one shot: a framed keyframe that locks
 the shot's characters, location, camera angle, and action, so the beat can be
 visualized before (and later reused as a reference for) the video render. Built on
-the **Higgsfield MCP** (`mcp__claude_ai_higgsfield__*`), using the **Nano Banana
+the **Higgsfield MCP** (`mcp__higgsfield__*`), using the **Nano Banana
 Pro** image model.
 
 > **One still, one shot.** Each call renders ONE image for ONE shot id inside a
@@ -32,11 +32,13 @@ Pro** image model.
 
 Nano Banana Pro accepts **many** `image_references`. There is no audio for a still.
 
-## Load the MCP tools first
+## The MCP tools are already available
 
-```
-ToolSearch "select:mcp__claude_ai_higgsfield__generate_image,mcp__claude_ai_higgsfield__job_status,mcp__claude_ai_higgsfield__media_upload,mcp__claude_ai_higgsfield__media_confirm,mcp__claude_ai_higgsfield__media_import_url,mcp__claude_ai_higgsfield__models_explore,mcp__claude_ai_higgsfield__balance"
-```
+The Higgsfield MCP tools (`mcp__higgsfield__generate_image`,
+`mcp__higgsfield__job_status`, `mcp__higgsfield__media_upload`,
+`mcp__higgsfield__media_confirm`, `mcp__higgsfield__media_import_url`,
+`mcp__higgsfield__models_explore`, `mcp__higgsfield__balance`) are registered on
+the agent — call them directly, no loading step needed.
 
 ## Step 1 — Resolve the Nano Banana Pro model id
 
@@ -70,7 +72,7 @@ cinematic still. Do NOT describe motion over time — it's one image.
 Preflight cost (`get_cost:true`) if useful, then:
 
 ```jsonc
-mcp__claude_ai_higgsfield__generate_image {
+mcp__higgsfield__generate_image {
   "params": {
     "model": "<NANO_BANANA_PRO model id from models_explore>",
     "prompt": "STILL_PROMPT",
@@ -90,7 +92,7 @@ mcp__claude_ai_higgsfield__generate_image {
 ## Step 5 — Poll
 
 ```jsonc
-mcp__claude_ai_higgsfield__job_status { "jobId": "<id>", "sync": true }   // raw_data:true for result_url
+mcp__higgsfield__job_status { "jobId": "<id>", "sync": true }   // raw_data:true for result_url
 ```
 
 Repeat until `status:"completed"`; read `result_url`. Stills render fast (~10–40s).

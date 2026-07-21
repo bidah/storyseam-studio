@@ -41,19 +41,23 @@ async function mintAssertion(sub: string, secret: string): Promise<string> {
 /**
  * The signed-in user's Higgsfield bearer, fetched from the worker (which
  * refreshes it as needed). Returns null when the bridge can't help — no shared
- * secret, no user id, or the user has no usable credential.
+ * secret, no user id, or the user has no usable credential. Pass `force` to make
+ * the worker refresh the token unconditionally (`?force=1`), used to recover from
+ * a stale bearer mid-conversation.
  */
 export async function workerHiggsfieldToken(
   userId: string,
+  force = false,
 ): Promise<{ token: string; expiresAt?: number } | null> {
   const secret = process.env.FLUE_PROXY_SECRET ?? process.env.EVE_PROXY_SECRET;
   const api = process.env.SHOT_STUDIO_API ?? "http://localhost:3334";
   if (!secret || !userId) return null;
   try {
     const assertion = await mintAssertion(userId, secret);
-    const res = await fetch(`${api}/api/agent/higgsfield-token`, {
-      headers: { authorization: `Bearer ${assertion}` },
-    });
+    const res = await fetch(
+      `${api}/api/agent/higgsfield-token${force ? "?force=1" : ""}`,
+      { headers: { authorization: `Bearer ${assertion}` } },
+    );
     if (!res.ok) return null;
     const { token, expiresAt } = (await res.json()) as {
       token?: string;
