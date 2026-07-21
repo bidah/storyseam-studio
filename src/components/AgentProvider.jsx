@@ -8,7 +8,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { useFlueAgent } from "@flue/react";
+import { useFlueAgent, useFlueClient } from "@flue/react";
 import {
   activeChatId,
   chatsForProject,
@@ -188,6 +188,12 @@ function AgentSessionRunner({ activeId, projectId, conv, publish }) {
   // flue's durable key. The worker prepends `${userId}~`; we own the rest.
   const id = `${projectId ?? ""}~${activeId}`;
   const flueAgent = useFlueAgent({ name: AGENT_NAME, id });
+  const client = useFlueClient();
+
+  // `stop` closes over `id`; reach it through a ref so it can stay out of the
+  // `agent` memo deps (which key on the stable snapshot fields only, per below).
+  const idRef = useRef(id);
+  idRef.current = id;
 
   // `useFlueAgent()` returns a FRESH wrapper object every render — it spreads the
   // useSyncExternalStore snapshot and rebinds `sendMessage` (`.bind()`) each time.
@@ -214,11 +220,17 @@ function AgentSessionRunner({ activeId, projectId, conv, publish }) {
       // flue's optional `AgentPromptImage[]` (`{ data: base64, mimeType }`).
       send: ({ message = "", images } = {}) =>
         sendRef.current(message, images?.length ? { images } : undefined),
-      // TODO(flue): no client-side cancel yet — flue's UseFlueAgentResult exposes
-      // no stop/abort. Keep a no-op so the composer's Stop button stays inert.
-      stop: () => {},
+      // Cancel the in-flight turn. `useFlueAgent` doesn't surface a stop, but the
+      // underlying client does: `agents.abort` POSTs `/agents/:name/:id/abort`,
+      // which the flue worker threads as an AbortSignal through the running turn
+      // (and its in-flight tool calls). The `/eve` proxy prepends `${userId}~`,
+      // so `id` matches the one `useFlueAgent` observes. Swallow errors — the
+      // SSE observation will settle the turn regardless.
+      stop: () => {
+        client.agents.abort(AGENT_NAME, idRef.current).catch(() => {});
+      },
     }),
-    [flueAgent.messages, flueAgent.status, flueAgent.error, flueAgent.historyReady],
+    [client, flueAgent.messages, flueAgent.status, flueAgent.error, flueAgent.historyReady],
   );
 
   // Keep the chat list titled + floated from the live transcript (flue owns the
