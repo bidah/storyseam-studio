@@ -3,11 +3,13 @@ import * as Crypto from 'expo-crypto';
 
 // Persistent chat history for the studio agent (port of web src/lib/chat-store.js).
 //
-// eve's client reduces `snapshot.events` (the authoritative server stream) back
-// into `data.messages` at store construction, and `snapshot.session` is a
-// serializable cursor that resumes the same server-side conversation — so a
-// chat survives an app relaunch if we persist both and feed them back as
-// `initialEvents` / `initialSession` when the eve store is (re)created.
+// flue owns the conversation transcript server-side (a Durable Object keyed by
+// the instance id `${projectId}~${chatId}`), so the client no longer persists
+// event/session snapshots — `useFlueAgent` reconstructs `messages` from durable
+// history on its own. This store's remaining job is just to remember WHICH
+// conversations exist per project (their ids + titles) so the user can start
+// new chats and switch back into old ones, plus the client-only image
+// attachment record the composer re-renders thumbnails from.
 //
 // Chats are SCOPED PER PROJECT: every chat carries the `projectId` it belongs
 // to, the history list is filtered to the current project, and the last-active
@@ -25,10 +27,9 @@ export type Chat = {
   title: string;
   createdAt: number;
   updatedAt: number;
-  events: any[];
-  session: { streamIndex: number } & Record<string, any>;
-  // Client-only, ordinal-aligned image attachments (eve's projection drops
-  // image parts, so the composer re-renders thumbnails from this record).
+  // Client-only, ordinal-aligned image attachments (flue's `file` parts don't
+  // serve historical bytes, so the composer re-renders thumbnails from this
+  // record).
   attachments: any[];
 };
 
@@ -51,8 +52,6 @@ export function makeChat(projectId: string | null = null, title = 'New chat'): C
     title,
     createdAt: now,
     updatedAt: now,
-    events: [],
-    session: { streamIndex: 0 },
     attachments: [],
   };
 }

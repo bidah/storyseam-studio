@@ -2,9 +2,10 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { create } from 'zustand';
 
 // The chat agent's model picker (port of the web src/lib/agentModel.js).
-// The selected id rides every /eve request as the x-eve-model header (fetch
-// shim); the agent maps it to a Vercel AI Gateway model per turn.
-// Keep ids in sync with CHAT_MODELS in agent/lib/model.ts.
+// The selected id rides every /eve request as the x-flue-model header (fetch
+// shim); the Worker's /eve proxy forwards it into the flue agent, which maps it
+// to a Vercel AI Gateway model per turn.
+// Keep ids in sync with the flue agent's chat-model map.
 
 export const AGENT_MODELS = [
   { id: 'claude-sonnet-5', label: 'Sonnet 5', hint: 'Fast · default' },

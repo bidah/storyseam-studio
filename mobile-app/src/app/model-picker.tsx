@@ -6,7 +6,8 @@ import { Eyebrow } from '@/components/ui/card';
 import { AGENT_MODELS, useAgentModelStore } from '@/lib/agent-model';
 
 // Native formSheet model picker (mirrors the web picker: the id rides every
-// /eve request as x-eve-model; the agent maps it per turn).
+// /eve request as x-flue-model, which the Worker's /eve proxy forwards into the
+// flue agent Durable Object, which maps it per turn).
 export default function ModelPickerSheet() {
   const { model, setModel } = useAgentModelStore();
 

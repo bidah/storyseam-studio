@@ -136,7 +136,7 @@ export function ScriptProposalReview({
           <Text className="flex-1 text-[15px] font-semibold text-foreground">
             Proposed script edit
           </Text>
-          <Badge variant="muted" label={String(proposal.source || 'eve')}>
+          <Badge variant="muted" label={String(proposal.source || 'agent')}>
             <Bot size={11} color={MUTED} />
           </Badge>
         </View>

@@ -33,10 +33,15 @@ Three processes, no Express server (the old Express/Render backend was retired):
   Durable Object (`ProjectEvents`) fans out live-update SSE so edits sync across
   tabs. It also serves the built `dist/` as static `ASSETS` in production.
   Deployed at `https://shot-studio-uploads.rodrigofigueroa-name.workers.dev`.
-- **Studio agent** (`agent/`, port **2000**) — an [eve](https://eve.dev) chat
-  agent (model `anthropic/claude-sonnet-5`) that drives the pipeline through
-  typed tools (`agent/tools/*.ts`) and render skills (`agent/skills/*`), calling
-  the Higgsfield MCP (`agent/connections/`) to actually render audio/video.
+- **Studio agent** (`flue-agent/`) — a [flue](https://flueframework.com) chat
+  agent running as its **own Cloudflare Worker** (`shot-studio-flue`; agents are
+  Durable Objects), model `anthropic/claude-sonnet-5` (Opus 4.6 / Fable 5 via the
+  in-chat picker) routed through Cloudflare AI Gateway. It drives the pipeline
+  through typed tools (`flue-agent/src/tools/*.ts`) and render skills
+  (`flue-agent/src/skills/*`), calling the Higgsfield MCP to render audio/video,
+  with a Daytona sandbox for bash/skill execution. The main Worker proxies
+  `/eve/*` to it (injecting the session user id + an HMAC identity), so the chat
+  stays same-origin. Deploy/run: `flue-agent/DEPLOY.md`.
 
 By default the front-end talks to the **deployed** Worker, so `npm run dev` alone
 gives a working app — no local backend needed.
@@ -49,20 +54,26 @@ From this `shot-studio/` directory (`npm install` already done):
 npm run dev        # front-end only on http://localhost:3333 → deployed Worker backend
 ```
 
-To run the chat agent too (needs **Node ≥ 24**; the UI/Worker run on any Node):
+To run the chat agent too (needs **Node ≥ 22.19**; the UI/Worker run on any Node),
+the full local chain is Vite → main Worker → flue Worker:
 
 ```bash
-cp .env.example .env   # fill in AI_GATEWAY_API_KEY (see Credentials)
-npm run stack          # eve agent (:2000) + Vite (:3333) together
+npm run stack   # flue agent + Worker (:8787) + Vite (:3333) together
 ```
 
-Or start pieces individually:
+`flue dev` prints its local URL — set `FLUE_ORIGIN` to it in `worker/.dev.vars` so
+the Worker's `/eve/*` proxy reaches the local flue agent. Or start pieces
+individually:
 
 ```bash
-npm run dev                                 # UI on :3333
-npm run agent:build && npm run agent:start  # eve agent on :2000
-npm run worker:dev                          # local Worker on :8787 (wrangler dev)
+npm run dev            # UI on :3333
+npm run flue:dev       # flue agent (its own wrangler dev; note the printed URL)
+npm run worker:dev     # local Worker on :8787 (proxies /eve/* to FLUE_ORIGIN)
 ```
+
+flue agent secrets live in `flue-agent/.dev.vars` (copy `.dev.vars.example`):
+`ANTHROPIC_API_KEY`, `FLUE_PROXY_SECRET` (must match the Worker's), `SHOT_STUDIO_API`,
+and optionally `DAYTONA_API_KEY`, `HIGGSFIELD_MCP_URL`, `ANTHROPIC_GATEWAY_URL`.
 
 To point the UI at a **local** Worker instead of the deployed one, set `WORKER`:
 
@@ -77,17 +88,22 @@ WORKER=http://localhost:8787 npm run dev    # terminal 2
 npm run worker:deploy   # builds dist/ then `wrangler deploy` (Worker serves dist/ as ASSETS)
 ```
 
-## Credentials (`.env`)
+## Credentials
 
-- `AI_GATEWAY_API_KEY` — **required** for the chat to reply (the model routes
-  through the Vercel AI Gateway; create a key at
-  https://vercel.com/dashboard/ai/api-keys, or run `vercel link` for OIDC).
-- `HIGGSFIELD_MCP_URL` / `HIGGSFIELD_MCP_TOKEN` — required for **live**
-  audio/video rendering via the skills; without them the pipeline management
-  (script, shots, cuts, library) still works.
+flue agent secrets (`flue-agent/.dev.vars` locally, `wrangler secret` in prod):
 
-Worker-side secrets (R2 keys, Better Auth, D1) live in `worker/wrangler.jsonc`
-vars and `wrangler secret`; see `.env.example`.
+- `ANTHROPIC_API_KEY` — **required** for the chat to reply (routed through
+  Cloudflare AI Gateway when `ANTHROPIC_GATEWAY_URL` is set, else direct).
+- `FLUE_PROXY_SECRET` — shared HMAC secret with the main Worker; must match on
+  both sides (falls back to the Worker's `EVE_PROXY_SECRET`).
+- `DAYTONA_API_KEY` — sandbox for bash/skill execution (optional; falls back to
+  an in-memory sandbox).
+- `HIGGSFIELD_MCP_URL` — the generation MCP; the per-user token is bridged from
+  the Worker (`/api/agent/higgsfield-token`). Without it the pipeline management
+  (script, shots, cuts, library) still works, but no live rendering.
+
+Main-Worker secrets (R2 keys, Better Auth, D1, `FLUE_PROXY_SECRET`, `FLUE_ORIGIN`)
+live in `worker/wrangler.jsonc` vars and `wrangler secret`.
 
 ## API (proxied paths → Worker)
 
@@ -99,7 +115,8 @@ vars and `wrangler secret`; see `.env.example`.
   (no proxy buffering) backed by the `ProjectEvents` Durable Object.
 - `/media`, `/multishot-media`, `/sound-media`, `/refs`, `/asset`, `/final`,
   `/gen`, `/files` — media served from R2.
-- `/eve` — the Studio agent (proxied to `http://localhost:2000`).
+- `/eve` — the flue Studio agent (proxied by the Worker to the `shot-studio-flue`
+  Worker, injecting the session user id + HMAC identity).
 
 ## UI stack
 

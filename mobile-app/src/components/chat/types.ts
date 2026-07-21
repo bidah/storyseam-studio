@@ -1,44 +1,24 @@
-// Loose (defensive) shapes for what the eve agent streams back. Parts may be
-// missing any field, so everything is optional — renderers must null-check.
-
-export type InputRequestOption = {
-  id: string;
-  label?: string;
-  style?: string;
-};
-
-export type InputRequest = {
-  requestId: string;
-  prompt?: string;
-  options?: InputRequestOption[];
-};
-
-export type InputResponse = {
-  optionId?: string;
-  text?: string;
-};
+// Loose (defensive) shapes for what the flue agent streams back. flue's
+// `FlueConversationPart` is a discriminated union (`text` / `reasoning` /
+// `dynamic-tool` / `file`); we keep every field optional here so the renderers
+// can null-check without narrowing on the union.
 
 export type MessagePart = {
   type?: string;
+  // `text` / `reasoning` parts
   text?: string;
   state?: string;
+  // `dynamic-tool` parts
   toolName?: string;
   toolCallId?: string;
-  toolMetadata?: {
-    eve?: {
-      inputRequest?: InputRequest;
-      inputResponse?: InputResponse;
-    };
-  };
-  // `authorization` parts
-  displayName?: string;
-  outcome?: string;
-  description?: string;
-  authorization?: {
-    url?: string;
-    userCode?: string;
-    instructions?: string;
-  };
+  input?: unknown;
+  output?: unknown;
+  errorText?: string;
+  // `file` parts (durably-recorded attachment, or a local optimistic echo)
+  mediaType?: string;
+  filename?: string;
+  url?: string;
+  size?: number;
 };
 
 export type AgentMessage = {
@@ -48,7 +28,8 @@ export type AgentMessage = {
 };
 
 // One image the user sent with a turn (re-rendered from the persisted,
-// ordinal-aligned attachments record — eve doesn't echo image parts back).
+// ordinal-aligned attachments record — flue's `file` parts don't serve
+// historical bytes).
 export type SentAttachment = {
   url: string;
   name?: string;

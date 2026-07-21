@@ -58,16 +58,12 @@ export default defineConfig({
       "/proxy": api(WORKER),
       "/stills": api(WORKER),
       "/files": api(WORKER),
-      // The eve agent (chat) dev server. Proxying makes /eve same-origin so
-      // useEveAgent() needs no host/CORS config. SSE streaming passes through.
-      "/eve": {
-        target: "http://localhost:2000",
-        changeOrigin: true,
-        configure: (proxy) => {
-          // don't buffer the Server-Sent-Events stream
-          proxy.on("proxyReq", (proxyReq) => proxyReq.setHeader("accept-encoding", "identity"));
-        },
-      },
+      // The flue chat agent. /eve/* is same-origin so useFlueAgent() needs no
+      // host/CORS config; the Worker (wrangler dev) owns /eve/*, injecting the
+      // session user id into the instance id + minting the HMAC, then proxying to
+      // the flue worker (`flue dev`). Set FLUE_ORIGIN in worker/.dev.vars to the
+      // `flue dev` URL. Streaming passes through unbuffered (sse()).
+      "/eve": sse(WORKER),
     },
   },
 });

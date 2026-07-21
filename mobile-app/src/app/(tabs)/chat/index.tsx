@@ -26,17 +26,18 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import { ArrowDown, CircleAlert, Sparkles } from 'lucide-react-native';
 import { Stack } from 'expo-router';
+import { File } from 'expo-file-system';
 import { agentIsBusy, useAgent, useConversations } from '@/lib/agent/provider';
 import { uploadFile } from '@/lib/api';
 import { ChatHeaderRight, useChatHeaderItems } from '@/components/chat/chat-header';
 import { Composer, type LocalAttachment } from '@/components/chat/composer';
 import { ConversationsOverlay } from '@/components/chat/conversations-overlay';
-import { isThinking, pendingRequest, workingTool } from '@/components/chat/helpers';
-import { MessageRow, type Respond } from '@/components/chat/message';
+import { isThinking, workingTool } from '@/components/chat/helpers';
+import { MessageRow } from '@/components/chat/message';
 import { chatColors } from '@/components/chat/theme';
 import type { AgentMessage, SentAttachment } from '@/components/chat/types';
 
-// The eve agent chat — native port of the web AgentChat.jsx on the shared
+// The flue agent chat — native port of the web AgentChat.jsx on the shared
 // AgentProvider session (the same instance other tabs' Render buttons drive).
 //
 // The transcript is an *inverted* FlatList. Data is newest-first, so the newest
@@ -160,12 +161,10 @@ export default function ChatScreen() {
     setRemountKey((k) => k + 1);
   }, [activeId, getInitial]);
 
-  const messages: AgentMessage[] = agent?.data?.messages ?? [];
+  const messages: AgentMessage[] = agent?.messages ?? [];
   const busy = agentIsBusy(agent);
-  const pendingReq = useMemo(() => pendingRequest(messages), [messages]);
-  const pending = !!pendingReq;
   const thinking = useMemo(() => isThinking(messages, busy), [messages, busy]);
-  const working = useMemo(() => workingTool(messages, busy, pending), [messages, busy, pending]);
+  const working = useMemo(() => workingTool(messages, busy), [messages, busy]);
 
   // Ordinal-align each user message with the images it was sent with (oldest→newest).
   const rows = useMemo<Row[]>(() => {
@@ -192,13 +191,6 @@ export default function ChatScreen() {
     height: Math.max(0, -keyboardHeight.value - bottomInset),
   }));
 
-  const onRespond: Respond = useCallback(
-    (responses) => {
-      void agent?.send?.({ inputResponses: responses });
-    },
-    [agent],
-  );
-
   const recordAttachments = useCallback(
     (sent: SentAttachment[]) => {
       sentAttachmentsRef.current = [...sentAttachmentsRef.current, sent];
@@ -217,41 +209,32 @@ export default function ChatScreen() {
     [agent, recordAttachments],
   );
 
-  // Composer submit. A parked HITL request only resumes when the answer is
-  // delivered as an inputResponse to its requestId — a plain message never
-  // reaches the parked (sub)session — so typed free text routes as the
-  // response while one is pending. HITL answers are text-only in eve, so an
-  // image-carrying send falls through to a normal message (web parity).
+  // Composer submit. flue takes images out-of-band as base64 `{ data, mimeType }`
+  // (not as message parts), so for each picked image we both (a) upload it to R2
+  // for a durable thumbnail URL rendered back into the bubble, and (b) read its
+  // bytes as base64 to hand flue alongside the text so the model can see it.
   const submit = useCallback(
     async (raw: string, picked: LocalAttachment[]) => {
       const t = raw.trim();
-      if (pendingReq && t && picked.length === 0) {
-        void agent?.send?.({ inputResponses: [{ requestId: pendingReq.requestId, text: t }] });
-        return;
-      }
 
-      // Upload first (a throw keeps the composer content for retry), then
-      // send image parts pointing at the public URLs so the model sees them.
+      // Upload first (a throw keeps the composer content for retry), then read
+      // each image's base64 for flue's `images`.
       const sent: SentAttachment[] = [];
+      const images: { type: 'image'; data: string; mimeType: string; filename?: string }[] = [];
       for (const a of picked) {
         const { url } = await uploadFile(a.uri, a.name, a.mime);
         sent.push({ url, name: a.name, contentType: a.mime });
+        const data = await new File(a.uri).base64();
+        images.push({ type: 'image', data, mimeType: a.mime || 'image/jpeg', filename: a.name });
       }
-
-      const message: unknown = sent.length
-        ? [
-            ...(t ? [{ type: 'text', text: t }] : []),
-            ...sent.map((a) => ({ type: 'image', image: a.url })),
-          ]
-        : t;
 
       recordAttachments(sent);
       // Snap to the newest so the sent turn (and the reply) are in view.
       if (!atNewest) setRemountKey((k) => k + 1);
       setAtNewest(true);
-      void agent?.send?.({ message });
+      void agent?.send?.({ message: t, images: images.length ? images : undefined });
     },
-    [agent, pendingReq, recordAttachments, atNewest],
+    [agent, recordAttachments, atNewest],
   );
 
   // Inverted list: y ≈ 0 means we're at the newest message. Track the live
@@ -293,10 +276,8 @@ export default function ChatScreen() {
   );
 
   const renderItem = useCallback(
-    ({ item }: { item: Row }) => (
-      <MessageRow message={item.message} atts={item.atts} canRespond={!busy} onRespond={onRespond} />
-    ),
-    [busy, onRespond],
+    ({ item }: { item: Row }) => <MessageRow message={item.message} atts={item.atts} />,
+    [],
   );
 
   const errorMessage = agent?.error ? String(agent.error?.message ?? agent.error) : null;
@@ -378,7 +359,7 @@ export default function ChatScreen() {
         ) : null}
       </View>
 
-      <Composer pending={pending} busy={busy} onStop={() => agent?.stop?.()} onSubmit={submit} />
+      <Composer pending={false} busy={busy} onStop={() => agent?.stop?.()} onSubmit={submit} />
     </View>
   );
 }

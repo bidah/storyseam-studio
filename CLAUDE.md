@@ -3,9 +3,10 @@
 Vite + React front-end (`src/`, port 3333) backed by a Cloudflare Worker
 (`worker/`, name `shot-studio-uploads` — D1 + R2 + KV + a `ProjectEvents`
 Durable Object for live-sync SSE) for building the Whistlewood episode: script,
-shots, audio/video renders, cuts, and library. An [eve](https://eve.dev) chat
-agent (`agent/`, port 2000, proxied at `/eve`) drives the pipeline via typed
-tools + render skills. See `README.md` for architecture and how to run it.
+shots, audio/video renders, cuts, and library. A [flue](https://flueframework.com)
+chat agent (`flue-agent/`, its own Cloudflare Worker `shot-studio-flue`, proxied at
+`/eve`) drives the pipeline via typed tools + render skills. See `README.md` for
+architecture and how to run it.
 
 ## Routing & data
 

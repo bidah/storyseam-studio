@@ -2,12 +2,18 @@
 //
 // For requests to the Shot Studio Worker it injects the per-project /
 // per-client / per-model headers plus the Better Auth session cookie, so the
-// eve SDK, better-auth, and every query hook work without threading headers
+// flue SDK, better-auth, and every query hook work without threading headers
 // through ~40 call sites. Streaming paths (/eve/*, the SSE /events channels)
 // are routed through expo/fetch — the only RN fetch whose Response exposes
-// body.getReader(), which the eve NDJSON stream requires. Everything else
-// stays on the stock RN fetch (whose responses better-auth's cookie handling
-// already understands).
+// body.getReader(), which flue's durable-stream reader requires. Everything
+// else stays on the stock RN fetch (whose responses better-auth's cookie
+// handling already understands).
+//
+// The Worker proxies /eve/* to the flue worker (name `whistlewood`), so this
+// shim keeps routing /eve through expo/fetch exactly as it did for eve — the
+// flue @flue/sdk client uses the (already-installed) global fetch, so it picks
+// this up transparently. The per-turn model rides as `x-flue-model`, which the
+// Worker's /eve proxy forwards into the flue agent Durable Object.
 import { fetch as expoFetch } from 'expo/fetch';
 import { API_ORIGIN } from './env';
 import { CLIENT_ID } from './client-id';
@@ -47,7 +53,7 @@ export function installFetchShim() {
     const pid = getProjectId();
     if (pid && !headers.has('x-project-id')) headers.set('x-project-id', pid);
     headers.set('x-client-id', CLIENT_ID);
-    if (path.startsWith('/eve')) headers.set('x-eve-model', getAgentModel());
+    if (path.startsWith('/eve')) headers.set('x-flue-model', getAgentModel());
     if (!headers.has('cookie')) {
       const cookie = getSessionCookie();
       if (cookie) headers.set('cookie', cookie);

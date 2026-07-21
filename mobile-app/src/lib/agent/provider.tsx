@@ -9,8 +9,10 @@ import {
   useState,
   type ReactNode,
 } from 'react';
-import { router, usePathname } from 'expo-router';
-import { useEveAgent } from 'eve/react';
+import { router } from 'expo-router';
+import { useQueryClient } from '@tanstack/react-query';
+import { FlueProvider, useFlueAgent } from '@flue/react';
+import { createFlueClient } from '@flue/sdk';
 import { API_ORIGIN } from '../env';
 import { getProjectId, useProjectStore } from '../project';
 import {
@@ -22,20 +24,36 @@ import {
   persistStore,
   trimStore,
   withActiveForProject,
-  type Chat,
   type ChatStore,
 } from './chat-store';
 
 // ---------------------------------------------------------------------------
-// A single shared eve agent session for the whole app — port of the web
+// A single shared flue agent conversation for the whole app — port of the web
 // AgentProvider.jsx. The chat tab and every "drive the agent from the UI"
-// button (Render/Stitch/Trim/…) read from the SAME `useEveAgent` instance.
-// `AgentSessionRunner` is keyed on the active chat id: switching chats
-// remounts only the runner (rebuilding the eve store from that chat's
-// persisted events/cursor); consumers merely re-render. The eve client talks
-// to the Worker's /eve proxy — the fetch shim routes it through expo/fetch
-// (streaming) and injects cookie/project/model headers.
+// button (Render/Stitch/Trim/…) read from the SAME `useFlueAgent` instance.
+//
+// flue keys a conversation by its instance id, so `AgentSessionRunner` is keyed
+// on the active chat id: switching chats (or projects — which mints/reopens a
+// per-project chat) remounts only the runner, pointing `useFlueAgent` at the
+// new instance id whose durable history flue reloads on its own; consumers
+// merely re-render.
+//
+// The instance id the client passes is `${projectId}~${chatId}`; the Worker
+// that proxies `/eve/*` prepends the authenticated `${userId}~` server-side, so
+// the full durable key is `userId~projectId~chatId`. The transcript lives in
+// the flue Durable Object — the client no longer persists events/sessions. The
+// @flue/sdk client uses the global fetch, which the fetch shim (installed at
+// index.js import, before this client is constructed) patches to route /eve
+// through expo/fetch and inject cookie/project/model headers.
 // ---------------------------------------------------------------------------
+
+// The flue agent registered in flue-agent/src/agents/whistlewood.ts.
+const AGENT_NAME = 'whistlewood';
+
+// Outside a browser the flue baseUrl MUST be absolute — point it at the
+// Worker's /eve proxy. No custom fetch: the SDK captures the (already-patched)
+// global fetch at construction and uses globalThis.fetch for stream reconnects.
+const flueClient = createFlueClient({ baseUrl: `${API_ORIGIN}/eve` });
 
 const AgentContext = createContext<any>(null);
 const ConversationsContext = createContext<any>(null);
@@ -119,30 +137,21 @@ function useConversationManager() {
     [update],
   );
 
-  const saveTurn = useCallback(
-    (id: string, snapshot: any) =>
+  // Note live activity in one chat: refresh its title from the first user line
+  // (flue owns the transcript, so the title is all we still derive here) and
+  // float it to the top of the list. A no-op once the title has settled, so the
+  // runner can call it on every `messages` change without thrashing the store.
+  const noteActivity = useCallback(
+    (id: string, title: string | null) =>
       update((prev) => {
         const chat = prev.chats[id];
         if (!chat) return prev;
-        const next: Chat = {
-          ...chat,
-          events: snapshot.events ?? chat.events,
-          session: snapshot.session ?? chat.session,
-          title: deriveTitle(snapshot.data?.messages) ?? chat.title,
-          updatedAt: Date.now(),
-        };
-        const order = [id, ...prev.order.filter((x) => x !== id)];
+        const nextTitle = title ?? chat.title;
+        const alreadyTop = prev.order[0] === id;
+        if (nextTitle === chat.title && alreadyTop) return prev;
+        const order = alreadyTop ? prev.order : [id, ...prev.order.filter((x) => x !== id)];
+        const next = { ...chat, title: nextTitle, updatedAt: Date.now() };
         return { ...prev, order, chats: { ...prev.chats, [id]: next } };
-      }),
-    [update],
-  );
-
-  const saveSession = useCallback(
-    (id: string, session: any) =>
-      update((prev) => {
-        const chat = prev.chats[id];
-        if (!chat) return prev;
-        return { ...prev, chats: { ...prev.chats, [id]: { ...chat, session } } };
       }),
     [update],
   );
@@ -157,13 +166,11 @@ function useConversationManager() {
     [update],
   );
 
+  // The composer's client-only attachment record for a given chat. Reads the ref
+  // so a runner keyed on a just-created chat still sees it.
   const getInitial = useCallback((id: string) => {
     const chat = storeRef.current?.chats[id];
-    return {
-      events: chat?.events ?? [],
-      session: chat?.session ?? { streamIndex: 0 },
-      attachments: chat?.attachments ?? [],
-    };
+    return { attachments: chat?.attachments ?? [] };
   }, []);
 
   // History and active selection are scoped to the current project.
@@ -173,46 +180,88 @@ function useConversationManager() {
   return useMemo(
     () => ({
       hydrated: !!store,
+      pid,
       activeId,
       list,
       newChat,
       switchChat,
       deleteChat,
-      saveTurn,
-      saveSession,
+      noteActivity,
       saveAttachments,
       getInitial,
     }),
-    [store, activeId, list, newChat, switchChat, deleteChat, saveTurn, saveSession, saveAttachments, getInitial],
+    [store, pid, activeId, list, newChat, switchChat, deleteChat, noteActivity, saveAttachments, getInitial],
   );
 }
 
 function AgentSessionRunner({
   activeId,
-  view,
+  projectId,
   conv,
   publish,
 }: {
   activeId: string;
-  view: string;
+  projectId: string | null;
   conv: any;
   publish: (agent: any) => void;
 }) {
-  const viewRef = useRef(view);
-  viewRef.current = view;
+  // flue's durable key. The Worker prepends `${userId}~`; we own the rest.
+  const id = `${projectId ?? ''}~${activeId}`;
+  const flueAgent = useFlueAgent({ name: AGENT_NAME, id });
 
-  const initialRef = useRef<any>(null);
-  if (initialRef.current === null) initialRef.current = conv.getInitial(activeId);
+  // The turn that just settled may have written any project resource (save_shotlist,
+  // save_world, a render…). The SSE firehose covers this too, but it is a single
+  // remote stream that can be down without anyone noticing — this is the local,
+  // always-available signal, and it is naturally edge-triggered (once per turn).
+  // A double invalidate is harmless; react-query only refetches mounted queries.
+  const queryClient = useQueryClient();
+  const invalidateProject = useCallback(() => {
+    const pid = getProjectId();
+    if (pid) queryClient.invalidateQueries({ queryKey: [pid] });
+  }, [queryClient]);
 
-  const agent = useEveAgent({
-    host: API_ORIGIN,
-    initialEvents: initialRef.current.events,
-    initialSession: initialRef.current.session,
-    prepareSend: (input: any) => ({ ...input, clientContext: { screen: viewRef.current } }),
-    onFinish: (snapshot: any) => conv.saveTurn(activeId, snapshot),
-    onSessionChange: (session: any) => conv.saveSession(activeId, session),
-  });
+  // eve gave us an `onFinish` callback; flue is state-driven, so we edge-trigger
+  // on the status settling out of a busy phase (submitted/streaming → idle/error)
+  // — the flue equivalent of "the turn just ended". This replaces eve's onFinish
+  // as the moment to refetch project data touched by the turn.
+  const prevStatusRef = useRef(flueAgent.status);
+  useEffect(() => {
+    const prev = prevStatusRef.current;
+    prevStatusRef.current = flueAgent.status;
+    const wasBusy = prev === 'submitted' || prev === 'streaming';
+    const settled = flueAgent.status === 'idle' || flueAgent.status === 'error';
+    if (wasBusy && settled) invalidateProject();
+  }, [flueAgent.status, invalidateProject]);
 
+  // Adapt flue's surface (`messages`, `status`, `sendMessage`) to the shape the
+  // rest of the app consumes (`messages`, `status`, `send`, `stop`, `error`).
+  // flue's resting status is "idle"; the app treats "ready" as not-busy (see
+  // `agentIsBusy`), so map idle → "ready".
+  const agent = useMemo(
+    () => ({
+      messages: flueAgent.messages,
+      status: flueAgent.status === 'idle' ? 'ready' : flueAgent.status,
+      error: flueAgent.error,
+      historyReady: flueAgent.historyReady,
+      // `send({ message, images })` — `message` is a plain string; `images` is
+      // flue's optional `AgentPromptImage[]` (`{ type:'image', data, mimeType }`).
+      send: ({ message = '', images }: { message?: string; images?: any[] } = {}) =>
+        flueAgent.sendMessage(message, images?.length ? { images } : undefined),
+      // flue's UseFlueAgentResult exposes no client-side cancel; keep a no-op so
+      // the composer's Stop button stays inert (parity with the web adapter).
+      stop: () => {},
+    }),
+    [flueAgent],
+  );
+
+  // Keep the chat list titled + floated from the live transcript (flue owns the
+  // transcript, so this replaces eve's onFinish snapshot persistence).
+  useEffect(() => {
+    const title = deriveTitle(flueAgent.messages);
+    if (title) conv.noteActivity(activeId, title);
+  }, [flueAgent.messages, activeId, conv]);
+
+  // Publish before paint so switching chats never flashes stale content.
   useLayoutEffect(() => {
     publish(agent);
   }, [agent, publish]);
@@ -223,26 +272,25 @@ function AgentSessionRunner({
 export function AgentProvider({ children }: { children: ReactNode }) {
   const conv = useConversationManager();
   const [agent, setAgent] = useState<any>(null);
-  const pathname = usePathname();
-  // Which surface the user is on — forwarded to the agent every turn.
-  const view = pathname.slice(1).split('/')[0] || 'chat';
 
   // Per-project chat scoping (restore the last chat on project switch) is handled
   // inside the conversation manager — see `useConversationManager`.
 
   return (
-    <ConversationsContext.Provider value={conv}>
-      {conv.hydrated && conv.activeId ? (
-        <AgentSessionRunner
-          key={conv.activeId}
-          activeId={conv.activeId}
-          view={view}
-          conv={conv}
-          publish={setAgent}
-        />
-      ) : null}
-      <AgentContext.Provider value={agent}>{agent ? children : null}</AgentContext.Provider>
-    </ConversationsContext.Provider>
+    <FlueProvider client={flueClient}>
+      <ConversationsContext.Provider value={conv}>
+        {conv.hydrated && conv.activeId ? (
+          <AgentSessionRunner
+            key={conv.activeId}
+            activeId={conv.activeId}
+            projectId={conv.pid ?? null}
+            conv={conv}
+            publish={setAgent}
+          />
+        ) : null}
+        <AgentContext.Provider value={agent}>{agent ? children : null}</AgentContext.Provider>
+      </ConversationsContext.Provider>
+    </FlueProvider>
   );
 }
 

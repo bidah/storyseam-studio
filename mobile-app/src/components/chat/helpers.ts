@@ -1,6 +1,9 @@
-import type { AgentMessage, InputRequest, MessagePart } from './types';
+import type { AgentMessage, MessagePart } from './types';
 
 // Ports of the web AgentChat.jsx derivations — same semantics, typed.
+// flue has no blocking HITL: the agent asks questions as plain assistant text
+// and the user answers with a normal next message, so there is no input-request
+// scan here.
 
 // Does this part render anything visible in the transcript?
 function isVisible(p: MessagePart | undefined): boolean {
@@ -9,22 +12,8 @@ function isVisible(p: MessagePart | undefined): boolean {
     (p.type === 'text' && !!p.text?.trim()) ||
     (p.type === 'reasoning' && !!p.text?.trim()) ||
     p.type === 'dynamic-tool' ||
-    p.type === 'authorization'
+    p.type === 'file'
   );
-}
-
-// The latest HITL request still awaiting an answer — a tool part carrying an
-// inputRequest with no matching inputResponse yet. Drives the composer
-// placeholder and lets a typed answer be routed back to the right requestId.
-export function pendingRequest(messages: AgentMessage[]): InputRequest | null {
-  let found: InputRequest | null = null;
-  for (const m of messages) {
-    for (const part of m.parts || []) {
-      const eve = part?.toolMetadata?.eve;
-      if (eve?.inputRequest && !eve.inputResponse) found = eve.inputRequest;
-    }
-  }
-  return found;
 }
 
 // The agent is "thinking" while a turn is in flight and the current assistant
@@ -38,14 +27,9 @@ export function isThinking(messages: AgentMessage[], busy: boolean): boolean {
 
 // The agent is "working" while a turn is in flight and the current assistant
 // message's most recent visible content is a tool call with no text after it.
-// Suppressed while a HITL request is pending (there the user must answer).
 // Returns the trailing tool's name, or null.
-export function workingTool(
-  messages: AgentMessage[],
-  busy: boolean,
-  pending: boolean,
-): string | null {
-  if (!busy || pending) return null;
+export function workingTool(messages: AgentMessage[], busy: boolean): string | null {
+  if (!busy) return null;
   const last = messages[messages.length - 1];
   if (!last || last.role === 'user') return null;
   let trailing: MessagePart | null = null;

@@ -12,7 +12,13 @@
       "tag": "v1",
       "new_sqlite_classes": ["FlueRegistry", "FlueWhistlewoodAgent"]
     }
-  ]
+  ],
+  // Non-secret config. Secrets (ANTHROPIC_API_KEY, FLUE_PROXY_SECRET,
+  // DAYTONA_API_KEY, ANTHROPIC_GATEWAY_URL) are set with `wrangler secret put`.
+  "vars": {
+    "SHOT_STUDIO_API": "https://shot-studio-uploads.rodrigofigueroa-name.workers.dev",
+    "HIGGSFIELD_MCP_URL": "https://mcp.higgsfield.ai/mcp"
+  }
   // Secrets (set with `wrangler secret put` in prod, `.dev.vars` locally):
   //   ANTHROPIC_API_KEY      - Anthropic key (used by the anthropic provider)
   //   ANTHROPIC_GATEWAY_URL  - CF AI Gateway anthropic endpoint (optional; enables gateway routing)
