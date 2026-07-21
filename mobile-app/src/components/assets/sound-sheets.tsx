@@ -13,7 +13,7 @@ import { X } from 'lucide-react-native';
 import { Button } from '@/components/ui/button';
 import { Eyebrow } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
-import { Segmented } from '@/components/ui/segmented';
+import { SegmentedNative } from '@/components/ui/segmented-native';
 import { patchJson, postJson } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import type { SoundTrack, SoundVersion, TrackKind } from './types';
@@ -166,7 +166,7 @@ export function CreateTrackSheet({
     <Sheet visible={visible} title="New track" onClose={onClose}>
       <View>
         <Eyebrow>Kind</Eyebrow>
-        <Segmented<TrackKind>
+        <SegmentedNative<TrackKind>
           options={[
             { value: 'music', label: 'Music' },
             { value: 'sfx', label: 'SFX' },

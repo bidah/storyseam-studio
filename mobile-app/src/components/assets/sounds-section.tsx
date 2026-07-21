@@ -30,7 +30,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Empty, ErrorNote, Loading } from '@/components/ui/empty';
-import { Segmented } from '@/components/ui/segmented';
+import { SegmentedNative } from '@/components/ui/segmented-native';
 import { agentIsBusy, useAgent, useSendToAgent } from '@/lib/agent/provider';
 import { renderAllPendingMessage, renderSoundMessage } from '@/lib/agent/messages';
 import { deleteJson, mediaUrl, patchJson, postJson } from '@/lib/api';
@@ -385,7 +385,7 @@ export function SoundsSection() {
   return (
     <View className="flex-1">
       <View className="gap-2.5 px-4 pt-3">
-        <Segmented<TrackKind>
+        <SegmentedNative<TrackKind>
           options={[
             { value: 'music', label: 'Music' },
             { value: 'sfx', label: 'SFX' },

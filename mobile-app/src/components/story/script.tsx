@@ -27,7 +27,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
-import { Segmented } from '@/components/ui/segmented';
+import { SegmentedNative } from '@/components/ui/segmented-native';
 import { Empty, ErrorNote, Loading } from '@/components/ui/empty';
 import { deleteJson, patchJson, postJson, putJson } from '@/lib/api';
 import { CLIENT_ID } from '@/lib/client-id';
@@ -382,7 +382,9 @@ function EditPassageModal({
           </Pressable>
         </View>
 
-        <Segmented options={EDIT_MODES} value={mode} onChange={setMode} className="mb-3" />
+        <View className="mb-3">
+          <SegmentedNative options={EDIT_MODES} value={mode} onChange={setMode} />
+        </View>
 
         {mode === 'edit' ? (
           <>

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { View } from 'react-native';
-import { Segmented } from '@/components/ui/segmented';
+import { SegmentedNative } from '@/components/ui/segmented-native';
 import { ImportSection } from '@/components/assets/import-section';
 import { LibrarySection } from '@/components/assets/library-section';
 import { SoundsSection } from '@/components/assets/sounds-section';
@@ -15,7 +15,7 @@ export default function AssetsTab() {
   return (
     <View className="flex-1 bg-background">
       <View className="px-4 pt-3">
-        <Segmented<Seg>
+        <SegmentedNative<Seg>
           options={[
             { value: 'library', label: 'Library' },
             { value: 'import', label: 'Import' },

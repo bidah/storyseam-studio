@@ -35,7 +35,7 @@ import { Button } from '@/components/ui/button';
 import { Eyebrow } from '@/components/ui/card';
 import { Empty, ErrorNote, Loading } from '@/components/ui/empty';
 import { Input } from '@/components/ui/input';
-import { Segmented } from '@/components/ui/segmented';
+import { SegmentedNative } from '@/components/ui/segmented-native';
 import { mediaUrl, postJson, toPreviewSrc } from '@/lib/api';
 import { agentIsBusy, useAgent, useSendToAgent } from '@/lib/agent/provider';
 import {
@@ -590,7 +590,7 @@ export default function BundleDetail() {
       </View>
       {bundle ? (
         <View className="mt-2">
-          <Segmented
+          <SegmentedNative
             options={[
               { value: 'stills', label: 'Stills' },
               { value: 'video', label: 'Video' },
