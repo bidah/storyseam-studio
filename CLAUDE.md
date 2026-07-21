@@ -8,6 +8,28 @@ chat agent (`flue-agent/`, its own Cloudflare Worker `shot-studio-flue`, proxied
 `/eve`) drives the pipeline via typed tools + render skills. See `README.md` for
 architecture and how to run it.
 
+## Deploying — ship BOTH workers
+
+A feature usually spans **both** Cloudflare Workers: the API/UI in `worker/` **and**
+the agent skill/tools in `flue-agent/`. **Deploy both, or the feature is
+half-broken** — e.g. a new `/api/...` route deploys but the agent can't call it
+(the `attach_*` tool lives in the stale flue worker), or vice versa. When a change
+touches only one, deploy only that one — but check.
+
+- **API + SPA worker** (`shot-studio-uploads`): `npm run worker:deploy` (builds
+  Vite, then `wrangler deploy` in `worker/`). Worker-only route changes tested via
+  local web don't strictly need the rebuild — `cd worker && npx wrangler deploy`
+  suffices — but a full `worker:deploy` keeps prod's SPA in sync too.
+- **Flue agent worker** (`shot-studio-flue`): `npm run flue:deploy` (`flue build`
+  then `wrangler deploy`). Required whenever you add/change a skill (`src/skills/`),
+  a tool (`src/tools/`), or `agents/*.md`.
+- **Local-dev caveat:** `npm run dev` / `npm run stack` proxies `/api` to the
+  **deployed prod** worker by default (`WORKER` unset in `vite.config.js`), so a new
+  worker route won't appear locally until it's deployed (symptom: existing routes
+  return JSON, the new one returns `text/html` SPA fallback). Deploy the worker, or
+  run a local one with `WORKER=http://localhost:8787 npm run dev` + `cd worker &&
+  npx wrangler dev`.
+
 ## Routing & data
 
 URL routing is **React Router v7 in data mode** (`src/router.jsx` → `RootLayout` +
