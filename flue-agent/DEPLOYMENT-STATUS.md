@@ -37,45 +37,34 @@ need for a provider key. Two paths:
 - **Anthropic via CF AI Gateway (`anthropic/*`)** → still needs an Anthropic key
   (from console.anthropic.com); the gateway just adds caching/logging/limits.
 
-## OPEN ISSUE — prod `/eve/*` proxy returns 404 (blocks prod chat)
+## RESOLVED — prod `/eve/*` proxy now reaches flue (service binding)
 
-**Symptom.** Against the deployed main worker:
-- `GET /` → `200` (SPA), `GET /api/projects` → `401` (worker handling `/api/*` ✓)
-- `GET /eve` (bare) → `200`
-- `GET /eve/health` → **`404`** (Cloudflare HTML error page, `server: cloudflare`,
-  no worker headers) — but the flue worker's `/health` is `200` **directly**.
-- `GET /eve/agents/whistlewood/<id>` → **`404`** — but flue direct is `401`.
-- It returned `200 {"ok":true}` **once** right after the cutover, then consistently
-  `404`.
+**Was:** against the deployed main worker, `/eve/health` → `404` (Cloudflare HTML
+error page, no worker headers) and `/eve/agents/whistlewood/<id>` → `404`, even
+though flue direct was `200` / `401`. It returned `200 {"ok":true}` once right
+after cutover, then consistently `404` — the classic symptom of a flaky
+worker→worker **public-URL** fetch (hypothesis #1).
 
-**So:** the flue worker is healthy; the main worker runs (`/api/*` works); but the
-`/eve/*` reverse-proxy is not reaching flue in production. A discriminator test
-showed unknown routes (`/totally-random-xyz`) → `200` SPA index.html, so
-`/eve/health`'s `404` is anomalous (a hard 404, not the SPA fallback).
+**Fix applied (hypothesis #1 — service binding):**
+- `worker/wrangler.jsonc`: added
+  `"services": [{ "binding": "FLUE", "service": "shot-studio-flue" }]`.
+- `worker/src/index.js` `/eve/*` handler: rebuilt the proxied `Request` with an
+  explicit `Headers` copy that **drops the inbound `Host`** (a stale Host was the
+  likely 404 trigger over the public URL), streams the body with `duplex:"half"`
+  for non-GET, and dispatches through the binding —
+  `c.env.FLUE.fetch(proxied)` — with a `fetch(proxied)` fallback. The binding is
+  **gated to non-localhost origins** so local dev (flue as its own `flue dev`
+  process reached over a localhost `FLUE_ORIGIN`) still uses `fetch()`, since a
+  `wrangler dev` service binding would try to resolve a local `shot-studio-flue`.
 
-**Leading hypotheses (unverified):**
-1. **Worker-to-worker public-URL fetch is failing.** The proxy does
-   `fetch(new Request(target, c.req.raw))` to the flue worker's `workers.dev` URL.
-   Rebuilding from `c.req.raw` may carry a stale `Host` header, and CF worker→worker
-   routing over the public URL can 404 on that. The eve setup worked because eve was
-   on **Vercel** (different origin); flue is another **Cloudflare Worker**, which is
-   the new variable.
-   - **Recommended fix:** replace the public-URL proxy with a Cloudflare **service
-     binding** to `shot-studio-flue` (the pattern the migration plan called for):
-     add `"services": [{ "binding": "FLUE", "service": "shot-studio-flue" }]` to
-     `worker/wrangler.jsonc`, and change the `/eve/*` handler in
-     `worker/src/index.js` to `return c.env.FLUE.fetch(proxied)` (fallback to
-     `fetch(proxied)` when the binding is absent, e.g. local dev). Redeploy the main
-     worker. This avoids DNS/Host worker-to-worker issues entirely and is faster.
-2. **`run_worker_first` not routing deep `/eve/*` to the worker.** `run_worker_first`
-   lists `"/eve/*"`, and `/api/*` (also listed) works — but confirm the deep
-   multi-segment `/eve/agents/<name>/<id>` paths are actually served worker-first and
-   not intercepted by the assets layer. If needed, re-verify the glob semantics and
-   the `app.all("/eve/*")` route ordering vs the `app.get("*")` assets catch-all.
+**Verified in prod** (`shot-studio-uploads.rodrigofigueroa-name.workers.dev`):
+- `/eve/health` → `200 {"ok":true}` (10/10 stable, no intermittent 404)
+- `/eve/agents/whistlewood/<id>` no-auth → `401 {"error":"Unauthorized"}` (10/10)
+- `/api/projects` → `401`, `/` → `200` (SPA) — unchanged.
 
-**Next step:** try fix #1 (service binding) first — it's the most likely root cause
-and the cleaner architecture — then re-test:
-`curl -s -o /dev/null -w "%{http_code}\n" https://shot-studio-uploads.<...>.workers.dev/eve/health` (expect `200`).
+The auth boundary is now reachable end-to-end through the proxy. A real
+authenticated turn (session cookie → minted `x-flue-proxy-user`) is exercised by
+the manual app test. Both workers have `FLUE_PROXY_SECRET` set (same value).
 
 ## Local dev
 
@@ -98,6 +87,22 @@ and the cleaner architecture — then re-test:
   already removed from the repo).
 - Higgsfield interactive-OAuth fallback was not ported (token-bridge path only).
 - Skill bodies (`radio`, `script-writing`, `world-creation`) still mention eve's
-  `load_skill` / `ask_question` — cosmetic wording cleanup.
+  `load_skill` — cosmetic wording cleanup. (The `ask_question` references are now
+  valid — see below.)
+
+## DONE — interactive question cards (`ask_question`) rebuilt
+
+eve's blocking HITL `ask_question` is back as a **non-blocking recreation** (flue
+can't suspend a turn — a tool's `run` only returns JSON). New `ask_question` tool
+(`flue-agent/src/tools/ask_question.ts`, input `{ question, options:[{id,label,style}] }`)
+surfaces as a `dynamic-tool` part the clients render as an interactive card; the
+agent ends its turn and the user's pick (or a typed reply) arrives as the next
+message. Whistlewood prompt "Asking the user" updated; root-agent only (subagents
+can't pause). Web (`src/components/AgentChat.jsx` — `QuestionCard`/`deriveQA`) and
+mobile (`mobile-app/src/components/chat/*`) both done. **Verified live on
+`/world`:** card renders, option click sends the answer + collapses to
+"Responded: …", agent continues. Deployed to the flue worker. NOTE: a pre-existing
+non-fatal Streamdown streaming warning ("Maximum update depth") surfaces on plain
+text parts during streaming — independent of this feature; follow-up.
 - Optional: single-worker consolidation (fold flue into the main worker; drop the
   proxy + reverse HMAC; tools call bindings directly).

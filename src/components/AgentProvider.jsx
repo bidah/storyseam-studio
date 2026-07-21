@@ -189,6 +189,17 @@ function AgentSessionRunner({ activeId, projectId, conv, publish }) {
   const id = `${projectId ?? ""}~${activeId}`;
   const flueAgent = useFlueAgent({ name: AGENT_NAME, id });
 
+  // `useFlueAgent()` returns a FRESH wrapper object every render — it spreads the
+  // useSyncExternalStore snapshot and rebinds `sendMessage` (`.bind()`) each time.
+  // The snapshot FIELDS (messages/status/error/historyReady) are referentially
+  // stable (getSnapshot caches), but the wrapper and `sendMessage` are not. So
+  // memoizing `agent` on the whole `flueAgent` object recomputes every render,
+  // which re-fires the publish() layout effect below → setState → re-render →
+  // infinite loop ("Maximum update depth exceeded"). Depend on the stable fields
+  // only, and reach `sendMessage` through a ref so `send` need not be a dep.
+  const sendRef = useRef(flueAgent.sendMessage);
+  sendRef.current = flueAgent.sendMessage;
+
   // Adapt flue's surface (`messages`, `status`, `sendMessage`) to the shape the
   // rest of the app consumes (`messages`, `status`, `send`, `stop`, `error`).
   // flue's resting status is "idle"; the app treats "ready" as idle (e.g.
@@ -202,12 +213,12 @@ function AgentSessionRunner({ activeId, projectId, conv, publish }) {
       // `send({ message, images })` — `message` is a plain string; `images` is
       // flue's optional `AgentPromptImage[]` (`{ data: base64, mimeType }`).
       send: ({ message = "", images } = {}) =>
-        flueAgent.sendMessage(message, images?.length ? { images } : undefined),
+        sendRef.current(message, images?.length ? { images } : undefined),
       // TODO(flue): no client-side cancel yet — flue's UseFlueAgentResult exposes
       // no stop/abort. Keep a no-op so the composer's Stop button stays inert.
       stop: () => {},
     }),
-    [flueAgent],
+    [flueAgent.messages, flueAgent.status, flueAgent.error, flueAgent.historyReady],
   );
 
   // Keep the chat list titled + floated from the live transcript (flue owns the

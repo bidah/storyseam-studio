@@ -30,6 +30,14 @@
     // (see the /eve/* proxy in src/index.js).
     "FLUE_ORIGIN": "https://shot-studio-flue.rodrigofigueroa-name.workers.dev"
   },
+  // Service binding to the flue chat agent Worker. The /eve/* proxy dispatches
+  // through this binding (c.env.FLUE.fetch) instead of a public-URL fetch, which
+  // avoids worker-to-worker DNS/Host routing (the public-URL path 404'd in prod).
+  // Falls back to fetch(FLUE_ORIGIN) when the binding is absent (e.g. local dev
+  // where flue runs as a separate `flue dev` process).
+  "services": [
+    { "binding": "FLUE", "service": "shot-studio-flue" }
+  ],
   // Serve the built Vite SPA from the Worker; API routes below take precedence,
   // and client-side routes fall back to index.html.
   "assets": {

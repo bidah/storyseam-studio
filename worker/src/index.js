@@ -466,19 +466,38 @@ app.all("/eve/*", async (c) => {
   }
   const target = new URL(path + url.search, origin);
   // Canonical Workers reverse-proxy: rebuilding the Request against the flue
-  // origin preserves method, headers, and the (streaming) body, and fetch
-  // derives the upstream Host from `target`.
-  const proxied = new Request(target, c.req.raw);
+  // origin preserves method, headers, and the (streaming) body. We rebuild the
+  // headers explicitly (rather than reusing c.req.raw.headers wholesale) so the
+  // inbound `Host` header for this Worker doesn't ride along — over a public-URL
+  // worker→worker fetch a stale Host makes Cloudflare's edge 404 the request.
+  const headers = new Headers(c.req.raw.headers);
+  headers.delete("host");
   // The agent trusts x-flue-proxy-user as an authenticated user id, so it must
   // only ever come from us: strip any client-supplied copy, then re-add a
   // freshly-signed one for the Better Auth session user (if any). Without the
   // secret configured we send nothing and the agent rejects (401).
-  proxied.headers.delete(FLUE_PROXY_HEADER);
+  headers.delete(FLUE_PROXY_HEADER);
   const secret = c.env.FLUE_PROXY_SECRET || c.env.EVE_PROXY_SECRET;
   if (userId && secret) {
-    proxied.headers.set(FLUE_PROXY_HEADER, await mintFlueUserToken(userId, secret));
+    headers.set(FLUE_PROXY_HEADER, await mintFlueUserToken(userId, secret));
   }
-  return fetch(proxied);
+  const method = c.req.raw.method;
+  const hasBody = method !== "GET" && method !== "HEAD";
+  const proxied = new Request(target, {
+    method,
+    headers,
+    // Stream the request body through for POST/etc. `duplex: "half"` is required
+    // when the body is a ReadableStream. GET/HEAD carry no body.
+    ...(hasBody ? { body: c.req.raw.body, duplex: "half" } : {}),
+    redirect: "manual",
+  });
+  // In prod, dispatch through the Cloudflare service binding (in-process
+  // worker→worker, no DNS/Host routing — the public-URL fetch 404'd there). In
+  // local dev flue runs as its own `flue dev` process reached over FLUE_ORIGIN
+  // (a localhost URL), so fall back to fetch() then — the `wrangler dev` service
+  // binding would otherwise try (and fail) to resolve a local shot-studio-flue.
+  const localOrigin = /^https?:\/\/(127\.0\.0\.1|localhost|0\.0\.0\.0)(:|\/|$)/.test(origin);
+  return c.env.FLUE && !localOrigin ? c.env.FLUE.fetch(proxied) : fetch(proxied);
 });
 
 // --- SPA fallback (Worker Assets) ------------------------------------------
