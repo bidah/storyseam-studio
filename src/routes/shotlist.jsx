@@ -3,7 +3,7 @@ import { useLoaderData, useRevalidator } from "react-router";
 import { X, RefreshCw, Loader2, Layers, Film } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { invalidateTabCache } from "@/lib/tabCache";
-import { swr, useRevalidateOnMount } from "@/lib/swr";
+import { swr, useRevalidateOnMount, useRevalidateOnAgentIdle } from "@/lib/swr";
 import { useAgent, agentIsBusy } from "@/components/AgentProvider";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -55,13 +55,14 @@ function ShotList() {
   // Which pack the left rail is filtering the body by (null = show every shot).
   const [activePack, setActivePack] = useState(null);
 
+  const revalidate = revalidator.revalidate;
   const refetch = useCallback(() => {
     invalidateTabCache("shotlist");
-    revalidator.revalidate();
-  }, [revalidator]);
+    revalidate();
+  }, [revalidate]);
 
   // The agent just wrote the shot list (save_shotlist) → refresh when it's done.
-  useEffect(() => { if (agent.status === "ready") refetch(); }, [agent.status, refetch]);
+  useRevalidateOnAgentIdle("shotlist", agent.status);
 
   const rebuild = useCallback(async () => {
     setRebuilding(true);

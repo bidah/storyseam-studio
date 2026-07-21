@@ -6,7 +6,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { invalidateTabCache } from "@/lib/tabCache";
-import { swr, useRevalidateOnMount } from "@/lib/swr";
+import { swr, useRevalidateOnMount, useRevalidateOnAgentIdle } from "@/lib/swr";
 import { useAgent, agentIsBusy, createWorldMessage } from "@/components/AgentProvider";
 import { useShell } from "@/lib/shellContext";
 import { Button } from "@/components/ui/button";
@@ -483,13 +483,14 @@ function World() {
   const [error, setError] = useState(null);
   const [confirm, setConfirm] = useState(null); // character pending removal
 
+  const revalidate = revalidator.revalidate;
   const refetch = useCallback(() => {
     invalidateTabCache("world");
-    revalidator.revalidate();
-  }, [revalidator]);
+    revalidate();
+  }, [revalidate]);
 
   // The agent just wrote the world (save_world) → refresh when its turn ends.
-  useEffect(() => { if (agent.status === "ready") refetch(); }, [agent.status, refetch]);
+  useRevalidateOnAgentIdle("world", agent.status);
 
   // One shared saver: PUT/POST/DELETE, then refetch so the tab reflects the write.
   const mutate = useCallback(async (path, init) => {

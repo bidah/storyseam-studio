@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { useRevalidator } from "react-router";
 import { readTabCache, writeTabCache, invalidateTabCache } from "./tabCache";
 
@@ -49,4 +49,28 @@ export function useRevalidateOnMount(key) {
     // Mount-only: refresh the just-painted stale cache exactly once.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+}
+
+// Refresh a tab when the agent finishes a turn (it may have written this tab's
+// data). EDGE-triggered on the transition into "ready" — never level-triggered
+// on `agent.status === "ready"`, and never dependent on the `revalidator`
+// OBJECT.
+//
+// `useRevalidator()` re-memoizes its return value on every `state.revalidation`
+// flip (only the inner `revalidate` fn is stable). An effect that deps on the
+// object and calls revalidate() therefore re-fires on its own revalidation:
+// idle -> loading -> idle -> ... a self-sustaining storm. React Router
+// interrupts an in-flight revalidation when a new one starts, so the loader
+// result may never commit and `useLoaderData()` stays pinned to the previously
+// committed payload — the tab looks frozen on stale data.
+export function useRevalidateOnAgentIdle(key, status) {
+  const { revalidate } = useRevalidator();
+  const prevStatus = useRef(status);
+  useEffect(() => {
+    const enteredReady = status === "ready" && prevStatus.current !== "ready";
+    prevStatus.current = status;
+    if (!enteredReady) return;
+    invalidateTabCache(key);
+    revalidate();
+  }, [key, status, revalidate]);
 }

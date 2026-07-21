@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Outlet, useLocation, useNavigate, useRevalidator } from "react-router";
+import { Outlet, useLocation, useNavigate, useNavigation, useRevalidator } from "react-router";
 import { RefreshCw, ExternalLink, Clapperboard, Sun, Moon, LogOut, User } from "lucide-react";
 import { Glowing } from "glowing";
 import { cn } from "@/lib/utils";
@@ -21,6 +21,7 @@ import {
   DropdownMenuSeparator, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { ImageModal } from "@/components/shared";
+import { RouteSkeleton } from "@/components/skeletons";
 import { ShellContext } from "@/lib/shellContext";
 
 /* ---------------------------------------------------------------- *
@@ -65,6 +66,24 @@ function useGlow(selector, active, options) {
     const glow = new Glowing(el, options);
     return () => glow.remove();
   }, [selector, active, options]);
+}
+
+// True only once `on` has held for `ms`. Guards the route skeleton against
+// flashing on a WARM cache: `swr()` is async, so React Router still passes
+// through `navigation.state === "loading"` on a cache hit and the skeleton
+// would strobe over a tab switch that used to be instant. Turns OFF immediately
+// (no trailing skeleton once the payload lands).
+function useSettled(on, ms = 150) {
+  const [settled, setSettled] = useState(false);
+  useEffect(() => {
+    if (!on) {
+      setSettled(false);
+      return;
+    }
+    const t = setTimeout(() => setSettled(true), ms);
+    return () => clearTimeout(t);
+  }, [on, ms]);
+  return on && settled;
 }
 
 function ThemeToggle() {
@@ -142,6 +161,29 @@ export default function RootLayout() {
   const navigate = useNavigate();
   const view = location.pathname.slice(1).split("/")[0] || "script";
   const onScript = view === "script";
+
+  // Cold tab-to-tab navigation: `swr()` only paints instantly on a WARM cache;
+  // on a miss the loader awaits the fetch and React Router keeps the OLD tab
+  // rendered the whole time, so switching tabs looks frozen. Swap in that tab's
+  // skeleton while its loader (and lazy chunk) resolve.
+  //
+  // Deliberately narrow, so the skeleton never flashes over content that is
+  // already on screen:
+  //   - `navigation.state` covers real navigations ONLY. Revalidation has its
+  //     own `revalidator.state`, so the SSE firehose / Refresh / agent-idle
+  //     refetches keep the current tab painted (their whole point).
+  //   - Same-tab navigations (the `/episode#ep-<id>` cross-tab jump re-entering
+  //     a tab it's already on, hash-only changes) are excluded by the tab
+  //     comparison below.
+  const navigation = useNavigation();
+  const pendingTab = navigation.location
+    ? navigation.location.pathname.slice(1).split("/")[0]
+    : null;
+  const navPending = navigation.state === "loading" && !!pendingTab && pendingTab !== view;
+  // The skeleton waits out the delay; the TAB HIGHLIGHT must not — it tracks the
+  // click immediately so the header stays responsive on warm (instant) loads.
+  const activeTab = navPending ? pendingTab : view;
+  const pendingView = useSettled(navPending) ? pendingTab : null;
 
   const revalidator = useRevalidator();
   // Header shot count only — the shots ROUTE is loaderized (swr key "shots")
@@ -273,7 +315,9 @@ export default function RootLayout() {
       <ShellContext.Provider value={shell}>
       <div className="flex h-dvh overflow-hidden">
       <div className="min-w-0 flex-1 overflow-y-auto">
-      <Tabs value={view} onValueChange={(v) => navigate("/" + v)}>
+      {/* Highlight the PENDING tab, not the committed one — otherwise a click
+          leaves the old tab lit for the whole load. */}
+      <Tabs value={activeTab} onValueChange={(v) => navigate("/" + v)}>
         <header className="sticky top-0 z-30 border-b bg-card/80 backdrop-blur supports-[backdrop-filter]:bg-card/60">
           <div className="mx-auto flex max-w-[1500px] flex-wrap items-center gap-x-6 gap-y-3 px-4 py-3 md:px-6">
             <div className="flex size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground shadow-sm">
@@ -309,7 +353,7 @@ export default function RootLayout() {
         </header>
 
         <main key={projectKey} className="mx-auto w-full max-w-[1500px] px-4 py-6 md:px-6">
-          <Outlet />
+          {pendingView ? <RouteSkeleton tab={pendingView} /> : <Outlet />}
         </main>
       </Tabs>
       </div>

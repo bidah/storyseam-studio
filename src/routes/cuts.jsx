@@ -1,13 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Check, Play, RefreshCw, ExternalLink, TriangleAlert, Music, Download, Clapperboard, Loader2, History } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { invalidateTabCache } from "@/lib/tabCache";
-import { swr, useRevalidateOnMount } from "@/lib/swr";
+import { swr, useRevalidateOnMount, useRevalidateOnAgentIdle } from "@/lib/swr";
 import { useAgent, agentIsBusy, stitchCutMessage, scoreCutMessage } from "@/components/AgentProvider";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import { useNavigate, useLoaderData, useRevalidator } from "react-router";
+import { useNavigate, useLoaderData } from "react-router";
 import { Empty, Panel, ErrorNote, fmtTime } from "@/components/shared";
 import { toPreviewSrc } from "@/lib/previewSrc";
 
@@ -336,28 +335,19 @@ function CompleteCuts({ navigateTo }) {
   const agent = useAgent();
   const agentBusy = agentIsBusy(agent);
   const data = useLoaderData();
-  const revalidator = useRevalidator();
   useRevalidateOnMount("cuts");
   const [error, setError] = useState(null); // stitch/score/trim (mutation) errors
   const [bump, setBump] = useState(0);      // media cache-bust for the cut <video>
   const [historyOpen, setHistoryOpen] = useState(false);
 
   // Re-read the cut when the agent finishes a turn (it may have just run
-  // stitch_cuts / score_cut). Fire ONLY on the transition INTO "ready" — the old
-  // version keyed off the unstable `revalidator` object and ran on the steady
-  // "ready" state, so every app-wide revalidation (the SSE firehose, Refresh,
-  // project switch) re-ran it and bumped the media nonce, remounting the <video>
-  // and snapping playback back to 0. Cache-busting now lives in its own effect
-  // below, gated on the cut actually changing.
-  const prevStatus = useRef(agent.status);
-  useEffect(() => {
-    const enteredReady = agent.status === "ready" && prevStatus.current !== "ready";
-    prevStatus.current = agent.status;
-    if (enteredReady) {
-      invalidateTabCache("cuts");
-      revalidator.revalidate();
-    }
-  }, [agent.status, revalidator]);
+  // stitch_cuts / score_cut). Edge-triggered inside the hook — an earlier
+  // level-triggered version ran on the steady "ready" state, so every app-wide
+  // revalidation (the SSE firehose, Refresh, project switch) re-ran it and
+  // bumped the media nonce, remounting the <video> and snapping playback back
+  // to 0. Cache-busting now lives in its own effect below, gated on the cut
+  // actually changing.
+  useRevalidateOnAgentIdle("cuts", agent.status);
 
   // Stitching/scoring runs THROUGH the agent chat (get_cuts → stitch_cuts /
   // score_cut), like every other mutation — the agent runs ffmpeg locally and

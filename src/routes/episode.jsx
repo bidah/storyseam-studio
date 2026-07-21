@@ -1,9 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useLoaderData, useRevalidator } from "react-router";
+import { useLoaderData } from "react-router";
 import { X, Check, Plus, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, RotateCcw, Maximize2, Volume2, Speech, Play, Copy, Pencil, Sparkles, PenLine, FileText, Image as ImageIcon, Loader2, Wand2, Scissors } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { invalidateTabCache } from "@/lib/tabCache";
-import { swr, useRevalidateOnMount } from "@/lib/swr";
+import { swr, useRevalidateOnMount, useRevalidateOnAgentIdle } from "@/lib/swr";
 import { useAgent, agentIsBusy, renderEpisodeMessage, renderStoryboardMessage, renderStoryboardAllMessage, trimMessage } from "@/components/AgentProvider";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -1101,7 +1100,6 @@ function Episode({ reloadKey, onView }) {
   // mutations below can update the UI immediately; a following revalidate
   // reconciles with the server.
   const payload = useLoaderData(); // { ep, lib, fn, au }
-  const revalidator = useRevalidator();
   useRevalidateOnMount("episode");
   const setsFrom = (obj) => { const m = {}; for (const [k, v] of Object.entries(obj || {})) m[k] = new Set(v); return m; };
   const [data, setData] = useState(payload.ep.episode);
@@ -1144,9 +1142,7 @@ function Episode({ reloadKey, onView }) {
   // After the agent finishes a turn it may have created a trim take, attached a
   // render, or changed a selection → refetch so new cards appear without a manual
   // Refresh. (The SSE firehose also covers this; a double revalidate is harmless.)
-  useEffect(() => {
-    if (agent.status === "ready") { invalidateTabCache("episode"); revalidator.revalidate(); }
-  }, [agent.status, revalidator]);
+  useRevalidateOnAgentIdle("episode", agent.status);
 
   const audioMap = useMemo(() => {
     const m = new Map();

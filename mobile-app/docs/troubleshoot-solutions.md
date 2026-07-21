@@ -96,3 +96,66 @@ the time. See the header comment in `src/app/(tabs)/chat/index.tsx`.
 **Rule of thumb.** Don't reach for `scrollToOffset`/`scrollToEnd`/`scrollTo` or
 `useAnimatedRef` to move a list on this stack — they silently no-op or crash.
 Animate a controlled `contentOffset` instead.
+
+---
+
+## Tab shows stale data after the agent finishes; manual Refresh fixes it (2026-07-19)
+
+**Symptom.** The agent finishes `save_shotlist`. Switching from Script to
+Shotlist still shows the old shot list; pressing Refresh shows the new one.
+Reported on web; the mobile app had a separate, independent version of the same
+class of bug.
+
+**What it was NOT.** The write and broadcast path is correct end to end. The
+agent writes through the Worker (`agent/tools/save_shotlist.ts` →
+`POST /api/shotlist`), and the generic post-mutation middleware
+(`worker/src/index.js:182-204`) broadcasts `channel:"data"` for every successful
+non-GET `/api/*` — `/api/shotlist` is not in the skip list. The DO keying
+matches on both sides, and the agent sends no `x-client-id`, so its writes are
+never echo-suppressed. There is no key mismatch to find: `RootLayout` calls
+`invalidateTabCache()` with **no key**, which clears the entire store.
+
+**Root cause (web) — a self-sustaining revalidation storm.**
+`useRevalidator()` re-memoizes its return value on every `state.revalidation`
+flip (`useMemo(() => ({revalidate, state: state.revalidation}), [revalidate,
+state.revalidation])`); only the inner `revalidate` fn is stable. Four routes
+had:
+
+```js
+const refetch = useCallback(() => { invalidateTabCache(k); revalidator.revalidate(); }, [revalidator]);
+useEffect(() => { if (agent.status === "ready") refetch(); }, [agent.status, refetch]);
+```
+
+Level-triggered on the *steady* idle state (`"ready"` is idle — `agentIsBusy` is
+submitted/streaming) **and** keyed off the unstable object: revalidate →
+identity churn → effect re-fires → revalidate → … React Router interrupts an
+in-flight revalidation when a new one starts, so the loader result may never
+commit and `useLoaderData()` stays pinned to the previously committed payload.
+`cuts.jsx` had already hit this once and fixed it locally (there it showed up as
+the `<video>` nonce bumping and playback snapping to 0) — the same mistake
+survived in `shotlist`, `world`, `radio`, and `episode`.
+
+**Fix (web).** `useRevalidateOnAgentIdle(key, status)` in `src/lib/swr.js`:
+edge-triggered on the transition **into** `"ready"` via a `prevStatus` ref, and
+destructures `revalidate` so the dep is the stable fn, not the object. All five
+routes use it. `refetch` callbacks now also dep on `revalidator.revalidate`.
+
+**Fix (mobile).** Three independent gaps, none of which is the web bug:
+1. `<LiveSync/>` was mounted *inside* `<AgentProvider>`, which renders `null`
+   until the eve session publishes an agent — live-sync could not start until
+   chat came up. Moved out, under `<ProjectGate>`.
+2. `sse.ts` swallowed every failure into a silent 3 s reconnect loop, so a
+   permanently-failing stream (e.g. a 403 from the ownership guard when the
+   cookie doesn't survive the fetch shim) was indistinguishable from "connected
+   and idle". Now warns on first failure and every 10th, and on recovery.
+3. No local fallback: `onFinish` only persisted the transcript. It now also
+   invalidates `[projectId]`, the always-available signal that a turn wrote
+   something — the mobile counterpart of the web hook above.
+
+**Rule of thumb.** Never level-trigger on `agent.status === "ready"`, and never
+put the `revalidator` OBJECT in a dep array — destructure `revalidate`. Refresh
+on a turn ending is an EDGE, not a state.
+
+**Still open.** Mobile has no `/api/script/events` subscriber (web:
+`RootLayout.jsx:207`), and the Worker deliberately excludes `/api/script*` from
+the data firehose — so agent script edits never live-update on mobile.
