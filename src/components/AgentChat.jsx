@@ -551,7 +551,10 @@ export default function AgentChat() {
 
   const uploading = attachments.some((a) => a.state === "uploading");
   const doneAttachments = attachments.filter((a) => a.state === "done");
-  const canSend = (text.trim() || doneAttachments.length > 0) && !isBusy && !uploading;
+  // A draft = something to send (typed text or a finished attachment). Drives the
+  // composer's trailing button: draft ⇒ Send, empty ⇒ mic (record), like mobile.
+  const hasDraft = !!(text.trim() || doneAttachments.length > 0);
+  const canSend = hasDraft && !isBusy && !uploading;
 
   // Stick to the bottom while new content streams — but only if the user is
   // already there, so scrolling up to read history isn't yanked back down.
@@ -944,16 +947,6 @@ export default function AgentChat() {
             >
               <Paperclip size={16} />
             </Button>
-            <Button
-              size="icon"
-              variant="ghost"
-              onClick={startRecording}
-              disabled={isBusy}
-              aria-label="Record voice message"
-              title="Record voice message"
-            >
-              <Mic size={16} />
-            </Button>
             <textarea
               ref={taRef}
               value={text}
@@ -969,11 +962,14 @@ export default function AgentChat() {
               placeholder="Message the studio agent…"
               className="max-h-[180px] min-h-[38px] flex-1 resize-none overflow-y-auto rounded-lg border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
             />
+            {/* Trailing action mirrors the mobile composer: while the agent is
+                working it's a Stop button; with a draft (text or attachments) it's
+                Send; and when empty it's the mic — start recording a voice message. */}
             {isBusy ? (
               <Button size="icon" variant="secondary" onClick={agent.stop} aria-label="Stop">
                 <Square size={15} />
               </Button>
-            ) : (
+            ) : hasDraft ? (
               <Button
                 size="icon"
                 onClick={submit}
@@ -982,6 +978,16 @@ export default function AgentChat() {
                 title={uploading ? "Waiting for upload…" : "Send"}
               >
                 {uploading ? <Loader2 size={15} className="animate-spin" /> : <Send size={15} />}
+              </Button>
+            ) : (
+              <Button
+                size="icon"
+                variant="ghost"
+                onClick={startRecording}
+                aria-label="Record voice message"
+                title="Record voice message"
+              >
+                <Mic size={16} />
               </Button>
             )}
           </div>
