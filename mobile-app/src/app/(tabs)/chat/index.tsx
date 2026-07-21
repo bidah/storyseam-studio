@@ -1,3 +1,7 @@
+/* eslint-disable react-hooks/immutability */
+// (immutability): the jump animation writes Reanimated shared values
+// (offsetY/jumpTarget/jumpAnimating .value) — by design. The lint rule doesn't
+// model worklets and false-positives on those writes; disabled for this file.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -8,8 +12,10 @@ import {
   View,
   type NativeScrollEvent,
   type NativeSyntheticEvent,
+  type ScrollViewProps,
 } from 'react-native';
 import Animated, {
+  useAnimatedProps,
   useAnimatedStyle,
   useSharedValue,
   withRepeat,
@@ -33,16 +39,26 @@ import type { AgentMessage, SentAttachment } from '@/components/chat/types';
 // The eve agent chat — native port of the web AgentChat.jsx on the shared
 // AgentProvider session (the same instance other tabs' Render buttons drive).
 //
-// The transcript is an *inverted* FlatList. On this stack (Expo SDK 57 /
-// RN 0.86 / React 19 / New Architecture / NativeWind / React Compiler) every
-// imperative scroll path is dead — FlatList.scrollToEnd/scrollToOffset are
-// no-ops (the inner ScrollView ref never attaches), a plain ScrollView ref
-// resolves to a bare native node with no scroll methods, and reanimated's
-// scrollTo reports an uninitialized ref. Only native gestures scroll. An
-// inverted list sidesteps all of that: data is newest-first, so the newest
+// The transcript is an *inverted* FlatList. Data is newest-first, so the newest
 // message rests at the visual bottom by construction — the chat opens at the
-// latest and stays pinned as the agent streams, with no ref calls. "Jump to
-// latest" remounts the list (key bump), which lands back at the newest.
+// latest and stays pinned as the agent streams. A chat switch remounts the list
+// (key bump) to land back at the newest instantly.
+//
+// Scrolling the list *programmatically* is the hard part on this stack (Expo SDK
+// 57 / RN 0.86 / React 19 / New Architecture / React Compiler). EVERY imperative
+// path is dead — verified on-device: FlatList.scrollToOffset/scrollToEnd no-op
+// (getNativeScrollRef() returns null, so the inner _scrollRef never attaches),
+// a plain <ScrollView> ref is null too, reanimated's scrollTo reports an
+// "uninitialized ref" (useAnimatedRef never captures the Fabric tag), and
+// Animated.FlatList crashes (__internalInstanceHandle of null). Only native
+// gestures move the list.
+//
+// The one thing that DOES move it is a *controlled* contentOffset — a prop, not
+// a ref. So we inject an Animated.ScrollView as the FlatList's scroll view
+// (renderScrollComponent; cloneElement only clobbers ref, not animatedProps) and
+// hand it an animated contentOffset. "Jump to latest" animates that offset from
+// the current position to 0 (newest) with withTiming; the rest of the time
+// animatedProps yields {} so native momentum scrolling is untouched.
 
 const SUGGESTIONS = [
   "Let's create the world",
@@ -111,6 +127,12 @@ export default function ChatScreen() {
   // history). remountKey bumps to snap back to the newest (see jumpToLatest).
   const [atNewest, setAtNewest] = useState(true);
   const [remountKey, setRemountKey] = useState(0);
+  // "Jump to latest" animates a controlled contentOffset (see file header).
+  // offsetY tracks the live scroll position (inverted: 0 == newest); jumpAnimating
+  // gates the controlled offset so native scrolling is free the rest of the time.
+  const offsetY = useSharedValue(0);
+  const jumpTarget = useSharedValue(0);
+  const jumpAnimating = useSharedValue(false);
   // One entry per user turn (ordinal-aligned to user messages): the images
   // that turn was sent with, re-rendered into its bubble.
   const sentAttachmentsRef = useRef<SentAttachment[][]>([]);
@@ -224,18 +246,43 @@ export default function ChatScreen() {
     [agent, pendingReq, recordAttachments, atNewest],
   );
 
-  // Inverted list: y ≈ 0 means we're at the newest message.
-  const onScroll = useCallback((e: NativeSyntheticEvent<NativeScrollEvent>) => {
-    const near = e.nativeEvent.contentOffset.y < 80;
-    setAtNewest((prev) => (prev === near ? prev : near));
-  }, []);
+  // Inverted list: y ≈ 0 means we're at the newest message. Track the live
+  // offset so a jump can animate from wherever we are.
+  const onScroll = useCallback(
+    (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+      const y = e.nativeEvent.contentOffset.y;
+      offsetY.value = y;
+      const near = y < 80;
+      setAtNewest((prev) => (prev === near ? prev : near));
+    },
+    [offsetY],
+  );
 
-  // Imperative scroll is a no-op on this stack (see file header), so snap to the
-  // newest by remounting the inverted list — it lands at offset 0 (newest).
+  // Animate to the newest (offset 0) by driving a controlled contentOffset —
+  // the only programmatic scroll that works on this stack (see file header).
+  // onScroll clears the button as it nears the bottom.
   const jumpToLatest = useCallback(() => {
-    setAtNewest(true);
-    setRemountKey((k) => k + 1);
-  }, []);
+    jumpTarget.value = offsetY.value;
+    jumpAnimating.value = true;
+    jumpTarget.value = withTiming(0, { duration: 350 }, (finished) => {
+      'worklet';
+      if (finished) jumpAnimating.value = false;
+    });
+  }, [offsetY, jumpTarget, jumpAnimating]);
+
+  // Only feed a controlled contentOffset during a jump; otherwise yield {} so
+  // native momentum scrolling is untouched.
+  const scrollAnimatedProps = useAnimatedProps(() =>
+    jumpAnimating.value ? { contentOffset: { x: 0, y: jumpTarget.value } } : {},
+  );
+
+  // Inject an Animated.ScrollView as the FlatList's scroll view so the jump's
+  // animatedProps have a Fabric-animatable target (cloneElement clobbers ref,
+  // not animatedProps; see file header).
+  const renderScrollComponent = useCallback(
+    (props: ScrollViewProps) => <Animated.ScrollView {...props} animatedProps={scrollAnimatedProps} />,
+    [scrollAnimatedProps],
+  );
 
   const renderItem = useCallback(
     ({ item }: { item: Row }) => (
@@ -272,6 +319,7 @@ export default function ChatScreen() {
         ) : (
           <FlatList
             key={remountKey}
+            renderScrollComponent={renderScrollComponent}
             inverted
             data={data}
             keyExtractor={(r) => r.key}
