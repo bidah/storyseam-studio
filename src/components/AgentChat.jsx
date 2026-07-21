@@ -6,11 +6,8 @@ import {
   Square,
   Wrench,
   AlertCircle,
-  ExternalLink,
+  FileText,
   Sparkles,
-  CheckCircle2,
-  XCircle,
-  KeyRound,
   Paperclip,
   Loader2,
   X,
@@ -56,18 +53,20 @@ import {
 import { AGENT_MODELS, useAgentModel, setAgentModel } from "@/lib/agentModel";
 
 // ---------------------------------------------------------------------------
-// Chat rendering mirrors eve's canonical approach (its scaffolded web template):
-// walk every part of every message in order and render each by `type`, instead
-// of scanning only the last message. HITL prompts render inline on their tool
-// part and, once answered, collapse to a persistent "Responded: …" line — so
-// options are real buttons (not prose) and the answer stays in the history.
+// Chat rendering walks every part of every flue message in order and renders
+// each by `type` (`text`, `reasoning`, `dynamic-tool`, `file`), instead of
+// scanning only the last message. flue has no blocking HITL: the agent asks
+// questions as plain assistant text and the user answers with a normal next
+// message, so there is no inline input-request card and no `inputResponses`
+// resume path — just the ordinary composer send.
 //
 // Attachments: images picked from the composer are uploaded to Cloudflare R2
-// (POST /api/upload) and sent to the agent as `image` message parts pointing at
-// their public URL, so the model can actually see them. eve's default message
-// projection only keeps text/tool parts, so we remember what each user turn was
-// sent with (in `sentAttachmentsRef`, ordinal-aligned to the user messages) and
-// render the thumbnails back into that turn's bubble.
+// (POST /api/upload) for a durable thumbnail URL, and sent to flue as base64
+// `images` (its `sendMessage` takes `{ images: [{ data, mimeType }] }`) so the
+// model can actually see them. flue's `file` parts don't serve historical bytes,
+// so we remember what each user turn was sent with (in `sentAttachmentsRef`,
+// ordinal-aligned to the user messages) and render the thumbnails back into that
+// turn's bubble from the R2 URL.
 // ---------------------------------------------------------------------------
 
 // Where attachment uploads go. Defaults to the Cloudflare Worker
@@ -104,133 +103,62 @@ function prettySize(n) {
   return kb < 1024 ? `${Math.max(1, Math.round(kb))} KB` : `${(kb / 1024).toFixed(1)} MB`;
 }
 
+// A compact chip for a flue `dynamic-tool` part. `state` is one of
+// input-available / output-available / output-error; the input is surfaced as a
+// hover title and an error surfaces its `errorText` inline.
 function ToolChip({ part }) {
   const name = part.toolName || "tool";
   const errored = part.state === "output-error";
+  let inputHint = "";
+  try {
+    if (part.input !== undefined) inputHint = JSON.stringify(part.input);
+  } catch {
+    /* non-serializable input — skip the hover hint */
+  }
   return (
-    <span
-      className={cn(
-        "inline-flex w-fit items-center gap-1 rounded-md border px-1.5 py-0.5 text-[11px]",
-        errored
-          ? "border-destructive/40 bg-destructive/5 text-destructive"
-          : "border-border bg-muted/50 text-muted-foreground",
-      )}
-    >
-      <Wrench size={11} /> {name}
-      {errored ? " · failed" : null}
+    <span className="flex w-fit max-w-full flex-col gap-0.5">
+      <span
+        title={inputHint || undefined}
+        className={cn(
+          "inline-flex w-fit items-center gap-1 rounded-md border px-1.5 py-0.5 text-[11px]",
+          errored
+            ? "border-destructive/40 bg-destructive/5 text-destructive"
+            : "border-border bg-muted/50 text-muted-foreground",
+        )}
+      >
+        <Wrench size={11} /> {name}
+        {errored ? " · failed" : null}
+      </span>
+      {errored && part.errorText ? (
+        <span className="max-w-full break-words text-[11px] text-destructive">{part.errorText}</span>
+      ) : null}
     </span>
   );
 }
 
-function authTitle(part) {
-  if (part.state === "required") return `Connect ${part.displayName}`;
-  if (part.outcome === "authorized") return `${part.displayName} connected`;
-  return `${part.displayName} authorization ${part.outcome ?? "ended"}`;
-}
-
-function AuthorizationCard({ part }) {
-  const isAuthorized = part.state === "completed" && part.outcome === "authorized";
-  const isCompleted = part.state === "completed";
-  const Icon = isAuthorized ? CheckCircle2 : isCompleted ? XCircle : KeyRound;
-  const instructions = part.authorization?.instructions;
-  const showInstructions = instructions && instructions !== part.description;
-
+// A flue `file` part — an attachment carried on a message. Historical bytes
+// aren't served, but a durably-recorded attachment (or an optimistic local echo)
+// carries a `url` we can render; images inline, everything else as a chip.
+function FilePart({ part }) {
+  const isImage = part.mediaType?.startsWith("image/");
+  if (part.url && isImage) {
+    return (
+      <img
+        src={part.url}
+        alt={part.filename || "attachment"}
+        className="max-h-48 w-fit rounded-md border object-contain"
+      />
+    );
+  }
   return (
-    <div
-      className={cn(
-        "space-y-2 rounded-lg border p-3",
-        isAuthorized
-          ? "border-emerald-500/30 bg-emerald-500/5"
-          : isCompleted
-            ? "border-destructive/30 bg-destructive/5"
-            : "border-primary/30 bg-primary/5",
-      )}
-    >
-      <div className="flex items-start gap-2.5">
-        <span
-          className={cn(
-            "mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-full",
-            isAuthorized
-              ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-300"
-              : isCompleted
-                ? "bg-destructive/10 text-destructive"
-                : "bg-primary/10 text-primary",
-          )}
-        >
-          <Icon size={15} />
-        </span>
-        <div className="min-w-0 flex-1 space-y-1.5">
-          <p className="text-sm font-medium">{authTitle(part)}</p>
-          {part.description ? (
-            <p className="text-sm text-muted-foreground">{part.description}</p>
-          ) : null}
-          {showInstructions ? (
-            <p className="text-sm text-muted-foreground">{instructions}</p>
-          ) : null}
-          {part.state === "required" && part.authorization?.userCode ? (
-            <div className="flex flex-wrap items-center gap-2 text-sm">
-              <span className="text-muted-foreground">Code</span>
-              <code className="rounded-md bg-background px-2 py-1 font-mono">
-                {part.authorization.userCode}
-              </code>
-            </div>
-          ) : null}
-          {part.state === "required" && part.authorization?.url ? (
-            <Button asChild size="sm">
-              <a href={part.authorization.url} rel="noreferrer" target="_blank">
-                <ExternalLink size={14} /> Sign in with {part.displayName}
-              </a>
-            </Button>
-          ) : null}
-        </div>
-      </div>
-    </div>
+    <span className="inline-flex w-fit items-center gap-1 rounded-md border border-border bg-muted/50 px-1.5 py-0.5 text-[11px] text-muted-foreground">
+      <FileText size={11} /> {part.filename || part.mediaType || "attachment"}
+    </span>
   );
 }
 
-function InputRequest({ part, canRespond, onRespond }) {
-  const req = part.toolMetadata?.eve?.inputRequest;
-  if (!req) return null;
-  const res = part.toolMetadata?.eve?.inputResponse;
-  const selected = req.options?.find((o) => o.id === res?.optionId);
-
-  return (
-    <div className="space-y-2 rounded-lg border border-amber-500/30 bg-amber-500/5 p-3">
-      {req.prompt ? <Markdown text={req.prompt} className="text-muted-foreground" /> : null}
-      {res ? (
-        <p className="text-sm font-medium">
-          Responded: {selected?.label ?? res.text ?? res.optionId}
-        </p>
-      ) : req.options?.length ? (
-        <div className="flex flex-wrap gap-1.5">
-          {req.options.map((opt) => (
-            <Button
-              key={opt.id}
-              size="sm"
-              type="button"
-              disabled={!canRespond}
-              variant={opt.style === "danger" ? "destructive" : "default"}
-              onClick={() => onRespond([{ requestId: req.requestId, optionId: opt.id }])}
-              // Option labels can be long sentences: let them wrap and grow
-              // vertically instead of overflowing the card (Button defaults to
-              // whitespace-nowrap + fixed height + centered).
-              className="h-auto max-w-full min-w-0 justify-start whitespace-normal py-1.5 text-left leading-snug"
-            >
-              {opt.label}
-            </Button>
-          ))}
-        </div>
-      ) : (
-        <p className="text-xs text-muted-foreground">Type your answer below to continue.</p>
-      )}
-    </div>
-  );
-}
-
-function MessagePart({ part, canRespond, onRespond }) {
+function MessagePart({ part }) {
   switch (part.type) {
-    case "step-start":
-      return null;
     case "text":
       return part.text ? (
         <Markdown text={part.text} animating={part.state === "streaming"} />
@@ -242,13 +170,10 @@ function MessagePart({ part, canRespond, onRespond }) {
           <div className="mt-1 whitespace-pre-wrap break-words">{part.text}</div>
         </details>
       ) : null;
-    case "authorization":
-      return <AuthorizationCard part={part} />;
     case "dynamic-tool":
-      if (part.toolMetadata?.eve?.inputRequest) {
-        return <InputRequest part={part} canRespond={canRespond} onRespond={onRespond} />;
-      }
       return <ToolChip part={part} />;
+    case "file":
+      return <FilePart part={part} />;
     default:
       return null;
   }
@@ -272,7 +197,7 @@ function SentAttachments({ atts }) {
   );
 }
 
-function AgentMessage({ message, atts, canRespond, onRespond }) {
+function AgentMessage({ message, atts }) {
   const isUser = message.role === "user";
   if (isUser) {
     const text = (message.parts || [])
@@ -293,31 +218,10 @@ function AgentMessage({ message, atts, canRespond, onRespond }) {
   return (
     <div className="flex flex-col gap-2">
       {(message.parts || []).map((part, i) => (
-        <MessagePart
-          key={part.toolCallId ?? `${part.type}:${i}`}
-          part={part}
-          canRespond={canRespond}
-          onRespond={onRespond}
-        />
+        <MessagePart key={part.toolCallId ?? `${part.type}:${i}`} part={part} />
       ))}
     </div>
   );
-}
-
-// The latest HITL request still awaiting an answer — a tool part carrying an
-// inputRequest with no matching inputResponse yet. Drives the composer
-// placeholder and lets a typed answer be routed back to the right requestId
-// (including a request proxied up from a subagent, e.g. story-architect asking
-// which arc). Returns the request object, or null when nothing is pending.
-function pendingRequest(messages) {
-  let found = null;
-  for (const m of messages) {
-    for (const part of m.parts || []) {
-      const eve = part?.toolMetadata?.eve;
-      if (eve?.inputRequest && !eve.inputResponse) found = eve.inputRequest;
-    }
-  }
-  return found;
 }
 
 // The agent is "thinking" while a turn is in flight and the current assistant
@@ -330,8 +234,7 @@ function isThinking(messages, busy) {
     (p) =>
       (p.type === "text" && p.text?.trim()) ||
       (p.type === "reasoning" && p.text?.trim()) ||
-      p.type === "dynamic-tool" ||
-      p.type === "authorization",
+      p.type === "dynamic-tool",
   );
   return !hasContent;
 }
@@ -341,10 +244,9 @@ function isThinking(messages, busy) {
 // after it — the model has fired tools and is now silently deciding what to do
 // next. Without this, the last card is just a stack of tool badges with no sign
 // the turn is still live. Returns the trailing tool's name (for the label), or
-// null. Distinct from `isThinking` (nothing rendered yet) and suppressed while a
-// HITL request is pending (there the user must answer, not wait).
-function workingTool(messages, busy, pending) {
-  if (!busy || pending) return null;
+// null. Distinct from `isThinking` (nothing rendered yet).
+function workingTool(messages, busy) {
+  if (!busy) return null;
   const last = messages[messages.length - 1];
   if (!last || last.role === "user") return null;
   let trailing = null;
@@ -352,13 +254,26 @@ function workingTool(messages, busy, pending) {
     if (
       (p.type === "text" && p.text?.trim()) ||
       (p.type === "reasoning" && p.text?.trim()) ||
-      p.type === "dynamic-tool" ||
-      p.type === "authorization"
+      p.type === "dynamic-tool"
     ) {
       trailing = p;
     }
   }
   return trailing?.type === "dynamic-tool" ? trailing.toolName || "tool" : null;
+}
+
+// Read a File's bytes as raw base64 (no `data:` URL prefix) for flue's
+// `sendMessage({ images: [{ data, mimeType }] })`.
+function fileToBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = String(reader.result || "");
+      resolve(result.slice(result.indexOf(",") + 1));
+    };
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(file);
+  });
 }
 
 // Compact "2m" / "3h" / "5d" relative time for the chat list.
@@ -442,8 +357,11 @@ function ChatHistorySheet({ conv }) {
 }
 
 // Compact model picker for the composer. Reflects the localStorage-backed
-// selection and writes it back; the fetch shim carries it to the agent on the
-// next turn. Disabled mid-turn so a switch can't land halfway through a reply.
+// selection and writes it back. Disabled mid-turn so a switch can't land halfway
+// through a reply.
+// TODO(flue): per-turn model needs a server route (Phase 2). flue's client can't
+// attach a per-message model, so this picker is currently a no-op — the agent
+// runs on its single server-side default model regardless of the selection.
 function ModelPicker({ disabled }) {
   const modelId = useAgentModel();
   const active = AGENT_MODELS.find((m) => m.id === modelId) ?? AGENT_MODELS[0];
@@ -513,15 +431,10 @@ export default function AgentChat() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conv.activeId]);
 
-  const messages = agent.data?.messages ?? [];
+  const messages = agent.messages ?? [];
   const isBusy = agent.status === "submitted" || agent.status === "streaming";
-  const pendingReq = useMemo(() => pendingRequest(messages), [messages]);
-  const pending = !!pendingReq;
   const thinking = useMemo(() => isThinking(messages, isBusy), [messages, isBusy]);
-  const working = useMemo(
-    () => workingTool(messages, isBusy, pending),
-    [messages, isBusy, pending],
-  );
+  const working = useMemo(() => workingTool(messages, isBusy), [messages, isBusy]);
 
   const uploading = attachments.some((a) => a.state === "uploading");
   const doneAttachments = attachments.filter((a) => a.state === "done");
@@ -578,6 +491,9 @@ export default function AgentChat() {
       name: f.name,
       size: f.size,
       contentType: f.type,
+      // Retain the raw File so send can convert it to base64 for flue's
+      // `images` (the R2 URL is only for the persisted thumbnail in the bubble).
+      file: f,
       state: "uploading",
       url: null,
       previewUrl: URL.createObjectURL(f),
@@ -620,50 +536,34 @@ export default function AgentChat() {
   const submit = async () => {
     if (!canSend) return;
     const t = text.trim();
-    const sent = doneAttachments.map((a) => ({
+    // Capture the done attachments (with their retained `file`) before clearing.
+    const done = doneAttachments;
+    const sent = done.map((a) => ({
       url: a.url,
       name: a.name,
       contentType: a.contentType,
     }));
 
-    // A parked HITL request (eve `ask_question`) only resumes when the answer is
-    // delivered as an inputResponse to its requestId — a plain message does not
-    // reach a parked session. This matters most for a request proxied up from a
-    // subagent (e.g. story-architect asking which arc): a message goes to the
-    // root session and the child stays parked forever, so the delegation "never
-    // comes back". When something is pending and the user typed a free-text
-    // answer, route it as the response instead of a new message. (HITL answers
-    // are text-only in eve, so fall through to a normal message if images are
-    // attached.)
-    if (pendingReq && t && sent.length === 0) {
-      clearComposer();
-      await agent.send({ inputResponses: [{ requestId: pendingReq.requestId, text: t }] });
-      return;
-    }
-
-    // Build the eve message: image parts + optional text, or a plain string.
-    let message;
-    if (sent.length) {
-      message = [
-        ...(t ? [{ type: "text", text: t }] : []),
-        ...sent.map((a) => ({ type: "image", image: a.url })),
-      ];
-    } else {
-      message = t;
-    }
-
     // Record this turn's attachments (ordinal-aligned) before the optimistic
     // user message renders, persist them to the active chat, then clear the
-    // composer. (Turn events + cursor persist via the session's onFinish.)
+    // composer. (flue owns the transcript, so nothing else needs persisting.)
     sentAttachmentsRef.current.push(sent);
     conv.saveAttachments(conv.activeId, sentAttachmentsRef.current);
     clearComposer();
 
-    await agent.send({ message });
-  };
+    // flue takes images out-of-band as base64 `{ data, mimeType }`, not as
+    // message parts — convert the retained Files and hand them alongside the text.
+    let images;
+    if (done.length) {
+      images = await Promise.all(
+        done.map(async (a) => ({
+          data: await fileToBase64(a.file),
+          mimeType: a.contentType || "image/png",
+        })),
+      );
+    }
 
-  const onRespond = async (responses) => {
-    await agent.send({ inputResponses: responses });
+    await agent.send({ message: t, images });
   };
 
   return (
@@ -727,15 +627,7 @@ export default function AgentChat() {
               return messages.map((m) => {
                 if (m.role === "user") userOrdinal += 1;
                 const atts = m.role === "user" ? sentAttachmentsRef.current[userOrdinal] : null;
-                return (
-                  <AgentMessage
-                    key={m.id}
-                    message={m}
-                    atts={atts}
-                    canRespond={!isBusy}
-                    onRespond={onRespond}
-                  />
-                );
+                return <AgentMessage key={m.id} message={m} atts={atts} />;
               });
             })()
           )}
@@ -847,7 +739,7 @@ export default function AgentChat() {
               }
             }}
             rows={1}
-            placeholder={pending ? "Type your answer…" : "Message the studio agent…"}
+            placeholder="Message the studio agent…"
             className="max-h-[180px] min-h-[38px] flex-1 resize-none overflow-y-auto rounded-lg border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
           />
           {isBusy ? (

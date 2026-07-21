@@ -1,17 +1,19 @@
 // ---------------------------------------------------------------------------
 // Persistent chat history for the studio agent.
 //
-// eve's client reduces `snapshot.events` (the authoritative server stream) back
-// into `data.messages` at store construction, and `snapshot.session` is a
-// serializable cursor that resumes the same server-side conversation. So a chat
-// survives a reload if we persist both to localStorage and feed them back as
-// `initialEvents` / `initialSession` when the eve store is (re)created.
+// flue owns the conversation transcript server-side (a Durable Object keyed by
+// the instance id), so the client no longer persists event/session snapshots —
+// `useFlueAgent` reconstructs `messages` from durable history on its own. This
+// store's remaining job is just to remember WHICH conversations exist per
+// project (their ids + titles) so the user can start new chats and switch back
+// into old ones; the instance id (`${projectId}~${chatId}`) is all flue needs
+// to reopen a chat's history.
 //
 // The store keeps many conversations keyed by id, plus which one is active, so
 // the chat header can offer "new chat" and "jump into a previous chat". Image
-// attachments are client-only (eve's projection drops image parts), so each
-// chat also carries the ordinal-aligned attachment record the composer needs to
-// re-render thumbnails.
+// attachments are client-only (flue's `file` parts don't serve historical
+// bytes), so each chat also carries the ordinal-aligned attachment record the
+// composer needs to re-render thumbnails.
 //
 // Chats are SCOPED PER PROJECT: every chat carries the `projectId` it belongs
 // to, the history list is filtered to the current project, and the last-active
@@ -46,7 +48,8 @@ function pidKey(pid) {
   return pid || "";
 }
 
-// A blank conversation with an empty eve cursor, tagged to a project.
+// A blank conversation, tagged to a project. flue owns the transcript, so a
+// chat is just its id + title + the client-only attachment record.
 export function makeChat(projectId = null, title = "New chat") {
   const now = Date.now();
   return {
@@ -55,8 +58,6 @@ export function makeChat(projectId = null, title = "New chat") {
     title,
     createdAt: now,
     updatedAt: now,
-    events: [],
-    session: { streamIndex: 0 },
     attachments: [],
   };
 }

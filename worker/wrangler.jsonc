@@ -12,10 +12,11 @@
   //     Daytona ffmpeg sandbox — see src/lib/ffmpeg.js)
   //   DAYTONA_API_KEY                (ffmpeg orchestration)
   //   HIGGSFIELD_MCP_TOKEN           (optional; static-login shortcut)
-  //   EVE_PROXY_SECRET               (signs the x-eve-proxy-user token so the
-  //     eve agent trusts the Better Auth user id across the /eve/* proxy — set
-  //     the SAME value as a Vercel env var on shot-studio-agent; without it the
-  //     agent falls back to anonymous and in-chat Higgsfield sign-in fails)
+  //   EVE_PROXY_SECRET / FLUE_PROXY_SECRET  (signs the x-flue-proxy-user token so
+  //     the flue agent worker trusts the Better Auth user id across the /eve/*
+  //     proxy — set the SAME value on the shot-studio-flue worker; without it the
+  //     flue agent rejects with 401. FLUE_PROXY_SECRET is preferred; EVE_PROXY_SECRET
+  //     is still read as a fallback so the provisioned value keeps working.)
   "vars": {
     "R2_BUCKET": "shot-studio-uploads",
     "R2_ACCOUNT_ID": "cda687c8b568323a9b535ca44a192131",
@@ -24,9 +25,10 @@
     // Higgsfield MCP endpoint — the Worker calls its show_generations tool with
     // the user's OAuth bearer for the library's "Import from Higgsfield" tab.
     "HIGGSFIELD_MCP_URL": "https://mcp.higgsfield.ai/mcp",
-    // The eve chat agent runs on Vercel; the Worker proxies /eve/* to it so the
-    // browser reaches it same-origin (see the /eve/* proxy in src/index.js).
-    "EVE_ORIGIN": "https://shot-studio-agent.vercel.app"
+    // The flue chat agent runs as its own Cloudflare Worker; this Worker proxies
+    // /eve/* to it (stripping the prefix) so the browser reaches it same-origin
+    // (see the /eve/* proxy in src/index.js).
+    "FLUE_ORIGIN": "https://shot-studio-flue.rodrigofigueroa-name.workers.dev"
   },
   // Serve the built Vite SPA from the Worker; API routes below take precedence,
   // and client-side routes fall back to index.html.

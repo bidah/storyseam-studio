@@ -59,9 +59,13 @@ export { ProjectEvents } from "./sse-do.js";
 // the `x-eve-proxy-user` header. The agent verifies it with the same shared
 // secret (EVE_PROXY_SECRET) and projects `sub` into a user principal. See
 // agent/channels/eve.ts (proxiedUser).
-const EVE_PROXY_ISSUER = "shot-studio";
-const EVE_PROXY_HEADER = "x-eve-proxy-user";
-const EVE_PROXY_TTL_SECONDS = 300;
+// Shared HMAC identity handed to the flue agent worker on the proxy hop. Issuer
+// stays "shot-studio" (matches flue-agent/src/lib/proxy-auth.ts). Header renamed
+// eve → flue; the secret falls back to EVE_PROXY_SECRET so the already-provisioned
+// value keeps working until it's renamed to FLUE_PROXY_SECRET.
+const FLUE_PROXY_ISSUER = "shot-studio";
+const FLUE_PROXY_HEADER = "x-flue-proxy-user";
+const FLUE_PROXY_TTL_SECONDS = 300;
 
 function base64url(bytes) {
   const arr = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
@@ -70,14 +74,14 @@ function base64url(bytes) {
   return btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
 
-async function mintEveUserToken(userId, secret) {
+async function mintFlueUserToken(userId, secret) {
   const enc = new TextEncoder();
   const payload = base64url(
     enc.encode(
       JSON.stringify({
         sub: String(userId),
-        iss: EVE_PROXY_ISSUER,
-        exp: Math.floor(Date.now() / 1000) + EVE_PROXY_TTL_SECONDS,
+        iss: FLUE_PROXY_ISSUER,
+        exp: Math.floor(Date.now() / 1000) + FLUE_PROXY_TTL_SECONDS,
       }),
     ),
   );
@@ -431,31 +435,48 @@ registerHiggsfield(app);
 registerStoryboard(app);
 registerTranscribe(app);
 
-// --- eve chat agent proxy --------------------------------------------------
-// The chat agent (eve) runs on Vercel; the SPA is served from this Worker and
-// calls /eve/* SAME-ORIGIN (useEveAgent has no host configured), so proxy those
-// through to the eve deployment. Covers every method — GET for /eve/v1/info and
-// the SSE message stream, POST for sessions/turns. Returning the upstream
-// Response verbatim streams the SSE body without buffering. Listed in
-// wrangler.jsonc `run_worker_first` so it beats the SPA asset layer (which would
-// otherwise 405 a POST to a non-asset path).
-const DEFAULT_EVE_ORIGIN = "https://shot-studio-agent.vercel.app";
+// --- flue chat agent proxy -------------------------------------------------
+// The chat agent (flue) runs as its own Cloudflare Worker (shot-studio-flue).
+// The SPA is served from this Worker and calls /eve/* SAME-ORIGIN, so proxy those
+// through to the flue worker, stripping the /eve prefix (flue serves its agent
+// routes at /agents/:name/:id). Covers every method — GET for the SSE/stream
+// views, POST for prompts. Returning the upstream Response verbatim streams the
+// body without buffering. Listed in wrangler.jsonc `run_worker_first` so it beats
+// the SPA asset layer. (Path kept as /eve/* to avoid client churn this pass; the
+// header/functions are flue-named. Renaming the path + moving to a CF service
+// binding is a later consolidation step.)
+const DEFAULT_FLUE_ORIGIN = "https://shot-studio-flue.rodrigofigueroa-name.workers.dev";
 app.all("/eve/*", async (c) => {
   const url = new URL(c.req.url);
-  const origin = c.env.EVE_ORIGIN || DEFAULT_EVE_ORIGIN;
-  const target = new URL(url.pathname + url.search, origin);
-  // Canonical Workers reverse-proxy: rebuilding the Request against the eve
+  const origin = c.env.FLUE_ORIGIN || c.env.EVE_ORIGIN || DEFAULT_FLUE_ORIGIN;
+  let path = url.pathname.replace(/^\/eve/, "") || "/";
+  const userId = c.get("userId");
+  // Inject the authenticated user id into the agent instance id. The client
+  // addresses `/agents/<name>/<projectId>~<chatId>`; we prepend `<userId>~` so
+  // the flue worker scopes the conversation (and its per-user Higgsfield token)
+  // to this user. Because the id prefix and the HMAC `sub` below both come from
+  // the session user, flue's ownership check always passes and a client can
+  // never address another user's conversation.
+  if (userId) {
+    const m = path.match(/^\/agents\/([^/]+)\/([^/]+)(\/.*)?$/);
+    if (m) {
+      const [, name, id, rest = ""] = m;
+      path = `/agents/${name}/${userId}~${id}${rest}`;
+    }
+  }
+  const target = new URL(path + url.search, origin);
+  // Canonical Workers reverse-proxy: rebuilding the Request against the flue
   // origin preserves method, headers, and the (streaming) body, and fetch
   // derives the upstream Host from `target`.
   const proxied = new Request(target, c.req.raw);
-  // The agent trusts x-eve-proxy-user as an authenticated user id, so it must
+  // The agent trusts x-flue-proxy-user as an authenticated user id, so it must
   // only ever come from us: strip any client-supplied copy, then re-add a
   // freshly-signed one for the Better Auth session user (if any). Without the
-  // secret configured we send nothing and the agent falls back to anonymous.
-  proxied.headers.delete(EVE_PROXY_HEADER);
-  const userId = c.get("userId");
-  if (userId && c.env.EVE_PROXY_SECRET) {
-    proxied.headers.set(EVE_PROXY_HEADER, await mintEveUserToken(userId, c.env.EVE_PROXY_SECRET));
+  // secret configured we send nothing and the agent rejects (401).
+  proxied.headers.delete(FLUE_PROXY_HEADER);
+  const secret = c.env.FLUE_PROXY_SECRET || c.env.EVE_PROXY_SECRET;
+  if (userId && secret) {
+    proxied.headers.set(FLUE_PROXY_HEADER, await mintFlueUserToken(userId, secret));
   }
   return fetch(proxied);
 });

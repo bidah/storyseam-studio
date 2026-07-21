@@ -91,7 +91,7 @@ export function registerHiggsfield(app) {
   // instead of requiring a second, agent-only sign-in. 401 means the user has
   // no usable credential — the agent then falls back to its interactive OAuth.
   app.get("/api/agent/higgsfield-token", async (c) => {
-    const secret = c.env.EVE_PROXY_SECRET;
+    const secret = c.env.FLUE_PROXY_SECRET || c.env.EVE_PROXY_SECRET;
     const bearer = (c.req.header("authorization") || "").replace(/^Bearer\s+/i, "");
     const claims = secret && bearer ? await verifyAgentAssertion(bearer, secret) : null;
     if (!claims) return c.json({ error: "unauthorized" }, 401);

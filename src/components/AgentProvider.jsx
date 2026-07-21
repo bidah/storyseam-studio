@@ -8,8 +8,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { useEveAgent } from "eve/react";
-import { useLocation } from "react-router";
+import { useFlueAgent } from "@flue/react";
 import {
   activeChatId,
   chatsForProject,
@@ -23,22 +22,30 @@ import {
 import { getProjectId, onProjectChange } from "@/lib/projectFetch";
 
 // ---------------------------------------------------------------------------
-// A single shared eve agent session for the whole app, backed by persistent,
-// switchable chat history.
+// A single shared flue agent conversation for the whole app, backed by a
+// persistent, switchable list of chats.
 //
-// `useEveAgent` owns one conversation per hook instance, so the chat panel and
-// any "drive the agent from the UI" affordances (e.g. the sound-studio Render
-// buttons) must read from the SAME instance. Its session config is read once
-// when the store is created, so pointing at a different conversation means
-// recreating the store — which we do by keying `AgentSessionRunner` on the
-// active chat id.
+// `useFlueAgent({ name, id })` follows ONE conversation instance, so the chat
+// panel and any "drive the agent from the UI" affordances (e.g. the sound-studio
+// Render buttons) must read from the SAME instance. flue keys a conversation by
+// its instance id, so pointing at a different chat means a different id — which
+// we do by keying `AgentSessionRunner` on the active chat id.
+//
+// The instance id the client passes is `${projectId}~${chatId}`; the worker that
+// proxies `/eve/*` prepends the authenticated `${userId}~` server-side, so the
+// full durable key is `userId~projectId~chatId`. Project scope now travels in
+// this id (not the old `x-project-id` header), and the transcript lives in the
+// flue Durable Object — the client no longer persists events/sessions.
 //
 // To switch conversations WITHOUT remounting the whole app, the runner renders
-// nothing: it just runs the hook and publishes the live agent snapshot up to
+// nothing: it just runs the hook and publishes an adapted agent snapshot up to
 // `AgentProvider`, which hands it down through a stable `AgentContext`. Only the
 // runner remounts on a chat switch; every consumer merely re-renders with the
-// new session. `ConversationsContext` (the history manager) never remounts.
+// new conversation. `ConversationsContext` (the history manager) never remounts.
 // ---------------------------------------------------------------------------
+
+// The flue agent registered in flue-agent/src/agents/whistlewood.ts.
+const AGENT_NAME = "whistlewood";
 
 const AgentContext = createContext(null);
 const ConversationsContext = createContext(null);
@@ -116,32 +123,21 @@ function useConversationManager() {
     [update],
   );
 
-  // Persist a completed turn's events + cursor for one chat, refreshing its
-  // title from the first user line and floating it to the top of the list.
-  const saveTurn = useCallback(
-    (id, snapshot) =>
+  // Note live activity in one chat: refresh its title from the first user line
+  // (flue owns the transcript, so the title is all we still derive here) and
+  // float it to the top of the list. A no-op once the title has settled, so the
+  // runner can call it on every `messages` change without thrashing the store.
+  const noteActivity = useCallback(
+    (id, title) =>
       update((prev) => {
         const chat = prev.chats[id];
         if (!chat) return prev;
-        const next = {
-          ...chat,
-          events: snapshot.events ?? chat.events,
-          session: snapshot.session ?? chat.session,
-          title: deriveTitle(snapshot.data?.messages) ?? chat.title,
-          updatedAt: Date.now(),
-        };
-        const order = [id, ...prev.order.filter((x) => x !== id)];
+        const nextTitle = title ?? chat.title;
+        const alreadyTop = prev.order[0] === id;
+        if (nextTitle === chat.title && alreadyTop) return prev;
+        const order = alreadyTop ? prev.order : [id, ...prev.order.filter((x) => x !== id)];
+        const next = { ...chat, title: nextTitle, updatedAt: Date.now() };
         return { ...prev, order, chats: { ...prev.chats, [id]: next } };
-      }),
-    [update],
-  );
-
-  const saveSession = useCallback(
-    (id, session) =>
-      update((prev) => {
-        const chat = prev.chats[id];
-        if (!chat) return prev;
-        return { ...prev, chats: { ...prev.chats, [id]: { ...chat, session } } };
       }),
     [update],
   );
@@ -157,15 +153,11 @@ function useConversationManager() {
     [update],
   );
 
-  // Seed values for (re)creating an eve store for a given chat. Reads the ref so
-  // a runner keyed on a just-created chat still sees it.
+  // The composer's client-only attachment record for a given chat. Reads the ref
+  // so a runner keyed on a just-created chat still sees it.
   const getInitial = useCallback((id) => {
     const chat = storeRef.current.chats[id];
-    return {
-      events: chat?.events ?? [],
-      session: chat?.session ?? { streamIndex: 0 },
-      attachments: chat?.attachments ?? [],
-    };
+    return { attachments: chat?.attachments ?? [] };
   }, []);
 
   // History and active selection are scoped to the current project.
@@ -174,39 +166,56 @@ function useConversationManager() {
 
   return useMemo(
     () => ({
+      pid,
       activeId,
       list,
       newChat,
       switchChat,
       deleteChat,
-      saveTurn,
-      saveSession,
+      noteActivity,
       saveAttachments,
       getInitial,
     }),
-    [activeId, list, newChat, switchChat, deleteChat, saveTurn, saveSession, saveAttachments, getInitial],
+    [pid, activeId, list, newChat, switchChat, deleteChat, noteActivity, saveAttachments, getInitial],
   );
 }
 
-// Runs the eve session for the active chat and publishes it upward. Rendered
-// with `key={activeId}` so a chat switch remounts it (rebuilding the store from
-// that chat's persisted events/cursor); renders nothing so no consumer remounts.
-function AgentSessionRunner({ activeId, view, conv, publish }) {
-  const viewRef = useRef(view);
-  viewRef.current = view;
+// Follows the flue conversation for the active chat and publishes an adapted
+// snapshot upward. Rendered with `key={activeId}` so a chat switch remounts it
+// (pointing `useFlueAgent` at the new instance id, whose durable history flue
+// reloads on its own); renders nothing so no consumer remounts.
+function AgentSessionRunner({ activeId, projectId, conv, publish }) {
+  // flue's durable key. The worker prepends `${userId}~`; we own the rest.
+  const id = `${projectId ?? ""}~${activeId}`;
+  const flueAgent = useFlueAgent({ name: AGENT_NAME, id });
 
-  // Read the chat's persisted seed exactly once, at mount for this key.
-  const initialRef = useRef(null);
-  if (initialRef.current === null) initialRef.current = conv.getInitial(activeId);
+  // Adapt flue's surface (`messages`, `status`, `sendMessage`) to the shape the
+  // rest of the app consumes (`messages`, `status`, `send`, `stop`, `error`).
+  // flue's resting status is "idle"; the app treats "ready" as idle (e.g.
+  // `useRevalidateOnAgentIdle` edge-triggers on it), so map idle → "ready".
+  const agent = useMemo(
+    () => ({
+      messages: flueAgent.messages,
+      status: flueAgent.status === "idle" ? "ready" : flueAgent.status,
+      error: flueAgent.error,
+      historyReady: flueAgent.historyReady,
+      // `send({ message, images })` — `message` is a plain string; `images` is
+      // flue's optional `AgentPromptImage[]` (`{ data: base64, mimeType }`).
+      send: ({ message = "", images } = {}) =>
+        flueAgent.sendMessage(message, images?.length ? { images } : undefined),
+      // TODO(flue): no client-side cancel yet — flue's UseFlueAgentResult exposes
+      // no stop/abort. Keep a no-op so the composer's Stop button stays inert.
+      stop: () => {},
+    }),
+    [flueAgent],
+  );
 
-  const agent = useEveAgent({
-    initialEvents: initialRef.current.events,
-    initialSession: initialRef.current.session,
-    // Tell the agent which screen the user is on, every turn.
-    prepareSend: (input) => ({ ...input, clientContext: { screen: viewRef.current } }),
-    onFinish: (snapshot) => conv.saveTurn(activeId, snapshot),
-    onSessionChange: (session) => conv.saveSession(activeId, session),
-  });
+  // Keep the chat list titled + floated from the live transcript (flue owns the
+  // transcript, so this replaces eve's onFinish snapshot persistence).
+  useEffect(() => {
+    const title = deriveTitle(flueAgent.messages);
+    if (title) conv.noteActivity(activeId, title);
+  }, [flueAgent.messages, activeId, conv]);
 
   // Publish before paint so switching chats never flashes stale content.
   useLayoutEffect(() => {
@@ -219,10 +228,6 @@ function AgentSessionRunner({ activeId, view, conv, publish }) {
 export function AgentProvider({ children }) {
   const conv = useConversationManager();
   const [agent, setAgent] = useState(null);
-  // Which screen the user is on — derived from the URL now that the app is
-  // routed (was threaded down from App as a `view` prop).
-  const { pathname } = useLocation();
-  const view = pathname.slice(1).split("/")[0] || "script";
 
   return (
     <ConversationsContext.Provider value={conv}>
@@ -234,7 +239,7 @@ export function AgentProvider({ children }) {
         <AgentSessionRunner
           key={conv.activeId}
           activeId={conv.activeId}
-          view={view}
+          projectId={conv.pid}
           conv={conv}
           publish={setAgent}
         />

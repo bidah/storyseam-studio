@@ -1,0 +1,23 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "shot-studio-flue",
+  "compatibility_date": "2026-07-21",
+  "compatibility_flags": ["nodejs_compat"],
+  // Flue generates the Durable Object classes + FLUE_* bindings; we only declare
+  // migrations for them. `whistlewood.ts` -> class FlueWhistlewoodAgent.
+  // `FlueRegistry` is Flue-internal and must be in the first migration.
+  // Never reorder/rewrite deployed entries; append a new tag when adding agents.
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["FlueRegistry", "FlueWhistlewoodAgent"]
+    }
+  ]
+  // Secrets (set with `wrangler secret put` in prod, `.dev.vars` locally):
+  //   ANTHROPIC_API_KEY      - Anthropic key (used by the anthropic provider)
+  //   ANTHROPIC_GATEWAY_URL  - CF AI Gateway anthropic endpoint (optional; enables gateway routing)
+  //   FLUE_PROXY_SECRET      - shared HMAC key with the shot-studio-uploads worker
+  //   SHOT_STUDIO_API        - base URL of the shot-studio-uploads worker JSON API
+  //   DAYTONA_API_KEY        - Daytona sandbox creds (optional; bash falls back to in-memory sandbox)
+  //   HIGGSFIELD_MCP_URL     - Higgsfield generation MCP endpoint
+}

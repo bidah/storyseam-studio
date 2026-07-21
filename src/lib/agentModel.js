@@ -1,14 +1,16 @@
 // The chat agent's model picker.
 //
-// The selected model id is persisted in localStorage and injected into every
-// /eve request as the `x-eve-model` header by the fetch shim
-// (src/lib/projectFetch.js). The agent reads that header per turn and maps the
-// id to a Vercel AI Gateway model (agent/lib/model.ts → CHAT_MODELS). Sonnet is
-// the default; the picker can switch the chat to Opus 4.6 or Fable 5.
-//
-// Keep this list's ids in sync with CHAT_MODELS in agent/lib/model.ts.
+// Per-turn model selection (flue). flue's client can only send `{ message,
+// images }`, so the choice rides the `x-flue-model` header instead: the
+// projectFetch shim stamps it on every `/eve/*` request (see projectFetch.js),
+// the worker proxy forwards it, and the flue app persists it to the
+// conversation's Durable Object before admitting the prompt — so each turn runs
+// on the selected model with unified history. (Under eve this rode along as the
+// `x-eve-model` header the same way.)
 import { useSyncExternalStore } from "react";
 
+// Option ids are the anthropic model ids; the flue specifier is `anthropic/<id>`
+// (see getAgentModelSpecifier). Keep in lockstep with flue-agent/src/lib/models.ts.
 export const AGENT_MODELS = [
   { id: "claude-sonnet-5", label: "Sonnet 5", hint: "Fast · default" },
   { id: "claude-opus-4.6", label: "Opus 4.6", hint: "Most capable" },
@@ -36,6 +38,12 @@ const listeners = new Set();
 
 export function getAgentModel() {
   return current;
+}
+
+// The full flue model specifier for the current selection, e.g.
+// `anthropic/claude-sonnet-5` — the value sent as the `x-flue-model` header.
+export function getAgentModelSpecifier() {
+  return `anthropic/${current}`;
 }
 
 export function setAgentModel(id) {

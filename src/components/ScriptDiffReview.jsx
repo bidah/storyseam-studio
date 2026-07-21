@@ -226,7 +226,7 @@ export default function ScriptDiffReview({ stored, reload }) {
           <GitPullRequestArrow size={16} className="text-primary" />
           <span className="text-sm font-semibold">Proposed script edit</span>
           <Badge variant="secondary" className="gap-1 font-normal">
-            <Bot size={11} /> {proposal.source || "eve"}
+            <Bot size={11} /> {proposal.source || "agent"}
           </Badge>
           <div className="ml-auto flex items-center gap-1.5 text-xs">
             {stats.added > 0 && (

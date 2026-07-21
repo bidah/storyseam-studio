@@ -1,0 +1,24 @@
+# Copy to .dev.vars for local `flue dev` / `wrangler dev` (never commit .dev.vars).
+# Prod: set these with `wrangler secret put <NAME>`.
+
+# Anthropic key used by the built-in `anthropic/*` provider.
+ANTHROPIC_API_KEY=""
+
+# Cloudflare AI Gateway anthropic endpoint. When set, app.ts routes anthropic/*
+# through the gateway (caching/logging/limits). Leave empty to call Anthropic
+# directly. Shape:
+#   https://gateway.ai.cloudflare.com/v1/<account_id>/<gateway_id>/anthropic
+ANTHROPIC_GATEWAY_URL=""
+
+# Shared HMAC secret with the shot-studio-uploads worker. MUST match that
+# worker's FLUE_PROXY_SECRET (formerly EVE_PROXY_SECRET).
+FLUE_PROXY_SECRET=""
+
+# Base URL of the shot-studio-uploads worker JSON API the tools call.
+SHOT_STUDIO_API="http://localhost:3334"
+
+# Daytona sandbox (optional). Without it, bash uses flue's in-memory sandbox.
+DAYTONA_API_KEY=""
+
+# Higgsfield generation MCP endpoint (OAuth-protected; token bridged from worker).
+HIGGSFIELD_MCP_URL=""

@@ -10,7 +10,7 @@
 // don't trip CORS.
 
 import { CLIENT_ID } from "@/lib/clientId";
-import { getAgentModel } from "@/lib/agentModel";
+import { getAgentModelSpecifier } from "@/lib/agentModel";
 
 const STORAGE_KEY = "shot-studio:projectId";
 
@@ -42,6 +42,15 @@ function isLocal(url) {
   return url.startsWith("/") || url.startsWith(window.location.origin);
 }
 
+// The flue agent proxy lives at `/eve/*` (same-origin). Prompt sends go here, and
+// they carry the picker's per-turn model as `x-flue-model`.
+function isEve(url) {
+  if (typeof url !== "string") return false;
+  return (
+    url.startsWith("/eve/") || url.startsWith(window.location.origin + "/eve/")
+  );
+}
+
 let installed = false;
 
 // Patch fetch + EventSource once. Call before the app renders (see main.jsx).
@@ -59,12 +68,11 @@ export function installProjectScope() {
       // Tag this tab's own writes so the live-sync firehose can tell them apart
       // from the chat agent's writes (only the latter trigger a refetch).
       headers.set("x-client-id", CLIENT_ID);
-      // Tell the eve agent which model the picker has selected. Only the /eve
-      // proxy path cares (the Worker API ignores it), so scope it there. Read
-      // fresh per request so switching the picker applies to the next turn.
-      const path = url.startsWith("/") ? url : url.slice(window.location.origin.length);
-      if (path.startsWith("/eve")) headers.set("x-eve-model", getAgentModel());
-      // Send the Better Auth session cookie with every same-origin API call.
+      // Carry the picker's per-turn chat model on flue prompt sends. The flue
+      // app whitelists it, so an out-of-range value is simply ignored.
+      if (isEve(url)) headers.set("x-flue-model", getAgentModelSpecifier());
+      // Send the Better Auth session cookie with every same-origin API call —
+      // the `/eve/*` flue proxy relies on it to mint the per-user identity.
       init = { credentials: "include", ...(init || {}), headers };
     }
     return origFetch(input, init);

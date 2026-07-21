@@ -1,0 +1,31 @@
+// The Whistlewood production agent's skills — the render/production playbooks the
+// model loads for specialized work. (The better-colors/better-typography/better-ui
+// skills that lived in the eve agent are LOCAL code-dev reference skills, not agent
+// skills, so they are intentionally NOT included here.)
+import completeCut from "./skills/complete-cut/SKILL.md" with { type: "skill" };
+import continueVideo from "./skills/continue-video/SKILL.md" with { type: "skill" };
+import editVideo from "./skills/edit-video/SKILL.md" with { type: "skill" };
+import generateMultishot from "./skills/generate-multishot/SKILL.md" with { type: "skill" };
+import generateStoryboard from "./skills/generate-storyboard/SKILL.md" with { type: "skill" };
+import radio from "./skills/radio/SKILL.md" with { type: "skill" };
+import scriptWriting from "./skills/script-writing/SKILL.md" with { type: "skill" };
+import seedAudio from "./skills/seed-audio/SKILL.md" with { type: "skill" };
+import shotList from "./skills/shot-list/SKILL.md" with { type: "skill" };
+import trimVideo from "./skills/trim-video/SKILL.md" with { type: "skill" };
+import videoFromAudioVfx from "./skills/video-from-audio-vfx/SKILL.md" with { type: "skill" };
+import worldCreation from "./skills/world-creation/SKILL.md" with { type: "skill" };
+
+export const skills = [
+  worldCreation,
+  scriptWriting,
+  shotList,
+  generateStoryboard,
+  generateMultishot,
+  continueVideo,
+  videoFromAudioVfx,
+  seedAudio,
+  radio,
+  trimVideo,
+  completeCut,
+  editVideo,
+];
