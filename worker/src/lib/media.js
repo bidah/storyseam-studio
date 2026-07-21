@@ -22,6 +22,24 @@ export function mediaKey(projectId, kind, file) {
   return `media/${pid}/${kind}/${f}`;
 }
 
+// Absolute, ungated URL (`<WORKER_PUBLIC_URL>/files/<r2key>`) that an anonymous
+// external fetcher (e.g. the Higgsfield MCP `media_import_url`) can pull. The
+// `/files/*` route streams any R2 key with no project header/auth (the pid is
+// encoded in the key). Returns "" when WORKER_PUBLIC_URL is unset (local dev
+// without the var) — callers must treat "" as "no absolute URL available".
+// Same trick as storyboard.js refUrl / radio.js voiceRef.refUrl.
+export function filesUrl(env, key) {
+  const base = String(env?.WORKER_PUBLIC_URL || "").replace(/\/+$/, "");
+  return base && key ? `${base}/files/${key}` : "";
+}
+
+// Absolute reference URL for a browsable asset-library image (`/asset/<rel>`).
+export function assetRefUrl(env, projectId, rel) {
+  const clean = String(rel || "").replace(/^\/+/, "").replace(/\.\.(\/|\\|$)/g, "");
+  if (!clean) return "";
+  return filesUrl(env, `media/${normalizeProjectId(projectId)}/asset/${clean}`);
+}
+
 // URL prefix ("/gen/…") → kind. Returns null for unknown prefixes.
 export function kindForPrefix(prefix) {
   const map = {

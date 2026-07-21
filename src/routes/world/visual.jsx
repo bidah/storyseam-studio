@@ -19,7 +19,7 @@ import {
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
-import { Empty, Eyebrow, Panel, Spinner, ErrorNote } from "@/components/shared";
+import { Empty, Eyebrow, Panel, Spinner, ErrorNote, ConfirmModal } from "@/components/shared";
 
 const ASPECTS = ["16:9", "9:16", "1:1", "4:3", "3:4", "21:9"];
 const COUNTS = [1, 2, 3, 4];
@@ -176,21 +176,24 @@ function GenerationCard({ gen, onOpen }) {
 function GenerationDetail({ gen, onClose, onRecreate, onUseAsRef, onAddToCanvas, onSaveToLibrary, onDelete }) {
   const { setModalImage } = useShell();
   const [savedRel, setSavedRel] = useState(null);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  // Reset the saved/confirm state whenever a different generation opens.
+  useEffect(() => { setSavedRel(null); setConfirmDelete(false); }, [gen?.id]);
   if (!gen) return null;
   return (
     <Dialog open={!!gen} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-5xl">
+      <DialogContent className="flex h-[95vh] max-h-[95vh] w-[96vw] max-w-[96vw] flex-col overflow-hidden sm:max-w-[96vw]">
         <DialogHeader><DialogTitle className="text-sm font-medium text-muted-foreground">Generation</DialogTitle></DialogHeader>
-        <div className="grid gap-4 md:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
+        <div className="grid min-h-0 flex-1 gap-4 md:grid-cols-[minmax(0,3fr)_minmax(0,1fr)]">
           <button
             type="button"
             onClick={() => setModalImage({ url: gen.url, name: gen.prompt || "generation", role: "asset" })}
-            className="overflow-hidden rounded-lg border bg-muted"
+            className="flex min-h-0 items-center justify-center overflow-hidden rounded-lg border bg-muted"
             title="View full image"
           >
-            <img src={gen.url} alt={gen.prompt} className="max-h-[70vh] w-full object-contain" />
+            <img src={gen.url} alt={gen.prompt} className="max-h-full max-w-full object-contain" />
           </button>
-          <div className="space-y-3">
+          <div className="space-y-3 overflow-y-auto pr-1">
             <div>
               <Eyebrow className="normal-case tracking-normal text-foreground/70">Prompt</Eyebrow>
               <p className="whitespace-pre-wrap text-sm leading-relaxed">{gen.prompt || "—"}</p>
@@ -214,13 +217,22 @@ function GenerationDetail({ gen, onClose, onRecreate, onUseAsRef, onAddToCanvas,
                 <Library size={13} /> {savedRel ? "Saved to library" : "Save to library"}
               </Button>
               {savedRel && <span className="text-xs text-muted-foreground">→ {savedRel}</span>}
-              <Button size="sm" variant="ghost" className="ml-auto text-muted-foreground hover:text-destructive" onClick={() => { onDelete(gen); onClose(); }}>
+              <Button size="sm" variant="ghost" className="ml-auto text-muted-foreground hover:text-destructive" onClick={() => setConfirmDelete(true)}>
                 <Trash2 size={13} /> Delete
               </Button>
             </div>
           </div>
         </div>
       </DialogContent>
+
+      <ConfirmModal
+        open={confirmDelete}
+        title="Delete this generation?"
+        message="This concept image will be permanently deleted, along with its stored file and any canvas nodes referencing it."
+        confirmLabel="Delete"
+        onCancel={() => setConfirmDelete(false)}
+        onConfirm={() => { setConfirmDelete(false); onDelete(gen); onClose(); }}
+      />
     </Dialog>
   );
 }

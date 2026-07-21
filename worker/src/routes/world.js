@@ -5,6 +5,7 @@
 // the shot list). Written by the agent's world-creation skill (save_world) and
 // edited field-by-field from the World tab.
 import { readDoc, writeDoc } from "../lib/docs.js";
+import { assetRefUrl } from "../lib/media.js";
 
 // The story map — the 5 questions that shape the story (see the World tab).
 const MAP_FIELDS = ["world", "protagonist", "antagonist", "stakes", "theme"];
@@ -85,10 +86,17 @@ const readWorld = async (env, pid) => normalizeWorld(await readDoc(env, pid, "wo
 const writeWorld = (env, pid, world) => writeDoc(env, pid, "world", world);
 
 export function registerWorld(app) {
-  // Read the world bible (seeds an empty skeleton on first use).
+  // Read the world bible (seeds an empty skeleton on first use). Each linked
+  // character sheet gets an absolute `refUrl` (ungated `/files/...`) so the agent
+  // can feed the sheet to Higgsfield `media_import_url` as an image reference —
+  // the stored relative `url` (`/asset/...`) isn't fetchable by an anonymous MCP.
   app.get("/api/world", async (c) => {
     const pid = c.get("projectId");
-    return c.json(await readWorld(c.env, pid));
+    const world = await readWorld(c.env, pid);
+    for (const ch of world.characters) {
+      if (ch.sheetImage?.rel) ch.sheetImage.refUrl = assetRefUrl(c.env, pid, ch.sheetImage.rel);
+    }
+    return c.json(world);
   });
 
   // Replace the WHOLE world (the agent's save_world). Read-first isn't required —

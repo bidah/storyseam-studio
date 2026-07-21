@@ -42,10 +42,14 @@ the agent — call them directly, no loading step needed.
 
 ## Step 1 — Resolve the Nano Banana Pro model id
 
-Do NOT hardcode a model id. Call `models_explore` (list image models, or
-`action:'recommend'` with the goal "photoreal storyboard still from character +
-location references") and pick the **Nano Banana Pro** image model it returns. Use
-that model id in `generate_image` below.
+Do NOT hardcode a model id, and don't reuse an id off a prior still — **Higgsfield
+renames these** (e.g. `nano_banana_flash` → `nano_banana_2`), so a remembered id
+goes stale and `generate_image` fails with "invalid model". Call `models_explore`
+fresh (list image models, or `action:'recommend'` with the goal "photoreal
+storyboard still from character + location references") and pick the **Nano Banana
+Pro** image model it returns (or the current Nano Banana image model if there's no
+"Pro"). Use that freshly-resolved id in `generate_image` below; if a call errors on
+the model, re-run `models_explore` and retry with the current id.
 
 ## Step 2 — Upload every local reference to a media_id
 

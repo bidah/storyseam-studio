@@ -5,7 +5,7 @@ export const listLibrary = (api: Api) =>
   defineTool({
     name: "list_library",
     description:
-      "List the project image library grouped by folder, marking which images are currently selected (promoted to final_selection). Each image has a `rel` path used by toggle_library and select_reference.",
+      "List the project image library grouped by folder, marking which images are currently selected (promoted to final_selection). Each image has a `rel` path (used by toggle_library and select_reference) and a `refUrl` — an absolute https URL. To use a library image as a generation reference, feed its `refUrl` to Higgsfield `media_import_url`; do NOT use `url`/`thumb`/`rel`, which are relative in-app paths Higgsfield cannot fetch.",
     async run({ signal }) {
       return await api.get("/api/library", signal);
     },

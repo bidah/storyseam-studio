@@ -14,7 +14,7 @@
 // `/media/*`, `/multishot-media/*` streaming routes serve the R2 objects. See the
 // TODO(stage2) markers for the media-copy / build-file work still owed.
 import { normalizeProjectId, readDoc, writeDoc } from "../lib/docs.js";
-import { listMedia, listProxies, proxyKey } from "../lib/media.js";
+import { listMedia, listProxies, proxyKey, assetRefUrl } from "../lib/media.js";
 import { ensureAssetThumbs } from "../lib/proxy.js";
 
 // The de-facto selections DB (library picks + per-bundle episode selections).
@@ -137,6 +137,10 @@ export function registerLibrary(app) {
             name: im.name,
             url: "/asset/" + im.rel,
             thumb: "/thumb/" + im.rel,
+            // Absolute ungated `/files/...` URL for an anonymous external fetcher
+            // (the flue agent feeds this to Higgsfield `media_import_url` to use a
+            // library image as a reference — the relative `url` isn't fetchable).
+            refUrl: assetRefUrl(c.env, pid, im.rel),
             // NOTE: Express also emitted `abs` (the on-disk absolute path). There
             // is no filesystem on the Worker, so `abs` is intentionally dropped.
             selected: !!db.library[im.rel],

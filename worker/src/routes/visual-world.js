@@ -16,7 +16,7 @@
 // and flips the record to "ready". The client polls /poll every ~3s while any
 // card is processing (mirrors idea-mural's VideoGenView).
 import { readDoc, updateDoc, normalizeProjectId } from "../lib/docs.js";
-import { putMedia, mediaKey } from "../lib/media.js";
+import { putMedia, mediaKey, filesUrl } from "../lib/media.js";
 import {
   getHiggsfieldToken,
   forceRefreshHiggsfieldToken,
@@ -157,9 +157,18 @@ const FALLBACK = emptyVisualWorld();
 const readVW = async (env, pid) => normalizeVisualWorld(await readDoc(env, pid, "visual-world", null));
 const updateVW = (env, pid, mutate) => updateDoc(env, pid, "visual-world", FALLBACK, mutate);
 
-// Add the serve URL (`/visual-media/<file>`) to a ready generation for the client.
-function withUrls(gen) {
-  return { ...gen, url: gen.file ? `/visual-media/${gen.file}` : "" };
+// Decorate a ready generation for consumers:
+//   `url`    — the relative serve path (`/visual-media/<file>`) the in-app UI renders.
+//   `refUrl` — an ABSOLUTE ungated `/files/...` URL an external generator can fetch,
+//              so the flue agent can pass a prior generation back as an
+//              `image_references` media (via Higgsfield `media_import_url`). The
+//              relative `url` is not fetchable by an anonymous MCP call.
+function withUrls(env, pid, gen) {
+  return {
+    ...gen,
+    url: gen.file ? `/visual-media/${gen.file}` : "",
+    refUrl: gen.file ? filesUrl(env, mediaKey(pid, "visual", gen.file)) : "",
+  };
 }
 
 /* ------------------------------------------------------------------ *
@@ -177,16 +186,6 @@ async function mcp(env, userId, token, name, args) {
     if (!fresh) throw e;
     return await mcpToolCall(env, fresh, name, args);
   }
-}
-
-const publicBase = (env) => String(env.WORKER_PUBLIC_URL || "").replace(/\/+$/, "");
-
-// Ungated, project-encoded reference URL a generator can fetch (same trick as
-// storyboard.js refUrl / radio.js voiceRef.refUrl — the key carries the pid, so
-// an anonymous Higgsfield fetch resolves the right object).
-function filesUrl(env, key) {
-  const base = publicBase(env);
-  return base ? `${base}/files/${key}` : "";
 }
 
 // Pull a media id out of whatever shape the MCP tool returned.
@@ -214,12 +213,16 @@ async function importRef(env, userId, token, url) {
 }
 
 // Resolve the image-model catalog (id + label) via models_explore, marking the
-// Nano Banana Pro default. Cached briefly in KV. Defensive about the shape.
-const NANO_RE = /nano\s*banana\s*pro/i;
+// Nano Banana default. Cached briefly in KV. Defensive about the shape.
+// NOTE: Higgsfield renames model ids (e.g. nano_banana_flash → nano_banana_2), so
+// match Nano Banana loosely (preferring "Pro") and keep the cache short — a stale
+// catalog means we'd hand generate_image a dead id.
+const NANO_RE = /nano[\s_-]*banana/i;
+const PRO_RE = /\bpro\b/i;
+const MODELS_CACHE_KEY = "visual:image-models:v2";
 async function resolveModels(env, userId, token) {
-  const cacheKey = "visual:image-models:v1";
   try {
-    const cached = await env.AUTH_KV.get(cacheKey, "json");
+    const cached = await env.AUTH_KV.get(MODELS_CACHE_KEY, "json");
     if (cached?.models?.length) return cached;
   } catch { /* ignore cache miss */ }
 
@@ -233,11 +236,12 @@ async function resolveModels(env, userId, token) {
       label: str(m?.name || m?.title || m?.label || m?.display_name || m?.id),
     }))
     .filter((m) => m.id);
-  // Prefer Nano Banana Pro; else the first image model.
-  const nano = models.find((m) => NANO_RE.test(m.label) || NANO_RE.test(m.id));
+  // Prefer a Nano Banana "Pro"; else any Nano Banana; else the first image model.
+  const nanos = models.filter((m) => NANO_RE.test(m.label) || NANO_RE.test(m.id));
+  const nano = nanos.find((m) => PRO_RE.test(m.label) || PRO_RE.test(m.id)) || nanos[0];
   const defaultId = nano?.id || models[0]?.id || "";
   const out = { models, defaultId };
-  try { await env.AUTH_KV.put(cacheKey, JSON.stringify(out), { expirationTtl: 3600 }); } catch { /* best effort */ }
+  try { await env.AUTH_KV.put(MODELS_CACHE_KEY, JSON.stringify(out), { expirationTtl: 600 }); } catch { /* best effort */ }
   return out;
 }
 
@@ -251,7 +255,7 @@ export function registerVisualWorld(app) {
   app.get("/api/visual-world", async (c) => {
     const pid = c.get("projectId");
     const vw = await readVW(c.env, pid);
-    return c.json({ ...vw, generations: vw.generations.map(withUrls) });
+    return c.json({ ...vw, generations: vw.generations.map((g) => withUrls(c.env, pid, g)) });
   });
 
   // The image-model catalog for the composer's model selector (real Higgsfield
@@ -289,9 +293,14 @@ export function registerVisualWorld(app) {
     const inputRefs = Array.isArray(body.refs) ? body.refs.map(normalizeRef) : [];
 
     try {
-      // Resolve the model (explicit id from the selector, else Nano Banana Pro).
+      // Resolve the model against the live catalog. A selected id that Higgsfield
+      // has since renamed (e.g. a saved `nano_banana_flash`) is no longer in the
+      // catalog — fall back to the current default instead of handing a dead id to
+      // generate_image. Empty selection ⇒ default (Nano Banana Pro).
+      const { models, defaultId } = await resolveModels(c.env, userId, token);
       let model = str(body.model);
-      if (!model) model = (await resolveModels(c.env, userId, token)).defaultId;
+      if (model && models.length && !models.some((m) => m.id === model)) model = "";
+      if (!model) model = defaultId;
       if (!model) return c.json({ error: "Could not resolve an image model" }, 502);
 
       // Assemble the final prompt: preset style prefix (if chosen) + the scene.
@@ -347,7 +356,7 @@ export function registerVisualWorld(app) {
         v.generatedAt = ts;
         v.source = "app";
       });
-      return c.json({ ok: true, generations: created.map(withUrls) });
+      return c.json({ ok: true, generations: created.map((g) => withUrls(c.env, pid, g)) });
     } catch (e) {
       if (e instanceof HiggsfieldAuthError) return c.json({ error: "no_higgsfield_token" }, 401);
       return c.json({ error: `Higgsfield: ${e.message || e}` }, 502);
@@ -365,7 +374,7 @@ export function registerVisualWorld(app) {
 
     const vw = await readVW(c.env, pid);
     const pending = vw.generations.filter((g) => g.status === "processing" && g.jobId);
-    if (!pending.length) return c.json({ generations: vw.generations.map(withUrls) });
+    if (!pending.length) return c.json({ generations: vw.generations.map((g) => withUrls(c.env, pid, g)) });
 
     const updates = {}; // id -> partial
     for (const g of pending) {
@@ -408,7 +417,7 @@ export function registerVisualWorld(app) {
       });
     }
     const fresh = await readVW(c.env, pid);
-    return c.json({ generations: fresh.generations.map(withUrls) });
+    return c.json({ generations: fresh.generations.map((g) => withUrls(c.env, pid, g)) });
   });
 
   // Agent attach route (parallels /api/storyboard/image): the flue agent already
@@ -423,21 +432,39 @@ export function registerVisualWorld(app) {
 
     const id = `gen-${Date.now().toString(36)}-${crypto.randomUUID().slice(0, 6)}`;
     let file = "";
-    let source = url;
-    try {
-      const res = await fetch(url);
-      if (res.ok) {
-        const ct = res.headers.get("content-type") || "image/png";
-        const ext = /webp/.test(ct) ? "webp" : /jpe?g/.test(ct) ? "jpg" : "png";
-        file = `${id}.${ext}`;
-        await putMedia(c.env, pid, "visual", file, await res.arrayBuffer(), ct);
+    let downloadError = "";
+    const source = url;
+    // Only fetch from allowed media hosts (higgsfield / cloudfront), same gate as
+    // /poll — the agent should POST the raw job_status result_url. This blocks
+    // SSRF and, together with the content-type check below, stops a non-image
+    // body (e.g. a 200 HTML error/redirect page) being stored as a corrupt
+    // "ready" image the tab then renders broken.
+    if (!isAllowedMediaUrl(url)) {
+      downloadError = "url must be an https Higgsfield/CloudFront result URL (the job_status result_url)";
+    } else {
+      try {
+        const res = await fetch(url);
+        if (!res.ok) {
+          downloadError = `Image fetch failed (${res.status})`;
+        } else {
+          const ct = res.headers.get("content-type") || "";
+          if (!/^image\//i.test(ct)) {
+            downloadError = `Not an image (content-type ${ct || "unknown"}) — pass the raw result_url, not a page URL`;
+          } else {
+            const ext = /webp/i.test(ct) ? "webp" : /jpe?g/i.test(ct) ? "jpg" : /gif/i.test(ct) ? "gif" : "png";
+            file = `${id}.${ext}`;
+            await putMedia(c.env, pid, "visual", file, await res.arrayBuffer(), ct);
+          }
+        }
+      } catch (e) {
+        downloadError = `Image download failed: ${e?.message || e}`;
       }
-    } catch { /* record source url; an /ingest can land bytes later */ }
+    }
 
     const gen = normalizeGeneration({
       id,
       status: file ? "ready" : "error",
-      error: file ? "" : "Image download failed",
+      error: file ? "" : (downloadError || "Image download failed"),
       prompt: str(body.prompt),
       assembledPrompt: str(body.assembledPrompt) || str(body.prompt),
       model: str(body.model),
@@ -449,7 +476,7 @@ export function registerVisualWorld(app) {
       ts: new Date().toISOString(),
     });
     await updateVW(c.env, pid, (v) => { v.generations.unshift(gen); });
-    return c.json({ ok: true, generation: withUrls(gen) });
+    return c.json({ ok: true, generation: withUrls(c.env, pid, gen) });
   });
 
   // Delete a generation record + its R2 object.
