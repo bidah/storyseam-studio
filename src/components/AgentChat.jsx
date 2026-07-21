@@ -20,6 +20,7 @@ import {
   Check,
   ChevronDown,
   Cpu,
+  Mic,
 } from "lucide-react";
 import { Streamdown, defaultRemarkPlugins } from "streamdown";
 import remarkBreaks from "remark-breaks";
@@ -51,6 +52,11 @@ import {
   DropdownMenuRadioItem,
 } from "@/components/ui/dropdown-menu";
 import { AGENT_MODELS, useAgentModel, setAgentModel } from "@/lib/agentModel";
+import {
+  useVoiceRecording,
+  transcribeAudio,
+  formatDuration,
+} from "@/lib/useVoiceRecording";
 
 // ---------------------------------------------------------------------------
 // Chat rendering walks every part of every flue message in order and renders
@@ -499,6 +505,10 @@ export default function AgentChat() {
   const [text, setText] = useState("");
   const [attachments, setAttachments] = useState([]);
   const [atBottom, setAtBottom] = useState(true);
+  // Voice message capture (mic button → Cloudflare Whisper → composer text).
+  const rec = useVoiceRecording();
+  const [transcribing, setTranscribing] = useState(false);
+  const [voiceError, setVoiceError] = useState(null);
   const scrollRef = useRef(null);
   const fileInputRef = useRef(null);
   const taRef = useRef(null);
@@ -526,6 +536,9 @@ export default function AgentChat() {
     setText("");
     setAttachments([]);
     setAtBottom(true);
+    rec.cancel();
+    setTranscribing(false);
+    setVoiceError(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conv.activeId]);
 
@@ -631,6 +644,42 @@ export default function AgentChat() {
     attachments.forEach((a) => a.previewUrl && URL.revokeObjectURL(a.previewUrl));
     setAttachments([]);
     setAtBottom(true);
+  };
+
+  const startRecording = async () => {
+    setVoiceError(null);
+    try {
+      await rec.start();
+    } catch (e) {
+      setVoiceError(e?.message || "Couldn't start recording.");
+    }
+  };
+
+  // Discard the take without transcribing.
+  const cancelRecording = () => {
+    rec.cancel();
+    setTranscribing(false);
+  };
+
+  // Stop, transcribe, and drop the text into the composer (appended when the
+  // user already has a draft). Does NOT auto-send — the user still hits Send.
+  const confirmRecording = async () => {
+    setTranscribing(true);
+    setVoiceError(null);
+    try {
+      const blob = await rec.stop();
+      if (!blob || blob.size < 100) throw new Error("No audio captured — try again.");
+      const { text: heard } = await transcribeAudio(blob);
+      if (!heard) {
+        setVoiceError("Didn't catch that — try again.");
+        return;
+      }
+      setText((prev) => (prev.trim() ? `${prev.trim()} ${heard}` : heard));
+    } catch (e) {
+      setVoiceError(e?.message || "Transcription failed.");
+    } finally {
+      setTranscribing(false);
+    }
   };
 
   const submit = async () => {
@@ -830,55 +879,113 @@ export default function AgentChat() {
           </AttachmentGroup>
         ) : null}
 
-        <div className="flex items-end gap-2">
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/*"
-            multiple
-            hidden
-            onChange={onPick}
-          />
-          <Button
-            size="icon"
-            variant="ghost"
-            onClick={() => fileInputRef.current?.click()}
-            aria-label="Attach image"
-            title="Attach image"
-          >
-            <Paperclip size={16} />
-          </Button>
-          <textarea
-            ref={taRef}
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            onPaste={onPaste}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault();
-                submit();
-              }
-            }}
-            rows={1}
-            placeholder="Message the studio agent…"
-            className="max-h-[180px] min-h-[38px] flex-1 resize-none overflow-y-auto rounded-lg border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
-          />
-          {isBusy ? (
-            <Button size="icon" variant="secondary" onClick={agent.stop} aria-label="Stop">
-              <Square size={15} />
-            </Button>
-          ) : (
+        {voiceError ? (
+          <p className="mb-1.5 flex items-center gap-1.5 text-xs text-destructive">
+            <AlertCircle size={13} />
+            {voiceError}
+          </p>
+        ) : null}
+
+        {rec.recording || transcribing ? (
+          <div className="flex items-center gap-2 rounded-lg border bg-background px-2 py-1.5">
             <Button
               size="icon"
-              onClick={submit}
-              disabled={!canSend}
-              aria-label="Send"
-              title={uploading ? "Waiting for upload…" : "Send"}
+              variant="ghost"
+              onClick={cancelRecording}
+              disabled={transcribing}
+              aria-label="Cancel recording"
+              title="Cancel"
             >
-              {uploading ? <Loader2 size={15} className="animate-spin" /> : <Send size={15} />}
+              <X size={16} />
             </Button>
-          )}
-        </div>
+            <div className="flex flex-1 items-center gap-2 text-sm">
+              {transcribing ? (
+                <Loader2 size={14} className="animate-spin text-muted-foreground" />
+              ) : (
+                <span className="size-2.5 animate-pulse rounded-full bg-red-500" />
+              )}
+              <span className="text-muted-foreground">
+                {transcribing ? "Transcribing…" : "Recording…"}
+              </span>
+              <span className="tabular-nums text-muted-foreground">
+                {formatDuration(rec.duration)}
+              </span>
+            </div>
+            <Button
+              size="icon"
+              onClick={confirmRecording}
+              disabled={transcribing}
+              aria-label="Stop and transcribe"
+              title="Stop and transcribe"
+            >
+              {transcribing ? (
+                <Loader2 size={15} className="animate-spin" />
+              ) : (
+                <Check size={15} />
+              )}
+            </Button>
+          </div>
+        ) : (
+          <div className="flex items-end gap-2">
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              multiple
+              hidden
+              onChange={onPick}
+            />
+            <Button
+              size="icon"
+              variant="ghost"
+              onClick={() => fileInputRef.current?.click()}
+              aria-label="Attach image"
+              title="Attach image"
+            >
+              <Paperclip size={16} />
+            </Button>
+            <Button
+              size="icon"
+              variant="ghost"
+              onClick={startRecording}
+              disabled={isBusy}
+              aria-label="Record voice message"
+              title="Record voice message"
+            >
+              <Mic size={16} />
+            </Button>
+            <textarea
+              ref={taRef}
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              onPaste={onPaste}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  submit();
+                }
+              }}
+              rows={1}
+              placeholder="Message the studio agent…"
+              className="max-h-[180px] min-h-[38px] flex-1 resize-none overflow-y-auto rounded-lg border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
+            />
+            {isBusy ? (
+              <Button size="icon" variant="secondary" onClick={agent.stop} aria-label="Stop">
+                <Square size={15} />
+              </Button>
+            ) : (
+              <Button
+                size="icon"
+                onClick={submit}
+                disabled={!canSend}
+                aria-label="Send"
+                title={uploading ? "Waiting for upload…" : "Send"}
+              >
+                {uploading ? <Loader2 size={15} className="animate-spin" /> : <Send size={15} />}
+              </Button>
+            )}
+          </div>
+        )}
 
         <div className="mt-1.5 flex items-center">
           <ModelPicker disabled={isBusy} />
