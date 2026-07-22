@@ -27,7 +27,7 @@ export const attachVisualGeneration = (api: Api) =>
               url: v.optional(d(v.string(), "The reference image URL you passed.")),
             }),
           ),
-          "The reference images you passed as image_references for this generation (lineage).",
+          "The reference images you passed as reference media for this generation (lineage).",
         ),
       ),
     }),

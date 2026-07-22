@@ -61,8 +61,8 @@ also the pipeline order: **World → Script → Shot list → Storyboard/stills 
   paperclip, the message ends with an `Attached reference image(s) (absolute URLs …):` block
   listing each image's absolute HTTPS URL. Those URLs are Higgsfield-fetchable — to edit or
   regenerate *from* an attached image (e.g. "change the backpack to red, give me one image back"),
-  `media_import_url` each URL and pass it as the model's reference role (`image_references` for
-  Nano Banana Pro), then generate and `attach_visual_generation` the result — exactly the
+  `media_import_url` each URL and pass it as the model's reference role (`image` for the Nano
+  Banana / Soul image models), then generate and `attach_visual_generation` the result — exactly the
   visual-world reference flow, sourced from the attachment instead of a library/generation pick.
   Generate the **number of images the user asked for** (one means one).
 - **Script** — the episode screenplay: a title plus screenplay lines (scene headings,
