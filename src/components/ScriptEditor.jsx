@@ -569,7 +569,7 @@ function Editor({ initial, drafts, pinnedId, currentName, reload, signed: signed
   return (
     <div className="mx-auto max-w-3xl space-y-3">
       {/* Toolbar */}
-      <div className="sticky top-[57px] z-20 -mx-1 flex flex-wrap items-center gap-2 rounded-lg border bg-card/90 px-3 py-2 backdrop-blur supports-[backdrop-filter]:bg-card/70">
+      <div className="sticky top-5 z-20 -mx-1 flex flex-wrap items-center gap-2 rounded-lg border bg-card/90 px-3 py-2 backdrop-blur supports-[backdrop-filter]:bg-card/70">
         <DraftControls
           drafts={drafts}
           pinnedId={pinnedId}
