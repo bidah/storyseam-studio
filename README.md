@@ -88,6 +88,18 @@ WORKER=http://localhost:8787 npm run dev    # terminal 2
 npm run worker:deploy   # builds dist/ then `wrangler deploy` (Worker serves dist/ as ASSETS)
 ```
 
+## Testing
+
+```bash
+npm test                # Vitest: SPA + Worker + flue agent logic (offline, deterministic)
+npm run test:coverage   # + a v8 coverage report in coverage/
+npm run test:e2e        # Playwright smoke test of the app shell
+npm run test:evals      # agent behaviour evals — needs FLUE_BASE_URL (see evals/README.md)
+```
+
+One Vitest config, three projects (`test/web`, `test/worker`, `test/flue`). See
+**`TESTING.md`** for the full layout, the per-feature coverage map, and the fakes.
+
 ## Credentials
 
 flue agent secrets (`flue-agent/.dev.vars` locally, `wrangler secret` in prod):

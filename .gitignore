@@ -10,3 +10,10 @@ dist
 .vercel
 .env*
 worker/editor.tar.gz
+
+# testing
+coverage
+test-results
+playwright-report
+.playwright
+vitest-results.json
