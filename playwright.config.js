@@ -16,6 +16,10 @@ export default defineConfig({
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
   reporter: process.env.CI ? "github" : "list",
+  // The Vite dev server compiles lazily, so the first request per worker (and
+  // every code-split route chunk) pays a one-off cost; a roomier expect timeout
+  // keeps first-mount assertions from flaking under fullyParallel load.
+  expect: { timeout: 10_000 },
   use: {
     baseURL: BASE_URL,
     trace: "on-first-retry",
