@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useLoaderData, useRevalidator } from "react-router";
 import {
   Globe, Users, BookOpen, Sparkles, Wand2, UserPlus, Trash2, Loader2,
-  ImagePlus, X, Maximize2, Mic,
+  ImagePlus, X, Maximize2, Mic, MapPin, MapPinPlus,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { invalidateTabCache } from "@/lib/tabCache";
@@ -394,6 +394,108 @@ function CharacterCard({ char, onField, onRemove, expanded }) {
 }
 
 /* ---------------------------------------------------------------- *
+ * Location card — a place in the world, its slug (matches a shot's  *
+ * `location`) and its reference-art sheet.                          *
+ * ---------------------------------------------------------------- */
+
+function LocationCard({ loc, onField, onRemove }) {
+  const { setModalImage } = useShell();
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const sheet = loc.sheetImage;
+  return (
+    <div className="rounded-lg border p-3">
+      <div className="mb-2 flex items-center gap-2">
+        <input
+          defaultValue={loc.name}
+          placeholder="Location name"
+          onBlur={(e) => e.target.value !== loc.name && onField("name", e.target.value)}
+          className="min-w-0 flex-1 rounded-md border border-transparent bg-transparent px-1.5 py-0.5 text-sm font-semibold hover:border-border focus:border-primary focus:bg-background focus:outline-none"
+        />
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          aria-label={`Remove ${loc.name || "location"}`}
+          onClick={() => onRemove(loc)}
+          className="shrink-0 text-muted-foreground hover:text-destructive"
+        >
+          <Trash2 size={14} />
+        </Button>
+      </div>
+
+      {/* Slug — the key a shot's `location` string resolves to. */}
+      <label className="mb-2 flex items-center gap-2">
+        <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Slug</span>
+        <input
+          defaultValue={loc.slug}
+          placeholder="school-clearing"
+          onBlur={(e) => e.target.value !== loc.slug && onField("slug", e.target.value)}
+          className="min-w-0 flex-1 rounded-md border border-transparent bg-muted/50 px-1.5 py-0.5 font-mono text-xs hover:border-border focus:border-primary focus:bg-background focus:outline-none"
+        />
+      </label>
+
+      {/* Location sheet: the reference art fed to the image model as this place's
+          background (same shape/flow as a character sheet). */}
+      {sheet ? (
+        <div className="mb-2 flex items-center gap-3 rounded-lg border bg-muted/60 p-2">
+          <button
+            type="button"
+            onClick={() => setModalImage({ url: sheet.url, name: sheet.name || `${loc.name || "location"} sheet`, role: "asset" })}
+            title="View full image"
+            className="shrink-0 overflow-hidden rounded-md border transition-colors hover:border-primary/60"
+          >
+            <img
+              src={sheet.thumb || sheet.url}
+              alt={sheet.name || `${loc.name || "location"} sheet`}
+              className="h-28 w-28 object-cover"
+            />
+          </button>
+          <div className="flex min-w-0 flex-col items-start gap-1.5">
+            <Button variant="outline" size="sm" onClick={() => setPickerOpen(true)}>
+              <ImagePlus size={13} /> Change location sheet
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => onField("sheetImage", null)}
+              className="text-muted-foreground hover:text-destructive"
+            >
+              <X size={14} /> Unlink
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <div className="mb-2">
+          <Button variant="outline" size="sm" onClick={() => setPickerOpen(true)}>
+            <ImagePlus size={13} /> Link location sheet
+          </Button>
+        </div>
+      )}
+
+      <label className="space-y-0.5">
+        <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Description</span>
+        <WorldField
+          value={loc.description}
+          placeholder="What the place looks like — keep it consistent across scenes."
+          rows={2}
+          onCommit={(val) => onField("description", val)}
+        />
+      </label>
+
+      <MediaPicker
+        open={pickerOpen}
+        onOpenChange={setPickerOpen}
+        title="Link location sheet"
+        sources={["library"]}
+        multiple={false}
+        onAdd={([im]) => {
+          if (im) onField("sheetImage", { rel: im.rel, url: im.url, thumb: im.thumb, name: im.name });
+        }}
+      />
+    </div>
+  );
+}
+
+/* ---------------------------------------------------------------- *
  * Route                                                             *
  * ---------------------------------------------------------------- */
 
@@ -405,6 +507,7 @@ function World() {
   useRevalidateOnMount("world");
   const [error, setError] = useState(null);
   const [confirm, setConfirm] = useState(null); // character pending removal
+  const [confirmLoc, setConfirmLoc] = useState(null); // location pending removal
 
   const revalidate = revalidator.revalidate;
   const refetch = useCallback(() => {
@@ -437,10 +540,15 @@ function World() {
     mutate(`/api/world/character/${id}`, { method: "PUT", body: JSON.stringify({ [key]: val }) });
   const addChar = () => mutate("/api/world/character", { method: "POST", body: JSON.stringify({}) });
   const removeChar = (char) => { setConfirm(null); mutate(`/api/world/character/${char.id}`, { method: "DELETE" }); };
+  const setLoc = (id, key, val) =>
+    mutate(`/api/world/location/${id}`, { method: "PUT", body: JSON.stringify({ [key]: val }) });
+  const addLoc = () => mutate("/api/world/location", { method: "POST", body: JSON.stringify({}) });
+  const removeLoc = (loc) => { setConfirmLoc(null); mutate(`/api/world/location/${loc.id}`, { method: "DELETE" }); };
 
   const createWithAgent = () => agent.send({ message: createWorldMessage() }).catch(() => {});
 
   const characters = world.characters || [];
+  const locations = world.locations || [];
   const mapFilled = MAP.filter((m) => (world.map?.[m.key] || "").trim()).length;
   const depthFilled = DEPTH.filter((d) => (world.depth?.[d.key] || "").trim()).length;
 
@@ -464,6 +572,7 @@ function World() {
           <Badge variant="outline"><Globe size={11} /> {mapFilled}/{MAP.length} story map</Badge>
           <Badge variant="outline"><BookOpen size={11} /> {depthFilled}/{DEPTH.length} story depth</Badge>
           <Badge variant="info"><Users size={11} /> {characters.length} characters</Badge>
+          <Badge variant="info"><MapPin size={11} /> {locations.length} locations</Badge>
           {agentBusy && <Badge variant="warning"><Loader2 size={11} className="animate-spin" /> agent working…</Badge>}
           <span>press “Let's create the world” to have the agent interview you, or fill any field in directly.</span>
         </div>
@@ -587,12 +696,50 @@ function World() {
         )}
       </Panel>
 
+      {/* Locations — the places of the world; each shot's `location` slug resolves
+          here so the Animatic can auto-supply the place's reference art. */}
+      <Panel
+        title={<span className="flex items-center gap-2"><MapPin size={15} className="text-primary" /> Locations</span>}
+        meta={
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" onClick={addLoc}>
+              <MapPinPlus size={13} /> Add location
+            </Button>
+          </div>
+        }
+      >
+        {locations.length === 0 ? (
+          <div className="rounded-lg border border-dashed p-6 text-center">
+            <Empty>no locations yet — add the places your shots happen in so scenes get a consistent background.</Empty>
+          </div>
+        ) : (
+          <div className="grid gap-3 md:grid-cols-2">
+            {locations.map((loc) => (
+              <LocationCard
+                key={loc.id}
+                loc={loc}
+                onField={(key, val) => setLoc(loc.id, key, val)}
+                onRemove={setConfirmLoc}
+              />
+            ))}
+          </div>
+        )}
+      </Panel>
+
       <ConfirmModal
         open={!!confirm}
         title="Remove character"
         message={`Remove “${confirm?.name || "this character"}” from the world? This can't be undone.`}
         onConfirm={() => removeChar(confirm)}
         onCancel={() => setConfirm(null)}
+      />
+
+      <ConfirmModal
+        open={!!confirmLoc}
+        title="Remove location"
+        message={`Remove “${confirmLoc?.name || "this location"}” from the world? This can't be undone.`}
+        onConfirm={() => removeLoc(confirmLoc)}
+        onCancel={() => setConfirmLoc(null)}
       />
     </div>
   );

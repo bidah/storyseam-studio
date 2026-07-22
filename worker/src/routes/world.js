@@ -13,6 +13,9 @@ const MAP_FIELDS = ["world", "protagonist", "antagonist", "stakes", "theme"];
 const DEPTH_FIELDS = ["premise", "wantVsNeed", "conflict", "obstacles", "structure"];
 // One character's type breakdown.
 const CHAR_FIELDS = ["name", "archetype", "role", "want", "need", "traits", "arc", "voice", "appearance"];
+// One location's fields. `slug` is the KEY that a shot's `location` string resolves
+// to, so the Animatic can auto-supply this location's sheet as an image reference.
+const LOC_FIELDS = ["name", "slug", "description"];
 
 const emptySection = (fields) => Object.fromEntries(fields.map((f) => [f, ""]));
 
@@ -25,10 +28,13 @@ function emptyWorld() {
     map: emptySection(MAP_FIELDS),
     depth: emptySection(DEPTH_FIELDS),
     characters: [],
+    locations: [],
   };
 }
 
 const str = (v) => (v == null ? "" : String(v));
+// Match the shot-list `location` slug convention (e.g. "school-clearing").
+const slugify = (s) => str(s).trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
 
 // A linked character-sheet image, pulled from the project asset library (never
 // the raw Higgsfield library). We keep the library `rel` (canonical id) plus the
@@ -66,6 +72,19 @@ function normalizeChar(raw, i = 0) {
   return out;
 }
 
+// Coerce one location into the canonical shape, minting an id if missing. `slug`
+// falls back to a slugified name so it always matches a shot's `location` string;
+// `sheetImage` is the location's reference art (same shape as a character sheet).
+function normalizeLocation(raw, i = 0) {
+  const l = raw || {};
+  const out = { id: str(l.id) || `loc-${Date.now().toString(36)}-${i}` };
+  out.name = str(l.name);
+  out.slug = slugify(l.slug || l.name);
+  out.description = str(l.description);
+  out.sheetImage = normalizeSheetImage(l.sheetImage);
+  return out;
+}
+
 // Merge a (possibly partial) world onto the empty skeleton so every field always
 // exists and the UI never has to null-check. Sections are shallow-merged; unknown
 // keys are dropped.
@@ -79,6 +98,7 @@ function normalizeWorld(raw) {
   for (const f of MAP_FIELDS) base.map[f] = str(w.map?.[f]);
   for (const f of DEPTH_FIELDS) base.depth[f] = str(w.depth?.[f]);
   base.characters = Array.isArray(w.characters) ? w.characters.map(normalizeChar) : [];
+  base.locations = Array.isArray(w.locations) ? w.locations.map(normalizeLocation) : [];
   return base;
 }
 
@@ -111,6 +131,9 @@ export function registerWorld(app) {
     const world = await readWorld(c.env, pid);
     for (const ch of world.characters) {
       if (ch.sheetImage?.rel) ch.sheetImage.refUrl = assetRefUrl(c.env, pid, ch.sheetImage.rel);
+    }
+    for (const loc of world.locations) {
+      if (loc.sheetImage?.rel) loc.sheetImage.refUrl = assetRefUrl(c.env, pid, loc.sheetImage.rel);
     }
     return c.json(world);
   });
@@ -182,6 +205,47 @@ export function registerWorld(app) {
     const before = world.characters.length;
     world.characters = world.characters.filter((x) => x.id !== id);
     if (world.characters.length === before) return c.json({ error: `no character ${id}` }, 404);
+    await writeWorld(c.env, pid, world);
+    return c.json({ ok: true, world });
+  });
+
+  // Add a location to the roster.
+  app.post("/api/world/location", async (c) => {
+    const pid = c.get("projectId");
+    let body;
+    try { body = await c.req.json(); } catch { body = {}; }
+    const world = await readWorld(c.env, pid);
+    const loc = normalizeLocation({ name: "New location", ...body }, world.locations.length);
+    if (loc.sheetImage?.rel) loc.sheetImage.refUrl = assetRefUrl(c.env, pid, loc.sheetImage.rel);
+    world.locations.push(loc);
+    await writeWorld(c.env, pid, world);
+    return c.json({ ok: true, location: loc, world });
+  });
+
+  // Edit one location in place.
+  app.put("/api/world/location/:id", async (c) => {
+    const pid = c.get("projectId");
+    const id = c.req.param("id");
+    const world = await readWorld(c.env, pid);
+    const idx = world.locations.findIndex((x) => x.id === id);
+    if (idx < 0) return c.json({ error: `no location ${id}` }, 404);
+    let patch;
+    try { patch = await c.req.json(); } catch { patch = {}; }
+    world.locations[idx] = normalizeLocation({ ...world.locations[idx], ...patch, id }, idx);
+    const loc = world.locations[idx];
+    if (loc.sheetImage?.rel) loc.sheetImage.refUrl = assetRefUrl(c.env, pid, loc.sheetImage.rel);
+    await writeWorld(c.env, pid, world);
+    return c.json({ ok: true, location: loc, world });
+  });
+
+  // Remove a location.
+  app.delete("/api/world/location/:id", async (c) => {
+    const pid = c.get("projectId");
+    const id = c.req.param("id");
+    const world = await readWorld(c.env, pid);
+    const before = world.locations.length;
+    world.locations = world.locations.filter((x) => x.id !== id);
+    if (world.locations.length === before) return c.json({ error: `no location ${id}` }, 404);
     await writeWorld(c.env, pid, world);
     return c.json({ ok: true, world });
   });
