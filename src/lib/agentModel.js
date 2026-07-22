@@ -82,3 +82,73 @@ export function onAgentModelChange(fn) {
 export function useAgentModel() {
   return useSyncExternalStore(onAgentModelChange, getAgentModel, getAgentModel);
 }
+
+// --- provider availability -------------------------------------------------
+// Key-gated model providers (anything that isn't Cloudflare Workers AI) only
+// work when the flue worker holds the matching key — and the SPA can't read
+// worker secrets. So probe the flue worker's /health (proxied at /eve/health, no
+// auth) once; it reports `providers: { anthropic: bool, … }`. Keyless providers
+// (`cloudflare/…`) are always available. Until the probe resolves, key-gated
+// providers stay hidden, so we never offer a model that would just error on send.
+const KEYLESS_PROVIDERS = new Set(["cloudflare"]);
+
+function providerOf(spec) {
+  return String(spec).split("/")[0];
+}
+
+let providerAvailability = null; // null until probed; then { anthropic: bool, … }
+const availListeners = new Set();
+
+function isSpecAvailable(spec) {
+  if (KEYLESS_PROVIDERS.has(providerOf(spec))) return true;
+  if (!providerAvailability) return false; // unprobed → hide key-gated
+  return Boolean(providerAvailability[providerOf(spec)]);
+}
+
+function isModelAvailable(id) {
+  const m = AGENT_MODELS.find((x) => x.id === id);
+  return m ? isSpecAvailable(m.spec) : false;
+}
+
+let probeStarted = false;
+function ensureProbe() {
+  if (probeStarted) return;
+  probeStarted = true;
+  fetch("/eve/health", { headers: { accept: "application/json" } })
+    .then((r) => (r.ok ? r.json() : null))
+    .catch(() => null)
+    .then((data) => {
+      providerAvailability =
+        data && typeof data.providers === "object" && data.providers ? data.providers : {};
+      // A persisted selection that's no longer available falls back to the first
+      // available model (the keyless default is always available).
+      if (!isModelAvailable(current)) {
+        const fallback = isModelAvailable(DEFAULT_AGENT_MODEL)
+          ? DEFAULT_AGENT_MODEL
+          : (AGENT_MODELS.find((m) => isSpecAvailable(m.spec))?.id ?? DEFAULT_AGENT_MODEL);
+        setAgentModel(fallback);
+      }
+      for (const fn of availListeners) {
+        try {
+          fn();
+        } catch {
+          /* ignore */
+        }
+      }
+    });
+}
+
+// React binding: the availability-filtered model list. Kicks off the one-shot
+// provider probe on first use and re-renders when it resolves.
+export function useAvailableAgentModels() {
+  ensureProbe();
+  useSyncExternalStore(
+    (cb) => {
+      availListeners.add(cb);
+      return () => availListeners.delete(cb);
+    },
+    () => providerAvailability,
+    () => providerAvailability,
+  );
+  return AGENT_MODELS.filter((m) => isSpecAvailable(m.spec));
+}

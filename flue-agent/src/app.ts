@@ -78,7 +78,16 @@ const applyModelSelection: MiddlewareHandler = async (c, next) => {
 
 const app = new Hono();
 
-app.get("/health", (c) => c.json({ ok: true }));
+// Health + client capabilities. `providers` reports which KEY-GATED model
+// providers this worker can actually reach, so the web picker can hide models it
+// has no key for (Cloudflare Workers AI models need no key and are always on).
+// Public (no proxy-user auth) so the SPA can read it before/around a send.
+app.get("/health", (c) =>
+  c.json({
+    ok: true,
+    providers: { anthropic: Boolean(process.env.ANTHROPIC_API_KEY) },
+  }),
+);
 app.use("/agents/:name/:id", requireProxyUser);
 app.use("/agents/:name/:id/*", requireProxyUser);
 app.use("/agents/:name/:id", applyModelSelection);

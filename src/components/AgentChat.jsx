@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useAgent, useConversations } from "@/components/AgentProvider";
 import {
-  Bot,
   Send,
   Square,
   Wrench,
@@ -13,7 +12,6 @@ import {
   X,
   ArrowDown,
   Image as ImageIcon,
-  SquarePen,
   History,
   MessageSquare,
   Trash2,
@@ -52,7 +50,13 @@ import {
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
 } from "@/components/ui/dropdown-menu";
-import { AGENT_MODELS, useAgentModel, setAgentModel } from "@/lib/agentModel";
+import {
+  AGENT_MODELS,
+  DEFAULT_AGENT_MODEL,
+  useAgentModel,
+  useAvailableAgentModels,
+  setAgentModel,
+} from "@/lib/agentModel";
 import {
   useVoiceRecording,
   transcribeAudio,
@@ -403,7 +407,7 @@ function relTime(ts) {
 // Chat history as a right-side slide-in panel, sized to match the chat panel.
 // Rows are plain buttons (not menu items), so a mouse click reliably switches
 // conversations; the trash button is a sibling, not a nested button.
-function ChatHistorySheet({ conv }) {
+export function ChatHistorySheet({ conv }) {
   const [open, setOpen] = useState(false);
   const select = (id) => {
     conv.switchChat(id);
@@ -476,7 +480,14 @@ function ChatHistorySheet({ conv }) {
 // runs on its single server-side default model regardless of the selection.
 function ModelPicker({ disabled }) {
   const modelId = useAgentModel();
-  const active = AGENT_MODELS.find((m) => m.id === modelId) ?? AGENT_MODELS[0];
+  // Only models whose provider key is actually configured on the flue worker
+  // (Cloudflare models are always available; Claude only when a key is present).
+  const models = useAvailableAgentModels();
+  const active =
+    models.find((m) => m.id === modelId) ??
+    models.find((m) => m.id === DEFAULT_AGENT_MODEL) ??
+    models[0] ??
+    AGENT_MODELS[0];
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -493,8 +504,8 @@ function ModelPicker({ disabled }) {
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="w-52">
-        <DropdownMenuRadioGroup value={modelId} onValueChange={setAgentModel}>
-          {AGENT_MODELS.map((m) => (
+        <DropdownMenuRadioGroup value={active.id} onValueChange={setAgentModel}>
+          {models.map((m) => (
             <DropdownMenuRadioItem key={m.id} value={m.id} className="flex-col items-start gap-0">
               <span className="text-sm font-medium">{m.label}</span>
               <span className="text-[11px] text-muted-foreground">{m.hint}</span>
@@ -550,8 +561,6 @@ export default function AgentChat() {
     el.style.height = "auto";
     el.style.height = `${Math.min(el.scrollHeight, 180)}px`;
   }, [text]);
-
-  const activeChat = conv.list.find((c) => c.id === conv.activeId);
 
   // On mount and whenever the active chat changes, re-seed the composer's
   // attachment record from that chat and clear any half-typed message. The
@@ -844,45 +853,7 @@ export default function AgentChat() {
   };
 
   return (
-    <aside className="flex h-dvh w-[495px] shrink-0 flex-col border-l bg-card">
-      <header className="flex h-[61px] shrink-0 items-center gap-2 border-b px-4">
-        <div className="flex size-7 shrink-0 items-center justify-center rounded-md bg-primary text-primary-foreground">
-          <Bot size={16} />
-        </div>
-        <div className="min-w-0 leading-tight">
-          <div className="flex items-center gap-1.5">
-            <span className="text-sm font-semibold">Studio agent</span>
-            <span
-              className={cn(
-                "size-2 shrink-0 rounded-full",
-                agent.status === "error"
-                  ? "bg-destructive"
-                  : isBusy
-                    ? "animate-pulse bg-emerald-500"
-                    : "bg-muted-foreground/40",
-              )}
-              title={agent.status}
-            />
-          </div>
-          <div className="truncate text-[11px] text-muted-foreground" title={activeChat?.title}>
-            {activeChat?.title || "New chat"}
-          </div>
-        </div>
-        <div className="ml-auto flex shrink-0 items-center gap-0.5">
-          <Button
-            size="icon"
-            variant="ghost"
-            className="size-8"
-            aria-label="New chat"
-            title="New chat"
-            onClick={() => conv.newChat()}
-          >
-            <SquarePen size={16} />
-          </Button>
-          <ChatHistorySheet conv={conv} />
-        </div>
-      </header>
-
+    <aside className="flex h-full w-[495px] shrink-0 flex-col border-l bg-card">
       <div className="relative min-h-0 flex-1">
         <div
           ref={scrollRef}
