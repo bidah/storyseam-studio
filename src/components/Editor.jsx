@@ -1170,6 +1170,37 @@ function MediaPool({ pool, stills, collapsed, height, onToggle, dragId, onMeta, 
   );
 }
 
+/* ---- playhead resume ---------------------------------------------------------
+ * The Editor is a lazy route that unmounts when you switch tabs, so returning to
+ * it reloads the timeline from scratch and would drop the needle back at frame 0.
+ * Remember the playhead per project in localStorage and restore it on mount so a
+ * tab round-trip (or a reload) picks up where you left off. Keyed by project id
+ * so each project resumes to its own spot. */
+const PLAYHEAD_PREFIX = "editor-playhead:";
+
+function readPlayhead(pid) {
+  if (!pid) return 0;
+  try {
+    const raw = localStorage.getItem(PLAYHEAD_PREFIX + pid);
+    const n = raw == null ? 0 : Number(raw);
+    return Number.isFinite(n) && n > 0 ? Math.floor(n) : 0;
+  } catch {
+    return 0;
+  }
+}
+
+function writePlayhead(pid, frame) {
+  if (!pid) return;
+  try {
+    // Only persist a meaningful position; a near-zero start is the default, so
+    // clear the key instead of pinning frame 0 as a stale resume point.
+    if (frame > 1) localStorage.setItem(PLAYHEAD_PREFIX + pid, String(Math.floor(frame)));
+    else localStorage.removeItem(PLAYHEAD_PREFIX + pid);
+  } catch {
+    /* storage unavailable (private mode, quota) — resume is best-effort */
+  }
+}
+
 export default function Editor({ reloadKey }) {
   const [timeline, setTimeline] = useState(null);
   const [cuts, setCuts] = useState([]);
@@ -1248,6 +1279,11 @@ export default function Editor({ reloadKey }) {
   const audioLabelsRef = useRef(null); // audio-group label rail, scroll-synced to its lane group
   const frameRef = useRef(0); // live playhead frame, a snap target during a move drag
   const playingRef = useRef(false); // true while the <Player> is playing, gates auto-follow scroll
+  // Playhead resume: the saved frame to restore once the timeline mounts (null
+  // after it's applied, so an edit-driven timeline change never re-yanks it), and
+  // the last time we persisted (to throttle the ~24×/s frameupdate writes).
+  const resumeFrameRef = useRef(null);
+  const lastPlayheadWriteRef = useRef(0);
   // Which editor region the pointer last landed in — drives whether Space toggles
   // playback. Space works after clicking the preview or timeline, but not the media
   // pool. (Remotion's own Space handler is focus-scoped and drops after any click.)
@@ -1259,6 +1295,12 @@ export default function Editor({ reloadKey }) {
   useEffect(() => { timelineRef.current = timeline; }, [timeline]);
   useEffect(() => { magnetRef.current = magnet; }, [magnet]);
   useEffect(() => { frameRef.current = frame; }, [frame]);
+
+  // On mount, read this project's saved playhead so the restore effect below can
+  // drop the needle there once the timeline is up. Runs once — a project switch
+  // remounts the whole tab (RootLayout keys <main> on the project), giving a fresh
+  // Editor that reads the new project's spot.
+  useEffect(() => { resumeFrameRef.current = readPlayhead(getProjectId()); }, []);
 
   // Keep the media pool the same height as the player so its list scrolls
   // internally instead of stretching the whole tab. Tracks the player box live.
@@ -1302,6 +1344,31 @@ export default function Editor({ reloadKey }) {
     [timeline],
   );
   const durationSec = framesToSec(durationInFrames, fps);
+
+  // Apply the saved playhead the first time the timeline is available. Nulling the
+  // ref makes this fire exactly once per mount, so later timeline changes (edits,
+  // live agent reloads) never yank the needle back. Deferred a tick so the <Player>
+  // is mounted and can accept the seek. Declared here (not with the other mount
+  // effects above) so `fps`/`durationInFrames` are already initialized.
+  useEffect(() => {
+    if (!timeline || resumeFrameRef.current == null) return;
+    const f = Math.min(resumeFrameRef.current, Math.max(0, durationInFrames - 1));
+    resumeFrameRef.current = null;
+    if (f <= 0) return;
+    const t = setTimeout(() => {
+      playerRef.current?.seekTo(f);
+      setFrame(f);
+      // Bring the restored playhead into view (it may be well past the left edge).
+      const el = trackAreaRef.current;
+      if (el) {
+        const px = framesToSec(f, fps) * pxPerSec;
+        if (px > el.scrollLeft + el.clientWidth || px < el.scrollLeft) {
+          el.scrollLeft = Math.max(0, px - el.clientWidth / 2);
+        }
+      }
+    }, 0);
+    return () => clearTimeout(t);
+  }, [timeline, durationInFrames, fps, pxPerSec]);
 
   // Track the visible lane-area width so the zoom-out floor can fit the whole
   // project on screen (the ruler adds ~40px of trailing pad; see contentWidth).
@@ -1589,6 +1656,13 @@ export default function Editor({ reloadKey }) {
     const onFrame = (e) => {
       const f = e.detail.frame;
       setFrame(f);
+      // Persist the playhead so a tab round-trip resumes here, at most ~once/sec
+      // (this fires ~24×/s during playback). The final spot is flushed on unmount.
+      const now = Date.now();
+      if (now - lastPlayheadWriteRef.current >= 1000) {
+        lastPlayheadWriteRef.current = now;
+        writePlayhead(getProjectId(), f);
+      }
       if (!playingRef.current) return;
       const el = trackAreaRef.current;
       if (!el) return;
@@ -1610,6 +1684,17 @@ export default function Editor({ reloadKey }) {
       p.removeEventListener("pause", onPause);
     };
   }, [timeline, fps, pxPerSec]);
+
+  // Flush the final playhead on the way out — leaving the tab (unmount) or a
+  // reload/close (pagehide) — so the ~1s write throttle never drops the last spot.
+  useEffect(() => {
+    const flush = () => writePlayhead(getProjectId(), frameRef.current);
+    window.addEventListener("pagehide", flush);
+    return () => {
+      flush();
+      window.removeEventListener("pagehide", flush);
+    };
+  }, []);
 
   // Mutate the timeline via a mapper over items and mark dirty for autosave.
   // `silent` skips the undo snapshot — used for the per-frame updates inside a
