@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { useRevalidator } from "react-router";
 import { readTabCache, writeTabCache, invalidateTabCache } from "./tabCache";
 
@@ -73,4 +73,44 @@ export function useRevalidateOnAgentIdle(key, status) {
     invalidateTabCache(key);
     revalidate();
   }, [key, status, revalidate]);
+}
+
+// Count the agent's COMPLETED calls to `toolName` across the whole transcript.
+// A flue tool call is a `dynamic-tool` message part; it lands its write when the
+// state reaches "output-available" (input-available/output-error don't count —
+// nothing new is persisted yet).
+function countCompletedToolCalls(messages, toolName) {
+  let n = 0;
+  for (const m of messages || []) {
+    for (const p of m.parts || []) {
+      if (p.type === "dynamic-tool" && p.toolName === toolName && p.state === "output-available") n++;
+    }
+  }
+  return n;
+}
+
+// Refresh a tab each time the agent FINISHES a call to `toolName` — so writes the
+// agent streams mid-turn (e.g. `save_shotlist` building the shot list beat by
+// beat) reflect on the tab immediately, instead of only when the whole turn ends.
+//
+// Why not lean on the /api/data/events firehose (RootLayout already revalidates
+// on it)? During a heavy generation that channel can be starved behind the long-
+// lived agent chat stream, so a burst of mid-turn writes doesn't reach the tab
+// until the agent goes idle. The agent's OWN message stream is the one the chat
+// panel already renders live, so it's the reliable signal: watch the completed-
+// tool-call count and revalidate whenever it climbs. Completions are spaced (one
+// bounded tool call per beat), so this can't storm the revalidator. Pairs with
+// `useRevalidateOnAgentIdle` as the final catch-up when the turn settles.
+export function useRevalidateOnAgentTool(key, messages, toolName) {
+  const { revalidate } = useRevalidator();
+  const count = useMemo(() => countCompletedToolCalls(messages, toolName), [messages, toolName]);
+  const prev = useRef(count); // seed from history so a revisit doesn't refetch spuriously
+  useEffect(() => {
+    if (count === prev.current) return;
+    const grew = count > prev.current;
+    prev.current = count;
+    if (!grew) return; // a history reset / new chat shrank it — nothing new was written
+    invalidateTabCache(key);
+    revalidate();
+  }, [count, key, revalidate]);
 }

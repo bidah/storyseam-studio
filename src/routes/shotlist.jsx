@@ -3,7 +3,7 @@ import { useLoaderData, useRevalidator } from "react-router";
 import { X, RefreshCw, Loader2, Layers, Film } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { invalidateTabCache } from "@/lib/tabCache";
-import { swr, useRevalidateOnMount, useRevalidateOnAgentIdle } from "@/lib/swr";
+import { swr, useRevalidateOnMount, useRevalidateOnAgentIdle, useRevalidateOnAgentTool } from "@/lib/swr";
 import { useAgent, agentIsBusy } from "@/components/AgentProvider";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -61,7 +61,11 @@ function ShotList() {
     revalidate();
   }, [revalidate]);
 
-  // The agent just wrote the shot list (save_shotlist) → refresh when it's done.
+  // The agent builds the shot list one beat at a time (save_shotlist in append
+  // mode). Refresh on EACH completed call so the beats appear live as they land,
+  // not only when the whole turn finishes — the idle refresh below is the final
+  // catch-up.
+  useRevalidateOnAgentTool("shotlist", agent.messages, "save_shotlist");
   useRevalidateOnAgentIdle("shotlist", agent.status);
 
   const rebuild = useCallback(async () => {
