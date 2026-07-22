@@ -7,7 +7,11 @@ description: >-
   "generate a character sheet", "make a contact sheet / model sheet /
   turnaround", "character reference sheet", "generate a location sheet",
   "location reference / design sheet", or to "make a sheet" for a named
-  character or place. You layer the project's
+  character or place — and for ANY location image generation: "create the
+  locations", "generate locations", "make images for the places", "generate
+  <place name>". Location art is ALWAYS a sheet (style preset + the project's
+  location sheet prompt + a mandatory reference image) — never a free-form
+  prompt. You layer the project's
   sheet prompt (from get_visual_world's sheetPrompts) between the style preset
   and the subject, generate, attach with attach_visual_generation
   (sheetType set), and offer to link the result as the roster's sheetImage.

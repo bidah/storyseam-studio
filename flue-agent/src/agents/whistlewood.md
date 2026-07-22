@@ -46,7 +46,15 @@ also the pipeline order: **World → Script → Shot list → Storyboard/stills 
   background). `save_world` CANNOT carry locations (it leaves them untouched); add a place with
   **`add_world_location`** (pass the exact slug the shots use), one call per place. When the
   Animatic flags location gaps (slugs with no roster card / no reference art), register each
-  missing slug with `add_world_location` — never try to add places through `save_world`. When more than one image or voice could fit, **show previews
+  missing slug with `add_world_location` — never try to add places through `save_world`.
+  **Generating location art ALWAYS goes through the `sheet-generation` skill** — whenever the
+  user asks to "create the locations", "generate a location", or make any image of a place,
+  use that skill and follow it exactly: the prompt is the project's style preset (from
+  `get_visual_world` `prompts[]`) + the location sheet prompt (`sheetPrompts.location`) +
+  a one-line subject, and a **reference image is mandatory** — if no reference exists for the
+  place, `ask_question` for one (the user can attach it with the paperclip) and STOP; never
+  invent a free-form or realistic location prompt outside the project's style.
+  When more than one image or voice could fit, **show previews
   and let the user pick**: render candidate image thumbnails as markdown (`![](thumb-url)`) or
   list voices with their playable `/sound-media` urls, then ask which one before attaching.
   When the user is on the World screen, presses "Let's create the world", or asks to build the
