@@ -326,6 +326,29 @@ function pickId(data, ...extraKeys) {
   return "";
 }
 
+// Higgsfield's job_status nests the generation under `generation` (or returns it
+// bare), and the result media URL's key varies by model — so we deep-collect
+// every allowed media URL in the payload and prefer a full-res one over a thumb.
+function collectMediaUrls(obj, out = [], depth = 0) {
+  if (!obj || depth > 7) return out;
+  if (typeof obj === "string") { if (isAllowedMediaUrl(obj)) out.push(obj); return out; }
+  if (Array.isArray(obj)) { for (const v of obj) collectMediaUrls(v, out, depth + 1); return out; }
+  if (typeof obj === "object") { for (const v of Object.values(obj)) collectMediaUrls(v, out, depth + 1); return out; }
+  return out;
+}
+function bestMediaUrl(urls) {
+  if (!urls.length) return "";
+  const isThumb = (u) => /thumb|preview|small|proxy/i.test(u);
+  const isRaw = (u) => /raw|result|original|full|output|\/max|\/hd/i.test(u);
+  const pool = urls.filter((u) => !isThumb(u));
+  const use = pool.length ? pool : urls;
+  return use.find(isRaw) || use[0];
+}
+// job_status lifecycle buckets. A job leaving IN_PROGRESS with a media URL is
+// treated as done even if its terminal word isn't in DONE (models vary).
+const JOB_IN_PROGRESS = new Set(["in_progress", "queued", "pending", "processing", "running", "started", "created", "waiting"]);
+const JOB_FAILED = new Set(["failed", "error", "canceled", "cancelled", "rejected", "nsfw", "blocked", "moderated"]);
+
 // Collect every media-role string anywhere in a models_explore.get payload
 // (roles live under `role`/`roles`, sometimes nested in a `medias` array).
 function collectRoles(obj, out = new Set(), depth = 0) {
@@ -823,14 +846,18 @@ export function registerVisualWorld(app) {
     for (const g of pending) {
       try {
         const st = await mcp(c.env, userId, token, "job_status", { jobId: g.jobId, sync: true });
-        const status = str(st?.status || st?.state).toLowerCase();
-        const rawUrl =
-          st?.result_url || st?.results?.rawUrl || st?.results?.raw?.url || st?.result?.url || "";
-        if (status === "completed" || status === "succeeded" || status === "done" || rawUrl) {
-          if (!isAllowedMediaUrl(rawUrl)) {
-            updates[g.id] = { status: "error", error: "No downloadable result URL" };
-            continue;
-          }
+        // The generation may be nested under `generation` (or returned bare).
+        const gen = (st && typeof st === "object" && st.generation && typeof st.generation === "object")
+          ? st.generation : st;
+        const status = str(gen?.status || gen?.state || st?.status || st?.state).toLowerCase();
+        const rawUrl = bestMediaUrl(collectMediaUrls(st));
+        const inProgress = JOB_IN_PROGRESS.has(status);
+        const failed = JOB_FAILED.has(status);
+
+        if (failed) {
+          updates[g.id] = { status: "error", error: str(gen?.error || gen?.error_message || st?.error) || "Generation failed" };
+        } else if (!inProgress && rawUrl) {
+          // Terminal (or unknown) status with a result URL → download + finalize.
           const res = await fetch(rawUrl);
           if (!res.ok) {
             updates[g.id] = { status: "error", error: `${g.kind === "video" ? "Video" : "Image"} fetch failed (${res.status})` };
@@ -844,10 +871,11 @@ export function registerVisualWorld(app) {
           const file = `${g.id}.${ext}`;
           await putMedia(c.env, pid, "visual", file, await res.arrayBuffer(), ct);
           updates[g.id] = { status: "ready", file, source: rawUrl };
-        } else if (status === "failed" || status === "error" || status === "canceled") {
-          updates[g.id] = { status: "error", error: str(st?.error) || "Generation failed" };
+        } else if (!inProgress && !failed && status) {
+          // Reached a terminal state we don't recognize, with no media URL.
+          updates[g.id] = { status: "error", error: `Generation ended (${status}) with no result` };
         }
-        // else: still processing — leave as-is.
+        // else: still in progress — leave as-is; re-poll next tick.
       } catch (e) {
         if (e instanceof HiggsfieldAuthError) return c.json({ error: "no_higgsfield_token" }, 401);
         // Transient poll error — keep the record processing, try again next tick.
