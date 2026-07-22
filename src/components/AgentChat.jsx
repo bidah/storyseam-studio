@@ -885,7 +885,7 @@ export default function AgentChat() {
           ref={scrollRef}
           onScroll={onScroll}
           onClick={onTranscriptClick}
-          className="h-full space-y-4 overflow-y-auto bg-[#0E0E10] px-4 pb-4 pt-14 [&_img]:cursor-zoom-in"
+          className="h-full space-y-4 overflow-y-auto bg-muted/30 px-4 pb-4 pt-14 dark:bg-[#0E0E10] [&_img]:cursor-zoom-in"
         >
           {messages.length === 0 ? (
             <div className="flex h-full flex-col items-center justify-center gap-2 text-center text-muted-foreground">
