@@ -452,6 +452,9 @@ function RadioStudio() {
             {scenes.map((scene) => {
               const sceneUncast = scene.lines.some((l) => !l.voiceRef);
               const rendering = agentBusy && renderingScene === sceneKey(scene);
+              // Every line has a rendered take → the scene is done. Disable the
+              // button and flip it to "Rendered" so it can't be re-launched.
+              const sceneRendered = scene.lines.every((l) => l.take);
               return (
                 <Panel
                   key={scene.beat + scene.lines[0].id}
@@ -459,9 +462,15 @@ function RadioStudio() {
                   meta={
                     <div className="flex items-center gap-2">
                       <Badge variant="outline">{scene.lines.length} lines</Badge>
-                      <Button size="sm" onClick={() => renderScene(scene)} disabled={agentBusy || sceneUncast}
-                        title={sceneUncast ? "Cast a voice for every speaker in this scene first" : "Render this scene's dialogue"}>
-                        {rendering ? <><Loader2 size={13} className="animate-spin" /> working…</> : <><Mic size={13} /> Render scene</>}
+                      <Button size="sm" onClick={() => renderScene(scene)} disabled={agentBusy || sceneUncast || (sceneRendered && !rendering)}
+                        title={
+                          sceneRendered && !rendering ? "Every line in this scene is rendered"
+                            : sceneUncast ? "Cast a voice for every speaker in this scene first"
+                            : "Render this scene's dialogue"
+                        }>
+                        {rendering ? <><Loader2 size={13} className="animate-spin" /> working…</>
+                          : sceneRendered ? <><Check size={13} /> Rendered</>
+                          : <><Mic size={13} /> Render scene</>}
                       </Button>
                     </div>
                   }
@@ -484,7 +493,7 @@ function RadioStudio() {
           </div>
 
           {/* Casting rail */}
-          <aside className="shrink-0 lg:sticky lg:top-[73px] lg:w-[340px] lg:self-start lg:max-h-[calc(100dvh-92px)] lg:overflow-y-auto">
+          <aside className="shrink-0 lg:sticky lg:top-5 lg:w-[340px] lg:self-start lg:max-h-[calc(100dvh-40px)] lg:overflow-y-auto">
             <Panel title={<span className="flex items-center gap-2"><Mic size={15} className="text-primary" /> Casting</span>} meta={<Badge variant="outline">{casting.length}</Badge>}>
               {casting.length === 0 ? (
                 <Empty>no speaking characters yet — add a voice on the World tab, or write a shot list with spoken lines.</Empty>
