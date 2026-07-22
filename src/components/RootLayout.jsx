@@ -310,7 +310,7 @@ export default function RootLayout() {
       <div className="flex h-dvh flex-col overflow-hidden">
         {/* One unified header, full width across both the GUI and the chat. */}
         <header className="shrink-0 border-b bg-card/80 backdrop-blur supports-[backdrop-filter]:bg-card/60">
-          <div className="flex flex-wrap items-center gap-x-6 gap-y-3 px-4 py-3 md:px-6">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-3 px-4 py-3 md:px-6">
             <div className="flex size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground shadow-sm">
               <Clapperboard size={18} />
             </div>
