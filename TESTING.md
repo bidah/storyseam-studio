@@ -8,7 +8,7 @@ the SPA and a `vitest-evals` harness for the agent.
 test/web/      → the Vite + React SPA (src/)            jsdom,  @/ alias
 test/worker/   → the Cloudflare Worker API (worker/)    node,   in-memory R2 fake
 test/flue/     → the flue chat agent (flue-agent/)      node,   TypeScript
-e2e/           → Playwright smoke tests (the app shell)
+e2e/           → Playwright flow tests (mocked backend, the SPA)
 evals/         → vitest-evals against a running agent   (opt-in, needs FLUE_BASE_URL)
 ```
 
@@ -122,8 +122,34 @@ not logic.
 - the model store: get/set/subscribe, localStorage persistence, unknown-id guard.
 - the stale-while-revalidate cache + loader helper.
 
-**App shell** (`e2e/smoke.spec.js`) — boots, mounts React into `#root`, reaches an
-interactive state, no uncaught errors, dark-theme default.
+**App shell & flows** (`e2e/`) — Playwright against the Vite dev server. The dev
+server proxies `/api` to the deployed prod Worker and every tab is behind a Better
+Auth session, so the flow specs install a **network mock** (`e2e/helpers/mock.js`,
+`mockBackend(page)`) that serves a signed-in session, one project, quiet SSE
+streams, and an empty-but-valid payload per tab loader — deterministic and offline.
+Each tab has an empty-state, so minimal fixtures still mount the real route
+component, loader, lazy chunk, and error boundary; specs pass `overrides` to seed
+populated data.
+
+- `smoke.spec.js` — real boot (no mock): mounts React into `#root`, reaches an
+  interactive state, no uncaught errors, dark-theme default.
+- `login.spec.js` — the auth gate: unauthenticated → branded homepage + Higgsfield
+  sign-in (which kicks off the OAuth call); authenticated → gate drops, shell mounts.
+- `shell.spec.js` — header chrome (project name, all ten visible tabs, the two
+  hidden sample tabs absent, Refresh, account), the project switcher menu, the
+  light/dark theme toggle + persistence, the Higgsfield link + sign-out call, and
+  Refresh re-running the active tab's loader.
+- `navigation.spec.js` — every tab mounts its landmark with no fatal error;
+  click-through updates the URL + active-tab state (header-scoped, since Library
+  renders its own in-content tabs); the Editor Remotion chunk loads; index → `/world`
+  and unknown → `/script` redirects.
+- `content.spec.js` — populated fixtures: the shot list groups shots by beat with
+  counts, the library lists folders + the final-selection tally, empty-state prompts.
+- `error-handling.spec.js` — a loader 500 renders the RouteError boundary while the
+  shell survives, navigating away recovers, and a dead SSE firehose / `/eve` agent
+  proxy doesn't break the studio.
+
+First run installs the browser: `npx playwright install chromium`.
 
 **Agent behaviour** (`evals/whistlewood.eval.ts`) — routes prompts to the right
 tools (script/shotlist/world reads), stays conversational for a greeting, reports
