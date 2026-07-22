@@ -17,11 +17,12 @@ import {
   useReactFlow, applyNodeChanges, applyEdgeChanges, addEdge,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { FolderOpen, Loader2, Sparkles } from "lucide-react";
+import { Expand, FolderOpen, Loader2, Sparkles } from "lucide-react";
 import { invalidateTabCache } from "@/lib/tabCache";
 import { swr, useRevalidateOnMount, useRevalidateOnAgentIdle } from "@/lib/swr";
 import { useAgent } from "@/components/AgentProvider";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import {
   ContextMenu, ContextMenuContent, ContextMenuTrigger,
 } from "@/components/ui/context-menu";
@@ -210,6 +211,7 @@ function Canvas() {
   const [filesOpen, setFilesOpen] = useState(false);
   const filesTarget = useRef(null);
   const [stackNodeId, setStackNodeId] = useState(null);
+  const [expanded, setExpanded] = useState(false); // canvas open in the fullscreen modal
 
   const openStack = useCallback((node) => {
     if (node.type === "upload") { filesTarget.current = node.id; setFilesOpen(true); }
@@ -439,6 +441,56 @@ function Canvas() {
   const stackGens = stackNode ? (stackNode.genIds || []).map((gid) => genById.get(gid)).filter(Boolean) : [];
   const isEmpty = graph.nodes.length === 0;
 
+  // The canvas itself — rendered in exactly one place at a time (inline or in the
+  // fullscreen modal), since two <ReactFlow> instances can't share one provider.
+  const canvas = (
+    <ContextMenu>
+      <ContextMenuTrigger asChild>
+        <div className="h-full w-full">
+          <ReactFlow
+            nodes={rfNodes}
+            edges={rfEdges}
+            nodeTypes={nodeTypes}
+            onNodesChange={onNodesChange}
+            onEdgesChange={onEdgesChange}
+            onConnect={onConnect}
+            onConnectStart={onConnectStart}
+            onConnectEnd={onConnectEnd}
+            isValidConnection={isValidConnection}
+            onPaneContextMenu={onPaneContextMenu}
+            onNodeContextMenu={onNodeContextMenu}
+            deleteKeyCode={["Delete", "Backspace"]}
+            fitView
+            fitViewOptions={{ maxZoom: 1 }}
+            minZoom={0.2}
+            maxZoom={1.5}
+            panOnScroll
+            proOptions={{ hideAttribution: true }}
+            className="bg-muted/30"
+          >
+            <Background gap={20} size={1.6} className="!bg-transparent" />
+            <Controls />
+            <MiniMap pannable zoomable className="!bg-card" />
+            {isEmpty && (
+              <FlowPanel position="top-center" className="pointer-events-none mt-16 text-center">
+                <div className="pointer-events-auto rounded-xl border border-dashed bg-card/90 p-6 shadow-sm backdrop-blur">
+                  <Sparkles size={20} className="mx-auto mb-2 text-primary" />
+                  <Empty>right-click the canvas to add an Image, Video, Text or Source node — then wire them up and Run.</Empty>
+                </div>
+              </FlowPanel>
+            )}
+          </ReactFlow>
+        </div>
+      </ContextMenuTrigger>
+      <ContextMenuContent>
+        <AddNodeMenu
+          allowedTypes={menuTypes}
+          onAdd={(type) => addNodeAt(type, menuScreen.current ?? { x: window.innerWidth / 2, y: window.innerHeight / 2 })}
+        />
+      </ContextMenuContent>
+    </ContextMenu>
+  );
+
   return (
     <FlowMetaProvider value={meta}>
       <div className="space-y-3">
@@ -458,8 +510,13 @@ function Canvas() {
             <Button variant="outline" size="sm" onClick={() => { filesTarget.current = null; setFilesOpen(true); }}>
               <FolderOpen size={14} /> Files
             </Button>
-            <Button variant="outline" size="sm" onClick={() => revalidator.revalidate()}>
-              {revalidator.state === "loading" ? <Loader2 size={13} className="animate-spin" /> : null} Refresh
+            <Button
+              variant="outline"
+              size="icon"
+              aria-label="Expand canvas to fullscreen"
+              onClick={() => setExpanded(true)}
+            >
+              <Expand size={15} />
             </Button>
           </div>
         </div>
@@ -467,51 +524,17 @@ function Canvas() {
         {error && <ErrorNote>{error}</ErrorNote>}
 
         <div className="h-[74vh] overflow-hidden rounded-xl border bg-card">
-          <ContextMenu>
-            <ContextMenuTrigger asChild>
-              <div className="h-full w-full">
-                <ReactFlow
-                  nodes={rfNodes}
-                  edges={rfEdges}
-                  nodeTypes={nodeTypes}
-                  onNodesChange={onNodesChange}
-                  onEdgesChange={onEdgesChange}
-                  onConnect={onConnect}
-                  onConnectStart={onConnectStart}
-                  onConnectEnd={onConnectEnd}
-                  isValidConnection={isValidConnection}
-                  onPaneContextMenu={onPaneContextMenu}
-                  onNodeContextMenu={onNodeContextMenu}
-                  deleteKeyCode={["Delete", "Backspace"]}
-                  fitView
-                  fitViewOptions={{ maxZoom: 1 }}
-                  minZoom={0.2}
-                  maxZoom={1.5}
-                  panOnScroll
-                  proOptions={{ hideAttribution: true }}
-                  className="bg-muted/30"
-                >
-                  <Background gap={20} size={1.6} className="!bg-transparent" />
-                  <Controls />
-                  <MiniMap pannable zoomable className="!bg-card" />
-                  {isEmpty && (
-                    <FlowPanel position="top-center" className="pointer-events-none mt-16 text-center">
-                      <div className="pointer-events-auto rounded-xl border border-dashed bg-card/90 p-6 shadow-sm backdrop-blur">
-                        <Sparkles size={20} className="mx-auto mb-2 text-primary" />
-                        <Empty>right-click the canvas to add an Image, Video, Text or Source node — then wire them up and Run.</Empty>
-                      </div>
-                    </FlowPanel>
-                  )}
-                </ReactFlow>
-              </div>
-            </ContextMenuTrigger>
-            <ContextMenuContent>
-              <AddNodeMenu
-                allowedTypes={menuTypes}
-                onAdd={(type) => addNodeAt(type, menuScreen.current ?? { x: window.innerWidth / 2, y: window.innerHeight / 2 })}
-              />
-            </ContextMenuContent>
-          </ContextMenu>
+          {expanded ? (
+            <button
+              type="button"
+              onClick={() => setExpanded(true)}
+              className="flex h-full w-full items-center justify-center text-muted-foreground"
+            >
+              <Empty>Canvas open in fullscreen — close it to edit here.</Empty>
+            </button>
+          ) : (
+            canvas
+          )}
         </div>
 
         <FilesPanel
@@ -528,6 +551,16 @@ function Canvas() {
           currentGenId={stackNode?.currentGenId || null}
           onSelect={(genId) => { if (stackNodeId) pickGeneration(stackNodeId, genId); }}
         />
+
+        {/* Fullscreen canvas — near-full viewport so the graph gets all the room. */}
+        <Dialog open={expanded} onOpenChange={setExpanded}>
+          <DialogContent className="flex h-[96vh] w-[97vw] max-w-none flex-col gap-0 overflow-hidden p-0 sm:max-w-none">
+            <DialogTitle className="sr-only">Visual nodes canvas</DialogTitle>
+            <div className="min-h-0 flex-1">
+              {expanded ? canvas : null}
+            </div>
+          </DialogContent>
+        </Dialog>
       </div>
     </FlowMetaProvider>
   );
