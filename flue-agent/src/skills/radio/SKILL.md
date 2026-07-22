@@ -45,12 +45,16 @@ This skill only produces audio. It does NOT stitch a timeline or render video.
       ```jsonc
       generate_audio {
         model: "seed_audio", format: "wav", sample_rate: 48000,
-        prompt: "<Character> (voiced by @Audio1) says: \"<the exact line>\". Clean single voice, no music, no sound effects, no background.",
+        prompt: "<Character> (voiced by @Audio1) says: \"<the exact line>\". Let the final word ring out completely, then hold about one second of clean silence before the clip ends. Clean single voice, no music, no sound effects, no background.",
         medias: [{ value: "<media_id>", role: "audio_references" }]
       }
       ```
       Keep the take to JUST the spoken line — no SFX, no ambience, no music (the
       Radio version is dialogue only; the sound bed is added later in the Editor).
+      The trailing "one second of clean silence" is deliberate: Seed Audio free-runs
+      (no duration param — see the seed-audio skill), so giving the model runway past
+      the last word is what stops it clipping the line mid-word. It's a strong bias,
+      not a hard guarantee.
       Confirm the FIRST Higgsfield submit of the scene with the user, then proceed
       through the rest without re-confirming each one.
    3. Poll `job_status { sync: true }`, get the result `rawUrl`.
