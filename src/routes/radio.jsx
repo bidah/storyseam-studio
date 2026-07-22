@@ -2,12 +2,12 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useLoaderData, useNavigate, useRevalidator } from "react-router";
 import {
   Radio as RadioIcon, Mic, Loader2, Film, Send, X, AudioLines, CircleAlert,
-  Clapperboard, Image as ImageIcon, Check, Plus,
+  Clapperboard, Image as ImageIcon, Check, Plus, Bot,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { invalidateTabCache } from "@/lib/tabCache";
 import { swr, useRevalidateOnMount, useRevalidateOnAgentIdle } from "@/lib/swr";
-import { useAgent, agentIsBusy, renderRadioSceneMessage } from "@/components/AgentProvider";
+import { useAgent, agentIsBusy, renderRadioSceneMessage, castVoiceMessage } from "@/components/AgentProvider";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -29,7 +29,7 @@ function isVoiceTrack(t) {
   return VOICE_RE.test(v1?.prompt || "");
 }
 
-function CastingDialog({ open, onOpenChange, onCast, entry }) {
+function CastingDialog({ open, onOpenChange, onCast, onAgentCast, agentBusy, entry }) {
   const navigate = useNavigate();
   const [tracks, setTracks] = useState(null);
   const [error, setError] = useState(null);
@@ -83,13 +83,24 @@ function CastingDialog({ open, onOpenChange, onCast, entry }) {
           </div>
         )}
 
-        <div className="flex items-center justify-between gap-2">
+        <div className="flex flex-wrap items-center justify-between gap-2">
           <p className="text-xs text-muted-foreground">
             Your liked voices from the Sound Studio — like a voice take on the Sounds tab to see it here.
           </p>
-          <Button variant="outline" size="sm" className="shrink-0" onClick={() => navigate("/sounds?new=voice")}>
-            <Plus size={13} /> Create voice
-          </Button>
+          <div className="flex shrink-0 items-center gap-2">
+            <Button
+              variant="secondary"
+              size="sm"
+              disabled={agentBusy}
+              title={agentBusy ? "The agent is busy — wait for it to finish" : `Ask the agent to design, render, and cast a voice for ${character}`}
+              onClick={() => { onAgentCast(character); onOpenChange(false); }}
+            >
+              <Bot size={13} /> Voice with agent
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => navigate("/sounds?new=voice")}>
+              <Plus size={13} /> Create voice
+            </Button>
+          </div>
         </div>
         <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search liked voices…" className="h-8 text-sm" />
         {error && <ErrorNote>{error}</ErrorNote>}
@@ -130,7 +141,7 @@ function CastingDialog({ open, onOpenChange, onCast, entry }) {
  * "Cast" when unassigned, green "Casted" when a voice is set.         *
  * ---------------------------------------------------------------- */
 
-function CastingCard({ entry, onCast }) {
+function CastingCard({ entry, onCast, onAgentCast, agentBusy }) {
   const [open, setOpen] = useState(false);
   const { character, voiceRef } = entry;
   return (
@@ -148,7 +159,7 @@ function CastingCard({ entry, onCast }) {
           <Badge variant="warning" className="ml-auto shrink-0 gap-1"><Mic size={11} /> Cast</Badge>
         )}
       </button>
-      <CastingDialog open={open} onOpenChange={setOpen} entry={entry} onCast={onCast} />
+      <CastingDialog open={open} onOpenChange={setOpen} entry={entry} onCast={onCast} onAgentCast={onAgentCast} agentBusy={agentBusy} />
     </>
   );
 }
@@ -243,6 +254,14 @@ function RadioStudio() {
 
   const renderScene = (scene) => agent.send({ message: renderRadioSceneMessage(scene, scene.lines) }).catch(() => {});
 
+  // Delegate casting to the agent: it designs, renders, and casts a voice for
+  // one or more speakers, picking the right tool per name (attach_character_voice
+  // for a World character, cast_radio_voice for a background speaker).
+  const voiceWithAgent = useCallback(
+    (characters) => { agent.send({ message: castVoiceMessage(characters) }).catch(() => {}); },
+    [agent],
+  );
+
   const sendToEditor = async () => {
     setSending(true); setError(null);
     try {
@@ -270,7 +289,8 @@ function RadioStudio() {
 
   const scenes = data.scenes || [];
   const casting = data.casting || [];
-  const uncast = casting.filter((c) => !c.voiceRef).length;
+  const uncastNames = casting.filter((c) => !c.voiceRef).map((c) => c.character);
+  const uncast = uncastNames.length;
   const animatic = data.animatic || null;
 
   return (
@@ -363,11 +383,23 @@ function RadioStudio() {
                 <Empty>no speaking characters yet — add a voice on the World tab, or write a shot list with spoken lines.</Empty>
               ) : (
                 <div className="space-y-1.5">
-                  {casting.map((entry) => <CastingCard key={entry.character} entry={entry} onCast={cast} />)}
+                  {casting.map((entry) => <CastingCard key={entry.character} entry={entry} onCast={cast} onAgentCast={voiceWithAgent} agentBusy={agentBusy} />)}
                 </div>
               )}
+              {uncast > 0 && (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  className="mt-2 w-full"
+                  disabled={agentBusy}
+                  onClick={() => voiceWithAgent(uncastNames)}
+                  title={agentBusy ? "The agent is busy — wait for it to finish" : `Ask the agent to design, render, and cast a voice for all ${uncast} uncast speaker${uncast > 1 ? "s" : ""}`}
+                >
+                  {agentBusy ? <><Loader2 size={13} className="animate-spin" /> agent working…</> : <><Bot size={13} /> Voice {uncast} uncast with agent</>}
+                </Button>
+              )}
               <p className="mt-2 px-1 text-[11px] text-muted-foreground">
-                every speaker plus every character with a voice on the World tab. A voice cast here is shared with the World tab — the two never diverge. Cast from your liked Sound Studio voice takes.
+                every speaker plus every character with a voice on the World tab. A voice cast here is shared with the World tab — the two never diverge. Cast from your liked Sound Studio voice takes, or let the agent design and cast one.
               </p>
             </Panel>
           </aside>

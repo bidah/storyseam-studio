@@ -604,6 +604,34 @@ export function renderRadioSceneMessage(scene, lines) {
   ].join("\n");
 }
 
+// Build the chat turn that delegates CASTING a voice to the agent — the "Voice
+// with agent" buttons on the Radio Casting rail. One or many speaker names.
+// Tells the agent to design a fitting voice, render a short in-character sample
+// with Seed Audio, and cast it with the RIGHT tool per name: a World-roster
+// character → attach_character_voice (by id); a background/one-off speaker with
+// no World record → cast_radio_voice (by name). It figures out which via
+// get_world, so the same button works for either kind of casting-rail entry.
+export function castVoiceMessage(characters) {
+  const list = Array.isArray(characters) ? characters : [characters];
+  const names = list.map((c) => `"${c}"`).join(", ");
+  const many = list.length > 1;
+  return [
+    `Cast a voice for ${many ? "each of these Radio speakers" : "the Radio speaker"} ${names} on the Casting rail.`,
+    ``,
+    `First call get_world and get_radio. Then for EACH name, in order:`,
+    `- If the name is on the World roster, read their voice / traits / appearance and design a voice that fits.` +
+      ` Otherwise it's a background / one-off speaker with no World record — pick a voice that suits the role.`,
+    `- Load the seed-audio skill and generate a SHORT, clean in-character voice sample (use one of that character's` +
+      ` own dialogue lines if they have one, else a neutral line — no music, no SFX). Then create_sound(kind:"voice"),` +
+      ` attach_sound so it flips to "ready", and like_sound_version so the take is castable.`,
+    `- Cast it with the RIGHT tool: a World character → attach_character_voice with that character's id;` +
+      ` a background speaker with no World record → cast_radio_voice by name.`,
+    ``,
+    `Confirm the first Higgsfield submit with me, then proceed through the rest without re-confirming.` +
+      ` When done, tell me which voices are cast — they'll show on the Casting rail (and, for World characters, the World tab).`,
+  ].join("\n");
+}
+
 // Build the chat turn that (re)stitches the complete cut. Routed through the
 // agent — like every other mutation — so it uses the same get_cuts → stitch_cuts
 // flow (which runs ffmpeg locally) and picks up whatever takes are currently

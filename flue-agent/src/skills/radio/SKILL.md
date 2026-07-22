@@ -15,8 +15,12 @@ This skill only produces audio. It does NOT stitch a timeline or render video.
 ## Preconditions
 
 - The scene's lines each need a **cast voice** (`line.voiceRef`). If a line has
-  `voiceRef: null`, its character has no voice cast — tell the user to cast one
-  on the Radio tab (Casting rail) or the World tab, and skip that line.
+  `voiceRef: null`, its character has no voice cast. Cast one first, then render:
+  render a short in-character voice sample (seed-audio), `like_sound_version`, and
+  attach it — with `attach_character_voice` (by id) if the speaker is on the World
+  roster, or `cast_radio_voice` (by name) if it's a **background / one-off speaker**
+  with no World record (e.g. "Store Owner"). Only then voice the line. If the user
+  would rather cast it themselves, tell them to use the Casting rail and skip that line.
 - Voices come from the Sound Studio (`kind: "voice"` liked takes). The Radio tab
   seeds them from each World character's attached voice.
 
