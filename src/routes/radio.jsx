@@ -9,6 +9,7 @@ import { invalidateTabCache } from "@/lib/tabCache";
 import { swr, useRevalidateOnMount, useRevalidateOnAgentIdle } from "@/lib/swr";
 import { useAgent, agentIsBusy, renderRadioSceneMessage, recreateRadioLineMessage, castVoiceMessage, paceRadioTimelineMessage } from "@/components/AgentProvider";
 import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -275,6 +276,8 @@ function RadioStudio() {
   const [error, setError] = useState(null);
   const [sending, setSending] = useState(false);
   const [pacing, setPacing] = useState(false);
+  // "Send to editor" honors this toggle: when on, the agent paces the timeline.
+  const [pacingOn, setPacingOn] = useState(false);
   // Which scene's "Render scene" was actually launched — so only THAT button
   // shows "working…". Without this, the global agentBusy flag flips every
   // scene's button to "working…" (even for a single-line recreate), which reads
@@ -380,17 +383,25 @@ function RadioStudio() {
               The audio-only pass — every scene's dialogue voiced with each character's cast voice, then sent to the Editor as its own timeline.
             </p>
           </div>
-          <div className="flex items-center gap-2">
-            <Button variant="outline" onClick={sendToEditor} disabled={sending || pacing || !data.readyLines}
-              title="Send just the voiced dialogue to the Editor as an audio-only timeline (lines laid back-to-back)">
-              {sending ? <><Loader2 size={14} className="animate-spin" /> sending…</> : <><Send size={14} /> Send to editor</>}
+          <div className="flex items-center gap-2 rounded-lg border bg-muted/50 p-1.5">
+            <Button variant="outline" onClick={pacingOn ? sendToEditorPaced : sendToEditor}
+              disabled={sending || pacing || (pacingOn && agentBusy) || !data.readyLines}
+              title={pacingOn
+                ? (agentBusy
+                    ? "The agent is busy — wait for it to finish"
+                    : "Send to the Editor, then have the agent pace it: space the lines from the shot timings so the story breathes")
+                : "Send just the voiced dialogue to the Editor as an audio-only timeline (lines laid back-to-back)"}>
+              {(sending || pacing)
+                ? <><Loader2 size={14} className="animate-spin" /> sending…</>
+                : <><Send size={14} /> Send to editor</>}
             </Button>
-            <Button variant="outline" onClick={sendToEditorPaced} disabled={sending || pacing || agentBusy || !data.readyLines}
-              title={agentBusy
-                ? "The agent is busy — wait for it to finish"
-                : "Send to the Editor, then have the agent pace it: space the lines from the shot timings so the story breathes"}>
-              {pacing ? <><Loader2 size={14} className="animate-spin" /> sending…</> : <><Bot size={14} /> Agent pacing</>}
-            </Button>
+            <label className="flex cursor-pointer items-center gap-2 pl-1 pr-2 text-sm select-none">
+              <span className="flex items-center gap-1.5 text-muted-foreground">
+                <Bot size={14} /> Agent pacing
+              </span>
+              <Switch checked={pacingOn} onCheckedChange={setPacingOn} disabled={sending || pacing}
+                title="When on, the agent paces the timeline from the shot timings after sending" />
+            </label>
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
