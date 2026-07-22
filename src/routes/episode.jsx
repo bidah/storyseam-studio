@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useLoaderData } from "react-router";
-import { X, Check, Plus, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, RotateCcw, Maximize2, Volume2, Speech, Play, Copy, Pencil, Sparkles, PenLine, FileText, Image as ImageIcon, Loader2, Wand2, Scissors } from "lucide-react";
+import { useLoaderData, useRevalidator } from "react-router";
+import { X, Check, Plus, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, RotateCcw, Maximize2, Volume2, Speech, Play, Copy, Pencil, Sparkles, PenLine, FileText, Image as ImageIcon, Loader2, Wand2, Scissors, Boxes } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { swr, useRevalidateOnMount, useRevalidateOnAgentIdle } from "@/lib/swr";
+import { invalidateTabCache } from "@/lib/tabCache";
 import { useAgent, agentIsBusy, renderEpisodeMessage, renderStoryboardMessage, renderStoryboardAllMessage, trimMessage } from "@/components/AgentProvider";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -1280,6 +1281,26 @@ function Episode({ reloadKey, onView }) {
   }, []);
 
   const [assigning, setAssigning] = useState(false);
+  const [rebuilding, setRebuilding] = useState(false);
+  const { revalidate } = useRevalidator();
+
+  // Re-pack the current shot list into bundles (Phase 0). The server preserves
+  // stills (re-keyed by shot id) and renders; re-packed bundles need re-review.
+  const rebuild = useCallback(async () => {
+    setRebuilding(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/episode/rebuild", { method: "POST" });
+      const out = await res.json();
+      if (!res.ok) throw new Error(out.error || "Rebuild failed");
+      invalidateTabCache("episode");
+      revalidate();
+    } catch (e) {
+      setError(String(e.message || e));
+    } finally {
+      setRebuilding(false);
+    }
+  }, [revalidate]);
   const autoAssign = useCallback(async () => {
     setAssigning(true);
     try {
@@ -1302,16 +1323,29 @@ function Episode({ reloadKey, onView }) {
   }, []);
 
   if (error) return <ErrorNote>{error}</ErrorNote>;
-  if (!data) return <Empty>No episode plan found. Run episode-multishot/build.mjs.</Empty>;
+  if (!data)
+    return (
+      <div className="flex flex-col items-center gap-3 py-16 text-center">
+        <Empty>No episode plan yet — pack the current shot list into ≤15s bundles to begin.</Empty>
+        <Button onClick={rebuild} disabled={rebuilding}>
+          {rebuilding ? <><Loader2 size={14} className="animate-spin" /> building…</> : <><Boxes size={14} /> Build episode plan</>}
+        </Button>
+      </div>
+    );
 
   return (
     <div className="space-y-4">
       <div className="flex flex-col gap-3">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <h2 className="text-xl font-semibold tracking-tight">{data.title}</h2>
-          <Button onClick={autoAssign} disabled={assigning || selCount === 0}>
-            {assigning ? <><Loader2 size={14} className="animate-spin" /> assigning…</> : <><Sparkles size={14} /> auto-assign references</>}
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" onClick={rebuild} disabled={rebuilding} title="Re-pack the current shot list into bundles (stills & renders are preserved; re-packed bundles need re-review)">
+              {rebuilding ? <><Loader2 size={14} className="animate-spin" /> rebuilding…</> : <><Boxes size={14} /> rebuild plan</>}
+            </Button>
+            <Button onClick={autoAssign} disabled={assigning || selCount === 0}>
+              {assigning ? <><Loader2 size={14} className="animate-spin" /> assigning…</> : <><Sparkles size={14} /> auto-assign references</>}
+            </Button>
+          </div>
         </div>
         <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
           <Badge variant="outline">{data.bundles.length} multishot bundles</Badge>

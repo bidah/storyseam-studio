@@ -12,12 +12,22 @@
 // TODO markers for the media-copy step still owed.
 import { readDoc, writeDoc } from "../lib/docs.js";
 import { listMedia, listMediaSet } from "../lib/media.js";
+import { buildBundles } from "../lib/pack.js";
+import { normalizeShot } from "../lib/shots.js";
 
 // The de-facto selections DB (library picks + per-bundle episode selections).
 const readDB = (env, pid) => readDoc(env, pid, "selections", { library: {}, episode: {} });
 const writeDB = (env, pid, db) => writeDoc(env, pid, "selections", db);
-// The episode manifest (the 45 packed <=15s bundles); null when not seeded.
+// The episode manifest (the packed <=15s bundles); null when not seeded.
 const readManifest = (env, pid) => readDoc(env, pid, "episode-manifest", null);
+const writeManifest = (env, pid, m) => writeDoc(env, pid, "episode-manifest", m);
+// Current shot list, normalized (same source the animatic/radio read from).
+const readShots = async (env, pid) => {
+  const obj = await readDoc(env, pid, "shotlist", null);
+  return (obj?.shots || []).map(normalizeShot);
+};
+// A bundle's identity for membership matching = its sorted set of shot ids.
+const bundleSig = (b) => (b.shots || []).map((s) => s.id).sort().join(",");
 
 // Image extensions accepted in the final-selection pool (was IMG_RE).
 const IMG_RE = /\.(png|jpe?g|webp|gif)$/i;
@@ -245,7 +255,101 @@ export function registerEpisode(app) {
     return c.json({ ok: true, bundles: manifest.bundles.length, totalAssigned, summary });
   });
 
-  // Full-episode multishot plan: the 45 packed <=15s bundles + per-bundle skill prompt.
+  // Rebuild the episode plan (the packed <=15s bundles) from the CURRENT shot
+  // list, so the manifest stops being a frozen offline artifact and tracks shot
+  // edits. Bundle ids are positional (MS-NN) and `db.stills`/`db.video`/ref-picks/
+  // signoffs are all bundle-keyed, so a naive rebuild would orphan generated media.
+  // This remap is LOSSLESS where it matters:
+  //   - stills: re-keyed by SHOT id onto each shot's new bundle (never dropped)
+  //   - rendered videos: carried to the new bundle the OLD bundle's shots mostly
+  //     landed in (renders are expensive — never dropped while any shot survives)
+  //   - ref-picks / audio-picks / prompt / signoffs: kept only for bundles whose
+  //     shot membership is UNCHANGED; a re-packed bundle correctly needs re-review.
+  app.post("/api/episode/rebuild", async (c) => {
+    const pid = c.get("projectId");
+    const shots = await readShots(c.env, pid);
+    if (!shots.length) return c.json({ error: "No shot list yet — write a shot list first." }, 400);
+
+    const bundles = buildBundles(shots);
+    const prev = await readManifest(c.env, pid);
+    const prevBundles = prev?.bundles || [];
+
+    // shot id -> new bundle id
+    const shotToNew = {};
+    for (const b of bundles) for (const s of b.shots) shotToNew[s.id] = b.id;
+    // old bundle membership signature -> old bundle id (for unchanged-bundle carryover)
+    const oldBySig = {};
+    for (const b of prevBundles) oldBySig[bundleSig(b)] = b.id;
+    // new bundle id -> old bundle id when membership is identical
+    const sameOld = {};
+    for (const b of bundles) { const o = oldBySig[bundleSig(b)]; if (o) sameOld[b.id] = o; }
+
+    const db = await readDB(c.env, pid);
+
+    // (1) stills: remap by shot id — lossless.
+    const newStills = {};
+    let stillsMoved = 0, stillsOrphaned = 0;
+    for (const shotsMap of Object.values(db.stills || {})) {
+      for (const [shotId, takes] of Object.entries(shotsMap || {})) {
+        const nb = shotToNew[shotId];
+        if (!nb) { stillsOrphaned++; continue; }
+        (newStills[nb] ||= {})[shotId] = ((newStills[nb][shotId]) || []).concat(takes);
+        stillsMoved++;
+      }
+    }
+
+    // (2) videos: carry each old bundle's renders to whichever new bundle the
+    //     majority of its shots landed in (dropped only if all its shots vanished).
+    const newVideo = {};
+    let videoMoved = 0, videoOrphaned = 0;
+    for (const [oldB, entry] of Object.entries(db.video || {})) {
+      const arr = Array.isArray(entry) ? entry : entry ? [entry] : [];
+      if (!arr.length) continue;
+      const oldShotIds = (prevBundles.find((b) => b.id === oldB)?.shots || []).map((s) => s.id);
+      const counts = {};
+      for (const sid of oldShotIds) { const nb = shotToNew[sid]; if (nb) counts[nb] = (counts[nb] || 0) + 1; }
+      const target = Object.entries(counts).sort((a, b) => b[1] - a[1])[0]?.[0];
+      if (target) { newVideo[target] = (newVideo[target] || []).concat(arr); videoMoved += arr.length; }
+      else videoOrphaned += arr.length;
+    }
+
+    // (3) per-bundle selection data: keep only for unchanged-membership bundles.
+    const carryUnchanged = (obj) => {
+      const next = {};
+      for (const b of bundles) { const o = sameOld[b.id]; if (o && obj?.[o] != null) next[b.id] = obj[o]; }
+      return next;
+    };
+
+    db.stills = newStills;
+    db.video = newVideo;
+    db.episode = carryUnchanged(db.episode);
+    db.episodeAudio = carryUnchanged(db.episodeAudio);
+    db.prompt = carryUnchanged(db.prompt);
+    db.signoffs = carryUnchanged(db.signoffs);
+
+    await writeManifest(c.env, pid, {
+      ...(prev && typeof prev === "object" ? prev : {}),
+      title: prev?.title || "Episode plan",
+      totalShots: shots.length,
+      generatedAt: new Date().toISOString(),
+      source: "rebuild",
+      bundles,
+    });
+    await writeDB(c.env, pid, db);
+
+    const unchanged = Object.keys(sameOld).length;
+    return c.json({
+      ok: true,
+      bundles: bundles.length,
+      previousBundles: prevBundles.length,
+      unchanged,
+      repacked: bundles.length - unchanged,
+      stillsMoved, stillsOrphaned,
+      videoMoved, videoOrphaned,
+    });
+  });
+
+  // Full-episode multishot plan: the packed <=15s bundles + per-bundle skill prompt.
   app.get("/api/episode", async (c) => {
     const pid = c.get("projectId");
     const manifest = await readManifest(c.env, pid);
