@@ -360,14 +360,14 @@ function RadioStudio() {
           <aside className="shrink-0 lg:sticky lg:top-[73px] lg:w-[340px] lg:self-start lg:max-h-[calc(100dvh-92px)] lg:overflow-y-auto">
             <Panel title={<span className="flex items-center gap-2"><Mic size={15} className="text-primary" /> Casting</span>} meta={<Badge variant="outline">{casting.length}</Badge>}>
               {casting.length === 0 ? (
-                <Empty>no speaking characters found in the shot list.</Empty>
+                <Empty>no speaking characters yet — add a voice on the World tab, or write a shot list with spoken lines.</Empty>
               ) : (
                 <div className="space-y-1.5">
                   {casting.map((entry) => <CastingCard key={entry.character} entry={entry} onCast={cast} />)}
                 </div>
               )}
               <p className="mt-2 px-1 text-[11px] text-muted-foreground">
-                voices are seeded from the World tab (a character's attached voice) and can be overridden here. Cast from your liked Sound Studio voice takes.
+                every speaker plus every character with a voice on the World tab. A voice cast here is shared with the World tab — the two never diverge. Cast from your liked Sound Studio voice takes.
               </p>
             </Panel>
           </aside>

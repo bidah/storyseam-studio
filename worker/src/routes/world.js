@@ -85,6 +85,22 @@ function normalizeWorld(raw) {
 const readWorld = async (env, pid) => normalizeWorld(await readDoc(env, pid, "world", null));
 const writeWorld = (env, pid, world) => writeDoc(env, pid, "world", world);
 
+// Attach (or clear, with a null voiceRef) a character's voice by case-insensitive
+// name. Returns true when a character matched — the voice then lives on the World
+// roster, the single source of truth the Radio casting rail shares (so a voice
+// cast on the Radio tab also shows on the World tab). Returns false when no such
+// character exists, so the caller can fall back to its own store.
+export async function setCharacterVoiceByName(env, pid, name, voiceRef) {
+  const key = str(name).trim().toUpperCase();
+  if (!key) return false;
+  const world = await readWorld(env, pid);
+  const idx = world.characters.findIndex((c) => str(c.name).trim().toUpperCase() === key);
+  if (idx < 0) return false;
+  world.characters[idx].voiceRef = normalizeVoiceRef(voiceRef);
+  await writeWorld(env, pid, world);
+  return true;
+}
+
 export function registerWorld(app) {
   // Read the world bible (seeds an empty skeleton on first use). Each linked
   // character sheet gets an absolute `refUrl` (ungated `/files/...`) so the agent

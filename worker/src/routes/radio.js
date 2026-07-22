@@ -7,16 +7,21 @@
 // STRUCTURE is DERIVED, never stored: the scenes + lines come fresh from the
 // shot list (grouped by `beat`), so the radio view always tracks the shots. The
 // radio doc `state/<pid>/radio.json` stores ONLY user intent + render results:
-//   { casting:   { <CHARKEY>: voiceRef|null },   // per-character voice override
+//   { casting:   { <CHARKEY>: voiceRef|null },   // override — orphan speakers only
 //     lineEdits: { <lineId>: { character?, text? } },
 //     takes:     { <lineId>: { trackId, v, at } } }  // the rendered voice take
-// Casting is seeded from the World character `voiceRef` (name match) and can be
-// overridden here. A line's voice = its speaker's casting.
+// A character's voice is the World character's `voiceRef` (name match) — the
+// single source of truth shared with the World tab, so casting here writes THROUGH
+// to the World roster and the two never diverge. `casting` above only holds a
+// voice for a speaker who has no World record (a shot-list name not in the
+// roster). A line's voice = its speaker's voice; the casting rail lists every
+// speaker plus every voiced World character.
 //
 // The final "send to editor" builds an audio-only timeline from the rendered
 // takes and appends it to `db.radioVersions` in the selections doc, then loads
 // it as the editor's working timeline (mirrors /api/timeline/from-cut).
 import { readDoc, writeDoc, updateDoc } from "../lib/docs.js";
+import { setCharacterVoiceByName } from "./world.js";
 import { normalizeShot } from "../lib/shots.js";
 import { listMedia, mediaKey } from "../lib/media.js";
 import { broadcast } from "../lib/broadcast.js";
@@ -148,13 +153,27 @@ export async function buildRadioView(env, pid) {
     }
   }
 
-  // Casting roster: one entry per distinct speaker across the script.
-  const roster = [...speakers]
-    .sort((a, b) => a.localeCompare(b))
-    .map((character) => {
-      const { voiceRef, source } = voiceFor(charKey(character));
+  // Casting roster: every speaker in the script, PLUS every World character who
+  // already has a voice attached — so a voice set on the World tab always shows
+  // here, even for a character who doesn't (yet) speak a line. That's the fix for
+  // the two rosters diverging: the World tab could show N voiced characters while
+  // this rail only listed the one who happened to have a dialogue line. Keyed by
+  // normalized name so a speaker and their World record collapse to one entry.
+  const rosterName = new Map(); // charKey -> display name
+  for (const character of speakers) {
+    const key = charKey(character);
+    if (key && !rosterName.has(key)) rosterName.set(key, character);
+  }
+  for (const ch of world.characters || []) {
+    const key = charKey(ch.name);
+    if (key && worldVoice.has(key) && !rosterName.has(key)) rosterName.set(key, ch.name);
+  }
+  const roster = [...rosterName.entries()]
+    .map(([key, character]) => {
+      const { voiceRef, source } = voiceFor(key);
       return { character, voiceRef, source };
-    });
+    })
+    .sort((a, b) => a.character.localeCompare(b.character));
 
   const readyLines = scenes.reduce((n, s) => n + s.lines.filter((l) => l.take?.ready).length, 0);
   const totalLines = scenes.reduce((n, s) => n + s.lines.length, 0);
@@ -207,8 +226,13 @@ export function registerRadio(app) {
     return c.json(await buildRadioView(c.env, pid));
   });
 
-  // Set a character's voice (override). Body: { character, voiceRef|null }.
-  // voiceRef null clears it (won't fall back to the World seed).
+  // Set a character's voice. Body: { character, voiceRef|null }; null clears it.
+  //
+  // Single source of truth: if the character is on the World roster, the voice is
+  // written onto that World character (shared with the World tab, so the two never
+  // diverge) and any stale per-radio override is dropped. Only a speaker with no
+  // World record — a name that appears in the shot list but not the character
+  // roster — falls back to the radio-only override map.
   app.put("/api/radio/casting", async (c) => {
     const pid = c.get("projectId");
     let body;
@@ -223,9 +247,11 @@ export function registerRadio(app) {
           url: String(body.voiceRef.url || ""),
         }
       : null;
+    const linked = await setCharacterVoiceByName(c.env, pid, body?.character, voiceRef);
     await updateRadio(c.env, pid, (db) => {
       db.casting = db.casting || {};
-      db.casting[key] = voiceRef;
+      if (linked) delete db.casting[key];
+      else db.casting[key] = voiceRef;
     });
     return c.json({ ok: true });
   });
