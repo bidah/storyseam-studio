@@ -145,6 +145,48 @@ export async function ensureAssetThumbs(env, pid, rels) {
   }
 }
 
+// Generate a 640px webp thumbnail for ONE image media file, into its proxy key,
+// if one doesn't exist yet. The single-file counterpart of ensureAssetThumbs,
+// but parameterized by `kind` — so a Visual World generation (kind "visual")
+// gets a real thumbnail the moment its bytes land in R2, matching the rest of
+// the app's "save the image and its thumb in the same pass" invariant. Served
+// by /thumb/*'s namespace fallback. Best-effort + lock-guarded, like the other
+// encoders: on any failure /thumb/* keeps serving the original.
+export async function ensureImageThumb(env, { pid, kind, file }) {
+  try {
+    if (!kind || !file) return;
+    if (!/\.(png|jpe?g|webp|gif)$/i.test(file)) return; // images only
+    if (/[\r\n]/.test(file)) return;
+
+    const pKey = proxyKey(pid, kind, file);
+    if (await env.BUCKET.head(pKey)) return; // already have a thumb
+
+    const lockKey = `${pKey}.lock`;
+    if (await lockedRecently(env, lockKey)) return; // an encode is in flight
+    await env.BUCKET.put(lockKey, new Uint8Array(0));
+
+    const base = workerBase(env);
+    const jd = `/tmp/thumb_${crypto.randomUUID()}`;
+    const inKey = mediaKey(pid, kind, file);
+    const script = [
+      "set -e", uploadFnBash(),
+      `BASE=${base}`, `TOKEN=${env.INGEST_TOKEN}`,
+      `rm -rf ${jd} && mkdir -p ${jd} && cd ${jd}`,
+      `curl -fsS -o in ${shq(`${base}/files/${encKey(inKey)}`)}`,
+      `ffmpeg -y -i in -frames:v 1 -vf "${THUMB_SCALE}" -c:v libwebp out.webp`,
+      `upload_r2 out.webp ${shq(encKey(pKey))}`,
+      `rm -rf ${jd}`,
+    ].join("\n");
+
+    const jobId = await createJob(env, "thumb");
+    const sandbox = await getSandbox(env);
+    await startSandboxJob(env, jobId, sandbox, script, null);
+  } catch {
+    // Best-effort: /thumb/* keeps serving the original; the lock expires and a
+    // later /thumb hit retries.
+  }
+}
+
 // Cached thumbnails for the "Import from Higgsfield" gallery. Higgsfield only
 // exposes rawUrl (full PNG, MBs) and minUrl (`_min.webp` — compressed but
 // FULL-resolution, ~250KB), so a 24-item gallery page is ~6MB. Cache a 640px

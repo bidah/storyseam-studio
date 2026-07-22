@@ -46,7 +46,7 @@ import { createAuth } from "./auth.js";
 import { broadcast } from "./lib/broadcast.js";
 import { normalizeProjectId } from "./lib/docs.js";
 import { kindForPrefix, mediaKey, proxyKey, streamKey } from "./lib/media.js";
-import { ensureProxy } from "./lib/proxy.js";
+import { ensureProxy, ensureImageThumb } from "./lib/proxy.js";
 
 // Durable Object for per-project SSE live-sync (script + timeline channels).
 export { ProjectEvents } from "./sse-do.js";
@@ -365,24 +365,36 @@ app.get("/asset/*", (c) => {
   });
 });
 
-// --- asset-library image thumbnails ------------------------------------------
-// `/thumb/<rel>` serves the small webp (media/<pid>/proxy/asset/<rel>) if it
-// exists, else the full-res original short-lived as a fallback. Thumbs are
-// written at Higgsfield-import time (from the ready-made minUrl) or batched by
-// ensureAssetThumbs when /api/library spots missing ones — no per-request
-// generation here, so a folder of N images never fans out N sandbox jobs.
+// --- image thumbnails --------------------------------------------------------
+// `/thumb/<rel>` serves the small webp thumbnail if it exists, else the full-res
+// original short-lived while a thumb is generated lazily. Two namespaces are
+// checked: `asset` (library images — thumbs written at Higgsfield-import time or
+// batched by ensureAssetThumbs) and `visual` (Visual World generations attached
+// straight as character sheets, which live under media/<pid>/visual/, not the
+// asset library). A real webp thumb in either namespace wins; otherwise we serve
+// whichever original exists and kick off a one-file encode so the next hit is
+// the small webp.
 app.get("/thumb/*", async (c) => {
   const rel = decodeURIComponent(new URL(c.req.url).pathname.slice("/thumb/".length));
   const pid = c.get("projectId");
   const range = c.req.header("range");
   const ifNoneMatch = c.req.header("if-none-match");
-  const tKey = proxyKey(pid, "asset", rel);
-  if (await c.env.BUCKET.head(tKey)) return streamKey(c.env, tKey, range, { ifNoneMatch });
-  return streamKey(c.env, mediaKey(pid, "asset", rel), range, {
-    ifNoneMatch,
-    cacheControl: "public, max-age=60",
-    extraHeaders: { "x-thumb": "fallback" },
-  });
+  for (const kind of ["asset", "visual"]) {
+    const tKey = proxyKey(pid, kind, rel);
+    if (await c.env.BUCKET.head(tKey)) return streamKey(c.env, tKey, range, { ifNoneMatch });
+  }
+  for (const kind of ["asset", "visual"]) {
+    const mKey = mediaKey(pid, kind, rel);
+    if (await c.env.BUCKET.head(mKey)) {
+      c.executionCtx.waitUntil(ensureImageThumb(c.env, { pid, kind, file: rel }));
+      return streamKey(c.env, mKey, range, {
+        ifNoneMatch,
+        cacheControl: "public, max-age=60",
+        extraHeaders: { "x-thumb": "fallback" },
+      });
+    }
+  }
+  return c.text("Not found", 404);
 });
 
 // --- 720p preview proxies --------------------------------------------------

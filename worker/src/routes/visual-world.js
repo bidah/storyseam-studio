@@ -17,6 +17,7 @@
 // card is processing (mirrors idea-mural's VideoGenView).
 import { readDoc, updateDoc, normalizeProjectId } from "../lib/docs.js";
 import { putMedia, mediaKey, filesUrl } from "../lib/media.js";
+import { ensureImageThumb } from "../lib/proxy.js";
 import {
   getHiggsfieldToken,
   forceRefreshHiggsfieldToken,
@@ -901,6 +902,9 @@ export function registerVisualWorld(app) {
             : (/webp/.test(ct) ? "webp" : /jpe?g/.test(ct) ? "jpg" : "png");
           const file = `${g.id}.${ext}`;
           await putMedia(c.env, pid, "visual", file, await res.arrayBuffer(), ct);
+          // Generate the thumbnail in the same pass (images only) so a gen
+          // attached straight as a character sheet renders a real thumb.
+          if (!isVideo) c.executionCtx.waitUntil(ensureImageThumb(c.env, { pid, kind: "visual", file }));
           updates[g.id] = { status: "ready", file, source: rawUrl };
         } else if (!inProgress && !failed && status) {
           // Reached a terminal state we don't recognize, with no media URL.
@@ -1039,6 +1043,9 @@ export function registerVisualWorld(app) {
             const ext = /webp/i.test(ct) ? "webp" : /jpe?g/i.test(ct) ? "jpg" : /gif/i.test(ct) ? "gif" : "png";
             file = `${id}.${ext}`;
             await putMedia(c.env, pid, "visual", file, await res.arrayBuffer(), ct);
+            // Thumbnail in the same pass — see /poll. This is the agent's attach
+            // route, the exact path that produced the broken-thumb sheets.
+            c.executionCtx.waitUntil(ensureImageThumb(c.env, { pid, kind: "visual", file }));
           }
         }
       } catch (e) {
