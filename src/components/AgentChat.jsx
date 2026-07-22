@@ -639,6 +639,20 @@ export default function AgentChat() {
     }
   }, [messages, conv]);
   const isBusy = agent.status === "submitted" || agent.status === "streaming";
+
+  // On reload the flue conversation reloads its durable transcript, so `messages`
+  // is briefly empty before history settles (`agent.historyReady`). Showing the
+  // "Ask me to build the episode" empty state during that window and then popping
+  // the history in is jarring — so while an EXISTING chat is still loading, show a
+  // "loading your latest chat" spinner instead. A brand-new chat has no server
+  // transcript to wait for (default title, never titled, no attachments), so we
+  // skip the spinner for it and show the empty state right away.
+  const activeChat = conv.list.find((c) => c.id === conv.activeId);
+  const looksNew =
+    !activeChat ||
+    (activeChat.title === "New chat" && !activeChat.titled && !activeChat.attachments?.length);
+  const loadingHistory = !agent.historyReady && messages.length === 0 && !looksNew;
+
   const thinking = useMemo(() => isThinking(messages, isBusy), [messages, isBusy]);
   const working = useMemo(() => workingTool(messages, isBusy), [messages, isBusy]);
   const reasoning = useMemo(() => isReasoning(messages, isBusy), [messages, isBusy]);
@@ -911,7 +925,12 @@ export default function AgentChat() {
           onClick={onTranscriptClick}
           className="h-full space-y-4 overflow-y-auto bg-muted/30 px-4 pb-4 pt-14 dark:bg-[#0E0E10] [&_img]:cursor-zoom-in"
         >
-          {messages.length === 0 ? (
+          {loadingHistory ? (
+            <div className="flex h-full flex-col items-center justify-center gap-2 text-center text-muted-foreground">
+              <Loader2 size={22} className="animate-spin" />
+              <p className="text-sm">Loading up your latest chat…</p>
+            </div>
+          ) : messages.length === 0 ? (
             <div className="flex h-full flex-col items-center justify-center gap-2 text-center text-muted-foreground">
               <Sparkles size={22} />
               <p className="text-sm">Ask me to build the episode.</p>
