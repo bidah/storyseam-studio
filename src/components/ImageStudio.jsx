@@ -52,26 +52,58 @@ const SHEET_TYPES = {
  * Prompt library — choose a preset (fills the prompt) and edit them. *
  * ---------------------------------------------------------------- */
 
-function PromptLibraryDialog({ open, onOpenChange, prompts, onSave }) {
+const fmtRevDate = (ts) => {
+  const d = ts ? new Date(ts) : null;
+  return d && !Number.isNaN(+d)
+    ? d.toLocaleString(undefined, { year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })
+    : "—";
+};
+
+// Edits the project's image-generation prompts in one place: the STYLE presets
+// (house look) and the character/location SHEET prompts (also on Settings).
+// Every save is confirmed and stored server-side as a numbered, dated revision.
+function PromptLibraryDialog({ open, onOpenChange, prompts, sheetPrompts, revisions = [], onSave }) {
   const [list, setList] = useState(prompts);
+  const [sheets, setSheets] = useState({ character: "", location: "" });
   const [saving, setSaving] = useState(false);
-  useEffect(() => { if (open) setList(prompts); }, [open, prompts]);
+  const [confirming, setConfirming] = useState(false);
+  useEffect(() => {
+    if (!open) return;
+    setList(prompts);
+    setSheets({ character: sheetPrompts?.character || "", location: sheetPrompts?.location || "" });
+    setConfirming(false);
+  }, [open, prompts, sheetPrompts]);
+
+  const latest = revisions[revisions.length - 1];
+  const nextRev = (latest?.rev || 0) + 1;
 
   const edit = (id, key, val) => setList((l) => l.map((p) => (p.id === id ? { ...p, [key]: val } : p)));
   const add = () => setList((l) => [...l, { id: `prompt-${Date.now().toString(36)}`, name: "New prompt", image: "", video: "", builtin: false }]);
   const remove = (id) => setList((l) => l.filter((p) => p.id !== id));
-  const commit = async () => { setSaving(true); try { await onSave(list); onOpenChange(false); } finally { setSaving(false); } };
+  const commit = async () => {
+    setSaving(true);
+    try { await onSave({ prompts: list, sheetPrompts: sheets }); onOpenChange(false); }
+    finally { setSaving(false); setConfirming(false); }
+  };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-3xl">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2"><Library size={18} className="text-primary" /> Prompt library</DialogTitle>
+          <DialogTitle className="flex items-center gap-2">
+            <Library size={18} className="text-primary" /> Prompt library
+            {latest && <Badge variant="muted">rev {latest.rev} · {fmtRevDate(latest.ts)}</Badge>}
+          </DialogTitle>
         </DialogHeader>
-        <p className="text-sm text-muted-foreground">
-          Reusable style prompts. The <b>image</b> block is prepended to your scene as the house style; the
-          <b> video</b> block is kept for later Seedance renders.
-        </p>
+
+        {/* Style presets */}
+        <div className="space-y-1">
+          <h3 className="flex items-center gap-2 text-sm font-semibold"><Sparkles size={14} className="text-primary" /> Style prompts</h3>
+          <p className="text-sm text-muted-foreground">
+            Reusable style prompts. The <b>image</b> block is prepended to your scene as the house style; the
+            <b> video</b> block is kept for later Seedance renders.
+          </p>
+        </div>
         <div className="space-y-4">
           {list.map((p) => (
             <div key={p.id} className="space-y-2 rounded-lg border p-3">
@@ -94,9 +126,57 @@ function PromptLibraryDialog({ open, onOpenChange, prompts, onSave }) {
           ))}
           <Button variant="outline" size="sm" onClick={add}><Plus size={13} /> Add preset</Button>
         </div>
+
+        {/* Sheet prompts — same data Settings edits, surfaced here too. */}
+        <div className="space-y-1 pt-2">
+          <h3 className="flex items-center gap-2 text-sm font-semibold"><IdCard size={14} className="text-primary" /> Sheet prompts</h3>
+          <p className="text-sm text-muted-foreground">
+            Layered on top of the style when a generation is tagged as a character or location sheet.
+            Also editable in Settings.
+          </p>
+        </div>
+        <div className="space-y-3">
+          <div>
+            <Eyebrow className="normal-case tracking-normal text-foreground/70">Character sheet prompt</Eyebrow>
+            <Textarea value={sheets.character} onChange={(e) => setSheets((s) => ({ ...s, character: e.target.value }))} rows={4} className="text-sm" placeholder="Contact-sheet instructions for characters…" />
+          </div>
+          <div>
+            <Eyebrow className="normal-case tracking-normal text-foreground/70">Location sheet prompt</Eyebrow>
+            <Textarea value={sheets.location} onChange={(e) => setSheets((s) => ({ ...s, location: e.target.value }))} rows={4} className="text-sm" placeholder="Contact-sheet instructions for locations…" />
+          </div>
+        </div>
+
+        {/* Revision history — number + date as a reference. */}
+        {revisions.length > 0 && (
+          <div className="space-y-2 pt-2">
+            <h3 className="flex items-center gap-2 text-sm font-semibold"><Layers size={14} className="text-primary" /> Revisions</h3>
+            <ul className="space-y-1">
+              {[...revisions].reverse().map((r) => (
+                <li key={r.rev} className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <Badge variant={r.rev === latest.rev ? "info" : "muted"}>rev {r.rev}</Badge>
+                  {fmtRevDate(r.ts)}
+                  {r.rev === latest.rev && <span className="text-foreground/70">current</span>}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
         <DialogFooter>
-          <Button variant="ghost" onClick={() => onOpenChange(false)}>Cancel</Button>
-          <Button onClick={commit} disabled={saving}>{saving ? <Loader2 size={14} className="animate-spin" /> : null} Save prompts</Button>
+          {confirming ? (
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              <span className="text-sm text-muted-foreground">Save these prompts as <b className="text-foreground">rev {nextRev}</b>?</span>
+              <Button variant="ghost" onClick={() => setConfirming(false)} disabled={saving}>Back</Button>
+              <Button onClick={commit} disabled={saving}>
+                {saving ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />} Save revision {nextRev}
+              </Button>
+            </div>
+          ) : (
+            <>
+              <Button variant="ghost" onClick={() => onOpenChange(false)}>Cancel</Button>
+              <Button onClick={() => setConfirming(true)}>Save prompts</Button>
+            </>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -330,6 +410,8 @@ export default function ImageStudio({
   generations = [],
   models = [],
   prompts = [],
+  sheetPrompts = {},
+  promptRevisions = [],
   settings = {},
   // Status
   busy = false, pending = 0, error = null,
@@ -594,7 +676,7 @@ export default function ImageStudio({
         ])}
       />
       {onSavePrompts && (
-        <PromptLibraryDialog open={editPrompts} onOpenChange={setEditPrompts} prompts={prompts} onSave={onSavePrompts} />
+        <PromptLibraryDialog open={editPrompts} onOpenChange={setEditPrompts} prompts={prompts} sheetPrompts={sheetPrompts} revisions={promptRevisions} onSave={onSavePrompts} />
       )}
     </div>
   );

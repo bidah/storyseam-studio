@@ -97,9 +97,37 @@ function emptyVisualWorld() {
     settings: { model: "", aspectRatio: "16:9", count: 1, cinematic: false, presetId: "preset-2d" },
     prompts: structuredClone(SEED_PROMPTS),
     sheetPrompts: { ...SEED_SHEET_PROMPTS },
+    promptRevisions: [],
     generations: [],
     board: { nodes: [], edges: [], viewport: null },
   };
+}
+
+// Every prompt save (style presets and/or sheet prompts, from the composer
+// dialog or Settings) snapshots the resulting state as a numbered revision so
+// the user can reference "rev N · date" later. Oldest revisions roll off.
+const PROMPT_REVISION_CAP = 30;
+
+function normalizePromptRevision(r) {
+  const o = r || {};
+  return {
+    rev: Number.isFinite(+o.rev) ? Math.max(1, Math.round(+o.rev)) : 1,
+    ts: str(o.ts),
+    prompts: Array.isArray(o.prompts) ? o.prompts.map(normalizePrompt) : [],
+    sheetPrompts: normalizeSheetPrompts(o.sheetPrompts),
+  };
+}
+
+function pushPromptRevision(v) {
+  const last = v.promptRevisions[v.promptRevisions.length - 1];
+  const revision = {
+    rev: (last?.rev || 0) + 1,
+    ts: new Date().toISOString(),
+    prompts: structuredClone(v.prompts),
+    sheetPrompts: { ...v.sheetPrompts },
+  };
+  v.promptRevisions = [...v.promptRevisions, revision].slice(-PROMPT_REVISION_CAP);
+  return revision;
 }
 
 function normalizePrompt(p, i = 0) {
@@ -291,6 +319,7 @@ function normalizeVisualWorld(raw) {
     ? w.prompts.map(normalizePrompt)
     : structuredClone(SEED_PROMPTS);
   base.sheetPrompts = normalizeSheetPrompts(w.sheetPrompts);
+  base.promptRevisions = Array.isArray(w.promptRevisions) ? w.promptRevisions.map(normalizePromptRevision) : [];
   base.generations = Array.isArray(w.generations) ? w.generations.map(normalizeGeneration) : [];
   base.board = normalizeBoard(w.board);
   return base;
@@ -1150,7 +1179,10 @@ export function registerVisualWorld(app) {
     return c.json({ ok: true });
   });
 
-  // Replace the prompt library (add/edit/delete presets).
+  // Replace the prompt library (add/edit/delete presets). Optionally carries the
+  // character/location sheet prompts too (the composer's prompt dialog edits
+  // both), so one save lands as ONE revision. Every save appends a numbered
+  // revision snapshot (see pushPromptRevision).
   app.put("/api/visual-world/prompts", async (c) => {
     const pid = c.get("projectId");
     let body;
@@ -1158,8 +1190,18 @@ export function registerVisualWorld(app) {
     const list = Array.isArray(body.prompts) ? body.prompts : Array.isArray(body) ? body : null;
     if (!list) return c.json({ error: "Expected { prompts: [...] }" }, 400);
     const prompts = list.map(normalizePrompt);
-    await updateVW(c.env, pid, (v) => { v.prompts = prompts; });
-    return c.json({ ok: true, prompts });
+    let revision = null;
+    await updateVW(c.env, pid, (v) => {
+      v.prompts = prompts;
+      if (body.sheetPrompts && typeof body.sheetPrompts === "object") {
+        const next = { ...v.sheetPrompts };
+        if (typeof body.sheetPrompts.character === "string") next.character = body.sheetPrompts.character;
+        if (typeof body.sheetPrompts.location === "string") next.location = body.sheetPrompts.location;
+        v.sheetPrompts = normalizeSheetPrompts(next);
+      }
+      revision = pushPromptRevision(v);
+    });
+    return c.json({ ok: true, prompts, revision: revision && { rev: revision.rev, ts: revision.ts } });
   });
 
   // Merge-patch the character/location sheet prompts (Settings page). Sending an
@@ -1168,14 +1210,16 @@ export function registerVisualWorld(app) {
     const pid = c.get("projectId");
     let patch;
     try { patch = await c.req.json(); } catch { patch = {}; }
+    let revision = null;
     await updateVW(c.env, pid, (v) => {
       const next = { ...v.sheetPrompts };
       if (typeof patch.character === "string") next.character = patch.character;
       if (typeof patch.location === "string") next.location = patch.location;
       v.sheetPrompts = normalizeSheetPrompts(next);
+      revision = pushPromptRevision(v);
     });
     const fresh = await readVW(c.env, pid);
-    return c.json({ ok: true, sheetPrompts: fresh.sheetPrompts });
+    return c.json({ ok: true, sheetPrompts: fresh.sheetPrompts, revision: revision && { rev: revision.rev, ts: revision.ts } });
   });
 
   // Merge-patch the composer's remembered defaults.

@@ -105,8 +105,9 @@ function Visual() {
     try { await api(`/api/visual-world/generation/${g.id}`, { method: "DELETE" }); refetch(); }
     catch (e) { setError(String(e.message || e)); }
   };
-  const savePrompts = async (list) => {
-    try { await api("/api/visual-world/prompts", { method: "PUT", body: JSON.stringify({ prompts: list }) }); refetch(); }
+  // One save = one revision server-side, so style + sheet prompts go together.
+  const savePrompts = async ({ prompts, sheetPrompts }) => {
+    try { await api("/api/visual-world/prompts", { method: "PUT", body: JSON.stringify({ prompts, sheetPrompts }) }); refetch(); }
     catch (e) { setError(String(e.message || e)); }
   };
 
@@ -129,6 +130,8 @@ function Visual() {
       generations={generations}
       models={models}
       prompts={prompts}
+      sheetPrompts={world.sheetPrompts || {}}
+      promptRevisions={world.promptRevisions || []}
       settings={world.settings || {}}
       sheetTagging
       busy={busy}
