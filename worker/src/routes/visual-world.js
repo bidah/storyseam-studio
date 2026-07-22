@@ -97,6 +97,12 @@ function normalizeGeneration(g, i = 0) {
   return {
     id: str(o.id) || `gen-${Date.now().toString(36)}-${i}`,
     status,
+    // "image" (default) | "video" — which medium this generation is. A video's
+    // `file` is an .mp4 served (with range support) from /visual-media/.
+    kind: o.kind === "video" ? "video" : "image",
+    // The canvas node that produced this generation (a node Run), when any. Lets
+    // the Nodes canvas bind a generation back to its originating node + history.
+    nodeId: str(o.nodeId),
     prompt: str(o.prompt),
     assembledPrompt: str(o.assembledPrompt),
     model: str(o.model),
@@ -112,23 +118,118 @@ function normalizeGeneration(g, i = 0) {
   };
 }
 
+// ---- Nodes canvas graph (generator flow) ----
+// Each node is a GENERATOR (or a source), not just a moodboard sticker:
+//   image / video — carry a prompt + settings + a Run that fires a job, using
+//     wired input edges as references. Their run history is `genIds` (newest
+//     last); `currentGenId` is the one shown in the node preview.
+//   text          — a prompt SOURCE; its text-output feeds downstream prompts.
+//   upload        — a source-only holder for an EXISTING generation (the old
+//     moodboard sticker). Its output medium mirrors that generation's kind.
+// Edges are TYPED and functional (see FLOW_CONNECT_RULES): an image-output →
+// image-input edge feeds the source's current image in as a reference; an
+// image-output → start-frame edge feeds a video its first frame; a text-output →
+// text-input edge inherits the source's prompt text.
+const FLOW_NODE_TYPES = new Set(["image", "video", "text", "upload"]);
+const FLOW_CONNECT_RULES = {
+  "image-output": ["image-input", "start-frame"],
+  "video-output": [],
+  "text-output": ["text-input"],
+};
+const clampDuration = (n) => Math.min(15, Math.max(4, Math.round(Number(n) || 5)));
+
+function normalizeNodeSettings(type, s) {
+  const o = s || {};
+  if (type === "image") {
+    return {
+      model: str(o.model),
+      aspectRatio: str(o.aspectRatio) || "16:9",
+      presetId: str(o.presetId),
+    };
+  }
+  if (type === "video") {
+    return {
+      model: str(o.model),
+      aspectRatio: str(o.aspectRatio) || "16:9",
+      duration: clampDuration(o.duration),
+      generateAudio: !!o.generateAudio,
+      presetId: str(o.presetId),
+    };
+  }
+  return {}; // text / upload carry no generation settings
+}
+
+function normalizeBoardNode(n) {
+  const o = n || {};
+  // Legacy moodboard node: `{ id, genId, x, y, w, h }`. Migrate to an `upload`
+  // source node holding that generation (source-only display, same as before).
+  const legacyGen = str(o.genId);
+  const type = FLOW_NODE_TYPES.has(o.type) ? o.type : (legacyGen ? "upload" : "image");
+  const genIds = Array.isArray(o.genIds)
+    ? o.genIds.map(str).filter(Boolean)
+    : (legacyGen ? [legacyGen] : []);
+  const currentGenId = str(o.currentGenId) || legacyGen || genIds[0] || "";
+  return {
+    id: str(o.id),
+    type,
+    x: Number(o.x) || 0,
+    y: Number(o.y) || 0,
+    w: o.w != null ? Number(o.w) : null,
+    h: o.h != null ? Number(o.h) : null,
+    prompt: str(o.prompt),
+    settings: normalizeNodeSettings(type, o.settings),
+    currentGenId,
+    genIds,
+  };
+}
+
+// Normalize one edge, returning null for an ILLEGAL handle combo (dropped). A
+// legacy edge with no handles at all migrates to the old decorative lineage
+// (image-output → image-input); any edge that names handles is validated
+// strictly against FLOW_CONNECT_RULES so a bad body can't persist a dead edge.
+function normalizeBoardEdge(e) {
+  const o = e || {};
+  let src = str(o.sourceHandle);
+  let tgt = str(o.targetHandle);
+  if (!src && !tgt) { src = "image-output"; tgt = "image-input"; }
+  const allowed = FLOW_CONNECT_RULES[src];
+  if (!allowed || !allowed.includes(tgt)) return null;
+  return {
+    id: str(o.id),
+    source: str(o.source),
+    sourceHandle: src,
+    target: str(o.target),
+    targetHandle: tgt,
+    createdAt: Number(o.createdAt) || 0,
+  };
+}
+
+function normalizeRun(r) {
+  const o = r || {};
+  if (!o.active) return null;
+  const arr = (v) => (Array.isArray(v) ? v.map(str).filter(Boolean) : []);
+  return {
+    active: true,
+    mode: o.mode === "from-here" ? "from-here" : "this",
+    runSet: arr(o.runSet),
+    started: arr(o.started),
+    ready: arr(o.ready),
+    errored: arr(o.errored),
+    ts: o.ts || null,
+  };
+}
+
 function normalizeBoard(b) {
   const o = b || {};
   const nodes = Array.isArray(o.nodes)
-    ? o.nodes.map((n) => ({
-        id: str(n?.id),
-        genId: str(n?.genId),
-        x: Number(n?.x) || 0,
-        y: Number(n?.y) || 0,
-        w: n?.w != null ? Number(n.w) : null,
-        h: n?.h != null ? Number(n.h) : null,
-      })).filter((n) => n.id && n.genId)
+    ? o.nodes.map(normalizeBoardNode).filter((n) => n.id)
     : [];
+  const nodeIds = new Set(nodes.map((n) => n.id));
   const edges = Array.isArray(o.edges)
-    ? o.edges.map((e) => ({ id: str(e?.id), source: str(e?.source), target: str(e?.target) }))
-        .filter((e) => e.id && e.source && e.target)
+    ? o.edges.map(normalizeBoardEdge)
+        .filter((e) => e && e.id && nodeIds.has(e.source) && nodeIds.has(e.target))
     : [];
-  return { nodes, edges, viewport: o.viewport ?? null };
+  return { nodes, edges, viewport: o.viewport ?? null, run: normalizeRun(o.run) };
 }
 
 function normalizeVisualWorld(raw) {
@@ -188,19 +289,87 @@ async function mcp(env, userId, token, name, args) {
   }
 }
 
-// Pull a media id out of whatever shape the MCP tool returned.
-function pickId(data, ...keys) {
+// Pull a media/job id out of whatever shape the MCP tool returned. Higgsfield's
+// generate_* tools vary: a bare id, `{ id }`, `{ jobId }`, a `{ job_set_id }`, or
+// a `{ jobs: [{ id }] }` / `{ generations: [{ id }] }` array (count ≥ 1). We probe
+// a broad key set at the top level, one level of object nesting, and the first
+// element of any id-bearing array.
+const JOB_ID_KEYS = [
+  "jobId", "job_id", "id", "job_set_id", "jobSetId",
+  "generation_id", "generationId", "media_id", "mediaId",
+  "task_id", "taskId", "uuid",
+];
+function pickIdFrom(obj, keys) {
+  if (!obj || typeof obj !== "object") return "";
+  for (const k of keys) if (obj[k]) return String(obj[k]);
+  return "";
+}
+function pickId(data, ...extraKeys) {
   if (!data) return "";
   if (typeof data === "string") return data;
-  for (const k of keys) if (data[k]) return String(data[k]);
-  // one level of nesting (e.g. { media: { id } } / { result: { id } })
-  for (const nest of ["media", "result", "data", "job"]) {
+  const keys = [...extraKeys, ...JOB_ID_KEYS];
+  const top = pickIdFrom(data, keys);
+  if (top) return top;
+  // One level of object nesting, and the first element of id-bearing arrays.
+  for (const nest of ["media", "result", "data", "job", "jobs", "job_set", "generations", "results", "items"]) {
     const inner = data[nest];
-    if (inner && typeof inner === "object") {
-      for (const k of keys) if (inner[k]) return String(inner[k]);
+    if (Array.isArray(inner)) {
+      for (const el of inner) {
+        const v = typeof el === "string" ? el : pickIdFrom(el, keys);
+        if (v) return v;
+      }
+    } else if (inner && typeof inner === "object") {
+      const v = pickIdFrom(inner, keys);
+      if (v) return v;
     }
   }
   return "";
+}
+
+// Collect every media-role string anywhere in a models_explore.get payload
+// (roles live under `role`/`roles`, sometimes nested in a `medias` array).
+function collectRoles(obj, out = new Set(), depth = 0) {
+  if (!obj || depth > 6) return out;
+  if (Array.isArray(obj)) { for (const v of obj) collectRoles(v, out, depth + 1); return out; }
+  if (typeof obj === "object") {
+    for (const [k, v] of Object.entries(obj)) {
+      if (/^roles?$/i.test(k)) {
+        if (typeof v === "string") out.add(v);
+        else if (Array.isArray(v)) {
+          for (const r of v) {
+            if (typeof r === "string") out.add(r);
+            else if (r?.role) out.add(String(r.role));
+            else if (r?.name) out.add(String(r.name));
+          }
+        }
+      }
+      collectRoles(v, out, depth + 1);
+    }
+  }
+  return out;
+}
+
+// Resolve the media role to tag reference images with for a given model. Roles
+// VARY per model (Nano Banana Pro wants "image"; Seedance wants "image_references"),
+// so we ask models_explore.get for the model's allowed roles and pick the first
+// of `prefer` that it allows (falling back to any allowed role, then prefer[0]).
+// Cached briefly in KV — a wrong role hard-fails the whole generation.
+async function resolveMediaRole(env, userId, token, modelId, prefer) {
+  let roles = [];
+  const cacheKey = `visual:model-roles:${modelId}`;
+  try {
+    const cached = await env.AUTH_KV.get(cacheKey, "json");
+    if (Array.isArray(cached)) roles = cached;
+  } catch { /* ignore */ }
+  if (!roles.length) {
+    try {
+      const data = await mcp(env, userId, token, "models_explore", { action: "get", model_id: modelId });
+      roles = [...collectRoles(data)];
+      try { await env.AUTH_KV.put(cacheKey, JSON.stringify(roles), { expirationTtl: 600 }); } catch { /* best effort */ }
+    } catch { /* fall through to prefer[0] */ }
+  }
+  const hit = prefer.find((p) => roles.includes(p));
+  return hit || roles[0] || prefer[0];
 }
 
 // Import a reference URL into Higgsfield → a media_id usable in generate_image
@@ -245,6 +414,272 @@ async function resolveModels(env, userId, token) {
   return out;
 }
 
+// Resolve the VIDEO-model catalog (id + label) via models_explore, marking the
+// Seedance default (image-to-video with identity). Same shape/caching as the
+// image catalog. Seedance ids also churn, so match loosely and cache short.
+const SEEDANCE_RE = /seedance/i;
+const VIDEO_MODELS_CACHE_KEY = "visual:video-models:v1";
+async function resolveVideoModels(env, userId, token) {
+  try {
+    const cached = await env.AUTH_KV.get(VIDEO_MODELS_CACHE_KEY, "json");
+    if (cached?.models?.length) return cached;
+  } catch { /* ignore cache miss */ }
+
+  const data = await mcp(env, userId, token, "models_explore", { action: "list", type: "video" });
+  const raw = Array.isArray(data)
+    ? data
+    : data?.models || data?.items || data?.video_models || data?.results || [];
+  const models = raw
+    .map((m) => ({
+      id: str(m?.id || m?.model || m?.slug || m?.model_id),
+      label: str(m?.name || m?.title || m?.label || m?.display_name || m?.id),
+    }))
+    .filter((m) => m.id);
+  // Prefer a Seedance model (best for image-to-video identity); else the first.
+  const seed = models.find((m) => SEEDANCE_RE.test(m.label) || SEEDANCE_RE.test(m.id));
+  const defaultId = seed?.id || models[0]?.id || "seedance_2_0";
+  const out = { models, defaultId };
+  try { await env.AUTH_KV.put(VIDEO_MODELS_CACHE_KEY, JSON.stringify(out), { expirationTtl: 600 }); } catch { /* best effort */ }
+  return out;
+}
+
+/* ------------------------------------------------------------------ *
+ * Node-run reference resolution + job firing (the Nodes canvas)       *
+ * ------------------------------------------------------------------ */
+
+// Absolute, ungated /files URL for a ready generation's bytes (importable into
+// Higgsfield as a media). Empty when the generation isn't ready.
+function genRefUrl(env, pid, gen) {
+  return gen?.file ? filesUrl(env, mediaKey(pid, "visual", gen.file)) : "";
+}
+
+// Resolve a node's wired inputs into the pieces a generation needs:
+//   startFrameUrl — the image-output → start-frame source (video first frame),
+//   imageRefUrls  — ordered image-output → image-input sources (references),
+//   inheritedText — a text-output → text-input source's prompt (prepended).
+// Sources must be READY; unresolved edges are skipped.
+function resolveNodeInputs(env, pid, vw, node) {
+  const nodeById = new Map(vw.board.nodes.map((n) => [n.id, n]));
+  const genById = new Map(vw.generations.map((g) => [g.id, g]));
+  const readyUrl = (srcNode) => {
+    const g = srcNode?.currentGenId ? genById.get(srcNode.currentGenId) : null;
+    return g && g.status === "ready" ? genRefUrl(env, pid, g) : "";
+  };
+  const inEdges = vw.board.edges
+    .filter((e) => e.target === node.id)
+    .sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+
+  let startFrameUrl = "";
+  let inheritedText = "";
+  const imageRefUrls = [];
+  for (const e of inEdges) {
+    const src = nodeById.get(e.source);
+    if (!src) continue;
+    if (e.targetHandle === "start-frame") {
+      startFrameUrl = startFrameUrl || readyUrl(src);
+    } else if (e.targetHandle === "image-input") {
+      const u = readyUrl(src);
+      if (u) imageRefUrls.push(u);
+    } else if (e.targetHandle === "text-input") {
+      inheritedText = inheritedText || str(src.prompt);
+    }
+  }
+  return { startFrameUrl, imageRefUrls, inheritedText };
+}
+
+// Fire ONE generation job for a node (image via generate_image, video via
+// generate_video), importing wired references first. Returns the "processing"
+// generation record to append (with jobId/kind/nodeId). Throws on a hard MCP
+// error — the caller marks the node's run errored. Network only; NO doc writes.
+async function fireNodeJob(env, userId, token, pid, vw, node) {
+  const kind = node.type === "video" ? "video" : "image";
+  const settings = node.settings || {};
+  const { startFrameUrl, imageRefUrls, inheritedText } = resolveNodeInputs(env, pid, vw, node);
+
+  // Assemble the prompt: inherited text (from a Text node), then the preset's
+  // style block (image or motion), then the node's own prompt.
+  const preset = settings.presetId ? vw.prompts.find((p) => p.id === settings.presetId) : null;
+  const presetBlock = kind === "video" ? str(preset?.video) : str(preset?.image);
+  const scene = str(node.prompt);
+  const assembledPrompt = [inheritedText, presetBlock, scene].filter(Boolean).join("\n\n");
+  const aspectRatio = str(settings.aspectRatio) || "16:9";
+
+  const ts = new Date().toISOString();
+  const base = {
+    id: `gen-${Date.now().toString(36)}-${crypto.randomUUID().slice(0, 6)}`,
+    kind,
+    nodeId: node.id,
+    prompt: scene,
+    assembledPrompt,
+    aspectRatio,
+    presetId: str(settings.presetId),
+    refs: [],
+    ts,
+  };
+
+  if (kind === "video") {
+    const { defaultId } = await resolveVideoModels(env, userId, token);
+    let model = str(settings.model) || defaultId;
+    if (!model) throw new Error("Could not resolve a video model");
+    // Resolve the reference-image role this model actually accepts (Seedance:
+    // "image_references"; others may want "start_image"/"image"). Start frame
+    // leads, then image refs.
+    const refUrls = [startFrameUrl, ...imageRefUrls].filter(Boolean);
+    const medias = [];
+    if (refUrls.length) {
+      const role = await resolveMediaRole(env, userId, token, model, ["image_references", "start_image", "image"]);
+      for (const url of refUrls) {
+        const mediaId = await importRef(env, userId, token, url);
+        medias.push({ role, value: mediaId });
+      }
+    }
+    const data = await mcp(env, userId, token, "generate_video", {
+      params: {
+        model,
+        prompt: assembledPrompt,
+        aspect_ratio: aspectRatio,
+        duration: clampDuration(settings.duration),
+        generate_audio: !!settings.generateAudio,
+        medias,
+      },
+    });
+    const jobId = pickId(data, "jobId", "job_id", "id");
+    if (!jobId) throw new Error(`Higgsfield generate_video returned no job id (got: ${JSON.stringify(data).slice(0, 220)})`);
+    return normalizeGeneration({ ...base, status: "processing", model, jobId });
+  }
+
+  // image
+  const { models, defaultId } = await resolveModels(env, userId, token);
+  let model = str(settings.model);
+  if (model && models.length && !models.some((m) => m.id === model)) model = "";
+  if (!model) model = defaultId;
+  if (!model) throw new Error("Could not resolve an image model");
+  const medias = [];
+  if (imageRefUrls.length) {
+    const role = await resolveMediaRole(env, userId, token, model, ["image", "image_references"]);
+    for (const url of imageRefUrls) {
+      const mediaId = await importRef(env, userId, token, url);
+      medias.push({ role, value: mediaId });
+    }
+  }
+  const data = await mcp(env, userId, token, "generate_image", {
+    params: { model, prompt: assembledPrompt, aspect_ratio: aspectRatio, medias },
+  });
+  const jobId = pickId(data, "jobId", "job_id", "id");
+  if (!jobId) throw new Error(`Higgsfield generate_image returned no job id (got: ${JSON.stringify(data).slice(0, 220)})`);
+  return normalizeGeneration({ ...base, status: "processing", model, jobId });
+}
+
+// ---- Run cascade (topological, driven by the client's /poll cycle) ----
+// The graph runs like the reference: a node fires once all its in-run upstreams
+// are `ready`. Since Higgsfield jobs are async, we don't block — the run state
+// lives on `board.run` and is ADVANCED on every /poll (after job finalization):
+// settle started nodes from their generation status, then fire every node whose
+// upstreams are now ready. Drains (clears board.run) when all nodes settled.
+
+// Downstream closure of a node (inclusive), following edges source → target.
+function downstreamClosure(board, nodeId) {
+  const seen = new Set([nodeId]);
+  const stack = [nodeId];
+  while (stack.length) {
+    const cur = stack.pop();
+    for (const e of board.edges) {
+      if (e.source === cur && !seen.has(e.target)) { seen.add(e.target); stack.push(e.target); }
+    }
+  }
+  return seen;
+}
+
+// In-run upstream node ids feeding `nodeId` via any input edge.
+function upstreamRunDeps(board, nodeId, runSet) {
+  const set = new Set(runSet);
+  const deps = [];
+  for (const e of board.edges) {
+    if (e.target === nodeId && set.has(e.source)) deps.push(e.source);
+  }
+  return deps;
+}
+
+// Advance the active run one step: settle started nodes from generation status,
+// then fire every runnable node (upstreams ready). Does its own read → network →
+// write. A no-op when no run is active. Returns nothing.
+async function advanceRun(env, userId, token, pid) {
+  const vw = await readVW(env, pid);
+  const run = vw.board.run;
+  if (!run?.active) return;
+
+  const genById = new Map(vw.generations.map((g) => [g.id, g]));
+  const nodeById = new Map(vw.board.nodes.map((n) => [n.id, n]));
+  const ready = new Set(run.ready);
+  const errored = new Set(run.errored);
+  const started = new Set(run.started);
+
+  // 1. Settle: a started node whose current generation reached a terminal state.
+  for (const id of started) {
+    if (ready.has(id) || errored.has(id)) continue;
+    const node = nodeById.get(id);
+    const gen = node?.currentGenId ? genById.get(node.currentGenId) : null;
+    if (!gen) { errored.add(id); continue; }
+    if (gen.status === "ready") ready.add(id);
+    else if (gen.status === "error") errored.add(id);
+    // else still processing — leave it.
+  }
+
+  // 2. Fire: nodes not yet started whose in-run upstreams are all ready (and none
+  //    errored). A node with an errored/missing upstream is itself errored.
+  const fired = []; // { nodeId, gen }
+  let attempted = 0;
+  for (const id of run.runSet) {
+    if (started.has(id) || ready.has(id) || errored.has(id)) continue;
+    const node = nodeById.get(id);
+    if (!node) { errored.add(id); continue; }
+    const deps = upstreamRunDeps(vw.board, id, run.runSet);
+    if (deps.some((d) => errored.has(d) || !nodeById.has(d))) { errored.add(id); continue; }
+    if (!deps.every((d) => ready.has(d))) continue; // wait
+    attempted++;
+    try {
+      const gen = await fireNodeJob(env, userId, token, pid, vw, node);
+      fired.push({ nodeId: id, gen });
+      started.add(id);
+    } catch {
+      errored.add(id);
+    }
+  }
+
+  // Deadlock breaker: if no fire was even ATTEMPTED this pass and no node is still
+  // processing, the remaining nodes can never run (an edge cycle, or all blocked
+  // by a failed upstream). Error them so the run drains instead of polling
+  // forever. (A pass that attempted a fire but hit a transient error retries.)
+  const stillProcessing = [...started].some((id) => {
+    if (ready.has(id) || errored.has(id)) return false;
+    const node = nodeById.get(id);
+    const gen = node?.currentGenId ? genById.get(node.currentGenId) : null;
+    return gen?.status === "processing";
+  });
+  if (!attempted && !stillProcessing) {
+    for (const id of run.runSet) {
+      if (!ready.has(id) && !errored.has(id)) errored.add(id);
+    }
+  }
+
+  const drained = run.runSet.every((id) => ready.has(id) || errored.has(id));
+
+  await updateVW(env, pid, (v) => {
+    // Append newly-fired processing generations + bind them to their node.
+    for (const { nodeId, gen } of fired) {
+      v.generations.unshift(gen);
+      const n = v.board.nodes.find((x) => x.id === nodeId);
+      if (n) { n.currentGenId = gen.id; if (!n.genIds.includes(gen.id)) n.genIds.push(gen.id); }
+    }
+    if (v.board.run) {
+      v.board.run.started = [...started];
+      v.board.run.ready = [...ready];
+      v.board.run.errored = [...errored];
+      if (drained) v.board.run = null;
+    }
+  });
+}
+
 /* ------------------------------------------------------------------ *
  * Routes                                                              *
  * ------------------------------------------------------------------ */
@@ -258,15 +693,19 @@ export function registerVisualWorld(app) {
     return c.json({ ...vw, generations: vw.generations.map((g) => withUrls(c.env, pid, g)) });
   });
 
-  // The image-model catalog for the composer's model selector (real Higgsfield
-  // ids so /generate gets a valid model). 401 if not signed in to Higgsfield.
+  // The model catalog for the composer / node model selectors (real Higgsfield
+  // ids so generation gets a valid model). `?type=video` returns the Seedance
+  // video catalog; anything else returns the image catalog. 401 if not signed in.
   app.get("/api/visual-world/models", async (c) => {
     const userId = c.get("userId");
     if (!userId) return c.json({ error: "Sign in required" }, 401);
     const token = await getHiggsfieldToken(c.env, userId);
     if (!token) return c.json({ error: "no_higgsfield_token" }, 401);
+    const type = c.req.query("type") === "video" ? "video" : "image";
     try {
-      return c.json(await resolveModels(c.env, userId, token));
+      return c.json(await (type === "video"
+        ? resolveVideoModels(c.env, userId, token)
+        : resolveModels(c.env, userId, token)));
     } catch (e) {
       if (e instanceof HiggsfieldAuthError) return c.json({ error: "no_higgsfield_token" }, 401);
       return c.json({ error: `Higgsfield: ${e.message || e}` }, 502);
@@ -308,8 +747,13 @@ export function registerVisualWorld(app) {
       const preset = presetId ? vw.prompts.find((p) => p.id === presetId) : null;
       const assembledPrompt = preset?.image ? `${preset.image}\n\n${prompt}` : prompt;
 
-      // Resolve every reference to an ungated /files URL, then import → media_id.
+      // Resolve every reference to an ungated /files URL, then import → media_id,
+      // tagging each with the role THIS model accepts (Nano Banana Pro wants
+      // "image", others "image_references").
       const medias = [];
+      const refRole = inputRefs.length
+        ? await resolveMediaRole(c.env, userId, token, model, ["image", "image_references"])
+        : "image";
       for (const r of inputRefs) {
         let url = r.url;
         if (!url && r.kind === "library" && r.rel) {
@@ -320,7 +764,7 @@ export function registerVisualWorld(app) {
         }
         if (!url) continue;
         const mediaId = await importRef(c.env, userId, token, url);
-        medias.push({ role: "image_references", value: mediaId });
+        medias.push({ role: refRole, value: mediaId });
       }
 
       // Fire one job per requested image.
@@ -330,7 +774,7 @@ export function registerVisualWorld(app) {
           params: { model, prompt: assembledPrompt, aspect_ratio: aspectRatio, medias },
         });
         const jobId = pickId(data, "jobId", "job_id", "id");
-        if (!jobId) throw new Error("Higgsfield generate_image returned no job id");
+        if (!jobId) throw new Error(`Higgsfield generate_image returned no job id (got: ${JSON.stringify(data).slice(0, 220)})`);
         started.push({ jobId });
       }
 
@@ -374,7 +818,6 @@ export function registerVisualWorld(app) {
 
     const vw = await readVW(c.env, pid);
     const pending = vw.generations.filter((g) => g.status === "processing" && g.jobId);
-    if (!pending.length) return c.json({ generations: vw.generations.map((g) => withUrls(c.env, pid, g)) });
 
     const updates = {}; // id -> partial
     for (const g of pending) {
@@ -390,11 +833,14 @@ export function registerVisualWorld(app) {
           }
           const res = await fetch(rawUrl);
           if (!res.ok) {
-            updates[g.id] = { status: "error", error: `Image fetch failed (${res.status})` };
+            updates[g.id] = { status: "error", error: `${g.kind === "video" ? "Video" : "Image"} fetch failed (${res.status})` };
             continue;
           }
-          const ct = res.headers.get("content-type") || "image/png";
-          const ext = /webp/.test(ct) ? "webp" : /jpe?g/.test(ct) ? "jpg" : "png";
+          const isVideo = g.kind === "video";
+          const ct = res.headers.get("content-type") || (isVideo ? "video/mp4" : "image/png");
+          const ext = isVideo
+            ? (/webm/.test(ct) ? "webm" : /quicktime|mov/.test(ct) ? "mov" : "mp4")
+            : (/webp/.test(ct) ? "webp" : /jpe?g/.test(ct) ? "jpg" : "png");
           const file = `${g.id}.${ext}`;
           await putMedia(c.env, pid, "visual", file, await res.arrayBuffer(), ct);
           updates[g.id] = { status: "ready", file, source: rawUrl };
@@ -416,8 +862,88 @@ export function registerVisualWorld(app) {
         }
       });
     }
+    // Advance any active node-run cascade: settle just-finalized nodes and fire
+    // the next runnable ones (may append new processing generations this tick).
+    try {
+      await advanceRun(c.env, userId, token, pid);
+    } catch (e) {
+      if (e instanceof HiggsfieldAuthError) return c.json({ error: "no_higgsfield_token" }, 401);
+      // Transient cascade error — retried next tick.
+    }
     const fresh = await readVW(c.env, pid);
-    return c.json({ generations: fresh.generations.map((g) => withUrls(c.env, pid, g)) });
+    return c.json({
+      generations: fresh.generations.map((g) => withUrls(c.env, pid, g)),
+      board: fresh.board,
+    });
+  });
+
+  // Run a canvas node (and, mode "from-here", its downstream descendants). Kicks
+  // the first runnable job(s), records the run on `board.run`, and lets /poll
+  // advance the cascade. Image/video nodes only; text/upload are input sources.
+  app.post("/api/visual-world/node/run", async (c) => {
+    const userId = c.get("userId");
+    if (!userId) return c.json({ error: "Sign in required" }, 401);
+    const pid = c.get("projectId");
+    const token = await getHiggsfieldToken(c.env, userId);
+    if (!token) return c.json({ error: "no_higgsfield_token" }, 401);
+
+    let body;
+    try { body = await c.req.json(); } catch { body = {}; }
+    const nodeId = str(body.nodeId);
+    const mode = body.mode === "from-here" ? "from-here" : "this";
+    if (!nodeId) return c.json({ error: "Missing 'nodeId'" }, 400);
+
+    const vw = await readVW(c.env, pid);
+    const start = vw.board.nodes.find((n) => n.id === nodeId);
+    if (!start) return c.json({ error: `no node ${nodeId}` }, 404);
+
+    // The run set: this node (or its downstream closure), restricted to the
+    // runnable generator types (text/upload only feed inputs, never "run").
+    const closure = mode === "this" ? new Set([nodeId]) : downstreamClosure(vw.board, nodeId);
+    const runSet = vw.board.nodes
+      .filter((n) => closure.has(n.id) && (n.type === "image" || n.type === "video"))
+      .map((n) => n.id);
+    if (runSet.length === 0) return c.json({ error: "Nothing runnable in this run" }, 400);
+
+    // Nodes with no in-run upstream fire immediately; the rest wait for /poll.
+    const ready = new Set();
+    const errored = new Set();
+    const started = new Set();
+    const fired = [];
+    try {
+      for (const id of runSet) {
+        const deps = upstreamRunDeps(vw.board, id, runSet);
+        if (deps.length > 0) continue; // waits for upstreams (advanced by /poll)
+        const node = vw.board.nodes.find((n) => n.id === id);
+        const gen = await fireNodeJob(c.env, userId, token, pid, vw, node);
+        fired.push({ nodeId: id, gen });
+        started.add(id);
+      }
+    } catch (e) {
+      if (e instanceof HiggsfieldAuthError) return c.json({ error: "no_higgsfield_token" }, 401);
+      return c.json({ error: `Higgsfield: ${e.message || e}` }, 502);
+    }
+
+    const ts = new Date().toISOString();
+    await updateVW(c.env, pid, (v) => {
+      for (const { nodeId: nid, gen } of fired) {
+        v.generations.unshift(gen);
+        const n = v.board.nodes.find((x) => x.id === nid);
+        if (n) { n.currentGenId = gen.id; if (!n.genIds.includes(gen.id)) n.genIds.push(gen.id); }
+      }
+      v.board.run = {
+        active: true, mode, runSet,
+        started: [...started], ready: [...ready], errored: [...errored], ts,
+      };
+      v.generatedAt = ts;
+      v.source = "app";
+    });
+    const fresh = await readVW(c.env, pid);
+    return c.json({
+      ok: true,
+      generations: fresh.generations.map((g) => withUrls(c.env, pid, g)),
+      board: fresh.board,
+    });
   });
 
   // Agent attach route (parallels /api/storyboard/image): the flue agent already
@@ -489,8 +1015,16 @@ export function registerVisualWorld(app) {
       if (!g) return { abort: true, notFound: true };
       file = g.file;
       v.generations = v.generations.filter((x) => x.id !== id);
-      // Drop any board node/edges referencing it.
-      v.board.nodes = v.board.nodes.filter((n) => n.genId !== id);
+      // Unbind the generation from any canvas node's history/preview. An `upload`
+      // source node that pointed ONLY at this generation is now empty — drop it
+      // (and its edges); generator nodes keep their prompt/settings.
+      const orphanNodeIds = new Set();
+      for (const n of v.board.nodes) {
+        n.genIds = n.genIds.filter((gid) => gid !== id);
+        if (n.currentGenId === id) n.currentGenId = n.genIds[n.genIds.length - 1] || "";
+        if (n.type === "upload" && n.genIds.length === 0) orphanNodeIds.add(n.id);
+      }
+      if (orphanNodeIds.size) v.board.nodes = v.board.nodes.filter((n) => !orphanNodeIds.has(n.id));
       const nodeIds = new Set(v.board.nodes.map((n) => n.id));
       v.board.edges = v.board.edges.filter((e) => nodeIds.has(e.source) && nodeIds.has(e.target));
     });
@@ -526,14 +1060,22 @@ export function registerVisualWorld(app) {
     return c.json({ ok: true });
   });
 
-  // Persist the reference-lineage canvas (nodes / edges / viewport).
+  // Persist the generator canvas (nodes / edges / viewport). The active run
+  // (`board.run`) is SERVER-owned — a client structure save never touches it, so
+  // an in-flight cascade survives edits/drags. Node currentGenId/genIds ARE
+  // client-writable (history picks), so we take them from the incoming board.
   app.put("/api/visual-world/board", async (c) => {
     const pid = c.get("projectId");
     let body;
     try { body = await c.req.json(); } catch { body = {}; }
     const board = normalizeBoard(body.board || body);
-    await updateVW(c.env, pid, (v) => { v.board = board; });
-    return c.json({ ok: true, board });
+    await updateVW(c.env, pid, (v) => {
+      const run = v.board?.run ?? null;
+      v.board = board;
+      v.board.run = run; // preserve the server-owned run across client saves
+    });
+    const fresh = await readVW(c.env, pid);
+    return c.json({ ok: true, board: fresh.board });
   });
 
   // Promote a generation into the shared asset library so it can be linked as a

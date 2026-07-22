@@ -1,216 +1,535 @@
+// The Visual nodes canvas — a node-driven generation graph (adapted from the
+// idea-mural /nodes flow to shot-studio's stack). Each Image/Video node carries a
+// prompt + settings and Runs to fire a Higgsfield job, using its wired input
+// edges as references; Text nodes are prompt sources; Source nodes hold an
+// existing generation. Edges are TYPED and functional (see flow-config).
+//
+// Persistence: the graph lives on `visual-world.json`'s `board` (nodes/edges),
+// saved via PUT /api/visual-world/board (debounced). Runs go through
+// POST /node/run; the cascade advances on the /poll cycle (server-side, on
+// `board.run`). The client is authoritative for structure/prompt/settings/
+// position; the server owns each node's currentGenId/genIds + the active run,
+// which we merge back in on reload.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLoaderData, useRevalidator } from "react-router";
 import {
   ReactFlow, ReactFlowProvider, Background, Controls, MiniMap, Panel as FlowPanel,
-  Handle, Position, NodeResizer, useNodesState, useEdgesState, addEdge,
+  useReactFlow, applyNodeChanges, applyEdgeChanges, addEdge,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { Maximize2, Trash2, Plus, Loader2, ImageOff } from "lucide-react";
+import { FolderOpen, Loader2, Sparkles } from "lucide-react";
 import { invalidateTabCache } from "@/lib/tabCache";
-import { swr, useRevalidateOnMount } from "@/lib/swr";
-import { useShell } from "@/lib/shellContext";
+import { swr, useRevalidateOnMount, useRevalidateOnAgentIdle } from "@/lib/swr";
+import { useAgent } from "@/components/AgentProvider";
 import { Button } from "@/components/ui/button";
+import {
+  ContextMenu, ContextMenuContent, ContextMenuTrigger,
+} from "@/components/ui/context-menu";
 import { Empty, ErrorNote } from "@/components/shared";
+import { nodeTypes } from "@/components/flow/node-types";
+import { FlowMetaProvider } from "@/components/flow/flow-context";
+import { AddNodeMenu } from "@/components/flow/AddNodeMenu";
+import FilesPanel from "@/components/flow/FilesPanel";
+import GenerationStackModal from "@/components/flow/GenerationStackModal";
+import {
+  FLOW_CONNECT_RULES, ONE_TO_ONE_TARGETS, RUNNABLE_TYPES,
+  allowedTypesForSourceHandle, pickTargetHandle, freshNode,
+} from "@/components/flow/flow-config";
 
-/* ---------------------------------------------------------------- *
- * Custom node — a generated image with lineage handles.             *
- * ---------------------------------------------------------------- */
-
-function ImageNode({ id, data, selected }) {
-  const { gen, onOpen, onRemove } = data;
-  return (
-    <div className="group relative h-full w-full overflow-hidden rounded-lg border-2 border-border bg-muted shadow-sm">
-      <NodeResizer isVisible={selected} minWidth={120} minHeight={120} keepAspectRatio />
-      <Handle type="target" position={Position.Left} className="!h-2.5 !w-2.5 !bg-primary" />
-      {gen?.url ? (
-        <img src={gen.url} alt={gen.prompt || "generation"} className="h-full w-full object-cover" draggable={false} />
-      ) : (
-        <div className="flex h-full flex-col items-center justify-center gap-1 text-muted-foreground">
-          <ImageOff size={20} /><span className="text-[10px]">missing</span>
-        </div>
-      )}
-      <div className="absolute right-1 top-1 flex gap-1 opacity-0 transition-opacity group-hover:opacity-100">
-        {gen?.url && (
-          <button
-            onClick={() => onOpen(gen)}
-            aria-label="View full image"
-            className="rounded-md border bg-background/90 p-1 text-muted-foreground shadow-sm hover:text-primary"
-          >
-            <Maximize2 size={13} />
-          </button>
-        )}
-        <button
-          onClick={() => onRemove(id)}
-          aria-label="Remove from canvas"
-          className="rounded-md border bg-background/90 p-1 text-muted-foreground shadow-sm hover:text-destructive"
-        >
-          <Trash2 size={13} />
-        </button>
-      </div>
-      <Handle type="source" position={Position.Right} className="!h-2.5 !w-2.5 !bg-primary" />
-    </div>
-  );
+// Per-node run status from the active run + the node's current generation.
+function nodeStatus(run, node) {
+  if (!run?.active || !run.runSet.includes(node.id)) return "idle";
+  if (run.errored.includes(node.id)) return "error";
+  if (run.ready.includes(node.id)) return "ready";
+  if (run.started.includes(node.id)) return "running";
+  return "queued";
 }
-
-const nodeTypes = { image: ImageNode };
-
-/* ---------------------------------------------------------------- *
- * Canvas                                                            *
- * ---------------------------------------------------------------- */
 
 function Canvas() {
   const world = useLoaderData();
+  const agent = useAgent();
   const revalidator = useRevalidator();
   useRevalidateOnMount("visual-world");
-  const { setModalImage } = useShell();
+  useRevalidateOnAgentIdle("visual-world", agent.status);
+  const { screenToFlowPosition } = useReactFlow();
+
   const [error, setError] = useState(null);
 
   const generations = world.generations || [];
   const genById = useMemo(() => new Map(generations.map((g) => [g.id, g])), [generations]);
-  const board = world.board || { nodes: [], edges: [], viewport: null };
+  const prompts = world.prompts || [];
+  const serverBoard = world.board || { nodes: [], edges: [], run: null };
+  const run = serverBoard.run;
+  const defaultPresetId = world.settings?.presetId || prompts[0]?.id || "";
 
-  const openImage = useCallback((g) => setModalImage({ url: g.url, name: g.prompt || "generation", role: "asset" }), [setModalImage]);
+  const revalidate = revalidator.revalidate;
+  const refetch = useCallback(() => { invalidateTabCache("visual-world"); revalidate(); }, [revalidate]);
 
-  // Persist the whole board (debounced). Reads live nodes/edges from refs so the
-  // debounce always flushes the latest.
-  const nodesRef = useRef([]);
-  const edgesRef = useRef([]);
+  // --- Model catalogs (best-effort; empty still works — server resolves defaults). ---
+  const [imageModels, setImageModels] = useState([]);
+  const [videoModels, setVideoModels] = useState([]);
+  useEffect(() => {
+    let off = false;
+    fetch("/api/visual-world/models").then((r) => (r.ok ? r.json() : null))
+      .then((j) => { if (!off && j?.models) setImageModels(j.models); }).catch(() => {});
+    fetch("/api/visual-world/models?type=video").then((r) => (r.ok ? r.json() : null))
+      .then((j) => { if (!off && j?.models) setVideoModels(j.models); }).catch(() => {});
+    return () => { off = true; };
+  }, []);
+  const meta = useMemo(() => ({ imageModels, videoModels, prompts }), [imageModels, videoModels, prompts]);
+
+  // --- Local flow graph (authoritative for structure/prompt/settings/position). ---
+  const [graph, setGraph] = useState(() => ({
+    nodes: serverBoard.nodes.map((n) => ({ ...n })),
+    edges: serverBoard.edges.map((e) => ({ ...e })),
+  }));
+  const graphRef = useRef(graph);
+  graphRef.current = graph;
+  // Ids added locally but not yet confirmed on the server (kept across reconciles).
+  const pendingIds = useRef(new Set());
+  const savingRef = useRef(false);
+
+  // --- Debounced whole-board persist (reads live graph from the ref). ---
   const saveTimer = useRef(null);
-  const save = useCallback(() => {
+  const save = useCallback((immediate = false) => {
     if (saveTimer.current) clearTimeout(saveTimer.current);
-    saveTimer.current = setTimeout(async () => {
-      const boardOut = {
-        nodes: nodesRef.current.map((n) => ({
-          id: n.id, genId: n.data.gen?.id || n.data.genId,
-          x: n.position.x, y: n.position.y,
-          w: n.width ?? n.measured?.width ?? null, h: n.height ?? n.measured?.height ?? null,
+    const flush = async () => {
+      const g = graphRef.current;
+      const board = {
+        nodes: g.nodes.map((n) => ({
+          id: n.id, type: n.type, x: n.position?.x ?? n.x ?? 0, y: n.position?.y ?? n.y ?? 0,
+          prompt: n.prompt || "", settings: n.settings || {},
+          currentGenId: n.currentGenId || "", genIds: n.genIds || [],
         })),
-        edges: edgesRef.current.map((e) => ({ id: e.id, source: e.source, target: e.target })),
-        viewport: world.board?.viewport ?? null,
+        edges: g.edges.map((e) => ({
+          id: e.id, source: e.source, sourceHandle: e.sourceHandle,
+          target: e.target, targetHandle: e.targetHandle, createdAt: e.createdAt || 0,
+        })),
+        viewport: null,
       };
+      savingRef.current = true;
       try {
         const res = await fetch("/api/visual-world/board", {
-          method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ board: boardOut }),
+          method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ board }),
         });
         if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "Save failed");
+        // Don't clear pendingIds here — a node/edge stays "pending" (and thus kept
+        // across a stale reconcile) until a reconcile actually observes it on the
+        // server, which avoids a drop race between save-success and the refetch.
         invalidateTabCache("visual-world");
       } catch (e) { setError(String(e.message || e)); }
-    }, 600);
-  }, [world.board]);
+      finally { savingRef.current = false; }
+    };
+    if (immediate) return flush();
+    saveTimer.current = setTimeout(flush, 600);
+  }, []);
 
-  const removeNode = useCallback((nodeId) => {
-    setNodes((nds) => nds.filter((n) => n.id !== nodeId));
-    setEdges((eds) => eds.filter((e) => e.source !== nodeId && e.target !== nodeId));
-    save();
-  }, [save]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Build the initial RF nodes/edges from the stored board.
-  const initialNodes = useMemo(
-    () => board.nodes
-      .filter((n) => genById.has(n.genId))
-      .map((n) => ({
-        id: n.id,
-        type: "image",
-        position: { x: n.x, y: n.y },
-        ...(n.w && n.h ? { style: { width: n.w, height: n.h } } : { style: { width: 180, height: 180 } }),
-        data: { gen: genById.get(n.genId), genId: n.genId, onOpen: openImage, onRemove: removeNode },
-      })),
-    [board.nodes, genById, openImage, removeNode],
+  // --- Reconcile server-owned fields (currentGenId/genIds) + agent-added nodes
+  // back into the local graph whenever the loader data changes. Local edits win
+  // for prompt/settings/position; the server wins for generation bindings. ---
+  const serverSig = useMemo(
+    () => JSON.stringify(serverBoard.nodes.map((n) => [n.id, n.currentGenId, n.genIds])) +
+      "|" + JSON.stringify(serverBoard.edges.map((e) => e.id)),
+    [serverBoard],
   );
-  const initialEdges = useMemo(() => board.edges.map((e) => ({ ...e, animated: true })), [board.edges]);
-
-  const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
-  const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
-  nodesRef.current = nodes;
-  edgesRef.current = edges;
-
-  // Reconcile when the loader data changes (agent added a generation, etc.) —
-  // keep live positions, refresh the gen payloads, drop nodes whose gen is gone.
   useEffect(() => {
-    setNodes((cur) => cur
-      .filter((n) => genById.has(n.data.gen?.id || n.data.genId))
-      .map((n) => ({ ...n, data: { ...n.data, gen: genById.get(n.data.gen?.id || n.data.genId), onOpen: openImage, onRemove: removeNode } })));
-  }, [genById, openImage, removeNode, setNodes]);
+    if (savingRef.current) return; // don't stomp an in-flight save's echo
+    // Anything the server now knows about is no longer "pending".
+    for (const n of serverBoard.nodes) pendingIds.current.delete(n.id);
+    for (const e of serverBoard.edges) pendingIds.current.delete(e.id);
+    setGraph((local) => {
+      const localNodeById = new Map(local.nodes.map((n) => [n.id, n]));
+      const serverIds = new Set(serverBoard.nodes.map((n) => n.id));
+      const merged = serverBoard.nodes.map((sn) => {
+        const ln = localNodeById.get(sn.id);
+        if (!ln) return { ...sn }; // new node (agent / Visual tab)
+        return { ...ln, currentGenId: sn.currentGenId, genIds: sn.genIds };
+      });
+      // Keep local-only nodes still pending their first save.
+      for (const ln of local.nodes) {
+        if (!serverIds.has(ln.id) && pendingIds.current.has(ln.id)) merged.push(ln);
+      }
+      const mergedIds = new Set(merged.map((n) => n.id));
+      const localEdgeById = new Map(local.edges.map((e) => [e.id, e]));
+      const serverEdgeIds = new Set(serverBoard.edges.map((e) => e.id));
+      const edges = serverBoard.edges.map((se) => localEdgeById.get(se.id) || { ...se });
+      for (const le of local.edges) {
+        if (!serverEdgeIds.has(le.id) && pendingIds.current.has(le.id)) edges.push(le);
+      }
+      return {
+        nodes: merged,
+        edges: edges.filter((e) => mergedIds.has(e.source) && mergedIds.has(e.target)),
+      };
+    });
+  }, [serverSig]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const onConnect = useCallback((params) => {
-    setEdges((eds) => addEdge({ ...params, animated: true, id: `edge-${params.source}-${params.target}` }, eds));
+  // --- Polling: while any generation is processing OR a run is active, drive the
+  // /poll cycle (which advances the cascade), then refetch to reflect it. ---
+  const pollingRef = useRef(false);
+  const active = generations.some((g) => g.status === "processing") || !!run?.active;
+  useEffect(() => {
+    if (!active) return;
+    let stop = false;
+    const tick = async () => {
+      if (pollingRef.current) return;
+      pollingRef.current = true;
+      try { await fetch("/api/visual-world/poll"); } catch { /* transient */ }
+      finally { pollingRef.current = false; }
+      if (!stop) refetch();
+    };
+    const t = setInterval(tick, 3000);
+    return () => { stop = true; clearInterval(t); };
+  }, [active, refetch]);
+
+  // --- Per-node mutation callbacks. ---
+  const patchNode = useCallback((id, patch) => {
+    setGraph((g) => ({ ...g, nodes: g.nodes.map((n) => (n.id === id ? { ...n, ...patch } : n)) }));
     save();
-  }, [save, setEdges]);
+  }, [save]);
 
-  const onDrop = useCallback((g) => {
-    const i = nodesRef.current.length;
-    setNodes((nds) => [...nds, {
-      id: `node-${g.id}-${Date.now().toString(36)}`,
-      type: "image",
-      position: { x: 80 + (i % 6) * 60, y: 80 + (i % 6) * 60 },
-      style: { width: 180, height: 180 },
-      data: { gen: g, genId: g.id, onOpen: openImage, onRemove: removeNode },
-    }]);
+  const pickGeneration = useCallback((id, genId) => {
+    setGraph((g) => ({ ...g, nodes: g.nodes.map((n) => (n.id === id ? { ...n, currentGenId: genId } : n)) }));
     save();
-  }, [openImage, removeNode, save, setNodes]);
+  }, [save]);
 
-  const onCanvas = useMemo(() => new Set(nodes.map((n) => n.data.gen?.id || n.data.genId)), [nodes]);
-  const readyOffCanvas = generations.filter((g) => g.status === "ready" && !onCanvas.has(g.id));
+  const runNode = useCallback(async (id, mode) => {
+    setError(null);
+    try {
+      const res = await fetch("/api/visual-world/node/run", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ nodeId: id, mode }),
+      });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(j.error || "Run failed");
+      refetch(); // pick up board.run + the processing generation
+    } catch (e) { setError(String(e.message || e)); }
+  }, [refetch]);
+
+  // --- Files panel + per-node stack modal. `filesTarget` rebinds an existing
+  // Source node; null adds a new one. `stackNode` browses a generator's history. ---
+  const [filesOpen, setFilesOpen] = useState(false);
+  const filesTarget = useRef(null);
+  const [stackNodeId, setStackNodeId] = useState(null);
+
+  const openStack = useCallback((node) => {
+    if (node.type === "upload") { filesTarget.current = node.id; setFilesOpen(true); }
+    else setStackNodeId(node.id);
+  }, []);
+
+  // --- Reference slots + inherited text, derived from input edges. ---
+  const inputsByNode = useMemo(() => {
+    const nodeById = new Map(graph.nodes.map((n) => [n.id, n]));
+    const out = new Map();
+    const inEdges = graph.edges.slice().sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+    for (const e of inEdges) {
+      const cur = out.get(e.target) || { refThumbs: [], inheritedText: undefined };
+      const src = nodeById.get(e.source);
+      const g = src?.currentGenId ? genById.get(src.currentGenId) : null;
+      if (e.targetHandle === "text-input") {
+        cur.inheritedText = cur.inheritedText || (src ? src.prompt : "");
+      } else if ((e.targetHandle === "image-input" || e.targetHandle === "start-frame") && g?.url) {
+        cur.refThumbs.push({ label: e.targetHandle === "start-frame" ? "Start frame" : `Image ${cur.refThumbs.length + 1}`, url: g.url });
+      }
+      out.set(e.target, cur);
+    }
+    return out;
+  }, [graph.nodes, graph.edges, genById]);
+
+  // --- React Flow nodes/edges are held as STATE (not derived every render) so
+  // React Flow's internal per-node fields — measured size, handle bounds, live
+  // drag position — survive re-renders. Losing those breaks handle positioning
+  // and, with it, connection dragging. We reconcile the flow `graph` INTO this
+  // state (a signature keeps the effect from firing on every render). ---
+  const [rfNodes, setRfNodes] = useState([]);
+  const [rfEdges, setRfEdges] = useState([]);
+
+  const nodeSig = useMemo(() => JSON.stringify(graph.nodes.map((n) => {
+    const g = n.currentGenId ? genById.get(n.currentGenId) : null;
+    const inp = inputsByNode.get(n.id);
+    return [
+      n.id, n.type, n.x, n.y, n.prompt, n.settings, n.currentGenId, n.genIds,
+      nodeStatus(run, n), g?.status ?? null, g?.url ?? null,
+      (inp?.refThumbs || []).map((r) => r.url), inp?.inheritedText ?? null,
+      (n.genIds || []).map((gid) => genById.get(gid)?.status).join(","),
+    ];
+  })), [graph.nodes, genById, inputsByNode, run]);
+
+  useEffect(() => {
+    const desired = graph.nodes.map((node) => {
+      const generation = node.currentGenId ? genById.get(node.currentGenId) || null : null;
+      const nodeGens = (node.genIds || []).map((gid) => genById.get(gid)).filter(Boolean);
+      const inp = inputsByNode.get(node.id) || {};
+      return {
+        id: node.id,
+        type: node.type,
+        position: { x: node.x ?? 0, y: node.y ?? 0 },
+        data: {
+          node,
+          status: nodeStatus(run, node),
+          generation,
+          generations: nodeGens,
+          refThumbs: inp.refThumbs || [],
+          inheritedText: inp.inheritedText,
+          readOnly: false,
+          onPatch: (patch) => patchNode(node.id, patch),
+          onRun: (mode) => runNode(node.id, mode),
+          onPickGeneration: (genId) => pickGeneration(node.id, genId),
+          onOpenStack: () => openStack(node),
+        },
+      };
+    });
+    setRfNodes((prev) => {
+      const byId = new Map(prev.map((n) => [n.id, n]));
+      return desired.map((d) => {
+        const ex = byId.get(d.id);
+        // Reuse the existing RF node so measured size / handle bounds survive;
+        // never yank position out from under an active drag.
+        if (!ex) return d;
+        return { ...ex, type: d.type, data: d.data, position: ex.dragging ? ex.position : d.position };
+      });
+    });
+  }, [nodeSig]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const edgeSig = useMemo(
+    () => JSON.stringify(graph.edges.map((e) => [e.id, e.source, e.sourceHandle, e.target, e.targetHandle])),
+    [graph.edges],
+  );
+  useEffect(() => {
+    setRfEdges((prev) => {
+      const sel = new Map(prev.map((e) => [e.id, e.selected]));
+      return graph.edges.map((e) => ({
+        id: e.id, source: e.source, sourceHandle: e.sourceHandle,
+        target: e.target, targetHandle: e.targetHandle, animated: true,
+        selected: sel.get(e.id) ?? false,
+      }));
+    });
+  }, [edgeSig]);
+
+  // --- React Flow change handlers. Apply changes to the RF state (so RF owns
+  // measurement/drag/selection), then fold structural results back into `graph`
+  // and persist. `selected` stays RF-only (never saved). ---
+  const onNodesChange = useCallback((changes) => {
+    setRfNodes((nds) => applyNodeChanges(changes, nds));
+    for (const ch of changes) {
+      if (ch.type === "position" && ch.dragging === false && ch.position) {
+        const pos = ch.position;
+        setGraph((g) => ({ ...g, nodes: g.nodes.map((n) => (n.id === ch.id ? { ...n, x: pos.x, y: pos.y } : n)) }));
+        save();
+      } else if (ch.type === "remove") {
+        setGraph((g) => ({
+          nodes: g.nodes.filter((n) => n.id !== ch.id),
+          edges: g.edges.filter((e) => e.source !== ch.id && e.target !== ch.id),
+        }));
+        save(true);
+      }
+    }
+  }, [save]);
+
+  const onEdgesChange = useCallback((changes) => {
+    setRfEdges((eds) => applyEdgeChanges(changes, eds));
+    for (const ch of changes) {
+      if (ch.type === "remove") {
+        setGraph((g) => ({ ...g, edges: g.edges.filter((e) => e.id !== ch.id) }));
+        save(true);
+      }
+    }
+  }, [save]);
+
+  const isValidConnection = useCallback((c) => {
+    const allowed = FLOW_CONNECT_RULES[c.sourceHandle];
+    if (!allowed || !allowed.includes(c.targetHandle)) return false;
+    if (c.source === c.target) return false;
+    if (ONE_TO_ONE_TARGETS.has(c.targetHandle)) {
+      if (graphRef.current.edges.some((e) => e.target === c.target && e.targetHandle === c.targetHandle)) return false;
+    }
+    return true;
+  }, []);
+
+  const onConnect = useCallback((c) => {
+    if (!isValidConnection(c)) return;
+    const edge = {
+      id: `edge-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 5)}`,
+      source: c.source, sourceHandle: c.sourceHandle, target: c.target, targetHandle: c.targetHandle,
+      createdAt: Date.now(),
+    };
+    pendingIds.current.add(edge.id);
+    setGraph((g) => ({ ...g, edges: addEdge(edge, g.edges) }));
+    save(true);
+  }, [isValidConnection, save]);
+
+  // --- Add-node menu (pane right-click + drag-edge-to-empty-canvas). ---
+  const menuScreen = useRef(null);
+  const pendingConnect = useRef(null);
+  const [menuTypes, setMenuTypes] = useState(undefined);
+  const connectStart = useRef(null);
+  const synthMenu = useRef(false);
+
+  const addNodeAt = useCallback((type, screen) => {
+    const position = screenToFlowPosition(screen);
+    const node = { ...freshNode(type, position, defaultPresetId) };
+    node.x = position.x; node.y = position.y;
+    pendingIds.current.add(node.id);
+    const pending = pendingConnect.current;
+    pendingConnect.current = null;
+    setGraph((g) => {
+      const edges = [...g.edges];
+      if (pending) {
+        const th = pickTargetHandle(type, FLOW_CONNECT_RULES[pending.handle] || []);
+        if (th) {
+          const eid = `edge-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 5)}`;
+          pendingIds.current.add(eid);
+          edges.push({ id: eid, source: pending.nodeId, sourceHandle: pending.handle, target: node.id, targetHandle: th, createdAt: Date.now() + 1 });
+        }
+      }
+      return { nodes: [...g.nodes, node], edges };
+    });
+    save(true);
+  }, [screenToFlowPosition, defaultPresetId, save]);
+
+  const onPaneContextMenu = useCallback((event) => {
+    if (synthMenu.current) { synthMenu.current = false; return; }
+    menuScreen.current = { x: event.clientX, y: event.clientY };
+    pendingConnect.current = null;
+    setMenuTypes(undefined);
+  }, []);
+
+  const onNodeContextMenu = useCallback((event) => { event.preventDefault(); event.stopPropagation(); }, []);
+
+  const onConnectStart = useCallback((_, params) => {
+    connectStart.current = (params.handleType === "source" && params.nodeId && params.handleId)
+      ? { nodeId: params.nodeId, handle: params.handleId } : null;
+  }, []);
+
+  const onConnectEnd = useCallback((event) => {
+    const start = connectStart.current;
+    connectStart.current = null;
+    if (!start) return;
+    const target = event.target;
+    if (!target?.classList?.contains("react-flow__pane")) return;
+    const allowed = allowedTypesForSourceHandle(start.handle);
+    if (allowed.length === 0) return;
+    const point = "clientX" in event
+      ? { x: event.clientX, y: event.clientY }
+      : { x: event.changedTouches?.[0]?.clientX ?? 0, y: event.changedTouches?.[0]?.clientY ?? 0 };
+    menuScreen.current = point;
+    pendingConnect.current = start;
+    setMenuTypes(allowed);
+    synthMenu.current = true;
+    target.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, clientX: point.x, clientY: point.y }));
+  }, []);
+
+  // --- Files panel pick: rebind a Source node, or drop a new one at center. ---
+  const onPickFile = useCallback((genId) => {
+    setFilesOpen(false);
+    if (filesTarget.current) {
+      const id = filesTarget.current; filesTarget.current = null;
+      setGraph((gr) => ({ ...gr, nodes: gr.nodes.map((n) => (n.id === id ? { ...n, currentGenId: genId, genIds: n.genIds.includes(genId) ? n.genIds : [...n.genIds, genId] } : n)) }));
+    } else {
+      const node = { ...freshNode("upload", { x: 0, y: 0 }, "") };
+      const center = screenToFlowPosition({ x: window.innerWidth / 2 - 150, y: window.innerHeight / 2 - 120 });
+      node.x = center.x; node.y = center.y;
+      node.currentGenId = genId; node.genIds = [genId];
+      pendingIds.current.add(node.id);
+      setGraph((gr) => ({ ...gr, nodes: [...gr.nodes, node] }));
+    }
+    save(true);
+  }, [screenToFlowPosition, save]);
+
+  const stackNode = stackNodeId ? graph.nodes.find((n) => n.id === stackNodeId) : null;
+  const stackGens = stackNode ? (stackNode.genIds || []).map((gid) => genById.get(gid)).filter(Boolean) : [];
+  const isEmpty = graph.nodes.length === 0;
 
   return (
-    <div className="space-y-3">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div>
-          <h2 className="text-xl font-semibold tracking-tight">Visual nodes</h2>
-          <p className="text-sm text-muted-foreground">Arrange your generations and draw reference-lineage links between them.</p>
-        </div>
-        <Button variant="outline" size="sm" onClick={() => revalidator.revalidate()}>
-          {revalidator.state === "loading" ? <Loader2 size={13} className="animate-spin" /> : null} Refresh
-        </Button>
-      </div>
-
-      {error && <ErrorNote>{error}</ErrorNote>}
-
-      {generations.length === 0 ? (
-        <div className="rounded-lg border border-dashed p-10 text-center">
-          <Empty>no generations yet — create some on the Visual tab, then drop them here.</Empty>
-        </div>
-      ) : (
-        <div className="h-[72vh] overflow-hidden rounded-xl border bg-card">
-          <ReactFlow
-            nodes={nodes}
-            edges={edges}
-            onNodesChange={onNodesChange}
-            onEdgesChange={onEdgesChange}
-            onConnect={onConnect}
-            onNodeDragStop={save}
-            nodeTypes={nodeTypes}
-            fitView
-            proOptions={{ hideAttribution: true }}
-            className="bg-muted/30"
-          >
-            <Background gap={20} className="!bg-transparent" />
-            <Controls />
-            <MiniMap pannable zoomable className="!bg-card" />
-            {readyOffCanvas.length > 0 && (
-              <FlowPanel position="top-left" className="max-w-[220px] rounded-lg border bg-card/95 p-2 shadow-md backdrop-blur">
-                <div className="mb-1.5 text-[11px] font-medium text-muted-foreground">Add to canvas</div>
-                <div className="grid max-h-40 grid-cols-3 gap-1.5 overflow-y-auto">
-                  {readyOffCanvas.map((g) => (
-                    <button
-                      key={g.id}
-                      onClick={() => onDrop(g)}
-                      className="group relative aspect-square overflow-hidden rounded-md border hover:border-primary/60"
-                      title={g.prompt}
-                    >
-                      <img src={g.url} alt={g.prompt} className="h-full w-full object-cover" />
-                      <span className="absolute inset-0 flex items-center justify-center bg-background/60 opacity-0 group-hover:opacity-100">
-                        <Plus size={16} />
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              </FlowPanel>
+    <FlowMetaProvider value={meta}>
+      <div className="space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <h2 className="text-xl font-semibold tracking-tight">Visual nodes</h2>
+            <p className="text-sm text-muted-foreground">
+              Build a generation graph — wire images and prompts into nodes, then Run to generate images and video along the lineage.
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            {run?.active && (
+              <span className="inline-flex items-center gap-1.5 rounded-md bg-primary/10 px-2 py-1 text-xs font-medium text-primary">
+                <Loader2 size={12} className="animate-spin" /> running {run.ready.length + run.errored.length}/{run.runSet.length}
+              </span>
             )}
-          </ReactFlow>
+            <Button variant="outline" size="sm" onClick={() => { filesTarget.current = null; setFilesOpen(true); }}>
+              <FolderOpen size={14} /> Files
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => revalidator.revalidate()}>
+              {revalidator.state === "loading" ? <Loader2 size={13} className="animate-spin" /> : null} Refresh
+            </Button>
+          </div>
         </div>
-      )}
-    </div>
+
+        {error && <ErrorNote>{error}</ErrorNote>}
+
+        <div className="h-[74vh] overflow-hidden rounded-xl border bg-card">
+          <ContextMenu>
+            <ContextMenuTrigger asChild>
+              <div className="h-full w-full">
+                <ReactFlow
+                  nodes={rfNodes}
+                  edges={rfEdges}
+                  nodeTypes={nodeTypes}
+                  onNodesChange={onNodesChange}
+                  onEdgesChange={onEdgesChange}
+                  onConnect={onConnect}
+                  onConnectStart={onConnectStart}
+                  onConnectEnd={onConnectEnd}
+                  isValidConnection={isValidConnection}
+                  onPaneContextMenu={onPaneContextMenu}
+                  onNodeContextMenu={onNodeContextMenu}
+                  deleteKeyCode={["Delete", "Backspace"]}
+                  fitView
+                  fitViewOptions={{ maxZoom: 1 }}
+                  minZoom={0.2}
+                  maxZoom={1.5}
+                  panOnScroll
+                  proOptions={{ hideAttribution: true }}
+                  className="bg-muted/30"
+                >
+                  <Background gap={20} size={1.6} className="!bg-transparent" />
+                  <Controls />
+                  <MiniMap pannable zoomable className="!bg-card" />
+                  {isEmpty && (
+                    <FlowPanel position="top-center" className="pointer-events-none mt-16 text-center">
+                      <div className="pointer-events-auto rounded-xl border border-dashed bg-card/90 p-6 shadow-sm backdrop-blur">
+                        <Sparkles size={20} className="mx-auto mb-2 text-primary" />
+                        <Empty>right-click the canvas to add an Image, Video, Text or Source node — then wire them up and Run.</Empty>
+                      </div>
+                    </FlowPanel>
+                  )}
+                </ReactFlow>
+              </div>
+            </ContextMenuTrigger>
+            <ContextMenuContent>
+              <AddNodeMenu
+                allowedTypes={menuTypes}
+                onAdd={(type) => addNodeAt(type, menuScreen.current ?? { x: window.innerWidth / 2, y: window.innerHeight / 2 })}
+              />
+            </ContextMenuContent>
+          </ContextMenu>
+        </div>
+
+        <FilesPanel
+          open={filesOpen}
+          onClose={() => { setFilesOpen(false); filesTarget.current = null; }}
+          generations={generations}
+          onPick={onPickFile}
+          title={filesTarget.current ? "Pick a source" : "Files"}
+        />
+        <GenerationStackModal
+          open={!!stackNodeId}
+          onClose={() => setStackNodeId(null)}
+          generations={stackGens}
+          currentGenId={stackNode?.currentGenId || null}
+          onSelect={(genId) => { if (stackNodeId) pickGeneration(stackNodeId, genId); }}
+        />
+      </div>
+    </FlowMetaProvider>
   );
 }
 
