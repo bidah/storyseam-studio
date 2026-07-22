@@ -179,8 +179,10 @@ export function persistStore(store) {
   }
 }
 
-// First non-empty user line, trimmed to a menu-friendly length.
-export function deriveTitle(messages) {
+// The full text of the first non-empty user message (whitespace-collapsed).
+// Used both for the local fallback title and as the input to the server-side
+// AI titling call — so it's returned untrimmed here; callers cap as needed.
+export function firstUserText(messages) {
   for (const m of messages || []) {
     if (m.role !== "user") continue;
     const text = (m.parts || [])
@@ -189,9 +191,18 @@ export function deriveTitle(messages) {
       .join(" ")
       .replace(/\s+/g, " ")
       .trim();
-    if (text) return text.length > 48 ? `${text.slice(0, 47).trimEnd()}…` : text;
+    if (text) return text;
   }
   return null;
+}
+
+// First non-empty user line, trimmed to a menu-friendly length. This is the
+// INSTANT fallback title; a nicer AI-generated one replaces it asynchronously
+// once the first message lands (see the titling effect in AgentProvider).
+export function deriveTitle(messages) {
+  const text = firstUserText(messages);
+  if (!text) return null;
+  return text.length > 48 ? `${text.slice(0, 47).trimEnd()}…` : text;
 }
 
 export const CHATS_LIMIT = MAX_CHATS;

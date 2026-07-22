@@ -13,12 +13,14 @@ import {
   activeChatId,
   chatsForProject,
   deriveTitle,
+  firstUserText,
   loadStore,
   makeChat,
   persistStore,
   trimStore,
   withActiveForProject,
 } from "@/lib/chat-store";
+import { generateChatTitle } from "@/lib/agentTitle";
 import { getProjectId, onProjectChange } from "@/lib/projectFetch";
 
 // ---------------------------------------------------------------------------
@@ -127,12 +129,14 @@ function useConversationManager() {
   // (flue owns the transcript, so the title is all we still derive here) and
   // float it to the top of the list. A no-op once the title has settled, so the
   // runner can call it on every `messages` change without thrashing the store.
+  // Once a chat has an AI-generated title (`titled`), we keep that and only
+  // float the chat — the derived first-line title is just the instant fallback.
   const noteActivity = useCallback(
     (id, title) =>
       update((prev) => {
         const chat = prev.chats[id];
         if (!chat) return prev;
-        const nextTitle = title ?? chat.title;
+        const nextTitle = chat.titled ? chat.title : (title ?? chat.title);
         const alreadyTop = prev.order[0] === id;
         if (nextTitle === chat.title && alreadyTop) return prev;
         const order = alreadyTop ? prev.order : [id, ...prev.order.filter((x) => x !== id)];
@@ -141,6 +145,24 @@ function useConversationManager() {
       }),
     [update],
   );
+
+  // Set the AI-generated title on a chat and lock it in (`titled: true`), so the
+  // first-line fallback in `noteActivity` no longer overrides it. Ignores an
+  // empty title (the AI call is best-effort — the fallback stays).
+  const setAiTitle = useCallback(
+    (id, title) =>
+      update((prev) => {
+        const chat = prev.chats[id];
+        if (!chat || !title) return prev;
+        if (chat.titled && chat.title === title) return prev;
+        return { ...prev, chats: { ...prev.chats, [id]: { ...chat, title, titled: true, updatedAt: Date.now() } } };
+      }),
+    [update],
+  );
+
+  // Has this chat already been given an AI title? Reads the ref so a runner
+  // keyed on a just-created chat sees the current value synchronously.
+  const isTitled = useCallback((id) => !!storeRef.current.chats[id]?.titled, []);
 
   // The composer's ordinal-aligned attachment record (client-only state).
   const saveAttachments = useCallback(
@@ -173,10 +195,12 @@ function useConversationManager() {
       switchChat,
       deleteChat,
       noteActivity,
+      setAiTitle,
+      isTitled,
       saveAttachments,
       getInitial,
     }),
-    [pid, activeId, list, newChat, switchChat, deleteChat, noteActivity, saveAttachments, getInitial],
+    [pid, activeId, list, newChat, switchChat, deleteChat, noteActivity, setAiTitle, isTitled, saveAttachments, getInitial],
   );
 }
 
@@ -234,11 +258,42 @@ function AgentSessionRunner({ activeId, projectId, conv, publish }) {
   );
 
   // Keep the chat list titled + floated from the live transcript (flue owns the
-  // transcript, so this replaces eve's onFinish snapshot persistence).
+  // transcript, so this replaces eve's onFinish snapshot persistence). This sets
+  // the INSTANT fallback title (raw first line); the AI titling below upgrades
+  // it and, once `titled`, `noteActivity` stops overriding it.
   useEffect(() => {
     const title = deriveTitle(flueAgent.messages);
     if (title) conv.noteActivity(activeId, title);
   }, [flueAgent.messages, activeId, conv]);
+
+  // On the FIRST message of a brand-new chat, ask the Worker (Cloudflare Workers
+  // AI) for a rounded, descriptive title and lock it in — a better history label
+  // than the raw first line. Fire exactly once per chat, only on the 0→1
+  // user-message transition, so reopening an old chat (whose history loads with
+  // messages already present) never re-titles it. Best-effort: on any failure
+  // the fallback title just stays.
+  const titledFiredRef = useRef(false);
+  const prevUserCountRef = useRef(null);
+  useEffect(() => {
+    // Wait until durable history has settled so a reopened chat establishes its
+    // baseline count (many messages) rather than looking like a 0→N jump.
+    if (!flueAgent.historyReady) return;
+    const msgs = flueAgent.messages || [];
+    const userCount = msgs.reduce((n, m) => (m.role === "user" ? n + 1 : n), 0);
+    const prev = prevUserCountRef.current;
+    prevUserCountRef.current = userCount;
+    if (prev === null) return; // first post-historyReady observation: baseline only
+    if (prev !== 0 || userCount < 1) return; // only the very first message
+    if (titledFiredRef.current || conv.isTitled(activeId)) return;
+    titledFiredRef.current = true;
+    const text = firstUserText(msgs);
+    if (!text) return;
+    generateChatTitle(text)
+      .then((title) => {
+        if (title) conv.setAiTitle(activeId, title);
+      })
+      .catch(() => {});
+  }, [flueAgent.historyReady, flueAgent.messages, activeId, conv]);
 
   // Publish before paint so switching chats never flashes stale content.
   useLayoutEffect(() => {

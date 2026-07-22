@@ -42,6 +42,7 @@ import { registerHiggsfield } from "./routes/higgsfield.js";
 import { registerStoryboard } from "./routes/storyboard.js";
 import { registerVisualWorld } from "./routes/visual-world.js";
 import { registerTranscribe } from "./routes/transcribe.js";
+import { registerChatTitle } from "./routes/chat-title.js";
 import { createAuth } from "./auth.js";
 import { broadcast } from "./lib/broadcast.js";
 import { normalizeProjectId } from "./lib/docs.js";
@@ -191,6 +192,8 @@ app.use("*", async (c, next) => {
   const p = new URL(c.req.url).pathname;
   if (!p.startsWith("/api/") || p.startsWith("/api/auth/") || p.endsWith("/events")) return;
   if (p.startsWith("/api/script") || p.startsWith("/api/timeline")) return;
+  // Pure text->title computation (no project write); don't churn open tabs.
+  if (p.startsWith("/api/chat-title") || p.startsWith("/api/transcribe")) return;
   if (!c.res || c.res.status >= 400) return;
   broadcast(
     c.env,
@@ -448,6 +451,7 @@ registerHiggsfield(app);
 registerStoryboard(app);
 registerVisualWorld(app);
 registerTranscribe(app);
+registerChatTitle(app);
 
 // --- flue chat agent proxy -------------------------------------------------
 // The chat agent (flue) runs as its own Cloudflare Worker (shot-studio-flue).
