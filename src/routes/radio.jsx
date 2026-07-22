@@ -2,16 +2,17 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useLoaderData, useNavigate, useRevalidator } from "react-router";
 import {
   Radio as RadioIcon, Mic, Loader2, Film, Send, X, AudioLines, CircleAlert,
-  Clapperboard, Image as ImageIcon, Check, Plus, Bot,
+  Clapperboard, Image as ImageIcon, Check, Plus, Bot, MoreVertical, RotateCcw,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { invalidateTabCache } from "@/lib/tabCache";
 import { swr, useRevalidateOnMount, useRevalidateOnAgentIdle } from "@/lib/swr";
-import { useAgent, agentIsBusy, renderRadioSceneMessage, castVoiceMessage, paceRadioTimelineMessage } from "@/components/AgentProvider";
+import { useAgent, agentIsBusy, renderRadioSceneMessage, recreateRadioLineMessage, castVoiceMessage, paceRadioTimelineMessage } from "@/components/AgentProvider";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import { Empty, Panel, Spinner, ErrorNote } from "@/components/shared";
 
 /* ---------------------------------------------------------------- *
@@ -168,15 +169,17 @@ function CastingCard({ entry, onCast, onAgentCast, agentBusy }) {
  * Line — inline-editable speaker + text, with its rendered take.    *
  * ---------------------------------------------------------------- */
 
-function RadioLine({ line, onSaveLine }) {
+function RadioLine({ line, onSaveLine, onRecreate, onSelectVersion, agentBusy }) {
   const [speaker, setSpeaker] = useState(line.character || "");
   const [text, setText] = useState(line.text || "");
   useEffect(() => { setSpeaker(line.character || ""); }, [line.character]);
   useEffect(() => { setText(line.text || ""); }, [line.text]);
   const take = line.take;
+  const takes = line.takes || [];
 
   const commit = (patch) => onSaveLine(line.id, patch);
   const field = "rounded-md border border-transparent bg-transparent px-2 py-1 text-sm hover:border-border focus:border-primary focus:bg-background focus:outline-none";
+  const recreateLabel = takes.length ? "Recreate take" : "Render take";
 
   return (
     <div className="rounded-lg border p-2.5">
@@ -194,7 +197,7 @@ function RadioLine({ line, onSaveLine }) {
         ) : (
           <Badge variant="warning" className="gap-1 text-[10px]"><CircleAlert size={10} /> no voice</Badge>
         )}
-        <div className="ml-auto">
+        <div className="ml-auto flex items-center gap-1.5">
           {take?.ready ? (
             <audio controls src={take.url} preload="none" className="h-8 w-[220px]" />
           ) : take && take.status !== "missing" ? (
@@ -202,6 +205,22 @@ function RadioLine({ line, onSaveLine }) {
           ) : (
             <Badge variant="muted">not rendered</Badge>
           )}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0 text-muted-foreground" aria-label="Line actions">
+                <MoreVertical size={15} />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem
+                disabled={agentBusy || !line.voiceRef}
+                onClick={() => onRecreate?.()}
+                title={!line.voiceRef ? "Cast a voice for this speaker first" : agentBusy ? "The agent is busy" : undefined}
+              >
+                <RotateCcw size={14} /> {recreateLabel}
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </div>
       <textarea
@@ -212,6 +231,32 @@ function RadioLine({ line, onSaveLine }) {
         onChange={(e) => setText(e.target.value)}
         onBlur={() => text !== (line.text || "") && commit({ text })}
       />
+      {/* Version pills: pick which rendered take is active (plays here + flows to
+          Send to editor / pacing). Only shown once there's more than one take. */}
+      {takes.length > 1 && (
+        <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+          <span className="text-[10px] uppercase tracking-wide text-muted-foreground">takes</span>
+          {takes.map((t, i) => (
+            <button
+              key={`${t.trackId}:${t.v}`}
+              type="button"
+              disabled={t.selected || t.status === "missing"}
+              onClick={() => onSelectVersion?.(t)}
+              title={t.status === "missing" ? "This take's audio is gone" : t.ready ? `Use take ${i + 1}` : `take ${i + 1} — ${t.status}`}
+              className={cn(
+                "inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-[11px] font-medium transition-colors",
+                t.selected ? "border-primary bg-primary/10 text-primary" : "hover:border-primary/40 hover:bg-accent/40",
+                t.status === "missing" && "text-muted-foreground line-through",
+                !t.ready && t.status !== "missing" && "opacity-70",
+              )}
+            >
+              {t.selected && <Check size={11} />}
+              {!t.ready && t.status !== "missing" && <Loader2 size={10} className="animate-spin" />}
+              v{i + 1}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -253,7 +298,26 @@ function RadioStudio() {
   const cast = (character, voiceRef) => mutate("/api/radio/casting", { character, voiceRef });
   const saveLine = (id, patch) => mutate(`/api/radio/line/${encodeURIComponent(id)}`, patch);
 
+  // Pick which rendered take is active for a line (the version pills). POSTs the
+  // selection; buildRadioView resolves it as line.take, so Send to editor / pacing
+  // / the animatic all follow the pick.
+  const selectVersion = useCallback(async (id, take) => {
+    setError(null);
+    try {
+      const res = await fetch(`/api/radio/take/${encodeURIComponent(id)}/select`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ trackId: take.trackId, v: take.v, selected: true }),
+      });
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "Select failed");
+      refetch();
+    } catch (e) { setError(String(e.message || e)); }
+  }, [refetch]);
+
   const renderScene = (scene) => agent.send({ message: renderRadioSceneMessage(scene, scene.lines) }).catch(() => {});
+
+  // Re-voice ONE line — the kebab "Recreate". The new take is appended as another
+  // version and auto-selected (worker side); the tab refreshes when the agent idles.
+  const recreateLine = (scene, line) => agent.send({ message: recreateRadioLineMessage(scene, line) }).catch(() => {});
 
   // Delegate casting to the agent: it designs, renders, and casts a voice for
   // one or more speakers, picking the right tool per name (attach_character_voice
@@ -392,7 +456,16 @@ function RadioStudio() {
                   }
                 >
                   <div className="space-y-2.5">
-                    {scene.lines.map((line) => <RadioLine key={line.id} line={line} onSaveLine={saveLine} />)}
+                    {scene.lines.map((line) => (
+                      <RadioLine
+                        key={line.id}
+                        line={line}
+                        onSaveLine={saveLine}
+                        onRecreate={() => recreateLine(scene, line)}
+                        onSelectVersion={(take) => selectVersion(line.id, take)}
+                        agentBusy={agentBusy}
+                      />
+                    ))}
                   </div>
                 </Panel>
               );

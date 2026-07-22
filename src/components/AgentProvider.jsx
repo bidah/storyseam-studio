@@ -606,6 +606,31 @@ export function renderRadioSceneMessage(scene, lines) {
   ].join("\n");
 }
 
+// Build the chat turn behind a single line's "Recreate" (the kebab menu on a
+// Radio line). Re-voices JUST that one line with Seed Audio and attaches the
+// take — which the worker APPENDS as a new version and auto-selects, so the
+// prior take stays available as an alternative. Same skill/flow as a full scene
+// render, scoped to one line.
+export function recreateRadioLineMessage(scene, line) {
+  const clip = line.voiceRef?.refUrl || line.voiceRef?.url;
+  const voice = clip
+    ? `voiced by ${line.voiceRef.name || "their voice"} (reference clip: ${clip})`
+    : `NO VOICE CAST — ask me to cast a voice first`;
+  return [
+    `Re-render ONLY this one radio line (a fresh take) — everything else stays as is.`,
+    `Load the radio skill and follow it for this single line: voice it with Seed Audio` +
+      ` using the character's reference voice clip so it stays consistent, attach it, and` +
+      ` call attach_radio_take with the line id. The new take is added as another version` +
+      ` under the line and becomes the selected one automatically.`,
+    "",
+    `- line ${line.id} — ${line.character || "?"} ${voice}: "${line.text}"`,
+    "",
+    `The reference clip is an absolute public URL — download it directly (curl/web_fetch)` +
+      ` and upload it as the Seed Audio audio_references clip (@Audio1). Keep the take to just` +
+      ` the spoken line, clean (no music, no SFX).`,
+  ].join("\n");
+}
+
 // Build the chat turn behind "Agent pacing" on the Radio tab. The gapless
 // first pass was JUST sent to the Editor (POST /api/radio/to-editor); this asks
 // the agent for the editorial second pass — re-time the space between the

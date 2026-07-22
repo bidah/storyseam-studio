@@ -9,7 +9,13 @@
 // radio doc `state/<pid>/radio.json` stores ONLY user intent + render results:
 //   { casting:   { <CHARKEY>: voiceRef|null },   // override — orphan speakers only
 //     lineEdits: { <lineId>: { character?, text? } },
-//     takes:     { <lineId>: { trackId, v, at } } }  // the rendered voice take
+//     takes:     { <lineId>: [ { trackId, v, at, selected, selectedAt } ] } }
+// A line keeps an ARRAY of rendered voice takes (each recreate appends one),
+// with a single `selected` pointer — the version that flows to send-to-editor /
+// pacing / the animatic. Rendering auto-selects the newest; the user can pick an
+// earlier take (e.g. one whose ending isn't clipped). Legacy docs stored a single
+// take object per line; `normalizeTakeList` coerces that to a one-element array on
+// read, so both shapes work.
 // A character's voice is the World character's `voiceRef` (name match) — the
 // single source of truth shared with the World tab, so casting here writes THROUGH
 // to the World roster and the two never diverge. `casting` above only holds a
@@ -78,6 +84,20 @@ function resolveTake(sdb, soundFiles, take) {
   };
 }
 
+// A line's takes as a uniform array. New docs store an array; legacy docs stored
+// a single take object (auto-selected). Bad entries (no trackId) are dropped.
+function normalizeTakeList(entry) {
+  if (Array.isArray(entry)) return entry.filter((t) => t && t.trackId);
+  if (entry && entry.trackId) return [{ ...entry, selected: true }];
+  return [];
+}
+
+// The active take out of a stored list: the explicitly-selected one, else the
+// newest (last appended). Same rule storyboard/episode use for their selections.
+function pickStoredTake(list) {
+  return list.find((t) => t.selected) || list[list.length - 1] || null;
+}
+
 // Build the derived radio view: scenes (from shots, grouped by beat) with each
 // line's resolved speaker, voice (casting), and rendered take. Also the per-
 // character casting roster with its source (world vs override).
@@ -136,6 +156,18 @@ export async function buildRadioView(env, pid) {
     const key = charKey(character);
     if (key) speakers.add(character);
     const { voiceRef } = voiceFor(key);
+    // All rendered takes for the line (each recreate appended one), resolved to
+    // playable status, plus the single active take that flows downstream.
+    const storedTakes = normalizeTakeList(takes[derived.id]);
+    const activeStored = pickStoredTake(storedTakes);
+    // Mark the ACTIVE take as selected (the one that plays + flows downstream),
+    // even when it's the newest fallback rather than an explicit pick — so the UI
+    // always highlights exactly the take everything else uses.
+    const resolvedTakes = storedTakes.map((t) => ({
+      ...resolveTake(sdb, soundFiles, t),
+      selected: t === activeStored,
+      at: t.at || null,
+    }));
     const line = {
       id: derived.id,
       shotId: derived.shotId,
@@ -143,7 +175,8 @@ export async function buildRadioView(env, pid) {
       character,
       text,
       voiceRef,
-      take: resolveTake(sdb, soundFiles, takes[derived.id]),
+      take: activeStored ? resolveTake(sdb, soundFiles, activeStored) : null,
+      takes: resolvedTakes,
     };
     const last = scenes[scenes.length - 1];
     if (!last || last.beat !== shot.beat) {
@@ -273,7 +306,10 @@ export function registerRadio(app) {
   });
 
   // Record the rendered voice take for a line (the agent calls this after
-  // attach_sound). Body: { trackId, v }.
+  // attach_sound). Body: { trackId, v }. APPENDS to the line's take list and
+  // auto-selects the just-rendered take — so a "Recreate" keeps the prior take(s)
+  // as alternatives instead of clobbering, and the newest one is active by
+  // default. Re-attaching the same { trackId, v } just re-selects it (idempotent).
   app.put("/api/radio/take/:id", async (c) => {
     const pid = c.get("projectId");
     const id = c.req.param("id");
@@ -284,9 +320,50 @@ export function registerRadio(app) {
     if (!trackId || !Number.isFinite(v)) return c.json({ error: "trackId and v required" }, 400);
     await updateRadio(c.env, pid, (db) => {
       db.takes = db.takes || {};
-      db.takes[id] = { trackId, v, at: new Date().toISOString() };
-      db.generatedAt = new Date().toISOString();
+      const at = new Date().toISOString();
+      const list = normalizeTakeList(db.takes[id]);
+      const same = (t) => t.trackId === trackId && Number(t.v) === v;
+      let take = list.find(same);
+      if (take) take.at = at;
+      else { take = { trackId, v, at }; list.push(take); }
+      for (const t of list) t.selected = false;   // single-selection
+      take.selected = true;
+      take.selectedAt = at;
+      db.takes[id] = list;
+      db.generatedAt = at;
     });
+    return c.json({ ok: true });
+  });
+
+  // Pick which rendered take is active for a line (the version pills on the Radio
+  // tab). Body: { trackId, v, selected? }. Single-selection: selecting one clears
+  // the others; the active take is what send-to-editor / pacing / the animatic use.
+  app.post("/api/radio/take/:id/select", async (c) => {
+    const pid = c.get("projectId");
+    const id = c.req.param("id");
+    let body;
+    try { body = await c.req.json(); } catch { return c.json({ error: "Invalid JSON body" }, 400); }
+    const trackId = String(body?.trackId || "");
+    const v = Number(body?.v);
+    const selected = body?.selected !== false; // default: select
+    if (!trackId || !Number.isFinite(v)) return c.json({ error: "trackId and v required" }, 400);
+    let found = false;
+    await updateRadio(c.env, pid, (db) => {
+      db.takes = db.takes || {};
+      const list = normalizeTakeList(db.takes[id]);
+      const at = new Date().toISOString();
+      for (const t of list) {
+        if (t.trackId === trackId && Number(t.v) === v) {
+          found = true;
+          t.selected = selected;
+          if (selected) t.selectedAt = at;
+        } else if (selected) {
+          t.selected = false;
+        }
+      }
+      if (found) db.takes[id] = list;
+    });
+    if (!found) return c.json({ error: "No such take for this line" }, 404);
     return c.json({ ok: true });
   });
 

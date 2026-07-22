@@ -71,7 +71,12 @@ This skill only produces audio. It does NOT stitch a timeline or render video.
 
 ## Notes
 
-- One take per line keeps each line independently trimmable in the Editor.
+- Each line can hold several takes. `attach_radio_take` **appends** a take as a
+  new version under the line and auto-selects it — it does not overwrite the
+  previous one. So voicing a line again (e.g. the user's per-line "Recreate")
+  keeps the earlier take as a selectable alternative; the user picks which
+  version is active from the take pills on the Radio tab. When you're asked to
+  re-render just one line, voice only that line and attach it — nothing else.
 - If a reference job stalls for many minutes, the seed-audio skill's guidance
   applies (retry; matching voice descriptions keep it close).
 - Never pass a prior generation's job id as a voice reference — always upload the
