@@ -55,18 +55,18 @@ the model, re-run `models_explore` and retry with the current id — never guess
 renamed variant.
 
 **If you will use image references, this step also decides the media role** — and
-models disagree, so you MUST check. Read the chosen model's allowed **media roles**
+models change, so you MUST check. Read the chosen model's allowed **media roles**
 from `models_explore` (use `action:'get'` for that model if the list entry doesn't
-already show them):
+already show them) and use exactly the role it lists:
 
-- **Nano Banana Pro** → role `image_references` (and it accepts **many**).
-- **Nano Banana 2** (and some others) → only role `image`, usually a single ref.
-  If you resolved Nano Banana 2 but need multiple references, prefer Nano Banana
-  **Pro** instead.
-
-Passing `image_references` to a model that only allows `[image]` fails with
-*"media role image_references not supported"* — always use the role that model's
-`models_explore` entry lists.
+- **Nano Banana Pro** and **Nano Banana 2** → role `image` (the entry shows
+  `"roles":["image"]` with no `max`, so both accept **many** `image` references).
+- **Soul 2.0** → role `image` too, but capped at **one** (`"max":1`). Need
+  multiple references? Use **Nano Banana Pro**.
+- These image models do **not** accept `image_references` — that role is for the
+  video models (Seedance et al.). Passing `image_references` to an image model
+  fails with *"media role image_references not supported by … Allowed: [image]"*.
+  Always use the role the model's `models_explore` entry lists.
 
 ## Step 2 — Write the prompt with the house style
 
@@ -88,9 +88,9 @@ Two ways to lock identity as the exploration converges:
   media_id with `media_import_url { url: "<refUrl>" }` (or upload a local file via
   `media_upload` + `media_confirm`), then add `{ role:"<the model's ref role>",
   value:"<media_id>" }` to the `generate_image` `medias[]` (see Step 1 for the
-  role — `image_references` for Nano Banana Pro, `image` for Nano Banana 2). **This
-  is how "redo it but with this one as a reference" works** — the user picks an
-  image, you feed its `refUrl` back.
+  role — `image` for the Nano Banana / Soul image models). **This is how "redo it
+  but with this one as a reference" works** — the user picks an image, you feed its
+  `refUrl` back.
 - **From a paperclip attachment** — when the user attaches images in chat, the
   message ends with an `Attached reference image(s) (absolute URLs …):` block of
   absolute HTTPS URLs. Treat each exactly like a `refUrl`: `media_import_url` it,
@@ -113,8 +113,8 @@ mcp__higgsfield__generate_image {
     "prompt": "<preset.image>\n\n<one-line scene>",
     "aspect_ratio": "16:9",
     // only when referencing — role MUST match the model (Step 1):
-    // "image_references" for Nano Banana Pro, "image" for Nano Banana 2.
-    "medias": [ { "role":"image_references", "value":"<media_id>" } ]
+    // "image" for the Nano Banana / Soul image models.
+    "medias": [ { "role":"image", "value":"<media_id>" } ]
   }
 }
 ```

@@ -27,7 +27,7 @@ export const attachStill = (api: Api) =>
               url: v.optional(d(v.string(), "The reference image URL you passed to the model.")),
             }),
           ),
-          "The reference images you actually passed as image_references for this generation.",
+          "The reference images you actually passed as reference media for this generation.",
         ),
       ),
       shotSnapshot: v.optional(

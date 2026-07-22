@@ -41,7 +41,12 @@ also the pipeline order: **World → Script → Shot list → Storyboard/stills 
   (`voiceRef`, a liked Sound Studio take) shown on the World tab. Attach them with
   `attach_character_sheet` (image `rel` from `list_library`) and `attach_character_voice`
   (`trackId`/`v` from `list_character_voices`) — these edit one character in place, so you do
-  **not** re-`save_world` after. When more than one image or voice could fit, **show previews
+  **not** re-`save_world` after. The world also holds a **locations roster** — the places
+  shots reference by `location` slug, each able to carry its own reference-art sheet (a locked
+  background). `save_world` CANNOT carry locations (it leaves them untouched); add a place with
+  **`add_world_location`** (pass the exact slug the shots use), one call per place. When the
+  Animatic flags location gaps (slugs with no roster card / no reference art), register each
+  missing slug with `add_world_location` — never try to add places through `save_world`. When more than one image or voice could fit, **show previews
   and let the user pick**: render candidate image thumbnails as markdown (`![](thumb-url)`) or
   list voices with their playable `/sound-media` urls, then ask which one before attaching.
   When the user is on the World screen, presses "Let's create the world", or asks to build the
@@ -61,8 +66,8 @@ also the pipeline order: **World → Script → Shot list → Storyboard/stills 
   paperclip, the message ends with an `Attached reference image(s) (absolute URLs …):` block
   listing each image's absolute HTTPS URL. Those URLs are Higgsfield-fetchable — to edit or
   regenerate *from* an attached image (e.g. "change the backpack to red, give me one image back"),
-  `media_import_url` each URL and pass it as the model's reference role (`image_references` for
-  Nano Banana Pro), then generate and `attach_visual_generation` the result — exactly the
+  `media_import_url` each URL and pass it as the model's reference role (`image` for the Nano
+  Banana / Soul image models), then generate and `attach_visual_generation` the result — exactly the
   visual-world reference flow, sourced from the attachment instead of a library/generation pick.
   Generate the **number of images the user asked for** (one means one).
 - **Script** — the episode screenplay: a title plus screenplay lines (scene headings,

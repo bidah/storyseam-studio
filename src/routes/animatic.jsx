@@ -90,6 +90,7 @@ function AnimaticStudio() {
 
   const [error, setError] = useState(null);
   const [sending, setSending] = useState(false);
+  const [addingLocs, setAddingLocs] = useState(false);
   // Which scene's "Render scene" was launched — so only that button shows "working…".
   const [renderingScene, setRenderingScene] = useState(null);
   useEffect(() => { if (!agentBusy) setRenderingScene(null); }, [agentBusy]);
@@ -118,6 +119,33 @@ function AnimaticStudio() {
   // Location coverage: places used by shots that have no reference sheet yet.
   const locGaps = (data.locations || []).filter((l) => !l.hasSheet);
   const hasShots = scenes.length > 0;
+
+  // "Add in World": seed a roster card for every gap slug that isn't on the World
+  // roster yet (the `?` badges), then jump to the Locations panel so the user
+  // lands on a populated list ready for reference art — instead of an empty one.
+  // POST /api/world/location is read-modify-write, so create them SEQUENTIALLY;
+  // parallel writes would race and drop all but one.
+  const addLocationsInWorld = async () => {
+    const missing = locGaps.filter((l) => !l.known);
+    if (missing.length) {
+      setAddingLocs(true);
+      try {
+        for (const l of missing) {
+          await fetch("/api/world/location", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ slug: l.slug, name: l.slug }),
+          });
+        }
+        invalidateTabCache("world"); // so the World tab's loader fetches the new cards
+      } catch {
+        /* best-effort — still take them to the World tab to add places by hand */
+      } finally {
+        setAddingLocs(false);
+      }
+    }
+    navigate("/world#locations");
+  };
 
   return (
     <div className="space-y-4">
@@ -174,8 +202,10 @@ function AnimaticStudio() {
               </Badge>
             ))}
           </div>
-          <Button size="sm" variant="outline" className="ml-auto" onClick={() => navigate("/world")}>
-            <ExternalLink size={13} /> Add in World
+          <Button size="sm" variant="outline" className="ml-auto" onClick={addLocationsInWorld} disabled={addingLocs}>
+            {addingLocs
+              ? <><Loader2 size={13} className="animate-spin" /> adding…</>
+              : <><ExternalLink size={13} /> Add in World</>}
           </Button>
         </div>
       )}

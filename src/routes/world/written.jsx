@@ -697,8 +697,10 @@ function World() {
       </Panel>
 
       {/* Locations — the places of the world; each shot's `location` slug resolves
-          here so the Animatic can auto-supply the place's reference art. */}
+          here so the Animatic can auto-supply the place's reference art. The
+          `locations` id is the anchor the Animatic's "Add in World" button jumps to. */}
       <Panel
+        id="locations"
         title={<span className="flex items-center gap-2"><MapPin size={15} className="text-primary" /> Locations</span>}
         meta={
           <div className="flex items-center gap-2">

@@ -17,20 +17,22 @@ Pro** image model.
 > carousel and one is chosen. To cover a whole bundle, loop shot-by-shot.
 
 > **Always use the Higgsfield MCP, never a CLI.** Multiple reference images must be
-> passed as `image_references` entries in the MCP `generate_image` `medias[]`
-> array (one per character + the location) — the same mechanism generate-multishot
-> uses for video.
+> passed as `image` entries in the MCP `generate_image` `medias[]` array (one per
+> character + the location). (Nano Banana Pro's ref role is `image` — that's the
+> image-model role; the video models use `image_references`, so don't copy that
+> role over from generate-multishot.)
 
 ## Inputs
 
 | Input | Role in the job | Notes |
 |---|---|---|
-| **Character sheets** | `image_references` (one per character) | locks each character's look |
-| **Location image** | `image_references` | locks the setting |
+| **Character sheets** | `image` (one per character) | locks each character's look |
+| **Location image** | `image` | locks the setting |
 | **Shot details** | prompt text | camera, action, location, dialogue context (for expression/pose) |
 | **Angle note** (optional) | prompt text | the camera angle / variation for THIS take (e.g. "low angle, close-up") |
 
-Nano Banana Pro accepts **many** `image_references`. There is no audio for a still.
+Nano Banana Pro accepts **many** `image` references (its `models_explore` entry
+shows `"roles":["image"]` with no `max`). There is no audio for a still.
 
 ## The MCP tools are already available
 
@@ -82,16 +84,16 @@ mcp__higgsfield__generate_image {
     "prompt": "STILL_PROMPT",
     "aspect_ratio": "16:9",
     "medias": [
-      { "role": "image_references", "value": "<location media_id>" },
-      { "role": "image_references", "value": "<character_1 sheet media_id>" },
-      { "role": "image_references", "value": "<character_2 sheet media_id>" }
+      { "role": "image", "value": "<location media_id>" },
+      { "role": "image", "value": "<character_1 sheet media_id>" },
+      { "role": "image", "value": "<character_2 sheet media_id>" }
     ]
   }
 }
 ```
 
 - If the response is a `preset_recommendation`, resend the same call with `declined_preset_id:"<id>"` to generate the prompt literally.
-- Every character sheet + the location are their own `image_references` entries (repeatable). There is no `start_image` and no audio.
+- Every character sheet + the location are their own `image` entries (repeatable). There is no `start_image` and no audio.
 
 ## Step 5 — Poll
 
