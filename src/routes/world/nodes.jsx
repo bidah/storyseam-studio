@@ -55,6 +55,9 @@ function Canvas() {
   const { screenToFlowPosition } = useReactFlow();
 
   const [error, setError] = useState(null);
+  // Node ids just clicked to Run — shown as "queued" instantly (before the POST
+  // returns + the server run is refetched), so the button reacts immediately.
+  const [optimisticRun, setOptimisticRun] = useState([]);
 
   const generations = world.generations || [];
   const genById = useMemo(() => new Map(generations.map((g) => [g.id, g])), [generations]);
@@ -195,6 +198,7 @@ function Canvas() {
 
   const runNode = useCallback(async (id, mode) => {
     setError(null);
+    setOptimisticRun((s) => (s.includes(id) ? s : [...s, id])); // instant feedback
     try {
       const res = await fetch("/api/visual-world/node/run", {
         method: "POST", headers: { "Content-Type": "application/json" },
@@ -203,8 +207,27 @@ function Canvas() {
       const j = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(j.error || "Run failed");
       refetch(); // pick up board.run + the processing generation
-    } catch (e) { setError(String(e.message || e)); }
+    } catch (e) {
+      setError(String(e.message || e));
+      setOptimisticRun((s) => s.filter((x) => x !== id)); // failed to start — clear it
+    }
   }, [refetch]);
+
+  // Hand off from the optimistic pill to server state: once the refetched run
+  // reflects a just-clicked node (nodeStatus != "idle") — or the node is gone —
+  // drop it, so there's no idle→running flicker between POST return and refetch.
+  useEffect(() => {
+    if (!optimisticRun.length) return;
+    setOptimisticRun((s) => s.filter((id) => {
+      const node = graphRef.current.nodes.find((n) => n.id === id);
+      return node ? nodeStatus(run, node) === "idle" : false;
+    }));
+  }, [run, optimisticRun.length]);
+
+  const statusFor = useCallback(
+    (node) => (optimisticRun.includes(node.id) ? "queued" : nodeStatus(run, node)),
+    [optimisticRun, run],
+  );
 
   // --- Files panel + per-node stack modal. `filesTarget` rebinds an existing
   // Source node; null adds a new one. `stackNode` browses a generator's history. ---
@@ -250,11 +273,11 @@ function Canvas() {
     const inp = inputsByNode.get(n.id);
     return [
       n.id, n.type, n.x, n.y, n.prompt, n.settings, n.currentGenId, n.genIds,
-      nodeStatus(run, n), g?.status ?? null, g?.url ?? null,
+      statusFor(n), g?.status ?? null, g?.url ?? null,
       (inp?.refThumbs || []).map((r) => r.url), inp?.inheritedText ?? null,
       (n.genIds || []).map((gid) => genById.get(gid)?.status).join(","),
     ];
-  })), [graph.nodes, genById, inputsByNode, run]);
+  })), [graph.nodes, genById, inputsByNode, statusFor]);
 
   useEffect(() => {
     const desired = graph.nodes.map((node) => {
@@ -267,7 +290,7 @@ function Canvas() {
         position: { x: node.x ?? 0, y: node.y ?? 0 },
         data: {
           node,
-          status: nodeStatus(run, node),
+          status: statusFor(node),
           generation,
           generations: nodeGens,
           refThumbs: inp.refThumbs || [],

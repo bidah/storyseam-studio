@@ -326,23 +326,54 @@ function pickId(data, ...extraKeys) {
   return "";
 }
 
+// Keys under which job_status echoes the INPUT references we sent (never the
+// result). Collecting these would make an image-to-image job "return" its own
+// reference — so collectMediaUrls skips them.
+const INPUT_MEDIA_KEYS = /^(input_images?|medias|source_?medias?|reference_?images?)$/i;
+
 // Higgsfield's job_status nests the generation under `generation` (or returns it
 // bare), and the result media URL's key varies by model — so we deep-collect
 // every allowed media URL in the payload and prefer a full-res one over a thumb.
+// Input references (params.input_images, etc.) are skipped so they can't be
+// mistaken for the output.
 function collectMediaUrls(obj, out = [], depth = 0) {
   if (!obj || depth > 7) return out;
   if (typeof obj === "string") { if (isAllowedMediaUrl(obj)) out.push(obj); return out; }
   if (Array.isArray(obj)) { for (const v of obj) collectMediaUrls(v, out, depth + 1); return out; }
-  if (typeof obj === "object") { for (const v of Object.values(obj)) collectMediaUrls(v, out, depth + 1); return out; }
+  if (typeof obj === "object") {
+    for (const [k, v] of Object.entries(obj)) {
+      if (INPUT_MEDIA_KEYS.test(k)) continue; // echoed input reference — never the result
+      collectMediaUrls(v, out, depth + 1);
+    }
+    return out;
+  }
   return out;
 }
 function bestMediaUrl(urls) {
   if (!urls.length) return "";
-  const isThumb = (u) => /thumb|preview|small|proxy/i.test(u);
+  const isThumb = (u) => /thumb|preview|small|proxy|_min\.|_resize\./i.test(u);
   const isRaw = (u) => /raw|result|original|full|output|\/max|\/hd/i.test(u);
   const pool = urls.filter((u) => !isThumb(u));
   const use = pool.length ? pool : urls;
   return use.find(isRaw) || use[0];
+}
+
+// Extract the RESULT media url from a job_status payload. The output lives under
+// explicit result fields (normalized `results.rawUrl/minUrl`, or the raw shape's
+// `result_url`); we read those first so an echoed input reference can never win.
+// Falls back to a deep collect (which skips input-media keys) for odd shapes.
+function resultMediaUrl(st) {
+  const gen = (st && typeof st === "object" && st.generation && typeof st.generation === "object")
+    ? st.generation : st;
+  const g = (gen && typeof gen === "object") ? gen : {};
+  const results = (g.results && typeof g.results === "object") ? g.results : {};
+  const explicit = [
+    results.rawUrl, results.url, results.minUrl,          // normalized shape
+    g.result_url, g.min_result_url, g.h264_url,           // raw shape (nested)
+    st?.result_url, st?.min_result_url, st?.h264_url,     // raw shape (top level)
+  ].filter((u) => typeof u === "string" && isAllowedMediaUrl(u));
+  if (explicit.length) return bestMediaUrl(explicit);
+  return bestMediaUrl(collectMediaUrls(g.results ?? gen ?? st));
 }
 // job_status lifecycle buckets. A job leaving IN_PROGRESS with a media URL is
 // treated as done even if its terminal word isn't in DONE (models vary).
@@ -850,7 +881,7 @@ export function registerVisualWorld(app) {
         const gen = (st && typeof st === "object" && st.generation && typeof st.generation === "object")
           ? st.generation : st;
         const status = str(gen?.status || gen?.state || st?.status || st?.state).toLowerCase();
-        const rawUrl = bestMediaUrl(collectMediaUrls(st));
+        const rawUrl = resultMediaUrl(st);
         const inProgress = JOB_IN_PROGRESS.has(status);
         const failed = JOB_FAILED.has(status);
 
