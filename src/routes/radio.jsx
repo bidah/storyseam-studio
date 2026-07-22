@@ -14,7 +14,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from "@/components/ui/dropdown-menu";
-import { Empty, Panel, Spinner, ErrorNote } from "@/components/shared";
+import { Tip, Empty, Panel, Spinner, ErrorNote } from "@/components/shared";
 
 /* ---------------------------------------------------------------- *
  * Casting dialog — one character's casting surface. Opened from its  *
@@ -90,15 +90,16 @@ function CastingDialog({ open, onOpenChange, onCast, onAgentCast, agentBusy, ent
             Your liked voices from the Sound Studio — like a voice take on the Sounds tab to see it here.
           </p>
           <div className="flex shrink-0 items-center gap-2">
-            <Button
-              variant="secondary"
-              size="sm"
-              disabled={agentBusy}
-              title={agentBusy ? "The agent is busy — wait for it to finish" : `Ask the agent to design, render, and cast a voice for ${character}`}
-              onClick={() => { onAgentCast(character); onOpenChange(false); }}
-            >
-              <Bot size={13} /> Voice with agent
-            </Button>
+            <Tip content={agentBusy ? "The agent is busy — wait for it to finish" : `Ask the agent to design, render, and cast a voice for ${character}`}>
+              <Button
+                variant="secondary"
+                size="sm"
+                disabled={agentBusy}
+                onClick={() => { onAgentCast(character); onOpenChange(false); }}
+              >
+                <Bot size={13} /> Voice with agent
+              </Button>
+            </Tip>
             <Button variant="outline" size="sm" onClick={() => navigate("/sounds?new=voice")}>
               <Plus size={13} /> Create voice
             </Button>
@@ -148,10 +149,10 @@ function CastingCard({ entry, onCast, onAgentCast, agentBusy }) {
   const { character, voiceRef } = entry;
   return (
     <>
+      <Tip content={voiceRef ? `${voiceRef.name || "Voice"}${voiceRef.v != null ? ` · v${voiceRef.v}` : ""}` : "No voice cast — click to cast"}>
       <button
         type="button"
         onClick={() => setOpen(true)}
-        title={voiceRef ? `${voiceRef.name || "Voice"}${voiceRef.v != null ? ` · v${voiceRef.v}` : ""}` : "No voice cast — click to cast"}
         className="flex w-full items-center gap-2 rounded-lg border px-2.5 py-1.5 text-left transition-colors hover:border-primary/40 hover:bg-accent/40"
       >
         <Badge variant="secondary" className="min-w-0 max-w-full truncate font-mono">{character}</Badge>
@@ -161,6 +162,7 @@ function CastingCard({ entry, onCast, onAgentCast, agentBusy }) {
           <Badge variant="warning" className="ml-auto shrink-0 gap-1"><Mic size={11} /> Cast</Badge>
         )}
       </button>
+      </Tip>
       <CastingDialog open={open} onOpenChange={setOpen} entry={entry} onCast={onCast} onAgentCast={onAgentCast} agentBusy={agentBusy} />
     </>
   );
@@ -207,11 +209,13 @@ function RadioLine({ line, onSaveLine, onRecreate, onSelectVersion, agentBusy })
             <Badge variant="muted">not rendered</Badge>
           )}
           <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0 text-muted-foreground" aria-label="Line actions">
-                <MoreVertical size={15} />
-              </Button>
-            </DropdownMenuTrigger>
+            <Tip content="Line actions">
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0 text-muted-foreground" aria-label="Line actions">
+                  <MoreVertical size={15} />
+                </Button>
+              </DropdownMenuTrigger>
+            </Tip>
             <DropdownMenuContent align="end">
               <DropdownMenuItem
                 disabled={agentBusy || !line.voiceRef}
@@ -238,12 +242,19 @@ function RadioLine({ line, onSaveLine, onRecreate, onSelectVersion, agentBusy })
         <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
           <span className="text-[10px] uppercase tracking-wide text-muted-foreground">takes</span>
           {takes.map((t, i) => (
-            <button
+            <Tip
               key={`${t.trackId}:${t.v}`}
+              content={
+                t.status === "missing" ? "This take's audio is gone"
+                  : t.selected ? "The active take"
+                  : t.ready ? `Use take ${i + 1}`
+                  : `take ${i + 1} — ${t.status}`
+              }
+            >
+            <button
               type="button"
               disabled={t.selected || t.status === "missing"}
               onClick={() => onSelectVersion?.(t)}
-              title={t.status === "missing" ? "This take's audio is gone" : t.ready ? `Use take ${i + 1}` : `take ${i + 1} — ${t.status}`}
               className={cn(
                 "inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-[11px] font-medium transition-colors",
                 t.selected ? "border-primary bg-primary/10 text-primary" : "hover:border-primary/40 hover:bg-accent/40",
@@ -255,6 +266,7 @@ function RadioLine({ line, onSaveLine, onRecreate, onSelectVersion, agentBusy })
               {!t.ready && t.status !== "missing" && <Loader2 size={10} className="animate-spin" />}
               v{i + 1}
             </button>
+            </Tip>
           ))}
         </div>
       )}
@@ -277,7 +289,7 @@ function RadioStudio() {
   const [sending, setSending] = useState(false);
   const [pacing, setPacing] = useState(false);
   // "Send to editor" honors this toggle: when on, the agent paces the timeline.
-  const [pacingOn, setPacingOn] = useState(false);
+  const [pacingOn, setPacingOn] = useState(true);
   // Which scene's "Render scene" was actually launched — so only THAT button
   // shows "working…". Without this, the global agentBusy flag flips every
   // scene's button to "working…" (even for a single-line recreate), which reads
@@ -384,23 +396,25 @@ function RadioStudio() {
             </p>
           </div>
           <div className="flex items-center gap-2 rounded-lg border bg-muted/50 p-1.5">
-            <Button variant="outline" onClick={pacingOn ? sendToEditorPaced : sendToEditor}
-              disabled={sending || pacing || (pacingOn && agentBusy) || !data.readyLines}
-              title={pacingOn
-                ? (agentBusy
-                    ? "The agent is busy — wait for it to finish"
-                    : "Send to the Editor, then have the agent pace it: space the lines from the shot timings so the story breathes")
-                : "Send just the voiced dialogue to the Editor as an audio-only timeline (lines laid back-to-back)"}>
-              {(sending || pacing)
-                ? <><Loader2 size={14} className="animate-spin" /> sending…</>
-                : <><Send size={14} /> Send to editor</>}
-            </Button>
+            <Tip content={pacingOn
+              ? (agentBusy
+                  ? "The agent is busy — wait for it to finish"
+                  : "Send to the Editor, then have the agent pace it: space the lines from the shot timings so the story breathes")
+              : "Send just the voiced dialogue to the Editor as an audio-only timeline (lines laid back-to-back)"}>
+              <Button variant="outline" onClick={pacingOn ? sendToEditorPaced : sendToEditor}
+                disabled={sending || pacing || (pacingOn && agentBusy) || !data.readyLines}>
+                {(sending || pacing)
+                  ? <><Loader2 size={14} className="animate-spin" /> sending…</>
+                  : <><Send size={14} /> Send to editor</>}
+              </Button>
+            </Tip>
             <label className="flex cursor-pointer items-center gap-2 pl-1 pr-2 text-sm select-none">
               <span className="flex items-center gap-1.5 text-muted-foreground">
                 <Bot size={14} /> Agent pacing
               </span>
-              <Switch checked={pacingOn} onCheckedChange={setPacingOn} disabled={sending || pacing}
-                title="When on, the agent paces the timeline from the shot timings after sending" />
+              <Tip content="When on, the agent paces the timeline from the shot timings after sending">
+                <Switch checked={pacingOn} onCheckedChange={setPacingOn} disabled={sending || pacing} />
+              </Tip>
             </label>
           </div>
         </div>
@@ -436,16 +450,18 @@ function RadioStudio() {
                   meta={
                     <div className="flex items-center gap-2">
                       <Badge variant="outline">{scene.lines.length} lines</Badge>
-                      <Button size="sm" onClick={() => renderScene(scene)} disabled={agentBusy || sceneUncast || (sceneRendered && !rendering)}
-                        title={
-                          sceneRendered && !rendering ? "Every line in this scene is rendered"
-                            : sceneUncast ? "Cast a voice for every speaker in this scene first"
-                            : "Render this scene's dialogue"
-                        }>
-                        {rendering ? <><Loader2 size={13} className="animate-spin" /> working…</>
-                          : sceneRendered ? <><Check size={13} /> Rendered</>
-                          : <><Mic size={13} /> Render scene</>}
-                      </Button>
+                      <Tip content={
+                        sceneRendered && !rendering ? "Every line in this scene is rendered"
+                          : sceneUncast ? "Cast a voice for every speaker in this scene first"
+                          : agentBusy ? "The agent is busy — wait for it to finish"
+                          : "Render this scene's dialogue"
+                      }>
+                        <Button size="sm" onClick={() => renderScene(scene)} disabled={agentBusy || sceneUncast || (sceneRendered && !rendering)}>
+                          {rendering ? <><Loader2 size={13} className="animate-spin" /> working…</>
+                            : sceneRendered ? <><Check size={13} /> Rendered</>
+                            : <><Mic size={13} /> Render scene</>}
+                        </Button>
+                      </Tip>
                     </div>
                   }
                 >
@@ -477,16 +493,22 @@ function RadioStudio() {
                 </div>
               )}
               {uncast > 0 && (
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  className="mt-2 w-full"
-                  disabled={agentBusy}
-                  onClick={() => voiceWithAgent(uncastNames)}
-                  title={agentBusy ? "The agent is busy — wait for it to finish" : `Ask the agent to design, render, and cast a voice for all ${uncast} uncast speaker${uncast > 1 ? "s" : ""}`}
-                >
-                  {agentBusy ? <><Loader2 size={13} className="animate-spin" /> agent working…</> : <><Bot size={13} /> Voice {uncast} uncast with agent</>}
-                </Button>
+                <div className="mt-2">
+                  <Tip
+                    wrapClassName="w-full"
+                    content={agentBusy ? "The agent is busy — wait for it to finish" : `Ask the agent to design, render, and cast a voice for all ${uncast} uncast speaker${uncast > 1 ? "s" : ""}`}
+                  >
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      className="w-full"
+                      disabled={agentBusy}
+                      onClick={() => voiceWithAgent(uncastNames)}
+                    >
+                      {agentBusy ? <><Loader2 size={13} className="animate-spin" /> agent working…</> : <><Bot size={13} /> Voice {uncast} uncast with agent</>}
+                    </Button>
+                  </Tip>
+                </div>
               )}
               <p className="mt-2 px-1 text-[11px] text-muted-foreground">
                 every speaker plus every character with a voice on the World tab. A voice cast here is shared with the World tab — the two never diverge. Cast from your liked Sound Studio voice takes, or let the agent design and cast one.
