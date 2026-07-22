@@ -20,7 +20,13 @@ Episode tab from those packs. No media is generated in this skill.
 ## Steps
 
 1. `get_script` — read the pinned draft (title + `elements[]`: scene_heading / action /
-   character / dialogue / parenthetical / transition).
+   character / dialogue / parenthetical / transition). Then `get_world` — read the
+   character roster. Its `name` values are the **canonical character names** and the
+   single source of truth for identity (casting matches a shot's character to a voice by
+   this exact name). Copy each name **verbatim** into the shots below — do NOT abbreviate
+   ("Kai Morales" → "Kai"), expand, reorder, or re-spell it, or the character gets cast
+   twice. A character with no World record (a one-off background role) can use a plain
+   descriptive label ("Store Owner", "Teacher").
 2. Walk the screenplay **in order** and cut it into shots. Each `scene_heading` starts a
    new **beat/location**; break a long action beat into several short shots (wides →
    mediums → close-ups → inserts) the way a storyboard would. Aim for **~2–4s per shot**.
@@ -31,8 +37,10 @@ Episode tab from those packs. No media is generated in this skill.
    - **location** — a stable slug (e.g. `school-clearing`, `kings-house-tea-nook`). Reuse
      the same slug for the same place so packing + references stay consistent.
    - **dur** — realistic seconds (drives the ≤15s packing).
-   - **characters** — who is on screen (canonical names: Sara, Helena, Forest King, Mote,
-     Elf kids).
+   - **characters** — who is on screen, using the **exact** `name` from the World roster
+     (`get_world`) for every character that has one. Never a short form or variant of a
+     roster name — "Kai Morales", never "Kai". Only genuinely off-roster background roles
+     get an ad-hoc label.
    - **camera** — framing + move (e.g. "Medium close-up, slow push-in").
    - **action** — plainly what happens.
    - **dialogue** — the spoken line(s), or `(no dialogue)`.

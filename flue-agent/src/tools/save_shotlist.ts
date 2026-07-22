@@ -39,7 +39,7 @@ export const saveShotlist = (api: Api) =>
             characters: v.optional(
               d(
                 v.array(v.string()),
-                'Characters on screen, e.g. ["Helena","Sara"].',
+                'Characters on screen, using the EXACT canonical name from the World roster (get_world) for each — e.g. ["Kai Morales","Darius Cole"], never a short form like ["Kai","Darius"]. Casting matches a character to a voice by this exact name, so a variant gets the same person cast twice. Only genuinely off-roster background roles get an ad-hoc label ("Store Owner"). The server also snaps an unambiguous short name back to its full roster name and warns.',
               ),
             ),
             camera: v.optional(d(v.string(), "Camera/framing + move.")),
