@@ -482,7 +482,7 @@ export default function ImageStudio({
           {onSavePrompts && (
             <>
               <Select value={presetId || NO_PRESET} onValueChange={(v) => setPresetId(v === NO_PRESET ? "" : v)}>
-                <SelectTrigger className="h-8 w-[190px] text-xs"><SelectValue placeholder="Prompt style" /></SelectTrigger>
+                <SelectTrigger size="sm" className="w-[190px] text-xs"><SelectValue placeholder="Prompt style" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value={NO_PRESET}>No style preset</SelectItem>
                   {prompts.map((p) => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
@@ -496,7 +496,7 @@ export default function ImageStudio({
 
           {/* Model */}
           <Select value={model || DEFAULT_MODEL} onValueChange={(v) => setModel(v === DEFAULT_MODEL ? "" : v)}>
-            <SelectTrigger className="h-8 w-[180px] text-xs"><SelectValue placeholder="Nano Banana Pro" /></SelectTrigger>
+            <SelectTrigger size="sm" className="w-[180px] text-xs"><SelectValue placeholder="Nano Banana Pro" /></SelectTrigger>
             <SelectContent>
               <SelectItem value={DEFAULT_MODEL}>Nano Banana Pro (default)</SelectItem>
               {models.filter((m) => m.id).map((m) => <SelectItem key={m.id} value={m.id}>{m.label}</SelectItem>)}
@@ -505,13 +505,13 @@ export default function ImageStudio({
 
           {/* Count */}
           <Select value={count} onValueChange={setCount}>
-            <SelectTrigger className="h-8 w-[92px] text-xs"><SelectValue /></SelectTrigger>
+            <SelectTrigger size="sm" className="w-[92px] text-xs"><SelectValue /></SelectTrigger>
             <SelectContent>{countOptions.map((n) => <SelectItem key={n} value={String(n)}>{n} image{n > 1 ? "s" : ""}</SelectItem>)}</SelectContent>
           </Select>
 
           {/* Aspect */}
           <Select value={aspectRatio} onValueChange={setAspectRatio}>
-            <SelectTrigger className="h-8 w-[84px] text-xs"><SelectValue /></SelectTrigger>
+            <SelectTrigger size="sm" className="w-[84px] text-xs"><SelectValue /></SelectTrigger>
             <SelectContent>{aspects.map((a) => <SelectItem key={a} value={a}>{a}</SelectItem>)}</SelectContent>
           </Select>
 
@@ -520,7 +520,7 @@ export default function ImageStudio({
           {/* Sheet tagging — mutually exclusive checkboxes; the server layers the
               matching sheet prompt on top of the style preset. */}
           {sheetTagging && (
-            <div className="flex items-center gap-3 rounded-md border px-2.5 py-1.5">
+            <div className="flex h-8 items-center gap-3 rounded-md border px-2.5">
               {Object.entries(SHEET_TYPES).map(([key, { label, icon: TagIcon }]) => (
                 <label key={key} className="flex cursor-pointer select-none items-center gap-1.5 text-xs text-muted-foreground has-[[data-state=checked]]:text-foreground">
                   <Checkbox
@@ -544,6 +544,7 @@ export default function ImageStudio({
           )}
 
           <Button
+            size="sm"
             className="ml-auto"
             onClick={doGenerate}
             disabled={isBusy || !prompt.trim() || needsRef}
