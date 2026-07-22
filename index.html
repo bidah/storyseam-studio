@@ -4,6 +4,14 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>shot-studio</title>
+    <script>
+      // Apply the saved theme before first paint to avoid a flash of the wrong
+      // theme. Defaults to dark (matches the class on <html>).
+      try {
+        var t = localStorage.getItem("theme");
+        document.documentElement.classList.toggle("dark", t !== "light");
+      } catch (e) {}
+    </script>
   </head>
   <body>
     <div id="root"></div>

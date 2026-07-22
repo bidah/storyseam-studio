@@ -98,6 +98,11 @@ function UserMenu() {
     const next = !dark;
     setDark(next);
     document.documentElement.classList.toggle("dark", next);
+    try {
+      localStorage.setItem("theme", next ? "dark" : "light");
+    } catch {
+      /* ignore storage failures — the class toggle still applies for this session */
+    }
   };
 
   const signOut = async () => {
