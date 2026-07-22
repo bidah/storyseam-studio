@@ -28,6 +28,7 @@ import { normalizeShot } from "../lib/shots.js";
 import { readStillsContext } from "../lib/stills.js";
 import { broadcast } from "../lib/broadcast.js";
 import { appendCapped, nextVersion, MAX_VERSIONS } from "../lib/versions.js";
+import { assetRefUrl } from "../lib/media.js";
 import { buildRadioView } from "./radio.js";
 
 const TL_FPS = 24;
@@ -87,6 +88,61 @@ export async function buildAnimaticView(env, pid) {
     });
   }
   return { entries, hasManifest: stills.index.hasManifest };
+}
+
+// Read the World bible's character + location rosters as reference lookups. Each
+// linked sheet yields both a project-scoped `url` (for the tab thumbnail) and an
+// ungated `refUrl` (for the image model — the same /files form world.js hands the
+// agent). This is the Phase-1 payoff: a shot's `characters` + `location` resolve
+// to their sheets automatically, so "Render Scene" supplies references itself
+// instead of the user hand-picking them per bundle.
+async function readRosterRefs(env, pid) {
+  const w = (await readDoc(env, pid, "world", null)) || {};
+  const characters = new Map();
+  for (const ch of w.characters || []) {
+    const name = String(ch.name || "").trim();
+    if (!name) continue;
+    const sheet = ch.sheetImage;
+    characters.set(name.toLowerCase(), {
+      name,
+      sheetUrl: sheet?.url || null,
+      refUrl: sheet?.rel ? assetRefUrl(env, pid, sheet.rel) : null,
+    });
+  }
+  const locations = new Map();
+  for (const loc of w.locations || []) {
+    const slug = String(loc.slug || "").trim();
+    if (!slug) continue;
+    const sheet = loc.sheetImage;
+    locations.set(slug, {
+      slug,
+      name: String(loc.name || ""),
+      description: String(loc.description || ""),
+      sheetUrl: sheet?.url || null,
+      refUrl: sheet?.rel ? assetRefUrl(env, pid, sheet.rel) : null,
+    });
+  }
+  return { characters, locations };
+}
+
+// Resolve one shot's on-screen characters + location to their roster sheets.
+function resolveShotRefs(shot, roster) {
+  const characters = (shot.characters || []).map((nm) => {
+    const r = roster.characters.get(String(nm).toLowerCase());
+    return { name: nm, sheetUrl: r?.sheetUrl || null, refUrl: r?.refUrl || null, hasSheet: !!r?.refUrl };
+  });
+  const lr = shot.location ? roster.locations.get(shot.location) : null;
+  const location = shot.location
+    ? {
+        slug: shot.location,
+        name: lr?.name || null,
+        sheetUrl: lr?.sheetUrl || null,
+        refUrl: lr?.refUrl || null,
+        hasSheet: !!lr?.refUrl,
+        known: !!lr,
+      }
+    : null;
+  return { characters, location };
 }
 
 // Coverage counts. These exist so a shot-list / manifest divergence surfaces as
@@ -185,6 +241,64 @@ export function registerAnimatic(app) {
         voiced: !!e.take,
         seconds: e.durationInFrames / TL_FPS,
       })),
+    });
+  });
+
+  // The full Animatic-tab view: shots grouped by beat (the scene), each carrying
+  // its resolved still (or slate), voice status, bundle, and the auto-resolved
+  // character/location references the "Render Scene" turn will hand the model.
+  app.get("/api/animatic/view", async (c) => {
+    const pid = c.get("projectId");
+    const [view, roster] = await Promise.all([
+      buildAnimaticView(c.env, pid),
+      readRosterRefs(c.env, pid),
+    ]);
+
+    const scenes = [];
+    const byBeat = new Map();
+    for (const e of view.entries) {
+      const key = e.shot.beat || "";
+      let sc = byBeat.get(key);
+      if (!sc) { sc = { beat: key, beatTitle: e.shot.beatTitle || "", shots: [] }; byBeat.set(key, sc); scenes.push(sc); }
+      sc.shots.push({
+        id: e.shot.id,
+        n: e.shot.n,
+        action: e.shot.action,
+        dialogue: e.shot.dialogue,
+        camera: e.shot.camera,
+        location: e.shot.location,
+        characters: e.shot.characters,
+        bundle: e.bundle,
+        still: e.still ? { file: e.still.file, url: "/storyboard-media/" + e.still.file } : null,
+        voiced: !!e.take,
+        seconds: e.durationInFrames / TL_FPS,
+        refs: resolveShotRefs(e.shot, roster),
+      });
+    }
+
+    // Location coverage across the whole shot list: which slugs are used, whether
+    // each is a known roster entry, and whether it has reference art. Drives the
+    // Animatic's "locations pass" (link/create the places that lack a sheet).
+    const locUsage = new Map();
+    for (const e of view.entries) {
+      const slug = e.shot.location;
+      if (!slug) continue;
+      if (!locUsage.has(slug)) {
+        const lr = roster.locations.get(slug);
+        locUsage.set(slug, { slug, name: lr?.name || null, known: !!lr, hasSheet: !!lr?.refUrl, shots: 0 });
+      }
+      locUsage.get(slug).shots++;
+    }
+
+    return c.json({
+      ...coverageOf(view.entries),
+      hasManifest: view.hasManifest,
+      scenes,
+      locations: [...locUsage.values()],
+      roster: {
+        characters: [...roster.characters.values()].map((r) => ({ name: r.name, hasSheet: !!r.refUrl })),
+        locations: [...roster.locations.values()].map((r) => ({ slug: r.slug, name: r.name, hasSheet: !!r.refUrl })),
+      },
     });
   });
 

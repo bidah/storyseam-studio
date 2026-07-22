@@ -496,6 +496,38 @@ export function renderStoryboardAllMessage(bundle, refBlock) {
   ].join("\n");
 }
 
+// Render a still for every renderable shot in ONE animatic scene (a beat), one at
+// a time. Unlike renderStoryboardAllMessage (bundle-scoped, one shared reference
+// block), each shot here carries its OWN references — auto-resolved from the World
+// roster (each on-screen character's sheet + the location's sheet) — so identity
+// and setting stay locked without the user hand-picking per bundle. `shots` come
+// from GET /api/animatic/view (each with bundle, id, refs.characters[], refs.location).
+export function renderAnimaticSceneMessage(scene, shots) {
+  const lines = shots.map((s) => {
+    const refs = [];
+    for (const ch of s.refs?.characters || []) if (ch.refUrl) refs.push(`${ch.name}: ${ch.refUrl}`);
+    if (s.refs?.location?.refUrl) refs.push(`${s.refs.location.name || s.location} (location): ${s.refs.location.refUrl}`);
+    const refStr = refs.length ? refs.join("; ") : "(no roster references linked — generate from the description alone)";
+    const dlg = s.dialogue && !/\(no dialogue\)/i.test(s.dialogue) ? s.dialogue : null;
+    return [
+      `- bundle="${s.bundle}", shot="${s.id}"${s.location ? `, ${s.location}` : ""}${s.camera ? `, ${s.camera}` : ""}: ${s.action || ""}`,
+      dlg ? `    (dialogue, for expression/pose only — it's a still: ${dlg})` : null,
+      `    image_references: ${refStr}`,
+    ].filter(Boolean).join("\n");
+  }).join("\n");
+  return [
+    `Render a storyboard still for EVERY shot in the "${scene.beatTitle || scene.beat}" scene now, one at a time.`,
+    `Load the generate-storyboard skill. For each shot below, generate ONE still with` +
+      ` Nano Banana Pro (the Higgsfield MCP generate_image tool), passing THAT shot's listed` +
+      ` image_references to lock the characters and location, then call attach_still for that` +
+      ` bundle + shot with the resulting image URL. Confirm the first Higgsfield submit with` +
+      ` me, then proceed through the rest.`,
+    "",
+    "Shots:",
+    lines,
+  ].join("\n");
+}
+
 // Build the chat turn that kicks off world-building — the "Let's create the
 // world" button on the World tab. Routed through the agent (the world-creation
 // skill) so it interviews the user across the story map, story depth, and

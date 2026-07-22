@@ -275,7 +275,6 @@ function RadioStudio() {
   const [error, setError] = useState(null);
   const [sending, setSending] = useState(false);
   const [pacing, setPacing] = useState(false);
-  const [building, setBuilding] = useState(false);
   // Which scene's "Render scene" was actually launched — so only THAT button
   // shows "working…". Without this, the global agentBusy flag flips every
   // scene's button to "working…" (even for a single-line recreate), which reads
@@ -364,25 +363,10 @@ function RadioStudio() {
     finally { setPacing(false); }
   };
 
-  // The animatic: this radio pass PLUS each shot's storyboard still on a picture
-  // track. Unlike "Send to editor" it covers every shot (silent ones included),
-  // so it works — as an all-slate outline — before any still exists.
-  const buildAnimatic = async () => {
-    setBuilding(true); setError(null);
-    try {
-      const res = await fetch("/api/animatic/to-editor", { method: "POST" });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error || "Build failed");
-      navigate("/editor");
-    } catch (e) { setError(String(e.message || e)); }
-    finally { setBuilding(false); }
-  };
-
   const scenes = data.scenes || [];
   const casting = data.casting || [];
   const uncastNames = casting.filter((c) => !c.voiceRef).map((c) => c.character);
   const uncast = uncastNames.length;
-  const animatic = data.animatic || null;
 
   return (
     <div className="space-y-4">
@@ -397,43 +381,22 @@ function RadioStudio() {
             </p>
           </div>
           <div className="flex items-center gap-2">
-            <Button variant="outline" onClick={sendToEditor} disabled={sending || pacing || building || !data.readyLines}
+            <Button variant="outline" onClick={sendToEditor} disabled={sending || pacing || !data.readyLines}
               title="Send just the voiced dialogue to the Editor as an audio-only timeline (lines laid back-to-back)">
               {sending ? <><Loader2 size={14} className="animate-spin" /> sending…</> : <><Send size={14} /> Send to editor</>}
             </Button>
-            <Button variant="outline" onClick={sendToEditorPaced} disabled={sending || pacing || building || agentBusy || !data.readyLines}
+            <Button variant="outline" onClick={sendToEditorPaced} disabled={sending || pacing || agentBusy || !data.readyLines}
               title={agentBusy
                 ? "The agent is busy — wait for it to finish"
                 : "Send to the Editor, then have the agent pace it: space the lines from the shot timings so the story breathes"}>
               {pacing ? <><Loader2 size={14} className="animate-spin" /> sending…</> : <><Bot size={14} /> Agent pacing</>}
-            </Button>
-            <Button onClick={buildAnimatic} disabled={building || sending || !animatic?.shots}
-              title={
-                animatic?.shots
-                  ? `Build the animatic: ${animatic.shots} shots — ${animatic.withStill} with a still, ${animatic.slates} slate${animatic.slates === 1 ? "" : "s"}`
-                  : "Write a shot list first"
-              }>
-              {building ? <><Loader2 size={14} className="animate-spin" /> building…</> : <><Clapperboard size={14} /> Build animatic</>}
             </Button>
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
           <Badge variant="outline">{scenes.length} scenes</Badge>
           <Badge variant="info"><AudioLines size={11} /> {data.readyLines || 0}/{data.totalLines || 0} lines rendered</Badge>
-          {animatic?.shots > 0 && (
-            <Badge variant={animatic.withStill ? "info" : "muted"}>
-              <ImageIcon size={11} /> {animatic.withStill}/{animatic.shots} shots with a still
-            </Badge>
-          )}
           {uncast > 0 && <Badge variant="warning"><CircleAlert size={11} /> {uncast} character{uncast > 1 ? "s" : ""} without a voice</Badge>}
-          {/* A shot that belongs to no bundle can't be matched to a still. In
-              practice this means the shot list's ids have drifted away from the
-              episode manifest's — show it rather than quietly building slates. */}
-          {animatic?.unmatched > 0 && (
-            <Badge variant="warning">
-              <CircleAlert size={11} /> {animatic.unmatched} shot{animatic.unmatched > 1 ? "s" : ""} not in any bundle
-            </Badge>
-          )}
           {agentBusy && <Badge variant="warning"><Loader2 size={11} className="animate-spin" /> agent working…</Badge>}
           <span>scenes come from the Shot list; cast a favorited voice per character, render a scene, then send the whole thing to the Editor.</span>
         </div>
@@ -525,22 +488,14 @@ function RadioStudio() {
   );
 }
 
-// Loader: the derived radio view (scenes from the shot list + casting + takes),
-// plus the animatic's coverage counts (how many shots have a still yet) so the
-// build button can say what it will produce. The animatic view is derived from
-// the same shot list, so it never disagrees with the scenes below it.
+// Loader: the derived radio view (scenes from the shot list + casting + takes).
+// The animatic (radio + storyboard stills on a picture track) now has its own tab.
 export function loader() {
   return swr("radio", async () => {
-    const [radioRes, animaticRes] = await Promise.all([
-      fetch("/api/radio"),
-      // Coverage is a nice-to-have: a failure here must not break the tab.
-      fetch("/api/animatic").catch(() => null),
-    ]);
-    const json = await radioRes.json();
-    if (!radioRes.ok) throw new Error(json.error || "Failed to load");
-    let animatic = null;
-    if (animaticRes?.ok) animatic = await animaticRes.json().catch(() => null);
-    return { ...json, animatic };
+    const res = await fetch("/api/radio");
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.error || "Failed to load");
+    return json;
   });
 }
 
