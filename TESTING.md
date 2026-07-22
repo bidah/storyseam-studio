@@ -32,19 +32,27 @@ model turns, prod data) is either faked (the in-memory R2 bucket in
 
 ## Coverage
 
-209 tests. Coverage is scoped (in `vitest.config.js`) to the **pure logic layer**
-of all three code bases — the functions where a unit test is meaningful:
+253 tests. Coverage is scoped (in `vitest.config.js`) to the **logic layer** of
+all three code bases — the functions where a unit test is meaningful — and gated
+by `coverage.thresholds` so a regression fails the run instead of silently
+eroding:
 
 ```
-Statements : ~73%   Branches : ~85%   Functions : ~79%
+Statements : ~81%   Branches : ~86%   Functions : ~73%
+
+  flue-agent/src/lib   ~95%     (agent lib bridges)
+  flue-agent/src/tools ~85%     (all 54 tool definitions + a run/schema subset)
+  worker/src/lib       ~86%
+  src/editor           100%
+  src/lib              ~82%
 ```
 
 The giant React route/editor components, the React data hooks, and the route
 handlers that need a live Worker/DO are covered by Playwright (`e2e/`) and the
 agent evals (`evals/`) instead of unit tests, so they're deliberately outside the
-coverage denominator. A handful of external-service bridges (D1 token refresh,
-Daytona sandbox, the ffmpeg/proxy shims) are also excluded — they're integration
-surface, not logic.
+coverage denominator. Two MCP/live-service bridges (the flue Higgsfield MCP
+client, the ffmpeg/proxy shims) are also excluded — they're integration surface,
+not logic.
 
 ## What's covered, by feature
 
@@ -85,10 +93,27 @@ surface, not logic.
 - the JSON doc store: `normalizeProjectId`, `docKey`, read/write, and `updateDoc`
   optimistic-concurrency (create / mutate / abort).
 
-**Agent (flue)** (`flue-agent/src/lib/*`)
-- instance-id codec, model whitelist + DO-backed persistence, voice-track
-  detection + attachable-voice flattening, proxy-token HMAC verification, and the
-  worker Higgsfield-token bridge (env resolution, force refresh, failure paths).
+**Agent — the flue tools & runtime** (`flue-agent/src/lib/*`, `flue-agent/src/tools/*`)
+- **the tool registry** (`tools/index.ts`): all 54 tool definitions instantiate;
+  every tool has a unique snake_case name, a substantive description, a callable
+  `run`, and (if it takes input) a valibot object schema. Read tools are verified
+  a read-only subset — no mutating verb leaks into the ingestion set.
+- **per-tool behaviour** for a representative set (`get_world`, `get_script`,
+  `save_shotlist`, `ask_question`, `toggle_library`, `attach_still`,
+  `edit_timeline`, `commit_pacing`, `select_reference`, `pin_draft`): the valibot
+  schema accepts valid / rejects invalid input, and `run` dispatches to the right
+  endpoint with the right body (incl. defaults, the two-step `pin_draft` resolve,
+  and `ask_question`'s non-blocking card).
+- **the API client** (`lib/api.ts`): `createApi` header logic (content-type only
+  with a body, `x-project-id` only when scoped), GET/POST/req verbs, base-URL env,
+  abort-signal forwarding, JSON parse, `{ raw }` fallback, and error throwing.
+- **async render/stitch jobs** (`worker/src/lib/jobs.js`): `createJob`/`getJob`,
+  `startSandboxJob` (session + detached command + handle recording), and `pollJob`
+  across every terminal/transient branch (done, non-zero exit with tail logs,
+  sandbox-gone, transient failure, still-running), plus `jobView` serialization.
+- **lib bridges**: instance-id codec, model whitelist + DO-backed persistence,
+  voice-track detection + attachable-voice flattening, proxy-token HMAC
+  verification, the worker Higgsfield-token bridge, and the Daytona sandbox gate.
 
 **Chat / model picker** (`src/lib/chat-store.js`, `src/lib/agentModel.js`,
 `src/lib/tabCache.js`, `src/lib/swr.js`)
@@ -106,10 +131,14 @@ its model. Opt-in against a live agent.
 
 ## Notes & fakes
 
-- `test/worker/_fakes.js` is a small in-memory R2 bucket implementing the slice of
-  the binding the storage helpers use — `get` (with Range + `json()`), `put` (with
-  `onlyIf.etagMatches` for `updateDoc`), `head`, and a prefix-scan `list`.
+- `test/worker/_fakes.js` provides an in-memory **R2 bucket** (`get` with Range +
+  `json()`, `put` with `onlyIf.etagMatches` for `updateDoc`, `head`, prefix-scan
+  `list`), a minimal **D1** stand-in for the `jobs` table, and a fake **Daytona
+  sandbox** process handle.
 - The web project aliases `@/components/notes` to the pure `schema.js` so a
   headless test of `scriptDiff` doesn't pull in the TipTap SlashCommand UI.
 - flue tests run the TypeScript sources directly (Vitest/esbuild) against fakes —
-  no build step, no wrangler.
+  no build step, no wrangler. `@flue/runtime` isn't a normal install (the flue CLI
+  provides it at build time), so `test/flue/_stubs/flue-runtime.ts` stubs the two
+  thin `defineTool`/`defineAgentProfile` factories the tools use — letting the
+  real valibot schemas and `run` functions be tested directly.

@@ -23,6 +23,9 @@ const webAlias = {
 };
 
 export default defineConfig({
+  // flue-agent's tsconfig targets ES2024, which this esbuild doesn't name yet
+  // (harmless warning noise); pin a target esbuild recognizes for transpile.
+  esbuild: { target: "es2022" },
   test: {
     projects: [
       {
@@ -42,6 +45,16 @@ export default defineConfig({
         },
       },
       {
+        resolve: {
+          alias: {
+            // @flue/runtime isn't a normal install (the flue CLI provides it at
+            // build time), so stub the two thin factories the tools use. See
+            // test/flue/_stubs/flue-runtime.ts.
+            "@flue/runtime": fileURLToPath(
+              new URL("./test/flue/_stubs/flue-runtime.ts", import.meta.url),
+            ),
+          },
+        },
         test: {
           name: "flue",
           environment: "node",
@@ -67,6 +80,7 @@ export default defineConfig({
         "src/components/notes/schema.js",
         "worker/src/lib/**/*.js",
         "flue-agent/src/lib/**/*.ts",
+        "flue-agent/src/tools/**/*.ts",
       ],
       exclude: [
         // Bridges to external services / other runtimes — integration-tested,
@@ -75,7 +89,17 @@ export default defineConfig({
         "worker/src/lib/proxy.js",
         "worker/src/lib/broadcast.js",
         "worker/src/lib/upload-snippet.js",
+        // The flue MCP client — needs a live Higgsfield MCP; covered via evals.
+        "flue-agent/src/lib/higgsfield.ts",
       ],
+      thresholds: {
+        // Lock in the coverage floor for the logic layer so a regression fails
+        // CI instead of silently eroding. Set below the current ~78%/86%/72%.
+        statements: 70,
+        branches: 80,
+        functions: 65,
+        lines: 70,
+      },
     },
   },
 });

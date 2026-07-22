@@ -96,3 +96,87 @@ export function makeBucket(initial = {}) {
 export function makeEnv(overrides = {}) {
   return { BUCKET: makeBucket(overrides.files || {}), ...overrides };
 }
+
+// A minimal D1 stand-in for the `jobs` table access in worker/src/lib/jobs.js.
+// It understands exactly the three query shapes that module issues:
+//   INSERT INTO jobs (id, kind, status, created_at, updated_at) VALUES (?,?,'pending',?,?)
+//   UPDATE jobs SET <col = ?, ...>, updated_at = ? WHERE id = ?
+//   SELECT * FROM jobs WHERE id = ?
+export function makeD1(seed = {}) {
+  const rows = new Map(Object.entries(seed));
+
+  function run(sql, binds) {
+    const q = sql.trim();
+    if (/^INSERT INTO jobs/i.test(q)) {
+      // binds are the 4 placeholders: id, kind, created_at, updated_at
+      const [id, kind, createdAt, updatedAt] = binds;
+      rows.set(id, { id, kind, status: "pending", created_at: createdAt, updated_at: updatedAt });
+      return { success: true };
+    }
+    if (/^UPDATE jobs SET/i.test(q)) {
+      const setClause = /SET (.+) WHERE id = \?/is.exec(q)[1];
+      const cols = setClause.split(",").map((c) => c.trim().split("=")[0].trim());
+      const id = binds[binds.length - 1];
+      const row = rows.get(id);
+      if (row) cols.forEach((c, i) => (row[c] = binds[i]));
+      return { success: true };
+    }
+    throw new Error(`makeD1: unsupported run() query: ${q}`);
+  }
+
+  function first(sql, binds) {
+    if (/^SELECT \* FROM jobs WHERE id = \?/i.test(sql.trim())) {
+      return rows.get(binds[0]) ?? null;
+    }
+    throw new Error(`makeD1: unsupported first() query: ${sql}`);
+  }
+
+  return {
+    _rows: rows,
+    prepare(sql) {
+      let binds = [];
+      const stmt = {
+        bind(...vals) {
+          binds = vals;
+          return stmt;
+        },
+        async run() {
+          return run(sql, binds);
+        },
+        async first() {
+          return first(sql, binds);
+        },
+      };
+      return stmt;
+    },
+  };
+}
+
+// A fake Daytona sandbox process handle for the job runner. `commandResult`
+// seeds executeSessionCommand's return; `poll` seeds getSessionCommand/logs.
+export function makeSandbox({ id = "sbx_1", cmdId = "cmd_1", exitCode, logs = "", throwOn = {} } = {}) {
+  const seen = { sessions: [], commands: [], deleted: [] };
+  return {
+    id,
+    _seen: seen,
+    process: {
+      async createSession(sessionId) {
+        seen.sessions.push(sessionId);
+      },
+      async executeSessionCommand(sessionId, opts) {
+        seen.commands.push({ sessionId, ...opts });
+        return { cmdId };
+      },
+      async getSessionCommand(sessionId, cid) {
+        if (throwOn.getSessionCommand) throw new Error("transient");
+        return { exitCode, sessionId, cid };
+      },
+      async getSessionCommandLogs() {
+        return logs;
+      },
+      async deleteSession(sessionId) {
+        seen.deleted.push(sessionId);
+      },
+    },
+  };
+}
