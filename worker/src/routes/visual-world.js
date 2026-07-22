@@ -113,6 +113,10 @@ function normalizeGeneration(g, i = 0) {
     source: str(o.source),
     file: str(o.file),
     thumb: str(o.thumb),
+    // Library `rel` once this generation was promoted to the shared asset
+    // library (empty = never saved). Lets the UI show a persistent "Saved to
+    // library" state after reload instead of re-offering the save.
+    savedRel: str(o.savedRel),
     error: str(o.error),
     refs: Array.isArray(o.refs) ? o.refs.map(normalizeRef) : [],
     ts: o.ts || null,
@@ -1165,6 +1169,12 @@ export function registerVisualWorld(app) {
     const safePid = normalizeProjectId(pid);
     await c.env.BUCKET.put(`media/${safePid}/asset/${rel}`, obj.body, {
       httpMetadata: { contentType: obj.httpMetadata?.contentType || "image/png" },
+    });
+    // Remember the library rel on the generation so the tab renders a persistent
+    // "Saved to library" state (and broadcasts it live to other clients).
+    await updateVW(c.env, pid, (v) => {
+      const g = v.generations.find((x) => x.id === id);
+      if (g) g.savedRel = rel;
     });
     return c.json({ ok: true, rel, name: `${base}.${ext}`, folder: dir || ".", url: `/asset/${rel}` });
   });

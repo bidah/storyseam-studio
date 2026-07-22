@@ -117,10 +117,11 @@ function GenerationCard({ gen, onOpen }) {
 
 function GenerationDetail({ gen, onClose, onRecreate, onUseAsRef, onAddToCanvas, onSaveToLibrary, onDelete }) {
   const { setModalImage } = useShell();
-  const [savedRel, setSavedRel] = useState(null);
+  const [savedRel, setSavedRel] = useState(gen?.savedRel || null);
   const [confirmDelete, setConfirmDelete] = useState(false);
-  // Reset the saved/confirm state whenever a different generation opens.
-  useEffect(() => { setSavedRel(null); setConfirmDelete(false); }, [gen?.id]);
+  // Seed the saved state from the persisted `savedRel` (survives reload) and
+  // reset confirm whenever a different generation opens.
+  useEffect(() => { setSavedRel(gen?.savedRel || null); setConfirmDelete(false); }, [gen?.id, gen?.savedRel]);
   if (!gen) return null;
   return (
     <Dialog open={!!gen} onOpenChange={(o) => !o && onClose()}>
@@ -154,6 +155,7 @@ function GenerationDetail({ gen, onClose, onRecreate, onUseAsRef, onAddToCanvas,
             <div className="flex flex-wrap items-center gap-2 pt-1">
               <Button
                 size="sm" variant="outline"
+                disabled={!!savedRel}
                 onClick={async () => { const rel = await onSaveToLibrary(gen); if (rel) setSavedRel(rel); }}
               >
                 <Library size={13} /> {savedRel ? "Saved to library" : "Save to library"}
@@ -293,6 +295,7 @@ function Visual() {
   const saveToLibrary = async (g) => {
     try {
       const j = await api("/api/visual-world/save-to-library", { method: "POST", body: JSON.stringify({ id: g.id, name: g.id }) });
+      refetch(); // pull the persisted savedRel into loader data
       return j.rel;
     } catch (e) { setError(String(e.message || e)); return null; }
   };
