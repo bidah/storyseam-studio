@@ -415,14 +415,14 @@ function RadioStudio() {
                   : <><Send size={14} /> Send to editor</>}
               </Button>
             </Tip>
-            <label className="flex cursor-pointer items-center gap-2 pl-1 pr-2 text-sm select-none">
-              <span className="flex items-center gap-1.5 text-muted-foreground">
-                <Bot size={14} /> Agent pacing
-              </span>
-              <Tip content="When on, the agent paces the timeline from the shot timings after sending">
+            {/* Tooltip lives on the label, not the Switch: TooltipTrigger overwrites
+                its child's data-state, which breaks the Switch's checked styling. */}
+            <Tip content="When on, the agent paces the timeline from the shot timings after sending">
+              <label className="flex cursor-pointer items-center gap-2 pl-1 pr-2 text-sm select-none">
+                <span className="text-muted-foreground">Agent pacing</span>
                 <Switch checked={pacingOn} onCheckedChange={setPacingOn} disabled={sending || pacing} />
-              </Tip>
-            </label>
+              </label>
+            </Tip>
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
