@@ -11,7 +11,7 @@ export const toggleLibrary = (api: Api) =>
     input: v.object({
       rel: d(
         v.pipe(v.string(), v.minLength(1)),
-        "Project-relative path of the image (from list_library).",
+        "The image's `rel` field EXACTLY as returned by list_library (e.g. \"characters/helena_v2.png\") — NOT its `url`, `thumb`, or `refUrl`, and not URL-encoded. If you don't have the rel, call list_library first.",
       ),
     }),
     async run({ input, signal }) {

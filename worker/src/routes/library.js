@@ -32,6 +32,47 @@ const cleanRel = (rel) =>
 // The R2 key of a browsable asset-library image (served at `/asset/<rel>`).
 const assetKey = (pid, rel) => `media/${normalizeProjectId(pid)}/asset/${cleanRel(rel)}`;
 
+// Resolve a client-supplied rel to an EXISTING library asset. Callers (the flue
+// agent especially) don't always send the bare `rel` — they send the `url`
+// (`/asset/<rel>`), the `thumb` (`/thumb/<rel>`), the absolute `refUrl`
+// (`https://…/files/media/<pid>/asset/<rel>`), a URL-encoded rel, or just the
+// file's basename. Try the exact rel first (so legit rels that happen to start
+// with e.g. `asset/` still win), then the stripped/decoded variants, then fall
+// back to a unique-basename match against the full asset listing.
+// Returns the canonical rel, or null when nothing matches.
+async function resolveAssetRel(env, pid, raw) {
+  const safePid = normalizeProjectId(pid);
+  let r = String(raw || "").trim().replace(/^https?:\/\/[^/]+/i, "");
+  const candidates = [];
+  const push = (v) => {
+    const c = cleanRel(v);
+    if (c && !candidates.includes(c)) candidates.push(c);
+  };
+  push(r);
+  const stripped = cleanRel(r);
+  for (const prefix of [`files/media/${safePid}/asset/`, `media/${safePid}/asset/`, "asset/", "thumb/"]) {
+    if (stripped.startsWith(prefix)) push(stripped.slice(prefix.length));
+  }
+  for (const c of candidates.slice()) {
+    try { push(decodeURIComponent(c)); } catch { /* not URL-encoded */ }
+  }
+  for (const c of candidates) {
+    if (await env.BUCKET.head(`media/${safePid}/asset/${c}`)) return c;
+  }
+  // Last resort: a unique basename match across the library.
+  const base = baseOf(candidates[0] || "");
+  if (base && IMG_RE.test(base)) {
+    const matches = (await listAssets(env, pid)).filter((rel) => baseOf(rel) === base);
+    if (matches.length === 1) return matches[0];
+  }
+  return null;
+}
+
+const badPath = (c, pid, rel) =>
+  c.json({
+    error: `Bad path: no library image "${rel}" in project ${normalizeProjectId(pid)}. Call list_library (GET /api/library) and pass the image's \`rel\` exactly as listed (not its url/thumb/refUrl).`,
+  }, 400);
+
 // Directory portion of a rel ("a/b/img.png" -> "a/b"; "img.png" -> "." as Node's
 // path.dirname did, which the Express handler used as the folder key).
 const dirOf = (rel) => {
@@ -156,11 +197,11 @@ export function registerLibrary(app) {
     const pid = c.get("projectId");
     let body;
     try { body = await c.req.json(); } catch { body = {}; }
-    const { rel } = body || {};
-    if (typeof rel !== "string") return c.json({ error: "Missing 'rel'" }, 400);
-    // Mirror Express's "Bad path" guard: the source asset must exist in R2.
-    const head = await c.env.BUCKET.head(assetKey(pid, rel));
-    if (!head) return c.json({ error: "Bad path" }, 400);
+    if (typeof body?.rel !== "string") return c.json({ error: "Missing 'rel'" }, 400);
+    // Mirror Express's "Bad path" guard: the source asset must exist in R2 —
+    // but resolve tolerant rel shapes (url/thumb/refUrl/encoded) first.
+    const rel = await resolveAssetRel(c.env, pid, body.rel);
+    if (!rel) return badPath(c, pid, body.rel);
 
     const db = await readDB(c.env, pid);
     db.library = db.library || {};
@@ -202,13 +243,13 @@ export function registerLibrary(app) {
     const pid = c.get("projectId");
     let body;
     try { body = await c.req.json(); } catch { body = {}; }
-    const { rel } = body || {};
-    if (typeof rel !== "string") return c.json({ error: "Missing 'rel'" }, 400);
+    if (typeof body?.rel !== "string") return c.json({ error: "Missing 'rel'" }, 400);
+    const rel = await resolveAssetRel(c.env, pid, body.rel);
+    if (!rel) return badPath(c, pid, body.rel);
     const key = assetKey(pid, rel);
-    if (!(await c.env.BUCKET.head(key))) return c.json({ error: "Bad path" }, 400);
 
     await c.env.BUCKET.delete(key);
-    await c.env.BUCKET.delete(proxyKey(pid, "asset", cleanRel(rel)));
+    await c.env.BUCKET.delete(proxyKey(pid, "asset", rel));
     await deselectRel(c.env, pid, rel);
     return c.json({ ok: true, rel });
   });
@@ -221,9 +262,11 @@ export function registerLibrary(app) {
     const pid = c.get("projectId");
     let body;
     try { body = await c.req.json(); } catch { body = {}; }
-    const { rel, name } = body || {};
-    if (typeof rel !== "string" || typeof name !== "string" || !name.trim())
+    const { name } = body || {};
+    if (typeof body?.rel !== "string" || typeof name !== "string" || !name.trim())
       return c.json({ error: "Missing 'rel'/'name'" }, 400);
+    const rel = await resolveAssetRel(c.env, pid, body.rel);
+    if (!rel) return badPath(c, pid, body.rel);
 
     // One filesystem-tame basename segment (mirrors cleanSeg in higgsfield.js);
     // keep the original extension when the new name doesn't spell one.
@@ -233,29 +276,29 @@ export function registerLibrary(app) {
       .slice(0, 80)
       .trim();
     if (!IMG_RE.test(base)) {
-      const ext = (IMG_RE.exec(baseOf(cleanRel(rel))) || [""])[0];
+      const ext = (IMG_RE.exec(baseOf(rel)) || [""])[0];
       base += ext;
     }
     if (!base || !IMG_RE.test(base)) return c.json({ error: "Not an image name" }, 400);
 
-    const dir = dirOf(cleanRel(rel));
+    const dir = dirOf(rel);
     const newRel = dir === "." ? base : `${dir}/${base}`;
-    if (newRel === cleanRel(rel)) return c.json({ ok: true, rel: newRel, name: base });
+    if (newRel === rel) return c.json({ ok: true, rel: newRel, name: base });
 
     const oldKey = assetKey(pid, rel);
     const newKey = assetKey(pid, newRel);
     const obj = await c.env.BUCKET.get(oldKey);
-    if (!obj) return c.json({ error: "Bad path" }, 400);
+    if (!obj) return badPath(c, pid, rel);
     if (await c.env.BUCKET.head(newKey)) return c.json({ error: "An image with that name already exists" }, 409);
 
     await c.env.BUCKET.put(newKey, obj.body, { httpMetadata: obj.httpMetadata });
     await c.env.BUCKET.delete(oldKey);
 
     // Move the thumb too (best-effort — ensureAssetThumbs regenerates if lost).
-    const th = await c.env.BUCKET.get(proxyKey(pid, "asset", cleanRel(rel)));
+    const th = await c.env.BUCKET.get(proxyKey(pid, "asset", rel));
     if (th) {
       await c.env.BUCKET.put(proxyKey(pid, "asset", newRel), th.body, { httpMetadata: th.httpMetadata });
-      await c.env.BUCKET.delete(proxyKey(pid, "asset", cleanRel(rel)));
+      await c.env.BUCKET.delete(proxyKey(pid, "asset", rel));
     }
 
     const db = await readDB(c.env, pid);
