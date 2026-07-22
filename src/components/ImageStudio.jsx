@@ -610,6 +610,17 @@ export default function ImageStudio({
               ))}
             </div>
           )}
+          {onSavePrompts && (
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              onClick={() => setEditPrompts(true)}
+              aria-label="Edit prompt library"
+              title="Edit prompt library"
+            >
+              <Pencil size={13} />
+            </Button>
+          )}
           {needsRef && (
             <button
               type="button"
@@ -620,21 +631,9 @@ export default function ImageStudio({
             </button>
           )}
 
-          {onSavePrompts && (
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              className="ml-auto"
-              onClick={() => setEditPrompts(true)}
-              aria-label="Edit prompt library"
-              title="Edit prompt library"
-            >
-              <Pencil size={13} />
-            </Button>
-          )}
           <Button
             size="sm"
-            className={onSavePrompts ? undefined : "ml-auto"}
+            className="ml-auto"
             onClick={doGenerate}
             disabled={isBusy || !prompt.trim() || needsRef}
             title={needsRef ? "Location sheets need a reference image — add one first" : undefined}
