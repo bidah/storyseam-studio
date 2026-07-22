@@ -478,21 +478,7 @@ export default function ImageStudio({
           className="mb-2 resize-none text-sm"
         />
         <div className="flex flex-wrap items-center gap-2">
-          {/* Prompt preset (only when the surface manages presets) */}
-          {onSavePrompts && (
-            <>
-              <Select value={presetId || NO_PRESET} onValueChange={(v) => setPresetId(v === NO_PRESET ? "" : v)}>
-                <SelectTrigger size="sm" className="w-[190px] text-xs"><SelectValue placeholder="Prompt style" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={NO_PRESET}>No style preset</SelectItem>
-                  {prompts.map((p) => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
-                </SelectContent>
-              </Select>
-              <Button variant="ghost" size="sm" onClick={() => setEditPrompts(true)} title="Edit prompt library">
-                <Pencil size={13} /> Prompts
-              </Button>
-            </>
-          )}
+          <Button variant="outline" size="sm" onClick={() => setPickRef(true)}><ImagePlus size={13} /> Reference</Button>
 
           {/* Model */}
           <Select value={model || DEFAULT_MODEL} onValueChange={(v) => setModel(v === DEFAULT_MODEL ? "" : v)}>
@@ -515,7 +501,16 @@ export default function ImageStudio({
             <SelectContent>{aspects.map((a) => <SelectItem key={a} value={a}>{a}</SelectItem>)}</SelectContent>
           </Select>
 
-          <Button variant="outline" size="sm" onClick={() => setPickRef(true)}><ImagePlus size={13} /> Reference</Button>
+          {/* Prompt preset (only when the surface manages presets) */}
+          {onSavePrompts && (
+            <Select value={presetId || NO_PRESET} onValueChange={(v) => setPresetId(v === NO_PRESET ? "" : v)}>
+              <SelectTrigger size="sm" className="w-[190px] text-xs"><SelectValue placeholder="Prompt style" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value={NO_PRESET}>No style preset</SelectItem>
+                {prompts.map((p) => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          )}
 
           {/* Sheet tagging — mutually exclusive checkboxes; the server layers the
               matching sheet prompt on top of the style preset. */}
@@ -543,9 +538,21 @@ export default function ImageStudio({
             </button>
           )}
 
+          {onSavePrompts && (
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              className="ml-auto"
+              onClick={() => setEditPrompts(true)}
+              aria-label="Edit prompt library"
+              title="Edit prompt library"
+            >
+              <Pencil size={13} />
+            </Button>
+          )}
           <Button
             size="sm"
-            className="ml-auto"
+            className={onSavePrompts ? undefined : "ml-auto"}
             onClick={doGenerate}
             disabled={isBusy || !prompt.trim() || needsRef}
             title={needsRef ? "Location sheets need a reference image — add one first" : undefined}
