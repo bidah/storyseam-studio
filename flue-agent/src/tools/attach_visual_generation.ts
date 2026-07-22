@@ -17,6 +17,12 @@ export const attachVisualGeneration = (api: Api) =>
       model: v.optional(d(v.string(), "The image model id you used, e.g. the Nano Banana Pro id from models_explore.")),
       aspectRatio: v.optional(d(v.string(), "Aspect ratio you generated at, e.g. '16:9'.")),
       presetId: v.optional(d(v.string(), "Id of the prompt-library preset used, if any.")),
+      sheetType: v.optional(
+        d(
+          v.picklist(["character", "location"]),
+          "Set when this image is a design sheet: 'character' for a character model sheet / turnaround, 'location' for a location design sheet (see the sheet-generation skill). Stamped on the generation as provenance metadata and shown as a badge on the tab.",
+        ),
+      ),
       refs: v.optional(
         d(
           v.array(

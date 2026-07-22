@@ -62,6 +62,7 @@ import { editTimeline } from "./edit_timeline.js";
 import { listLibrary } from "./list_library.js";
 import { toggleLibrary } from "./toggle_library.js";
 import { attachCharacterSheet } from "./attach_character_sheet.js";
+import { attachLocationSheet } from "./attach_location_sheet.js";
 import { attachCharacterVoice } from "./attach_character_voice.js";
 import { listCharacterVoices } from "./list_character_voices.js";
 import { signBundle } from "./sign_bundle.js";
@@ -128,6 +129,7 @@ export function createTools(api: Api): ToolDefinition[] {
     listLibrary(api),
     toggleLibrary(api),
     attachCharacterSheet(api),
+    attachLocationSheet(api),
     attachCharacterVoice(api),
     listCharacterVoices(api),
     signBundle(api),

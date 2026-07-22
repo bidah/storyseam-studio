@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Outlet, useLocation, useNavigate, useNavigation, useRevalidator } from "react-router";
-import { RefreshCw, ExternalLink, Clapperboard, Sun, Moon, LogOut, User } from "lucide-react";
+import { Link, Outlet, useLocation, useNavigate, useNavigation, useRevalidator } from "react-router";
+import { RefreshCw, ExternalLink, Clapperboard, Sun, Moon, LogOut, User, Settings } from "lucide-react";
 import { Glowing } from "glowing";
 import { cn } from "@/lib/utils";
 import { useProjectEvents } from "@/lib/useProjectEvents";
@@ -133,6 +133,11 @@ function UserMenu() {
       <DropdownMenuContent align="end" className="w-52">
         <DropdownMenuLabel>Higgsfield account</DropdownMenuLabel>
         <DropdownMenuSeparator />
+        <DropdownMenuItem asChild>
+          <Link to="/settings">
+            <Settings size={14} /> Settings
+          </Link>
+        </DropdownMenuItem>
         <DropdownMenuItem onSelect={(e) => { e.preventDefault(); toggleTheme(); }}>
           {dark ? <Sun size={14} /> : <Moon size={14} />} {dark ? "Light mode" : "Dark mode"}
         </DropdownMenuItem>

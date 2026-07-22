@@ -147,10 +147,33 @@ function fmtTime(sec) {
   return `${m}:${String(s % 60).padStart(2, "0")}`;
 }
 
+// A dynamic-import failure means the user is on an old client whose hashed chunk
+// (e.g. `layout-BxqfgYuk.js`) was purged by a newer deploy — Workers Assets only
+// serves the current build. A reload pulls the fresh index.html + new hashes.
+const isChunkLoadError = (err) =>
+  /Failed to fetch dynamically imported module|error loading dynamically imported module|Importing a module script failed/i.test(
+    String(err?.message || err || ""),
+  );
+
 // Route-level error boundary for loader failures (React Router `errorElement`).
 // Styled like ErrorNote so a failed tab load reads the same as an inline error.
 function RouteError() {
   const err = useRouteError();
+
+  // Auto-recover from a stale-client chunk 404 by reloading once. The timestamp
+  // guard blocks an infinite loop when the fetch fails for a real reason (offline,
+  // genuinely-missing file) while still letting a *future* deploy trigger its own
+  // reload — a permanent flag would suppress those forever.
+  if (isChunkLoadError(err)) {
+    const now = Date.now();
+    const last = Number(sessionStorage.getItem("chunk-reload-at") || 0);
+    if (now - last > 10_000) {
+      sessionStorage.setItem("chunk-reload-at", String(now));
+      window.location.reload();
+      return <Spinner />;
+    }
+  }
+
   return <ErrorNote>{String(err?.message || err || "Failed to load")}</ErrorNote>;
 }
 

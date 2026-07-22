@@ -14,7 +14,8 @@
 import { useEffect, useRef, useState } from "react";
 import {
   Wand2, Loader2, Sparkles, ImagePlus, X, Plus, Trash2, RefreshCw,
-  Copy, Library, Pencil, Layers, AlertCircle,
+  Copy, Library, Pencil, Layers, AlertCircle, Check, ChevronDown, ChevronUp, Info,
+  IdCard, MapPin,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useShell } from "@/lib/shellContext";
@@ -28,6 +29,7 @@ import {
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Empty, Eyebrow, Panel, ErrorNote, ConfirmModal } from "@/components/shared";
 import MediaPicker from "@/components/MediaPicker";
 
@@ -37,6 +39,14 @@ const COUNTS = [1, 2, 3, 4];
 // choices use sentinels mapped back to "" (server resolves the default model).
 const NO_PRESET = "__none__";
 const DEFAULT_MODEL = "__default__";
+
+// Display meta for the sheet tag ("" = plain image). The tag layers the
+// project's character/location sheet prompt into the generation server-side
+// and is saved on the record as `sheetType` provenance.
+const SHEET_TYPES = {
+  character: { label: "Character sheet", icon: IdCard },
+  location: { label: "Location sheet", icon: MapPin },
+};
 
 /* ---------------------------------------------------------------- *
  * Prompt library — choose a preset (fills the prompt) and edit them. *
@@ -107,6 +117,12 @@ export function GenerationCard({ gen, onOpen }) {
       )}
       title={gen.prompt}
     >
+      {gen.sheetType && SHEET_TYPES[gen.sheetType] && gen.status === "ready" && (
+        <Badge variant="info" className="pointer-events-none absolute left-1.5 top-1.5 z-10">
+          {(() => { const TagIcon = SHEET_TYPES[gen.sheetType].icon; return <TagIcon size={11} />; })()}
+          {gen.sheetType === "character" ? "Character" : "Location"}
+        </Badge>
+      )}
       {gen.status === "ready" && gen.url ? (
         <img src={gen.url} loading="lazy" alt={gen.prompt} className="h-full w-full object-cover" />
       ) : gen.status === "error" ? (
@@ -124,14 +140,61 @@ export function GenerationCard({ gen, onOpen }) {
   );
 }
 
+// One row of the DETAILS key-value table.
+function DetailRow({ label, children }) {
+  return (
+    <div className="flex items-baseline justify-between gap-3">
+      <dt className="shrink-0 text-sm text-muted-foreground">{label}</dt>
+      <dd className="min-w-0 truncate text-right text-sm font-medium" title={typeof children === "string" ? children : undefined}>
+        {children}
+      </dd>
+    </div>
+  );
+}
+
 function GenerationDetail({ gen, onClose, onRecreate, onUseAsRef, onEdit, onAddToCanvas, onSaveToLibrary, onDelete, detailActions }) {
   const { setModalImage } = useShell();
   const [savedRel, setSavedRel] = useState(gen?.savedRel || null);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [promptExpanded, setPromptExpanded] = useState(false);
+  const [copied, setCopied] = useState(false);
   // Seed the saved state from the persisted `savedRel` (survives reload) and
-  // reset confirm whenever a different generation opens.
-  useEffect(() => { setSavedRel(gen?.savedRel || null); setConfirmDelete(false); }, [gen?.id, gen?.savedRel]);
+  // reset confirm/expand/copied whenever a different generation opens.
+  useEffect(() => {
+    setSavedRel(gen?.savedRel || null);
+    setConfirmDelete(false);
+    setPromptExpanded(false);
+    setCopied(false);
+  }, [gen?.id, gen?.savedRel]);
   if (!gen) return null;
+
+  const promptText = gen.prompt || "";
+  const promptIsLong = promptText.length > 240 || promptText.split("\n").length > 6;
+  const refThumbs = (gen.refs || []).filter((r) => r.url || r.thumb);
+  const createdDate = gen.ts ? new Date(gen.ts) : null;
+  const createdLabel = createdDate && !Number.isNaN(createdDate.getTime())
+    ? createdDate.toLocaleDateString(undefined, { month: "long", day: "numeric", year: "numeric" })
+    : null;
+
+  const copyPrompt = () => {
+    navigator.clipboard?.writeText(promptText);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  };
+
+  // Secondary (outline) actions for the two-column row under the CTA.
+  const secondaries = [
+    onEdit && { key: "edit", icon: Pencil, label: "Edit", onClick: () => onEdit(gen) },
+    onUseAsRef && { key: "ref", icon: ImagePlus, label: "Reference", title: "Use as generation reference", onClick: () => onUseAsRef(gen) },
+    onAddToCanvas && { key: "canvas", icon: Layers, label: "Add to canvas", onClick: () => onAddToCanvas(gen) },
+    onSaveToLibrary && {
+      key: "library", icon: Library,
+      label: savedRel ? "Saved to library" : "Save to library",
+      disabled: !!savedRel,
+      onClick: async () => { const rel = await onSaveToLibrary(gen); if (rel) setSavedRel(rel); },
+    },
+  ].filter(Boolean);
+
   return (
     <Dialog open={!!gen} onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="flex h-[95vh] max-h-[95vh] w-[96vw] max-w-[96vw] flex-col overflow-hidden sm:max-w-[96vw]">
@@ -145,46 +208,101 @@ function GenerationDetail({ gen, onClose, onRecreate, onUseAsRef, onEdit, onAddT
           >
             <img src={gen.url} alt={gen.prompt} className="max-h-full max-w-full object-contain" />
           </button>
-          <div className="space-y-3 overflow-y-auto pr-1">
-            <div>
-              <Eyebrow className="normal-case tracking-normal text-foreground/70">Prompt</Eyebrow>
-              <p className="whitespace-pre-wrap text-sm leading-relaxed">{gen.prompt || "—"}</p>
-            </div>
-            <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
-              {gen.model && <Badge variant="outline">{gen.model}</Badge>}
-              {gen.aspectRatio && <Badge variant="outline">{gen.aspectRatio}</Badge>}
-              {gen.refs?.length > 0 && <Badge variant="info"><ImagePlus size={11} /> {gen.refs.length} ref</Badge>}
-            </div>
-            <div className="flex flex-wrap gap-2 pt-1">
-              {onRecreate && <Button size="sm" onClick={() => onRecreate(gen)}><RefreshCw size={13} /> Recreate</Button>}
-              {onEdit && <Button size="sm" variant="outline" onClick={() => onEdit(gen)}><Pencil size={13} /> Edit</Button>}
-              {onUseAsRef && <Button size="sm" variant="outline" onClick={() => onUseAsRef(gen)}><ImagePlus size={13} /> Use as reference</Button>}
-              {onAddToCanvas && <Button size="sm" variant="outline" onClick={() => onAddToCanvas(gen)}><Layers size={13} /> Add to canvas</Button>}
-              <Button size="sm" variant="outline" onClick={() => navigator.clipboard?.writeText(gen.prompt || "")}><Copy size={13} /> Copy prompt</Button>
-            </div>
-            {/* Surface-specific extra actions (e.g. "Use as first frame", "Select take"). */}
-            {typeof detailActions === "function" && (
-              <div className="flex flex-wrap gap-2 pt-1">{detailActions(gen)}</div>
-            )}
-            {(onSaveToLibrary || onDelete) && (
-              <div className="flex flex-wrap items-center gap-2 pt-1">
-                {onSaveToLibrary && (
-                  <Button
-                    size="sm" variant="outline"
-                    disabled={!!savedRel}
-                    onClick={async () => { const rel = await onSaveToLibrary(gen); if (rel) setSavedRel(rel); }}
-                  >
-                    <Library size={13} /> {savedRel ? "Saved to library" : "Save to library"}
+
+          {/* Info panel — sectioned cards on top, actions pinned to the bottom. */}
+          <div className="flex min-h-0 flex-col">
+            <div className="min-h-0 flex-1 space-y-4 overflow-y-auto pr-1">
+              {/* PROMPT */}
+              <section className="rounded-xl border bg-muted/30 p-3">
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <Eyebrow className="flex items-center gap-1.5"><Sparkles size={12} /> Prompt</Eyebrow>
+                  <Button variant="ghost" size="sm" className="h-7 gap-1.5 px-2 text-xs" onClick={copyPrompt}>
+                    {copied ? <Check size={13} /> : <Copy size={13} />} {copied ? "Copied" : "Copy"}
                   </Button>
+                </div>
+                {refThumbs.length > 0 && (
+                  <div className="mb-2.5 flex flex-wrap gap-1.5">
+                    {refThumbs.map((r, i) => (
+                      <img
+                        key={`${r.rel || r.genId || i}`}
+                        src={r.url || r.thumb}
+                        alt="reference"
+                        className="h-12 w-12 rounded-md border object-cover"
+                      />
+                    ))}
+                  </div>
                 )}
-                {savedRel && <span className="text-xs text-muted-foreground">→ {savedRel}</span>}
-                {onDelete && (
-                  <Button size="sm" variant="ghost" className="ml-auto text-muted-foreground hover:text-destructive" onClick={() => setConfirmDelete(true)}>
+                <p className={cn(
+                  "whitespace-pre-wrap text-sm leading-relaxed",
+                  promptIsLong && !promptExpanded && "line-clamp-6",
+                )}>
+                  {promptText || "—"}
+                </p>
+                {promptIsLong && (
+                  <button
+                    type="button"
+                    onClick={() => setPromptExpanded((v) => !v)}
+                    className="mt-1.5 flex items-center gap-1 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
+                  >
+                    {promptExpanded
+                      ? <>Show less <ChevronUp size={13} /></>
+                      : <>See all <ChevronDown size={13} /></>}
+                  </button>
+                )}
+              </section>
+
+              {/* DETAILS */}
+              <section>
+                <Eyebrow className="mb-1.5 flex items-center gap-1.5 px-1"><Info size={12} /> Details</Eyebrow>
+                <dl className="space-y-2 rounded-xl border bg-muted/30 p-3">
+                  <DetailRow label="Model">{gen.model || "Default"}</DetailRow>
+                  {gen.sheetType && SHEET_TYPES[gen.sheetType] && (
+                    <DetailRow label="Sheet">{SHEET_TYPES[gen.sheetType].label}</DetailRow>
+                  )}
+                  {gen.aspectRatio && <DetailRow label="Aspect">{gen.aspectRatio}</DetailRow>}
+                  {gen.refs?.length > 0 && <DetailRow label="References">{gen.refs.length}</DetailRow>}
+                  {createdLabel && <DetailRow label="Created">{createdLabel}</DetailRow>}
+                  {savedRel && <DetailRow label="Library">{savedRel}</DetailRow>}
+                </dl>
+              </section>
+            </div>
+
+            {/* Bottom-pinned actions */}
+            <div className="mt-3 space-y-2 border-t pt-3">
+              {onRecreate && (
+                <Button className="w-full" onClick={() => onRecreate(gen)}>
+                  <RefreshCw size={14} /> Recreate
+                </Button>
+              )}
+              {/* Surface-specific extra actions (e.g. "Use as first frame", "Select take"). */}
+              {typeof detailActions === "function" && (
+                <div className="flex flex-wrap gap-2">{detailActions(gen)}</div>
+              )}
+              {secondaries.length > 0 && (
+                <div className="grid grid-cols-2 gap-2">
+                  {secondaries.map(({ key, icon: SecIcon, label, title, disabled, onClick }) => (
+                    <Button
+                      key={key}
+                      size="sm"
+                      variant="outline"
+                      className={cn("min-w-0 text-xs", secondaries.length % 2 === 1 && key === secondaries[secondaries.length - 1].key && "col-span-2")}
+                      title={title}
+                      disabled={disabled}
+                      onClick={onClick}
+                    >
+                      <SecIcon size={13} /> <span className="truncate">{label}</span>
+                    </Button>
+                  ))}
+                </div>
+              )}
+              {onDelete && (
+                <div className="flex justify-end">
+                  <Button size="sm" variant="ghost" className="text-muted-foreground hover:text-destructive" onClick={() => setConfirmDelete(true)}>
                     <Trash2 size={13} /> Delete
                   </Button>
-                )}
-              </div>
-            )}
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </DialogContent>
@@ -221,8 +339,11 @@ export default function ImageStudio({
   countOptions = COUNTS,
   aspects = ASPECTS,
   refPickerSources, // MediaPicker `sources` (undefined = its default set)
+  // Show the character/location sheet checkboxes in the composer (surfaces whose
+  // backend understands `sheetType` — currently the Visual world).
+  sheetTagging = false,
   // Backend actions (each optional; a missing one hides its affordance)
-  onGenerate,          // async ({prompt, model, count, aspectRatio, presetId, refs, mode, base})
+  onGenerate,          // async ({prompt, model, count, aspectRatio, presetId, sheetType, refs, mode, base})
   onDelete,            // async (gen)
   onSaveToLibrary,     // async (gen) => rel
   onAddToCanvas,       // async (gen)
@@ -241,6 +362,10 @@ export default function ImageStudio({
   const [count, setCount] = useState(String(settings.count || 1));
   const [aspectRatio, setAspectRatio] = useState(settings.aspectRatio || "16:9");
   const [presetId, setPresetId] = useState(settings.presetId ?? (prompts?.[0]?.id ?? ""));
+  // "" | "character" | "location" — tag the next generation as a design sheet
+  // (mutually exclusive; the server layers the matching sheet prompt on top of
+  // the style preset and stamps the metadata on the generation).
+  const [sheetType, setSheetType] = useState("");
   const [refs, setRefs] = useState([]);
   // "new" | "variation" | "edit" — the generation intent (base holds the source gen).
   const [mode, setMode] = useState("new");
@@ -252,7 +377,7 @@ export default function ImageStudio({
     if (!prompt.trim() || isBusy || !onGenerate) return;
     setLocalBusy(true);
     try {
-      await onGenerate({ prompt, model, count: Number(count), aspectRatio, presetId, refs, mode, base });
+      await onGenerate({ prompt, model, count: Number(count), aspectRatio, presetId, sheetType, refs, mode, base });
       // A fresh "new" generation clears the edit/variation intent.
       if (mode !== "new") { setMode("new"); setBase(null); }
     } finally { setLocalBusy(false); }
@@ -264,6 +389,7 @@ export default function ImageStudio({
     if (g.model) setModel(g.model);
     if (g.aspectRatio) setAspectRatio(g.aspectRatio);
     if (g.presetId) setPresetId(g.presetId);
+    setSheetType(g.sheetType || "");
     setRefs((g.refs || []).map((r) => ({ ...r, thumb: r.url || r.thumb })));
     setMode("new"); setBase(null);
     setOpen(null);
@@ -386,6 +512,23 @@ export default function ImageStudio({
           </Select>
 
           <Button variant="outline" size="sm" onClick={() => setPickRef(true)}><ImagePlus size={13} /> Reference</Button>
+
+          {/* Sheet tagging — mutually exclusive checkboxes; the server layers the
+              matching sheet prompt on top of the style preset. */}
+          {sheetTagging && (
+            <div className="flex items-center gap-3 rounded-md border px-2.5 py-1.5">
+              {Object.entries(SHEET_TYPES).map(([key, { label, icon: TagIcon }]) => (
+                <label key={key} className="flex cursor-pointer select-none items-center gap-1.5 text-xs text-muted-foreground has-[[data-state=checked]]:text-foreground">
+                  <Checkbox
+                    checked={sheetType === key}
+                    onCheckedChange={(v) => setSheetType(v ? key : "")}
+                    aria-label={label}
+                  />
+                  <TagIcon size={13} /> {label}
+                </label>
+              ))}
+            </div>
+          )}
 
           <Button className="ml-auto" onClick={doGenerate} disabled={isBusy || !prompt.trim()}>
             {isBusy ? <><Loader2 size={14} className="animate-spin" /> generating…</> : <><Wand2 size={14} /> Generate</>}

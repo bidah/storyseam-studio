@@ -173,3 +173,7 @@ presets you're not changing).
 - State which references you used. No raw IDs/JSON in chat. Use the MCP, never a CLI.
 - See also: `generate-storyboard` (per-shot stills for the Episode tab) — the same
   MCP mechanics; this skill is the free-form character/world exploration counterpart.
+- See also: `sheet-generation` — when the user asks for a **character sheet /
+  turnaround** or a **location sheet**, use that skill instead: it layers the
+  project's dedicated sheet prompt (from `sheetPrompts`) into the assembly and
+  tags the attach with `sheetType`. Ordinary concept images never set `sheetType`.

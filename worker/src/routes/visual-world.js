@@ -59,12 +59,44 @@ const SEED_PROMPTS = [
   },
 ];
 
+// Sheet prompts: layered on TOP of the style preset when a generation is tagged
+// as a character sheet or a location sheet (composer checkboxes / agent skill).
+// Editable on the Settings page (PUT /api/visual-world/sheet-prompts).
+const SEED_SHEET_PROMPTS = {
+  character:
+    "Create a contact sheet for this character. The contact sheet should contain " +
+    "a full body front facing wide shot, including the feet. A rear facing full " +
+    "body wide shot including the feet. And a close-up of the character framed " +
+    "from the shoulders up, front facing. Make sure the character is the exact " +
+    "same in all poses. The setting is a neutral and minimal environment with a " +
+    "ground plane and simplistic scene depth. Even lighting, low contrast, " +
+    "natural color palette, lifted shadows and natural color tones. There are no " +
+    "division lines, text labels or graphic overlays present",
+  location:
+    "Create a contact sheet for this location. The contact sheet should contain " +
+    "one establishing wide shot of the place, plus two or three closer key-angle " +
+    "shots (entrance, interior or landmark detail). Make sure the location is the " +
+    "exact same in all shots — consistent architecture, palette and lighting. " +
+    "Even lighting, low contrast, natural color palette, lifted shadows and " +
+    "natural color tones. No characters. There are no division lines, text " +
+    "labels or graphic overlays present",
+};
+
+function normalizeSheetPrompts(s) {
+  const o = s || {};
+  return {
+    character: str(o.character) || SEED_SHEET_PROMPTS.character,
+    location: str(o.location) || SEED_SHEET_PROMPTS.location,
+  };
+}
+
 function emptyVisualWorld() {
   return {
     generatedAt: null,
     source: null,
     settings: { model: "", aspectRatio: "16:9", count: 1, cinematic: false, presetId: "preset-2d" },
     prompts: structuredClone(SEED_PROMPTS),
+    sheetPrompts: { ...SEED_SHEET_PROMPTS },
     generations: [],
     board: { nodes: [], edges: [], viewport: null },
   };
@@ -109,6 +141,10 @@ function normalizeGeneration(g, i = 0) {
     model: str(o.model),
     aspectRatio: str(o.aspectRatio) || "16:9",
     presetId: str(o.presetId),
+    // "" (plain image) | "character" | "location" — this generation was made as a
+    // character/location design sheet (the sheet prompt was layered into the
+    // assembled prompt). Provenance metadata for filtering + linking to rosters.
+    sheetType: ["character", "location"].includes(o.sheetType) ? o.sheetType : "",
     jobId: str(o.jobId),
     source: str(o.source),
     file: str(o.file),
@@ -254,6 +290,7 @@ function normalizeVisualWorld(raw) {
   base.prompts = Array.isArray(w.prompts) && w.prompts.length
     ? w.prompts.map(normalizePrompt)
     : structuredClone(SEED_PROMPTS);
+  base.sheetPrompts = normalizeSheetPrompts(w.sheetPrompts);
   base.generations = Array.isArray(w.generations) ? w.generations.map(normalizeGeneration) : [];
   base.board = normalizeBoard(w.board);
   return base;
@@ -788,6 +825,7 @@ export function registerVisualWorld(app) {
     const count = clampCount(body.count);
     const aspectRatio = str(body.aspectRatio) || "16:9";
     const presetId = str(body.presetId);
+    const sheetType = ["character", "location"].includes(body.sheetType) ? body.sheetType : "";
     const inputRefs = Array.isArray(body.refs) ? body.refs.map(normalizeRef) : [];
 
     try {
@@ -801,10 +839,12 @@ export function registerVisualWorld(app) {
       if (!model) model = defaultId;
       if (!model) return c.json({ error: "Could not resolve an image model" }, 502);
 
-      // Assemble the final prompt: preset style prefix (if chosen) + the scene.
+      // Assemble the final prompt: preset style prefix (if chosen) + the sheet
+      // prompt (when tagged as a character/location sheet) + the scene.
       const vw = await readVW(c.env, pid);
       const preset = presetId ? vw.prompts.find((p) => p.id === presetId) : null;
-      const assembledPrompt = preset?.image ? `${preset.image}\n\n${prompt}` : prompt;
+      const sheetPrompt = sheetType ? vw.sheetPrompts[sheetType] : "";
+      const assembledPrompt = [preset?.image, sheetPrompt, prompt].filter(Boolean).join("\n\n");
 
       // Resolve every reference to an ungated /files URL, then import → media_id,
       // tagging each with the role THIS model accepts (Nano Banana Pro wants
@@ -848,6 +888,7 @@ export function registerVisualWorld(app) {
           model,
           aspectRatio,
           presetId,
+          sheetType,
           jobId: s.jobId,
           refs: inputRefs,
           ts,
@@ -1066,6 +1107,7 @@ export function registerVisualWorld(app) {
       model: str(body.model),
       aspectRatio: str(body.aspectRatio) || "16:9",
       presetId: str(body.presetId),
+      sheetType: str(body.sheetType),
       file,
       source,
       refs: Array.isArray(body.refs) ? body.refs : [],
@@ -1113,6 +1155,22 @@ export function registerVisualWorld(app) {
     const prompts = list.map(normalizePrompt);
     await updateVW(c.env, pid, (v) => { v.prompts = prompts; });
     return c.json({ ok: true, prompts });
+  });
+
+  // Merge-patch the character/location sheet prompts (Settings page). Sending an
+  // empty string resets that prompt to its seed default (normalizeSheetPrompts).
+  app.put("/api/visual-world/sheet-prompts", async (c) => {
+    const pid = c.get("projectId");
+    let patch;
+    try { patch = await c.req.json(); } catch { patch = {}; }
+    await updateVW(c.env, pid, (v) => {
+      const next = { ...v.sheetPrompts };
+      if (typeof patch.character === "string") next.character = patch.character;
+      if (typeof patch.location === "string") next.location = patch.location;
+      v.sheetPrompts = normalizeSheetPrompts(next);
+    });
+    const fresh = await readVW(c.env, pid);
+    return c.json({ ok: true, sheetPrompts: fresh.sheetPrompts });
   });
 
   // Merge-patch the composer's remembered defaults.

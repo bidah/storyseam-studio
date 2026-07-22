@@ -65,13 +65,13 @@ function Visual() {
     return j;
   }, []);
 
-  const generate = async ({ prompt, model, count, aspectRatio, presetId, refs }) => {
+  const generate = async ({ prompt, model, count, aspectRatio, presetId, sheetType, refs }) => {
     setBusy(true); setError(null);
     try {
       await api("/api/visual-world/generate", {
         method: "POST",
         body: JSON.stringify({
-          prompt, model, count: Number(count), aspectRatio, presetId,
+          prompt, model, count: Number(count), aspectRatio, presetId, sheetType,
           // Library/generation refs resolve to an ungated /files url server-side
           // from rel/genId; PC uploads already carry an absolute /files url, so
           // forward it directly (the server imports whatever `url` it's given).
@@ -130,6 +130,7 @@ function Visual() {
       models={models}
       prompts={prompts}
       settings={world.settings || {}}
+      sheetTagging
       busy={busy}
       pending={pending}
       error={error}

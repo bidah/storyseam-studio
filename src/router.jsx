@@ -51,6 +51,8 @@ export const router = createBrowserRouter([
       { path: "editor", lazy: () => import("@/routes/editor") }, // keeps Remotion out of the main chunk
       { path: "library", lazy: () => import("@/routes/library"), ErrorBoundary: RouteError, HydrateFallback: fallback("library") },
       { path: "sounds", lazy: () => import("@/routes/sounds"), ErrorBoundary: RouteError, HydrateFallback: fallback("sounds") },
+      // Not a top tab — opened from the header avatar menu.
+      { path: "settings", lazy: () => import("@/routes/settings"), ErrorBoundary: RouteError },
       // Unknown paths fall back to the Script tab.
       { path: "*", loader: () => redirect("/script") },
     ],
