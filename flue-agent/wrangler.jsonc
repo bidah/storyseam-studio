@@ -17,6 +17,11 @@
   // al.), billed to this account, auto-routed through Cloudflare AI Gateway. No
   // external model API key needed.
   "ai": { "binding": "AI" },
+  // Capture console output (incl. the observe() error lines in app.ts) in
+  // Cloudflare Workers Logs — visible in the dashboard Logs tab and `wrangler
+  // tail`. The main shot-studio-uploads worker already has this; the agent
+  // worker didn't, so failed runs left no trace here.
+  "observability": { "enabled": true },
   // Non-secret config. Secrets (FLUE_PROXY_SECRET; plus ANTHROPIC_API_KEY only if
   // you re-add an anthropic/* model) are set with `wrangler secret put`.
   "vars": {

@@ -1,9 +1,88 @@
-import { registerProvider } from "@flue/runtime";
+import { observe, registerProvider } from "@flue/runtime";
 import { flue } from "@flue/runtime/routing";
 import { Hono, type MiddlewareHandler } from "hono";
 import { verifyProxyUser, proxySecret, PROXY_HEADER } from "./lib/proxy-auth.js";
 import { decodeInstanceId } from "./lib/instance-id.js";
 import { isAllowedModel } from "./lib/models.js";
+
+// --- Observability -----------------------------------------------------------
+// Surface agent failures to Cloudflare Workers Logs (wrangler.jsonc enables
+// `observability`, so these land in the dashboard's Logs tab and `wrangler
+// tail`). Without this, a failed run ("agent error" in the chat panel) left no
+// trace on this worker — the flue runtime emits the failure via observe() but
+// nothing consumed it. We log every error-ish event with enough correlation
+// (instanceId → userId~projectId~chatId, runId, operationKind) to find the run.
+// Subscriber work must stay light: observe() callbacks are fire-and-forget and
+// their promises are observed-for-rejection but never awaited, so we only emit
+// synchronous console lines here — no I/O.
+function errText(error: unknown): string {
+  if (!error) return "";
+  if (error instanceof Error) return `${error.name}: ${error.message}`;
+  if (typeof error === "string") return error;
+  try {
+    return JSON.stringify(error);
+  } catch {
+    return String(error);
+  }
+}
+
+observe((event) => {
+  // Correlation fields ride on every decoded event (optional per variant).
+  const scope = {
+    instanceId: event.instanceId,
+    runId: event.runId,
+    agent: event.agentName,
+  };
+  switch (event.type) {
+    case "run_end":
+      if (event.isError) {
+        console.error("[flue] run failed", {
+          ...scope,
+          durationMs: event.durationMs,
+          error: errText(event.error),
+        });
+      }
+      break;
+    case "submission_settled":
+      if (event.outcome !== "completed") {
+        console.error("[flue] submission " + event.outcome, {
+          ...scope,
+          submissionId: event.submissionId,
+          error: event.error?.message,
+          type: event.error?.type,
+          details: event.error?.details,
+        });
+      }
+      break;
+    case "operation":
+      if (event.isError) {
+        console.error("[flue] operation failed", {
+          ...scope,
+          operationId: event.operationId,
+          kind: event.operationKind,
+          durationMs: event.durationMs,
+          error: errText(event.error),
+        });
+      }
+      break;
+    case "compaction":
+      if (event.isError) {
+        console.warn("[flue] compaction failed", {
+          ...scope,
+          error: errText(event.error),
+        });
+      }
+      break;
+    case "log":
+      // Forward the agent's own structured logs (log.warn/log.error).
+      if (event.level === "error") {
+        console.error("[flue] " + event.message, { ...scope, ...event.attributes });
+      } else if (event.level === "warn") {
+        console.warn("[flue] " + event.message, { ...scope, ...event.attributes });
+      }
+      break;
+  }
+});
 
 // The per-turn model chosen by the web picker rides on this header (set by the
 // projectFetch shim on the SPA side and forwarded verbatim by the /eve proxy).
