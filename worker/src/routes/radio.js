@@ -332,4 +332,113 @@ export function registerRadio(app) {
       timeline,
     });
   });
+
+  // Commit the paced Editor timeline's timing back to the Shot list: set each
+  // shot's `dur` to its REALIZED screen time so everything derived from the
+  // shot list — the animatic, the <=15s multishot packs, the episode video
+  // requests — inherits the pacing instead of the original planned lengths.
+  // The pipeline's ordering contract: radio → pace → commit → animatic →
+  // generate episode video, so the generated clips land at the paced size.
+  //
+  // Timing attribution per timeline kind:
+  //  - animatic: exact. Every shot's picture item(s) carry `shot` provenance;
+  //    its dur = the summed length of its picture items.
+  //  - radio: only voiced shots are on the timeline, so the air between two
+  //    lines has to be attributed. The voiced shot keeps its take plus a small
+  //    trailing breath; the rest of the gap is split across the silent shots
+  //    between them, proportional to their planned durs (what the writer
+  //    thought each was worth). No silent shots ⇒ the whole gap is the voiced
+  //    shot's. Shots outside the voiced span are left untouched.
+  //
+  // Only `dur` values change — ids, order, and every other field are preserved
+  // (shot ids are a public key space; see routes/shotlist.js).
+  app.post("/api/radio/commit-pacing", async (c) => {
+    const pid = c.get("projectId");
+    const sel = await readDoc(c.env, pid, "selections", { library: {}, episode: {} });
+    const tl = sel.editorTimeline;
+    const kind = tl?.source?.kind;
+    if (!tl || (kind !== "radio" && kind !== "animatic")) {
+      return c.json({ error: "The Editor doesn't hold a radio or animatic timeline — send one there (and pace it) first." }, 400);
+    }
+    const fps = tl.fps || TL_FPS;
+    const slDoc = await readDoc(c.env, pid, "shotlist", null);
+    const shots = (slDoc?.shots || []).map(normalizeShot);
+    if (!shots.length) return c.json({ error: "No shot list to commit into." }, 400);
+
+    const newDur = new Map(); // shot n → seconds
+    if (kind === "animatic") {
+      const secByShotId = new Map();
+      for (const t of tl.tracks || []) {
+        if (t.type !== "video") continue;
+        for (const it of t.items || []) {
+          if (it.kind === "image" && it.shot) {
+            secByShotId.set(it.shot, (secByShotId.get(it.shot) || 0) + (it.durationInFrames || 0) / fps);
+          }
+        }
+      }
+      for (const s of shots) if (secByShotId.has(s.id)) newDur.set(s.n, secByShotId.get(s.id));
+    } else {
+      // Span of each voiced shot's take(s) on the timeline. Matched by the
+      // `rl_sh<n>` id PREFIX so splits (`_r…` suffixes) and takes moved onto an
+      // overlap lane still count toward their shot.
+      const spans = new Map(); // n → { n, start, end } in frames
+      for (const t of tl.tracks || []) {
+        if (t.type !== "audio") continue;
+        for (const it of t.items || []) {
+          const m = /^rl_sh(\d+)/.exec(it.id || "");
+          if (!m) continue;
+          const n = Number(m[1]);
+          const start = it.from || 0;
+          const end = start + (it.durationInFrames || 0);
+          const sp = spans.get(n);
+          if (!sp) spans.set(n, { n, start, end });
+          else { sp.start = Math.min(sp.start, start); sp.end = Math.max(sp.end, end); }
+        }
+      }
+      const voiced = [...spans.values()].sort((a, b) => a.start - b.start);
+      const shotByN = new Map(shots.map((s) => [s.n, s]));
+      const BREATH_SEC = 0.4; // trailing air a spoken shot keeps before the cut
+      for (let i = 0; i < voiced.length; i++) {
+        const a = voiced[i];
+        const b = voiced[i + 1] || null;
+        const takeSec = (a.end - a.start) / fps;
+        if (!b) { newDur.set(a.n, takeSec); break; }
+        // Overlapping lines (a second dialogue lane) clamp to a zero gap.
+        const gapSec = Math.max(0, (b.start - a.end) / fps);
+        const silent = [];
+        for (let n = a.n + 1; n < b.n; n++) {
+          if (shotByN.has(n) && !spans.has(n)) silent.push(shotByN.get(n));
+        }
+        if (!silent.length) { newDur.set(a.n, takeSec + gapSec); continue; }
+        const breath = Math.min(gapSec, BREATH_SEC);
+        newDur.set(a.n, takeSec + breath);
+        const rest = gapSec - breath;
+        const weights = silent.map((s) => (s.dur > 0 ? s.dur : 1));
+        const totalW = weights.reduce((x, y) => x + y, 0);
+        silent.forEach((s, j) => newDur.set(s.n, rest * (weights[j] / totalW)));
+      }
+    }
+    if (!newDur.size) {
+      return c.json({ error: kind === "radio" ? "No radio takes on the timeline to commit." : "No animatic pictures on the timeline to commit." }, 400);
+    }
+
+    const changes = [];
+    const out = shots.map((s) => {
+      const sec = newDur.get(s.n);
+      if (sec == null) return s;
+      const rounded = Math.max(0.1, Math.round(sec * 10) / 10);
+      if (rounded === s.dur) return s;
+      changes.push({ shot: s.id, n: s.n, from: s.dur, to: rounded });
+      return { ...s, dur: rounded };
+    });
+    await writeDoc(c.env, pid, "shotlist", { ...(slDoc || {}), generatedAt: new Date().toISOString(), shots: out });
+    return c.json({
+      ok: true,
+      source: kind,
+      updated: changes.length,
+      unchanged: newDur.size - changes.length,
+      untouched: shots.length - newDur.size,
+      changes,
+    });
+  });
 }

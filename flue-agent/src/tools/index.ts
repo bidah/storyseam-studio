@@ -1,4 +1,4 @@
-// All 49 Whistlewood tools. Each is a factory closing over a project-scoped api
+// All the Whistlewood tools. Each is a factory closing over a project-scoped api
 // client (a flue tool's `run` gets no ambient context — see lib/api.ts).
 import type { ToolDefinition } from "@flue/runtime";
 import type { Api } from "../lib/api.js";
@@ -49,6 +49,7 @@ import { saveAudioPrompt } from "./save_audio_prompt.js";
 import { getRadio } from "./get_radio.js";
 import { attachRadioTake } from "./attach_radio_take.js";
 import { castRadioVoice } from "./cast_radio_voice.js";
+import { commitPacing } from "./commit_pacing.js";
 // Cuts / Editor timeline
 import { getCuts } from "./get_cuts.js";
 import { stitchCuts } from "./stitch_cuts.js";
@@ -113,6 +114,7 @@ export function createTools(api: Api): ToolDefinition[] {
     getRadio(api),
     attachRadioTake(api),
     castRadioVoice(api),
+    commitPacing(api),
     // Cuts / Editor
     getCuts(api),
     stitchCuts(api),

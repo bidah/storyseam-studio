@@ -90,6 +90,13 @@ silence sits between each pair of lines**, and move the takes accordingly.
    ~0.3s gaps, gave the walk to the well 2.5s of silence, and put a 1.5s
    breath on the scene change into the night beat". The Editor tab preview
    updates when your turn ends.
+6. **Offer to commit — never auto-commit.** Once the user has listened and
+   approves the pacing, `commit_pacing` writes the realized timing back to the
+   Shot list (`dur` per shot), so the animatic, the multishot packs, and the
+   episode video requests all inherit it — that's how the generated video ends
+   up matching this cut. It rewrites the shot list's timing and reshuffles the
+   ≤15s packing, so ask first; the pipeline order is radio → pace → **commit**
+   → animatic → generate video.
 
 ## Notes
 
