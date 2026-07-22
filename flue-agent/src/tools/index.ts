@@ -9,6 +9,7 @@ import { askQuestion } from "./ask_question.js";
 import { getWorld } from "./get_world.js";
 import { saveWorld } from "./save_world.js";
 import { addWorldCharacter } from "./add_world_character.js";
+import { addWorldLocation } from "./add_world_location.js";
 import { getVisualWorld } from "./get_visual_world.js";
 import { attachVisualGeneration } from "./attach_visual_generation.js";
 import { saveVisualPrompt } from "./save_visual_prompt.js";
@@ -73,6 +74,7 @@ export function createTools(api: Api): ToolDefinition[] {
     getWorld(api),
     saveWorld(api),
     addWorldCharacter(api),
+    addWorldLocation(api),
     getVisualWorld(api),
     attachVisualGeneration(api),
     saveVisualPrompt(api),

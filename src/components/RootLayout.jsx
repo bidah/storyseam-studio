@@ -273,27 +273,63 @@ export default function RootLayout() {
   }, [load, revalidator]);
 
   // Cross-tab jump: the Complete-cut overlay navigates to `/episode#ep-<id>` or
-  // `/sounds#snd-<track>`. The target tab mounts and loads async, so we retry
-  // finding the hash target for a few seconds, then scroll + flash it. Re-runs on
-  // every navigation (location.key) so re-clicking the same marker re-flashes.
+  // `/sounds#snd-<track>`, and the Animatic's "Add in World" to `/world#locations`.
+  // The target tab mounts and loads async, so we retry finding the hash target for
+  // a few seconds, then scroll + flash it. Re-runs on every navigation
+  // (location.key) so re-clicking the same marker re-flashes.
+  //
+  // Two things make this fussier than a one-shot scrollIntoView:
+  //   - The tab keeps SETTLING after mount (its on-mount loader revalidation
+  //     landing, auto-growing fields measuring), which shifts the anchor down —
+  //     so we re-assert the scroll whenever its offset moves, and only stop once
+  //     it's held steady, so the final scroll lands at the settled position.
+  //   - `behavior:"smooth"` is a NO-OP in some environments (reduced-motion,
+  //     headless/automation), which would silently strand a long jump like
+  //     `#locations` at the bottom of the World bible. So once the layout has
+  //     settled we verify the anchor is actually on screen and, if not, snap it
+  //     into view instantly.
   useEffect(() => {
     const anchor = location.hash ? location.hash.slice(1) : "";
     if (!anchor) return;
-    let tries = 0;
+    let tries = 0; // caps the total watch window (~4s)
+    let stable = 0; // consecutive ticks the anchor hasn't moved
+    let lastTop = null;
+    let flashed = false;
     let timer;
-    const tryScroll = () => {
+    // Roughly where block:"center" lands it — top in the upper half of the viewport.
+    const onScreen = (el) => {
+      const top = el.getBoundingClientRect().top;
+      return top >= 0 && top <= window.innerHeight * 0.6;
+    };
+    const flash = (el) => {
+      flashed = true;
+      el.classList.remove("nav-flash");
+      void el.offsetWidth; // restart the animation if already applied
+      el.classList.add("nav-flash");
+      setTimeout(() => el.classList.remove("nav-flash"), 1600);
+    };
+    const tick = () => {
       const el = document.getElementById(anchor);
-      if (el) {
-        el.scrollIntoView({ behavior: "smooth", block: "center" });
-        el.classList.remove("nav-flash");
-        void el.offsetWidth; // restart the animation if already applied
-        el.classList.add("nav-flash");
-        setTimeout(() => el.classList.remove("nav-flash"), 1600);
+      // Not mounted yet — the target tab's lazy chunk / loader is still resolving.
+      if (!el) {
+        if (tries++ < 40) timer = setTimeout(tick, 100); // wait out async load
         return;
       }
-      if (tries++ < 40) timer = setTimeout(tryScroll, 100); // wait out async load
+      if (el.offsetTop !== lastTop) {
+        // Position still moving as the tab settles — (re)assert the scroll.
+        lastTop = el.offsetTop;
+        stable = 0;
+        el.scrollIntoView({ behavior: "smooth", block: "center" });
+      } else {
+        stable++;
+        // Settled but smooth may have no-op'd — snap it in if it isn't on screen.
+        if (stable === 3 && !onScreen(el)) el.scrollIntoView({ block: "center" });
+      }
+      if (!flashed && onScreen(el)) flash(el);
+      // Stop once the position has held steady for ~0.6s (or the ~4s cap).
+      if (stable < 6 && tries++ < 40) timer = setTimeout(tick, 100);
     };
-    tryScroll();
+    tick();
     return () => clearTimeout(timer);
   }, [location.hash, location.key]);
 

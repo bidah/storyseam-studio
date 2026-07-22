@@ -138,14 +138,24 @@ export function registerWorld(app) {
     return c.json(world);
   });
 
-  // Replace the WHOLE world (the agent's save_world). Read-first isn't required —
-  // this overwrites — so the agent should send the complete object it wants.
+  // Replace the world bible (the agent's save_world). Overwrites the scalar/map/
+  // depth sections and the character roster with what's sent — BUT preserves the
+  // `characters` and `locations` arrays when the caller OMITS them. `save_world`
+  // can't express locations at all (and may omit characters), so a blind overwrite
+  // silently WIPED every location on each call. An explicitly-sent array still
+  // replaces; only a missing one is carried over from the stored world.
   app.post("/api/world", async (c) => {
     const pid = c.get("projectId");
     let body;
     try { body = await c.req.json(); } catch { return c.json({ error: "Invalid JSON body" }, 400); }
     const incoming = body && typeof body === "object" && body.world ? body.world : body;
-    const world = normalizeWorld(incoming);
+    const prev = await readWorld(c.env, pid);
+    const merged = {
+      ...incoming,
+      characters: Array.isArray(incoming?.characters) ? incoming.characters : prev.characters,
+      locations: Array.isArray(incoming?.locations) ? incoming.locations : prev.locations,
+    };
+    const world = normalizeWorld(merged);
     world.generatedAt = new Date().toISOString();
     world.source = str(body?.source) || "agent";
     await writeWorld(c.env, pid, world);

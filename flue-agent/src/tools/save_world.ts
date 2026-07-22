@@ -9,7 +9,7 @@ export const saveWorld = (api: Api) =>
   defineTool({
     name: "save_world",
     description:
-      "Write the World bible shown on the World tab (the series' foundational world). OVERWRITES the whole world — call get_world first if a world already exists so you don't drop fields. Fill in what you learned from interviewing the author: the story map (the 5 shaping questions), the story-depth core elements, and the character roster. Leave a field as an empty string if genuinely unknown. Returns the saved world.",
+      "Write the World bible shown on the World tab (the series' foundational world). Overwrites the story map (the 5 shaping questions), the story-depth core elements, and the character roster with what you send — call get_world first if a world already exists so you don't drop fields. Fill in what you learned from interviewing the author. Leave a field as an empty string if genuinely unknown. It does NOT touch LOCATIONS — this tool can't carry them, so places are preserved untouched; add a place with `add_world_location`, never here. Returns the saved world.",
     input: v.object({
       title: v.optional(d(v.string(), "The series / world title.")),
       logline: v.optional(d(v.string(), "One sentence that captures the series.")),

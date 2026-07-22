@@ -41,7 +41,12 @@ also the pipeline order: **World → Script → Shot list → Storyboard/stills 
   (`voiceRef`, a liked Sound Studio take) shown on the World tab. Attach them with
   `attach_character_sheet` (image `rel` from `list_library`) and `attach_character_voice`
   (`trackId`/`v` from `list_character_voices`) — these edit one character in place, so you do
-  **not** re-`save_world` after. When more than one image or voice could fit, **show previews
+  **not** re-`save_world` after. The world also holds a **locations roster** — the places
+  shots reference by `location` slug, each able to carry its own reference-art sheet (a locked
+  background). `save_world` CANNOT carry locations (it leaves them untouched); add a place with
+  **`add_world_location`** (pass the exact slug the shots use), one call per place. When the
+  Animatic flags location gaps (slugs with no roster card / no reference art), register each
+  missing slug with `add_world_location` — never try to add places through `save_world`. When more than one image or voice could fit, **show previews
   and let the user pick**: render candidate image thumbnails as markdown (`![](thumb-url)`) or
   list voices with their playable `/sound-media` urls, then ask which one before attaching.
   When the user is on the World screen, presses "Let's create the world", or asks to build the
