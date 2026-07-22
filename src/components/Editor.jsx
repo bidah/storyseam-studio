@@ -15,7 +15,7 @@ import {
   Eye, EyeOff, Clapperboard, Download, ExternalLink,
   PanelLeftClose, PanelLeftOpen, FolderOpen, Ban, FileDown, FoldHorizontal, Magnet,
   ZoomIn, ZoomOut, Camera, Images, Link2, Unlink2, AudioLines, GripHorizontal,
-  FlipHorizontal2, FlipVertical2, Radio,
+  FlipHorizontal2, FlipVertical2, Radio, Timer,
   // Aliased: a bare `Image` import would shadow the DOM's global Image
   // constructor for this whole module.
   Image as ImageIcon, ImageOff, Sparkles, Plus, RefreshCcwDot,
@@ -1191,6 +1191,10 @@ export default function Editor({ reloadKey }) {
   const [magnet, setMagnet] = useState(true); // snapping toggle — clips snap to nearby edges
   const [playerH, setPlayerH] = useState(null); // preview height set by the timeline resizer (null = natural)
   const [saveState, setSaveState] = useState("idle"); // idle | saving | saved | error
+  // "Commit pacing" (radio/animatic timelines only): write the paced timing
+  // back to the Shot list durs so downstream generation matches this cut.
+  const [committingPacing, setCommittingPacing] = useState(false);
+  const [pacingNotice, setPacingNotice] = useState(null);
   // While dragging a card vertically: where it would land on release.
   //   { type: "move", trackId }  – drop onto an existing same-type channel
   //   { type: "new", at }        – spawn a new channel at track index `at`
@@ -1388,7 +1392,7 @@ export default function Editor({ reloadKey }) {
   // `silent` refreshes in place without the full-panel spinner — used by the
   // live SSE reload so an agent edit doesn't flash the editor to a loading state.
   const load = useCallback(async ({ silent = false } = {}) => {
-    if (!silent) setLoading(true);
+    if (!silent) { setLoading(true); setPacingNotice(null); }
     setError(null);
     try {
       const res = await fetch("/api/timeline");
@@ -3021,6 +3025,37 @@ export default function Editor({ reloadKey }) {
     stepFrame, gotoClip, splitAtPlayhead, hasTimeline: !!timeline, hasSelection: selectedIds.size > 0,
   };
 
+  // Commit the paced timing on THIS timeline back to the Shot list (`dur` per
+  // shot), so the animatic, the multishot packs, and the episode video
+  // requests inherit the pacing. Only meaningful on a radio/animatic timeline
+  // — the button lives here (not the Radio tab) because the pacing is seen and
+  // reviewed here. The commit route reads the SAVED editorTimeline doc, and
+  // the autosave is debounced 600ms — so flush the in-memory timeline first,
+  // or a just-dragged edit would be committed stale.
+  const paceableKind =
+    timeline?.source?.kind === "radio" || timeline?.source?.kind === "animatic"
+      ? timeline.source.kind
+      : null;
+  const commitPacing = async () => {
+    setCommittingPacing(true); setError(null); setPacingNotice(null);
+    try {
+      const saveRes = await fetch("/api/timeline", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ timeline, clientId: CLIENT_ID }),
+      });
+      if (!saveRes.ok) throw new Error((await saveRes.json().catch(() => ({}))).error || "Save failed");
+      const res = await fetch("/api/radio/commit-pacing", { method: "POST" });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "Commit failed");
+      setPacingNotice(
+        `Committed the ${json.source} timing to the Shot list — ${json.updated} shot duration${json.updated === 1 ? "" : "s"} updated` +
+          (json.untouched ? `, ${json.untouched} left untouched` : "") + ".",
+      );
+    } catch (e) { setError(String(e.message || e)); }
+    finally { setCommittingPacing(false); }
+  };
+
   if (loading && !timeline) return <Spinner label="loading editor…" />;
 
   const CutPicker = (
@@ -3343,7 +3378,7 @@ export default function Editor({ reloadKey }) {
           <h2 className="text-xl font-semibold tracking-tight">Editor</h2>
           {timeline?.source && (
             <Badge variant="secondary" className="font-mono">
-              from cut v{timeline.source.v}
+              {paceableKind ? (paceableKind === "radio" ? "radio version" : "animatic") : `from cut v${timeline.source.v}`}
             </Badge>
           )}
         </div>
@@ -3351,6 +3386,12 @@ export default function Editor({ reloadKey }) {
           {saveState === "saving" && <span className="flex items-center gap-1 text-xs text-muted-foreground"><Loader2 size={12} className="animate-spin" /> saving…</span>}
           {saveState === "saved" && <span className="flex items-center gap-1 text-xs text-primary"><Check size={12} /> saved</span>}
           {saveState === "error" && <span className="text-xs text-destructive">save failed</span>}
+          {paceableKind && (
+            <Button variant="outline" size="sm" onClick={commitPacing} disabled={committingPacing}
+              title="Write this timeline's pacing back to the Shot list durations, so the animatic and the episode video generation match it">
+              {committingPacing ? <><Loader2 size={14} className="animate-spin" /> committing…</> : <><Timer size={14} /> Commit pacing</>}
+            </Button>
+          )}
           {CutPicker}
           <Button variant="outline" size="sm" onClick={load}><RefreshCw size={14} /> Refresh</Button>
           <Button
@@ -3368,6 +3409,11 @@ export default function Editor({ reloadKey }) {
       </div>
 
       {error && <ErrorNote>{error}</ErrorNote>}
+      {pacingNotice && (
+        <p className="flex items-center gap-1.5 rounded-lg border border-primary/30 bg-primary/5 px-3 py-2 text-xs text-foreground">
+          <Check size={13} className="shrink-0 text-primary" /> {pacingNotice}
+        </p>
+      )}
 
       {!timeline ? (
         <div className="rounded-xl border border-dashed p-10 text-center">

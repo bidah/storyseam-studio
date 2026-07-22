@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useLoaderData, useNavigate, useRevalidator } from "react-router";
 import {
   Radio as RadioIcon, Mic, Loader2, Film, Send, X, AudioLines, CircleAlert,
-  Clapperboard, Image as ImageIcon, Check, Plus, Bot, Timer,
+  Clapperboard, Image as ImageIcon, Check, Plus, Bot,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { invalidateTabCache } from "@/lib/tabCache";
@@ -231,8 +231,6 @@ function RadioStudio() {
   const [sending, setSending] = useState(false);
   const [pacing, setPacing] = useState(false);
   const [building, setBuilding] = useState(false);
-  const [committing, setCommitting] = useState(false);
-  const [notice, setNotice] = useState(null);
 
   const revalidate = revalidator.revalidate;
   const refetch = useCallback(() => {
@@ -292,24 +290,6 @@ function RadioStudio() {
     finally { setPacing(false); }
   };
 
-  // Write the paced Editor timing back to the Shot list durs, so the animatic,
-  // the multishot packs, and the episode video requests inherit the pacing.
-  // Pipeline order: radio → pace → COMMIT → animatic → generate video.
-  const commitPacing = async () => {
-    setCommitting(true); setError(null); setNotice(null);
-    try {
-      const res = await fetch("/api/radio/commit-pacing", { method: "POST" });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error || "Commit failed");
-      setNotice(
-        `Committed the ${json.source} timing to the Shot list — ${json.updated} shot duration${json.updated === 1 ? "" : "s"} updated` +
-        (json.untouched ? `, ${json.untouched} left untouched` : "") + ".",
-      );
-      refetch();
-    } catch (e) { setError(String(e.message || e)); }
-    finally { setCommitting(false); }
-  };
-
   // The animatic: this radio pass PLUS each shot's storyboard still on a picture
   // track. Unlike "Send to editor" it covers every shot (silent ones included),
   // so it works — as an all-slate outline — before any still exists.
@@ -353,10 +333,6 @@ function RadioStudio() {
                 : "Send to the Editor, then have the agent pace it: space the lines from the shot timings so the story breathes"}>
               {pacing ? <><Loader2 size={14} className="animate-spin" /> sending…</> : <><Bot size={14} /> Agent pacing</>}
             </Button>
-            <Button variant="outline" onClick={commitPacing} disabled={committing || sending || pacing || building}
-              title="Write the paced Editor timing back to the Shot list durations, so the animatic and the episode video generation match the pacing">
-              {committing ? <><Loader2 size={14} className="animate-spin" /> committing…</> : <><Timer size={14} /> Commit pacing</>}
-            </Button>
             <Button onClick={buildAnimatic} disabled={building || sending || !animatic?.shots}
               title={
                 animatic?.shots
@@ -390,11 +366,6 @@ function RadioStudio() {
       </div>
 
       {error && <ErrorNote>{error}</ErrorNote>}
-      {notice && (
-        <p className="flex items-center gap-1.5 rounded-lg border border-primary/30 bg-primary/5 px-3 py-2 text-xs text-foreground">
-          <Check size={13} className="shrink-0 text-primary" /> {notice}
-        </p>
-      )}
 
       {scenes.length === 0 ? (
         <div className="rounded-xl border border-dashed p-6 text-center">
