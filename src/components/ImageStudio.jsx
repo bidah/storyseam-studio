@@ -608,9 +608,21 @@ export default function ImageStudio({
                   <TagIcon size={13} /> {label}
                 </label>
               ))}
+              {onSavePrompts && (
+                <Button
+                  variant="ghost"
+                  size="icon-xs"
+                  onClick={() => setEditPrompts(true)}
+                  aria-label="Edit prompt library"
+                  title="Edit prompt library"
+                  className="-mr-1 text-muted-foreground hover:text-foreground"
+                >
+                  <Pencil size={13} />
+                </Button>
+              )}
             </div>
           )}
-          {onSavePrompts && (
+          {!sheetTagging && onSavePrompts && (
             <Button
               variant="ghost"
               size="icon-sm"
