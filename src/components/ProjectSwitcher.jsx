@@ -56,13 +56,10 @@ export default function ProjectSwitcher() {
           <button
             type="button"
             aria-label="Switch project"
-            className="flex items-center gap-2 rounded-md border bg-background/60 px-2.5 py-1.5 text-left outline-none transition-colors hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
+            className="flex h-9 items-center gap-2 rounded-md border bg-background/60 px-2.5 text-left outline-none transition-colors hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
           >
-            <span className="min-w-0 leading-tight">
-              <span className="block text-[10px] uppercase tracking-wide text-muted-foreground">Project</span>
-              <span className="block max-w-[160px] truncate text-xs font-semibold">
-                {loading ? "loading…" : current?.name || "Select…"}
-              </span>
+            <span className="block max-w-[160px] truncate text-xs font-semibold">
+              {loading ? "loading…" : current?.name || "Select…"}
             </span>
             <ChevronsUpDown size={14} className="shrink-0 text-muted-foreground" />
           </button>

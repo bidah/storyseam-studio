@@ -12,6 +12,7 @@ import {
   X,
   ArrowDown,
   Image as ImageIcon,
+  SquarePen,
   History,
   MessageSquare,
   Trash2,
@@ -407,7 +408,7 @@ function relTime(ts) {
 // Chat history as a right-side slide-in panel, sized to match the chat panel.
 // Rows are plain buttons (not menu items), so a mouse click reliably switches
 // conversations; the trash button is a sibling, not a nested button.
-export function ChatHistorySheet({ conv }) {
+function ChatHistorySheet({ conv, triggerClassName }) {
   const [open, setOpen] = useState(false);
   const select = (id) => {
     conv.switchChat(id);
@@ -416,7 +417,13 @@ export function ChatHistorySheet({ conv }) {
   return (
     <Sheet open={open} onOpenChange={setOpen}>
       <SheetTrigger asChild>
-        <Button size="icon" variant="ghost" className="size-8" aria-label="Previous chats" title="Previous chats">
+        <Button
+          size="icon"
+          variant="ghost"
+          className={cn("size-8", triggerClassName)}
+          aria-label="Previous chats"
+          title="Previous chats"
+        >
           <History size={16} />
         </Button>
       </SheetTrigger>
@@ -855,11 +862,30 @@ export default function AgentChat() {
   return (
     <aside className="flex h-full w-[495px] shrink-0 flex-col border-l bg-card">
       <div className="relative min-h-0 flex-1">
+        {/* New chat + previous-chats controls, floating over the top-right of the
+            transcript, each in its own rounded wrapper so they read over the
+            messages. */}
+        <div className="absolute right-3 top-3 z-10 flex items-center gap-1.5">
+          <Button
+            size="icon"
+            variant="ghost"
+            className="size-8 rounded-full border bg-card/80 text-muted-foreground shadow-sm backdrop-blur hover:bg-accent hover:text-foreground"
+            aria-label="New chat"
+            title="New chat"
+            onClick={() => conv.newChat()}
+          >
+            <SquarePen size={16} />
+          </Button>
+          <ChatHistorySheet
+            conv={conv}
+            triggerClassName="rounded-full border bg-card/80 text-muted-foreground shadow-sm backdrop-blur hover:bg-accent hover:text-foreground"
+          />
+        </div>
         <div
           ref={scrollRef}
           onScroll={onScroll}
           onClick={onTranscriptClick}
-          className="h-full space-y-4 overflow-y-auto bg-[#0E0E10] px-4 py-4 [&_img]:cursor-zoom-in"
+          className="h-full space-y-4 overflow-y-auto bg-[#0E0E10] px-4 pb-4 pt-14 [&_img]:cursor-zoom-in"
         >
           {messages.length === 0 ? (
             <div className="flex h-full flex-col items-center justify-center gap-2 text-center text-muted-foreground">

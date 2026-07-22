@@ -14,7 +14,7 @@ import { signOut as authSignOut } from "@/lib/auth-client";
 import { AgentProvider } from "@/components/AgentProvider";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
@@ -86,31 +86,20 @@ function useSettled(on, ms = 150) {
   return on && settled;
 }
 
-function ThemeToggle() {
+// Account menu — the shadcn avatar in the header opens a dropdown with the
+// light/dark theme toggle, a link to higgsfield.ai, and a sign-out that drops
+// the Higgsfield credential and re-gates the app (reload → LoginGate re-checks
+// → homepage).
+function UserMenu() {
   const [dark, setDark] = useState(() =>
     typeof document !== "undefined" ? document.documentElement.classList.contains("dark") : true
   );
-  const toggle = () => {
+  const toggleTheme = () => {
     const next = !dark;
     setDark(next);
     document.documentElement.classList.toggle("dark", next);
   };
-  return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <Button variant="ghost" size="icon-sm" onClick={toggle} aria-label="Toggle theme">
-          {dark ? <Sun size={16} /> : <Moon size={16} />}
-        </Button>
-      </TooltipTrigger>
-      <TooltipContent>{dark ? "Light mode" : "Dark mode"}</TooltipContent>
-    </Tooltip>
-  );
-}
 
-// Account menu — the shadcn avatar in the header opens a dropdown with a link
-// to higgsfield.ai and a sign-out that drops the Higgsfield credential and
-// re-gates the app (reload → LoginGate re-checks → homepage).
-function UserMenu() {
   const signOut = async () => {
     try {
       await authSignOut();
@@ -138,6 +127,9 @@ function UserMenu() {
       <DropdownMenuContent align="end" className="w-52">
         <DropdownMenuLabel>Higgsfield account</DropdownMenuLabel>
         <DropdownMenuSeparator />
+        <DropdownMenuItem onSelect={(e) => { e.preventDefault(); toggleTheme(); }}>
+          {dark ? <Sun size={14} /> : <Moon size={14} />} {dark ? "Light mode" : "Dark mode"}
+        </DropdownMenuItem>
         <DropdownMenuItem asChild>
           <a href="https://higgsfield.ai" target="_blank" rel="noopener noreferrer">
             <ExternalLink size={14} /> Visit higgsfield.ai
@@ -186,9 +178,6 @@ export default function RootLayout() {
   const pendingView = useSettled(navPending) ? pendingTab : null;
 
   const revalidator = useRevalidator();
-  // Header shot count only — the shots ROUTE is loaderized (swr key "shots")
-  // and surfaces its own load errors through the route ErrorBoundary.
-  const [shots, setShots] = useState([]);
   const [loading, setLoading] = useState(true);
   // `reloadKey` is the media cache-bust nonce (?v=<n> on video/audio/img src) and
   // still drives the not-yet-loaderized tabs (Phase 3 converts them one by one).
@@ -198,16 +187,18 @@ export default function RootLayout() {
   const [projectKey, setProjectKey] = useState(0);
   const [modalImage, setModalImage] = useState(null);
 
+  // A lightweight readiness ping that bumps `reloadKey` (the media cache-bust
+  // nonce) once the backend has settled, and drives the Refresh button's spinner.
+  // The shots ROUTE is loaderized (swr key "shots") and reports its own errors.
   const load = useCallback(async () => {
     setLoading(true);
     try {
       const res = await fetch("/api/shots");
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to load");
-      setShots(data.shots);
       setReloadKey((k) => k + 1);
     } catch {
-      /* header count only — the shots route reports its own load errors */
+      /* media cache-bust only — the shots route reports its own load errors */
     } finally {
       setLoading(false);
     }
@@ -313,13 +304,13 @@ export default function RootLayout() {
       <LoginGate>
       <ProjectProvider>
       <ShellContext.Provider value={shell}>
-      <div className="flex h-dvh overflow-hidden">
-      <div className="min-w-0 flex-1 overflow-y-auto">
       {/* Highlight the PENDING tab, not the committed one — otherwise a click
           leaves the old tab lit for the whole load. */}
       <Tabs value={activeTab} onValueChange={(v) => navigate("/" + v)}>
-        <header className="sticky top-0 z-30 border-b bg-card/80 backdrop-blur supports-[backdrop-filter]:bg-card/60">
-          <div className="mx-auto flex max-w-[1500px] flex-wrap items-center gap-x-6 gap-y-3 px-4 py-3 md:px-6">
+      <div className="flex h-dvh flex-col overflow-hidden">
+        {/* One unified header, full width across both the GUI and the chat. */}
+        <header className="shrink-0 border-b bg-card/80 backdrop-blur supports-[backdrop-filter]:bg-card/60">
+          <div className="flex flex-wrap items-center gap-x-6 gap-y-3 px-4 py-3 md:px-6">
             <div className="flex size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground shadow-sm">
               <Clapperboard size={18} />
             </div>
@@ -340,25 +331,24 @@ export default function RootLayout() {
             </TabsList>
 
             <div className="ml-auto flex items-center gap-2">
-              <span className="hidden text-xs text-muted-foreground sm:inline">
-                {loading ? "loading…" : `${shots.length} shots`}
-              </span>
               <Button variant="outline" size="sm" onClick={refresh} disabled={loading}>
                 <RefreshCw size={13} className={cn(loading && "animate-spin")} /> Refresh
               </Button>
-              <ThemeToggle />
               <UserMenu />
             </div>
           </div>
         </header>
 
-        <main key={projectKey} className="mx-auto w-full max-w-[1500px] px-4 py-6 md:px-6">
-          {pendingView ? <RouteSkeleton tab={pendingView} /> : <Outlet />}
-        </main>
+        <div className="flex min-h-0 flex-1 overflow-hidden">
+          <div className="min-w-0 flex-1 overflow-y-auto">
+            <main key={projectKey} className="mx-auto w-full max-w-[1500px] px-4 py-6 md:px-6">
+              {pendingView ? <RouteSkeleton tab={pendingView} /> : <Outlet />}
+            </main>
+          </div>
+          <AgentChat />
+        </div>
+      </div>
       </Tabs>
-      </div>
-      <AgentChat />
-      </div>
 
       <ImageModal image={modalImage} onClose={() => setModalImage(null)} />
       </ShellContext.Provider>
