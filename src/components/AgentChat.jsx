@@ -379,6 +379,29 @@ function workingTool(messages, busy) {
   return trailing?.type === "dynamic-tool" ? trailing.toolName || "tool" : null;
 }
 
+// The agent is "reasoning" while a turn is in flight and the current assistant
+// message's trailing visible content is a reasoning block. The reasoning panel
+// is collapsed and static (it doesn't animate like streaming text), so a
+// prolonged chain-of-thought looks like the agent has stalled unless a shimmer
+// marker sits below it. Distinct from `isThinking` (nothing rendered yet) and
+// `workingTool` (trailing part is a tool call).
+function isReasoning(messages, busy) {
+  if (!busy) return false;
+  const last = messages[messages.length - 1];
+  if (!last || last.role === "user") return false;
+  let trailing = null;
+  for (const p of last.parts || []) {
+    if (
+      (p.type === "text" && p.text?.trim()) ||
+      (p.type === "reasoning" && p.text?.trim()) ||
+      p.type === "dynamic-tool"
+    ) {
+      trailing = p;
+    }
+  }
+  return trailing?.type === "reasoning";
+}
+
 // Read a File's bytes as raw base64 (no `data:` URL prefix) for flue's
 // `sendMessage({ images: [{ data, mimeType }] })`.
 function fileToBase64(file) {
@@ -618,6 +641,7 @@ export default function AgentChat() {
   const isBusy = agent.status === "submitted" || agent.status === "streaming";
   const thinking = useMemo(() => isThinking(messages, isBusy), [messages, isBusy]);
   const working = useMemo(() => workingTool(messages, isBusy), [messages, isBusy]);
+  const reasoning = useMemo(() => isReasoning(messages, isBusy), [messages, isBusy]);
   // Interactive `ask_question` cards: which one is pending vs already answered.
   const qa = useMemo(() => deriveQA(messages), [messages]);
 
@@ -633,7 +657,7 @@ export default function AgentChat() {
   useEffect(() => {
     const el = scrollRef.current;
     if (el && atBottom) el.scrollTop = el.scrollHeight;
-  }, [messages, agent.status, thinking, working, attachments, atBottom]);
+  }, [messages, agent.status, thinking, working, reasoning, attachments, atBottom]);
 
   const onScroll = () => {
     const el = scrollRef.current;
@@ -922,6 +946,13 @@ export default function AgentChat() {
                 <Loader2 className="animate-spin" />
               </MarkerIcon>
               <MarkerContent className="shimmer">Agent is working…</MarkerContent>
+            </Marker>
+          ) : reasoning ? (
+            <Marker>
+              <MarkerIcon>
+                <Loader2 className="animate-spin" />
+              </MarkerIcon>
+              <MarkerContent className="shimmer">Reasoning…</MarkerContent>
             </Marker>
           ) : null}
 
