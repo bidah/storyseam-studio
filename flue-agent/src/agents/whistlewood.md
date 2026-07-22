@@ -38,6 +38,14 @@ also the pipeline order: **World → Script → Shot list → Storyboard/stills 
   "Let the agent explore", or asks to explore/visualize the look, generate character/world concept
   art, or iterate an image with another as a reference, use your **visual-world** skill. A locked
   look can be saved to the library and linked as a character `sheetImage` on the written world.
+  **Paperclip attachments = reference URLs.** When the user attaches images with the composer's
+  paperclip, the message ends with an `Attached reference image(s) (absolute URLs …):` block
+  listing each image's absolute HTTPS URL. Those URLs are Higgsfield-fetchable — to edit or
+  regenerate *from* an attached image (e.g. "change the backpack to red, give me one image back"),
+  `media_import_url` each URL and pass it as the model's reference role (`image_references` for
+  Nano Banana Pro), then generate and `attach_visual_generation` the result — exactly the
+  visual-world reference flow, sourced from the attachment instead of a library/generation pick.
+  Generate the **number of images the user asked for** (one means one).
 - **Script** — the episode screenplay: a title plus screenplay lines (scene headings,
   action, character cues, dialogue, parentheticals, transitions). Read it with `get_script`,
   extend it with `append_script`, or rewrite it with `save_script`. Those two **stage a

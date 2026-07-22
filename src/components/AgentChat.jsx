@@ -44,6 +44,7 @@ import {
   AttachmentAction,
 } from "@/components/ui/attachment";
 import { Marker, MarkerIcon, MarkerContent } from "@/components/ui/marker";
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -75,9 +76,9 @@ import MediaPicker from "@/components/MediaPicker";
 // (POST /api/upload) for a durable thumbnail URL, and sent to flue as base64
 // `images` (its `sendMessage` takes `{ images: [{ data, mimeType }] }`) so the
 // model can actually see them. flue's `file` parts don't serve historical bytes,
-// so we remember what each user turn was sent with (in `sentAttachmentsRef`,
-// ordinal-aligned to the user messages) and render the thumbnails back into that
-// turn's bubble from the R2 URL.
+// so we remember what each user turn was sent with (in `attByMsgId`, keyed by the
+// flue message id) and render the thumbnails back into that turn's bubble from the
+// R2 URL. Clicking any transcript image opens a full-size lightbox.
 // ---------------------------------------------------------------------------
 
 // Where attachment uploads go. Defaults to the Cloudflare Worker
@@ -278,9 +279,18 @@ function deriveQA(messages) {
   return { answered, pendingId };
 }
 
+// The concatenated text of a (user) message's text parts — the join key that
+// maps a sent attachment batch to the flue message echoing it back.
+function userMessageText(message) {
+  return (message.parts || [])
+    .filter((p) => p.type === "text")
+    .map((p) => p.text)
+    .join("");
+}
+
 // Thumbnails for the images a user turn was sent with, rendered back into the
-// bubble (eve's projection doesn't keep image parts, so `atts` is supplied by
-// the composer's ordinal-aligned record).
+// bubble (flue's projection doesn't keep servable image parts, so `atts` is
+// supplied by the composer's id-keyed record).
 function SentAttachments({ atts }) {
   if (!atts?.length) return null;
   return (
@@ -299,10 +309,7 @@ function SentAttachments({ atts }) {
 function AgentMessage({ message, atts, qa, canRespond, onRespond }) {
   const isUser = message.role === "user";
   if (isUser) {
-    const text = (message.parts || [])
-      .filter((p) => p.type === "text")
-      .map((p) => p.text)
-      .join("");
+    const text = userMessageText(message);
     return (
       <div className="flex flex-col items-end">
         {text ? (
@@ -513,9 +520,28 @@ export default function AgentChat() {
   const scrollRef = useRef(null);
   const taRef = useRef(null);
   const [pickerOpen, setPickerOpen] = useState(false);
-  // One entry per user turn (ordinal-aligned to user messages): the images that
-  // turn was sent with, so they can be re-rendered in the bubble.
-  const sentAttachmentsRef = useRef([]);
+  // Click-to-zoom lightbox for any image in the transcript — sent reference
+  // thumbnails, `file` parts, and images the agent renders inline via markdown.
+  // A delegated click handler on the scroll container (below) catches them all.
+  const [lightbox, setLightbox] = useState(null); // { src, alt } | null
+  const onTranscriptClick = (e) => {
+    const img = e.target.closest?.("img");
+    if (img && (img.currentSrc || img.getAttribute("src"))) {
+      setLightbox({ src: img.currentSrc || img.src, alt: img.alt || "image" });
+    }
+  };
+  // The reference images each user turn was sent with, so they re-render in the
+  // bubble (flue's projection doesn't keep servable image bytes). Keyed by the
+  // flue message id — NOT by ordinal — because plenty of user messages reach flue
+  // outside this composer (e.g. "Let's create the world", render buttons across
+  // tabs, script edits), and any of those would drift an ordinal alignment and
+  // strand the thumbnail on the wrong bubble. We learn each id by matching the
+  // sent text to the message flue echoes back (see the correlation effect).
+  const [attByMsgId, setAttByMsgId] = useState({});
+  const attByMsgIdRef = useRef(attByMsgId);
+  attByMsgIdRef.current = attByMsgId;
+  // Sent attachment batches awaiting the flue message that carries their text.
+  const pendingAttsRef = useRef([]); // [{ text, atts }]
 
   // Auto-grow the composer with its content, up to a max height (then scroll).
   useEffect(() => {
@@ -533,7 +559,12 @@ export default function AgentChat() {
   // update on their own — this only resets client-only composer state.
   useEffect(() => {
     const { attachments: saved } = conv.getInitial(conv.activeId);
-    sentAttachmentsRef.current = Array.isArray(saved) ? saved : [];
+    // New shape: an object keyed by message id. Ignore the legacy ordinal array
+    // (its alignment was unreliable) — thumbnails re-map from the transcript.
+    const map = saved && !Array.isArray(saved) && typeof saved === "object" ? saved : {};
+    setAttByMsgId(map);
+    attByMsgIdRef.current = map;
+    pendingAttsRef.current = [];
     setText("");
     setAttachments([]);
     setAtBottom(true);
@@ -544,6 +575,30 @@ export default function AgentChat() {
   }, [conv.activeId]);
 
   const messages = agent.messages ?? [];
+
+  // Correlate pending sent-attachment batches to the flue message that echoes
+  // their text, then persist the id→atts map. Text is the join key because flue
+  // returns no id from `send`, and matching on text is immune to ordinal drift
+  // from out-of-composer sends. Runs whenever the transcript changes.
+  useEffect(() => {
+    if (!pendingAttsRef.current.length) return;
+    const additions = {};
+    for (const m of messages) {
+      if (m.role !== "user" || attByMsgIdRef.current[m.id] || additions[m.id]) continue;
+      const text = userMessageText(m);
+      const idx = pendingAttsRef.current.findIndex((p) => p.text === text);
+      if (idx >= 0) {
+        additions[m.id] = pendingAttsRef.current[idx].atts;
+        pendingAttsRef.current.splice(idx, 1);
+      }
+    }
+    if (Object.keys(additions).length) {
+      const next = { ...attByMsgIdRef.current, ...additions };
+      attByMsgIdRef.current = next;
+      setAttByMsgId(next);
+      conv.saveAttachments(conv.activeId, next);
+    }
+  }, [messages, conv]);
   const isBusy = agent.status === "submitted" || agent.status === "streaming";
   const thinking = useMemo(() => isThinking(messages, isBusy), [messages, isBusy]);
   const working = useMemo(() => workingTool(messages, isBusy), [messages, isBusy]);
@@ -737,11 +792,30 @@ export default function AgentChat() {
       contentType: a.contentType,
     }));
 
-    // Record this turn's attachments (ordinal-aligned) before the optimistic
-    // user message renders, persist them to the active chat, then clear the
-    // composer. (flue owns the transcript, so nothing else needs persisting.)
-    sentAttachmentsRef.current.push(sent);
-    conv.saveAttachments(conv.activeId, sentAttachmentsRef.current);
+    // Build the message body first — it doubles as the join key that maps this
+    // attachment batch to the flue message once it echoes back.
+    //
+    // The base64 images (below) only let a *vision* model SEE the attachment. To
+    // let the agent USE it as a Higgsfield generation reference (media_import_url
+    // → image_references) it needs the image's absolute HTTPS URL — so surface
+    // each attachment's public url in the message text. PC uploads carry a
+    // `/files/…` url; gallery / Visual-world picks carry their ungated `refUrl`
+    // (both Higgsfield-fetchable). The whistlewood agent instructions describe
+    // this trailing block. See docs: attach_visual_generation / visual-world skill.
+    const refUrls = sent
+      .map((a) => a.url)
+      .filter(Boolean)
+      .map((u) => (/^https?:\/\//.test(u) ? u : new URL(u, window.location.origin).href));
+    const body = refUrls.length
+      ? `${t ? `${t}\n\n` : ""}Attached reference image${refUrls.length > 1 ? "s" : ""} ` +
+        `(absolute URL${refUrls.length > 1 ? "s" : ""}, usable directly as a Higgsfield ` +
+        `generation reference via media_import_url):\n${refUrls.map((u) => `- ${u}`).join("\n")}`
+      : t;
+
+    // Remember this batch until the correlation effect sees the flue user message
+    // carrying `body` and keys the thumbnails to its id (survives reload; immune
+    // to ordinal drift from out-of-composer sends). Then clear the composer.
+    if (sent.length) pendingAttsRef.current.push({ text: body, atts: sent });
     clearComposer();
 
     // flue takes images out-of-band as base64 `{ data, mimeType }`, not as
@@ -750,23 +824,21 @@ export default function AgentChat() {
     if (done.length) {
       images = await Promise.all(
         done.map(async (a) => ({
+          type: "image",
           data: await fileToBase64(a.file),
           mimeType: a.contentType || "image/png",
         })),
       );
     }
 
-    await agent.send({ message: t, images });
+    await agent.send({ message: body, images });
   };
 
   // Answer a pending `ask_question` card by clicking an option: send its label as
-  // the next user message. Push an (empty) attachments entry first so the
-  // ordinal-aligned `sentAttachmentsRef` stays in step with the new user message
-  // (every user turn — typed or clicked — must have a matching entry).
+  // the next user message. (Attachments are keyed by message id now, so button
+  // answers need no bookkeeping.)
   const onRespond = async (label) => {
     if (isBusy || !label) return;
-    sentAttachmentsRef.current.push([]);
-    conv.saveAttachments(conv.activeId, sentAttachmentsRef.current);
     setAtBottom(true);
     await agent.send({ message: label });
   };
@@ -815,7 +887,8 @@ export default function AgentChat() {
         <div
           ref={scrollRef}
           onScroll={onScroll}
-          className="h-full space-y-4 overflow-y-auto bg-[#0E0E10] px-4 py-4"
+          onClick={onTranscriptClick}
+          className="h-full space-y-4 overflow-y-auto bg-[#0E0E10] px-4 py-4 [&_img]:cursor-zoom-in"
         >
           {messages.length === 0 ? (
             <div className="flex h-full flex-col items-center justify-center gap-2 text-center text-muted-foreground">
@@ -827,23 +900,16 @@ export default function AgentChat() {
               </p>
             </div>
           ) : (
-            (() => {
-              let userOrdinal = -1;
-              return messages.map((m) => {
-                if (m.role === "user") userOrdinal += 1;
-                const atts = m.role === "user" ? sentAttachmentsRef.current[userOrdinal] : null;
-                return (
-                  <AgentMessage
-                    key={m.id}
-                    message={m}
-                    atts={atts}
-                    qa={qa}
-                    canRespond={!isBusy}
-                    onRespond={onRespond}
-                  />
-                );
-              });
-            })()
+            messages.map((m) => (
+              <AgentMessage
+                key={m.id}
+                message={m}
+                atts={m.role === "user" ? attByMsgId[m.id] : null}
+                qa={qa}
+                canRespond={!isBusy}
+                onRespond={onRespond}
+              />
+            ))
           )}
 
           {thinking ? (
@@ -1037,6 +1103,22 @@ export default function AgentChat() {
         onAdd={addPickedItems}
         title="Attach reference images"
       />
+
+      <Dialog open={!!lightbox} onOpenChange={(o) => !o && setLightbox(null)}>
+        <DialogContent
+          showCloseButton
+          className="w-fit max-w-[92vw] border-0 bg-transparent p-0 shadow-none sm:max-w-[92vw]"
+        >
+          <DialogTitle className="sr-only">Image preview</DialogTitle>
+          {lightbox ? (
+            <img
+              src={lightbox.src}
+              alt={lightbox.alt}
+              className="max-h-[86vh] max-w-[92vw] rounded-lg object-contain"
+            />
+          ) : null}
+        </DialogContent>
+      </Dialog>
     </aside>
   );
 }

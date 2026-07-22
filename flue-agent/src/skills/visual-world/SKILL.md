@@ -91,6 +91,11 @@ Two ways to lock identity as the exploration converges:
   role — `image_references` for Nano Banana Pro, `image` for Nano Banana 2). **This
   is how "redo it but with this one as a reference" works** — the user picks an
   image, you feed its `refUrl` back.
+- **From a paperclip attachment** — when the user attaches images in chat, the
+  message ends with an `Attached reference image(s) (absolute URLs …):` block of
+  absolute HTTPS URLs. Treat each exactly like a `refUrl`: `media_import_url` it,
+  then add it as the model's reference role. This is how "edit this attached image
+  and give me one back" works — generate only the count the user asked for.
 - **Never pass a relative path** (`/asset/...`, `/visual-media/...`, `/thumb/...`)
   or the `url`/`rel`/`thumb` field to `media_import_url` — Higgsfield can't fetch
   those and rejects them ("needs an absolute HTTPS URL"). Only `refUrl` works.
