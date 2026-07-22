@@ -371,7 +371,10 @@ export function renderSoundMessage(track, ver) {
 // instructions (load generate-multishot → render via Higgsfield → attach_episode_video)
 // and hands it the fully-composed prompt (refs + audio refs + body) so it doesn't
 // have to reassemble it.
-export function renderEpisodeMessage(bundle, prompt) {
+// `firstFrameUrl` (optional) is a storyboard still's ungated refUrl to open the
+// clip on — the agent passes it to Seedance as `start_image` (the generate-multishot
+// skill's optional first-frame path), on TOP of the semantic image_references.
+export function renderEpisodeMessage(bundle, prompt, firstFrameUrl) {
   const label = `${bundle.id}${bundle.beatTitle ? ` — ${bundle.beatTitle}` : ""}`;
   return [
     `Render episode bundle ${label} now — its revision is signed off.`,
@@ -379,6 +382,11 @@ export function renderEpisodeMessage(bundle, prompt) {
       ` video from the exact prompt below (image + audio references included), then` +
       ` call attach_episode_video for ${bundle.id} with the resulting mp4 URL so the` +
       ` take shows up in the UI. Confirm the Higgsfield submit with me first, as usual.`,
+    firstFrameUrl
+      ? `FIRST FRAME: open the clip on this exact image — pass it to Seedance as` +
+        ` start_image (per the skill's optional first-frame path), in ADDITION to the` +
+        ` image_references in the prompt: ${firstFrameUrl}`
+      : null,
     "",
     bundle.duration ? `Target duration: ~${bundle.duration}s` : null,
     "",

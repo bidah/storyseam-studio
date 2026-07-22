@@ -749,10 +749,57 @@ function StoryboardShot({ s, stills, reloadKey, onView, onToggleStill, onRender,
  * Episode bundle card                                              *
  * ---------------------------------------------------------------- */
 
-function EpisodeBundle({ b, flat, picked, onOpenPicker, onRemove, onView, audioMap, audioPicked, onOpenAudio, vids, reloadKey, onToggleVideo, stills, onToggleStill, override, onEditPrompt, onResetPrompt, signoff, onSign }) {
+// Pick the still the Seedance clip opens on (start_image), from any of the
+// bundle's shot stills. Selecting the current one clears it (toggle).
+function FirstFrameModal({ bundle, open, stills, reloadKey, current, onPick, onClose }) {
+  return (
+    <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-2xl">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2"><ImageIcon size={16} className="text-primary" /> First frame — {bundle.id}</DialogTitle>
+        </DialogHeader>
+        <p className="text-sm text-muted-foreground">
+          Choose the still the clip should open on. Seedance uses it as the start image, then animates into the rest of the bundle.
+        </p>
+        {stills.length === 0 ? (
+          <Empty>no stills yet — render some in Images mode first.</Empty>
+        ) : (
+          <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
+            {stills.map((t) => {
+              const sel = t.file === current;
+              return (
+                <button
+                  key={t.file}
+                  type="button"
+                  onClick={() => onPick(sel ? null : t)}
+                  className={cn(
+                    "group relative aspect-video overflow-hidden rounded-md border transition-colors",
+                    sel ? "border-primary ring-2 ring-primary/40" : "hover:border-primary/60",
+                  )}
+                  title={sel ? "Click to clear" : `Open on ${t.shotId}`}
+                >
+                  <img src={t.url + (reloadKey ? `?v=${reloadKey}` : "")} alt={t.shotId} className="h-full w-full object-cover" />
+                  <span className="absolute left-1 top-1 rounded bg-background/80 px-1 font-mono text-[9px]">{t.shotId}</span>
+                  {sel && <span className="absolute right-1 top-1 rounded-full bg-primary p-0.5 text-primary-foreground"><Check size={10} /></span>}
+                </button>
+              );
+            })}
+          </div>
+        )}
+        <DialogFooter>
+          {current && <Button variant="ghost" onClick={() => onPick(null)}>Clear first frame</Button>}
+          <Button variant="outline" onClick={onClose}>Done</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function EpisodeBundle({ b, flat, picked, onOpenPicker, onRemove, onView, audioMap, audioPicked, onOpenAudio, vids, reloadKey, onToggleVideo, stills, onToggleStill, firstFrame, onSetFirstFrame, override, onEditPrompt, onResetPrompt, signoff, onSign }) {
   const [open, setOpen] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
   const [signOpen, setSignOpen] = useState(false);
+  const [ffOpen, setFfOpen] = useState(false);
   const [renderErr, setRenderErr] = useState(null);
   const signedCount = signoff ? ["images", "prompt", "audio"].filter((k) => signoff[k]).length : 0;
   const fullySigned = signedCount === 3;
@@ -787,6 +834,13 @@ function EpisodeBundle({ b, flat, picked, onOpenPicker, onRemove, onView, audioM
   const fullPrefix = refBlock + audioBlock + "\n\n";
   const displayPrompt = fullPrefix + bodyPrompt;
 
+  // The chosen first frame: a still the Seedance clip opens on (start_image). Its
+  // ungated refUrl is what the model can fetch. Flatten all the bundle's stills
+  // (across its shots) so any of them can be the opener.
+  const allStills = b.shots.flatMap((s) => stillsFor(s.id).map((t) => ({ ...t, shotId: s.id })));
+  const firstFrameTake = firstFrame?.file ? allStills.find((t) => t.file === firstFrame.file) : null;
+  const firstFrameRefUrl = firstFrameTake?.refUrl || null;
+
   // Drive the shared studio agent to render this bundle once its revision is
   // signed off (generate-multishot skill → Higgsfield → attach_episode_video) —
   // same as asking it in chat.
@@ -795,7 +849,7 @@ function EpisodeBundle({ b, flat, picked, onOpenPicker, onRemove, onView, audioM
   const requestRender = async () => {
     setRenderErr(null);
     try {
-      await agent.send({ message: renderEpisodeMessage(b, displayPrompt) });
+      await agent.send({ message: renderEpisodeMessage(b, displayPrompt, firstFrameRefUrl) });
     } catch (e) {
       setRenderErr(String(e.message || e));
     }
@@ -861,6 +915,20 @@ function EpisodeBundle({ b, flat, picked, onOpenPicker, onRemove, onView, audioM
               ) : signedCount > 0 ? (
                 <Badge variant="warning">{signedCount}/3 signed</Badge>
               ) : null}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setFfOpen(true)}
+                disabled={allStills.length === 0}
+                title={allStills.length === 0 ? "Render some stills first — a first frame is one of them" : "Choose the frame the clip opens on (Seedance start_image)"}
+              >
+                {firstFrameTake ? (
+                  <img src={firstFrameTake.url + (reloadKey ? `?v=${reloadKey}` : "")} alt="first frame" className="h-4 w-7 rounded-sm border object-cover" />
+                ) : (
+                  <ImageIcon size={13} />
+                )}
+                First frame
+              </Button>
               <Button variant="outline" size="sm" onClick={() => setSignOpen(true)} title="revision signing">
                 <PenLine size={13} /> revision signing
               </Button>
@@ -1042,6 +1110,15 @@ function EpisodeBundle({ b, flat, picked, onOpenPicker, onRemove, onView, audioM
         onSign={onSign}
         onClose={() => setSignOpen(false)}
       />
+      <FirstFrameModal
+        bundle={b}
+        open={ffOpen}
+        stills={allStills}
+        reloadKey={reloadKey}
+        current={firstFrame?.file || null}
+        onPick={(t) => { onSetFirstFrame(b.id, t?.shotId || null, t?.file || null); setFfOpen(false); }}
+        onClose={() => setFfOpen(false)}
+      />
     </Card>
   );
 }
@@ -1116,6 +1193,7 @@ function Episode({ reloadKey, onView }) {
   const [prompts, setPrompts] = useState(payload.ep.prompts || {});
   const [signoffs, setSignoffs] = useState(payload.ep.signoffs || {});
   const [stills, setStills] = useState(payload.st?.stills || {}); // { bundle: { shot: [takes] } }
+  const [firstFrames, setFirstFrames] = useState(payload.ep.firstFrames || {}); // { bundle: { shot, file } }
   const promptTimers = useRef({});
   const agent = useAgent();
 
@@ -1126,6 +1204,7 @@ function Episode({ reloadKey, onView }) {
     setPrompts(ep.prompts || {});
     setSignoffs(ep.signoffs || {});
     setStills(st?.stills || {});
+    setFirstFrames(ep.firstFrames || {});
     setFolders(lib.folders || []);
     const m = {};
     for (const [k, v] of Object.entries(fn.episode || {})) m[k] = new Set(v);
@@ -1284,6 +1363,24 @@ function Episode({ reloadKey, onView }) {
   const [rebuilding, setRebuilding] = useState(false);
   const { revalidate } = useRevalidator();
 
+  // Choose (or clear) a bundle's video first frame — the still the Seedance clip
+  // opens on (start_image). Optimistic; persisted to db.episodeFirstFrame.
+  const onSetFirstFrame = useCallback(async (bundle, shot, file) => {
+    setFirstFrames((f) => {
+      const next = { ...f };
+      if (file) next[bundle] = { shot: shot || null, file };
+      else delete next[bundle];
+      return next;
+    });
+    try {
+      await fetch("/api/episode/first-frame", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ bundle, shot: shot || null, file: file || null }),
+      });
+    } catch (e) { setError(String(e.message || e)); }
+  }, []);
+
   // Re-pack the current shot list into bundles (Phase 0). The server preserves
   // stills (re-keyed by shot id) and renders; re-packed bundles need re-review.
   const rebuild = useCallback(async () => {
@@ -1373,6 +1470,8 @@ function Episode({ reloadKey, onView }) {
             onToggleVideo={onToggleVideo}
             stills={stills[b.id] || {}}
             onToggleStill={onToggleStill}
+            firstFrame={firstFrames[b.id]}
+            onSetFirstFrame={onSetFirstFrame}
             override={prompts[b.id]}
             onEditPrompt={onEditPrompt}
             onResetPrompt={onResetPrompt}

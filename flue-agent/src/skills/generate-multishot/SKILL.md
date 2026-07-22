@@ -99,7 +99,22 @@ mcp__higgsfield__generate_video {
 ```
 
 - If the response is a `preset_recommendation`, resend the same call with `declined_preset_id:"<id>"` to generate the prompt literally.
-- One `audio_references` (the dialogue stem). Every character sheet + the location are their own `image_references` entries (repeatable). Never put a reference image in `start_image`.
+- One `audio_references` (the dialogue stem). Every character sheet + the location are their own `image_references` entries (repeatable). Never put a *reference* (a character sheet or location) in `start_image` — references are semantic, not the literal opening frame.
+
+### Optional first frame (start_image)
+
+If — and ONLY if — the turn explicitly hands you a **first-frame image** (the exact frame the clip should open on, e.g. an approved storyboard still for the bundle's first shot), pass it as `start_image` **in addition to** the `image_references` above:
+
+```jsonc
+"medias": [
+  { "role": "start_image", "value": "<first-frame media_id>" },   // ⭐ only when a first frame was provided
+  { "role": "audio_references", "value": "<DIALOG stem media_id>" },
+  { "role": "image_references", "value": "<location media_id>" },
+  { "role": "image_references", "value": "<character sheet media_id>" }
+]
+```
+
+Upload the provided first-frame URL to a `media_id` (`media_import_url` / `media_upload`) just like any other reference. Without an explicit first frame, omit `start_image` entirely (the default behaviour above).
 
 ## Step 5 — Poll
 

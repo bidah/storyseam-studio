@@ -373,7 +373,24 @@ export function registerEpisode(app) {
       }
       if (list.length) video[id] = list;
     }
-    return c.json({ episode: manifest, video, prompts: db.prompt || {}, signoffs: db.signoffs || {} });
+    return c.json({ episode: manifest, video, prompts: db.prompt || {}, signoffs: db.signoffs || {}, firstFrames: db.episodeFirstFrame || {} });
+  });
+
+  // Choose (or clear) the FIRST FRAME for a bundle's video render — a storyboard
+  // still the Seedance clip should open on (passed as start_image). Stored per
+  // bundle as { shot, file }; `file:null` (or omitted) clears it.
+  app.post("/api/episode/first-frame", async (c) => {
+    const pid = c.get("projectId");
+    let body;
+    try { body = await c.req.json(); } catch { body = {}; }
+    const { bundle, shot, file } = body || {};
+    if (!bundle) return c.json({ error: "Missing 'bundle'" }, 400);
+    const db = await readDB(c.env, pid);
+    db.episodeFirstFrame = db.episodeFirstFrame || {};
+    if (file) db.episodeFirstFrame[bundle] = { shot: shot || null, file };
+    else delete db.episodeFirstFrame[bundle];
+    await writeDB(c.env, pid, db);
+    return c.json({ ok: true, bundle, firstFrame: db.episodeFirstFrame[bundle] || null });
   });
 
   // Mark a rendered generation as selected/deselected (for stitching later).
