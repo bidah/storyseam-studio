@@ -606,6 +606,29 @@ export function renderRadioSceneMessage(scene, lines) {
   ].join("\n");
 }
 
+// Build the chat turn behind "Agent pacing" on the Radio tab. The gapless
+// first pass was JUST sent to the Editor (POST /api/radio/to-editor); this asks
+// the agent for the editorial second pass — re-time the space between the
+// takes from the Shot list so the audio-only cut plays like a story. Mirrors
+// the agent's radio-pacing skill (get_timeline + get_shotlist → edit_timeline
+// move ops, never resize/reorder).
+export function paceRadioTimelineMessage() {
+  return [
+    `I just sent the radio version to the Editor — the gapless first pass, every voiced` +
+      ` line back-to-back on the Dialogue track. Do the editorial pacing pass now.`,
+    ``,
+    `Load the radio-pacing skill and follow it: read the timeline (get_timeline) and the` +
+      ` Shot list (get_shotlist), then re-time the Dialogue track with edit_timeline move` +
+      ` ops. Keep every take and their order — only shape the SPACE between lines: quick` +
+      ` exchanges stay tight, beat changes get a breath, and silent shots between spoken` +
+      ` lines become real pauses sized from their planned durations. If two lines should` +
+      ` genuinely overlap (an interruption, a reaction over a line), put the overlapping` +
+      ` take on a second dialogue lane — never overlap items on one track.`,
+    ``,
+    `When you're done, tell me the runtime before → after and where the big pauses landed and why.`,
+  ].join("\n");
+}
+
 // Build the chat turn that delegates CASTING a voice to the agent — the "Voice
 // with agent" buttons on the Radio Casting rail. One or many speaker names.
 // Tells the agent to design a fitting voice, render a short in-character sample

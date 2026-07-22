@@ -156,7 +156,12 @@ const repackTrack = (tl, track) => {
 };
 
 // Apply a list of edit ops to a timeline in place. Ops:
-//   { op:"move", id, from }                 – set an item's start frame
+//   { op:"move", id, from, track? }         – set an item's start frame;
+//                                             `track` also re-homes the item
+//                                             onto another track of the SAME
+//                                             media type (the multi-track case:
+//                                             e.g. overlapping dialogue on a
+//                                             second audio lane)
 //   { op:"resize", id, durationInFrames, edge? } – set an item's length. Default
 //                                             edge "end" trims the tail (capped
 //                                             by the source length past the
@@ -187,6 +192,10 @@ const repackTrack = (tl, track) => {
 //   { op:"disable", id, disabled }          – grey out + skip an item in playback
 //   { op:"reorder", track, order:[ids] }    – reorder + repack a track gapless
 //   { op:"repack", track }                  – close gaps in a track, gapless
+//   { op:"addTrack", type, id?, name? }     – append an empty track
+//                                             (type "video" | "audio"); the
+//                                             agent's counterpart of the
+//                                             Editor's + track button
 // move/remove/reorder/repack honor item `linkId` links (see repackTrack).
 //
 // IMAGE ITEMS (`kind:"image"` — the animatic's stills, see routes/animatic.js)
@@ -201,6 +210,18 @@ function applyTimelineOps(tl, ops) {
     if (op.op === "move" && op.id != null) {
       const f = findItem(tl, op.id);
       if (f) {
+        // Cross-track move: `track` re-homes the item onto another track of the
+        // SAME media type (the Editor is multi-track — e.g. a second dialogue
+        // lane for overlapping lines). Unknown/mismatched target → stay put,
+        // tolerant like every other op.
+        if (op.track && op.track !== f.track.id) {
+          const target = tl.tracks.find((x) => x.id === op.track);
+          if (target && target.type === f.track.type) {
+            f.track.items = f.track.items.filter((x) => x !== f.item);
+            target.items.push(f.item);
+            f.track = target;
+          }
+        }
         const next = Math.max(0, Math.round(op.from || 0));
         const delta = next - (f.item.from || 0);
         f.item.from = next;
@@ -354,6 +375,18 @@ function applyTimelineOps(tl, ops) {
         t.items.sort((a, b) => a.from - b.from);
         repackTrack(tl, t);
       }
+    } else if (op.op === "addTrack" && (op.type === "audio" || op.type === "video")) {
+      // Add an empty track (the agent's counterpart of the Editor's makeTrack).
+      // A caller-supplied id/name wins when the id is free; otherwise fall back
+      // to the same non-colliding base-N scheme the Editor uses. Appended last:
+      // rows draw top-to-bottom and earlier tracks play on top, so a new lane
+      // never covers the existing picture.
+      const ids = new Set(tl.tracks.map((x) => x.id));
+      let id = typeof op.id === "string" && op.id.trim() && !ids.has(op.id.trim()) ? op.id.trim() : null;
+      const base = op.type === "audio" ? "music" : "video";
+      for (let n = 2; !id; n++) if (!ids.has(`${base}-${n}`)) id = `${base}-${n}`;
+      const name = (typeof op.name === "string" && op.name.trim()) || id;
+      tl.tracks.push({ id, name, type: op.type, items: [] });
     }
   }
   return tl;

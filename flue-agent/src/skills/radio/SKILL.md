@@ -62,7 +62,8 @@ This skill only produces audio. It does NOT stitch a timeline or render video.
       the take to the line so it appears on the Radio tab.
 4. When the scene is done, tell the user how many lines you voiced and to press
    **"Send to editor"** on the Radio tab to lay the dialogue into a new
-   "radio version" timeline in the Editor.
+   "radio version" timeline in the Editor — or **"Agent pacing"** to send it
+   and have you re-time the gaps from the shot list (the radio-pacing skill).
 
 ## Notes
 

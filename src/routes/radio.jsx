@@ -7,7 +7,7 @@ import {
 import { cn } from "@/lib/utils";
 import { invalidateTabCache } from "@/lib/tabCache";
 import { swr, useRevalidateOnMount, useRevalidateOnAgentIdle } from "@/lib/swr";
-import { useAgent, agentIsBusy, renderRadioSceneMessage, castVoiceMessage } from "@/components/AgentProvider";
+import { useAgent, agentIsBusy, renderRadioSceneMessage, castVoiceMessage, paceRadioTimelineMessage } from "@/components/AgentProvider";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -229,6 +229,7 @@ function RadioStudio() {
   useRevalidateOnMount("radio");
   const [error, setError] = useState(null);
   const [sending, setSending] = useState(false);
+  const [pacing, setPacing] = useState(false);
   const [building, setBuilding] = useState(false);
 
   const revalidate = revalidator.revalidate;
@@ -273,6 +274,22 @@ function RadioStudio() {
     finally { setSending(false); }
   };
 
+  // "Send to editor" + the editorial second pass: build the same gapless
+  // timeline first (deterministic, exactly what the plain button does), then
+  // hand the agent the pacing brief (radio-pacing skill) and jump to the
+  // Editor — the re-timed gaps land live when the agent's turn ends.
+  const sendToEditorPaced = async () => {
+    setPacing(true); setError(null);
+    try {
+      const res = await fetch("/api/radio/to-editor", { method: "POST" });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "Send failed");
+      agent.send({ message: paceRadioTimelineMessage() }).catch(() => {});
+      navigate("/editor");
+    } catch (e) { setError(String(e.message || e)); }
+    finally { setPacing(false); }
+  };
+
   // The animatic: this radio pass PLUS each shot's storyboard still on a picture
   // track. Unlike "Send to editor" it covers every shot (silent ones included),
   // so it works — as an all-slate outline — before any still exists.
@@ -306,9 +323,15 @@ function RadioStudio() {
             </p>
           </div>
           <div className="flex items-center gap-2">
-            <Button variant="outline" onClick={sendToEditor} disabled={sending || building || !data.readyLines}
-              title="Send just the voiced dialogue to the Editor as an audio-only timeline">
+            <Button variant="outline" onClick={sendToEditor} disabled={sending || pacing || building || !data.readyLines}
+              title="Send just the voiced dialogue to the Editor as an audio-only timeline (lines laid back-to-back)">
               {sending ? <><Loader2 size={14} className="animate-spin" /> sending…</> : <><Send size={14} /> Send to editor</>}
+            </Button>
+            <Button variant="outline" onClick={sendToEditorPaced} disabled={sending || pacing || building || agentBusy || !data.readyLines}
+              title={agentBusy
+                ? "The agent is busy — wait for it to finish"
+                : "Send to the Editor, then have the agent pace it: space the lines from the shot timings so the story breathes"}>
+              {pacing ? <><Loader2 size={14} className="animate-spin" /> sending…</> : <><Bot size={14} /> Agent pacing</>}
             </Button>
             <Button onClick={buildAnimatic} disabled={building || sending || !animatic?.shots}
               title={

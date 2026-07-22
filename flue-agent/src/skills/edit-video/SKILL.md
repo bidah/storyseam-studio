@@ -58,7 +58,12 @@ baked complete-cut mp4s (that's the complete-cut / stitch skill).
    (fps is in the timeline, usually 24, so 2s = 48 frames).
    - Reorder clips → `{ op:'reorder', track:'video', order:[id, id, …] }` (pass the
      full new order; it repacks the video track gapless automatically).
-   - Move a clip to a new start → `{ op:'move', id, from }`.
+   - Move a clip to a new start → `{ op:'move', id, from }`. Add `track` to
+     also re-home it onto another track of the same media type (the editor is
+     multi-track — e.g. lift a sound onto a second audio lane so two items can
+     overlap; items on ONE track must never overlap).
+   - Add an empty track → `{ op:'addTrack', type:'audio'|'video', id?, name? }`
+     (append a lane first, then `move` items onto it).
    - Trim/extend a clip's end → `{ op:'resize', id, durationInFrames }`.
    - Trim/extend a clip's start → `{ op:'resize', id, durationInFrames, edge:'start' }`
      (the clip's end stays anchored; its source in-point slides with the start).

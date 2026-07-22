@@ -8,6 +8,7 @@ import editVideo from "./skills/edit-video/SKILL.md" with { type: "skill" };
 import generateMultishot from "./skills/generate-multishot/SKILL.md" with { type: "skill" };
 import generateStoryboard from "./skills/generate-storyboard/SKILL.md" with { type: "skill" };
 import radio from "./skills/radio/SKILL.md" with { type: "skill" };
+import radioPacing from "./skills/radio-pacing/SKILL.md" with { type: "skill" };
 import scriptWriting from "./skills/script-writing/SKILL.md" with { type: "skill" };
 import seedAudio from "./skills/seed-audio/SKILL.md" with { type: "skill" };
 import shotList from "./skills/shot-list/SKILL.md" with { type: "skill" };
@@ -27,6 +28,7 @@ export const skills = [
   videoFromAudioVfx,
   seedAudio,
   radio,
+  radioPacing,
   trimVideo,
   completeCut,
   editVideo,
