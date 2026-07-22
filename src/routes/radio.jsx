@@ -289,7 +289,14 @@ function RadioStudio() {
   const [sending, setSending] = useState(false);
   const [pacing, setPacing] = useState(false);
   // "Send to editor" honors this toggle: when on, the agent paces the timeline.
-  const [pacingOn, setPacingOn] = useState(true);
+  // Persisted in localStorage so it survives reloads; defaults to on.
+  const [pacingOn, setPacingOnState] = useState(() => {
+    try { return localStorage.getItem("radioAgentPacing") !== "off"; } catch { return true; }
+  });
+  const setPacingOn = (on) => {
+    setPacingOnState(on);
+    try { localStorage.setItem("radioAgentPacing", on ? "on" : "off"); } catch { /* ignore */ }
+  };
   // Which scene's "Render scene" was actually launched — so only THAT button
   // shows "working…". Without this, the global agentBusy flag flips every
   // scene's button to "working…" (even for a single-line recreate), which reads

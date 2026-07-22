@@ -1,3 +1,4 @@
+import { Children } from "react";
 import { X, TriangleAlert, Loader2 } from "lucide-react";
 import { useRouteError } from "react-router";
 import { cn } from "@/lib/utils";
@@ -5,6 +6,27 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
+
+// Shadcn tooltip around a single control (replaces `title=` attributes).
+// A disabled element swallows pointer events, so a disabled child is wrapped
+// in a span that catches the hover instead — size that span with wrapClassName
+// (e.g. "w-full") when the child isn't intrinsically sized.
+function Tip({ content, side, wrapClassName, children }) {
+  if (!content) return children;
+  const child = Children.only(children);
+  const trigger = child.props?.disabled ? (
+    <span className={cn("inline-flex", wrapClassName)}>{child}</span>
+  ) : (
+    child
+  );
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>{trigger}</TooltipTrigger>
+      <TooltipContent side={side}>{content}</TooltipContent>
+    </Tooltip>
+  );
+}
 
 // Muted, italic empty / "not yet" state.
 function Empty({ children, className }) {
@@ -201,4 +223,4 @@ function IconSwap({ on, off, active, className }) {
   );
 }
 
-export { Empty, Eyebrow, Chip, Panel, Spinner, ErrorNote, ImageModal, ConfirmModal, fmtTime, RouteError, IconSwap };
+export { Tip, Empty, Eyebrow, Chip, Panel, Spinner, ErrorNote, ImageModal, ConfirmModal, fmtTime, RouteError, IconSwap };
