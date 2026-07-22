@@ -372,9 +372,13 @@ export default function ImageStudio({
   const [base, setBase] = useState(null);
 
   const isBusy = busy || localBusy;
+  // A location sheet formalizes an EXISTING place — generating one without
+  // reference art would just invent a new location, so a reference is required
+  // (the server enforces this too).
+  const needsRef = sheetTagging && sheetType === "location" && refs.length === 0;
 
   const doGenerate = async () => {
-    if (!prompt.trim() || isBusy || !onGenerate) return;
+    if (!prompt.trim() || isBusy || !onGenerate || needsRef) return;
     setLocalBusy(true);
     try {
       await onGenerate({ prompt, model, count: Number(count), aspectRatio, presetId, sheetType, refs, mode, base });
@@ -529,8 +533,22 @@ export default function ImageStudio({
               ))}
             </div>
           )}
+          {needsRef && (
+            <button
+              type="button"
+              onClick={() => setPickRef(true)}
+              className="flex items-center gap-1.5 text-xs text-amber-500 hover:underline"
+            >
+              <AlertCircle size={13} /> Location sheets need a reference image — add one
+            </button>
+          )}
 
-          <Button className="ml-auto" onClick={doGenerate} disabled={isBusy || !prompt.trim()}>
+          <Button
+            className="ml-auto"
+            onClick={doGenerate}
+            disabled={isBusy || !prompt.trim() || needsRef}
+            title={needsRef ? "Location sheets need a reference image — add one first" : undefined}
+          >
             {isBusy ? <><Loader2 size={14} className="animate-spin" /> generating…</> : <><Wand2 size={14} /> Generate</>}
           </Button>
         </div>

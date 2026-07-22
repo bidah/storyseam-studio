@@ -827,6 +827,11 @@ export function registerVisualWorld(app) {
     const presetId = str(body.presetId);
     const sheetType = ["character", "location"].includes(body.sheetType) ? body.sheetType : "";
     const inputRefs = Array.isArray(body.refs) ? body.refs.map(normalizeRef) : [];
+    // A location sheet formalizes an EXISTING place — style prompt + reference
+    // image, always. Without a reference it would just invent a new location.
+    if (sheetType === "location" && inputRefs.length === 0) {
+      return c.json({ error: "Location sheets require a reference image — add one before generating." }, 400);
+    }
 
     try {
       // Resolve the model against the live catalog. A selected id that Higgsfield

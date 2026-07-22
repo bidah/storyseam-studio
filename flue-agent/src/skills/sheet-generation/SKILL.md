@@ -68,12 +68,32 @@ Join the three blocks with blank lines. The subject line stays short — the she
 prompt already dictates the layout (views, neutral background, no text); repeat
 none of that. Aspect ratio: `16:9` unless the user asks otherwise.
 
-## Step 4 — Reference when identity exists
+## Step 4 — References: optional for characters, REQUIRED for locations
 
 If the character/place already has a `sheetImage` or a liked generation, import
 its `refUrl` with `media_import_url` and pass it in `medias[]` (role from Step 2)
-— the sheet then formalizes the EXISTING design instead of re-rolling it. Skip
-references only for brand-new subjects.
+— the sheet then formalizes the EXISTING design instead of re-rolling it.
+
+- **Character sheet** — a reference is strongly preferred when any exists; skip
+  it only for a brand-new character with no art yet.
+- **Location sheet** — a reference image is **MANDATORY**: a location sheet is
+  always style prompt + sheet prompt + a reference image, so the sheet locks an
+  existing look instead of inventing a new place (the Worker's own generate
+  route rejects untagged-reference location sheets for the same reason). If you
+  can't find one, do NOT generate — ask first:
+
+  1. Look for candidates: the location's `sheetImage` (`get_world`), prior
+     generations of this place (`get_visual_world`), or a library image
+     (`list_library`).
+  2. If candidates exist but the pick isn't obvious, show their thumbnails as
+     markdown (`![](thumb-url)`) and `ask_question` which to use.
+  3. If NONE exist, `ask_question` with options like
+     `{ id:"upload", label:"I'll attach a reference image", style:"primary" }`
+     and `{ id:"pick-gen", label:"Generate a concept first, then the sheet" }` —
+     mention they can attach the image directly in chat (the paperclip). Then
+     STOP. When their reply arrives (an attached image comes as an absolute URL
+     block in the message), treat it like any `refUrl`: `media_import_url` it
+     and generate.
 
 ## Step 5 — Generate, poll, attach
 
