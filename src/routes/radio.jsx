@@ -276,6 +276,13 @@ function RadioStudio() {
   const [sending, setSending] = useState(false);
   const [pacing, setPacing] = useState(false);
   const [building, setBuilding] = useState(false);
+  // Which scene's "Render scene" was actually launched — so only THAT button
+  // shows "working…". Without this, the global agentBusy flag flips every
+  // scene's button to "working…" (even for a single-line recreate), which reads
+  // as "Beat 2 started rendering" when it didn't. Cleared when the agent idles.
+  const [renderingScene, setRenderingScene] = useState(null);
+  useEffect(() => { if (!agentBusy) setRenderingScene(null); }, [agentBusy]);
+  const sceneKey = (s) => `${s.beat}:${s.lines[0].id}`;
 
   const revalidate = revalidator.revalidate;
   const refetch = useCallback(() => {
@@ -313,7 +320,10 @@ function RadioStudio() {
     } catch (e) { setError(String(e.message || e)); }
   }, [refetch]);
 
-  const renderScene = (scene) => agent.send({ message: renderRadioSceneMessage(scene, scene.lines) }).catch(() => {});
+  const renderScene = (scene) => {
+    setRenderingScene(sceneKey(scene));
+    agent.send({ message: renderRadioSceneMessage(scene, scene.lines) }).catch(() => setRenderingScene(null));
+  };
 
   // Re-voice ONE line — the kebab "Recreate". The new take is appended as another
   // version and auto-selected (worker side); the tab refreshes when the agent idles.
@@ -441,6 +451,7 @@ function RadioStudio() {
           <div className="min-w-0 flex-1 space-y-4">
             {scenes.map((scene) => {
               const sceneUncast = scene.lines.some((l) => !l.voiceRef);
+              const rendering = agentBusy && renderingScene === sceneKey(scene);
               return (
                 <Panel
                   key={scene.beat + scene.lines[0].id}
@@ -450,7 +461,7 @@ function RadioStudio() {
                       <Badge variant="outline">{scene.lines.length} lines</Badge>
                       <Button size="sm" onClick={() => renderScene(scene)} disabled={agentBusy || sceneUncast}
                         title={sceneUncast ? "Cast a voice for every speaker in this scene first" : "Render this scene's dialogue"}>
-                        {agentBusy ? <><Loader2 size={13} className="animate-spin" /> working…</> : <><Mic size={13} /> Render scene</>}
+                        {rendering ? <><Loader2 size={13} className="animate-spin" /> working…</> : <><Mic size={13} /> Render scene</>}
                       </Button>
                     </div>
                   }
