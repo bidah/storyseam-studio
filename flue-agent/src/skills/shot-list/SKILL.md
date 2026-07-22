@@ -41,10 +41,22 @@ Episode tab from those packs. No media is generated in this skill.
      (multiplane depth, on-2s/on-1s motion accents, smears, overlap/follow-through) straight
      into the prose — Seedance won't literally animate "on 2s" but the cues steer motion.
      Always end with the project style tail and keep it diegetic (no music bed / transition VFX).
-4. `save_shotlist({ shots, source: "agent" })` — write the whole ordered list. The UI
-   shows the shots grouped by beat and the live ≤15s pack preview.
-5. Tell the user how many shots you wrote and how many ≤15s multishots they packed into
-   (from the returned `packs`), and that they can edit any shot on the Shot list tab.
+4. **Save the list one beat at a time — never in a single giant call.** A full episode
+   is far too many shots (each with a long Seedance prompt) to emit in one
+   `save_shotlist` call: that single tool call can blow past the model's output limit and
+   fail the whole turn. So build it incrementally:
+   - First beat: `save_shotlist({ shots: <beat-1 shots>, mode: "replace", source: "agent" })`
+     — this starts a fresh list.
+   - Each subsequent beat: `save_shotlist({ shots: <that beat's shots>, mode: "append" })`
+     — one call per beat, in screenplay order.
+
+   Work through the beats **sequentially**, one `save_shotlist` call per beat. Each call is
+   bounded and the list is durably saved after every batch, so if anything interrupts you
+   mid-generation the beats already written survive and you (or the user) can resume by
+   appending the rest. The `count` in each response is the running total.
+5. When every beat is written, tell the user the final shot count and how many ≤15s
+   multishots they packed into (from the last response's `packs`), and that they can edit
+   any shot on the Shot list tab.
 
 ## Style tail (append to every Seedance prompt)
 

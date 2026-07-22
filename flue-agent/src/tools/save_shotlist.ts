@@ -7,8 +7,14 @@ export const saveShotlist = (api: Api) =>
   defineTool({
     name: "save_shotlist",
     description:
-      "Replace the entire Shot list on the Shot list tab with a new ordered list of shots (the granular per-shot breakdown that auto-packs into <=15s multishot bundles). Writes shotlist.json and OVERWRITES all shots — call get_shotlist first if revising. ALWAYS carry each existing shot's `id` through unchanged: shot ids key generated media that lives elsewhere (storyboard stills, the animatic's picture track), so inventing new ids for existing shots orphans that media. Only omit `id` for a genuinely NEW shot. Each shot's `beat`/`beatTitle` and `location` drive the packing (a bundle never crosses a beat or location and never exceeds 15s), so keep consecutive same-location shots grouped and give a realistic `dur`. `prompt` is the Seedance prompt (fold any 2D-directing intent directly into it). Returns the shot count, how many ids were preserved vs auto-numbered, any warnings, and the resulting <=15s pack preview.",
+      'Write the Shot list on the Shot list tab (the granular per-shot breakdown that auto-packs into <=15s multishot bundles). Two modes via `mode`: "replace" (default) OVERWRITES all shots; "append" adds `shots` to the END of the current list. For a full episode, DO NOT emit the whole list in one "replace" call — that single tool call can exceed the model output limit and fail the turn. Instead build it beat by beat: call once with mode "replace" carrying only the FIRST beat, then call again with mode "append" for each subsequent beat. Each call is bounded and the list is durably saved after every batch (a crash mid-generation leaves resumable partial progress). ALWAYS carry each existing shot\'s `id` through unchanged: shot ids key generated media that lives elsewhere (storyboard stills, the animatic\'s picture track), so inventing new ids for existing shots orphans that media. Only omit `id` for a genuinely NEW shot. Each shot\'s `beat`/`beatTitle` and `location` drive the packing (a bundle never crosses a beat or location and never exceeds 15s), so keep consecutive same-location shots grouped and give a realistic `dur`. `prompt` is the Seedance prompt (fold any 2D-directing intent directly into it). Returns the shot count (running total), the write mode, how many ids were preserved vs auto-numbered (replace only), any warnings, and the resulting <=15s pack preview.',
     input: v.object({
+      mode: v.optional(
+        d(
+          v.picklist(["replace", "append"]),
+          'Write mode. "replace" (default) overwrites the whole list. "append" adds these shots to the end — use it to build a long shot list one beat at a time so no single call carries the whole episode. Regenerate by calling "replace" with the first beat, then "append" for each later beat.',
+        ),
+      ),
       shots: d(
         v.array(
           v.object({
@@ -54,10 +60,10 @@ export const saveShotlist = (api: Api) =>
       ),
     }),
     async run({ input, signal }) {
-      const { shots, source } = input;
+      const { shots, source, mode } = input;
       return await api.post(
         "/api/shotlist",
-        { shots, source: source || "agent" },
+        { shots, source: source || "agent", mode: mode || "replace" },
         signal,
       );
     },
