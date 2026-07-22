@@ -65,6 +65,21 @@ Episode tab from those packs. No media is generated in this skill.
 5. When every beat is written, tell the user the final shot count and how many ≤15s
    multishots they packed into (from the last response's `packs`), and that they can edit
    any shot on the Shot list tab.
+6. **Reconcile speakers with the World roster.** The last `save_shotlist` response may
+   include `newSpeakers` — speaking characters in the shot list that have **no World
+   character** yet (each with its `lines` count and the `shots`/`beats` it appears in).
+   These are the casting gap: without a World record they can only be voiced from the
+   Radio rail's override, not shared with the World tab. So surface them and offer to fix it:
+   - Split them yourself by weight — a **recurring** speaker (several lines across more
+     than one beat) is very likely a real character; a **one-off** (a single line) is
+     usually a background bit-part. Don't hard-code the line count as the rule — a single
+     pivotal line can still be a real character, so use judgement and let the user decide.
+   - `ask_question`: list the likely-real ones and ask which to add to the World. For each
+     the user confirms, call `add_world_character` with the **exact** shot-list name and a
+     one-line `role` that cites where they appear (e.g. "Shopkeeper Miles buys the burner
+     from — shots 44–46"). Leave want/need/arc empty for the user to flesh out later.
+   - Leave the genuine bit-parts OFF the roster — tell the user they stay castable from
+     the Radio Casting rail (the app can voice them there without a World entry).
 
 ## Style tail (append to every Seedance prompt)
 

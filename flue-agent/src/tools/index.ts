@@ -1,4 +1,4 @@
-// All 48 Whistlewood tools. Each is a factory closing over a project-scoped api
+// All 49 Whistlewood tools. Each is a factory closing over a project-scoped api
 // client (a flue tool's `run` gets no ambient context — see lib/api.ts).
 import type { ToolDefinition } from "@flue/runtime";
 import type { Api } from "../lib/api.js";
@@ -8,6 +8,7 @@ import { askQuestion } from "./ask_question.js";
 // World / Script / Drafts / Shotlist / Episode
 import { getWorld } from "./get_world.js";
 import { saveWorld } from "./save_world.js";
+import { addWorldCharacter } from "./add_world_character.js";
 import { getVisualWorld } from "./get_visual_world.js";
 import { attachVisualGeneration } from "./attach_visual_generation.js";
 import { saveVisualPrompt } from "./save_visual_prompt.js";
@@ -70,6 +71,7 @@ export function createTools(api: Api): ToolDefinition[] {
     // World / Script / Drafts
     getWorld(api),
     saveWorld(api),
+    addWorldCharacter(api),
     getVisualWorld(api),
     attachVisualGeneration(api),
     saveVisualPrompt(api),

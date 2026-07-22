@@ -548,7 +548,9 @@ export function generateShotListMessage() {
       ` dialogue, an audio-sync note, and a Seedance prompt, then` +
       ` call save_shotlist. Do NOT render any video and do NOT pack the bundles yourself —` +
       ` the app auto-packs into <=15s multishots. When done, tell me how many shots you wrote` +
-      ` and how many <=15s multishots they pack into.`,
+      ` and how many <=15s multishots they pack into. Then reconcile speakers with the World` +
+      ` roster per the skill: if save_shotlist reports newSpeakers, surface them and offer to` +
+      ` promote the recurring ones into the World with add_world_character.`,
   ].join("\n");
 }
 
