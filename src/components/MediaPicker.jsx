@@ -213,7 +213,7 @@ export default function MediaPicker({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="flex max-h-[90vh] flex-col sm:max-w-3xl">
+      <DialogContent className="flex h-[620px] max-h-[90vh] flex-col sm:max-w-3xl">
         <DialogHeader><DialogTitle>{title}</DialogTitle></DialogHeader>
 
         <Tabs value={tab} onValueChange={setTab} className="flex min-h-0 flex-1 flex-col">
