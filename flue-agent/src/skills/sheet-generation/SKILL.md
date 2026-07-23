@@ -63,11 +63,15 @@ them fresh, never improvise your own sheet instructions.
 If the user names a character/place that isn't on the roster, ask whether to add
 it first (`add_world_character` / `add_world_location`) or just generate.
 
-## Step 2 — Resolve the model (fresh)
+## Step 2 — Resolve the model (fresh, honoring the project default)
 
-Exactly as in `visual-world`: `models_explore` fresh, pick the current **Nano
-Banana Pro** image model, read its allowed media role (`image`) if referencing.
-Never reuse a remembered/recorded model id.
+The project's **configured default model** is `settings.model` from
+`get_visual_world` (Settings page › Generation defaults; empty string means
+Nano Banana Pro). Resolve as in `visual-world`: `models_explore` fresh, then
+pick the configured model if set — otherwise the current **Nano Banana Pro**
+image model — and read its allowed media role (`image`) if referencing. If the
+configured id no longer exists in the catalog, fall back to Nano Banana Pro and
+mention it. Never reuse a remembered/recorded model id.
 
 ## Step 3 — Assemble the prompt (three layers)
 
@@ -85,7 +89,11 @@ sheet prompt NEVER goes out without the style preset text as its first block**
 enough; paste `preset.image` verbatim). If `prompts[]` has no style preset,
 stop and ask instead of generating unstyled. The subject line stays short — the
 sheet prompt already dictates the layout (views, neutral background, no text);
-repeat none of that. Aspect ratio: `16:9` unless the user asks otherwise.
+repeat none of that. Aspect ratio: **the project default `settings.aspectRatio`**
+(from `get_visual_world`, normally `16:9`) unless the user asks otherwise. If
+the backend rejects that ratio or delivers a different shape, do NOT quietly
+keep the wrong-shaped image — say what happened and `ask_question` whether to
+keep it, reframe/outpaint it, or regenerate.
 
 ## Step 4 — References: optional for characters, REQUIRED for locations
 

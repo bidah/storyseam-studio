@@ -6,16 +6,24 @@
 //
 // Backed by the same /api/visual-world doc as the Visual tab, so it shares the
 // "visual-world" swr cache key and the canonical invalidate+revalidate pair.
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useLoaderData, useRevalidator } from "react-router";
-import { Loader2, Save, Plus, Trash2, IdCard, MapPin, Palette, Check } from "lucide-react";
+import { Loader2, Save, Plus, Trash2, IdCard, MapPin, Palette, Check, SlidersHorizontal } from "lucide-react";
 import { invalidateTabCache } from "@/lib/tabCache";
 import { swr, useRevalidateOnMount } from "@/lib/swr";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
 import { Eyebrow, Panel, ErrorNote } from "@/components/shared";
+import { ASPECTS } from "@/components/ImageStudio";
+
+// Radix Select forbids empty-string item values — sentinel maps back to ""
+// (empty model = the server default, Nano Banana Pro).
+const DEFAULT_MODEL = "__default__";
 
 async function put(path, body) {
   const res = await fetch(path, {
@@ -63,6 +71,21 @@ function SettingsPage() {
     character: world.sheetPrompts?.character || "",
     location: world.sheetPrompts?.location || "",
   });
+  // Generation defaults the composer AND the agent use (model "" = Nano Banana Pro).
+  const [gen, setGen] = useState({
+    model: world.settings?.model || "",
+    aspectRatio: world.settings?.aspectRatio || "16:9",
+  });
+  // Live image-model catalog (same source as the World › Visual composer).
+  const [models, setModels] = useState([]);
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/visual-world/models")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => { if (!cancelled && j?.models) setModels(j.models); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
 
   const refetch = () => { invalidateTabCache("visual-world"); revalidator.revalidate(); };
 
@@ -84,6 +107,14 @@ function SettingsPage() {
       refetch();
     } catch (e) { setError(String(e.message || e)); throw e; }
   };
+  const saveGen = async () => {
+    setError(null);
+    try {
+      const j = await put("/api/visual-world/settings", gen);
+      if (j.settings) setGen({ model: j.settings.model || "", aspectRatio: j.settings.aspectRatio || "16:9" });
+      refetch();
+    } catch (e) { setError(String(e.message || e)); throw e; }
+  };
 
   return (
     <div className="mx-auto max-w-3xl space-y-4">
@@ -96,6 +127,36 @@ function SettingsPage() {
       </div>
 
       {error && <ErrorNote>{error}</ErrorNote>}
+
+      <Panel title={<span className="flex items-center gap-2"><SlidersHorizontal size={15} className="text-primary" /> Generation defaults</span>}>
+        <p className="mb-3 text-sm text-muted-foreground">
+          The image model and aspect ratio used by default — by the World › Visual composer
+          <b> and by the agent</b> whenever it generates images (concept art, character sheets,
+          location sheets), unless you override them for a specific generation.
+        </p>
+        <div className="flex flex-wrap items-center gap-2">
+          <div>
+            <Eyebrow className="normal-case tracking-normal text-foreground/70">Image model</Eyebrow>
+            <Select value={gen.model || DEFAULT_MODEL} onValueChange={(v) => setGen((s) => ({ ...s, model: v === DEFAULT_MODEL ? "" : v }))}>
+              <SelectTrigger size="sm" className="w-[220px] text-xs"><SelectValue placeholder="Nano Banana Pro" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value={DEFAULT_MODEL}>Nano Banana Pro (default)</SelectItem>
+                {models.filter((m) => m.id).map((m) => <SelectItem key={m.id} value={m.id}>{m.label}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <Eyebrow className="normal-case tracking-normal text-foreground/70">Aspect ratio</Eyebrow>
+            <Select value={gen.aspectRatio} onValueChange={(v) => setGen((s) => ({ ...s, aspectRatio: v }))}>
+              <SelectTrigger size="sm" className="w-[110px] text-xs"><SelectValue /></SelectTrigger>
+              <SelectContent>{ASPECTS.map((a) => <SelectItem key={a} value={a}>{a}</SelectItem>)}</SelectContent>
+            </Select>
+          </div>
+          <div className="ml-auto self-end">
+            <SaveButton onSave={saveGen}>Save defaults</SaveButton>
+          </div>
+        </div>
+      </Panel>
 
       <Panel title={<span className="flex items-center gap-2"><Palette size={15} className="text-primary" /> Style prompts</span>}>
         <p className="mb-3 text-sm text-muted-foreground">

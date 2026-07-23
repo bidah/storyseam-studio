@@ -1207,6 +1207,24 @@ export function registerVisualWorld(app) {
     return c.json({ ok: true, prompts, revision: revision && { rev: revision.rev, ts: revision.ts } });
   });
 
+  // Merge-patch the generation defaults (Settings page): the image model and
+  // aspect ratio the composer AND the agent skills use when the user doesn't
+  // override per-generation. `model: ""` means the server default (Nano Banana
+  // Pro); aspectRatio falls back to 16:9 on read (normalize).
+  app.put("/api/visual-world/settings", async (c) => {
+    const pid = c.get("projectId");
+    let patch;
+    try { patch = await c.req.json(); } catch { patch = {}; }
+    await updateVW(c.env, pid, (v) => {
+      const next = { ...v.settings };
+      if (typeof patch.model === "string") next.model = patch.model;
+      if (typeof patch.aspectRatio === "string" && patch.aspectRatio) next.aspectRatio = patch.aspectRatio;
+      v.settings = next;
+    });
+    const fresh = await readVW(c.env, pid);
+    return c.json({ ok: true, settings: fresh.settings });
+  });
+
   // Merge-patch the character/location sheet prompts (Settings page). Sending an
   // empty string resets that prompt to its seed default (normalizeSheetPrompts).
   app.put("/api/visual-world/sheet-prompts", async (c) => {

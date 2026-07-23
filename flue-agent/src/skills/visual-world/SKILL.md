@@ -42,17 +42,22 @@ can arrange on the **Visual nodes** canvas. Built on the **Higgsfield MCP**
 
 ## Step 1 — Resolve the model id AND its allowed media role
 
+The project's **configured default model** is `settings.model` from
+`get_visual_world` (Settings page › Generation defaults; empty string = Nano
+Banana Pro) — honor it unless the user overrides in chat. Likewise generate at
+**`settings.aspectRatio`** (normally `16:9`) unless the user asks otherwise.
+
 Do NOT hardcode a model id, and do NOT reuse a `model` id you read off a prior
 generation (`get_visual_world` records the id that WAS used) or remember from an
 earlier turn — **Higgsfield renames these** (e.g. `nano_banana_flash` →
 `nano_banana_2`), so a remembered id goes stale and `generate_image` fails with
 "model not found / invalid model". Always **call `models_explore` fresh** (list
 image models, or `action:'recommend'` with the goal "flat 2D storybook character
-concept art") and pick the **Nano Banana Pro** image model it returns — or, if the
-catalog has no "Pro", the current Nano Banana image model it lists. Reuse that
-freshly-resolved id for this batch only. If a `generate_image` call ever errors on
-the model, re-run `models_explore` and retry with the current id — never guess a
-renamed variant.
+concept art") and pick the configured model if set — otherwise the **Nano Banana
+Pro** image model it returns, or, if the catalog has no "Pro", the current Nano
+Banana image model it lists. Reuse that freshly-resolved id for this batch only.
+If a `generate_image` call ever errors on the model, re-run `models_explore` and
+retry with the current id — never guess a renamed variant.
 
 **If you will use image references, this step also decides the media role** — and
 models change, so you MUST check. Read the chosen model's allowed **media roles**
