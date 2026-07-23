@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLoaderData, useRevalidator } from "react-router";
-import { X, Check, Plus, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, RotateCcw, Maximize2, Volume2, Speech, Play, Copy, Pencil, Sparkles, PenLine, FileText, Image as ImageIcon, Loader2, Wand2, Scissors, Boxes, CircleAlert, MapPin, User } from "lucide-react";
+import { X, Check, Plus, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, RotateCcw, Maximize2, Volume2, Speech, Play, Copy, Pencil, Sparkles, PenLine, FileText, Film, Image as ImageIcon, Loader2, Wand2, Scissors, Boxes, CircleAlert, MapPin, User } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { swr, useRevalidateOnMount, useRevalidateOnAgentIdle } from "@/lib/swr";
 import { invalidateTabCache } from "@/lib/tabCache";
@@ -768,11 +768,59 @@ function FirstFrameModal({ bundle, open, stills, reloadKey, current, onPick, onC
   );
 }
 
-function EpisodeBundle({ b, flat, picked, onOpenPicker, onRemove, onView, audioMap, audioPicked, onOpenAudio, vids, reloadKey, onToggleVideo, stills, onToggleStill, firstFrame, onSetFirstFrame, override, onEditPrompt, onResetPrompt, signoff, onSign, needsState, onLinkNeed }) {
+// Pick the VIDEO STYLE CONTINUITY REFERENCE for a bundle's render: any already-
+// rendered generation (from any bundle) whose style/colors/feeling the new clip
+// should continue. Selecting the current one clears it (toggle).
+function RefVideoModal({ bundle, open, takes, reloadKey, current, onPick, onClose }) {
+  return (
+    <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-2xl">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2"><Film size={16} className="text-primary" /> Video style continuity reference — {bundle.id}</DialogTitle>
+        </DialogHeader>
+        <p className="text-sm text-muted-foreground">
+          Choose an already-generated video whose style, colors, and feeling the new render should continue. It is passed to Seedance as a video reference alongside the image references.
+        </p>
+        {takes.length === 0 ? (
+          <Empty>no rendered videos yet — render a bundle first.</Empty>
+        ) : (
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+            {takes.map((t) => {
+              const sel = t.file === current;
+              return (
+                <button
+                  key={t.file}
+                  type="button"
+                  onClick={() => onPick(sel ? null : t)}
+                  className={cn(
+                    "group relative aspect-video overflow-hidden rounded-md border transition-colors",
+                    sel ? "border-primary ring-2 ring-primary/40" : "hover:border-primary/60",
+                  )}
+                  title={sel ? "Click to clear" : `Use ${t.fromBundle} · ${t.name} as the style reference`}
+                >
+                  <video src={t.url + (reloadKey ? `?v=${reloadKey}` : "")} muted playsInline preload="metadata" className="h-full w-full object-cover" />
+                  <span className="absolute left-1 top-1 rounded bg-background/80 px-1 font-mono text-[9px]">{t.fromBundle} · {t.name}</span>
+                  {sel && <span className="absolute right-1 top-1 rounded-full bg-primary p-0.5 text-primary-foreground"><Check size={10} /></span>}
+                </button>
+              );
+            })}
+          </div>
+        )}
+        <DialogFooter>
+          {current && <Button variant="ghost" onClick={() => onPick(null)}>Clear style reference</Button>}
+          <Button variant="outline" onClick={onClose}>Done</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function EpisodeBundle({ b, flat, picked, onOpenPicker, onRemove, onView, audioMap, audioPicked, onOpenAudio, vids, allVideos, reloadKey, onToggleVideo, stills, onToggleStill, firstFrame, onSetFirstFrame, refVideo, onSetRefVideo, override, onEditPrompt, onResetPrompt, signoff, onSign, needsState, onLinkNeed }) {
   const [open, setOpen] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
   const [signOpen, setSignOpen] = useState(false);
   const [ffOpen, setFfOpen] = useState(false);
+  const [rvOpen, setRvOpen] = useState(false);
   const [renderErr, setRenderErr] = useState(null);
   const signedCount = signoff ? ["images", "prompt", "audio"].filter((k) => signoff[k]).length : 0;
   const fullySigned = signedCount === 3;
@@ -812,8 +860,22 @@ function EpisodeBundle({ b, flat, picked, onOpenPicker, onRemove, onView, audioM
         )
         .join("\n")
     : "";
+  // The chosen video style continuity reference: an already-rendered generation
+  // (from any bundle) the new clip should match in style/colors/feeling. Its
+  // ungated refUrl is what the model can fetch (video_references).
+  const allTakes = Object.entries(allVideos || {}).flatMap(([bid, arr]) =>
+    (arr || []).map((t) => ({ ...t, fromBundle: bid }))
+  );
+  const refVideoTake = refVideo?.file ? allTakes.find((t) => t.file === refVideo.file) : null;
+  const refVideoUrl = refVideoTake?.refUrl || null;
+
+  const videoBlock = refVideoUrl
+    ? "\n\nVIDEO STYLE CONTINUITY REFERENCE (pass as a video_references entry):\n" +
+      `- ${refVideoTake.fromBundle} · ${refVideoTake.name}: ${refVideoUrl}\n` +
+      "This is a video reference for you to continue — keep its video style, colors, and feeling so our new generation has continuity."
+    : "";
   const bodyPrompt = edited ? override : b.skillPrompt;
-  const fullPrefix = refBlock + audioBlock + "\n\n";
+  const fullPrefix = refBlock + audioBlock + videoBlock + "\n\n";
   const displayPrompt = fullPrefix + bodyPrompt;
 
   // The chosen first frame: a still the Seedance clip opens on (start_image). Its
@@ -831,7 +893,7 @@ function EpisodeBundle({ b, flat, picked, onOpenPicker, onRemove, onView, audioM
   const requestRender = async () => {
     setRenderErr(null);
     try {
-      await agent.send({ message: renderEpisodeMessage(b, displayPrompt, firstFrameRefUrl) });
+      await agent.send({ message: renderEpisodeMessage(b, displayPrompt, firstFrameRefUrl, refVideoUrl) });
     } catch (e) {
       setRenderErr(String(e.message || e));
     }
@@ -918,6 +980,16 @@ function EpisodeBundle({ b, flat, picked, onOpenPicker, onRemove, onView, audioM
                   <ImageIcon size={13} />
                 )}
                 First frame
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setRvOpen(true)}
+                disabled={allTakes.length === 0}
+                title={allTakes.length === 0 ? "Render a bundle first — the style reference is one of the generated videos" : "Choose a generated video whose style, colors, and feeling this render should continue (video reference)"}
+              >
+                {refVideoTake ? <Check size={13} className="text-primary" /> : <Film size={13} />}
+                Style ref
               </Button>
               <Button variant="outline" size="sm" onClick={() => setSignOpen(true)} title="revision signing">
                 <PenLine size={13} /> revision signing
@@ -1145,6 +1217,15 @@ function EpisodeBundle({ b, flat, picked, onOpenPicker, onRemove, onView, audioM
         onPick={(t) => { onSetFirstFrame(b.id, t?.shotId || null, t?.file || null); setFfOpen(false); }}
         onClose={() => setFfOpen(false)}
       />
+      <RefVideoModal
+        bundle={b}
+        open={rvOpen}
+        takes={allTakes}
+        reloadKey={reloadKey}
+        current={refVideo?.file || null}
+        onPick={(t) => { onSetRefVideo(b.id, t?.fromBundle || null, t?.file || null); setRvOpen(false); }}
+        onClose={() => setRvOpen(false)}
+      />
     </Card>
   );
 }
@@ -1229,6 +1310,7 @@ function Episode({ reloadKey, onView }) {
   const [signoffs, setSignoffs] = useState(payload.ep.signoffs || {});
   const [stills, setStills] = useState(payload.st?.stills || {}); // { bundle: { shot: [takes] } }
   const [firstFrames, setFirstFrames] = useState(payload.ep.firstFrames || {}); // { bundle: { shot, file } }
+  const [refVideos, setRefVideos] = useState(payload.ep.refVideos || {}); // { bundle: { from, file } }
   const [needsMap, setNeedsMap] = useState(payload.ep.needs || {}); // { bundle: scene-needs state }
   const promptTimers = useRef({});
   const agent = useAgent();
@@ -1241,6 +1323,7 @@ function Episode({ reloadKey, onView }) {
     setSignoffs(ep.signoffs || {});
     setStills(st?.stills || {});
     setFirstFrames(ep.firstFrames || {});
+    setRefVideos(ep.refVideos || {});
     setNeedsMap(ep.needs || {});
     setFolders(lib.folders || []);
     const m = {};
@@ -1478,6 +1561,25 @@ function Episode({ reloadKey, onView }) {
     } catch (e) { setError(String(e.message || e)); }
   }, []);
 
+  // Choose (or clear) a bundle's video style continuity reference — an already-
+  // rendered generation (from any bundle) the new clip should match in style/
+  // colors/feeling. Optimistic; persisted to db.episodeRefVideo.
+  const onSetRefVideo = useCallback(async (bundle, from, file) => {
+    setRefVideos((r) => {
+      const next = { ...r };
+      if (file) next[bundle] = { from: from || null, file };
+      else delete next[bundle];
+      return next;
+    });
+    try {
+      await fetch("/api/episode/ref-video", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ bundle, from: from || null, file: file || null }),
+      });
+    } catch (e) { setError(String(e.message || e)); }
+  }, []);
+
   // Re-pack the current shot list into bundles (Phase 0). The server preserves
   // stills (re-keyed by shot id) and renders; re-packed bundles need re-review.
   const rebuild = useCallback(async () => {
@@ -1602,12 +1704,15 @@ function Episode({ reloadKey, onView }) {
                 audioPicked={audioPicks[b.id] || new Set()}
                 onOpenAudio={setAudioPicker}
                 vids={videos[b.id] || []}
+                allVideos={videos}
                 reloadKey={reloadKey}
                 onToggleVideo={onToggleVideo}
                 stills={stills[b.id] || {}}
                 onToggleStill={onToggleStill}
                 firstFrame={firstFrames[b.id]}
                 onSetFirstFrame={onSetFirstFrame}
+                refVideo={refVideos[b.id]}
+                onSetRefVideo={onSetRefVideo}
                 override={prompts[b.id]}
                 onEditPrompt={onEditPrompt}
                 onResetPrompt={onResetPrompt}

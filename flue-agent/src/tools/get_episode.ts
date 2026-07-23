@@ -46,6 +46,7 @@ type EpisodePayload = {
     Record<"images" | "prompt" | "audio", unknown>
   >;
   firstFrames?: Record<string, unknown>;
+  refVideos?: Record<string, unknown>;
   needs?: Record<string, unknown>;
 };
 
@@ -65,6 +66,7 @@ const bundleState = (data: EpisodePayload, id: string) => {
         }
       : null,
     firstFrame: data.firstFrames?.[id] ?? null,
+    refVideo: data.refVideos?.[id] ?? null,
   };
 };
 

@@ -374,7 +374,10 @@ export function renderSoundMessage(track, ver) {
 // `firstFrameUrl` (optional) is a storyboard still's ungated refUrl to open the
 // clip on — the agent passes it to Seedance as `start_image` (the generate-multishot
 // skill's optional first-frame path), on TOP of the semantic image_references.
-export function renderEpisodeMessage(bundle, prompt, firstFrameUrl) {
+// `refVideoUrl` (optional) is a previously-rendered generation's ungated refUrl —
+// the agent passes it to Seedance as `video_references` (the skill's optional
+// style-continuity path) so the new clip continues its style/colors/feeling.
+export function renderEpisodeMessage(bundle, prompt, firstFrameUrl, refVideoUrl) {
   const label = `${bundle.id}${bundle.beatTitle ? ` — ${bundle.beatTitle}` : ""}`;
   return [
     `Render episode bundle ${label} now — its revision is signed off.`,
@@ -386,6 +389,13 @@ export function renderEpisodeMessage(bundle, prompt, firstFrameUrl) {
       ? `FIRST FRAME: open the clip on this exact image — pass it to Seedance as` +
         ` start_image (per the skill's optional first-frame path), in ADDITION to the` +
         ` image_references in the prompt: ${firstFrameUrl}`
+      : null,
+    refVideoUrl
+      ? `VIDEO STYLE CONTINUITY: pass this previously-rendered clip to Seedance as a` +
+        ` video_references entry (per the skill's optional style-continuity path), in` +
+        ` ADDITION to the image_references, and keep the continuity sentence from the` +
+        ` prompt below — it tells the model to continue this clip's style, colors, and` +
+        ` feeling: ${refVideoUrl}`
       : null,
     "",
     bundle.duration ? `Target duration: ~${bundle.duration}s` : null,

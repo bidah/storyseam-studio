@@ -540,7 +540,15 @@ export function registerEpisode(app) {
       const list = [];
       for (const v of arr) {
         if (v && v.file && genSet.has(v.file)) {
-          list.push({ ...v, name: v.name || `gen ${list.length + 1}`, url: "/gen/" + v.file });
+          // refUrl: ungated absolute /files URL an anonymous fetcher (the render
+          // agent / Higgsfield import) can pull — the /gen/ url needs the
+          // project header. Same trick as storyboard.js still refUrl.
+          list.push({
+            ...v,
+            name: v.name || `gen ${list.length + 1}`,
+            url: "/gen/" + v.file,
+            refUrl: filesUrl(c.env, mediaKey(pid, "gen", v.file)),
+          });
         }
       }
       if (list.length) video[id] = list;
@@ -550,7 +558,7 @@ export function registerEpisode(app) {
     const maps = rosterMaps(world);
     const needs = {};
     for (const b of manifest.bundles || []) needs[b.id] = needsStateFor(b, maps, db);
-    return c.json({ episode: manifest, video, prompts: db.prompt || {}, signoffs: db.signoffs || {}, firstFrames: db.episodeFirstFrame || {}, needs });
+    return c.json({ episode: manifest, video, prompts: db.prompt || {}, signoffs: db.signoffs || {}, firstFrames: db.episodeFirstFrame || {}, refVideos: db.episodeRefVideo || {}, needs });
   });
 
   // Choose (or clear) the FIRST FRAME for a bundle's video render — a storyboard
@@ -568,6 +576,24 @@ export function registerEpisode(app) {
     else delete db.episodeFirstFrame[bundle];
     await writeDB(c.env, pid, db);
     return c.json({ ok: true, bundle, firstFrame: db.episodeFirstFrame[bundle] || null });
+  });
+
+  // Choose (or clear) the VIDEO STYLE CONTINUITY REFERENCE for a bundle's render —
+  // an already-rendered generation (from any bundle) the new clip should match in
+  // style/colors/feeling (passed as video_references). Stored per bundle as
+  // { from: <source bundle id>, file }; `file:null` (or omitted) clears it.
+  app.post("/api/episode/ref-video", async (c) => {
+    const pid = c.get("projectId");
+    let body;
+    try { body = await c.req.json(); } catch { body = {}; }
+    const { bundle, from, file } = body || {};
+    if (!bundle) return c.json({ error: "Missing 'bundle'" }, 400);
+    const db = await readDB(c.env, pid);
+    db.episodeRefVideo = db.episodeRefVideo || {};
+    if (file) db.episodeRefVideo[bundle] = { from: from || null, file };
+    else delete db.episodeRefVideo[bundle];
+    await writeDB(c.env, pid, db);
+    return c.json({ ok: true, bundle, refVideo: db.episodeRefVideo[bundle] || null });
   });
 
   // Mark a rendered generation as selected/deselected (for stitching later).

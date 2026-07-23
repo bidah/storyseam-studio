@@ -116,6 +116,23 @@ If — and ONLY if — the turn explicitly hands you a **first-frame image** (th
 
 Upload the provided first-frame URL to a `media_id` (`media_import_url` / `media_upload`) just like any other reference. Without an explicit first frame, omit `start_image` entirely (the default behaviour above).
 
+### Optional video style continuity reference (video_references)
+
+If — and ONLY if — the turn hands you a **video style continuity reference** (a previously-rendered clip the new generation should match in style — the prompt will carry a `VIDEO STYLE CONTINUITY REFERENCE` block and/or the turn a `VIDEO STYLE CONTINUITY:` line with its URL), pass it as `video_references` **in addition to** the `image_references` above:
+
+```jsonc
+"medias": [
+  { "role": "video_references", "value": "<continuity clip media_id>" },   // ⭐ only when a style reference was provided
+  { "role": "audio_references", "value": "<DIALOG stem media_id>" },
+  { "role": "image_references", "value": "<location media_id>" },
+  { "role": "image_references", "value": "<character sheet media_id>" }
+]
+```
+
+- Import the provided clip URL to a `media_id` with `media_import_url` (it is an ungated `/files/...` URL), then `media_confirm { type:"video", media_ids:[...] }`.
+- Keep the continuity sentence in the prompt (it ships inside the composed prompt's `VIDEO STYLE CONTINUITY REFERENCE` block): *"This is a video reference for you to continue — keep its video style, colors, and feeling so our new generation has continuity."* If the turn provides the URL but the prompt lacks the block, append that sentence to the prompt yourself.
+- The reference video is **stylistic**, not content: never put it in `start_image`, and don't copy its shot list — the beats come from this bundle's prompt. Without an explicit style reference, omit `video_references` entirely.
+
 ## Step 5 — Poll
 
 ```jsonc
