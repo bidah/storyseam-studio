@@ -217,20 +217,35 @@ export function registerEpisode(app) {
   });
 
   // Auto-assign: match each bundle's needs to the library-selected images and
-  // write the per-shot picks. Replaces existing picks for every bundle.
+  // write the per-shot picks. With no body it replaces existing picks for EVERY
+  // bundle; `{ beat: "B1" }` scopes the run to that beat's bundles and leaves
+  // every other bundle's picks untouched.
   app.post("/api/episode/auto-assign", async (c) => {
     const pid = c.get("projectId");
+    let body;
+    try { body = await c.req.json(); } catch { body = {}; }
+    const beat = typeof body?.beat === "string" && body.beat.trim()
+      ? body.beat.trim().toUpperCase()
+      : null;
     const manifest = await readManifest(c.env, pid);
     if (!manifest) return c.json({ error: "No episode manifest" }, 400);
+    const targets = beat
+      ? manifest.bundles.filter((b) => String(b.beat).toUpperCase() === beat)
+      : manifest.bundles;
+    if (!targets.length) return c.json({ error: `No bundles in beat '${beat}'` }, 400);
     const db = await readDB(c.env, pid);
     const selected = Object.keys(db.library || {}).filter((r) => db.library[r]);
     const tagged = selected.map((rel) => ({ rel, tags: classifyRef(rel) }));
 
     let totalAssigned = 0;
     const summary = {};
-    db.episode = {};
-    db.episodeAudio = {};
-    for (const b of manifest.bundles) {
+    if (!beat) {
+      db.episode = {};
+      db.episodeAudio = {};
+    }
+    db.episode = db.episode || {};
+    db.episodeAudio = db.episodeAudio || {};
+    for (const b of targets) {
       const reqs = bundleRequirements(b);
       // one image per role; for each role try its candidate tags in priority order
       const matched = [];
@@ -252,7 +267,7 @@ export function registerEpisode(app) {
       db.episodeAudio[b.id] = audioRel ? [audioRel] : [];
     }
     await writeDB(c.env, pid, db);
-    return c.json({ ok: true, bundles: manifest.bundles.length, totalAssigned, summary });
+    return c.json({ ok: true, beat, bundles: targets.length, totalAssigned, summary });
   });
 
   // Rebuild the episode plan (the packed <=15s bundles) from the CURRENT shot

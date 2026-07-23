@@ -1359,7 +1359,9 @@ function Episode({ reloadKey, onView }) {
     }
   }, []);
 
-  const [assigning, setAssigning] = useState(false);
+  // null when idle, "all" for the episode-wide run, or a beat id ("B1") for a
+  // beat-scoped run — one run at a time either way.
+  const [assigning, setAssigning] = useState(null);
   const [rebuilding, setRebuilding] = useState(false);
   const { revalidate } = useRevalidator();
 
@@ -1398,10 +1400,18 @@ function Episode({ reloadKey, onView }) {
       setRebuilding(false);
     }
   }, [revalidate]);
-  const autoAssign = useCallback(async () => {
-    setAssigning(true);
+  // Auto-assign refs + voice picks; pass a beat id to scope the run to that
+  // beat's bundles (everything else keeps its picks), omit for the whole episode.
+  const autoAssign = useCallback(async (beat) => {
+    setAssigning(beat || "all");
     try {
-      const res = await fetch("/api/episode/auto-assign", { method: "POST" });
+      const res = await fetch("/api/episode/auto-assign", {
+        method: "POST",
+        ...(beat && {
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ beat }),
+        }),
+      });
       const out = await res.json();
       if (!res.ok) throw new Error(out.error);
       const fn = await fetch("/api/final").then((r) => r.json());
@@ -1415,9 +1425,20 @@ function Episode({ reloadKey, onView }) {
     } catch (e) {
       setError(String(e.message || e));
     } finally {
-      setAssigning(false);
+      setAssigning(null);
     }
   }, []);
+
+  // Consecutive bundles of the same beat, for the per-beat header rows.
+  const beatGroups = useMemo(() => {
+    const groups = [];
+    for (const b of data?.bundles || []) {
+      const last = groups[groups.length - 1];
+      if (last && last.beat === b.beat) last.bundles.push(b);
+      else groups.push({ beat: b.beat, beatTitle: b.beatTitle, bundles: [b] });
+    }
+    return groups;
+  }, [data]);
 
   if (error) return <ErrorNote>{error}</ErrorNote>;
   if (!data)
@@ -1439,8 +1460,8 @@ function Episode({ reloadKey, onView }) {
             <Button variant="outline" onClick={rebuild} disabled={rebuilding} title="Re-pack the current shot list into bundles (stills & renders are preserved; re-packed bundles need re-review)">
               {rebuilding ? <><Loader2 size={14} className="animate-spin" /> rebuilding…</> : <><Boxes size={14} /> rebuild plan</>}
             </Button>
-            <Button onClick={autoAssign} disabled={assigning || selCount === 0}>
-              {assigning ? <><Loader2 size={14} className="animate-spin" /> assigning…</> : <><Sparkles size={14} /> auto-assign references</>}
+            <Button onClick={() => autoAssign()} disabled={!!assigning || selCount === 0}>
+              {assigning === "all" ? <><Loader2 size={14} className="animate-spin" /> assigning…</> : <><Sparkles size={14} /> auto-assign references</>}
             </Button>
           </div>
         </div>
@@ -1452,32 +1473,54 @@ function Episode({ reloadKey, onView }) {
         </div>
       </div>
 
-      <div className="space-y-4">
-        {data.bundles.map((b) => (
-          <EpisodeBundle
-            key={b.id}
-            b={b}
-            flat={flat}
-            picked={picks[b.id] || new Set()}
-            onOpenPicker={setPickerBundle}
-            onRemove={onRemove}
-            onView={onView}
-            audioMap={audioMap}
-            audioPicked={audioPicks[b.id] || new Set()}
-            onOpenAudio={setAudioPicker}
-            vids={videos[b.id] || []}
-            reloadKey={reloadKey}
-            onToggleVideo={onToggleVideo}
-            stills={stills[b.id] || {}}
-            onToggleStill={onToggleStill}
-            firstFrame={firstFrames[b.id]}
-            onSetFirstFrame={onSetFirstFrame}
-            override={prompts[b.id]}
-            onEditPrompt={onEditPrompt}
-            onResetPrompt={onResetPrompt}
-            signoff={signoffs[b.id]}
-            onSign={onSign}
-          />
+      <div className="space-y-6">
+        {beatGroups.map((g) => (
+          <div key={g.beat} className="space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b pb-2">
+              <div className="flex items-center gap-2">
+                <Badge variant="outline" className="font-mono">{g.beat}</Badge>
+                <span className="text-sm font-medium">{g.beatTitle}</span>
+                <span className="text-xs text-muted-foreground">
+                  {g.bundles.length} {g.bundles.length === 1 ? "bundle" : "bundles"}
+                </span>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => autoAssign(g.beat)}
+                disabled={!!assigning || selCount === 0}
+                title={`Auto-assign references + voice picks for ${g.beat} only — other beats keep their picks`}
+              >
+                {assigning === g.beat ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />} auto-assign {g.beat}
+              </Button>
+            </div>
+            {g.bundles.map((b) => (
+              <EpisodeBundle
+                key={b.id}
+                b={b}
+                flat={flat}
+                picked={picks[b.id] || new Set()}
+                onOpenPicker={setPickerBundle}
+                onRemove={onRemove}
+                onView={onView}
+                audioMap={audioMap}
+                audioPicked={audioPicks[b.id] || new Set()}
+                onOpenAudio={setAudioPicker}
+                vids={videos[b.id] || []}
+                reloadKey={reloadKey}
+                onToggleVideo={onToggleVideo}
+                stills={stills[b.id] || {}}
+                onToggleStill={onToggleStill}
+                firstFrame={firstFrames[b.id]}
+                onSetFirstFrame={onSetFirstFrame}
+                override={prompts[b.id]}
+                onEditPrompt={onEditPrompt}
+                onResetPrompt={onResetPrompt}
+                signoff={signoffs[b.id]}
+                onSign={onSign}
+              />
+            ))}
+          </div>
         ))}
       </div>
 
