@@ -536,6 +536,34 @@ export function renderAnimaticSceneMessage(scene, shots) {
   ].join("\n");
 }
 
+// The Animatic's "locations pass": have the agent produce a reference sheet for
+// every listed place and link each onto the World roster. Follows the
+// sheet-generation skill's contract — the USER picks each reference image via
+// ask_question (never auto-picked), and the finish path is
+// attach_visual_generation → save_generation_to_library → attach_location_sheet,
+// so the art lands on the roster and unblocks every scene filmed there.
+// `locations` come from GET /api/animatic/view (each with slug, name, shots).
+export function renderLocationSheetsMessage(locations, sceneTitle) {
+  const lines = locations.map((l) => {
+    const label = l.name && l.name !== l.slug ? `${l.slug} (${l.name})` : l.slug;
+    return `- ${label}${l.shots ? ` — used by ${l.shots} shot${l.shots > 1 ? "s" : ""}` : ""}`;
+  });
+  return [
+    sceneTitle
+      ? `Generate the location sheet${locations.length > 1 ? "s" : ""} the "${sceneTitle}" scene still needs, and link ${locations.length > 1 ? "each one" : "it"} on the World roster:`
+      : `Generate a location sheet for ${locations.length > 1 ? "each of these places" : "this place"} and link ${locations.length > 1 ? "each one" : "it"} on the World roster:`,
+    ...lines,
+    "",
+    `Load the sheet-generation skill and follow it, ONE location at a time. Build each`,
+    `subject from the roster entry (get_world) plus what the shots filmed there need`,
+    `(get_shotlist), and ask me to pick the reference image with ask_question before`,
+    `generating — never auto-pick.`,
+    `Finish each location with attach_visual_generation, then save_generation_to_library,`,
+    `then attach_location_sheet (location id from get_world) so the sheet shows on the`,
+    `World roster and the Animatic auto-feeds it to every shot at that place.`,
+  ].join("\n");
+}
+
 // Build the chat turn that kicks off world-building — the "Let's create the
 // world" button on the World tab. Routed through the agent (the world-creation
 // skill) so it interviews the user across the story map, story depth, and
