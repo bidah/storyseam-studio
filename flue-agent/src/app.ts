@@ -4,6 +4,7 @@ import { Hono, type MiddlewareHandler } from "hono";
 import { verifyProxyUser, proxySecret, PROXY_HEADER } from "./lib/proxy-auth.js";
 import { decodeInstanceId } from "./lib/instance-id.js";
 import { isAllowedModel } from "./lib/models.js";
+import { isPlausibleFalKey } from "./lib/fal-key.js";
 
 // --- Observability -----------------------------------------------------------
 // Surface agent failures to Cloudflare Workers Logs (wrangler.jsonc enables
@@ -87,6 +88,10 @@ observe((event) => {
 // The per-turn model chosen by the web picker rides on this header (set by the
 // projectFetch shim on the SPA side and forwarded verbatim by the /eve proxy).
 const MODEL_HEADER = "x-flue-model";
+// The user's own fal.ai key rides the same way (localStorage-only BYOK — see
+// src/lib/falKey.js in the SPA). Persisted per conversation via setFalKey so
+// the fal_* render tools can use it mid-run; never stored in a database.
+const FAL_KEY_HEADER = "x-flue-fal-key";
 
 // Generated Durable Object binding for each agent: `whistlewood.ts` ->
 // class FlueWhistlewoodAgent -> env.FLUE_WHISTLEWOOD_AGENT.
@@ -94,7 +99,10 @@ const AGENT_BINDINGS: Record<string, string> = {
   whistlewood: "FLUE_WHISTLEWOOD_AGENT",
 };
 
-type ModelStub = { setModel(model: string): Promise<void> };
+type ModelStub = {
+  setModel(model: string): Promise<void>;
+  setFalKey(key: string): Promise<void>;
+};
 type Env = Record<string, DurableObjectNamespace | undefined>;
 
 // Route the built-in `anthropic/*` provider through Cloudflare AI Gateway
@@ -136,7 +144,10 @@ const requireProxyUser: MiddlewareHandler = async (c, next) => {
 // model). The model is whitelisted so a client can't select an arbitrary one.
 const applyModelSelection: MiddlewareHandler = async (c, next) => {
   const requested = c.req.header(MODEL_HEADER);
-  if (c.req.method === "POST" && isAllowedModel(requested)) {
+  const falKey = c.req.header(FAL_KEY_HEADER);
+  const wantModel = isAllowedModel(requested);
+  const wantFalKey = isPlausibleFalKey(falKey);
+  if (c.req.method === "POST" && (wantModel || wantFalKey)) {
     const name = c.req.param("name") ?? "";
     const bindingName = AGENT_BINDINGS[name];
     const ns = bindingName
@@ -146,9 +157,12 @@ const applyModelSelection: MiddlewareHandler = async (c, next) => {
     if (ns && id) {
       try {
         const stub = ns.get(ns.idFromName(id)) as unknown as ModelStub;
-        await stub.setModel(requested);
+        if (wantModel) await stub.setModel(requested as string);
+        // Refresh the conversation's BYOK fal key each send (absent header
+        // leaves the stored key alone, so other clients keep working).
+        if (wantFalKey) await stub.setFalKey(falKey as string);
       } catch {
-        /* keep the stored / default model */
+        /* keep the stored / default model + key */
       }
     }
   }

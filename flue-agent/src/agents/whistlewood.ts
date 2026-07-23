@@ -9,6 +9,7 @@ import { decodeInstanceId } from "../lib/instance-id.js";
 import { createApi } from "../lib/api.js";
 import { createTools } from "../tools/index.js";
 import { createHiggsfieldTools } from "../lib/higgsfield.js";
+import { createFalTools } from "../lib/fal.js";
 import { createSandbox } from "../lib/sandbox.js";
 import { skills } from "../skills.js";
 import { createSubagents } from "../subagents.js";
@@ -17,6 +18,7 @@ import {
   readSelectedModel,
   writeSelectedModel,
 } from "../lib/models.js";
+import { readFalKey, writeFalKey } from "../lib/fal-key.js";
 
 export const description =
   "Whistlewood production agent — drives the script → shots → renders → cuts → library pipeline.";
@@ -39,15 +41,31 @@ function selectedModel(): string {
   }
 }
 
-// Native Agents SDK extension for this agent's generated Durable Object. Adds a
-// `setModel` RPC that persists the caller-selected chat model for the
-// conversation; app.ts invokes it (whitelisted) before admitting each prompt.
+// This conversation's stored fal key (BYOK — written by app.ts's setFalKey just
+// before the prompt was admitted, like the model selection above). Empty when
+// the user hasn't provided one; createFalTools then falls back to the FAL_KEY
+// env secret or omits the fal tools entirely.
+function storedFalKey(): string {
+  try {
+    return readFalKey(getCloudflareContext().storage.sql);
+  } catch {
+    return "";
+  }
+}
+
+// Native Agents SDK extension for this agent's generated Durable Object. Adds
+// `setModel` / `setFalKey` RPCs that persist the caller-selected chat model and
+// fal API key for the conversation; app.ts invokes them (whitelisted /
+// shape-checked) before admitting each prompt.
 export const cloudflare = extend<CloudflareAgentLike & { ctx: DurableObjectState }>(
   {
     base: (Base) =>
       class extends Base {
         async setModel(model: string): Promise<void> {
           writeSelectedModel(this.ctx.storage.sql, model);
+        }
+        async setFalKey(key: string): Promise<void> {
+          writeFalKey(this.ctx.storage.sql, key);
         }
       },
   },
@@ -64,12 +82,13 @@ export default defineAgent(async ({ id }) => {
   const api = createApi(projectId);
   const tools = createTools(api);
   const higgsfieldTools = await createHiggsfieldTools(userId);
+  const falTools = createFalTools(storedFalKey());
   const sandbox = await createSandbox(id);
 
   return {
     model: selectedModel(),
     instructions,
-    tools: [...tools, ...higgsfieldTools],
+    tools: [...tools, ...higgsfieldTools, ...falTools],
     skills,
     subagents: createSubagents(api),
     ...(sandbox ? { sandbox, cwd: "/workspace" } : {}),

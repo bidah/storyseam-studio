@@ -10,6 +10,9 @@ description: >-
   reference. Unlike text-to-speech, Seed Audio renders engines, crashes, rain,
   gunshots, rooms, music beds, and spoken lines together in one mixed clip. NOT
   for plain narration of long text (use a text2speech_v2_* model for that).
+  Higgsfield-ONLY for scenes: fal has no Seed Audio equivalent — its
+  fal_generate_audio makes single ElevenLabs sound effects, so only use it for
+  a simple standalone SFX when the user explicitly asks for fal.
 ---
 
 # Seed Audio 1.0 (Higgsfield)

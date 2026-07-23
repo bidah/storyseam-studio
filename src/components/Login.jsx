@@ -2,12 +2,21 @@
 // Higgsfield". One Higgsfield OAuth flow (Better Auth genericOAuth) creates an
 // internal user + links the Higgsfield account/token. Gated on the Better Auth
 // session; the signed-in user owns their own projects.
+//
+// After the session exists a SECOND mandatory gate asks for the user's fal.ai
+// API key (BYOK): it lives only in this browser's localStorage (lib/falKey.js)
+// and rides per-request to the workers — never stored server-side. The app
+// shell doesn't render until both gates pass; the key stays editable on the
+// Settings page.
 import { useState } from "react";
 import {
   Clapperboard, Bot, PenLine, Workflow, Film, ListVideo, AudioLines, Loader2, ArrowRight,
+  KeyRound, ExternalLink, LogOut,
 } from "lucide-react";
-import { useSession, authClient } from "@/lib/auth-client";
+import { useSession, authClient, signOut } from "@/lib/auth-client";
+import { useFalKey, setFalKey } from "@/lib/falKey";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 
 const FEATURES = [
   { icon: Bot, label: "Chat agent", note: "Drives the whole pipeline" },
@@ -99,9 +108,80 @@ function Splash() {
   );
 }
 
+// Mandatory fal.ai key step (after login, before the app shell). The key is the
+// user's own — generations bill THEIR fal account — and it never leaves this
+// browser except as a per-request header to our workers.
+function FalKeyScreen({ userEmail }) {
+  const [draft, setDraft] = useState("");
+  const plausible = /^[\w:.-]{10,200}$/.test(draft.trim());
+
+  return (
+    <div className="relative flex min-h-dvh items-center justify-center overflow-hidden bg-background px-6 py-12">
+      <div aria-hidden className="pointer-events-none absolute -top-40 left-1/2 size-[46rem] -translate-x-1/2 rounded-full bg-primary/15 blur-3xl" />
+      <div className="relative w-full max-w-md">
+        <div className="flex flex-col items-center text-center">
+          <span className="flex size-11 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-lg shadow-primary/20">
+            <KeyRound size={22} />
+          </span>
+          <h1 className="mt-6 text-balance text-2xl font-semibold tracking-tight">
+            Connect your <span className="text-primary">fal.ai</span> key
+          </h1>
+          <p className="mt-2 text-sm text-muted-foreground">
+            Shot Studio renders images and video with your own fal.ai account. Paste an
+            API key to continue — it is stored <b>only in this browser</b>, never on our
+            servers, and you can change it later in Settings.
+          </p>
+
+          <form
+            className="mt-7 w-full space-y-3"
+            onSubmit={(e) => { e.preventDefault(); if (plausible) setFalKey(draft); }}
+          >
+            <Input
+              type="password"
+              autoComplete="off"
+              autoFocus
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              placeholder="key_id:key_secret"
+              className="h-10 font-mono text-sm"
+              aria-label="fal.ai API key"
+            />
+            <Button type="submit" size="lg" className="w-full gap-2 font-medium" disabled={!plausible}>
+              Save &amp; continue
+              <ArrowRight size={16} />
+            </Button>
+          </form>
+
+          <a
+            href="https://fal.ai/dashboard/keys"
+            target="_blank"
+            rel="noreferrer"
+            className="mt-4 inline-flex items-center gap-1.5 text-xs text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
+          >
+            Create a key on fal.ai <ExternalLink size={12} />
+          </a>
+
+          <div className="mt-8 flex items-center gap-2 text-xs text-muted-foreground">
+            {userEmail ? <span>Signed in as {userEmail}</span> : null}
+            <button
+              type="button"
+              onClick={() => signOut()}
+              className="inline-flex items-center gap-1 underline-offset-4 hover:text-foreground hover:underline"
+            >
+              <LogOut size={12} /> Sign out
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function LoginGate({ children }) {
   const { data: session, isPending } = useSession();
+  const falKey = useFalKey();
   if (isPending) return <Splash />;
   if (!session) return <Homepage />;
+  if (!falKey) return <FalKeyScreen userEmail={session.user?.email} />;
   return children;
 }

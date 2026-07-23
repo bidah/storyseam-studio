@@ -8,8 +8,9 @@
 // "visual-world" swr cache key and the canonical invalidate+revalidate pair.
 import { useEffect, useState } from "react";
 import { useLoaderData, useRevalidator } from "react-router";
-import { Loader2, Save, Plus, Trash2, IdCard, MapPin, Package, Palette, Check, SlidersHorizontal } from "lucide-react";
+import { Loader2, Save, Plus, Trash2, IdCard, MapPin, Package, Palette, Check, SlidersHorizontal, KeyRound } from "lucide-react";
 import { invalidateTabCache } from "@/lib/tabCache";
+import { useFalKey, setFalKey, clearFalKey } from "@/lib/falKey";
 import { swr, useRevalidateOnMount } from "@/lib/swr";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -34,6 +35,45 @@ async function put(path, body) {
   const j = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(j.error || "Request failed");
   return j;
+}
+
+// The user's fal.ai API key (BYOK). Client-side only — lives in localStorage
+// (lib/falKey.js) and rides per-request as a header; removing it re-triggers
+// the mandatory key gate (components/Login.jsx) on the spot.
+function FalKeyPanel() {
+  const key = useFalKey();
+  const [draft, setDraft] = useState("");
+  const plausible = /^[\w:.-]{10,200}$/.test(draft.trim());
+  const masked = key ? `••••••••${key.slice(-4)}` : "";
+
+  return (
+    <Panel title={<span className="flex items-center gap-2"><KeyRound size={15} className="text-primary" /> fal.ai API key</span>}>
+      <p className="mb-3 text-sm text-muted-foreground">
+        Renders bill <b>your</b> fal.ai account. The key is stored only in this browser
+        (localStorage) and sent per-request to the generators — never saved on our servers.
+        Removing it locks the app until a key is entered again.
+      </p>
+      <div className="flex flex-wrap items-center gap-2">
+        <Input
+          type="password"
+          autoComplete="off"
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          placeholder={masked || "key_id:key_secret"}
+          className="h-8 w-[280px] font-mono text-xs"
+          aria-label="fal.ai API key"
+        />
+        <Button size="sm" disabled={!plausible} onClick={() => { setFalKey(draft); setDraft(""); }}>
+          {key ? "Replace key" : "Save key"}
+        </Button>
+        {key ? (
+          <Button size="sm" variant="ghost" className="text-destructive hover:text-destructive" onClick={clearFalKey}>
+            Remove
+          </Button>
+        ) : null}
+      </div>
+    </Panel>
+  );
 }
 
 // Save button with a transient "Saved" confirmation.
@@ -128,6 +168,8 @@ function SettingsPage() {
       </div>
 
       {error && <ErrorNote>{error}</ErrorNote>}
+
+      <FalKeyPanel />
 
       <Panel title={<span className="flex items-center gap-2"><SlidersHorizontal size={15} className="text-primary" /> Generation defaults</span>}>
         <p className="mb-3 text-sm text-muted-foreground">

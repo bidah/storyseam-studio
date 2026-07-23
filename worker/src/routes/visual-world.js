@@ -25,6 +25,19 @@ import {
   isAllowedMediaUrl,
   HiggsfieldAuthError,
 } from "../lib/higgsfield.js";
+import {
+  isFalModel,
+  falCatalog,
+  falModelEntry,
+  falSubmit,
+  falPoll,
+  isAllowedFalMediaUrl,
+} from "../lib/fal.js";
+
+// The fal key for THIS request: the user's own key (BYOK, stamped by the
+// browser as x-fal-key from localStorage — never stored server-side), falling
+// back to the operator's optional FAL_KEY env secret (dev / single-tenant).
+const reqFalKey = (c) => str(c.req.header("x-fal-key") || c.env.FAL_KEY || "");
 
 /* ------------------------------------------------------------------ *
  * Store shape                                                         *
@@ -172,6 +185,9 @@ function normalizeGeneration(g, i = 0) {
   return {
     id: str(o.id) || `gen-${Date.now().toString(36)}-${i}`,
     status,
+    // "" (Higgsfield, the default) | "fal" — which backend ran this generation.
+    // Drives how /poll checks the job (job_status MCP tool vs fal queue API).
+    provider: o.provider === "fal" ? "fal" : "",
     // "image" (default) | "video" — which medium this generation is. A video's
     // `file` is an .mp4 served (with range support) from /visual-media/.
     kind: o.kind === "video" ? "video" : "image",
@@ -583,6 +599,53 @@ async function resolveVideoModels(env, userId, token) {
 }
 
 /* ------------------------------------------------------------------ *
+ * Provider dispatch (Higgsfield MCP + fal queue API)                  *
+ * ------------------------------------------------------------------ */
+
+// Resolve the Higgsfield catalog when a token exists, tolerating auth failure
+// (⇒ null) so a fal-only setup still works. Non-auth errors rethrow only when
+// fal can't cover for the missing catalog.
+async function resolveHfCatalog(env, userId, token, kind, falKey) {
+  if (!token) return null;
+  try {
+    return await (kind === "video"
+      ? resolveVideoModels(env, userId, token)
+      : resolveModels(env, userId, token));
+  } catch (e) {
+    if (e instanceof HiggsfieldAuthError || falKey) return null;
+    throw e;
+  }
+}
+
+// The merged, provider-tagged model catalog for one media kind. The default
+// stays Higgsfield's (Nano Banana Pro / Seedance) when available, else the
+// first curated fal model.
+function mergeCatalog(falKey, hf, kind) {
+  const models = [
+    ...(hf?.models || []).map((m) => ({ ...m, provider: "higgsfield" })),
+    ...(falKey ? falCatalog(kind) : []),
+  ];
+  const defaultId = hf?.defaultId || (falKey ? falCatalog(kind)[0]?.id || "" : "");
+  return { models, defaultId };
+}
+
+// Validate a picked model id against the merged catalog (a stale/renamed id
+// falls back to the default) and check its provider is actually usable now.
+// Returns the resolved id; throws with a user-facing message otherwise.
+function resolveModelChoice(falKey, catalog, picked, token) {
+  let model = str(picked);
+  if (model && catalog.models.length && !catalog.models.some((m) => m.id === model)) model = "";
+  if (!model) model = catalog.defaultId;
+  if (!model) throw new Error("Could not resolve a model");
+  if (isFalModel(model)) {
+    if (!falKey) throw new Error("fal model selected but no fal API key on this request (set yours in Settings)");
+  } else if (!token) {
+    throw new HiggsfieldAuthError("Higgsfield sign-in required");
+  }
+  return model;
+}
+
+/* ------------------------------------------------------------------ *
  * Node-run reference resolution + job firing (the Nodes canvas)       *
  * ------------------------------------------------------------------ */
 
@@ -630,7 +693,7 @@ function resolveNodeInputs(env, pid, vw, node) {
 // generate_video), importing wired references first. Returns the "processing"
 // generation record to append (with jobId/kind/nodeId). Throws on a hard MCP
 // error — the caller marks the node's run errored. Network only; NO doc writes.
-async function fireNodeJob(env, userId, token, pid, vw, node) {
+async function fireNodeJob(env, userId, token, falKey, pid, vw, node) {
   const kind = node.type === "video" ? "video" : "image";
   const settings = node.settings || {};
   const { startFrameUrl, imageRefUrls, inheritedText } = resolveNodeInputs(env, pid, vw, node);
@@ -657,9 +720,24 @@ async function fireNodeJob(env, userId, token, pid, vw, node) {
   };
 
   if (kind === "video") {
-    const { defaultId } = await resolveVideoModels(env, userId, token);
-    let model = str(settings.model) || defaultId;
-    if (!model) throw new Error("Could not resolve a video model");
+    const catalog = mergeCatalog(falKey, await resolveHfCatalog(env, userId, token, "video", falKey), "video");
+    const model = resolveModelChoice(falKey, catalog, settings.model, token);
+
+    if (isFalModel(model)) {
+      // fal Seedance: a single start image rides as `image_url` on the
+      // image-to-video endpoint (no multi-reference role system).
+      const entry = falModelEntry(model);
+      const startUrl = startFrameUrl || imageRefUrls[0] || "";
+      const { requestId } = await falSubmit(falKey, startUrl ? entry.i2vEndpoint : entry.t2vEndpoint, {
+        prompt: assembledPrompt,
+        aspect_ratio: aspectRatio,
+        duration: String(clampDuration(settings.duration)),
+        generate_audio: !!settings.generateAudio,
+        ...(startUrl ? { image_url: startUrl } : {}),
+      });
+      return normalizeGeneration({ ...base, status: "processing", provider: "fal", model, jobId: requestId });
+    }
+
     // Resolve the reference-image role this model actually accepts (Seedance:
     // "image_references"; others may want "start_image"/"image"). Start frame
     // leads, then image refs.
@@ -688,11 +766,22 @@ async function fireNodeJob(env, userId, token, pid, vw, node) {
   }
 
   // image
-  const { models, defaultId } = await resolveModels(env, userId, token);
-  let model = str(settings.model);
-  if (model && models.length && !models.some((m) => m.id === model)) model = "";
-  if (!model) model = defaultId;
-  if (!model) throw new Error("Could not resolve an image model");
+  const catalog = mergeCatalog(falKey, await resolveHfCatalog(env, userId, token, "image", falKey), "image");
+  const model = resolveModelChoice(falKey, catalog, settings.model, token);
+
+  if (isFalModel(model)) {
+    // fal Nano Banana: reference images go straight to the /edit endpoint as
+    // `image_urls` (fal fetches our ungated /files URLs itself — no import step).
+    const entry = falModelEntry(model);
+    const { requestId } = await falSubmit(falKey, imageRefUrls.length ? entry.editEndpoint : entry.endpoint, {
+      prompt: assembledPrompt,
+      aspect_ratio: aspectRatio,
+      num_images: 1,
+      ...(imageRefUrls.length ? { image_urls: imageRefUrls } : {}),
+    });
+    return normalizeGeneration({ ...base, status: "processing", provider: "fal", model, jobId: requestId });
+  }
+
   const medias = [];
   if (imageRefUrls.length) {
     const role = await resolveMediaRole(env, userId, token, model, ["image", "image_references"]);
@@ -742,7 +831,7 @@ function upstreamRunDeps(board, nodeId, runSet) {
 // Advance the active run one step: settle started nodes from generation status,
 // then fire every runnable node (upstreams ready). Does its own read → network →
 // write. A no-op when no run is active. Returns nothing.
-async function advanceRun(env, userId, token, pid) {
+async function advanceRun(env, userId, token, falKey, pid) {
   const vw = await readVW(env, pid);
   const run = vw.board.run;
   if (!run?.active) return;
@@ -777,7 +866,7 @@ async function advanceRun(env, userId, token, pid) {
     if (!deps.every((d) => ready.has(d))) continue; // wait
     attempted++;
     try {
-      const gen = await fireNodeJob(env, userId, token, pid, vw, node);
+      const gen = await fireNodeJob(env, userId, token, falKey, pid, vw, node);
       fired.push({ nodeId: id, gen });
       started.add(id);
     } catch {
@@ -832,19 +921,22 @@ export function registerVisualWorld(app) {
     return c.json({ ...vw, generations: vw.generations.map((g) => withUrls(c.env, pid, g)) });
   });
 
-  // The model catalog for the composer / node model selectors (real Higgsfield
-  // ids so generation gets a valid model). `?type=video` returns the Seedance
-  // video catalog; anything else returns the image catalog. 401 if not signed in.
+  // The model catalog for the composer / node model selectors: the live
+  // Higgsfield catalog (when the user has a token) merged with the curated fal
+  // registry (when FAL_KEY is set), each entry tagged with its `provider`.
+  // `?type=video` returns the video catalog; anything else the image catalog.
+  // 401 only when NEITHER provider is available.
   app.get("/api/visual-world/models", async (c) => {
     const userId = c.get("userId");
     if (!userId) return c.json({ error: "Sign in required" }, 401);
     const token = await getHiggsfieldToken(c.env, userId);
-    if (!token) return c.json({ error: "no_higgsfield_token" }, 401);
+    const falKey = reqFalKey(c);
+    if (!token && !falKey) return c.json({ error: "no_higgsfield_token" }, 401);
     const type = c.req.query("type") === "video" ? "video" : "image";
     try {
-      return c.json(await (type === "video"
-        ? resolveVideoModels(c.env, userId, token)
-        : resolveModels(c.env, userId, token)));
+      const catalog = mergeCatalog(falKey, await resolveHfCatalog(c.env, userId, token, type, falKey), type);
+      if (!catalog.models.length) return c.json({ error: "no_higgsfield_token" }, 401);
+      return c.json(catalog);
     } catch (e) {
       if (e instanceof HiggsfieldAuthError) return c.json({ error: "no_higgsfield_token" }, 401);
       return c.json({ error: `Higgsfield: ${e.message || e}` }, 502);
@@ -859,7 +951,8 @@ export function registerVisualWorld(app) {
     if (!userId) return c.json({ error: "Sign in required" }, 401);
     const pid = c.get("projectId");
     const token = await getHiggsfieldToken(c.env, userId);
-    if (!token) return c.json({ error: "no_higgsfield_token" }, 401);
+    const falKey = reqFalKey(c);
+    if (!token && !falKey) return c.json({ error: "no_higgsfield_token" }, 401);
 
     let body;
     try { body = await c.req.json(); } catch { body = {}; }
@@ -877,15 +970,18 @@ export function registerVisualWorld(app) {
     }
 
     try {
-      // Resolve the model against the live catalog. A selected id that Higgsfield
-      // has since renamed (e.g. a saved `nano_banana_flash`) is no longer in the
-      // catalog — fall back to the current default instead of handing a dead id to
-      // generate_image. Empty selection ⇒ default (Nano Banana Pro).
-      const { models, defaultId } = await resolveModels(c.env, userId, token);
-      let model = str(body.model);
-      if (model && models.length && !models.some((m) => m.id === model)) model = "";
-      if (!model) model = defaultId;
-      if (!model) return c.json({ error: "Could not resolve an image model" }, 502);
+      // Resolve the model against the merged catalog. A selected id that
+      // Higgsfield has since renamed (e.g. a saved `nano_banana_flash`) is no
+      // longer in the catalog — fall back to the current default instead of
+      // handing a dead id to generate_image. Empty selection ⇒ default.
+      const catalog = mergeCatalog(falKey, await resolveHfCatalog(c.env, userId, token, "image", falKey), "image");
+      let model;
+      try {
+        model = resolveModelChoice(falKey, catalog, body.model, token);
+      } catch (e) {
+        if (e instanceof HiggsfieldAuthError) throw e;
+        return c.json({ error: e.message || "Could not resolve an image model" }, 502);
+      }
 
       // Assemble the final prompt: preset style prefix (if chosen) + the sheet
       // prompt (when tagged as a character/location/prop sheet) + the scene.
@@ -894,13 +990,10 @@ export function registerVisualWorld(app) {
       const sheetPrompt = sheetType ? vw.sheetPrompts[sheetType] : "";
       const assembledPrompt = [preset?.image, sheetPrompt, prompt].filter(Boolean).join("\n\n");
 
-      // Resolve every reference to an ungated /files URL, then import → media_id,
-      // tagging each with the role THIS model accepts (Nano Banana Pro wants
-      // "image", others "image_references").
-      const medias = [];
-      const refRole = inputRefs.length
-        ? await resolveMediaRole(c.env, userId, token, model, ["image", "image_references"])
-        : "image";
+      // Resolve every reference to an ungated /files URL. fal fetches those URLs
+      // directly; Higgsfield needs each imported → media_id with the role THIS
+      // model accepts (Nano Banana Pro wants "image", others "image_references").
+      const refUrls = [];
       for (const r of inputRefs) {
         let url = r.url;
         if (!url && r.kind === "library" && r.rel) {
@@ -909,20 +1002,40 @@ export function registerVisualWorld(app) {
           const g = vw.generations.find((x) => x.id === r.genId);
           if (g?.file) url = filesUrl(c.env, mediaKey(pid, "visual", g.file));
         }
-        if (!url) continue;
-        const mediaId = await importRef(c.env, userId, token, url);
-        medias.push({ role: refRole, value: mediaId });
+        if (url) refUrls.push(url);
       }
 
       // Fire one job per requested image.
       const started = [];
-      for (let i = 0; i < count; i++) {
-        const data = await mcp(c.env, userId, token, "generate_image", {
-          params: { model, prompt: assembledPrompt, aspect_ratio: aspectRatio, medias },
-        });
-        const jobId = pickId(data, "jobId", "job_id", "id");
-        if (!jobId) throw new Error(`Higgsfield generate_image returned no job id (got: ${JSON.stringify(data).slice(0, 220)})`);
-        started.push({ jobId });
+      if (isFalModel(model)) {
+        const entry = falModelEntry(model);
+        const input = {
+          prompt: assembledPrompt,
+          aspect_ratio: aspectRatio,
+          num_images: 1,
+          ...(refUrls.length ? { image_urls: refUrls } : {}),
+        };
+        for (let i = 0; i < count; i++) {
+          const { requestId } = await falSubmit(falKey, refUrls.length ? entry.editEndpoint : entry.endpoint, input);
+          started.push({ jobId: requestId });
+        }
+      } else {
+        const medias = [];
+        const refRole = refUrls.length
+          ? await resolveMediaRole(c.env, userId, token, model, ["image", "image_references"])
+          : "image";
+        for (const url of refUrls) {
+          const mediaId = await importRef(c.env, userId, token, url);
+          medias.push({ role: refRole, value: mediaId });
+        }
+        for (let i = 0; i < count; i++) {
+          const data = await mcp(c.env, userId, token, "generate_image", {
+            params: { model, prompt: assembledPrompt, aspect_ratio: aspectRatio, medias },
+          });
+          const jobId = pickId(data, "jobId", "job_id", "id");
+          if (!jobId) throw new Error(`Higgsfield generate_image returned no job id (got: ${JSON.stringify(data).slice(0, 220)})`);
+          started.push({ jobId });
+        }
       }
 
       // Append the processing records.
@@ -931,6 +1044,7 @@ export function registerVisualWorld(app) {
         normalizeGeneration({
           id: `gen-${Date.now().toString(36)}-${crypto.randomUUID().slice(0, 6)}-${i}`,
           status: "processing",
+          provider: isFalModel(model) ? "fal" : "",
           prompt,
           assembledPrompt,
           model,
@@ -951,18 +1065,41 @@ export function registerVisualWorld(app) {
       return c.json({ ok: true, generations: created.map((g) => withUrls(c.env, pid, g)) });
     } catch (e) {
       if (e instanceof HiggsfieldAuthError) return c.json({ error: "no_higgsfield_token" }, 401);
-      return c.json({ error: `Higgsfield: ${e.message || e}` }, 502);
+      return c.json({ error: `Generation: ${e.message || e}` }, 502);
     }
   });
 
+  // Download a finished job's bytes into R2 and record the "ready" update (or an
+  // "error" one on a failed fetch). Shared by the Higgsfield and fal poll paths.
+  async function finalizeResult(c, pid, g, rawUrl, updates) {
+    const res = await fetch(rawUrl);
+    if (!res.ok) {
+      updates[g.id] = { status: "error", error: `${g.kind === "video" ? "Video" : "Image"} fetch failed (${res.status})` };
+      return;
+    }
+    const isVideo = g.kind === "video";
+    const ct = res.headers.get("content-type") || (isVideo ? "video/mp4" : "image/png");
+    const ext = isVideo
+      ? (/webm/.test(ct) ? "webm" : /quicktime|mov/.test(ct) ? "mov" : "mp4")
+      : (/webp/.test(ct) ? "webp" : /jpe?g/.test(ct) ? "jpg" : "png");
+    const file = `${g.id}.${ext}`;
+    await putMedia(c.env, pid, "visual", file, await res.arrayBuffer(), ct);
+    // Generate the thumbnail in the same pass (images only) so a gen
+    // attached straight as a character sheet renders a real thumb.
+    if (!isVideo) c.executionCtx.waitUntil(ensureImageThumb(c.env, { pid, kind: "visual", file }));
+    updates[g.id] = { status: "ready", file, source: rawUrl };
+  }
+
   // Poll every pending job; on completion download bytes into R2 and flip the
   // record to "ready". Network work happens BEFORE updateDoc (mutate may re-run).
+  // Higgsfield jobs go through job_status (MCP); fal jobs through the queue API.
   app.get("/api/visual-world/poll", async (c) => {
     const userId = c.get("userId");
     if (!userId) return c.json({ error: "Sign in required" }, 401);
     const pid = c.get("projectId");
     const token = await getHiggsfieldToken(c.env, userId);
-    if (!token) return c.json({ error: "no_higgsfield_token" }, 401);
+    const falKey = reqFalKey(c);
+    if (!token && !falKey) return c.json({ error: "no_higgsfield_token" }, 401);
 
     const vw = await readVW(c.env, pid);
     const pending = vw.generations.filter((g) => g.status === "processing" && g.jobId);
@@ -970,6 +1107,23 @@ export function registerVisualWorld(app) {
     const updates = {}; // id -> partial
     for (const g of pending) {
       try {
+        if (g.provider === "fal") {
+          const entry = falModelEntry(g.model);
+          if (!entry) {
+            updates[g.id] = { status: "error", error: "fal model no longer in the curated registry" };
+            continue;
+          }
+          if (!falKey) continue; // no key on this request — poll again from a tab that has one
+          const st = await falPoll(falKey, entry.endpoint || entry.t2vEndpoint, g.jobId);
+          if (!st.done) continue; // still queued/running — re-poll next tick
+          if (st.failed || !st.url) {
+            updates[g.id] = { status: "error", error: st.error || "Generation ended with no result" };
+          } else {
+            await finalizeResult(c, pid, g, st.url, updates);
+          }
+          continue;
+        }
+
         const st = await mcp(c.env, userId, token, "job_status", { jobId: g.jobId, sync: true });
         // The generation may be nested under `generation` (or returned bare).
         const gen = (st && typeof st === "object" && st.generation && typeof st.generation === "object")
@@ -983,22 +1137,7 @@ export function registerVisualWorld(app) {
           updates[g.id] = { status: "error", error: str(gen?.error || gen?.error_message || st?.error) || "Generation failed" };
         } else if (!inProgress && rawUrl) {
           // Terminal (or unknown) status with a result URL → download + finalize.
-          const res = await fetch(rawUrl);
-          if (!res.ok) {
-            updates[g.id] = { status: "error", error: `${g.kind === "video" ? "Video" : "Image"} fetch failed (${res.status})` };
-            continue;
-          }
-          const isVideo = g.kind === "video";
-          const ct = res.headers.get("content-type") || (isVideo ? "video/mp4" : "image/png");
-          const ext = isVideo
-            ? (/webm/.test(ct) ? "webm" : /quicktime|mov/.test(ct) ? "mov" : "mp4")
-            : (/webp/.test(ct) ? "webp" : /jpe?g/.test(ct) ? "jpg" : "png");
-          const file = `${g.id}.${ext}`;
-          await putMedia(c.env, pid, "visual", file, await res.arrayBuffer(), ct);
-          // Generate the thumbnail in the same pass (images only) so a gen
-          // attached straight as a character sheet renders a real thumb.
-          if (!isVideo) c.executionCtx.waitUntil(ensureImageThumb(c.env, { pid, kind: "visual", file }));
-          updates[g.id] = { status: "ready", file, source: rawUrl };
+          await finalizeResult(c, pid, g, rawUrl, updates);
         } else if (!inProgress && !failed && status) {
           // Reached a terminal state we don't recognize, with no media URL.
           updates[g.id] = { status: "error", error: `Generation ended (${status}) with no result` };
@@ -1021,7 +1160,7 @@ export function registerVisualWorld(app) {
     // Advance any active node-run cascade: settle just-finalized nodes and fire
     // the next runnable ones (may append new processing generations this tick).
     try {
-      await advanceRun(c.env, userId, token, pid);
+      await advanceRun(c.env, userId, token, falKey, pid);
     } catch (e) {
       if (e instanceof HiggsfieldAuthError) return c.json({ error: "no_higgsfield_token" }, 401);
       // Transient cascade error — retried next tick.
@@ -1041,7 +1180,8 @@ export function registerVisualWorld(app) {
     if (!userId) return c.json({ error: "Sign in required" }, 401);
     const pid = c.get("projectId");
     const token = await getHiggsfieldToken(c.env, userId);
-    if (!token) return c.json({ error: "no_higgsfield_token" }, 401);
+    const falKey = reqFalKey(c);
+    if (!token && !falKey) return c.json({ error: "no_higgsfield_token" }, 401);
 
     let body;
     try { body = await c.req.json(); } catch { body = {}; }
@@ -1071,13 +1211,13 @@ export function registerVisualWorld(app) {
         const deps = upstreamRunDeps(vw.board, id, runSet);
         if (deps.length > 0) continue; // waits for upstreams (advanced by /poll)
         const node = vw.board.nodes.find((n) => n.id === id);
-        const gen = await fireNodeJob(c.env, userId, token, pid, vw, node);
+        const gen = await fireNodeJob(c.env, userId, token, falKey, pid, vw, node);
         fired.push({ nodeId: id, gen });
         started.add(id);
       }
     } catch (e) {
       if (e instanceof HiggsfieldAuthError) return c.json({ error: "no_higgsfield_token" }, 401);
-      return c.json({ error: `Higgsfield: ${e.message || e}` }, 502);
+      return c.json({ error: `Generation: ${e.message || e}` }, 502);
     }
 
     const ts = new Date().toISOString();
@@ -1116,13 +1256,13 @@ export function registerVisualWorld(app) {
     let file = "";
     let downloadError = "";
     const source = url;
-    // Only fetch from allowed media hosts (higgsfield / cloudfront), same gate as
-    // /poll — the agent should POST the raw job_status result_url. This blocks
+    // Only fetch from allowed media hosts (higgsfield / cloudfront / fal.media),
+    // same gate as /poll — the agent should POST the raw result URL. This blocks
     // SSRF and, together with the content-type check below, stops a non-image
     // body (e.g. a 200 HTML error/redirect page) being stored as a corrupt
     // "ready" image the tab then renders broken.
-    if (!isAllowedMediaUrl(url)) {
-      downloadError = "url must be an https Higgsfield/CloudFront result URL (the job_status result_url)";
+    if (!isAllowedMediaUrl(url) && !isAllowedFalMediaUrl(url)) {
+      downloadError = "url must be an https Higgsfield/CloudFront or fal.media result URL";
     } else {
       try {
         const res = await fetch(url);

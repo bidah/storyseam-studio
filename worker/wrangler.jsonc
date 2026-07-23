@@ -12,6 +12,10 @@
   //     Daytona ffmpeg sandbox — see src/lib/ffmpeg.js)
   //   DAYTONA_API_KEY                (ffmpeg orchestration)
   //   HIGGSFIELD_MCP_TOKEN           (optional; static-login shortcut)
+  //   FAL_KEY                        (OPTIONAL fal.ai fallback key. The primary
+  //     path is BYOK: each user's own key rides per-request as x-fal-key from
+  //     their browser's localStorage and is never stored server-side. This env
+  //     secret only backstops requests without one — dev / single-tenant use.)
   //   EVE_PROXY_SECRET / FLUE_PROXY_SECRET  (signs the x-flue-proxy-user token so
   //     the flue agent worker trusts the Better Auth user id across the /eve/*
   //     proxy — set the SAME value on the shot-studio-flue worker; without it the

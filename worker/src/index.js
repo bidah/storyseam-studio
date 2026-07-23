@@ -116,7 +116,7 @@ app.use(
   cors({
     origin: (o) => o || "*",
     allowMethods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allowHeaders: ["content-type", "x-filename", "x-project-id", "x-client-id", "authorization", "x-app-origin"],
+    allowHeaders: ["content-type", "x-filename", "x-project-id", "x-client-id", "authorization", "x-app-origin", "x-fal-key", "x-flue-fal-key"],
     maxAge: 86400,
     credentials: true,
   }),

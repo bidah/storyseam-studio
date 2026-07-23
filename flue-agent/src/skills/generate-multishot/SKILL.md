@@ -1,6 +1,16 @@
 ---
 name: generate-multishot
-description: Generate ONE multi-shot Seedance 2.0 video (several scripted shots in a single <15s clip) via the Higgsfield MCP, driven by a DIALOG-ONLY audio stem plus character voice references, character-sheet images, and a location image. Use when the user wants a "multishot" / "multi-shot" Seedance generation, to combine shots 1–N into one clip, or to render a scene beat from character + location references with lip-synced dialogue. Enforces the -dialog/-vfx audio naming check so only the clean dialogue stem (never the SFX/VFX stem) is fed to the video.
+description: >-
+  Generate ONE multi-shot Seedance 2.0 video (several scripted shots in a single
+  <15s clip) via the Higgsfield MCP, driven by a DIALOG-ONLY audio stem plus
+  character voice references, character-sheet images, and a location image. Use
+  when the user wants a "multishot" / "multi-shot" Seedance generation, to
+  combine shots 1–N into one clip, or to render a scene beat from character +
+  location references with lip-synced dialogue. Enforces the -dialog/-vfx audio
+  naming check so only the clean dialogue stem (never the SFX/VFX stem) is fed
+  to the video. Higgsfield-ONLY — never substitute fal_generate_video here;
+  fal's Seedance endpoint takes a single image_url and no driving audio stem,
+  so it cannot do the multi-reference, lip-synced multishot flow.
 ---
 
 # generate-multishot (Higgsfield Seedance 2.0 — via the Higgsfield MCP)

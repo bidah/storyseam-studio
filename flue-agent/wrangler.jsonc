@@ -35,4 +35,7 @@
   //   SHOT_STUDIO_API        - base URL of the shot-studio-uploads worker JSON API
   //   DAYTONA_API_KEY        - Daytona sandbox creds (optional; bash falls back to in-memory sandbox)
   //   HIGGSFIELD_MCP_URL     - Higgsfield generation MCP endpoint
+  //   FAL_KEY                - OPTIONAL fal.ai fallback key. Primary path is BYOK:
+  //                            the user's key arrives as x-flue-fal-key and is kept
+  //                            in the conversation DO (lib/fal-key.ts), not here.
 }
