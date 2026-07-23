@@ -64,6 +64,8 @@ import {
   formatDuration,
 } from "@/lib/useVoiceRecording";
 import MediaPicker from "@/components/MediaPicker";
+import PromptEditor from "@/components/mention/PromptEditor";
+import { refTagLabel, splitRefTags } from "@/lib/refTags";
 
 // ---------------------------------------------------------------------------
 // Chat rendering walks every part of every flue message in order and renders
@@ -336,15 +338,47 @@ function SentAttachments({ atts }) {
   );
 }
 
-function AgentMessage({ message, atts, qa, canRespond, onRespond, onRequestReference }) {
+// The typed text of a user bubble, with "@imageN" tags rendered as inline
+// chips (tiny thumbnail + label) when the message's attachment record carries
+// matching labels. Unmatched tags stay plain text.
+function UserText({ text, atts }) {
+  const byLabel = new Map((atts || []).filter((a) => a.label).map((a) => [a.label, a]));
+  if (!byLabel.size) return text;
+  return splitRefTags(text).map((p, i) =>
+    p.type === "tag" && byLabel.has(p.label) ? (
+      <span
+        key={i}
+        className="mx-0.5 inline-flex items-center gap-1 rounded border border-primary/35 bg-primary/10 px-1 py-px align-[-3px] text-[0.85em] font-medium text-primary"
+      >
+        {byLabel.get(p.label).url ? (
+          <img
+            src={byLabel.get(p.label).url}
+            alt={p.label}
+            className="size-3.5 rounded-[3px] object-cover"
+          />
+        ) : null}
+        @{p.label}
+      </span>
+    ) : (
+      <span key={i}>{p.type === "tag" ? `@${p.label}` : p.text}</span>
+    ),
+  );
+}
+
+function AgentMessage({ message, attEntry, qa, canRespond, onRespond, onRequestReference }) {
   const isUser = message.role === "user";
   if (isUser) {
-    const text = userMessageText(message);
+    // Legacy entries are a plain atts array; newer ones are { atts, displayText }
+    // where displayText is what the user actually typed (tags intact, without
+    // the appended reference-URL block sent to the agent).
+    const atts = Array.isArray(attEntry) ? attEntry : attEntry?.atts;
+    const displayText = Array.isArray(attEntry) ? null : (attEntry?.displayText ?? null);
+    const text = displayText ?? userMessageText(message);
     return (
       <div className="flex flex-col items-end">
         {text ? (
           <div className="max-w-[92%] whitespace-pre-wrap break-words rounded-2xl bg-muted px-3 py-2 text-sm text-foreground">
-            {text}
+            <UserText text={text} atts={atts} />
           </div>
         ) : null}
         <SentAttachments atts={atts} />
@@ -585,7 +619,7 @@ export default function AgentChat() {
   const [transcribing, setTranscribing] = useState(false);
   const [voiceError, setVoiceError] = useState(null);
   const scrollRef = useRef(null);
-  const taRef = useRef(null);
+  const promptEd = useRef(null);
   const [pickerOpen, setPickerOpen] = useState(false);
   // What the MediaPicker feeds when it closes: the composer's attachment strip
   // ("composer", via the paperclip) or an auto-sent reply to the pending
@@ -614,14 +648,6 @@ export default function AgentChat() {
   // Sent attachment batches awaiting the flue message that carries their text.
   const pendingAttsRef = useRef([]); // [{ text, atts }]
 
-  // Auto-grow the composer with its content, up to a max height (then scroll).
-  useEffect(() => {
-    const el = taRef.current;
-    if (!el) return;
-    el.style.height = "auto";
-    el.style.height = `${Math.min(el.scrollHeight, 180)}px`;
-  }, [text]);
-
   // On mount and whenever the active chat changes, re-seed the composer's
   // attachment record from that chat and clear any half-typed message. The
   // agent session itself is swapped in by AgentProvider (context), so messages
@@ -635,6 +661,7 @@ export default function AgentChat() {
     attByMsgIdRef.current = map;
     pendingAttsRef.current = [];
     setText("");
+    promptEd.current?.clear();
     setAttachments([]);
     setAtBottom(true);
     rec.cancel();
@@ -657,7 +684,10 @@ export default function AgentChat() {
       const text = userMessageText(m);
       const idx = pendingAttsRef.current.findIndex((p) => p.text === text);
       if (idx >= 0) {
-        additions[m.id] = pendingAttsRef.current[idx].atts;
+        // Newer batches carry { atts, displayText } (the typed text with its
+        // @imageN tags, minus the appended URL block); legacy is a bare array.
+        const { atts, displayText } = pendingAttsRef.current[idx];
+        additions[m.id] = displayText != null ? { atts, displayText } : atts;
         pendingAttsRef.current.splice(idx, 1);
       }
     }
@@ -691,6 +721,17 @@ export default function AgentChat() {
 
   const uploading = attachments.some((a) => a.state === "uploading");
   const doneAttachments = attachments.filter((a) => a.state === "done");
+  // "@" mention targets and their imageN labels — numbered over the non-error
+  // attachments in tray order (errored uploads drop out of the numbering, and
+  // the PromptEditor prunes chips whose attachment disappears).
+  const mentionRefs = useMemo(
+    () =>
+      attachments
+        .filter((a) => a.state !== "error")
+        .map((a) => ({ id: a.id, thumb: a.previewUrl || a.url, url: a.url, name: a.name })),
+    [attachments],
+  );
+  const attLabels = new Map(mentionRefs.map((r, i) => [r.id, refTagLabel(i)]));
   // A draft = something to send (typed text or a finished attachment). Drives the
   // composer's trailing button: draft ⇒ Send, empty ⇒ mic (record), like mobile.
   const hasDraft = !!(text.trim() || doneAttachments.length > 0);
@@ -812,18 +853,9 @@ export default function AgentChat() {
     });
   }
 
-  const onPaste = (e) => {
-    const imgs = Array.from(e.clipboardData?.files || []).filter((f) =>
-      f.type.startsWith("image/"),
-    );
-    if (imgs.length) {
-      e.preventDefault();
-      addFiles(imgs);
-    }
-  };
-
   const clearComposer = () => {
     setText("");
+    promptEd.current?.clear();
     attachments.forEach((a) => a.previewUrl && URL.revokeObjectURL(a.previewUrl));
     setAttachments([]);
     setAtBottom(true);
@@ -857,7 +889,7 @@ export default function AgentChat() {
         setVoiceError("Didn't catch that — try again.");
         return;
       }
-      setText((prev) => (prev.trim() ? `${prev.trim()} ${heard}` : heard));
+      promptEd.current?.appendText(heard);
     } catch (e) {
       setVoiceError(e?.message || "Transcription failed.");
     } finally {
@@ -867,13 +899,22 @@ export default function AgentChat() {
 
   const submit = async () => {
     if (!canSend) return;
-    const t = text.trim();
-    // Capture the done attachments (with their retained `file`) before clearing.
+    // Serialize the editor: the typed text with its "@imageN" tags, plus which
+    // tags were used (the `text` state mirror only gates the draft buttons).
+    const { text: typed, mentions } = promptEd.current?.getValue() ?? {
+      text,
+      mentions: [],
+    };
+    const t = typed.trim();
+    // Capture the done attachments (with their retained `file`) before
+    // clearing, each stamped with the imageN label the composer numbered it
+    // with — the history renderer maps @imageN chips back through these.
     const done = doneAttachments;
     const sent = done.map((a) => ({
       url: a.url,
       name: a.name,
       contentType: a.contentType,
+      label: attLabels.get(a.id),
     }));
 
     // Build the message body first — it doubles as the join key that maps this
@@ -882,24 +923,33 @@ export default function AgentChat() {
     // The base64 images (below) only let a *vision* model SEE the attachment. To
     // let the agent USE it as a Higgsfield generation reference (media_import_url
     // → image_references) it needs the image's absolute HTTPS URL — so surface
-    // each attachment's public url in the message text. PC uploads carry a
-    // `/files/…` url; gallery / Visual-world picks carry their ungated `refUrl`
-    // (both Higgsfield-fetchable). The whistlewood agent instructions describe
-    // this trailing block. See docs: attach_visual_generation / visual-world skill.
-    const refUrls = sent
-      .map((a) => a.url)
-      .filter(Boolean)
-      .map((u) => (/^https?:\/\//.test(u) ? u : new URL(u, window.location.origin).href));
-    const body = refUrls.length
-      ? `${t ? `${t}\n\n` : ""}Attached reference image${refUrls.length > 1 ? "s" : ""} ` +
-        `(absolute URL${refUrls.length > 1 ? "s" : ""}, usable directly as a Higgsfield ` +
-        `generation reference via media_import_url):\n${refUrls.map((u) => `- ${u}`).join("\n")}`
+    // each attachment's public url in the message text, named by its imageN tag.
+    // When the typed text uses @imageN tags, a note explains the naming so the
+    // agent can resolve each tag to its URL. PC uploads carry a `/files/…` url;
+    // gallery / Visual-world picks carry their ungated `refUrl` (both
+    // Higgsfield-fetchable). The whistlewood agent instructions describe this
+    // trailing block. See docs: attach_visual_generation / visual-world skill.
+    const refLines = sent
+      .filter((a) => a.url)
+      .map(
+        (a) =>
+          `- ${a.label}: ${/^https?:\/\//.test(a.url) ? a.url : new URL(a.url, window.location.origin).href}`,
+      );
+    const tagNote = mentions.length
+      ? "; tags like @image1 in the message above refer to these attached images by number"
+      : "";
+    const body = refLines.length
+      ? `${t ? `${t}\n\n` : ""}Attached reference image${refLines.length > 1 ? "s" : ""} ` +
+        `(absolute URL${refLines.length > 1 ? "s" : ""}, usable directly as a Higgsfield ` +
+        `generation reference via media_import_url)${tagNote}:\n${refLines.join("\n")}`
       : t;
 
     // Remember this batch until the correlation effect sees the flue user message
     // carrying `body` and keys the thumbnails to its id (survives reload; immune
-    // to ordinal drift from out-of-composer sends). Then clear the composer.
-    if (sent.length) pendingAttsRef.current.push({ text: body, atts: sent });
+    // to ordinal drift from out-of-composer sends). `displayText` is what the
+    // bubble re-renders — the typed text with tags, not the URL block. Then
+    // clear the composer.
+    if (sent.length) pendingAttsRef.current.push({ text: body, atts: sent, displayText: t });
     clearComposer();
 
     // flue takes images out-of-band as base64 `{ data, mimeType }`, not as
@@ -1045,7 +1095,7 @@ export default function AgentChat() {
               <AgentMessage
                 key={m.id}
                 message={m}
-                atts={m.role === "user" ? attByMsgId[m.id] : null}
+                attEntry={m.role === "user" ? attByMsgId[m.id] : null}
                 qa={qa}
                 canRespond={!isBusy}
                 onRespond={onRespond}
@@ -1116,7 +1166,10 @@ export default function AgentChat() {
                   )}
                 </AttachmentMedia>
                 <AttachmentContent>
-                  <AttachmentTitle>{a.name}</AttachmentTitle>
+                  {/* Lead with the @tag the composer numbers this image with. */}
+                  <AttachmentTitle>
+                    {attLabels.has(a.id) ? `${attLabels.get(a.id)} · ${a.name}` : a.name}
+                  </AttachmentTitle>
                   <AttachmentDescription>
                     {a.state === "uploading"
                       ? "Uploading…"
@@ -1195,20 +1248,17 @@ export default function AgentChat() {
             >
               <Paperclip size={16} />
             </Button>
-            <textarea
-              ref={taRef}
-              value={text}
-              onChange={(e) => setText(e.target.value)}
-              onPaste={onPaste}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !e.shiftKey) {
-                  e.preventDefault();
-                  submit();
-                }
-              }}
-              rows={1}
+            {/* TipTap composer — Enter sends, Shift+Enter breaks the line, and
+                "@" pops the attached-reference picker (chips send as @imageN). */}
+            <PromptEditor
+              ref={promptEd}
+              refs={mentionRefs}
               placeholder="Message the studio agent…"
-              className="max-h-[180px] min-h-[38px] flex-1 resize-none overflow-y-auto rounded-lg border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
+              onChange={setText}
+              onSubmit={submit}
+              submitOnEnter
+              onPasteFiles={addFiles}
+              className="max-h-[180px] min-h-[38px] flex-1 overflow-y-auto rounded-lg border bg-background px-3 py-2 text-sm focus-within:ring-2 focus-within:ring-ring"
             />
             {/* Trailing action mirrors the mobile composer: while the agent is
                 working it's a Stop button; with a draft (text or attachments) it's

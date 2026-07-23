@@ -1,0 +1,202 @@
+// PromptEditor — a textarea-shaped TipTap editor for the prompt composers
+// (ImageStudio, AgentChat) that adds "@" reference-image mentions on top of
+// plain text. The document is text-only plus atomic @imageN chips; everything
+// serializes back to a plain string via `getValue()` (chips → "@imageN",
+// paragraph breaks → "\n"), so consumers keep working in plain-string land.
+//
+// The chips track the reference tray, not the other way round: each chip holds
+// the reference's stable id, and whenever the `refs` prop changes an effect
+// renumbers every chip's label to the reference's current tray position and
+// drops chips whose reference was removed. Tag numbering therefore always
+// matches the tray order at the moment of submit.
+
+import {
+  forwardRef,
+  useEffect,
+  useImperativeHandle,
+  useRef,
+} from "react";
+import { useEditor, EditorContent } from "@tiptap/react";
+import StarterKit from "@tiptap/starter-kit";
+import { Placeholder } from "@tiptap/extension-placeholder";
+import { cn } from "@/lib/utils";
+import { refTagLabel } from "@/lib/refTags";
+import { RefMention, RefMentionSuggestion } from "./RefMention";
+
+// Walk the doc into { text, mentions } — text nodes verbatim, chips as
+// "@imageN", paragraph boundaries as newlines (same walk the vibe-code editor
+// uses, minus the marker syntax).
+function serialize(editor) {
+  let text = "";
+  const mentions = [];
+  editor.state.doc.descendants((node) => {
+    if (node.isText) {
+      text += node.text;
+    } else if (node.type.name === "refMention") {
+      text += `@${node.attrs.label}`;
+      mentions.push({ refId: node.attrs.refId, label: node.attrs.label });
+    } else if (node.type.name === "paragraph" && text.length > 0) {
+      text += "\n";
+    }
+  });
+  return { text: text.trim(), mentions };
+}
+
+// Plain text → doc JSON (setContent would otherwise parse the string as HTML).
+function textToDoc(text) {
+  const lines = String(text || "").split("\n");
+  return {
+    type: "doc",
+    content: lines.map((line) => ({
+      type: "paragraph",
+      ...(line ? { content: [{ type: "text", text: line }] } : {}),
+    })),
+  };
+}
+
+const PromptEditor = forwardRef(function PromptEditor(
+  {
+    // Ordered reference images: [{ id, thumb, url, name }] — id must be stable.
+    refs = [],
+    placeholder = "",
+    onChange, // (plainText) — fired on every edit with the serialized text
+    onSubmit, // Enter (when submitOnEnter) or Cmd/Ctrl+Enter (always)
+    submitOnEnter = false,
+    onPasteFiles, // (File[]) — image files pasted into the editor
+    className,
+    autoFocus = false,
+  },
+  ref,
+) {
+  // Live-read refs so the suggestion items and key handlers never go stale
+  // (the editor instance is created once).
+  const refsRef = useRef(refs);
+  refsRef.current = refs;
+  const onChangeRef = useRef(onChange);
+  onChangeRef.current = onChange;
+  const onSubmitRef = useRef(onSubmit);
+  onSubmitRef.current = onSubmit;
+  const submitOnEnterRef = useRef(submitOnEnter);
+  submitOnEnterRef.current = submitOnEnter;
+  const onPasteFilesRef = useRef(onPasteFiles);
+  onPasteFilesRef.current = onPasteFiles;
+  const editorRef = useRef(null);
+
+  const editor = useEditor({
+    extensions: [
+      // Text-only schema: keep paragraphs, breaks and undo; drop the markdown
+      // formatting a prompt box shouldn't have.
+      StarterKit.configure({
+        blockquote: false,
+        bold: false,
+        code: false,
+        codeBlock: false,
+        heading: false,
+        horizontalRule: false,
+        italic: false,
+        link: false,
+        strike: false,
+        underline: false,
+        bulletList: false,
+        orderedList: false,
+        listItem: false,
+        listKeymap: false,
+      }),
+      // showOnlyCurrent: false so the hint renders while the editor is blurred;
+      // the CSS keys on .is-editor-empty so it only shows on an empty doc.
+      Placeholder.configure({ placeholder, showOnlyCurrent: false }),
+      RefMention,
+      RefMentionSuggestion.configure({
+        getItems: () =>
+          refsRef.current.map((r, i) => ({
+            refId: r.id,
+            label: refTagLabel(i),
+            thumb: r.thumb || r.url,
+            name: r.name,
+          })),
+      }),
+    ],
+    autofocus: autoFocus,
+    onUpdate: ({ editor }) => onChangeRef.current?.(serialize(editor).text),
+    editorProps: {
+      handleKeyDown: (view, event) => {
+        // View props run before the suggestion plugin's handlers, so stand
+        // down while the "@" picker is open (it owns Enter/arrows).
+        const picking = editorRef.current?.storage?.refMentionSuggestion?.active;
+        if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+          onSubmitRef.current?.();
+          return true;
+        }
+        if (event.key === "Enter" && !event.shiftKey && submitOnEnterRef.current && !picking) {
+          event.preventDefault();
+          onSubmitRef.current?.();
+          return true;
+        }
+        return false;
+      },
+      handlePaste: (view, event) => {
+        const files = Array.from(event.clipboardData?.files || []).filter((f) =>
+          f.type.startsWith("image/"),
+        );
+        if (files.length && onPasteFilesRef.current) {
+          event.preventDefault();
+          onPasteFilesRef.current(files);
+          return true;
+        }
+        return false;
+      },
+    },
+  });
+  editorRef.current = editor;
+
+  // Reconcile chips with the tray: renumber labels to current positions, drop
+  // chips whose reference is gone. Dispatching fires onUpdate → onChange, so
+  // the consumer's plain-text state renumbers too.
+  useEffect(() => {
+    if (!editor) return;
+    const indexById = new Map(refs.map((r, i) => [r.id, i]));
+    const stale = []; // [{ pos, size, label|null }] — null label = remove
+    editor.state.doc.descendants((node, pos) => {
+      if (node.type.name !== "refMention") return;
+      const idx = indexById.get(node.attrs.refId);
+      if (idx === undefined) stale.push({ pos, size: node.nodeSize, label: null });
+      else if (node.attrs.label !== refTagLabel(idx))
+        stale.push({ pos, size: node.nodeSize, label: refTagLabel(idx), refId: node.attrs.refId });
+    });
+    if (!stale.length) return;
+    const tr = editor.state.tr;
+    for (const s of [...stale].reverse()) {
+      if (s.label === null) tr.delete(s.pos, s.pos + s.size);
+      else tr.setNodeMarkup(s.pos, undefined, { refId: s.refId, label: s.label });
+    }
+    editor.view.dispatch(tr);
+  }, [editor, refs]);
+
+  useImperativeHandle(ref, () => ({
+    getValue: () => (editor ? serialize(editor) : { text: "", mentions: [] }),
+    clear: () => editor?.commands.clearContent(true),
+    focus: () => editor?.commands.focus(),
+    setText: (text) => {
+      editor?.commands.setContent(textToDoc(text), { emitUpdate: true });
+    },
+    appendText: (text) => {
+      if (!editor) return;
+      const { text: cur } = serialize(editor);
+      editor
+        .chain()
+        .focus("end")
+        .insertContent({ type: "text", text: cur ? ` ${text}` : text })
+        .run();
+    },
+  }), [editor]);
+
+  return (
+    <EditorContent
+      editor={editor}
+      className={cn("prompt-editor cursor-text", className)}
+      onClick={() => editor?.commands.focus()}
+    />
+  );
+});
+
+export default PromptEditor;

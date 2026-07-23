@@ -32,6 +32,8 @@ import {
 import { Checkbox } from "@/components/ui/checkbox";
 import { Empty, Eyebrow, Panel, ErrorNote, ConfirmModal } from "@/components/shared";
 import MediaPicker from "@/components/MediaPicker";
+import PromptEditor from "@/components/mention/PromptEditor";
+import { refTagLabel, withImageRefNote } from "@/lib/refTags";
 
 export const ASPECTS = ["16:9", "9:16", "1:1", "4:3", "3:4", "21:9"];
 const COUNTS = [1, 2, 3, 4];
@@ -39,6 +41,10 @@ const COUNTS = [1, 2, 3, 4];
 // choices use sentinels mapped back to "" (server resolves the default model).
 const NO_PRESET = "__none__";
 const DEFAULT_MODEL = "__default__";
+
+// Every tray entry gets a stable client-side id so "@imageN" chips in the
+// prompt can follow their reference through removals/renumbering.
+const withRefId = (r) => ({ id: crypto.randomUUID(), ...r });
 
 // Display meta for the sheet tag ("" = plain image). The tag layers the
 // project's character/location/prop sheet prompt into the generation
@@ -446,6 +452,7 @@ export default function ImageStudio({
   const [pickRef, setPickRef] = useState(false);
   const [editPrompts, setEditPrompts] = useState(false);
   const [localBusy, setLocalBusy] = useState(false);
+  const promptEd = useRef(null);
 
   // Composer state — seeded from remembered settings.
   const [prompt, setPrompt] = useState("");
@@ -472,7 +479,11 @@ export default function ImageStudio({
     if (!prompt.trim() || isBusy || !onGenerate || needsRef) return;
     setLocalBusy(true);
     try {
-      await onGenerate({ prompt, model, count: Number(count), aspectRatio, presetId, sheetType, refs, mode, base });
+      // "@imageN" chips serialize to plain tags; when any are present, prepend
+      // the note that tells the model how tags map onto the attached refs.
+      const { text, mentions } = promptEd.current?.getValue() ?? { text: prompt, mentions: [] };
+      const outPrompt = mentions.length ? withImageRefNote(text) : text;
+      await onGenerate({ prompt: outPrompt, model, count: Number(count), aspectRatio, presetId, sheetType, refs, mode, base });
       // A fresh "new" generation clears the edit/variation intent.
       if (mode !== "new") { setMode("new"); setBase(null); }
     } finally { setLocalBusy(false); }
@@ -481,23 +492,25 @@ export default function ImageStudio({
   // Generic transforms on a result (no backend needed).
   const recreate = (g) => {
     setPrompt(g.prompt || "");
+    promptEd.current?.setText(g.prompt || "");
     if (g.model) setModel(g.model);
     if (g.aspectRatio) setAspectRatio(g.aspectRatio);
     if (g.presetId) setPresetId(g.presetId);
     setSheetType(g.sheetType || "");
-    setRefs((g.refs || []).map((r) => ({ ...r, thumb: r.url || r.thumb })));
+    setRefs((g.refs || []).map((r) => withRefId({ ...r, thumb: r.url || r.thumb })));
     setMode("new"); setBase(null);
     setOpen(null);
   };
   const useAsRef = (g) => {
-    setRefs((cur) => (cur.some((r) => r.genId === g.id) ? cur : [...cur, { kind: "generation", genId: g.id, url: g.url, thumb: g.url, name: "gen" }]));
+    setRefs((cur) => (cur.some((r) => r.genId === g.id) ? cur : [...cur, withRefId({ kind: "generation", genId: g.id, url: g.url, thumb: g.url, name: "gen" })]));
     setOpen(null);
   };
   // Edit-existing: seed the composer to edit this image in place (image + prompt).
   const editImage = (g) => {
     setMode("edit"); setBase(g);
-    setRefs([{ kind: "generation", genId: g.id, url: g.url, thumb: g.url, name: "base" }]);
+    setRefs([withRefId({ kind: "generation", genId: g.id, url: g.url, thumb: g.url, name: "base" })]);
     setPrompt("");
+    promptEd.current?.setText("");
     setOpen(null);
   };
 
@@ -547,8 +560,12 @@ export default function ImageStudio({
         {refs.length > 0 && (
           <div className="mb-2 flex flex-wrap gap-2">
             {refs.map((r, i) => (
-              <div key={`${r.kind}-${r.rel || r.genId}-${i}`} className="group relative">
+              <div key={r.id || `${r.kind}-${r.rel || r.genId}-${i}`} className="group relative">
                 <img src={r.thumb || r.url} alt={r.name} className="h-12 w-12 rounded-md border object-cover" />
+                {/* The "@" tag this reference answers to in the prompt. */}
+                <span className="pointer-events-none absolute bottom-0 left-0 max-w-full truncate rounded-bl-md rounded-tr-md border-r border-t bg-background/85 px-1 text-[9px] font-medium text-muted-foreground">
+                  {refTagLabel(i)}
+                </span>
                 <button
                   onClick={() => setRefs((cur) => cur.filter((_, j) => j !== i))}
                   aria-label="Remove reference"
@@ -560,13 +577,15 @@ export default function ImageStudio({
             ))}
           </div>
         )}
-        <Textarea
-          value={prompt}
-          onChange={(e) => setPrompt(e.target.value)}
-          onKeyDown={(e) => { if ((e.metaKey || e.ctrlKey) && e.key === "Enter") doGenerate(); }}
+        {/* Prompt box — a TipTap editor so "@" pops the reference picker and
+            picked refs become inline @imageN chips (Cmd/Ctrl+Enter generates). */}
+        <PromptEditor
+          ref={promptEd}
+          refs={refs}
           placeholder={composerPlaceholder}
-          rows={2}
-          className="mb-2 resize-none text-sm"
+          onChange={setPrompt}
+          onSubmit={doGenerate}
+          className="mb-2 max-h-40 min-h-16 w-full overflow-y-auto rounded-md border border-input bg-transparent px-3 py-2 shadow-xs transition-[color,box-shadow] focus-within:border-ring focus-within:ring-[3px] focus-within:ring-ring/50 dark:bg-input/30"
         />
         <div className="flex flex-wrap items-center gap-2">
           <Button variant="outline" size="sm" onClick={() => setPickRef(true)}><ImagePlus size={13} /> Reference</Button>
@@ -681,7 +700,7 @@ export default function ImageStudio({
         sources={refPickerSources}
         onAdd={(items) => setRefs((cur) => [
           ...cur,
-          ...items.map((it) => ({
+          ...items.map((it) => withRefId({
             kind: it.source, // "library" | "generation" | "upload"
             rel: it.rel,
             genId: it.genId,
