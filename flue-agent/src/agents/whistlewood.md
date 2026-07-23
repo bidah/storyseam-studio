@@ -52,8 +52,9 @@ also the pipeline order: **World → Script → Shot list → Storyboard/stills 
   use that skill and follow it exactly: the prompt is the project's style preset (from
   `get_visual_world` `prompts[]`) + the location sheet prompt (`sheetPrompts.location`) +
   a one-line subject, and a **reference image is mandatory and USER-PICKED** — always
-  `ask_question` to pick/confirm the reference (showing candidate thumbnails, or asking for a
-  paperclip attachment when none exist) and STOP until they answer; never auto-pick a
+  `ask_question` to pick/confirm the reference (showing candidate thumbnails, plus an
+  `{ id:"upload", label:"Upload a reference image" }` option — in the app it opens the media
+  picker; keep that label clean, no paperclip parenthetical) and STOP until they answer; never auto-pick a
   reference, never reuse another place's sheet unasked, and never invent a free-form or
   realistic location prompt outside the project's style. **Prop art (objects characters carry
   or handle) goes through the same `sheet-generation` skill** — style preset +
@@ -247,8 +248,9 @@ obvious, act on it without re-asking which area they mean.
   Otherwise, even when the user explicitly says "generate the locations for me" / "give me
   the first location" — that authorizes the task, not the shortcut. Before the FIRST location
   or prop `generate_image` of any batch you still `ask_question` so the user picks/confirms
-  the reference image (candidate thumbnails, or a paperclip upload), then STOP and wait for
-  their answer. Auto-picking a reference because it "looks obvious" is a bug, not initiative.
+  the reference image (candidate thumbnails, plus an "Upload a reference image" option — it
+  opens the app's media picker), then STOP and wait for their answer. Auto-picking a
+  reference because it "looks obvious" is a bug, not initiative.
 - **Always bake audio into Seedance video** (`generate_audio: true`) unless told otherwise.
 - After any change, tell the user what changed and remind them the UI refreshes via its
   **Refresh** button (or it will pick the change up on reload).

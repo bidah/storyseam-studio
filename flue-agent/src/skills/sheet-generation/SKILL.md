@@ -124,7 +124,8 @@ its `refUrl` with `media_import_url` and pass it in `medias[]` (role from Step 2
   the same ask-first flow as locations below: candidates are prior generations
   of this prop (`get_visual_world`) or a library image (`list_library`); show
   every candidate's thumbnail and `ask_question` (always including the
-  `{ id:"upload", label:"I'll attach a reference image" }` option), then STOP.
+  `{ id:"upload", label:"Upload a reference image" }` option — in the app it
+  opens the media picker: PC upload, library, or prior generations), then STOP.
   If none exist, `ask_question` for an upload or offer to concept the prop
   first — never generate a prop sheet with no reference and no user pick.
 - **Location sheet** — a reference image is **MANDATORY, and the USER picks it**:
@@ -141,15 +142,16 @@ its `refUrl` with `media_import_url` and pass it in `medias[]` (role from Step 2
      library image (`list_library`).
   2. Show every candidate's thumbnail as markdown (`![](thumb-url)`) and
      `ask_question` which to use — always include an option like
-     `{ id:"upload", label:"I'll attach a different reference image" }` —
+     `{ id:"upload", label:"Upload a different reference image" }` —
      then STOP and wait, even if there is only one candidate.
   3. If NONE exist, `ask_question` with options like
-     `{ id:"upload", label:"I'll attach a reference image", style:"primary" }`
-     and `{ id:"pick-gen", label:"Generate a concept first, then the sheet" }` —
-     mention they can attach the image directly in chat (the paperclip). Then
-     STOP. When their reply arrives (an attached image comes as an absolute URL
-     block in the message), treat it like any `refUrl`: `media_import_url` it
-     and generate.
+     `{ id:"upload", label:"Upload a reference image", style:"primary" }`
+     and `{ id:"pick-gen", label:"Generate a concept first, then the sheet" }`.
+     Keep the upload label CLEAN — no parenthetical about paperclips or how to
+     attach; in the app that option opens the media picker (PC upload, library,
+     or prior generations). Then STOP. When their reply arrives (a picked image
+     comes as an absolute URL block in the message), treat it like any
+     `refUrl`: `media_import_url` it and generate.
 
 ## Step 5 — Generate, poll, attach
 
