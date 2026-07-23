@@ -10,6 +10,7 @@ import { colorScheme } from 'nativewind';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Toaster } from 'sonner-native';
 import { hydrateAgentModel } from '@/lib/agent-model';
+import { hydrateFalKey } from '@/lib/fal-key';
 import { hydrateProjectId } from '@/lib/project';
 
 SplashScreen.preventAutoHideAsync();
@@ -39,6 +40,7 @@ export default function RootLayout() {
 
   useEffect(() => {
     hydrateAgentModel();
+    hydrateFalKey();
     hydrateProjectId().finally(() => {
       setBooted(true);
       SplashScreen.hideAsync().catch(() => {});

@@ -19,6 +19,7 @@ import { API_ORIGIN } from './env';
 import { CLIENT_ID } from './client-id';
 import { getProjectId } from './project';
 import { getAgentModelSpecifier } from './agent-model';
+import { getFalKey } from './fal-key';
 
 function needsStreaming(path: string) {
   return path.startsWith('/eve') || /\/api\/(data|script|timeline)\/events/.test(path);
@@ -54,6 +55,11 @@ export function installFetchShim() {
     if (pid && !headers.has('x-project-id')) headers.set('x-project-id', pid);
     headers.set('x-client-id', CLIENT_ID);
     if (path.startsWith('/eve')) headers.set('x-flue-model', getAgentModelSpecifier());
+    // The user's own fal.ai key (device-only BYOK — see lib/fal-key.ts): the
+    // Worker reads x-fal-key for fal generations; /eve sends carry it as
+    // x-flue-fal-key so the flue worker persists it per conversation.
+    const falKey = getFalKey();
+    if (falKey) headers.set(path.startsWith('/eve') ? 'x-flue-fal-key' : 'x-fal-key', falKey);
     if (!headers.has('cookie')) {
       const cookie = getSessionCookie();
       if (cookie) headers.set('cookie', cookie);
