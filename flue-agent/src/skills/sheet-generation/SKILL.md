@@ -1,24 +1,25 @@
 ---
 name: sheet-generation
 description: >-
-  Generate a CHARACTER SHEET (contact sheet / model sheet / turnaround) or a
-  LOCATION SHEET (location design sheet) with the project's dedicated sheet
-  prompts, via Nano Banana Pro on the Higgsfield MCP. Use for "generate a
-  character/location sheet", "contact / model sheet", "turnaround", "reference
-  sheet" — and for ANY location image generation: "create the locations",
-  "generate <place name>", "make images for the places". Location art is
-  ALWAYS a sheet (style preset + location sheet prompt + a mandatory reference
-  image), never a free-form prompt, and the user ALWAYS picks the reference:
-  ask_question with candidate thumbnails (or a paperclip attachment) and STOP
-  before generating — never auto-pick. You layer the sheet prompt
-  (get_visual_world sheetPrompts) between the style preset and the subject,
-  attach with attach_visual_generation (sheetType set), and offer to link it
-  as the roster's sheetImage.
+  Generate a CHARACTER SHEET (contact/model sheet, turnaround), a LOCATION
+  SHEET (design sheet), or a PROP SHEET (multi-view reference of an object a
+  character carries) with the project's sheet prompts, via Nano Banana Pro on
+  the Higgsfield MCP. Use for "generate a character/location/prop sheet",
+  "turnaround", "reference sheet" — and for ANY location image generation
+  ("create the locations", "generate <place name>"). Location and prop art is
+  ALWAYS a sheet (style preset + sheet prompt + a mandatory reference image),
+  and the user ALWAYS picks the reference: an image ATTACHED to the requesting
+  message IS that pick — use it, don't re-ask; otherwise ask_question with
+  candidate thumbnails and STOP before generating — never auto-pick. Layer the
+  sheet prompt (get_visual_world sheetPrompts) between style preset and
+  subject, attach with attach_visual_generation (sheetType set), and offer to
+  link it as the roster's sheetImage.
 ---
 
-# Character & location sheet generation
+# Character, location & prop sheet generation
 
-A **sheet** is the canonical reference art for one character or one place:
+A **sheet** is the canonical reference art for one character, one place, or one
+prop:
 
 - **Character sheet** — a contact sheet (full-body front, full-body rear, and a
   shoulders-up close-up of the SAME character) used to lock identity across every
@@ -27,12 +28,16 @@ A **sheet** is the canonical reference art for one character or one place:
   clean background plate (never a collage, grid, or multi-panel contact sheet)
   that locks its architecture, palette and mood, used as the background
   reference for every shot filmed at that location.
+- **Prop sheet** — multi-view reference art of ONE object a character carries or
+  handles (front, three-quarter, and side/back views plus a detail close-up),
+  shown on its own with no characters or hands, used as the identity reference
+  the video models lock onto whenever that prop appears in a shot.
 
 Sheets are generated on the **World › Visual** tab like any concept image, but
 with the project's **sheet prompt** layered in, and tagged with
-`sheetType: "character" | "location"` so the tab badges them and the roster can
-link them. The prompts are user-editable on the **Settings** page — always read
-them fresh, never improvise your own sheet instructions.
+`sheetType: "character" | "location" | "prop"` so the tab badges them and the
+roster can link them. The prompts are user-editable on the **Settings** page —
+always read them fresh, never improvise your own sheet instructions.
 
 > Mechanics (model resolution, references, polling, attach) are identical to the
 > `visual-world` skill — this skill only changes the prompt assembly, the
@@ -55,10 +60,13 @@ them fresh, never improvise your own sheet instructions.
   a chase past parked cars → the sheet must show the stoop and the car-lined
   curb). If the shots at this location disagree (day vs night), surface that
   and ask rather than averaging them.
+- **Props have no roster.** The subject comes from the user's request plus the
+  shot list: `get_shotlist` and read the shots that feature the object (how it
+  is held, used, and lit) so the sheet shows the exact object those shots need.
 - `get_visual_world` — take BOTH:
   - the style preset from `prompts[]` (the 2D house style `image` block), and
-  - **`sheetPrompts.character` or `sheetPrompts.location`** — the project's sheet
-    prompt for this sheet type.
+  - **`sheetPrompts.character`, `sheetPrompts.location`, or `sheetPrompts.prop`**
+    — the project's sheet prompt for this sheet type.
 
 If the user names a character/place that isn't on the roster, ask whether to add
 it first (`add_world_character` / `add_world_location`) or just generate.
@@ -78,7 +86,7 @@ mention it. Never reuse a remembered/recorded model id.
 ```
 <preset.image>            ← house style, from prompts[]
 
-<sheetPrompts.character>  ← or sheetPrompts.location — verbatim, do not rewrite
+<sheetPrompts.character>  ← or .location / .prop — verbatim, do not rewrite
 
 <one-line subject>        ← who/what: name + appearance/description essentials
 ```
@@ -95,7 +103,16 @@ the backend rejects that ratio or delivers a different shape, do NOT quietly
 keep the wrong-shaped image — say what happened and `ask_question` whether to
 keep it, reframe/outpaint it, or regenerate.
 
-## Step 4 — References: optional for characters, REQUIRED for locations
+## Step 4 — References: attached image first; REQUIRED for locations and props
+
+**An image attached to the requesting message IS the user's reference pick.**
+When the message carries an `Attached reference image(s) (absolute URLs …):`
+block, use that attachment as THE reference — `media_import_url` its URL and
+pass it in `medias[]` (role from Step 2) — and do **not** re-ask the reference
+question; the user already picked by attaching. This applies to character,
+location, and prop sheets alike. (The confirm-before-submit rule still applies:
+show the attachment as the chosen reference in the confirmation.) Only when NO
+image is attached does the ask-first flow below run.
 
 If the character/place already has a `sheetImage` or a liked generation, import
 its `refUrl` with `media_import_url` and pass it in `medias[]` (role from Step 2)
@@ -103,6 +120,13 @@ its `refUrl` with `media_import_url` and pass it in `medias[]` (role from Step 2
 
 - **Character sheet** — a reference is strongly preferred when any exists; skip
   it only for a brand-new character with no art yet.
+- **Prop sheet** — a reference image is **MANDATORY, and the USER picks it** —
+  the same ask-first flow as locations below: candidates are prior generations
+  of this prop (`get_visual_world`) or a library image (`list_library`); show
+  every candidate's thumbnail and `ask_question` (always including the
+  `{ id:"upload", label:"I'll attach a reference image" }` option), then STOP.
+  If none exist, `ask_question` for an upload or offer to concept the prop
+  first — never generate a prop sheet with no reference and no user pick.
 - **Location sheet** — a reference image is **MANDATORY, and the USER picks it**:
   a location sheet is always style prompt + sheet prompt + a reference image, so
   the sheet locks an existing look instead of inventing a new place (the Worker's
@@ -139,7 +163,7 @@ attach_visual_generation {
   "model": "<resolved model id>",
   "aspectRatio": "16:9",
   "presetId": "<style preset id>",
-  "sheetType": "character",              // or "location" — REQUIRED for sheets
+  "sheetType": "character",              // or "location" / "prop" — REQUIRED for sheets
   "refs": [ { "kind":"generation", "genId":"<source>" } ]   // when referenced
 }
 ```
@@ -152,12 +176,14 @@ it here, and never set it on ordinary concept images.
 When the author approves a sheet, finish the job:
 
 1. `save_generation_to_library { id: "<generation id>", folder: "locations" }`
-   (or `"characters"`) — the Worker copies the bytes into the asset library and
-   returns the `rel`. This is the ONLY way to get a Visual-tab generation into
-   the library — NEVER try to download/re-upload the image yourself (bash has
-   no network access; you will just waste turns).
+   (or `"characters"` / `"props"`) — the Worker copies the bytes into the asset
+   library and returns the `rel`. This is the ONLY way to get a Visual-tab
+   generation into the library — NEVER try to download/re-upload the image
+   yourself (bash has no network access; you will just waste turns).
 2. Link it: `attach_character_sheet { characterId, rel }` or
-   `attach_location_sheet { locationId, rel }`.
+   `attach_location_sheet { locationId, rel }`. Props have no roster link —
+   for a prop the library save above IS the finish (later generations reference
+   it from the library).
 
 A linked location sheet is auto-supplied as an image reference to every shot at
 that location; a linked character sheet is the character's canonical portrait.

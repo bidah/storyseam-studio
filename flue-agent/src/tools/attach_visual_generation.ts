@@ -19,8 +19,8 @@ export const attachVisualGeneration = (api: Api) =>
       presetId: v.optional(d(v.string(), "Id of the prompt-library preset used, if any.")),
       sheetType: v.optional(
         d(
-          v.picklist(["character", "location"]),
-          "Set when this image is a design sheet: 'character' for a character model sheet / turnaround, 'location' for a location design sheet (see the sheet-generation skill). Stamped on the generation as provenance metadata and shown as a badge on the tab. Location sheets are always generated FROM a reference image — pass the reference you used in `refs`.",
+          v.picklist(["character", "location", "prop"]),
+          "Set when this image is a design sheet: 'character' for a character model sheet / turnaround, 'location' for a location design sheet, 'prop' for a multi-view prop reference sheet (see the sheet-generation skill). Stamped on the generation as provenance metadata and shown as a badge on the tab. Location and prop sheets are always generated FROM a reference image — pass the reference you used in `refs`.",
         ),
       ),
       refs: v.optional(
