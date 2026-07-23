@@ -10,6 +10,7 @@ import { createApi } from "../lib/api.js";
 import { createTools } from "../tools/index.js";
 import { createHiggsfieldTools } from "../lib/higgsfield.js";
 import { createFalTools } from "../lib/fal.js";
+import { createAtlasTools } from "../lib/atlas.js";
 import { createSandbox } from "../lib/sandbox.js";
 import { skills } from "../skills.js";
 import { createSubagents } from "../subagents.js";
@@ -19,6 +20,12 @@ import {
   writeSelectedModel,
 } from "../lib/models.js";
 import { readFalKey, writeFalKey } from "../lib/fal-key.js";
+import { readAtlasKey, writeAtlasKey } from "../lib/atlas-key.js";
+import {
+  readRenderPrefs,
+  writeRenderPrefs,
+  type RenderPrefs,
+} from "../lib/render-prefs.js";
 
 export const description =
   "Whistlewood production agent — drives the script → shots → renders → cuts → library pipeline.";
@@ -53,10 +60,31 @@ function storedFalKey(): string {
   }
 }
 
+// Same for the Atlas Cloud key (app.ts setAtlasKey → lib/atlas-key.ts).
+function storedAtlasKey(): string {
+  try {
+    return readAtlasKey(getCloudflareContext().storage.sql);
+  } catch {
+    return "";
+  }
+}
+
+// The Settings provider toggles (app.ts setRenderPrefs → lib/render-prefs.ts):
+// disabled providers lose their tools below; the active one is called out in
+// the instructions so renders default to it.
+function storedRenderPrefs(): RenderPrefs {
+  try {
+    return readRenderPrefs(getCloudflareContext().storage.sql);
+  } catch {
+    return { active: "", disabled: [] };
+  }
+}
+
 // Native Agents SDK extension for this agent's generated Durable Object. Adds
-// `setModel` / `setFalKey` RPCs that persist the caller-selected chat model and
-// fal API key for the conversation; app.ts invokes them (whitelisted /
-// shape-checked) before admitting each prompt.
+// `setModel` / `setFalKey` / `setAtlasKey` / `setRenderPrefs` RPCs that persist
+// the caller-selected chat model, BYOK render keys, and provider toggles for
+// the conversation; app.ts invokes them (whitelisted / shape-checked) before
+// admitting each prompt.
 export const cloudflare = extend<CloudflareAgentLike & { ctx: DurableObjectState }>(
   {
     base: (Base) =>
@@ -66,6 +94,12 @@ export const cloudflare = extend<CloudflareAgentLike & { ctx: DurableObjectState
         }
         async setFalKey(key: string): Promise<void> {
           writeFalKey(this.ctx.storage.sql, key);
+        }
+        async setAtlasKey(key: string): Promise<void> {
+          writeAtlasKey(this.ctx.storage.sql, key);
+        }
+        async setRenderPrefs(prefs: RenderPrefs): Promise<void> {
+          writeRenderPrefs(this.ctx.storage.sql, prefs);
         }
       },
   },
@@ -81,14 +115,33 @@ export default defineAgent(async ({ id }) => {
 
   const api = createApi(projectId);
   const tools = createTools(api);
-  const higgsfieldTools = await createHiggsfieldTools(userId);
-  const falTools = createFalTools(storedFalKey());
+  // Provider toggles from Settings: a disabled provider's tools are simply
+  // absent this turn; the active one is called out in the instructions.
+  const prefs = storedRenderPrefs();
+  const disabled = new Set(prefs.disabled);
+  const higgsfieldTools = disabled.has("higgsfield") ? [] : await createHiggsfieldTools(userId);
+  const falTools = disabled.has("fal") ? [] : createFalTools(storedFalKey());
+  const atlasTools = disabled.has("atlas") ? [] : createAtlasTools(storedAtlasKey());
   const sandbox = await createSandbox(id);
+
+  const PROVIDER_TOOLS: Record<string, string> = {
+    higgsfield: "the Higgsfield tools (generate_image / generate_video / generate_audio)",
+    fal: "the fal tools (fal_generate_image / fal_generate_video)",
+    atlas: "the Atlas Cloud tools (atlas_generate_image / atlas_generate_video)",
+  };
+  const providerNote = [
+    prefs.active && PROVIDER_TOOLS[prefs.active]
+      ? `\n\n## Render provider\n\nThe user's ACTIVE render provider is **${prefs.active}** — default to ${PROVIDER_TOOLS[prefs.active]} for image/video renders unless a skill requires a specific backend or the user asks for another.`
+      : "",
+    prefs.disabled.length
+      ? `${prefs.active ? " " : "\n\n## Render provider\n\n"}Disabled providers this conversation (tools absent): ${prefs.disabled.join(", ")}.`
+      : "",
+  ].join("");
 
   return {
     model: selectedModel(),
-    instructions,
-    tools: [...tools, ...higgsfieldTools, ...falTools],
+    instructions: providerNote ? `${instructions}${providerNote}` : instructions,
+    tools: [...tools, ...higgsfieldTools, ...falTools, ...atlasTools],
     skills,
     subagents: createSubagents(api),
     ...(sandbox ? { sandbox, cwd: "/workspace" } : {}),

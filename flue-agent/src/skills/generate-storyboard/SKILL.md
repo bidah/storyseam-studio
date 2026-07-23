@@ -1,6 +1,18 @@
 ---
 name: generate-storyboard
-description: Generate ONE storyboard STILL image for a single shot with Nano Banana Pro via the Higgsfield MCP generate_image tool, locked to the shot's character + location reference images. Use when the user wants a "storyboard" still / keyframe for a shot on the Episode tab (Images mode), to visualize a shot's framing/angle before rendering video, or to add another camera-angle take for a shot. This is the still-image counterpart of generate-multishot (which renders the Seedance video); it produces images, not video. Higgsfield is the default backend; when the user asks for fal (or Higgsfield is unavailable), use fal_generate_image + fal_job_status instead — same assembled prompt, character/location references as absolute URLs in image_urls, then attach the fal.media result URL with attach_still as usual.
+description: >-
+  Generate ONE storyboard STILL image for a single shot with Nano Banana Pro via
+  the Higgsfield MCP generate_image tool, locked to the shot's character +
+  location reference images. Use when the user wants a "storyboard" still /
+  keyframe for a shot on the Episode tab (Images mode), to visualize a shot's
+  framing/angle before rendering video, or to add another camera-angle take for
+  a shot. This is the still-image counterpart of generate-multishot (which
+  renders the Seedance video); it produces images, not video. Default to the
+  user's ACTIVE render provider (see the "Render provider" instructions section;
+  Higgsfield when none is set) — on fal use fal_generate_image + fal_job_status,
+  on Atlas Cloud use atlas_generate_image + atlas_job_status, with the same
+  assembled prompt, character/location references as absolute URLs in
+  image_urls, then attach the result URL with attach_still as usual.
 ---
 
 # generate-storyboard (Nano Banana Pro — via the Higgsfield MCP)

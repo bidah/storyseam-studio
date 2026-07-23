@@ -9,11 +9,11 @@ description: >-
   the world", "generate character concepts / designs", "concept art", "find the
   look", "mood / style exploration", or to iterate an image "with this one as a
   reference". You generate images with generate_image, then attach each with
-  attach_visual_generation so it lands live on the Visual tab. Higgsfield is the
-  default backend; when the user asks for fal (or Higgsfield is unavailable —
-  no credential / no credits), use fal_generate_image + fal_job_status instead
-  with the SAME assembled prompts, passing reference images as absolute refUrl
-  URLs in image_urls, then attach the fal.media result URL the same way.
+  attach_visual_generation so it lands live on the Visual tab. Default to the
+  user's ACTIVE render provider ("Render provider" instructions section;
+  Higgsfield when unset) — on fal use fal_generate_image + fal_job_status, on
+  Atlas use atlas_generate_image + atlas_job_status, same prompts, refs as
+  absolute refUrl URLs in image_urls, attach the result URL the same way.
 ---
 
 # Visual world exploration (World › Visual tab)

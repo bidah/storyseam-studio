@@ -33,11 +33,42 @@ import {
   falPoll,
   isAllowedFalMediaUrl,
 } from "../lib/fal.js";
+import {
+  isAtlasModel,
+  atlasCatalog,
+  atlasModelEntry,
+  atlasSubmit,
+  atlasPoll,
+  atlasImageAspect,
+  atlasVideoRatio,
+  isAllowedAtlasMediaUrl,
+} from "../lib/atlas.js";
 
-// The fal key for THIS request: the user's own key (BYOK, stamped by the
-// browser as x-fal-key from localStorage — never stored server-side), falling
-// back to the operator's optional FAL_KEY env secret (dev / single-tenant).
-const reqFalKey = (c) => str(c.req.header("x-fal-key") || c.env.FAL_KEY || "");
+// The render providers for THIS request. BYOK keys (fal / Atlas Cloud) are
+// stamped by the browser from localStorage — never stored server-side — with
+// the operator's optional FAL_KEY / ATLAS_KEY env secrets as dev fallbacks.
+// The Settings page's provider toggles ride as `x-disabled-providers` (a
+// disabled provider is dead for this request even if an env fallback exists),
+// and the picked ACTIVE provider as `x-render-provider` (it wins the catalog
+// default). `token` is the per-user Higgsfield OAuth bearer, nulled when
+// Higgsfield is toggled off.
+const PROVIDER_IDS = new Set(["higgsfield", "fal", "atlas"]);
+function reqProviders(c, token) {
+  const disabled = new Set(
+    str(c.req.header("x-disabled-providers"))
+      .split(",")
+      .map((s) => s.trim())
+      .filter((s) => PROVIDER_IDS.has(s)),
+  );
+  const activeRaw = str(c.req.header("x-render-provider"));
+  return {
+    token: disabled.has("higgsfield") ? null : token,
+    falKey: disabled.has("fal") ? "" : str(c.req.header("x-fal-key") || c.env.FAL_KEY || ""),
+    atlasKey: disabled.has("atlas") ? "" : str(c.req.header("x-atlas-key") || c.env.ATLAS_KEY || ""),
+    active: PROVIDER_IDS.has(activeRaw) && !disabled.has(activeRaw) ? activeRaw : "",
+  };
+}
+const noProvider = (prov) => !prov.token && !prov.falKey && !prov.atlasKey;
 
 /* ------------------------------------------------------------------ *
  * Store shape                                                         *
@@ -185,9 +216,10 @@ function normalizeGeneration(g, i = 0) {
   return {
     id: str(o.id) || `gen-${Date.now().toString(36)}-${i}`,
     status,
-    // "" (Higgsfield, the default) | "fal" — which backend ran this generation.
-    // Drives how /poll checks the job (job_status MCP tool vs fal queue API).
-    provider: o.provider === "fal" ? "fal" : "",
+    // "" (Higgsfield, the default) | "fal" | "atlas" — which backend ran this
+    // generation. Drives how /poll checks the job (job_status MCP tool vs fal
+    // queue API vs Atlas prediction API).
+    provider: ["fal", "atlas"].includes(o.provider) ? o.provider : "",
     // "image" (default) | "video" — which medium this generation is. A video's
     // `file` is an .mp4 served (with range support) from /visual-media/.
     kind: o.kind === "video" ? "video" : "image",
@@ -599,47 +631,58 @@ async function resolveVideoModels(env, userId, token) {
 }
 
 /* ------------------------------------------------------------------ *
- * Provider dispatch (Higgsfield MCP + fal queue API)                  *
+ * Provider dispatch (Higgsfield MCP + fal queue + Atlas predictions)  *
  * ------------------------------------------------------------------ */
 
 // Resolve the Higgsfield catalog when a token exists, tolerating auth failure
-// (⇒ null) so a fal-only setup still works. Non-auth errors rethrow only when
-// fal can't cover for the missing catalog.
-async function resolveHfCatalog(env, userId, token, kind, falKey) {
-  if (!token) return null;
+// (⇒ null) so a BYOK-only setup still works. Non-auth errors rethrow only when
+// no other provider can cover for the missing catalog.
+async function resolveHfCatalog(env, userId, prov, kind) {
+  if (!prov.token) return null;
   try {
     return await (kind === "video"
-      ? resolveVideoModels(env, userId, token)
-      : resolveModels(env, userId, token));
+      ? resolveVideoModels(env, userId, prov.token)
+      : resolveModels(env, userId, prov.token));
   } catch (e) {
-    if (e instanceof HiggsfieldAuthError || falKey) return null;
+    if (e instanceof HiggsfieldAuthError || prov.falKey || prov.atlasKey) return null;
     throw e;
   }
 }
 
-// The merged, provider-tagged model catalog for one media kind. The default
-// stays Higgsfield's (Nano Banana Pro / Seedance) when available, else the
-// first curated fal model.
-function mergeCatalog(falKey, hf, kind) {
+// The merged, provider-tagged model catalog for one media kind. The ACTIVE
+// provider (Settings toggle, `x-render-provider`) wins the default; otherwise
+// the default stays Higgsfield's (Nano Banana Pro / Seedance) when available,
+// else the first curated fal / Atlas model.
+function mergeCatalog(prov, hf, kind) {
   const models = [
     ...(hf?.models || []).map((m) => ({ ...m, provider: "higgsfield" })),
-    ...(falKey ? falCatalog(kind) : []),
+    ...(prov.falKey ? falCatalog(kind) : []),
+    ...(prov.atlasKey ? atlasCatalog(kind) : []),
   ];
-  const defaultId = hf?.defaultId || (falKey ? falCatalog(kind)[0]?.id || "" : "");
-  return { models, defaultId };
+  const defaults = {
+    higgsfield: hf?.defaultId || "",
+    fal: prov.falKey ? falCatalog(kind)[0]?.id || "" : "",
+    atlas: prov.atlasKey ? atlasCatalog(kind)[0]?.id || "" : "",
+  };
+  const defaultId =
+    (prov.active && defaults[prov.active]) ||
+    defaults.higgsfield || defaults.fal || defaults.atlas || "";
+  return { models, defaultId, active: prov.active };
 }
 
 // Validate a picked model id against the merged catalog (a stale/renamed id
 // falls back to the default) and check its provider is actually usable now.
 // Returns the resolved id; throws with a user-facing message otherwise.
-function resolveModelChoice(falKey, catalog, picked, token) {
+function resolveModelChoice(prov, catalog, picked) {
   let model = str(picked);
   if (model && catalog.models.length && !catalog.models.some((m) => m.id === model)) model = "";
   if (!model) model = catalog.defaultId;
   if (!model) throw new Error("Could not resolve a model");
   if (isFalModel(model)) {
-    if (!falKey) throw new Error("fal model selected but no fal API key on this request (set yours in Settings)");
-  } else if (!token) {
+    if (!prov.falKey) throw new Error("fal model selected but no fal API key on this request (enable fal + set your key in Settings)");
+  } else if (isAtlasModel(model)) {
+    if (!prov.atlasKey) throw new Error("Atlas model selected but no Atlas Cloud API key on this request (enable Atlas Cloud + set your key in Settings)");
+  } else if (!prov.token) {
     throw new HiggsfieldAuthError("Higgsfield sign-in required");
   }
   return model;
@@ -693,7 +736,8 @@ function resolveNodeInputs(env, pid, vw, node) {
 // generate_video), importing wired references first. Returns the "processing"
 // generation record to append (with jobId/kind/nodeId). Throws on a hard MCP
 // error — the caller marks the node's run errored. Network only; NO doc writes.
-async function fireNodeJob(env, userId, token, falKey, pid, vw, node) {
+// `prov` is the per-request provider bundle from reqProviders().
+async function fireNodeJob(env, userId, prov, pid, vw, node) {
   const kind = node.type === "video" ? "video" : "image";
   const settings = node.settings || {};
   const { startFrameUrl, imageRefUrls, inheritedText } = resolveNodeInputs(env, pid, vw, node);
@@ -720,15 +764,15 @@ async function fireNodeJob(env, userId, token, falKey, pid, vw, node) {
   };
 
   if (kind === "video") {
-    const catalog = mergeCatalog(falKey, await resolveHfCatalog(env, userId, token, "video", falKey), "video");
-    const model = resolveModelChoice(falKey, catalog, settings.model, token);
+    const catalog = mergeCatalog(prov, await resolveHfCatalog(env, userId, prov, "video"), "video");
+    const model = resolveModelChoice(prov, catalog, settings.model);
 
     if (isFalModel(model)) {
       // fal Seedance: a single start image rides as `image_url` on the
       // image-to-video endpoint (no multi-reference role system).
       const entry = falModelEntry(model);
       const startUrl = startFrameUrl || imageRefUrls[0] || "";
-      const { requestId } = await falSubmit(falKey, startUrl ? entry.i2vEndpoint : entry.t2vEndpoint, {
+      const { requestId } = await falSubmit(prov.falKey, startUrl ? entry.i2vEndpoint : entry.t2vEndpoint, {
         prompt: assembledPrompt,
         aspect_ratio: aspectRatio,
         duration: String(clampDuration(settings.duration)),
@@ -738,19 +782,35 @@ async function fireNodeJob(env, userId, token, falKey, pid, vw, node) {
       return normalizeGeneration({ ...base, status: "processing", provider: "fal", model, jobId: requestId });
     }
 
+    if (isAtlasModel(model)) {
+      // Atlas Seedance: single start image as `image` on the image-to-video
+      // model; `ratio` (not aspect_ratio) with an "adaptive" mode when a start
+      // frame sets the shape.
+      const entry = atlasModelEntry(model);
+      const startUrl = startFrameUrl || imageRefUrls[0] || "";
+      const { predictionId } = await atlasSubmit(prov.atlasKey, "video", startUrl ? entry.i2vEndpoint : entry.t2vEndpoint, {
+        prompt: assembledPrompt,
+        ratio: atlasVideoRatio(aspectRatio, !!startUrl),
+        duration: clampDuration(settings.duration),
+        generate_audio: !!settings.generateAudio,
+        ...(startUrl ? { image: startUrl } : {}),
+      });
+      return normalizeGeneration({ ...base, status: "processing", provider: "atlas", model, jobId: predictionId });
+    }
+
     // Resolve the reference-image role this model actually accepts (Seedance:
     // "image_references"; others may want "start_image"/"image"). Start frame
     // leads, then image refs.
     const refUrls = [startFrameUrl, ...imageRefUrls].filter(Boolean);
     const medias = [];
     if (refUrls.length) {
-      const role = await resolveMediaRole(env, userId, token, model, ["image_references", "start_image", "image"]);
+      const role = await resolveMediaRole(env, userId, prov.token, model, ["image_references", "start_image", "image"]);
       for (const url of refUrls) {
-        const mediaId = await importRef(env, userId, token, url);
+        const mediaId = await importRef(env, userId, prov.token, url);
         medias.push({ role, value: mediaId });
       }
     }
-    const data = await mcp(env, userId, token, "generate_video", {
+    const data = await mcp(env, userId, prov.token, "generate_video", {
       params: {
         model,
         prompt: assembledPrompt,
@@ -766,14 +826,14 @@ async function fireNodeJob(env, userId, token, falKey, pid, vw, node) {
   }
 
   // image
-  const catalog = mergeCatalog(falKey, await resolveHfCatalog(env, userId, token, "image", falKey), "image");
-  const model = resolveModelChoice(falKey, catalog, settings.model, token);
+  const catalog = mergeCatalog(prov, await resolveHfCatalog(env, userId, prov, "image"), "image");
+  const model = resolveModelChoice(prov, catalog, settings.model);
 
   if (isFalModel(model)) {
     // fal Nano Banana: reference images go straight to the /edit endpoint as
     // `image_urls` (fal fetches our ungated /files URLs itself — no import step).
     const entry = falModelEntry(model);
-    const { requestId } = await falSubmit(falKey, imageRefUrls.length ? entry.editEndpoint : entry.endpoint, {
+    const { requestId } = await falSubmit(prov.falKey, imageRefUrls.length ? entry.editEndpoint : entry.endpoint, {
       prompt: assembledPrompt,
       aspect_ratio: aspectRatio,
       num_images: 1,
@@ -782,15 +842,27 @@ async function fireNodeJob(env, userId, token, falKey, pid, vw, node) {
     return normalizeGeneration({ ...base, status: "processing", provider: "fal", model, jobId: requestId });
   }
 
+  if (isAtlasModel(model)) {
+    // Atlas Nano Banana: references go to the sibling edit model as an
+    // `images` array (Atlas fetches our ungated /files URLs itself).
+    const entry = atlasModelEntry(model);
+    const { predictionId } = await atlasSubmit(prov.atlasKey, "image", imageRefUrls.length ? entry.editEndpoint : entry.endpoint, {
+      prompt: assembledPrompt,
+      aspect_ratio: atlasImageAspect(aspectRatio),
+      ...(imageRefUrls.length ? { images: imageRefUrls } : {}),
+    });
+    return normalizeGeneration({ ...base, status: "processing", provider: "atlas", model, jobId: predictionId });
+  }
+
   const medias = [];
   if (imageRefUrls.length) {
-    const role = await resolveMediaRole(env, userId, token, model, ["image", "image_references"]);
+    const role = await resolveMediaRole(env, userId, prov.token, model, ["image", "image_references"]);
     for (const url of imageRefUrls) {
-      const mediaId = await importRef(env, userId, token, url);
+      const mediaId = await importRef(env, userId, prov.token, url);
       medias.push({ role, value: mediaId });
     }
   }
-  const data = await mcp(env, userId, token, "generate_image", {
+  const data = await mcp(env, userId, prov.token, "generate_image", {
     params: { model, prompt: assembledPrompt, aspect_ratio: aspectRatio, medias },
   });
   const jobId = pickId(data, "jobId", "job_id", "id");
@@ -831,7 +903,7 @@ function upstreamRunDeps(board, nodeId, runSet) {
 // Advance the active run one step: settle started nodes from generation status,
 // then fire every runnable node (upstreams ready). Does its own read → network →
 // write. A no-op when no run is active. Returns nothing.
-async function advanceRun(env, userId, token, falKey, pid) {
+async function advanceRun(env, userId, prov, pid) {
   const vw = await readVW(env, pid);
   const run = vw.board.run;
   if (!run?.active) return;
@@ -866,7 +938,7 @@ async function advanceRun(env, userId, token, falKey, pid) {
     if (!deps.every((d) => ready.has(d))) continue; // wait
     attempted++;
     try {
-      const gen = await fireNodeJob(env, userId, token, falKey, pid, vw, node);
+      const gen = await fireNodeJob(env, userId, prov, pid, vw, node);
       fired.push({ nodeId: id, gen });
       started.add(id);
     } catch {
@@ -923,18 +995,17 @@ export function registerVisualWorld(app) {
 
   // The model catalog for the composer / node model selectors: the live
   // Higgsfield catalog (when the user has a token) merged with the curated fal
-  // registry (when FAL_KEY is set), each entry tagged with its `provider`.
-  // `?type=video` returns the video catalog; anything else the image catalog.
-  // 401 only when NEITHER provider is available.
+  // and Atlas registries (when their keys ride the request), each entry tagged
+  // with its `provider`. `?type=video` returns the video catalog; anything else
+  // the image catalog. 401 only when NO provider is available.
   app.get("/api/visual-world/models", async (c) => {
     const userId = c.get("userId");
     if (!userId) return c.json({ error: "Sign in required" }, 401);
-    const token = await getHiggsfieldToken(c.env, userId);
-    const falKey = reqFalKey(c);
-    if (!token && !falKey) return c.json({ error: "no_higgsfield_token" }, 401);
+    const prov = reqProviders(c, await getHiggsfieldToken(c.env, userId));
+    if (noProvider(prov)) return c.json({ error: "no_higgsfield_token" }, 401);
     const type = c.req.query("type") === "video" ? "video" : "image";
     try {
-      const catalog = mergeCatalog(falKey, await resolveHfCatalog(c.env, userId, token, type, falKey), type);
+      const catalog = mergeCatalog(prov, await resolveHfCatalog(c.env, userId, prov, type), type);
       if (!catalog.models.length) return c.json({ error: "no_higgsfield_token" }, 401);
       return c.json(catalog);
     } catch (e) {
@@ -950,9 +1021,8 @@ export function registerVisualWorld(app) {
     const userId = c.get("userId");
     if (!userId) return c.json({ error: "Sign in required" }, 401);
     const pid = c.get("projectId");
-    const token = await getHiggsfieldToken(c.env, userId);
-    const falKey = reqFalKey(c);
-    if (!token && !falKey) return c.json({ error: "no_higgsfield_token" }, 401);
+    const prov = reqProviders(c, await getHiggsfieldToken(c.env, userId));
+    if (noProvider(prov)) return c.json({ error: "no_higgsfield_token" }, 401);
 
     let body;
     try { body = await c.req.json(); } catch { body = {}; }
@@ -974,10 +1044,10 @@ export function registerVisualWorld(app) {
       // Higgsfield has since renamed (e.g. a saved `nano_banana_flash`) is no
       // longer in the catalog — fall back to the current default instead of
       // handing a dead id to generate_image. Empty selection ⇒ default.
-      const catalog = mergeCatalog(falKey, await resolveHfCatalog(c.env, userId, token, "image", falKey), "image");
+      const catalog = mergeCatalog(prov, await resolveHfCatalog(c.env, userId, prov, "image"), "image");
       let model;
       try {
-        model = resolveModelChoice(falKey, catalog, body.model, token);
+        model = resolveModelChoice(prov, catalog, body.model);
       } catch (e) {
         if (e instanceof HiggsfieldAuthError) throw e;
         return c.json({ error: e.message || "Could not resolve an image model" }, 502);
@@ -1016,20 +1086,31 @@ export function registerVisualWorld(app) {
           ...(refUrls.length ? { image_urls: refUrls } : {}),
         };
         for (let i = 0; i < count; i++) {
-          const { requestId } = await falSubmit(falKey, refUrls.length ? entry.editEndpoint : entry.endpoint, input);
+          const { requestId } = await falSubmit(prov.falKey, refUrls.length ? entry.editEndpoint : entry.endpoint, input);
           started.push({ jobId: requestId });
+        }
+      } else if (isAtlasModel(model)) {
+        const entry = atlasModelEntry(model);
+        const input = {
+          prompt: assembledPrompt,
+          aspect_ratio: atlasImageAspect(aspectRatio),
+          ...(refUrls.length ? { images: refUrls } : {}),
+        };
+        for (let i = 0; i < count; i++) {
+          const { predictionId } = await atlasSubmit(prov.atlasKey, "image", refUrls.length ? entry.editEndpoint : entry.endpoint, input);
+          started.push({ jobId: predictionId });
         }
       } else {
         const medias = [];
         const refRole = refUrls.length
-          ? await resolveMediaRole(c.env, userId, token, model, ["image", "image_references"])
+          ? await resolveMediaRole(c.env, userId, prov.token, model, ["image", "image_references"])
           : "image";
         for (const url of refUrls) {
-          const mediaId = await importRef(c.env, userId, token, url);
+          const mediaId = await importRef(c.env, userId, prov.token, url);
           medias.push({ role: refRole, value: mediaId });
         }
         for (let i = 0; i < count; i++) {
-          const data = await mcp(c.env, userId, token, "generate_image", {
+          const data = await mcp(c.env, userId, prov.token, "generate_image", {
             params: { model, prompt: assembledPrompt, aspect_ratio: aspectRatio, medias },
           });
           const jobId = pickId(data, "jobId", "job_id", "id");
@@ -1044,7 +1125,7 @@ export function registerVisualWorld(app) {
         normalizeGeneration({
           id: `gen-${Date.now().toString(36)}-${crypto.randomUUID().slice(0, 6)}-${i}`,
           status: "processing",
-          provider: isFalModel(model) ? "fal" : "",
+          provider: isFalModel(model) ? "fal" : isAtlasModel(model) ? "atlas" : "",
           prompt,
           assembledPrompt,
           model,
@@ -1097,9 +1178,8 @@ export function registerVisualWorld(app) {
     const userId = c.get("userId");
     if (!userId) return c.json({ error: "Sign in required" }, 401);
     const pid = c.get("projectId");
-    const token = await getHiggsfieldToken(c.env, userId);
-    const falKey = reqFalKey(c);
-    if (!token && !falKey) return c.json({ error: "no_higgsfield_token" }, 401);
+    const prov = reqProviders(c, await getHiggsfieldToken(c.env, userId));
+    if (noProvider(prov)) return c.json({ error: "no_higgsfield_token" }, 401);
 
     const vw = await readVW(c.env, pid);
     const pending = vw.generations.filter((g) => g.status === "processing" && g.jobId);
@@ -1113,8 +1193,8 @@ export function registerVisualWorld(app) {
             updates[g.id] = { status: "error", error: "fal model no longer in the curated registry" };
             continue;
           }
-          if (!falKey) continue; // no key on this request — poll again from a tab that has one
-          const st = await falPoll(falKey, entry.endpoint || entry.t2vEndpoint, g.jobId);
+          if (!prov.falKey) continue; // no key on this request — poll again from a tab that has one
+          const st = await falPoll(prov.falKey, entry.endpoint || entry.t2vEndpoint, g.jobId);
           if (!st.done) continue; // still queued/running — re-poll next tick
           if (st.failed || !st.url) {
             updates[g.id] = { status: "error", error: st.error || "Generation ended with no result" };
@@ -1124,7 +1204,19 @@ export function registerVisualWorld(app) {
           continue;
         }
 
-        const st = await mcp(c.env, userId, token, "job_status", { jobId: g.jobId, sync: true });
+        if (g.provider === "atlas") {
+          if (!prov.atlasKey) continue; // no key on this request — poll again from a tab that has one
+          const st = await atlasPoll(prov.atlasKey, g.jobId);
+          if (!st.done) continue; // still processing — re-poll next tick
+          if (st.failed || !st.url) {
+            updates[g.id] = { status: "error", error: st.error || "Generation ended with no result" };
+          } else {
+            await finalizeResult(c, pid, g, st.url, updates);
+          }
+          continue;
+        }
+
+        const st = await mcp(c.env, userId, prov.token, "job_status", { jobId: g.jobId, sync: true });
         // The generation may be nested under `generation` (or returned bare).
         const gen = (st && typeof st === "object" && st.generation && typeof st.generation === "object")
           ? st.generation : st;
@@ -1160,7 +1252,7 @@ export function registerVisualWorld(app) {
     // Advance any active node-run cascade: settle just-finalized nodes and fire
     // the next runnable ones (may append new processing generations this tick).
     try {
-      await advanceRun(c.env, userId, token, falKey, pid);
+      await advanceRun(c.env, userId, prov, pid);
     } catch (e) {
       if (e instanceof HiggsfieldAuthError) return c.json({ error: "no_higgsfield_token" }, 401);
       // Transient cascade error — retried next tick.
@@ -1179,9 +1271,8 @@ export function registerVisualWorld(app) {
     const userId = c.get("userId");
     if (!userId) return c.json({ error: "Sign in required" }, 401);
     const pid = c.get("projectId");
-    const token = await getHiggsfieldToken(c.env, userId);
-    const falKey = reqFalKey(c);
-    if (!token && !falKey) return c.json({ error: "no_higgsfield_token" }, 401);
+    const prov = reqProviders(c, await getHiggsfieldToken(c.env, userId));
+    if (noProvider(prov)) return c.json({ error: "no_higgsfield_token" }, 401);
 
     let body;
     try { body = await c.req.json(); } catch { body = {}; }
@@ -1211,7 +1302,7 @@ export function registerVisualWorld(app) {
         const deps = upstreamRunDeps(vw.board, id, runSet);
         if (deps.length > 0) continue; // waits for upstreams (advanced by /poll)
         const node = vw.board.nodes.find((n) => n.id === id);
-        const gen = await fireNodeJob(c.env, userId, token, falKey, pid, vw, node);
+        const gen = await fireNodeJob(c.env, userId, prov, pid, vw, node);
         fired.push({ nodeId: id, gen });
         started.add(id);
       }
@@ -1256,13 +1347,13 @@ export function registerVisualWorld(app) {
     let file = "";
     let downloadError = "";
     const source = url;
-    // Only fetch from allowed media hosts (higgsfield / cloudfront / fal.media),
-    // same gate as /poll — the agent should POST the raw result URL. This blocks
-    // SSRF and, together with the content-type check below, stops a non-image
-    // body (e.g. a 200 HTML error/redirect page) being stored as a corrupt
-    // "ready" image the tab then renders broken.
-    if (!isAllowedMediaUrl(url) && !isAllowedFalMediaUrl(url)) {
-      downloadError = "url must be an https Higgsfield/CloudFront or fal.media result URL";
+    // Only fetch from allowed media hosts (higgsfield / cloudfront / fal.media /
+    // atlascloud.ai), same gate as /poll — the agent should POST the raw result
+    // URL. This blocks SSRF and, together with the content-type check below,
+    // stops a non-image body (e.g. a 200 HTML error/redirect page) being stored
+    // as a corrupt "ready" image the tab then renders broken.
+    if (!isAllowedMediaUrl(url) && !isAllowedFalMediaUrl(url) && !isAllowedAtlasMediaUrl(url)) {
+      downloadError = "url must be an https Higgsfield/CloudFront, fal.media, or atlascloud.ai result URL";
     } else {
       try {
         const res = await fetch(url);

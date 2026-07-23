@@ -5,6 +5,8 @@ import { verifyProxyUser, proxySecret, PROXY_HEADER } from "./lib/proxy-auth.js"
 import { decodeInstanceId } from "./lib/instance-id.js";
 import { isAllowedModel } from "./lib/models.js";
 import { isPlausibleFalKey } from "./lib/fal-key.js";
+import { isPlausibleAtlasKey } from "./lib/atlas-key.js";
+import { parseRenderPrefs, type RenderPrefs } from "./lib/render-prefs.js";
 
 // --- Observability -----------------------------------------------------------
 // Surface agent failures to Cloudflare Workers Logs (wrangler.jsonc enables
@@ -88,10 +90,18 @@ observe((event) => {
 // The per-turn model chosen by the web picker rides on this header (set by the
 // projectFetch shim on the SPA side and forwarded verbatim by the /eve proxy).
 const MODEL_HEADER = "x-flue-model";
-// The user's own fal.ai key rides the same way (localStorage-only BYOK — see
-// src/lib/falKey.js in the SPA). Persisted per conversation via setFalKey so
-// the fal_* render tools can use it mid-run; never stored in a database.
+// The user's own fal.ai / Atlas Cloud keys ride the same way (localStorage-only
+// BYOK — see src/lib/falKey.js / atlasKey.js in the SPA). Persisted per
+// conversation via setFalKey / setAtlasKey so the fal_* / atlas_* render tools
+// can use them mid-run; never stored in a database.
 const FAL_KEY_HEADER = "x-flue-fal-key";
+const ATLAS_KEY_HEADER = "x-flue-atlas-key";
+// The Settings provider toggles: the ACTIVE render provider and the disabled
+// list (CSV, sent even when empty so re-enabling overwrites the stored list).
+// Persisted via setRenderPrefs; whistlewood.ts drops disabled providers' tools
+// and steers the agent toward the active one.
+const PROVIDER_HEADER = "x-flue-render-provider";
+const DISABLED_HEADER = "x-flue-disabled-providers";
 
 // Generated Durable Object binding for each agent: `whistlewood.ts` ->
 // class FlueWhistlewoodAgent -> env.FLUE_WHISTLEWOOD_AGENT.
@@ -102,6 +112,8 @@ const AGENT_BINDINGS: Record<string, string> = {
 type ModelStub = {
   setModel(model: string): Promise<void>;
   setFalKey(key: string): Promise<void>;
+  setAtlasKey(key: string): Promise<void>;
+  setRenderPrefs(prefs: RenderPrefs): Promise<void>;
 };
 type Env = Record<string, DurableObjectNamespace | undefined>;
 
@@ -145,9 +157,14 @@ const requireProxyUser: MiddlewareHandler = async (c, next) => {
 const applyModelSelection: MiddlewareHandler = async (c, next) => {
   const requested = c.req.header(MODEL_HEADER);
   const falKey = c.req.header(FAL_KEY_HEADER);
+  const atlasKey = c.req.header(ATLAS_KEY_HEADER);
+  const provider = c.req.header(PROVIDER_HEADER);
+  const disabledCsv = c.req.header(DISABLED_HEADER);
   const wantModel = isAllowedModel(requested);
   const wantFalKey = isPlausibleFalKey(falKey);
-  if (c.req.method === "POST" && (wantModel || wantFalKey)) {
+  const wantAtlasKey = isPlausibleAtlasKey(atlasKey);
+  const wantPrefs = provider !== undefined || disabledCsv !== undefined;
+  if (c.req.method === "POST" && (wantModel || wantFalKey || wantAtlasKey || wantPrefs)) {
     const name = c.req.param("name") ?? "";
     const bindingName = AGENT_BINDINGS[name];
     const ns = bindingName
@@ -158,11 +175,14 @@ const applyModelSelection: MiddlewareHandler = async (c, next) => {
       try {
         const stub = ns.get(ns.idFromName(id)) as unknown as ModelStub;
         if (wantModel) await stub.setModel(requested as string);
-        // Refresh the conversation's BYOK fal key each send (absent header
+        // Refresh the conversation's BYOK keys each send (absent header
         // leaves the stored key alone, so other clients keep working).
         if (wantFalKey) await stub.setFalKey(falKey as string);
+        if (wantAtlasKey) await stub.setAtlasKey(atlasKey as string);
+        // Provider prefs are validated in parseRenderPrefs (unknown ids drop).
+        if (wantPrefs) await stub.setRenderPrefs(parseRenderPrefs(provider, disabledCsv));
       } catch {
-        /* keep the stored / default model + key */
+        /* keep the stored / default model + keys */
       }
     }
   }

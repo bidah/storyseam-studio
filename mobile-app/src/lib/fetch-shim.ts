@@ -20,6 +20,8 @@ import { CLIENT_ID } from './client-id';
 import { getProjectId } from './project';
 import { getAgentModelSpecifier } from './agent-model';
 import { getFalKey } from './fal-key';
+import { getAtlasKey } from './atlas-key';
+import { getProviderPrefs, disabledProvidersCsv } from './providers';
 
 function needsStreaming(path: string) {
   return path.startsWith('/eve') || /\/api\/(data|script|timeline)\/events/.test(path);
@@ -55,11 +57,23 @@ export function installFetchShim() {
     if (pid && !headers.has('x-project-id')) headers.set('x-project-id', pid);
     headers.set('x-client-id', CLIENT_ID);
     if (path.startsWith('/eve')) headers.set('x-flue-model', getAgentModelSpecifier());
-    // The user's own fal.ai key (device-only BYOK — see lib/fal-key.ts): the
-    // Worker reads x-fal-key for fal generations; /eve sends carry it as
-    // x-flue-fal-key so the flue worker persists it per conversation.
-    const falKey = getFalKey();
-    if (falKey) headers.set(path.startsWith('/eve') ? 'x-flue-fal-key' : 'x-fal-key', falKey);
+    // The user's own BYOK keys (device-only — lib/fal-key.ts / lib/atlas-key.ts):
+    // the Worker reads x-fal-key / x-atlas-key for generations; /eve sends carry
+    // them as x-flue-* so the flue worker persists them per conversation. A
+    // provider toggled OFF in Settings (lib/providers.ts) sends no key and is
+    // named in the disabled-providers header (eve gets it even when EMPTY so
+    // re-enabling overwrites the stored list); the ACTIVE provider rides as the
+    // render-provider header and wins the model-catalog default.
+    const eve = path.startsWith('/eve');
+    const { active, enabled } = getProviderPrefs();
+    const falKey = enabled.fal ? getFalKey() : '';
+    if (falKey) headers.set(eve ? 'x-flue-fal-key' : 'x-fal-key', falKey);
+    const atlasKey = enabled.atlas ? getAtlasKey() : '';
+    if (atlasKey) headers.set(eve ? 'x-flue-atlas-key' : 'x-atlas-key', atlasKey);
+    const disabled = disabledProvidersCsv();
+    if (eve) headers.set('x-flue-disabled-providers', disabled);
+    else if (disabled) headers.set('x-disabled-providers', disabled);
+    headers.set(eve ? 'x-flue-render-provider' : 'x-render-provider', active);
     if (!headers.has('cookie')) {
       const cookie = getSessionCookie();
       if (cookie) headers.set('cookie', cookie);

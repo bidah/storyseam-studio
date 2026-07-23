@@ -5,6 +5,7 @@ import { NativeTabs } from 'expo-router/unstable-native-tabs';
 import { useSession } from '@/lib/auth-client';
 import { AgentProvider } from '@/lib/agent/provider';
 import { useFalKeyStore } from '@/lib/fal-key';
+import { useAtlasKeyStore } from '@/lib/atlas-key';
 import { useProjectStore } from '@/lib/project';
 import { useProjects } from '@/lib/queries';
 import { useDataEvents } from '@/lib/sse';
@@ -45,8 +46,9 @@ function ProjectGate({ children }: { children: React.ReactNode }) {
 export default function TabsLayout() {
   const { data: session, isPending } = useSession();
   const { key: falKey, hydrated: falHydrated } = useFalKeyStore();
+  const { key: atlasKey, hydrated: atlasHydrated } = useAtlasKeyStore();
 
-  if (isPending || !falHydrated) {
+  if (isPending || !falHydrated || !atlasHydrated) {
     return (
       <View className="flex-1 items-center justify-center bg-background">
         <ActivityIndicator />
@@ -55,9 +57,10 @@ export default function TabsLayout() {
   }
   if (!session) return <Redirect href="/sign-in" />;
   // Mandatory BYOK step (mirrors the web LoginGate): renders bill the user's
-  // own fal account, so the app doesn't open without their key. Waits for
-  // SecureStore hydration above so a stored key never flashes this redirect.
-  if (!falKey) return <Redirect href="/fal-key" />;
+  // own fal / Atlas Cloud account, so the app doesn't open without ONE of the
+  // keys. Waits for SecureStore hydration above so a stored key never flashes
+  // this redirect.
+  if (!falKey && !atlasKey) return <Redirect href="/fal-key" />;
 
   return (
     <ProjectGate>

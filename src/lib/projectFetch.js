@@ -12,6 +12,8 @@
 import { CLIENT_ID } from "@/lib/clientId";
 import { getAgentModelSpecifier } from "@/lib/agentModel";
 import { getFalKey } from "@/lib/falKey";
+import { getAtlasKey } from "@/lib/atlasKey";
+import { getProviderPrefs, disabledProvidersCsv } from "@/lib/providers";
 
 const STORAGE_KEY = "shot-studio:projectId";
 
@@ -72,12 +74,26 @@ export function installProjectScope() {
       // Carry the picker's per-turn chat model on flue prompt sends. The flue
       // app whitelists it, so an out-of-range value is simply ignored.
       if (isEve(url)) headers.set("x-flue-model", getAgentModelSpecifier());
-      // The user's own fal.ai key (localStorage-only BYOK — see lib/falKey.js)
-      // rides per-request: our API reads x-fal-key for fal generations; agent
-      // sends carry it as x-flue-fal-key so the flue worker can persist it into
-      // the conversation's Durable Object for its render tools.
-      const falKey = getFalKey();
-      if (falKey) headers.set(isEve(url) ? "x-flue-fal-key" : "x-fal-key", falKey);
+      // The user's own BYOK keys (localStorage-only — lib/falKey.js /
+      // lib/atlasKey.js) ride per-request: our API reads x-fal-key / x-atlas-key
+      // for generations; agent sends carry them as x-flue-* so the flue worker
+      // can persist them into the conversation's Durable Object for its render
+      // tools. A provider toggled OFF in Settings (lib/providers.js) sends no
+      // key and is named in x-disabled-providers (which also suppresses any
+      // server-side env fallback / the Higgsfield token); the ACTIVE provider
+      // rides as x-render-provider and wins the model-catalog default.
+      const eve = isEve(url);
+      const { active, enabled } = getProviderPrefs();
+      const falKey = enabled.fal ? getFalKey() : "";
+      if (falKey) headers.set(eve ? "x-flue-fal-key" : "x-fal-key", falKey);
+      const atlasKey = enabled.atlas ? getAtlasKey() : "";
+      if (atlasKey) headers.set(eve ? "x-flue-atlas-key" : "x-atlas-key", atlasKey);
+      // Eve sends ALWAYS carry the disabled list (even empty) — the flue DO
+      // persists it, so re-enabling a provider must overwrite the stored list.
+      const disabled = disabledProvidersCsv();
+      if (eve) headers.set("x-flue-disabled-providers", disabled);
+      else if (disabled) headers.set("x-disabled-providers", disabled);
+      headers.set(eve ? "x-flue-render-provider" : "x-render-provider", active);
       // Send the Better Auth session cookie with every same-origin API call —
       // the `/eve/*` flue proxy relies on it to mint the per-user identity.
       init = { credentials: "include", ...(init || {}), headers };

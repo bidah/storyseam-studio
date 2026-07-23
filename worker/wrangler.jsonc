@@ -16,6 +16,8 @@
   //     path is BYOK: each user's own key rides per-request as x-fal-key from
   //     their browser's localStorage and is never stored server-side. This env
   //     secret only backstops requests without one — dev / single-tenant use.)
+  //   ATLAS_KEY                      (OPTIONAL Atlas Cloud fallback key — same
+  //     BYOK model as FAL_KEY, header x-atlas-key. See src/lib/atlas.js.)
   //   EVE_PROXY_SECRET / FLUE_PROXY_SECRET  (signs the x-flue-proxy-user token so
   //     the flue agent worker trusts the Better Auth user id across the /eve/*
   //     proxy — set the SAME value on the shot-studio-flue worker; without it the

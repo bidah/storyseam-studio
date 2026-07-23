@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { Text, View } from 'react-native';
 import { router } from 'expo-router';
+import { Host, Switch } from '@expo/ui';
 import { Bot, KeyRound, LogOut, UserRound } from 'lucide-react-native';
 import { useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
@@ -10,6 +11,55 @@ import { AGENT_MODELS, useAgentModelStore } from '@/lib/agent-model';
 import { authClient, useSession } from '@/lib/auth-client';
 import { API_ORIGIN } from '@/lib/env';
 import { isPlausibleFalKey, useFalKeyStore } from '@/lib/fal-key';
+import { isPlausibleAtlasKey, useAtlasKeyStore } from '@/lib/atlas-key';
+import { PROVIDERS, useProvidersStore, type ProviderId } from '@/lib/providers';
+
+// One BYOK key editor (fal.ai / Atlas Cloud) inside a provider card. Keys live
+// in expo-secure-store only and ride per-request — never on our servers.
+function KeyEditor({
+  label,
+  keyValue,
+  plausible,
+  onSave,
+  onRemove,
+  placeholder,
+}: {
+  label: string;
+  keyValue: string;
+  plausible: (v: string) => boolean;
+  onSave: (v: string) => void;
+  onRemove: () => void;
+  placeholder: string;
+}) {
+  const [draft, setDraft] = useState('');
+  return (
+    <View className="gap-2">
+      <View className="flex-row items-center gap-2">
+        <Input
+          value={draft}
+          onChangeText={setDraft}
+          placeholder={keyValue ? `Replace key ••••${keyValue.slice(-4)}` : placeholder}
+          autoCapitalize="none"
+          autoCorrect={false}
+          secureTextEntry
+          className="flex-1 font-mono text-[12px]"
+          accessibilityLabel={`${label} API key`}
+        />
+        <Button
+          size="sm"
+          variant="secondary"
+          title={keyValue ? 'Replace' : 'Save'}
+          disabled={!plausible(draft)}
+          onPress={() => {
+            onSave(draft);
+            setDraft('');
+          }}
+        />
+      </View>
+      {keyValue ? <Button size="sm" variant="destructive" title="Remove key" onPress={onRemove} /> : null}
+    </View>
+  );
+}
 
 export default function SettingsSheet() {
   const { data: session } = useSession();
@@ -17,14 +67,14 @@ export default function SettingsSheet() {
   const modelLabel = AGENT_MODELS.find((m) => m.id === model)?.label ?? model;
   const queryClient = useQueryClient();
   const { key: falKey, setKey: setFalKey, clearKey: clearFalKey } = useFalKeyStore();
-  const [falDraft, setFalDraft] = useState('');
-  const falPlausible = isPlausibleFalKey(falDraft);
+  const { key: atlasKey, setKey: setAtlasKey, clearKey: clearAtlasKey } = useAtlasKeyStore();
+  const { active, enabled, setActive, setEnabled } = useProvidersStore();
 
-  // Removing the key re-triggers the mandatory /fal-key gate (tabs layout), so
-  // close this sheet first — the redirect happens underneath it.
-  const removeFalKey = () => {
-    clearFalKey();
-    router.dismissAll();
+  // Removing the LAST key re-triggers the mandatory /fal-key gate (tabs
+  // layout), so close this sheet first — the redirect happens underneath it.
+  const removeKey = (clear: () => void, otherKey: string) => {
+    clear();
+    if (!otherKey) router.dismissAll();
   };
 
   const signOut = async () => {
@@ -32,6 +82,45 @@ export default function SettingsSheet() {
     queryClient.clear();
     router.dismissAll();
     router.replace('/sign-in');
+  };
+
+  // Per-provider card body: Higgsfield is credentialed by the sign-in itself;
+  // fal / Atlas get a key editor.
+  const rows: Record<ProviderId, { hasCred: boolean; body: ReactNode }> = {
+    higgsfield: {
+      hasCred: true,
+      body: (
+        <Text className="text-[12px] leading-4 text-muted-foreground">
+          Connected through your Higgsfield sign-in — no key needed.
+        </Text>
+      ),
+    },
+    fal: {
+      hasCred: !!falKey,
+      body: (
+        <KeyEditor
+          label="fal.ai"
+          keyValue={falKey}
+          plausible={isPlausibleFalKey}
+          onSave={setFalKey}
+          onRemove={() => removeKey(clearFalKey, atlasKey)}
+          placeholder="key_id:key_secret"
+        />
+      ),
+    },
+    atlas: {
+      hasCred: !!atlasKey,
+      body: (
+        <KeyEditor
+          label="Atlas Cloud"
+          keyValue={atlasKey}
+          plausible={isPlausibleAtlasKey}
+          onSave={setAtlasKey}
+          onRemove={() => removeKey(clearAtlasKey, falKey)}
+          placeholder="Atlas API key"
+        />
+      ),
+    },
   };
 
   return (
@@ -68,40 +157,40 @@ export default function SettingsSheet() {
         />
       </Card>
 
-      <Eyebrow className="mt-2">fal.ai API key</Eyebrow>
+      <Eyebrow className="mt-2">Render providers</Eyebrow>
       <Card className="gap-3">
         <View className="flex-row items-center gap-3">
           <KeyRound size={18} color="#10b981" />
-          <Text className="flex-1 text-[13px] leading-4 text-muted-foreground">
-            Renders bill your fal.ai account. Stored only on this device (secure keychain)
-            {falKey ? ` — current key ••••${falKey.slice(-4)}` : ''}.
+          <Text className="flex-1 text-[12px] leading-4 text-muted-foreground">
+            Renders bill your accounts. Keys are stored only on this device (secure
+            keychain) and sent per-request — never on our servers. Toggle providers off
+            to hide their models; the active one is the default backend.
           </Text>
         </View>
-        <View className="flex-row items-center gap-2">
-          <Input
-            value={falDraft}
-            onChangeText={setFalDraft}
-            placeholder={falKey ? 'Replace key' : 'key_id:key_secret'}
-            autoCapitalize="none"
-            autoCorrect={false}
-            secureTextEntry
-            className="flex-1 font-mono text-[12px]"
-            accessibilityLabel="fal.ai API key"
-          />
-          <Button
-            size="sm"
-            variant="secondary"
-            title={falKey ? 'Replace' : 'Save'}
-            disabled={!falPlausible}
-            onPress={() => {
-              setFalKey(falDraft);
-              setFalDraft('');
-            }}
-          />
-        </View>
-        {falKey ? (
-          <Button size="sm" variant="destructive" title="Remove key" onPress={removeFalKey} />
-        ) : null}
+        {PROVIDERS.map((p) => {
+          const row = rows[p.id];
+          const isOn = enabled[p.id];
+          return (
+            <View key={p.id} className={`gap-2 rounded-xl border border-border p-3 ${isOn ? '' : 'opacity-60'}`}>
+              <View className="flex-row items-center gap-2">
+                <Text className="text-[14px] font-medium text-foreground">{p.label}</Text>
+                {active === p.id ? (
+                  <View className="rounded-full bg-primary/15 px-2 py-0.5">
+                    <Text className="text-[11px] font-medium text-primary">Active</Text>
+                  </View>
+                ) : isOn && row.hasCred ? (
+                  <Button size="sm" variant="ghost" title="Make active" onPress={() => setActive(p.id)} />
+                ) : null}
+                <View className="ml-auto">
+                  <Host matchContents>
+                    <Switch value={isOn} onValueChange={(on) => setEnabled(p.id, on)} />
+                  </Host>
+                </View>
+              </View>
+              {row.body}
+            </View>
+          );
+        })}
       </Card>
 
       <View className="mt-auto gap-3 pb-10">

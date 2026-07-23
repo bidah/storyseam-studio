@@ -3,11 +3,12 @@
 // internal user + links the Higgsfield account/token. Gated on the Better Auth
 // session; the signed-in user owns their own projects.
 //
-// After the session exists a SECOND mandatory gate asks for the user's fal.ai
-// API key (BYOK): it lives only in this browser's localStorage (lib/falKey.js)
-// and rides per-request to the workers — never stored server-side. The app
-// shell doesn't render until both gates pass; the key stays editable on the
-// Settings page.
+// After the session exists a SECOND mandatory gate asks for a render API key
+// (BYOK) — the user's own fal.ai OR Atlas Cloud key: it lives only in this
+// browser's localStorage (lib/falKey.js / lib/atlasKey.js) and rides
+// per-request to the workers — never stored server-side. The app shell doesn't
+// render until both gates pass; keys and provider toggles stay editable on the
+// Settings page (Providers panel).
 import { useState } from "react";
 import {
   Clapperboard, Bot, PenLine, Workflow, Film, ListVideo, AudioLines, Loader2, ArrowRight,
@@ -15,6 +16,7 @@ import {
 } from "lucide-react";
 import { useSession, authClient, signOut } from "@/lib/auth-client";
 import { useFalKey, setFalKey } from "@/lib/falKey";
+import { useAtlasKey, setAtlasKey } from "@/lib/atlasKey";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
@@ -108,10 +110,17 @@ function Splash() {
   );
 }
 
-// Mandatory fal.ai key step (after login, before the app shell). The key is the
-// user's own — generations bill THEIR fal account — and it never leaves this
-// browser except as a per-request header to our workers.
-function FalKeyScreen({ userEmail }) {
+// Mandatory render-key step (after login, before the app shell). One key from
+// EITHER BYOK provider (fal.ai or Atlas Cloud) unlocks the app; generations
+// bill the USER'S account, and the key never leaves this browser except as a
+// per-request header to our workers.
+const KEY_PROVIDERS = [
+  { id: "fal", label: "fal.ai", save: setFalKey, keysUrl: "https://fal.ai/dashboard/keys", placeholder: "key_id:key_secret" },
+  { id: "atlas", label: "Atlas Cloud", save: setAtlasKey, keysUrl: "https://www.atlascloud.ai/console/api-keys", placeholder: "Atlas API key" },
+];
+
+function ProviderKeyScreen({ userEmail }) {
+  const [pick, setPick] = useState(KEY_PROVIDERS[0]);
   const [draft, setDraft] = useState("");
   const plausible = /^[\w:.-]{10,200}$/.test(draft.trim());
 
@@ -124,17 +133,33 @@ function FalKeyScreen({ userEmail }) {
             <KeyRound size={22} />
           </span>
           <h1 className="mt-6 text-balance text-2xl font-semibold tracking-tight">
-            Connect your <span className="text-primary">fal.ai</span> key
+            Connect a <span className="text-primary">render key</span>
           </h1>
           <p className="mt-2 text-sm text-muted-foreground">
-            Shot Studio renders images and video with your own fal.ai account. Paste an
-            API key to continue — it is stored <b>only in this browser</b>, never on our
-            servers, and you can change it later in Settings.
+            Shot Studio renders images and video with your own account — paste a fal.ai
+            or Atlas Cloud API key to continue. It is stored <b>only in this browser</b>,
+            never on our servers, and you can add the other provider later in Settings.
           </p>
 
+          <div className="mt-6 flex gap-1 rounded-lg border bg-card/60 p-1" role="tablist" aria-label="Key provider">
+            {KEY_PROVIDERS.map((p) => (
+              <Button
+                key={p.id}
+                type="button"
+                role="tab"
+                aria-selected={pick.id === p.id}
+                size="sm"
+                variant={pick.id === p.id ? "secondary" : "ghost"}
+                onClick={() => { setPick(p); setDraft(""); }}
+              >
+                {p.label}
+              </Button>
+            ))}
+          </div>
+
           <form
-            className="mt-7 w-full space-y-3"
-            onSubmit={(e) => { e.preventDefault(); if (plausible) setFalKey(draft); }}
+            className="mt-4 w-full space-y-3"
+            onSubmit={(e) => { e.preventDefault(); if (plausible) pick.save(draft); }}
           >
             <Input
               type="password"
@@ -142,9 +167,9 @@ function FalKeyScreen({ userEmail }) {
               autoFocus
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
-              placeholder="key_id:key_secret"
+              placeholder={pick.placeholder}
               className="h-10 font-mono text-sm"
-              aria-label="fal.ai API key"
+              aria-label={`${pick.label} API key`}
             />
             <Button type="submit" size="lg" className="w-full gap-2 font-medium" disabled={!plausible}>
               Save &amp; continue
@@ -153,12 +178,12 @@ function FalKeyScreen({ userEmail }) {
           </form>
 
           <a
-            href="https://fal.ai/dashboard/keys"
+            href={pick.keysUrl}
             target="_blank"
             rel="noreferrer"
             className="mt-4 inline-flex items-center gap-1.5 text-xs text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
           >
-            Create a key on fal.ai <ExternalLink size={12} />
+            Create a key on {pick.label} <ExternalLink size={12} />
           </a>
 
           <div className="mt-8 flex items-center gap-2 text-xs text-muted-foreground">
@@ -180,8 +205,9 @@ function FalKeyScreen({ userEmail }) {
 export default function LoginGate({ children }) {
   const { data: session, isPending } = useSession();
   const falKey = useFalKey();
+  const atlasKey = useAtlasKey();
   if (isPending) return <Splash />;
   if (!session) return <Homepage />;
-  if (!falKey) return <FalKeyScreen userEmail={session.user?.email} />;
+  if (!falKey && !atlasKey) return <ProviderKeyScreen userEmail={session.user?.email} />;
   return children;
 }

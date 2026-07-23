@@ -11,6 +11,8 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Toaster } from 'sonner-native';
 import { hydrateAgentModel } from '@/lib/agent-model';
 import { hydrateFalKey } from '@/lib/fal-key';
+import { hydrateAtlasKey } from '@/lib/atlas-key';
+import { hydrateProviders } from '@/lib/providers';
 import { hydrateProjectId } from '@/lib/project';
 
 SplashScreen.preventAutoHideAsync();
@@ -41,6 +43,8 @@ export default function RootLayout() {
   useEffect(() => {
     hydrateAgentModel();
     hydrateFalKey();
+    hydrateAtlasKey();
+    hydrateProviders();
     hydrateProjectId().finally(() => {
       setBooted(true);
       SplashScreen.hideAsync().catch(() => {});
