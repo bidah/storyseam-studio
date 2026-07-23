@@ -11,8 +11,8 @@
 // /score, /trim) are intentionally NOT ported here (handled separately). See the
 // TODO markers for the media-copy step still owed.
 import { readDoc, writeDoc } from "../lib/docs.js";
-import { listMedia, listMediaSet } from "../lib/media.js";
-import { buildBundles } from "../lib/pack.js";
+import { listMedia, listMediaSet, mediaKey, filesUrl } from "../lib/media.js";
+import { buildBundles, charKey, bundleSpeakers } from "../lib/pack.js";
 import { normalizeShot } from "../lib/shots.js";
 
 // The de-facto selections DB (library picks + per-bundle episode selections).
@@ -32,83 +32,65 @@ const bundleSig = (b) => (b.shots || []).map((s) => s.id).sort().join(",");
 // Image extensions accepted in the final-selection pool (was IMG_RE).
 const IMG_RE = /\.(png|jpe?g|webp|gif)$/i;
 
-// Voice/sound references (NOT dialogue) — identity locks for the speakers.
-// `order` is the speaker order inside the (combined) clip, stated in the prompt.
-const AUDIO_REFS = [
+// ---- World-roster reference sourcing ---------------------------------------
+// The World bible (state/<pid>/world.json) is the SINGLE source of truth for
+// reference material: each character carries its linked sheet image (an asset-
+// library rel) and its linked Sound Studio voice; each location carries its
+// sheet keyed by slug (the shot-list `location` string). Auto-assign reads ONLY
+// from this roster — it never guesses from filenames and never falls back to
+// loose per-project reference files.
+const readWorld = (env, pid) => readDoc(env, pid, "world", { characters: [], locations: [] });
+
+// Stable per-bundle audio pick id for a World character's voice. Keyed by the
+// CHARACTER (not the take), so re-linking a new voice take doesn't orphan picks.
+const worldVoiceRel = (ch) => "world-voice:" + (ch.id || charKey(ch.name));
+
+// The audio-reference pool entries contributed by the World roster: one per
+// character with a linked voice. `refUrl` is the ungated absolute /files URL an
+// anonymous fetcher (the render agent / Higgsfield import) can pull — the
+// stored project-scoped `/sound-media/...` url needs the project header (same
+// trick as radio.js voiceRef.refUrl).
+function worldVoicePool(env, pid, world) {
+  const out = [];
+  for (const ch of world.characters || []) {
+    const name = String(ch.name || "").trim();
+    const vref = ch.voiceRef;
+    if (!name || !vref?.url) continue;
+    const m = /\/sound-media\/(.+)$/.exec(vref.url);
+    out.push({
+      rel: worldVoiceRel(ch),
+      label: `${name} — voice`,
+      order: [name],
+      character: name,
+      url: vref.url,
+      refUrl: m ? filesUrl(env, mediaKey(pid, "sound-media", m[1])) : "",
+      trackId: vref.trackId || null,
+      v: vref.v ?? null,
+      source: "world",
+      exists: true,
+    });
+  }
+  return out;
+}
+
+// Legacy loose voice-reference files (the original hand-managed pool). Listed
+// ONLY when the file actually exists in THIS project's asset space, so another
+// project's clips never show up as available refs here. Never auto-assigned.
+const LEGACY_AUDIO_REFS = [
   { rel: "audio-as-video-refs/sara_voice_reference.mp4", label: "Sara — voice", order: ["Sara"] },
   { rel: "audio-as-video-refs/helena_voice_reference.mp4", label: "Helena — voice", order: ["Helena"] },
   { rel: "draft-2/references/forest_king_voice_ref.wav", label: "Forest King — voice", order: ["Forest King"] },
   { rel: "audio-as-video-refs/sara_helena_combined_reference.mp4", label: "Sara + Helena — combined", order: ["Sara", "Helena"] },
   { rel: "draft-2/references/combined_3voice_reference.wav", label: "Sara + Helena + Forest King — combined", order: ["Sara", "Helena", "Forest King"] },
 ];
-const A = { sara: AUDIO_REFS[0].rel, helena: AUDIO_REFS[1].rel, king: AUDIO_REFS[2].rel, sh: AUDIO_REFS[3].rel, shk: AUDIO_REFS[4].rel };
-// Pick the best single voice reference for the speakers present in a bundle.
-function pickAudio(chars) {
-  const s = chars.has("Sara"), h = chars.has("Helena"), k = chars.has("Forest King");
-  if (k && (s || h)) return A.shk; // covers S+K, H+K, S+H+K
-  if (s && h) return A.sh;
-  if (s) return A.sara;
-  if (h) return A.helena;
-  if (k) return A.king;
-  return null;
-}
-
-// Classify a library image by filename into semantic tags (character / location).
-// Supporting cast (parents/teacher/classmates) are NOT main characters — they
-// never appear in this episode's shots, so they must not match Sara/Helena.
-function classifyRef(rel) {
-  const base = String(rel).split("/").pop().toLowerCase();
-  const tags = new Set();
-  const supporting = /(father|mother|parent|teacher|bramble|classmate|bryn|pip|titch)/.test(base);
-
-  // locations first
-  if (base.includes("king") && base.includes("house")) tags.add("loc:kings-house");
-  else if (base.includes("deep") && base.includes("forest")) tags.add("loc:deep-wood");
-  else if (base.includes("forest") && base.includes("night")) tags.add("loc:forest-night");
-  else if (base.includes("forest")) tags.add("loc:forest");
-  if (base.includes("classroom")) tags.add("loc:classroom");
-  if (base.includes("school")) tags.add("loc:school");
-
-  // main characters only (skip the supporting cast); night versions get a
-  // "-night" suffix so late scenes can prefer them.
-  if (!supporting) {
-    const night = base.includes("night");
-    const suf = night ? "-night" : "";
-    if (base.includes("sara")) tags.add("char:Sara" + suf);
-    if (base.includes("helena")) tags.add("char:Helena" + suf);
-    if (base.includes("mote") || base.includes("glow")) tags.add("char:Mote" + suf);
-    if (base.includes("king") && !base.includes("house")) tags.add("char:Forest King" + suf);
-    if (base.includes("kids")) tags.add("char:Elf kids"); // school-yard fill kids
-  }
-  return tags;
-}
-
-// What a bundle needs, as an ordered list of role requirements. Each requirement
-// is a priority list of candidate tags (first available image wins) — so a night
-// scene prefers forest-night but falls back to day forest if none is selected.
-// Beats that play at dusk/night — used to pick night character + forest refs.
-// (Beat-level, not group-level: the B7 rescue happens at the hollow at night,
-// but the "hollow" group also holds the daytime B3/B4H scenes.)
-const NIGHT_BEATS = new Set(["B5H", "B6H", "B6S", "B7", "B8"]);
-function bundleRequirements(bundle) {
-  const reqs = [];
-  const night = NIGHT_BEATS.has(bundle.beat);
-  for (const c of new Set(bundle.shots.flatMap((s) => s.characters || []))) {
-    // late scenes prefer the night character version, fall back to day
-    reqs.push(night ? ["char:" + c + "-night", "char:" + c] : ["char:" + c]);
-  }
-  for (const im of bundle.images || []) {
-    if (im.role !== "location") continue;
-    const k = im.key;
-    if (k === "deep-wood") reqs.push(["loc:deep-wood", "loc:forest-night", "loc:forest"]);
-    else if (k.includes("kings-house")) reqs.push(["loc:kings-house"]);
-    else if (k.includes("school")) reqs.push(["loc:school"]);
-    else if (k.includes("classroom")) reqs.push(["loc:classroom"]);
-    else if (k.includes("forest")) {
-      reqs.push(night ? ["loc:forest-night", "loc:forest"] : ["loc:forest"]);
-    }
-  }
-  return reqs;
+async function legacyAudioPool(env, pid) {
+  const found = await Promise.all(
+    LEGACY_AUDIO_REFS.map(async (a) => {
+      const head = await env.BUCKET.head(mediaKey(pid, "asset", a.rel));
+      return head ? { ...a, url: "/asset/" + a.rel, source: "legacy", exists: true } : null;
+    }),
+  );
+  return found.filter(Boolean);
 }
 
 // Revision signing: the SECTIONS of a bundle that can be signed off independently.
@@ -150,15 +132,17 @@ export function registerEpisode(app) {
     return c.json({ final: items, episode: db.episode || {} });
   });
 
-  // Available voice/sound references + current per-bundle audio picks.
+  // Available voice/sound references + current per-bundle audio picks. The pool
+  // is the World roster's linked character voices, plus any legacy loose files
+  // that actually exist in this project's asset space.
   app.get("/api/audio", async (c) => {
     const pid = c.get("projectId");
-    const db = await readDB(c.env, pid);
-    const items = AUDIO_REFS.map((a) => ({
-      ...a,
-      url: "/asset/" + a.rel,
-      exists: true, // TODO(stage2): check the reference object exists in R2.
-    }));
+    const [db, world, legacy] = await Promise.all([
+      readDB(c.env, pid),
+      readWorld(c.env, pid),
+      legacyAudioPool(c.env, pid),
+    ]);
+    const items = [...worldVoicePool(c.env, pid, world), ...legacy];
     return c.json({ audio: items, episode: db.episodeAudio || {} });
   });
 
@@ -216,10 +200,15 @@ export function registerEpisode(app) {
     return c.json({ ok: true, bundle, selected: db.episode[bundle] });
   });
 
-  // Auto-assign: match each bundle's needs to the library-selected images and
-  // write the per-shot picks. With no body it replaces existing picks for EVERY
-  // bundle; `{ beat: "B1" }` scopes the run to that beat's bundles and leaves
-  // every other bundle's picks untouched.
+  // Auto-assign: source every bundle's image + audio references from the World
+  // roster — each on-screen character contributes their linked sheet image and
+  // (for speakers) their linked voice; each shot location contributes its
+  // location sheet by slug. VALIDATES FIRST: when any needed character is not
+  // fully linked in the World it assigns NOTHING and returns ok:false with a
+  // validation report — the caller must surface that to the user and stop,
+  // never substitute refs from the Sound Studio pool or another project. With
+  // no body it replaces the picks of EVERY bundle; `{ beat: "B1" }` scopes the
+  // run to that beat's bundles and leaves every other bundle's picks untouched.
   app.post("/api/episode/auto-assign", async (c) => {
     const pid = c.get("projectId");
     let body;
@@ -233,12 +222,62 @@ export function registerEpisode(app) {
       ? manifest.bundles.filter((b) => String(b.beat).toUpperCase() === beat)
       : manifest.bundles;
     if (!targets.length) return c.json({ error: `No bundles in beat '${beat}'` }, 400);
-    const db = await readDB(c.env, pid);
-    const selected = Object.keys(db.library || {}).filter((r) => db.library[r]);
-    const tagged = selected.map((rel) => ({ rel, tags: classifyRef(rel) }));
 
+    const world = await readWorld(c.env, pid);
+    const charByKey = new Map();
+    for (const ch of world.characters || []) {
+      const k = charKey(ch.name);
+      if (k && !charByKey.has(k)) charByKey.set(k, ch);
+    }
+    const locBySlug = new Map();
+    for (const l of world.locations || []) {
+      const slug = String(l.slug || "").trim();
+      if (slug && !locBySlug.has(slug)) locBySlug.set(slug, l);
+    }
+
+    // Everyone on screen needs a linked sheet image; everyone who speaks needs
+    // a linked voice. Collect the gaps across ALL target bundles up front.
+    const onScreen = new Map(); // charKey -> display name
+    const speakers = new Map();
+    for (const b of targets) {
+      for (const s of b.shots) for (const name of s.characters || []) {
+        const k = charKey(name);
+        if (k && !onScreen.has(k)) onScreen.set(k, name);
+      }
+      for (const [k, name] of bundleSpeakers(b)) if (!speakers.has(k)) speakers.set(k, name);
+    }
+    const notInWorld = [], missingSheet = [], missingVoice = [];
+    for (const [k, name] of onScreen) {
+      const ch = charByKey.get(k);
+      if (!ch) notInWorld.push(name);
+      else if (!ch.sheetImage?.rel) missingSheet.push(ch.name || name);
+    }
+    for (const [k, name] of speakers) {
+      const ch = charByKey.get(k);
+      if (!ch) { if (!onScreen.has(k)) notInWorld.push(name); }
+      else if (!ch.voiceRef?.url) missingVoice.push(ch.name || name);
+    }
+    if (notInWorld.length || missingSheet.length || missingVoice.length) {
+      const parts = [];
+      if (notInWorld.length) parts.push(`not in the World roster: ${notInWorld.join(", ")}`);
+      if (missingSheet.length) parts.push(`no character sheet image linked: ${missingSheet.join(", ")}`);
+      if (missingVoice.length) parts.push(`no voice linked: ${missingVoice.join(", ")}`);
+      return c.json({
+        ok: false,
+        validation: { notInWorld, missingSheet, missingVoice },
+        message:
+          "Auto-assign stopped — the World roster is the source of truth for character sheets and voices, " +
+          `and these characters aren't fully linked yet: ${parts.join("; ")}. Nothing was assigned. ` +
+          "Link each character's sheet image and voice on the World tab (attach_character_sheet / " +
+          "attach_character_voice), then re-run. Do not substitute references from the Sound Studio " +
+          "pool or another project.",
+      });
+    }
+
+    const db = await readDB(c.env, pid);
     let totalAssigned = 0;
     const summary = {};
+    const locNoSheet = new Set();
     if (!beat) {
       db.episode = {};
       db.episodeAudio = {};
@@ -246,28 +285,37 @@ export function registerEpisode(app) {
     db.episode = db.episode || {};
     db.episodeAudio = db.episodeAudio || {};
     for (const b of targets) {
-      const reqs = bundleRequirements(b);
-      // one image per role; for each role try its candidate tags in priority order
-      const matched = [];
-      for (const req of reqs) {
-        let hit = null;
-        for (const tag of req) {
-          hit = tagged.find((t) => t.tags.has(tag) && !matched.includes(t.rel));
-          if (hit) break;
-        }
-        if (hit) matched.push(hit.rel);
+      const images = [];
+      const audio = [];
+      for (const s of b.shots) for (const name of s.characters || []) {
+        const rel = charByKey.get(charKey(name))?.sheetImage?.rel;
+        if (rel && !images.includes(rel)) images.push(rel);
       }
-      db.episode[b.id] = matched;
-      summary[b.id] = matched.length;
-      totalAssigned += matched.length;
-
-      // audio: one voice reference per bundle based on speaking characters present
-      const chars = new Set(b.shots.flatMap((s) => s.characters || []));
-      const audioRel = pickAudio(chars);
-      db.episodeAudio[b.id] = audioRel ? [audioRel] : [];
+      for (const s of b.shots) {
+        const slug = String(s.location || "").trim();
+        if (!slug) continue;
+        const rel = locBySlug.get(slug)?.sheetImage?.rel;
+        if (rel) { if (!images.includes(rel)) images.push(rel); }
+        else locNoSheet.add(slug);
+      }
+      for (const [k] of bundleSpeakers(b)) {
+        const ch = charByKey.get(k);
+        if (!ch) continue;
+        const rel = worldVoiceRel(ch);
+        if (!audio.includes(rel)) audio.push(rel);
+      }
+      db.episode[b.id] = images;
+      db.episodeAudio[b.id] = audio;
+      summary[b.id] = images.length;
+      totalAssigned += images.length;
     }
     await writeDB(c.env, pid, db);
-    return c.json({ ok: true, beat, bundles: targets.length, totalAssigned, summary });
+    return c.json({
+      ok: true, beat, bundles: targets.length, totalAssigned, summary, source: "world",
+      warnings: locNoSheet.size
+        ? [`No World location sheet linked for: ${[...locNoSheet].sort().join(", ")} — affected bundles got character sheets only.`]
+        : [],
+    });
   });
 
   // Rebuild the episode plan (the packed <=15s bundles) from the CURRENT shot
@@ -282,10 +330,10 @@ export function registerEpisode(app) {
   //     shot membership is UNCHANGED; a re-packed bundle correctly needs re-review.
   app.post("/api/episode/rebuild", async (c) => {
     const pid = c.get("projectId");
-    const shots = await readShots(c.env, pid);
+    const [shots, world] = await Promise.all([readShots(c.env, pid), readWorld(c.env, pid)]);
     if (!shots.length) return c.json({ error: "No shot list yet — write a shot list first." }, 400);
 
-    const bundles = buildBundles(shots);
+    const bundles = buildBundles(shots, world);
     const prev = await readManifest(c.env, pid);
     const prevBundles = prev?.bundles || [];
 

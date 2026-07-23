@@ -73,6 +73,84 @@ const LOCATION_BIBLE = {
 const beatTitleOf = (shots) => shots.find((s) => s.beatTitle)?.beatTitle || "";
 const refUrl = (key) => (REF[key] ? "/refs/" + REF[key] : null);
 
+// Case-insensitive character identity, shared with routes/episode.js.
+const charKey = (s) => String(s || "").trim().toUpperCase();
+
+// Speakers of a bundle, following the radio convention (routes/radio.js
+// deriveLine): a "NAME:" dialogue prefix names the speaker, else the shot's
+// first on-screen character speaks. A silent background character needs a
+// sheet but not a voice.
+const NO_DIALOGUE = /^\(?\s*no dialogue\s*\)?\.?$/i;
+function bundleSpeakers(b) {
+  const out = new Map(); // charKey -> display name
+  for (const s of b.shots || []) {
+    const raw = String(s.dialogue || "").trim();
+    if (!raw || NO_DIALOGUE.test(raw)) continue;
+    const chars = (s.characters || []).filter(Boolean);
+    let speaker = chars[0] || "";
+    const m = /^\s*([A-Za-z][A-Za-z0-9 .'’-]{0,30}?):\s*/.exec(raw);
+    if (m) {
+      const named = m[1].trim();
+      speaker = chars.find((c) => charKey(c) === charKey(named)) || named;
+    }
+    if (speaker && !out.has(charKey(speaker))) out.set(charKey(speaker), speaker);
+  }
+  return out;
+}
+
+// Index the World bible's rosters for lookups: characters by charKey(name),
+// locations by slug (the shot-list `location` string).
+function rosterOf(world) {
+  const characters = new Map();
+  for (const ch of world?.characters || []) {
+    const k = charKey(ch.name);
+    if (k && !characters.has(k)) characters.set(k, ch);
+  }
+  const locations = new Map();
+  for (const l of world?.locations || []) {
+    const slug = String(l.slug || "").trim();
+    if (slug && !locations.has(slug)) locations.set(slug, l);
+  }
+  return { characters, locations };
+}
+
+// A bundle's reference needs sourced from the World roster: one location entry
+// per distinct shot location (keyed by slug), one character entry per distinct
+// on-screen character (keyed by display name). `available` = a sheet image is
+// linked in the World; missing entries surface on the episode tab so the user
+// knows to generate/link the sheet before rendering.
+function rosterImages(b, roster) {
+  const images = [];
+  const seenLoc = new Set();
+  const seenChar = new Set();
+  for (const s of b.shots) {
+    const slug = String(s.location || "").trim();
+    if (slug && !seenLoc.has(slug)) {
+      seenLoc.add(slug);
+      const loc = roster.locations.get(slug);
+      images.push({
+        key: slug, role: "location",
+        available: !!loc?.sheetImage?.rel,
+        url: loc?.sheetImage?.url || null,
+      });
+    }
+  }
+  for (const s of b.shots) {
+    for (const name of s.characters || []) {
+      const k = charKey(name);
+      if (!k || seenChar.has(k)) continue;
+      seenChar.add(k);
+      const ch = roster.characters.get(k);
+      images.push({
+        key: ch?.name || name, role: "character",
+        available: !!ch?.sheetImage?.rel,
+        url: ch?.sheetImage?.url || null,
+      });
+    }
+  }
+  return images;
+}
+
 // Group an ordered flat shot list into <=15s bundles.
 function packShots(shots) {
   const bundles = [];
@@ -93,13 +171,26 @@ function packShots(shots) {
 
 // Build full bundle manifest objects (id, refs, ready-to-paste skillPrompt) from
 // the packed bundles — the same shape as multishot_bundles.json `bundles[]`.
-function buildBundles(shots) {
+// `world` is the project's World bible doc; when its roster has any characters
+// or locations, each bundle's reference needs (`images`) come from the roster
+// (location sheets by slug, character sheets by name). The hardcoded
+// Whistlewood REF/LOC/CHAR_REF maps survive ONLY as the fallback for projects
+// with an empty World roster (the original offline-built episode).
+function buildBundles(shots, world) {
+  const roster = rosterOf(world);
+  const hasRoster = roster.characters.size > 0 || roster.locations.size > 0;
   return packShots(shots).map((b, i) => {
     const id = "MS-" + String(i + 1).padStart(2, "0");
-    const charKeys = [...new Set(b.shots.flatMap((s) => s.characters || []))].map((c) => CHAR_REF[c]).filter(Boolean);
-    const refKeys = [...new Set([...bgOf(b.shots[0].location), ...charKeys])];
-    const images = refKeys.map((k) => ({ key: k, role: charKeys.includes(k) ? "character" : "location", available: !!REF[k], url: refUrl(k) }));
+    let images;
+    if (hasRoster) {
+      images = rosterImages(b, roster);
+    } else {
+      const charKeys = [...new Set(b.shots.flatMap((s) => s.characters || []))].map((c) => CHAR_REF[c]).filter(Boolean);
+      const refKeys = [...new Set([...bgOf(b.shots[0].location), ...charKeys])];
+      images = refKeys.map((k) => ({ key: k, role: charKeys.includes(k) ? "character" : "location", available: !!REF[k], url: refUrl(k) }));
+    }
     const missing = images.filter((im) => !im.available).map((im) => im.key);
+    const speakers = [...bundleSpeakers(b).values()];
     const dur = Math.min(MAX, Math.ceil(b.total));
     const title = `${id} · ${beatTitleOf(b.shots)} (shots ${b.shots[0].id}–${b.shots[b.shots.length - 1].id})`;
 
@@ -115,7 +206,20 @@ function buildBundles(shots) {
       })
       .join("\n\n");
 
-    const bibleLines = [...new Set(refKeys.map((k) => LOCATION_BIBLE[k]).filter(Boolean))];
+    // Canonical-look notes: the World location descriptions (roster path) or the
+    // hardcoded Whistlewood LOCATION_BIBLE (fallback path).
+    const bibleLines = hasRoster
+      ? [...new Set(
+          images
+            .filter((im) => im.role === "location")
+            .map((im) => {
+              const l = roster.locations.get(im.key);
+              const desc = String(l?.description || "").trim();
+              return desc ? `${String(l?.name || im.key).toUpperCase()} = ${desc}` : null;
+            })
+            .filter(Boolean),
+        )]
+      : [...new Set(images.map((im) => LOCATION_BIBLE[im.key]).filter(Boolean))];
     const bibleNote = bibleLines.length ? `LOCATION NOTES (keep consistent): ${bibleLines.join(" ")}\n` : "";
 
     const skillPrompt =
@@ -137,7 +241,7 @@ function buildBundles(shots) {
         characters: s.characters || [], summary: s.action,
         dialogue: s.dialogue, audioSync: s.audioSync || "", prompt: s.prompt,
       })),
-      images, missing, skillPrompt,
+      images, missing, speakers, skillPrompt,
     };
   });
 }
@@ -158,4 +262,4 @@ function packPreview(shots) {
   }));
 }
 
-export { MAX, packShots, buildBundles, packPreview };
+export { MAX, packShots, buildBundles, packPreview, charKey, bundleSpeakers };

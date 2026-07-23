@@ -28,6 +28,7 @@ type Bundle = {
   shots?: Shot[];
   images?: unknown[];
   missing?: string[];
+  speakers?: string[];
   skillPrompt?: string;
   [k: string]: unknown;
 };
@@ -146,6 +147,7 @@ export const getEpisode = (api: Api) =>
           })),
           refs: b.images ?? [],
           missing: b.missing ?? [],
+          speakers: b.speakers ?? [],
           ...bundleState(data, String(b.id)),
         })),
         note: "Compact overview. Call get_episode with { bundle } or { beat } for shot summaries, prompts, skillPrompt and video take URLs.",

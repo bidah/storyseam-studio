@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLoaderData, useRevalidator } from "react-router";
-import { X, Check, Plus, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, RotateCcw, Maximize2, Volume2, Speech, Play, Copy, Pencil, Sparkles, PenLine, FileText, Image as ImageIcon, Loader2, Wand2, Scissors, Boxes } from "lucide-react";
+import { X, Check, Plus, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, RotateCcw, Maximize2, Volume2, Speech, Play, Copy, Pencil, Sparkles, PenLine, FileText, Image as ImageIcon, Loader2, Wand2, Scissors, Boxes, CircleAlert } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { swr, useRevalidateOnMount, useRevalidateOnAgentIdle } from "@/lib/swr";
 import { invalidateTabCache } from "@/lib/tabCache";
@@ -823,7 +823,7 @@ function EpisodeBundle({ b, flat, picked, onOpenPicker, onRemove, onView, audioM
       audioAssigned
         .map(
           (a) =>
-            `- ${a.label}: ${a.abs || a.rel}` +
+            `- ${a.label}: ${a.refUrl || a.abs || a.url || a.rel}` +
             (a.order && a.order.length > 1
               ? ` — voices appear in this order: ${a.order.map((n, i) => `${i + 1}=${n}`).join(", ")}`
               : "")
@@ -956,7 +956,16 @@ function EpisodeBundle({ b, flat, picked, onOpenPicker, onRemove, onView, audioM
         <div className="min-w-0 space-y-4">
           <div className="text-xs text-muted-foreground">
             <span className="font-semibold uppercase tracking-wide">scene needs:</span>{" "}
-            {b.images.map((im) => im.key).join(" · ")}
+            {[
+              ...(b.images || []).map((im) => im.key),
+              ...(b.speakers || []).map((n) => `${n} (voice)`),
+            ].join(" · ") || "nothing detected — rebuild the plan after writing the shot list"}
+            {(b.missing || []).length > 0 && (
+              <span className="ml-2 text-amber-500" title="These need a sheet image linked on the World tab before rendering">
+                <CircleAlert size={11} className="mr-1 inline" />
+                no sheet linked: {b.missing.join(", ")}
+              </span>
+            )}
           </div>
 
           <div className="space-y-3">
