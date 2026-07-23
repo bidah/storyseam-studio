@@ -1219,6 +1219,7 @@ export default function Editor({ reloadKey }) {
   const [marquee, setMarquee] = useState(null); // drag-select rect, in lanesWrap coords
   const [pxPerSec, setPxPerSec] = useState(70);
   const [frame, setFrame] = useState(0);
+  const [playbackRate, setPlaybackRate] = useState(1); // JKL shuttle: >1 fast-forward, <0 rewind, 1 = normal
   const [magnet, setMagnet] = useState(true); // snapping toggle — clips snap to nearby edges
   const [playerH, setPlayerH] = useState(null); // preview height set by the timeline resizer (null = natural)
   const [saveState, setSaveState] = useState("idle"); // idle | saving | saved | error
@@ -1279,6 +1280,8 @@ export default function Editor({ reloadKey }) {
   const audioLabelsRef = useRef(null); // audio-group label rail, scroll-synced to its lane group
   const frameRef = useRef(0); // live playhead frame, a snap target during a move drag
   const playingRef = useRef(false); // true while the <Player> is playing, gates auto-follow scroll
+  const playbackRateRef = useRef(1); // live shuttle rate, read synchronously by the mount-once key listener
+  const shuttleActiveRef = useRef(false); // true while a J/L shuttle is engaged, so repeats double instead of restarting
   // Playhead resume: the saved frame to restore once the timeline mounts (null
   // after it's applied, so an edit-driven timeline change never re-yanks it), and
   // the last time we persisted (to throttle the ~24×/s frameupdate writes).
@@ -1295,6 +1298,7 @@ export default function Editor({ reloadKey }) {
   useEffect(() => { timelineRef.current = timeline; }, [timeline]);
   useEffect(() => { magnetRef.current = magnet; }, [magnet]);
   useEffect(() => { frameRef.current = frame; }, [frame]);
+  useEffect(() => { playbackRateRef.current = playbackRate; }, [playbackRate]);
 
   // On mount, read this project's saved playhead so the restore effect below can
   // drop the needle there once the timeline is up. Runs once — a project switch
@@ -1750,7 +1754,20 @@ export default function Editor({ reloadKey }) {
       // built-in Space handling only fires while the player itself holds focus.
       if ((e.code === "Space" || e.key === " ") && !typing && !e.metaKey && !e.ctrlKey && !e.altKey && spaceAllowedRef.current) {
         e.preventDefault();
+        ctx.resetShuttle?.(); // pausing/playing always drops back to normal speed
         playerRef.current?.toggle?.();
+        return;
+      }
+      // J / L shuttle: J rewinds, L fast-forwards; each same-direction repeat
+      // doubles the speed (see `shuttle`). The opposite key flips direction.
+      if ((e.key === "j" || e.key === "J") && !typing && !e.metaKey && !e.ctrlKey && !e.altKey && ctx.hasTimeline) {
+        e.preventDefault();
+        ctx.shuttle?.(-1);
+        return;
+      }
+      if ((e.key === "l" || e.key === "L") && !typing && !e.metaKey && !e.ctrlKey && !e.altKey && ctx.hasTimeline) {
+        e.preventDefault();
+        ctx.shuttle?.(1);
         return;
       }
       // Arrow keys navigate the timeline: Left/Right step the playhead one frame
@@ -3076,6 +3093,33 @@ export default function Editor({ reloadKey }) {
     revealFrame(next);
   };
 
+  // J / L shuttle the video like a jog wheel: J rewinds, L fast-forwards. The
+  // first press in a direction plays at 2× that way; each further press the same
+  // way doubles the speed (2×, 4×, 8×), and the opposite key flips direction back
+  // to 2×. Base speed is 2× (not 1×) so the very first press is visibly a fast
+  // shuttle — a 1× forward would be indistinguishable from ordinary play, which
+  // made L look like it "did nothing". Remotion's <Player> runs a negative
+  // playbackRate in reverse, so the needle and preview sweep backward live.
+  // Pausing (Space) clears the shuttle so the next play resumes at normal speed.
+  const MIN_SHUTTLE = 2;
+  const MAX_SHUTTLE = 8;
+  const shuttle = (dir) => {
+    const cur = playbackRateRef.current;
+    const sameWay = shuttleActiveRef.current && Math.sign(cur) === dir;
+    const next = sameWay
+      ? Math.max(-MAX_SHUTTLE, Math.min(MAX_SHUTTLE, cur * 2))
+      : dir * MIN_SHUTTLE;
+    shuttleActiveRef.current = true;
+    playbackRateRef.current = next;
+    setPlaybackRate(next);
+    playerRef.current?.play?.();
+  };
+  const resetShuttle = () => {
+    shuttleActiveRef.current = false;
+    playbackRateRef.current = 1;
+    setPlaybackRate(1);
+  };
+
   // Up/Down jump between clip cuts, anchored on the playhead (not the selection,
   // which may be empty): Up snaps to the previous cut, Down to the next. Every
   // video clip's start frame is a cut, whether the clips share one lane or are
@@ -3107,7 +3151,8 @@ export default function Editor({ reloadKey }) {
   // Latest handlers/selection for the mount-once keyboard listener.
   keyCtxRef.current = {
     undo, selectedGap, selectedId, removeGap, removeItem, removeSelected, toggleDisable,
-    stepFrame, gotoClip, splitAtPlayhead, hasTimeline: !!timeline, hasSelection: selectedIds.size > 0,
+    stepFrame, gotoClip, splitAtPlayhead, shuttle, resetShuttle,
+    hasTimeline: !!timeline, hasSelection: selectedIds.size > 0,
   };
 
   // Commit the paced timing on THIS timeline back to the Shot list (`dur` per
@@ -3529,7 +3574,7 @@ export default function Editor({ reloadKey }) {
                 <div
                   ref={playerWrapRef}
                   data-editor-region="preview"
-                  className="min-w-0 self-start overflow-hidden rounded-xl border bg-black"
+                  className="relative min-w-0 self-start overflow-hidden rounded-xl border bg-black"
                   // Natural mode fills the row (width-driven). Once the timeline
                   // resizer sets a height, drive the width from it instead.
                   style={playerH
@@ -3547,8 +3592,14 @@ export default function Editor({ reloadKey }) {
                     style={{ width: "100%" }}
                     controls
                     spaceKeyToPlayOrPause={false}
+                    playbackRate={playbackRate}
                     acknowledgeRemotionLicense
                   />
+                  {playbackRate !== 1 && (
+                    <div className="pointer-events-none absolute left-3 top-3 z-10 rounded-md bg-black/70 px-2 py-1 text-xs font-semibold tabular-nums text-white">
+                      {playbackRate < 0 ? "◀◀" : "▶▶"} {Math.abs(playbackRate)}×
+                    </div>
+                  )}
                 </div>
               </ContextMenuTrigger>
               <ContextMenuContent>
