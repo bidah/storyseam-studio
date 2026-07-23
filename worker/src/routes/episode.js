@@ -93,6 +93,80 @@ async function legacyAudioPool(env, pid) {
   return found.filter(Boolean);
 }
 
+// Roster lookup maps shared by auto-assign and needs validation: characters by
+// charKey(name), locations by slug (the shot-list `location` string).
+function rosterMaps(world) {
+  const chars = new Map();
+  for (const ch of world?.characters || []) {
+    const k = charKey(ch.name);
+    if (k && !chars.has(k)) chars.set(k, ch);
+  }
+  const locs = new Map();
+  for (const l of world?.locations || []) {
+    const slug = String(l.slug || "").trim();
+    if (slug && !locs.has(slug)) locs.set(slug, l);
+  }
+  return { chars, locs };
+}
+
+// ---- Scene-needs validation -------------------------------------------------
+// A bundle's needs live in the manifest (bundle.images = the location/character
+// entries "Build episode plan" derived from the shots, bundle.speakers = who has
+// dialogue). An IMAGE need is fulfilled when the bundle's picked refs contain
+// either the need's World sheet image (auto-match) or a ref the user explicitly
+// linked to that need (db.needLinks[bundle][needId]). A VOICE need is fulfilled
+// when a picked audio ref covers that speaker. `enforced` is false when the
+// World roster is empty (the legacy offline-built Whistlewood project), keeping
+// signing ungated there exactly as before needs existed.
+const needIdOf = (im) => `${im.role}:${im.key}`;
+
+// Which speakers the picked audio refs cover (a Set of charKeys): a world-voice
+// pick covers its character; a legacy loose ref covers the names in its `order`.
+function audioCoverage(maps, audioRels) {
+  const byRel = new Map();
+  for (const ch of maps.chars.values()) byRel.set(worldVoiceRel(ch), ch.name);
+  const covered = new Set();
+  for (const rel of audioRels || []) {
+    const worldName = byRel.get(rel);
+    if (worldName) { covered.add(charKey(worldName)); continue; }
+    const legacy = LEGACY_AUDIO_REFS.find((a) => a.rel === rel);
+    for (const n of legacy?.order || []) covered.add(charKey(n));
+  }
+  return covered;
+}
+
+function needsStateFor(b, maps, db) {
+  const links = db.needLinks?.[b.id] || {};
+  const picks = new Set(db.episode?.[b.id] || []);
+  const covered = audioCoverage(maps, db.episodeAudio?.[b.id]);
+  const needs = (b.images || []).map((im) => {
+    const id = needIdOf(im);
+    const sheetRel = im.role === "location"
+      ? maps.locs.get(im.key)?.sheetImage?.rel || null
+      : maps.chars.get(charKey(im.key))?.sheetImage?.rel || null;
+    const link = links[id] && picks.has(links[id]) ? links[id] : null;
+    const auto = sheetRel && picks.has(sheetRel) ? sheetRel : null;
+    return {
+      id, key: im.key, role: im.role,
+      sheetRel,                    // the World sheet rel that auto-fulfills this need
+      link: links[id] || null,     // stored manual link (may point at a removed pick)
+      fulfilled: !!(link || auto),
+      via: link || auto,           // the picked rel actually covering it
+    };
+  });
+  const voice = (b.speakers || []).map((name) => ({
+    id: "voice:" + name, name, fulfilled: covered.has(charKey(name)),
+  }));
+  return {
+    needs, voice,
+    enforced: maps.chars.size > 0 || maps.locs.size > 0,
+    complete: {
+      images: needs.every((n) => n.fulfilled),
+      audio: voice.every((v) => v.fulfilled),
+    },
+  };
+}
+
 // Revision signing: the SECTIONS of a bundle that can be signed off independently.
 const SIGN_SECTIONS = new Set(["images", "prompt", "audio"]);
 
@@ -117,6 +191,8 @@ function normalizeVideoSelections(db) {
   }
   return changed;
 }
+
+export { rosterMaps, needsStateFor };
 
 export function registerEpisode(app) {
   // The final_selection pool (what shows on the episode tab as reference previews).
@@ -165,6 +241,9 @@ export function registerEpisode(app) {
 
   // Revision signing: sign off one SECTION of a bundle (images | prompt | audio).
   // Each section is an independent signature { by, at }; clearing sets it null.
+  // GATED on scene needs: the images section can't be signed while an image need
+  // is unfulfilled, audio while a speaker lacks a voice pick — signing is the
+  // trust step before Render, so it must not pass on an incomplete scene.
   app.post("/api/episode/sign", async (c) => {
     const pid = c.get("projectId");
     let body;
@@ -175,6 +254,23 @@ export function registerEpisode(app) {
     if (signed && !String(signedBy || "").trim())
       return c.json({ error: "Missing 'signedBy'" }, 400);
     const db = await readDB(c.env, pid);
+    if (signed && (section === "images" || section === "audio")) {
+      const [manifest, world] = await Promise.all([readManifest(c.env, pid), readWorld(c.env, pid)]);
+      const b = manifest?.bundles?.find((x) => x.id === bundle);
+      if (b) {
+        const state = needsStateFor(b, rosterMaps(world), db);
+        if (state.enforced && !state.complete[section]) {
+          const unmet = section === "images"
+            ? state.needs.filter((n) => !n.fulfilled).map((n) => n.key)
+            : state.voice.filter((v) => !v.fulfilled).map((v) => v.name);
+          return c.json({
+            error: `Can't sign ${section} for ${bundle} — unmet scene needs: ${unmet.join(", ")}. ` +
+              `Assign a reference covering each need (or link one of the chosen references to it) first.`,
+            needs: state,
+          }, 409);
+        }
+      }
+    }
     db.signoffs = db.signoffs || {};
     const cur = db.signoffs[bundle] || { images: null, prompt: null, audio: null };
     cur[section] = signed ? { by: String(signedBy).trim(), at: new Date().toISOString() } : null;
@@ -198,6 +294,27 @@ export function registerEpisode(app) {
     db.episode[bundle] = [...cur];
     await writeDB(c.env, pid, db);
     return c.json({ ok: true, bundle, selected: db.episode[bundle] });
+  });
+
+  // Link one chosen reference to a scene NEED (an entry of bundle.images that
+  // roster auto-matching can't resolve — e.g. an uploaded image standing in for
+  // a character with no World sheet). `need` is the need id ("character:Kid" /
+  // "location:ext-nyc-street"); rel null/"" unlinks. A need holds ONE link; the
+  // link only counts as fulfilled while its rel is among the bundle's picks.
+  app.post("/api/episode/link", async (c) => {
+    const pid = c.get("projectId");
+    let body;
+    try { body = await c.req.json(); } catch { body = {}; }
+    const { bundle, need, rel } = body || {};
+    if (!bundle || !need) return c.json({ error: "Missing 'bundle' or 'need'" }, 400);
+    const db = await readDB(c.env, pid);
+    db.needLinks = db.needLinks || {};
+    const cur = db.needLinks[bundle] || {};
+    if (rel) cur[need] = String(rel);
+    else delete cur[need];
+    db.needLinks[bundle] = cur;
+    await writeDB(c.env, pid, db);
+    return c.json({ ok: true, bundle, links: cur });
   });
 
   // Auto-assign: source every bundle's image + audio references from the World
@@ -224,16 +341,7 @@ export function registerEpisode(app) {
     if (!targets.length) return c.json({ error: `No bundles in beat '${beat}'` }, 400);
 
     const world = await readWorld(c.env, pid);
-    const charByKey = new Map();
-    for (const ch of world.characters || []) {
-      const k = charKey(ch.name);
-      if (k && !charByKey.has(k)) charByKey.set(k, ch);
-    }
-    const locBySlug = new Map();
-    for (const l of world.locations || []) {
-      const slug = String(l.slug || "").trim();
-      if (slug && !locBySlug.has(slug)) locBySlug.set(slug, l);
-    }
+    const { chars: charByKey, locs: locBySlug } = rosterMaps(world);
 
     // Everyone on screen needs a linked sheet image; everyone who speaks needs
     // a linked voice. Collect the gaps across ALL target bundles up front.
@@ -389,6 +497,7 @@ export function registerEpisode(app) {
     db.episodeAudio = carryUnchanged(db.episodeAudio);
     db.prompt = carryUnchanged(db.prompt);
     db.signoffs = carryUnchanged(db.signoffs);
+    db.needLinks = carryUnchanged(db.needLinks);
 
     await writeManifest(c.env, pid, {
       ...(prev && typeof prev === "object" ? prev : {}),
@@ -415,7 +524,7 @@ export function registerEpisode(app) {
   // Full-episode multishot plan: the packed <=15s bundles + per-bundle skill prompt.
   app.get("/api/episode", async (c) => {
     const pid = c.get("projectId");
-    const manifest = await readManifest(c.env, pid);
+    const [manifest, world] = await Promise.all([readManifest(c.env, pid), readWorld(c.env, pid)]);
     if (!manifest) return c.json({ episode: null });
     const db = await readDB(c.env, pid);
     if (normalizeVideoSelections(db)) await writeDB(c.env, pid, db); // heal stale multi-selection
@@ -436,7 +545,12 @@ export function registerEpisode(app) {
       }
       if (list.length) video[id] = list;
     }
-    return c.json({ episode: manifest, video, prompts: db.prompt || {}, signoffs: db.signoffs || {}, firstFrames: db.episodeFirstFrame || {} });
+    // Per-bundle scene-needs state (image needs, voice needs, completeness) —
+    // what the UI's needs checklist and the sign gate both read.
+    const maps = rosterMaps(world);
+    const needs = {};
+    for (const b of manifest.bundles || []) needs[b.id] = needsStateFor(b, maps, db);
+    return c.json({ episode: manifest, video, prompts: db.prompt || {}, signoffs: db.signoffs || {}, firstFrames: db.episodeFirstFrame || {}, needs });
   });
 
   // Choose (or clear) the FIRST FRAME for a bundle's video render — a storyboard

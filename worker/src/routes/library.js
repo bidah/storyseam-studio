@@ -191,6 +191,32 @@ export function registerLibrary(app) {
     return c.json({ folders: list });
   });
 
+  // Import a chat upload (POST /upload → `chat-uploads/<uuid>-<name>` in R2)
+  // into the project asset library, returning its library `rel`. This is the
+  // upload twin of /api/visual-world/save-to-library: surfaces that need a
+  // library rel (episode reference picks, sheet links) can accept an image the
+  // user just uploaded through the shared MediaPicker.
+  app.post("/api/library/import", async (c) => {
+    const pid = c.get("projectId");
+    let body;
+    try { body = await c.req.json(); } catch { body = {}; }
+    const key = String(body?.key || "");
+    if (!/^chat-uploads\/[^/]+$/.test(key)) return c.json({ error: "Invalid upload 'key'" }, 400);
+    const obj = await c.env.BUCKET.get(key);
+    if (!obj) return c.json({ error: "Upload not found" }, 404);
+    const dir = String(body?.folder || "uploads").replace(/[^a-zA-Z0-9._/-]/g, "").replace(/^\/+|\/+$/g, "") || "uploads";
+    // Original filename = the key minus its `<uuid>-` prefix (see safeName in index.js).
+    const orig = key.slice("chat-uploads/".length).replace(/^[0-9a-f-]{36}-/, "");
+    const ext = (/\.([a-zA-Z0-9]+)$/.exec(orig) || [, "png"])[1];
+    const base = (String(body?.name || "").replace(/[^a-zA-Z0-9._-]/g, "") || orig).replace(/\.[^.]*$/, "");
+    const rel = `${dir}/${base}.${ext}`;
+    const safePid = normalizeProjectId(pid);
+    await c.env.BUCKET.put(`media/${safePid}/asset/${rel}`, obj.body, {
+      httpMetadata: { contentType: obj.httpMetadata?.contentType || "image/png" },
+    });
+    return c.json({ ok: true, rel, name: `${base}.${ext}`, folder: dir, url: `/asset/${rel}` });
+  });
+
   // Toggle a source image's membership in the final_selection set. Verbatim db
   // mutation from Express; the physical copy into the final pool is deferred.
   app.post("/api/library/toggle", async (c) => {

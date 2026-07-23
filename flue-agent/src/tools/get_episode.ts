@@ -46,6 +46,7 @@ type EpisodePayload = {
     Record<"images" | "prompt" | "audio", unknown>
   >;
   firstFrames?: Record<string, unknown>;
+  needs?: Record<string, unknown>;
 };
 
 // Per-bundle state folded in from the payload's top-level maps.
@@ -122,6 +123,7 @@ export const getEpisode = (api: Api) =>
             ...bundleState(data, String(b.id)),
             promptOverride: data.prompts?.[String(b.id)] ?? null,
             video: data.video?.[String(b.id)] ?? [],
+            sceneNeeds: data.needs?.[String(b.id)] ?? null,
           })),
         } as Json;
       }
@@ -148,6 +150,7 @@ export const getEpisode = (api: Api) =>
           refs: b.images ?? [],
           missing: b.missing ?? [],
           speakers: b.speakers ?? [],
+          sceneNeeds: data.needs?.[String(b.id)] ?? null,
           ...bundleState(data, String(b.id)),
         })),
         note: "Compact overview. Call get_episode with { bundle } or { beat } for shot summaries, prompts, skillPrompt and video take URLs.",

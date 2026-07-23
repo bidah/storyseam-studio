@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLoaderData, useRevalidator } from "react-router";
-import { X, Check, Plus, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, RotateCcw, Maximize2, Volume2, Speech, Play, Copy, Pencil, Sparkles, PenLine, FileText, Image as ImageIcon, Loader2, Wand2, Scissors, Boxes, CircleAlert } from "lucide-react";
+import { X, Check, Plus, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, RotateCcw, Maximize2, Volume2, Speech, Play, Copy, Pencil, Sparkles, PenLine, FileText, Image as ImageIcon, Loader2, Wand2, Scissors, Boxes, CircleAlert, MapPin, User } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { swr, useRevalidateOnMount, useRevalidateOnAgentIdle } from "@/lib/swr";
 import { invalidateTabCache } from "@/lib/tabCache";
@@ -12,10 +12,10 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Separator } from "@/components/ui/separator";
 import { Slider } from "@/components/ui/slider";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Empty, Eyebrow, Chip, ErrorNote, ConfirmModal, IconSwap } from "@/components/shared";
+import { Empty, Chip, ErrorNote, ConfirmModal, IconSwap } from "@/components/shared";
+import MediaPicker from "@/components/MediaPicker";
 import { useShell } from "@/lib/shellContext";
 
 /* ---------------------------------------------------------------- *
@@ -63,6 +63,89 @@ function CopyButton({ text, label = "copy prompt" }) {
 }
 
 /* ---------------------------------------------------------------- *
+ * Scene needs                                                      *
+ * ---------------------------------------------------------------- */
+
+// Re-derive a bundle's needs fulfillment from the CURRENT (optimistic) picks so
+// the checklist updates instantly on toggle, without waiting for a revalidate.
+// Mirrors the worker's needsStateFor: an image need is covered by its World
+// sheet being picked (auto) or by an explicitly linked pick; a voice need by a
+// picked audio ref whose speakers include the name.
+function computeNeeds(state, picked, audioPicked, audioMap) {
+  if (!state) return null;
+  const needs = (state.needs || []).map((n) => {
+    const link = n.link && picked.has(n.link) ? n.link : null;
+    const auto = n.sheetRel && picked.has(n.sheetRel) ? n.sheetRel : null;
+    return { ...n, fulfilled: !!(link || auto), via: link || auto };
+  });
+  const covered = new Set();
+  for (const rel of audioPicked) {
+    const a = audioMap.get(rel);
+    const names = a?.order?.length ? a.order : a?.character ? [a.character] : [];
+    for (const nm of names) covered.add(String(nm).trim().toUpperCase());
+  }
+  const voice = (state.voice || []).map((v) => ({
+    ...v,
+    fulfilled: covered.has(String(v.name).trim().toUpperCase()),
+  }));
+  return {
+    ...state, needs, voice,
+    complete: { images: needs.every((n) => n.fulfilled), audio: voice.every((v) => v.fulfilled) },
+  };
+}
+
+const roleIcon = { location: MapPin, character: User, voice: Volume2 };
+
+function NeedChip({ role, label, fulfilled, title }) {
+  const Icon = roleIcon[role] || User;
+  return (
+    <Badge variant={fulfilled ? "success" : "warning"} className="gap-1" title={title}>
+      {fulfilled ? <Check size={11} /> : <Icon size={11} />}
+      {label}
+      {role === "voice" && <span className="opacity-70">(voice)</span>}
+    </Badge>
+  );
+}
+
+// The live scene-needs checklist shown on each bundle card (and echoed by the
+// pickers): every location/character/voice the scene requires, green when a
+// chosen reference covers it.
+function NeedsChecklist({ ns }) {
+  if (!ns) return null;
+  const total = ns.needs.length + ns.voice.length;
+  if (!total) return <Empty>no scene needs detected — rebuild the plan after writing the shot list</Empty>;
+  return (
+    <div className="flex flex-wrap items-center gap-1.5 text-xs">
+      <span className="font-semibold uppercase tracking-wide text-muted-foreground">scene needs</span>
+      {ns.needs.map((n) => (
+        <NeedChip
+          key={n.id}
+          role={n.role}
+          label={n.key}
+          fulfilled={n.fulfilled}
+          title={
+            n.fulfilled
+              ? `covered by ${n.via}`
+              : n.sheetRel
+              ? "not covered yet — choose its World sheet as a reference (or auto-assign)"
+              : "no World sheet linked — choose any reference and link it to this need"
+          }
+        />
+      ))}
+      {ns.voice.map((v) => (
+        <NeedChip
+          key={v.id}
+          role="voice"
+          label={v.name}
+          fulfilled={v.fulfilled}
+          title={v.fulfilled ? "voice reference chosen" : "no voice reference chosen for this speaker yet"}
+        />
+      ))}
+    </div>
+  );
+}
+
+/* ---------------------------------------------------------------- *
  * Revision signing                                                 *
  * ---------------------------------------------------------------- */
 
@@ -72,18 +155,29 @@ const SIGN_SECTIONS = [
   { key: "audio", label: "Audio", hint: "the voice / sound references are correct", Icon: Volume2 },
 ];
 
-function SigningModal({ bundle, signoff, open, onSign, onClose }) {
+function SigningModal({ bundle, signoff, ns, open, onSign, onClose }) {
   const [signedBy, setSignedBy] = useState(() => {
     try { return localStorage.getItem("shotStudioSigner") || ""; } catch { return ""; }
   });
+  const [err, setErr] = useState(null);
   const so = signoff || { images: null, prompt: null, audio: null };
   const name = signedBy.trim();
-  const toggle = (section, signed) => {
+  // Scene-needs gate: images can't be signed while an image need is uncovered,
+  // audio while a speaker has no voice pick. (The worker enforces this too.)
+  const gated = ns?.enforced
+    ? {
+        images: ns.complete.images ? null : ns.needs.filter((n) => !n.fulfilled).map((n) => n.key),
+        audio: ns.complete.audio ? null : ns.voice.filter((v) => !v.fulfilled).map((v) => v.name),
+      }
+    : {};
+  const toggle = async (section, signed) => {
     if (signed) {
-      if (!name) return;
+      if (!name || gated[section]) return;
       try { localStorage.setItem("shotStudioSigner", name); } catch { /* ignore */ }
     }
-    onSign(bundle.id, section, signed, name);
+    setErr(null);
+    const e = await onSign(bundle.id, section, signed, name);
+    if (e) setErr(e);
   };
   const fmt = (at) => { try { return new Date(at).toLocaleString(); } catch { return at; } };
   return (
@@ -109,6 +203,7 @@ function SigningModal({ bundle, signoff, open, onSign, onClose }) {
           {SIGN_SECTIONS.map(({ key, label, hint, Icon }) => {
             const sig = so[key];
             const on = !!sig;
+            const unmet = gated[key] || null;
             return (
               <div
                 key={key}
@@ -119,7 +214,7 @@ function SigningModal({ bundle, signoff, open, onSign, onClose }) {
               >
                 <Checkbox
                   checked={on}
-                  disabled={!on && !name}
+                  disabled={!on && (!name || !!unmet)}
                   onCheckedChange={(c) => toggle(key, !!c)}
                   aria-label={on ? `unsign ${label}` : `sign ${label}`}
                   className="size-5"
@@ -131,143 +226,21 @@ function SigningModal({ bundle, signoff, open, onSign, onClose }) {
                   <div className="text-xs text-muted-foreground">
                     {on ? `signed by ${sig.by} · ${fmt(sig.at)}` : hint}
                   </div>
+                  {!on && unmet && (
+                    <div className="mt-0.5 flex items-start gap-1 text-xs text-amber-500">
+                      <CircleAlert size={12} className="mt-0.5 shrink-0" />
+                      <span>can't sign yet — uncovered scene needs: {unmet.join(", ")}</span>
+                    </div>
+                  )}
                 </div>
               </div>
             );
           })}
         </div>
+        {err && <ErrorNote>{err}</ErrorNote>}
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>Done</Button>
         </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-/* ---------------------------------------------------------------- *
- * Reference thumbnails + pickers                                   *
- * ---------------------------------------------------------------- */
-
-function SqItem({ im, on, bundleId, onAdd, onRemove, onView }) {
-  return (
-    <figure
-      className={cn(
-        "group relative overflow-hidden rounded-lg border bg-muted transition-colors",
-        on ? "border-primary ring-1 ring-primary/40" : "border-border"
-      )}
-    >
-      <button className="block w-full" onClick={() => onView({ url: im.url, name: im.rel, role: "reference" })}>
-        <img src={im.url} loading="lazy" alt={im.name} className="aspect-square w-full object-cover" />
-      </button>
-      {on ? (
-        <Button
-          variant="destructive" size="icon-xs"
-          className="absolute right-1.5 top-1.5 rounded-full opacity-90"
-          title="remove from this shot" aria-label="remove from this shot"
-          onClick={() => onRemove(bundleId, im)}
-        >
-          <X size={13} />
-        </Button>
-      ) : (
-        <Button
-          size="icon-xs"
-          className="absolute right-1.5 top-1.5 rounded-full opacity-90"
-          title="use in this shot" aria-label="use in this shot"
-          onClick={() => onAdd(bundleId, im)}
-        >
-          <Plus size={14} />
-        </Button>
-      )}
-      <figcaption className="truncate px-2 py-1 text-[11px] text-muted-foreground">{im.name}</figcaption>
-    </figure>
-  );
-}
-
-function RefPickerModal({ bundle, folders, picked, flat, open, onAdd, onRemove, onView, onClose }) {
-  const [active, setActive] = useState(null);
-  const selected = [...picked].map((rel) => flat.get(rel)).filter(Boolean);
-  const af = active && folders.find((f) => f.folder === active);
-
-  return (
-    <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="flex max-h-[88vh] max-w-[min(94vw,1000px)] flex-col gap-0 overflow-hidden p-0">
-        <DialogHeader className="border-b px-5 py-4">
-          <DialogTitle className="flex items-center gap-2">
-            References
-            <Badge variant="secondary" className="font-mono">{bundle.id}</Badge>
-            <span className="font-normal text-muted-foreground">{bundle.beatTitle}</span>
-          </DialogTitle>
-        </DialogHeader>
-
-        <div className="min-h-0 flex-1 space-y-5 overflow-y-auto p-5">
-          <div>
-            <Eyebrow className="mb-2">selected for this shot ({selected.length})</Eyebrow>
-            {selected.length === 0 ? (
-              <Empty>none yet — pick from your library selections below</Empty>
-            ) : (
-              <div className="grid grid-cols-3 gap-3 sm:grid-cols-4 md:grid-cols-5">
-                {selected.map((im) => (
-                  <SqItem key={im.rel} im={im} on bundleId={bundle.id} onAdd={onAdd} onRemove={onRemove} onView={onView} />
-                ))}
-              </div>
-            )}
-          </div>
-
-          <Separator />
-
-          <div>
-            {folders.length === 0 ? (
-              <Empty>no images pre-selected yet — go to the library tab and select some first.</Empty>
-            ) : af ? (
-              <>
-                <div className="mb-3 flex items-center gap-3">
-                  <Button variant="outline" size="sm" onClick={() => setActive(null)}>
-                    <ChevronLeft size={14} /> folders
-                  </Button>
-                  <h4 className="text-sm font-semibold">{af.folder}</h4>
-                  <Badge variant="secondary">{af.images.length} selected here</Badge>
-                </div>
-                <div className="grid grid-cols-3 gap-3 sm:grid-cols-4 md:grid-cols-5">
-                  {af.images.map((im) => (
-                    <SqItem
-                      key={im.rel}
-                      im={im}
-                      on={picked.has(im.rel)}
-                      bundleId={bundle.id}
-                      onAdd={onAdd}
-                      onRemove={onRemove}
-                      onView={onView}
-                    />
-                  ))}
-                </div>
-              </>
-            ) : (
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
-                {folders.map((f) => {
-                  const inShot = f.images.filter((i) => picked.has(i.rel)).length;
-                  return (
-                    <button
-                      key={f.folder}
-                      className="group overflow-hidden rounded-lg border bg-card text-left transition-colors hover:border-primary/50"
-                      onClick={() => setActive(f.folder)}
-                    >
-                      <div className="relative aspect-video bg-muted">
-                        <img src={f.preview} loading="lazy" alt={f.folder} className="h-full w-full object-cover" />
-                        {inShot > 0 && (
-                          <Badge className="absolute right-1.5 top-1.5">{inShot} <Check size={11} /></Badge>
-                        )}
-                      </div>
-                      <div className="p-2.5">
-                        <div className="truncate text-sm font-medium">{f.folder}</div>
-                        <div className="text-xs text-muted-foreground">{f.images.length} selected</div>
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        </div>
       </DialogContent>
     </Dialog>
   );
@@ -795,7 +768,7 @@ function FirstFrameModal({ bundle, open, stills, reloadKey, current, onPick, onC
   );
 }
 
-function EpisodeBundle({ b, flat, picked, onOpenPicker, onRemove, onView, audioMap, audioPicked, onOpenAudio, vids, reloadKey, onToggleVideo, stills, onToggleStill, firstFrame, onSetFirstFrame, override, onEditPrompt, onResetPrompt, signoff, onSign }) {
+function EpisodeBundle({ b, flat, picked, onOpenPicker, onRemove, onView, audioMap, audioPicked, onOpenAudio, vids, reloadKey, onToggleVideo, stills, onToggleStill, firstFrame, onSetFirstFrame, override, onEditPrompt, onResetPrompt, signoff, onSign, needsState, onLinkNeed }) {
   const [open, setOpen] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
   const [signOpen, setSignOpen] = useState(false);
@@ -813,6 +786,15 @@ function EpisodeBundle({ b, flat, picked, onOpenPicker, onRemove, onView, audioM
   const edited = typeof override === "string";
   const assigned = [...picked].map((rel) => flat.get(rel)).filter(Boolean);
   const audioAssigned = [...audioPicked].map((rel) => audioMap.get(rel)).filter(Boolean);
+
+  // Live scene-needs state, recomputed from the optimistic picks.
+  const ns = useMemo(
+    () => computeNeeds(needsState, picked, audioPicked, audioMap),
+    [needsState, picked, audioPicked, audioMap]
+  );
+  const needAll = ns ? [...ns.needs, ...ns.voice] : [];
+  const needDone = needAll.filter((x) => x.fulfilled).length;
+  const needsComplete = !ns || !ns.enforced || needDone === needAll.length;
 
   const refBlock = assigned.length
     ? "IMAGE REFERENCES (pass each file as an image_references entry):\n" +
@@ -910,6 +892,14 @@ function EpisodeBundle({ b, flat, picked, onOpenPicker, onRemove, onView, audioM
             </Button>
           ) : (
             <>
+              {ns && ns.enforced && needAll.length > 0 && (
+                <Badge
+                  variant={needsComplete ? "success" : "warning"}
+                  title={needsComplete ? "every scene need is covered by a reference" : "signing unlocks when every scene need is covered"}
+                >
+                  {needsComplete && <Check size={11} />} needs {needDone}/{needAll.length}
+                </Badge>
+              )}
               {signedCount === 3 ? (
                 <Badge variant="success"><Check size={11} /> signed</Badge>
               ) : signedCount > 0 ? (
@@ -954,41 +944,67 @@ function EpisodeBundle({ b, flat, picked, onOpenPicker, onRemove, onView, audioM
 
       <CardContent className={cn("grid gap-4 p-4", !isImg && hasVid && "lg:grid-cols-[2fr_1fr]")}>
         <div className="min-w-0 space-y-4">
-          <div className="text-xs text-muted-foreground">
-            <span className="font-semibold uppercase tracking-wide">scene needs:</span>{" "}
-            {[
-              ...(b.images || []).map((im) => im.key),
-              ...(b.speakers || []).map((n) => `${n} (voice)`),
-            ].join(" · ") || "nothing detected — rebuild the plan after writing the shot list"}
-            {(b.missing || []).length > 0 && (
-              <span className="ml-2 text-amber-500" title="These need a sheet image linked on the World tab before rendering">
-                <CircleAlert size={11} className="mr-1 inline" />
-                no sheet linked: {b.missing.join(", ")}
-              </span>
-            )}
-          </div>
+          {ns ? (
+            <NeedsChecklist ns={ns} />
+          ) : (
+            <div className="text-xs text-muted-foreground">
+              <span className="font-semibold uppercase tracking-wide">scene needs:</span>{" "}
+              {[
+                ...(b.images || []).map((im) => im.key),
+                ...(b.speakers || []).map((n) => `${n} (voice)`),
+              ].join(" · ") || "nothing detected — rebuild the plan after writing the shot list"}
+            </div>
+          )}
 
           <div className="space-y-3">
             {assigned.length === 0 ? (
               <Empty>no references chosen for this shot</Empty>
             ) : (
               <div className="grid grid-cols-3 gap-3 sm:grid-cols-4 md:grid-cols-6">
-                {assigned.map((im) => (
-                  <figure key={im.rel} className="relative overflow-hidden rounded-lg border border-primary bg-muted ring-1 ring-primary/40">
-                    <button className="block w-full" onClick={() => onView({ url: im.url, name: im.rel, role: "reference" })}>
-                      <img src={im.url} loading="lazy" alt={im.name} className="aspect-square w-full object-cover" />
-                    </button>
-                    <Button
-                      variant="destructive" size="icon-xs"
-                      className="absolute right-1.5 top-1.5 rounded-full opacity-90"
-                      title="remove from this shot" aria-label="remove from this shot"
-                      onClick={() => onRemove(b.id, im)}
-                    >
-                      <X size={13} />
-                    </Button>
-                    <figcaption className="truncate px-2 py-1 text-[11px] text-muted-foreground">{im.name}</figcaption>
-                  </figure>
-                ))}
+                {assigned.map((im) => {
+                  // What this reference covers: the need whose World sheet it IS
+                  // (auto), or the need the user linked it to.
+                  const autoNeed = ns?.needs.find((n) => n.sheetRel && n.sheetRel === im.rel);
+                  const linkedNeed = !autoNeed && ns?.needs.find((n) => n.link === im.rel);
+                  return (
+                    <figure key={im.rel} className="relative overflow-hidden rounded-lg border border-primary bg-muted ring-1 ring-primary/40">
+                      <button className="block w-full" onClick={() => onView({ url: im.url, name: im.rel, role: "reference" })}>
+                        <img src={im.url} loading="lazy" alt={im.name} className="aspect-square w-full object-cover" />
+                      </button>
+                      <Button
+                        variant="destructive" size="icon-xs"
+                        className="absolute right-1.5 top-1.5 rounded-full opacity-90"
+                        title="remove from this shot" aria-label="remove from this shot"
+                        onClick={() => onRemove(b.id, im)}
+                      >
+                        <X size={13} />
+                      </Button>
+                      {ns?.enforced && (autoNeed ? (
+                        <div className="flex items-center gap-1 truncate px-2 pt-1 text-[11px] text-emerald-500" title="This is the World sheet for this need">
+                          <Check size={11} className="shrink-0" /> {autoNeed.key}
+                        </div>
+                      ) : (
+                        <select
+                          className="mx-1.5 mt-1 h-6 w-[calc(100%-12px)] truncate rounded border bg-background px-1 text-[11px] text-muted-foreground"
+                          value={linkedNeed?.id || ""}
+                          aria-label={`Scene need covered by ${im.name}`}
+                          title="Link this reference to the scene need it covers"
+                          onChange={(e) => {
+                            const next = e.target.value || null;
+                            if (linkedNeed && linkedNeed.id !== next) onLinkNeed(b.id, linkedNeed.id, null);
+                            if (next) onLinkNeed(b.id, next, im.rel);
+                          }}
+                        >
+                          <option value="">covers…</option>
+                          {ns.needs.map((n) => (
+                            <option key={n.id} value={n.id}>{n.key}</option>
+                          ))}
+                        </select>
+                      ))}
+                      <figcaption className="truncate px-2 py-1 text-[11px] text-muted-foreground">{im.name}</figcaption>
+                    </figure>
+                  );
+                })}
               </div>
             )}
             <Button variant="outline" size="sm" onClick={() => onOpenPicker(b)}>
@@ -1115,6 +1131,7 @@ function EpisodeBundle({ b, flat, picked, onOpenPicker, onRemove, onView, audioM
       <SigningModal
         bundle={b}
         signoff={signoff}
+        ns={ns}
         open={signOpen}
         onSign={onSign}
         onClose={() => setSignOpen(false)}
@@ -1132,7 +1149,7 @@ function EpisodeBundle({ b, flat, picked, onOpenPicker, onRemove, onView, audioM
   );
 }
 
-function AudioPickerModal({ bundle, audioRefs, picked, open, onToggle, onClose }) {
+function AudioPickerModal({ bundle, audioRefs, picked, voiceNeeds, open, onToggle, onClose }) {
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="flex max-h-[88vh] max-w-[min(94vw,640px)] flex-col gap-0 overflow-hidden p-0">
@@ -1142,6 +1159,15 @@ function AudioPickerModal({ bundle, audioRefs, picked, open, onToggle, onClose }
             <Badge variant="secondary" className="font-mono">{bundle.id}</Badge>
             <span className="font-normal text-muted-foreground">{bundle.beatTitle}</span>
           </DialogTitle>
+          {voiceNeeds && voiceNeeds.length > 0 && (
+            <div className="flex flex-wrap items-center gap-1.5 pt-1 text-xs">
+              <span className="font-semibold uppercase tracking-wide text-muted-foreground">speakers</span>
+              {voiceNeeds.map((v) => (
+                <NeedChip key={v.id} role="voice" label={v.name} fulfilled={v.fulfilled}
+                  title={v.fulfilled ? "voice reference chosen" : "pick a reference below that covers this speaker"} />
+              ))}
+            </div>
+          )}
         </DialogHeader>
         <div className="min-h-0 flex-1 space-y-2 overflow-y-auto p-4">
           {audioRefs.map((a) => {
@@ -1203,6 +1229,7 @@ function Episode({ reloadKey, onView }) {
   const [signoffs, setSignoffs] = useState(payload.ep.signoffs || {});
   const [stills, setStills] = useState(payload.st?.stills || {}); // { bundle: { shot: [takes] } }
   const [firstFrames, setFirstFrames] = useState(payload.ep.firstFrames || {}); // { bundle: { shot, file } }
+  const [needsMap, setNeedsMap] = useState(payload.ep.needs || {}); // { bundle: scene-needs state }
   const promptTimers = useRef({});
   const agent = useAgent();
 
@@ -1214,6 +1241,7 @@ function Episode({ reloadKey, onView }) {
     setSignoffs(ep.signoffs || {});
     setStills(st?.stills || {});
     setFirstFrames(ep.firstFrames || {});
+    setNeedsMap(ep.needs || {});
     setFolders(lib.folders || []);
     const m = {};
     for (const [k, v] of Object.entries(fn.episode || {})) m[k] = new Set(v);
@@ -1263,16 +1291,6 @@ function Episode({ reloadKey, onView }) {
     return m;
   }, [folders]);
 
-  const selFolders = useMemo(
-    () =>
-      folders
-        .map((f) => {
-          const imgs = f.images.filter((im) => im.selected);
-          return { folder: f.folder, images: imgs, preview: imgs[0]?.url };
-        })
-        .filter((f) => f.images.length > 0),
-    [folders]
-  );
   const selCount = useMemo(() => [...flat.values()].filter((im) => im.selected).length, [flat]);
 
   const setPick = useCallback(async (bundle, rel, selected) => {
@@ -1293,7 +1311,6 @@ function Episode({ reloadKey, onView }) {
     }
   }, []);
 
-  const onAdd = useCallback((bundle, im) => setPick(bundle, im.rel, true), [setPick]);
   const onRemove = useCallback((bundle, im) => setConfirm({ bundle, f: im }), []);
 
   const onToggleVideo = useCallback((bundle, file, selected) => {
@@ -1353,6 +1370,8 @@ function Episode({ reloadKey, onView }) {
     }).catch(() => {});
   }, []);
 
+  // Returns an error string on failure (the SigningModal shows it) — the sign
+  // endpoint 409s when a gated section's scene needs aren't covered yet.
   const onSign = useCallback(async (bundle, section, signed, signedBy) => {
     try {
       const res = await fetch("/api/episode/sign", {
@@ -1363,8 +1382,29 @@ function Episode({ reloadKey, onView }) {
       const out = await res.json();
       if (!res.ok) throw new Error(out.error);
       setSignoffs((s) => ({ ...s, [bundle]: out.signoff }));
+      return null;
+    } catch (e) {
+      return String(e.message || e);
+    }
+  }, []);
+
+  // Link (or unlink) one chosen reference to a scene need. Optimistic on the
+  // needs slice; the worker stores it in db.needLinks[bundle][needId].
+  const onLinkNeed = useCallback(async (bundle, need, rel) => {
+    setNeedsMap((m) => {
+      const st = m[bundle];
+      if (!st) return m;
+      const needs = (st.needs || []).map((n) => (n.id === need ? { ...n, link: rel || null } : n));
+      return { ...m, [bundle]: { ...st, needs } };
+    });
+    try {
+      await fetch("/api/episode/link", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ bundle, need, rel }),
+      });
     } catch {
-      /* leave prior state on failure */
+      /* keep optimistic state */
     }
   }, []);
 
@@ -1373,6 +1413,52 @@ function Episode({ reloadKey, onView }) {
   const [assigning, setAssigning] = useState(null);
   const [rebuilding, setRebuilding] = useState(false);
   const { revalidate } = useRevalidator();
+
+  // MediaPicker → bundle picks. Library items carry a rel already; a Visual
+  // World generation or a fresh upload is first imported into the asset library
+  // (episode picks are library rels) and then assigned. Items tagged with a
+  // `need` in the picker get linked to it.
+  const onPickerAdd = useCallback(async (items) => {
+    const bundle = pickerBundle?.id;
+    if (!bundle) return;
+    let imported = false;
+    for (const item of items || []) {
+      let rel = item.rel || null;
+      try {
+        if (!rel && item.source === "generation" && item.genId) {
+          const r = await fetch("/api/visual-world/save-to-library", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ id: item.genId, folder: "episode-refs" }),
+          }).then((x) => x.json());
+          if (r.error) throw new Error(r.error);
+          rel = r.rel;
+          imported = true;
+        } else if (!rel && item.source === "upload" && item.refUrl) {
+          const key = decodeURIComponent(new URL(item.refUrl, window.location.origin).pathname.replace(/^\/files\//, ""));
+          const r = await fetch("/api/library/import", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ key, folder: "episode-refs" }),
+          }).then((x) => x.json());
+          if (r.error) throw new Error(r.error);
+          rel = r.rel;
+          imported = true;
+        }
+      } catch (e) {
+        setError(String(e.message || e));
+        continue;
+      }
+      if (!rel) continue;
+      await setPick(bundle, rel, true);
+      if (item.need) await onLinkNeed(bundle, item.need, rel);
+    }
+    // Imports added new library rels — refetch so `flat` can resolve them.
+    if (imported) {
+      invalidateTabCache("episode");
+      revalidate();
+    }
+  }, [pickerBundle, setPick, onLinkNeed, revalidate]);
 
   // Choose (or clear) a bundle's video first frame — the still the Seedance clip
   // opens on (start_image). Optimistic; persisted to db.episodeFirstFrame.
@@ -1527,6 +1613,8 @@ function Episode({ reloadKey, onView }) {
                 onResetPrompt={onResetPrompt}
                 signoff={signoffs[b.id]}
                 onSign={onSign}
+                needsState={needsMap[b.id]}
+                onLinkNeed={onLinkNeed}
               />
             ))}
           </div>
@@ -1538,6 +1626,14 @@ function Episode({ reloadKey, onView }) {
           bundle={audioPicker}
           audioRefs={audioRefs}
           picked={audioPicks[audioPicker.id] || new Set()}
+          voiceNeeds={
+            computeNeeds(
+              needsMap[audioPicker.id],
+              picks[audioPicker.id] || new Set(),
+              audioPicks[audioPicker.id] || new Set(),
+              audioMap
+            )?.voice || null
+          }
           open={!!audioPicker}
           onToggle={onAudioToggle}
           onClose={() => setAudioPicker(null)}
@@ -1545,16 +1641,19 @@ function Episode({ reloadKey, onView }) {
       )}
 
       {pickerBundle && (
-        <RefPickerModal
-          bundle={pickerBundle}
-          folders={selFolders}
-          picked={picks[pickerBundle.id] || new Set()}
-          flat={flat}
+        <MediaPicker
           open={!!pickerBundle}
-          onAdd={onAdd}
-          onRemove={onRemove}
-          onView={onView}
-          onClose={() => setPickerBundle(null)}
+          onOpenChange={(o) => !o && setPickerBundle(null)}
+          onAdd={onPickerAdd}
+          title={`References — ${pickerBundle.id} · ${pickerBundle.beatTitle}`}
+          needs={
+            computeNeeds(
+              needsMap[pickerBundle.id],
+              picks[pickerBundle.id] || new Set(),
+              audioPicks[pickerBundle.id] || new Set(),
+              audioMap
+            )?.needs || null
+          }
         />
       )}
 

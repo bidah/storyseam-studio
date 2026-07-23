@@ -28,6 +28,13 @@ import { Empty, Spinner, ErrorNote } from "@/components/shared";
  *                                                                     *
  * `multiple` (default true) toggles checkbox-then-Add vs click-to-add.*
  * `sources` limits which tabs appear (default all three).             *
+ *                                                                     *
+ * `needs` (optional) puts the picker in scene-needs mode (the Episode *
+ * tab's reference picker): an array of needs                          *
+ *   { id, key, role, fulfilled, sheetRel? }                           *
+ * rendered as a live checklist under the title. Each picked item can  *
+ * be linked to the need it covers (auto-detected when the item IS the *
+ * need's World sheet); emitted items then carry `need: <needId>`.     *
  * ------------------------------------------------------------------ */
 
 // Where PC uploads go — same R2-backed endpoint the chat composer uses. Returns
@@ -69,9 +76,14 @@ export default function MediaPicker({
   multiple = true,
   sources = ["library", "generation", "upload"],
   title = "Add a reference image",
+  needs = null,
 }) {
   const [tab, setTab] = useState(sources[0] || "library");
   const [q, setQ] = useState("");
+
+  // Scene-needs mode: which picked item covers which need (itemId -> needId).
+  const needList = Array.isArray(needs) ? needs : [];
+  const [needLinks, setNeedLinks] = useState(() => new Map());
 
   // Library (asset gallery).
   const [folders, setFolders] = useState(null); // null = loading
@@ -98,6 +110,7 @@ export default function MediaPicker({
     setTab(sources[0] || "library");
     setQ("");
     setPicked(new Map());
+    setNeedLinks(new Map());
     // Revoke any stale object URLs from a previous session.
     setUploads((prev) => { prev.forEach((u) => u.previewUrl && URL.revokeObjectURL(u.previewUrl)); return []; });
 
@@ -149,10 +162,26 @@ export default function MediaPicker({
   }, [multiple, onAdd, onOpenChange]);
 
   const commit = () => {
-    const items = [...picked.values()];
+    // In scene-needs mode each item carries the need it covers: an explicit link
+    // from the tray, or the need whose World sheet the item IS (auto).
+    const items = [...picked.values()].map((it) => {
+      if (!needList.length) return it;
+      const auto = it.rel && needList.find((n) => n.sheetRel && n.sheetRel === it.rel);
+      return { ...it, need: needLinks.get(it.id) || auto?.id || null };
+    });
     if (items.length) onAdd?.(items);
     onOpenChange?.(false);
   };
+
+  // Live checklist state: a need counts as covered by what's already assigned
+  // (`fulfilled`) or by what's staged in this dialog (auto sheet match / link).
+  const stagedCovers = useCallback((n) => {
+    for (const it of picked.values()) {
+      if (it.rel && n.sheetRel && it.rel === n.sheetRel) return true;
+      if (needLinks.get(it.id) === n.id) return true;
+    }
+    return false;
+  }, [picked, needLinks]);
 
   // Upload a PC file to R2 for a durable, ungated url, keeping the raw File so a
   // chat attachment can still base64-encode its bytes for the agent. On success,
@@ -215,6 +244,26 @@ export default function MediaPicker({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="flex h-[620px] max-h-[90vh] flex-col sm:max-w-3xl">
         <DialogHeader><DialogTitle>{title}</DialogTitle></DialogHeader>
+
+        {needList.length > 0 && (
+          <div className="flex flex-wrap items-center gap-1.5 text-xs">
+            <span className="font-semibold uppercase tracking-wide text-muted-foreground">scene needs</span>
+            {needList.map((n) => {
+              const on = n.fulfilled || stagedCovers(n);
+              return (
+                <Badge
+                  key={n.id}
+                  variant={on ? "success" : "outline"}
+                  className="gap-1"
+                  title={on ? "covered" : `still needs a reference — pick one below${n.sheetRel ? "" : " and link it to this need"}`}
+                >
+                  {on && <Check size={11} />}
+                  {n.key || n.name}
+                </Badge>
+              );
+            })}
+          </div>
+        )}
 
         <Tabs value={tab} onValueChange={setTab} className="flex min-h-0 flex-1 flex-col">
           {tabCount > 1 && (
@@ -363,6 +412,43 @@ export default function MediaPicker({
             </TabsContent>
           )}
         </Tabs>
+
+        {multiple && needList.length > 0 && pickedCount > 0 && (
+          <div className="max-h-36 space-y-1.5 overflow-y-auto border-t pt-2.5">
+            <div className="text-xs font-medium text-muted-foreground">Link each pick to the scene need it covers</div>
+            {[...picked.values()].map((it) => {
+              const auto = it.rel && needList.find((n) => n.sheetRel && n.sheetRel === it.rel);
+              return (
+                <div key={it.id} className="flex items-center gap-2 text-xs">
+                  <img src={it.thumb} alt="" className="size-7 shrink-0 rounded border object-cover" />
+                  <span className="min-w-0 flex-1 truncate">{it.name}</span>
+                  {auto ? (
+                    <Badge variant="success" title="This is the World sheet for this need — linked automatically">
+                      <Check size={11} /> {auto.key}
+                    </Badge>
+                  ) : (
+                    <select
+                      className="h-7 rounded-md border bg-background px-1.5 text-xs"
+                      value={needLinks.get(it.id) || ""}
+                      aria-label={`Scene need covered by ${it.name}`}
+                      onChange={(e) => setNeedLinks((prev) => {
+                        const m = new Map(prev);
+                        if (e.target.value) m.set(it.id, e.target.value);
+                        else m.delete(it.id);
+                        return m;
+                      })}
+                    >
+                      <option value="">covers nothing specific</option>
+                      {needList.map((n) => (
+                        <option key={n.id} value={n.id}>{n.key || n.name}</option>
+                      ))}
+                    </select>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
 
         {multiple && (
           <DialogFooter className="border-t pt-3">
