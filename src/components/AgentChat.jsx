@@ -166,7 +166,18 @@ function ToolChip({ part }) {
 // answered it collapses to "Responded: …" using that following user message
 // (`answer`). Clicking an option sends its `label` as the next message; a typed
 // reply in the composer works too (it's just the next user message).
-function QuestionCard({ part, pending, answer, canRespond, onRespond }) {
+// An option that asks the user to supply an image (the sheet-generation skill's
+// "I'll attach a reference image" choice) is rendered as an UPLOAD button: it
+// opens a file picker instead of just echoing its label, and the picked images
+// are auto-sent as a "here is the reference — continue" message (see
+// `onRespondFiles` in the chat component).
+function isUploadOption(opt) {
+  if (opt?.id === "upload") return true;
+  return /\b(upload|attach)\b/i.test(opt?.label || "") && /\b(image|reference|ref)\b/i.test(opt?.label || "");
+}
+
+function QuestionCard({ part, pending, answer, canRespond, onRespond, onRespondFiles }) {
+  const fileRef = useRef(null);
   const input = part.input || {};
   const question = typeof input.question === "string" ? input.question : "";
   const options = Array.isArray(input.options) ? input.options : [];
@@ -179,19 +190,45 @@ function QuestionCard({ part, pending, answer, canRespond, onRespond }) {
         <p className="text-sm font-medium">Responded: {answer}</p>
       ) : options.length ? (
         <div className="flex flex-wrap gap-1.5">
-          {options.map((opt) => (
-            <Button
-              key={opt.id ?? opt.label}
-              size="sm"
-              type="button"
-              disabled={!pending || !canRespond}
-              variant={variantFor(opt.style)}
-              onClick={() => onRespond?.(opt.label)}
-              className="h-auto max-w-full min-w-0 justify-start whitespace-normal py-1.5 text-left leading-snug"
-            >
-              {opt.label}
-            </Button>
-          ))}
+          {options.map((opt) =>
+            isUploadOption(opt) ? (
+              <Button
+                key={opt.id ?? opt.label}
+                size="sm"
+                type="button"
+                disabled={!pending || !canRespond}
+                variant={variantFor(opt.style ?? "primary")}
+                onClick={() => fileRef.current?.click()}
+                className="h-auto max-w-full min-w-0 justify-start whitespace-normal py-1.5 text-left leading-snug"
+              >
+                <Paperclip size={13} /> {opt.label}
+              </Button>
+            ) : (
+              <Button
+                key={opt.id ?? opt.label}
+                size="sm"
+                type="button"
+                disabled={!pending || !canRespond}
+                variant={variantFor(opt.style)}
+                onClick={() => onRespond?.(opt.label)}
+                className="h-auto max-w-full min-w-0 justify-start whitespace-normal py-1.5 text-left leading-snug"
+              >
+                {opt.label}
+              </Button>
+            ),
+          )}
+          <input
+            ref={fileRef}
+            type="file"
+            accept="image/*"
+            multiple
+            className="hidden"
+            onChange={(e) => {
+              const files = Array.from(e.target.files || []);
+              e.target.value = "";
+              if (files.length) onRespondFiles?.(files);
+            }}
+          />
         </div>
       ) : (
         <p className="text-xs text-muted-foreground">Type your answer below to continue.</p>
@@ -221,7 +258,7 @@ function FilePart({ part }) {
   );
 }
 
-function MessagePart({ part, qa, canRespond, onRespond }) {
+function MessagePart({ part, qa, canRespond, onRespond, onRespondFiles }) {
   switch (part.type) {
     case "text":
       return part.text ? (
@@ -242,6 +279,7 @@ function MessagePart({ part, qa, canRespond, onRespond }) {
           answer={qa?.answered.get(part.toolCallId)}
           canRespond={canRespond}
           onRespond={onRespond}
+          onRespondFiles={onRespondFiles}
         />
       ) : (
         <ToolChip part={part} />
@@ -311,7 +349,7 @@ function SentAttachments({ atts }) {
   );
 }
 
-function AgentMessage({ message, atts, qa, canRespond, onRespond }) {
+function AgentMessage({ message, atts, qa, canRespond, onRespond, onRespondFiles }) {
   const isUser = message.role === "user";
   if (isUser) {
     const text = userMessageText(message);
@@ -335,6 +373,7 @@ function AgentMessage({ message, atts, qa, canRespond, onRespond }) {
           qa={qa}
           canRespond={canRespond}
           onRespond={onRespond}
+          onRespondFiles={onRespondFiles}
         />
       ))}
     </div>
@@ -897,6 +936,57 @@ export default function AgentChat() {
     await agent.send({ message: label });
   };
 
+  // Answer a pending `ask_question` card with IMAGES: the card's upload option
+  // ("I'll attach a reference image") opens a file picker, and the picked files
+  // are sent immediately as a "here is the reference — continue" message. Same
+  // pipeline as `submit`: R2 upload for the durable thumbnail + the absolute-URL
+  // block (Higgsfield-fetchable via media_import_url), base64 `images` so the
+  // model can see them.
+  const onRespondFiles = async (files) => {
+    const imgs = (files || []).filter((f) => f.type.startsWith("image/"));
+    if (isBusy || !imgs.length) return;
+    setAtBottom(true);
+    const sent = [];
+    const images = [];
+    for (const f of imgs) {
+      let url = null;
+      try {
+        const resp = await fetch(UPLOAD_ENDPOINT, {
+          method: "POST",
+          headers: {
+            "content-type": f.type || "application/octet-stream",
+            "x-filename": encodeURIComponent(f.name),
+          },
+          body: f,
+        });
+        const data = await resp.json().catch(() => ({}));
+        if (resp.ok) url = data.url;
+      } catch {
+        // Thumbnail/URL upload failed — still send the base64 so the model sees it.
+      }
+      sent.push({ url, name: f.name, contentType: f.type || "image/png" });
+      images.push({
+        type: "image",
+        data: await fileToBase64(f),
+        mimeType: f.type || "image/png",
+      });
+    }
+    const refUrls = sent
+      .map((a) => a.url)
+      .filter(Boolean)
+      .map((u) => (/^https?:\/\//.test(u) ? u : new URL(u, window.location.origin).href));
+    const plural = imgs.length > 1 ? "s" : "";
+    const body = refUrls.length
+      ? `Here is the reference image${plural} — use ${plural ? "them" : "it"} and continue.\n\n` +
+        `Attached reference image${plural} (absolute URL${plural}, usable directly as a ` +
+        `Higgsfield generation reference via media_import_url):\n` +
+        refUrls.map((u) => `- ${u}`).join("\n")
+      : `Here is the reference image${plural} — use ${plural ? "them" : "it"} and continue.`;
+    const withUrl = sent.filter((a) => a.url);
+    if (withUrl.length) pendingAttsRef.current.push({ text: body, atts: withUrl });
+    await agent.send({ message: body, images });
+  };
+
   return (
     <aside className="flex h-full w-[495px] shrink-0 flex-col border-l bg-card">
       <div className="relative min-h-0 flex-1">
@@ -948,6 +1038,7 @@ export default function AgentChat() {
                 qa={qa}
                 canRespond={!isBusy}
                 onRespond={onRespond}
+                onRespondFiles={onRespondFiles}
               />
             ))
           )}

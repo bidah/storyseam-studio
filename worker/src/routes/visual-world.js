@@ -73,13 +73,14 @@ const SEED_SHEET_PROMPTS = {
     "natural color palette, lifted shadows and natural color tones. There are no " +
     "division lines, text labels or graphic overlays present",
   location:
-    "Create a contact sheet for this location. The contact sheet should contain " +
-    "one establishing wide shot of the place, plus two or three closer key-angle " +
-    "shots (entrance, interior or landmark detail). Make sure the location is the " +
-    "exact same in all shots — consistent architecture, palette and lighting. " +
-    "Even lighting, low contrast, natural color palette, lifted shadows and " +
-    "natural color tones. No characters. There are no division lines, text " +
-    "labels or graphic overlays present",
+    "Create ONE single full-frame image of this location — a clean establishing " +
+    "wide shot usable as a background plate for animation shots. Exactly one " +
+    "continuous image: never a collage, grid, contact sheet, split frame, or " +
+    "multi-panel layout. No characters or people. Frame it like a film " +
+    "establishing shot with clear room to stage action in the foreground. Even " +
+    "lighting, low contrast, natural color palette, lifted shadows and natural " +
+    "color tones. There are no division lines, text labels or graphic overlays " +
+    "present",
 };
 
 function normalizeSheetPrompts(s) {
@@ -119,14 +120,16 @@ function normalizePromptRevision(r) {
 }
 
 function pushPromptRevision(v) {
-  const last = v.promptRevisions[v.promptRevisions.length - 1];
+  // Older stored visual worlds predate promptRevisions — treat missing as empty.
+  const revs = Array.isArray(v.promptRevisions) ? v.promptRevisions : [];
+  const last = revs[revs.length - 1];
   const revision = {
     rev: (last?.rev || 0) + 1,
     ts: new Date().toISOString(),
     prompts: structuredClone(v.prompts),
     sheetPrompts: { ...v.sheetPrompts },
   };
-  v.promptRevisions = [...v.promptRevisions, revision].slice(-PROMPT_REVISION_CAP);
+  v.promptRevisions = [...revs, revision].slice(-PROMPT_REVISION_CAP);
   return revision;
 }
 

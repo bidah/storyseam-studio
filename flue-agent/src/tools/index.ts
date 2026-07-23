@@ -12,6 +12,7 @@ import { addWorldCharacter } from "./add_world_character.js";
 import { addWorldLocation } from "./add_world_location.js";
 import { getVisualWorld } from "./get_visual_world.js";
 import { attachVisualGeneration } from "./attach_visual_generation.js";
+import { saveGenerationToLibrary } from "./save_generation_to_library.js";
 import { saveVisualPrompt } from "./save_visual_prompt.js";
 import { getScript } from "./get_script.js";
 import { appendScript } from "./append_script.js";
@@ -78,6 +79,7 @@ export function createTools(api: Api): ToolDefinition[] {
     addWorldLocation(api),
     getVisualWorld(api),
     attachVisualGeneration(api),
+    saveGenerationToLibrary(api),
     saveVisualPrompt(api),
     getScript(api),
     appendScript(api),
