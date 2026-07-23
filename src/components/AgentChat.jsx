@@ -167,17 +167,16 @@ function ToolChip({ part }) {
 // (`answer`). Clicking an option sends its `label` as the next message; a typed
 // reply in the composer works too (it's just the next user message).
 // An option that asks the user to supply an image (the sheet-generation skill's
-// "I'll attach a reference image" choice) is rendered as an UPLOAD button: it
-// opens a file picker instead of just echoing its label, and the picked images
-// are auto-sent as a "here is the reference — continue" message (see
-// `onRespondFiles` in the chat component).
+// "I'll attach a reference image" choice) is rendered as a PICK button: it opens
+// the app's standard MediaPicker modal (asset gallery, Visual World generations,
+// or a PC upload) and the picked images are auto-sent as a "here is the
+// reference — continue" reply (see `respondWithPicked` in the chat component).
 function isUploadOption(opt) {
   if (opt?.id === "upload") return true;
   return /\b(upload|attach)\b/i.test(opt?.label || "") && /\b(image|reference|ref)\b/i.test(opt?.label || "");
 }
 
-function QuestionCard({ part, pending, answer, canRespond, onRespond, onRespondFiles }) {
-  const fileRef = useRef(null);
+function QuestionCard({ part, pending, answer, canRespond, onRespond, onRequestReference }) {
   const input = part.input || {};
   const question = typeof input.question === "string" ? input.question : "";
   const options = Array.isArray(input.options) ? input.options : [];
@@ -198,7 +197,7 @@ function QuestionCard({ part, pending, answer, canRespond, onRespond, onRespondF
                 type="button"
                 disabled={!pending || !canRespond}
                 variant={variantFor(opt.style ?? "primary")}
-                onClick={() => fileRef.current?.click()}
+                onClick={() => onRequestReference?.()}
                 className="h-auto max-w-full min-w-0 justify-start whitespace-normal py-1.5 text-left leading-snug"
               >
                 <Paperclip size={13} /> {opt.label}
@@ -217,18 +216,6 @@ function QuestionCard({ part, pending, answer, canRespond, onRespond, onRespondF
               </Button>
             ),
           )}
-          <input
-            ref={fileRef}
-            type="file"
-            accept="image/*"
-            multiple
-            className="hidden"
-            onChange={(e) => {
-              const files = Array.from(e.target.files || []);
-              e.target.value = "";
-              if (files.length) onRespondFiles?.(files);
-            }}
-          />
         </div>
       ) : (
         <p className="text-xs text-muted-foreground">Type your answer below to continue.</p>
@@ -258,7 +245,7 @@ function FilePart({ part }) {
   );
 }
 
-function MessagePart({ part, qa, canRespond, onRespond, onRespondFiles }) {
+function MessagePart({ part, qa, canRespond, onRespond, onRequestReference }) {
   switch (part.type) {
     case "text":
       return part.text ? (
@@ -279,7 +266,7 @@ function MessagePart({ part, qa, canRespond, onRespond, onRespondFiles }) {
           answer={qa?.answered.get(part.toolCallId)}
           canRespond={canRespond}
           onRespond={onRespond}
-          onRespondFiles={onRespondFiles}
+          onRequestReference={onRequestReference}
         />
       ) : (
         <ToolChip part={part} />
@@ -349,7 +336,7 @@ function SentAttachments({ atts }) {
   );
 }
 
-function AgentMessage({ message, atts, qa, canRespond, onRespond, onRespondFiles }) {
+function AgentMessage({ message, atts, qa, canRespond, onRespond, onRequestReference }) {
   const isUser = message.role === "user";
   if (isUser) {
     const text = userMessageText(message);
@@ -373,7 +360,7 @@ function AgentMessage({ message, atts, qa, canRespond, onRespond, onRespondFiles
           qa={qa}
           canRespond={canRespond}
           onRespond={onRespond}
-          onRespondFiles={onRespondFiles}
+          onRequestReference={onRequestReference}
         />
       ))}
     </div>
@@ -600,6 +587,10 @@ export default function AgentChat() {
   const scrollRef = useRef(null);
   const taRef = useRef(null);
   const [pickerOpen, setPickerOpen] = useState(false);
+  // What the MediaPicker feeds when it closes: the composer's attachment strip
+  // ("composer", via the paperclip) or an auto-sent reply to the pending
+  // ask_question card ("question", via the card's upload/attach option).
+  const [pickerFor, setPickerFor] = useState("composer");
   // Click-to-zoom lightbox for any image in the transcript — sent reference
   // thumbnails, `file` parts, and images the agent renders inline via markdown.
   // A delegated click handler on the scroll container (below) catches them all.
@@ -936,55 +927,75 @@ export default function AgentChat() {
     await agent.send({ message: label });
   };
 
-  // Answer a pending `ask_question` card with IMAGES: the card's upload option
-  // ("I'll attach a reference image") opens a file picker, and the picked files
-  // are sent immediately as a "here is the reference — continue" message. Same
-  // pipeline as `submit`: R2 upload for the durable thumbnail + the absolute-URL
-  // block (Higgsfield-fetchable via media_import_url), base64 `images` so the
-  // model can see them.
-  const onRespondFiles = async (files) => {
-    const imgs = (files || []).filter((f) => f.type.startsWith("image/"));
-    if (isBusy || !imgs.length) return;
+  // Answer a pending `ask_question` card with IMAGES: the card's upload/attach
+  // option opens the standard MediaPicker (asset gallery, Visual World
+  // generations, or a PC upload — the same modal the composer paperclip uses),
+  // and the picked items are sent immediately as a "here is the reference —
+  // continue" reply. Same shape as `submit`: durable absolute URLs in the text
+  // (Higgsfield-fetchable via media_import_url) + base64 `images` so the model
+  // can see them. MediaPicker items: uploads carry a raw `file` + durable url;
+  // gallery/generation picks carry `refUrl` (absolute) and an in-app `url`.
+  const respondWithPicked = async (items) => {
+    if (isBusy || !items?.length) return;
     setAtBottom(true);
-    const sent = [];
-    const images = [];
-    for (const f of imgs) {
-      let url = null;
+    const entries = [];
+    for (const it of items) {
       try {
-        const resp = await fetch(UPLOAD_ENDPOINT, {
-          method: "POST",
-          headers: {
-            "content-type": f.type || "application/octet-stream",
-            "x-filename": encodeURIComponent(f.name),
-          },
-          body: f,
+        let file = it.file;
+        if (!file) {
+          // Library / Visual-world pick: fetch in-app (same-origin, authed) so
+          // we can base64 the bytes for flue.
+          const res = await fetch(it.url);
+          if (!res.ok) throw new Error(`Fetch failed (${res.status})`);
+          const blob = await res.blob();
+          file = new File([blob], it.name || "image", { type: blob.type || "image/png" });
+        }
+        entries.push({
+          file,
+          url: it.refUrl || it.url || null,
+          name: it.name || "image",
+          contentType: file.type || "image/png",
         });
-        const data = await resp.json().catch(() => ({}));
-        if (resp.ok) url = data.url;
       } catch {
-        // Thumbnail/URL upload failed — still send the base64 so the model sees it.
+        // Skip an item whose bytes can't be loaded — better a partial reply
+        // than a stuck question card.
       }
-      sent.push({ url, name: f.name, contentType: f.type || "image/png" });
-      images.push({
-        type: "image",
-        data: await fileToBase64(f),
-        mimeType: f.type || "image/png",
-      });
     }
-    const refUrls = sent
+    if (!entries.length) return;
+    const refUrls = entries
       .map((a) => a.url)
       .filter(Boolean)
       .map((u) => (/^https?:\/\//.test(u) ? u : new URL(u, window.location.origin).href));
-    const plural = imgs.length > 1 ? "s" : "";
+    const plural = entries.length > 1 ? "s" : "";
     const body = refUrls.length
       ? `Here is the reference image${plural} — use ${plural ? "them" : "it"} and continue.\n\n` +
         `Attached reference image${plural} (absolute URL${plural}, usable directly as a ` +
         `Higgsfield generation reference via media_import_url):\n` +
         refUrls.map((u) => `- ${u}`).join("\n")
       : `Here is the reference image${plural} — use ${plural ? "them" : "it"} and continue.`;
-    const withUrl = sent.filter((a) => a.url);
+    const withUrl = entries
+      .filter((a) => a.url)
+      .map((a) => ({
+        url: /^https?:\/\//.test(a.url) ? a.url : new URL(a.url, window.location.origin).href,
+        name: a.name,
+        contentType: a.contentType,
+      }));
     if (withUrl.length) pendingAttsRef.current.push({ text: body, atts: withUrl });
+    const images = await Promise.all(
+      entries.map(async (a) => ({
+        type: "image",
+        data: await fileToBase64(a.file),
+        mimeType: a.contentType,
+      })),
+    );
     await agent.send({ message: body, images });
+  };
+
+  // The question card's upload/attach option → open the shared MediaPicker in
+  // "question" mode (picked items auto-send instead of landing in the composer).
+  const onRequestReference = () => {
+    setPickerFor("question");
+    setPickerOpen(true);
   };
 
   return (
@@ -1038,7 +1049,7 @@ export default function AgentChat() {
                 qa={qa}
                 canRespond={!isBusy}
                 onRespond={onRespond}
-                onRespondFiles={onRespondFiles}
+                onRequestReference={onRequestReference}
               />
             ))
           )}
@@ -1178,7 +1189,7 @@ export default function AgentChat() {
             <Button
               size="icon"
               variant="ghost"
-              onClick={() => setPickerOpen(true)}
+              onClick={() => { setPickerFor("composer"); setPickerOpen(true); }}
               aria-label="Attach image"
               title="Attach a reference — gallery, Visual world, or your computer"
             >
@@ -1238,8 +1249,8 @@ export default function AgentChat() {
       <MediaPicker
         open={pickerOpen}
         onOpenChange={setPickerOpen}
-        onAdd={addPickedItems}
-        title="Attach reference images"
+        onAdd={pickerFor === "question" ? respondWithPicked : addPickedItems}
+        title={pickerFor === "question" ? "Pick the reference image" : "Attach reference images"}
       />
 
       <Dialog open={!!lightbox} onOpenChange={(o) => !o && setLightbox(null)}>
