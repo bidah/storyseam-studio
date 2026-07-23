@@ -70,11 +70,12 @@ export default function SettingsSheet() {
   const { key: atlasKey, setKey: setAtlasKey, clearKey: clearAtlasKey } = useAtlasKeyStore();
   const { active, enabled, setActive, setEnabled } = useProvidersStore();
 
-  // Removing the LAST key re-triggers the mandatory /fal-key gate (tabs
-  // layout), so close this sheet first — the redirect happens underneath it.
+  // Removing the last render credential (no other key AND Higgsfield toggled
+  // off) re-triggers the /fal-key gate (tabs layout), so close this sheet
+  // first — the redirect happens underneath it.
   const removeKey = (clear: () => void, otherKey: string) => {
     clear();
-    if (!otherKey) router.dismissAll();
+    if (!otherKey && !enabled.higgsfield) router.dismissAll();
   };
 
   const signOut = async () => {

@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input';
 import { authClient, useSession } from '@/lib/auth-client';
 import { isPlausibleFalKey, useFalKeyStore } from '@/lib/fal-key';
 import { isPlausibleAtlasKey, useAtlasKeyStore } from '@/lib/atlas-key';
+import { useProvidersStore } from '@/lib/providers';
 
 // Mandatory render-key step after sign-in (RN port of the web ProviderKeyScreen
 // in src/components/Login.jsx; route kept at /fal-key from the fal-only era).
@@ -23,6 +24,7 @@ export default function ProviderKeyScreen() {
   const { data: session } = useSession();
   const setFalKey = useFalKeyStore((s) => s.setKey);
   const setAtlasKey = useAtlasKeyStore((s) => s.setKey);
+  const setActiveProvider = useProvidersStore((s) => s.setActive);
   const queryClient = useQueryClient();
   const [pick, setPick] = useState<(typeof KEY_PROVIDERS)[number]>(KEY_PROVIDERS[0]);
   const [draft, setDraft] = useState('');
@@ -101,6 +103,21 @@ export default function ProviderKeyScreen() {
         >
           <Text className="text-[12px] text-muted-foreground underline">Create a key on {pick.label}</Text>
           <ExternalLink size={12} color="#71717a" />
+        </Pressable>
+
+        {/* This screen only shows when Higgsfield was toggled off — offer the
+            way back (re-enabling it makes the sign-in the render credential). */}
+        <Pressable
+          className="mt-3"
+          onPress={() => {
+            setActiveProvider('higgsfield');
+            router.replace('/chat');
+          }}
+          accessibilityRole="button"
+        >
+          <Text className="text-[12px] text-muted-foreground underline">
+            Or re-enable Higgsfield and render with your sign-in
+          </Text>
         </Pressable>
 
         <View className="mt-8 flex-row items-center gap-2">

@@ -3,12 +3,13 @@
 // internal user + links the Higgsfield account/token. Gated on the Better Auth
 // session; the signed-in user owns their own projects.
 //
-// After the session exists a SECOND mandatory gate asks for a render API key
-// (BYOK) — the user's own fal.ai OR Atlas Cloud key: it lives only in this
-// browser's localStorage (lib/falKey.js / lib/atlasKey.js) and rides
-// per-request to the workers — never stored server-side. The app shell doesn't
-// render until both gates pass; keys and provider toggles stay editable on the
-// Settings page (Providers panel).
+// After the session exists a SECOND gate may ask for a render API key (BYOK) —
+// the user's own fal.ai OR Atlas Cloud key: it lives only in this browser's
+// localStorage (lib/falKey.js / lib/atlasKey.js) and rides per-request to the
+// workers — never stored server-side. The Higgsfield sign-in itself is a full
+// render credential, so this gate only blocks when Higgsfield is toggled OFF
+// in the provider prefs AND no BYOK key exists; keys and provider toggles stay
+// editable on the Settings page (Providers panel).
 import { useState } from "react";
 import {
   Clapperboard, Bot, PenLine, Workflow, Film, ListVideo, AudioLines, Loader2, ArrowRight,
@@ -17,6 +18,7 @@ import {
 import { useSession, authClient, signOut } from "@/lib/auth-client";
 import { useFalKey, setFalKey } from "@/lib/falKey";
 import { useAtlasKey, setAtlasKey } from "@/lib/atlasKey";
+import { useProviderPrefs, setActiveProvider } from "@/lib/providers";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
@@ -186,6 +188,16 @@ function ProviderKeyScreen({ userEmail }) {
             Create a key on {pick.label} <ExternalLink size={12} />
           </a>
 
+          {/* This screen only shows when Higgsfield was toggled off — offer the
+              way back (re-enabling it makes the sign-in the render credential). */}
+          <button
+            type="button"
+            onClick={() => setActiveProvider("higgsfield")}
+            className="mt-3 text-xs text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
+          >
+            Or re-enable Higgsfield and render with your sign-in
+          </button>
+
           <div className="mt-8 flex items-center gap-2 text-xs text-muted-foreground">
             {userEmail ? <span>Signed in as {userEmail}</span> : null}
             <button
@@ -206,8 +218,13 @@ export default function LoginGate({ children }) {
   const { data: session, isPending } = useSession();
   const falKey = useFalKey();
   const atlasKey = useAtlasKey();
+  const prefs = useProviderPrefs();
   if (isPending) return <Splash />;
   if (!session) return <Homepage />;
-  if (!falKey && !atlasKey) return <ProviderKeyScreen userEmail={session.user?.email} />;
+  // Signing in WITH Higgsfield already provides a render credential — only
+  // demand a BYOK key when Higgsfield is disabled and no key exists.
+  if (!prefs.enabled.higgsfield && !falKey && !atlasKey) {
+    return <ProviderKeyScreen userEmail={session.user?.email} />;
+  }
   return children;
 }

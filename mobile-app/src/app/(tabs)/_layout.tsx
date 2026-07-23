@@ -6,6 +6,7 @@ import { useSession } from '@/lib/auth-client';
 import { AgentProvider } from '@/lib/agent/provider';
 import { useFalKeyStore } from '@/lib/fal-key';
 import { useAtlasKeyStore } from '@/lib/atlas-key';
+import { useProvidersStore } from '@/lib/providers';
 import { useProjectStore } from '@/lib/project';
 import { useProjects } from '@/lib/queries';
 import { useDataEvents } from '@/lib/sse';
@@ -47,8 +48,9 @@ export default function TabsLayout() {
   const { data: session, isPending } = useSession();
   const { key: falKey, hydrated: falHydrated } = useFalKeyStore();
   const { key: atlasKey, hydrated: atlasHydrated } = useAtlasKeyStore();
+  const { enabled, hydrated: providersHydrated } = useProvidersStore();
 
-  if (isPending || !falHydrated || !atlasHydrated) {
+  if (isPending || !falHydrated || !atlasHydrated || !providersHydrated) {
     return (
       <View className="flex-1 items-center justify-center bg-background">
         <ActivityIndicator />
@@ -56,11 +58,11 @@ export default function TabsLayout() {
     );
   }
   if (!session) return <Redirect href="/sign-in" />;
-  // Mandatory BYOK step (mirrors the web LoginGate): renders bill the user's
-  // own fal / Atlas Cloud account, so the app doesn't open without ONE of the
-  // keys. Waits for SecureStore hydration above so a stored key never flashes
-  // this redirect.
-  if (!falKey && !atlasKey) return <Redirect href="/fal-key" />;
+  // BYOK step (mirrors the web LoginGate): the Higgsfield sign-in itself is a
+  // full render credential, so a key is only demanded when Higgsfield is
+  // toggled OFF in the provider prefs and no fal/Atlas key exists. Waits for
+  // SecureStore hydration above so stored state never flashes this redirect.
+  if (!enabled.higgsfield && !falKey && !atlasKey) return <Redirect href="/fal-key" />;
 
   return (
     <ProjectGate>
