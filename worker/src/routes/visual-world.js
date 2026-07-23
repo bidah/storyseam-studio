@@ -60,7 +60,7 @@ const SEED_PROMPTS = [
 ];
 
 // Sheet prompts: layered on TOP of the style preset when a generation is tagged
-// as a character sheet or a location sheet (composer checkboxes / agent skill).
+// as a character, location, or prop sheet (composer checkboxes / agent skill).
 // Editable on the Settings page (PUT /api/visual-world/sheet-prompts).
 const SEED_SHEET_PROMPTS = {
   character:
@@ -81,6 +81,16 @@ const SEED_SHEET_PROMPTS = {
     "lighting, low contrast, natural color palette, lifted shadows and natural " +
     "color tones. There are no division lines, text labels or graphic overlays " +
     "present",
+  prop:
+    "Create a prop reference sheet for this object. The sheet should contain a " +
+    "front view, a three-quarter view, and a side or back view of the exact " +
+    "same prop, plus one close-up of its most distinctive detail. Show the prop " +
+    "on its own — no characters, no hands holding it, nothing else in frame — " +
+    "resting in a neutral and minimal environment with a simple ground plane. " +
+    "The design, proportions, scale, materials, colors and wear must be " +
+    "identical in every view. Even lighting, low contrast, natural color " +
+    "palette, lifted shadows and natural color tones. There are no division " +
+    "lines, text labels or graphic overlays present",
 };
 
 function normalizeSheetPrompts(s) {
@@ -88,6 +98,7 @@ function normalizeSheetPrompts(s) {
   return {
     character: str(o.character) || SEED_SHEET_PROMPTS.character,
     location: str(o.location) || SEED_SHEET_PROMPTS.location,
+    prop: str(o.prop) || SEED_SHEET_PROMPTS.prop,
   };
 }
 
@@ -172,10 +183,10 @@ function normalizeGeneration(g, i = 0) {
     model: str(o.model),
     aspectRatio: str(o.aspectRatio) || "16:9",
     presetId: str(o.presetId),
-    // "" (plain image) | "character" | "location" — this generation was made as a
-    // character/location design sheet (the sheet prompt was layered into the
-    // assembled prompt). Provenance metadata for filtering + linking to rosters.
-    sheetType: ["character", "location"].includes(o.sheetType) ? o.sheetType : "",
+    // "" (plain image) | "character" | "location" | "prop" — this generation was
+    // made as a design sheet (the sheet prompt was layered into the assembled
+    // prompt). Provenance metadata for filtering + linking to rosters.
+    sheetType: ["character", "location", "prop"].includes(o.sheetType) ? o.sheetType : "",
     jobId: str(o.jobId),
     source: str(o.source),
     file: str(o.file),
@@ -857,7 +868,7 @@ export function registerVisualWorld(app) {
     const count = clampCount(body.count);
     const aspectRatio = str(body.aspectRatio) || "16:9";
     const presetId = str(body.presetId);
-    const sheetType = ["character", "location"].includes(body.sheetType) ? body.sheetType : "";
+    const sheetType = ["character", "location", "prop"].includes(body.sheetType) ? body.sheetType : "";
     const inputRefs = Array.isArray(body.refs) ? body.refs.map(normalizeRef) : [];
     // A location sheet formalizes an EXISTING place — style prompt + reference
     // image, always. Without a reference it would just invent a new location.
@@ -877,7 +888,7 @@ export function registerVisualWorld(app) {
       if (!model) return c.json({ error: "Could not resolve an image model" }, 502);
 
       // Assemble the final prompt: preset style prefix (if chosen) + the sheet
-      // prompt (when tagged as a character/location sheet) + the scene.
+      // prompt (when tagged as a character/location/prop sheet) + the scene.
       const vw = await readVW(c.env, pid);
       const preset = presetId ? vw.prompts.find((p) => p.id === presetId) : null;
       const sheetPrompt = sheetType ? vw.sheetPrompts[sheetType] : "";
@@ -1200,6 +1211,7 @@ export function registerVisualWorld(app) {
         const next = { ...v.sheetPrompts };
         if (typeof body.sheetPrompts.character === "string") next.character = body.sheetPrompts.character;
         if (typeof body.sheetPrompts.location === "string") next.location = body.sheetPrompts.location;
+        if (typeof body.sheetPrompts.prop === "string") next.prop = body.sheetPrompts.prop;
         v.sheetPrompts = normalizeSheetPrompts(next);
       }
       revision = pushPromptRevision(v);
@@ -1225,8 +1237,8 @@ export function registerVisualWorld(app) {
     return c.json({ ok: true, settings: fresh.settings });
   });
 
-  // Merge-patch the character/location sheet prompts (Settings page). Sending an
-  // empty string resets that prompt to its seed default (normalizeSheetPrompts).
+  // Merge-patch the character/location/prop sheet prompts (Settings page). Sending
+  // an empty string resets that prompt to its seed default (normalizeSheetPrompts).
   app.put("/api/visual-world/sheet-prompts", async (c) => {
     const pid = c.get("projectId");
     let patch;
@@ -1236,6 +1248,7 @@ export function registerVisualWorld(app) {
       const next = { ...v.sheetPrompts };
       if (typeof patch.character === "string") next.character = patch.character;
       if (typeof patch.location === "string") next.location = patch.location;
+      if (typeof patch.prop === "string") next.prop = patch.prop;
       v.sheetPrompts = normalizeSheetPrompts(next);
       revision = pushPromptRevision(v);
     });

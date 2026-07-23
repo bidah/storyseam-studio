@@ -8,7 +8,7 @@
 // "visual-world" swr cache key and the canonical invalidate+revalidate pair.
 import { useEffect, useState } from "react";
 import { useLoaderData, useRevalidator } from "react-router";
-import { Loader2, Save, Plus, Trash2, IdCard, MapPin, Palette, Check, SlidersHorizontal } from "lucide-react";
+import { Loader2, Save, Plus, Trash2, IdCard, MapPin, Package, Palette, Check, SlidersHorizontal } from "lucide-react";
 import { invalidateTabCache } from "@/lib/tabCache";
 import { swr, useRevalidateOnMount } from "@/lib/swr";
 import { Button } from "@/components/ui/button";
@@ -70,6 +70,7 @@ function SettingsPage() {
   const [sheets, setSheets] = useState({
     character: world.sheetPrompts?.character || "",
     location: world.sheetPrompts?.location || "",
+    prop: world.sheetPrompts?.prop || "",
   });
   // Generation defaults the composer AND the agent use (model "" = Nano Banana Pro).
   const [gen, setGen] = useState({
@@ -122,7 +123,7 @@ function SettingsPage() {
         <h2 className="text-xl font-semibold tracking-tight">Settings</h2>
         <p className="text-sm text-muted-foreground">
           Project-wide prompts for image generation — the house style, and the sheet
-          prompts layered on top when a generation is tagged as a character or location sheet.
+          prompts layered on top when a generation is tagged as a character, location, or prop sheet.
         </p>
       </div>
 
@@ -215,6 +216,21 @@ function SettingsPage() {
           rows={5}
           className="text-sm"
           placeholder="Establishing wide view plus key-angle vignettes, no characters…"
+        />
+      </Panel>
+
+      <Panel title={<span className="flex items-center gap-2"><Package size={15} className="text-primary" /> Prop sheet prompt</span>}>
+        <p className="mb-2 text-sm text-muted-foreground">
+          Added on top of the style prompt when a generation is tagged as a <b>prop sheet</b> —
+          the objects characters carry and handle, rendered as multi-view reference art the
+          video models can lock onto.
+        </p>
+        <Textarea
+          value={sheets.prop}
+          onChange={(e) => setSheets((s) => ({ ...s, prop: e.target.value }))}
+          rows={5}
+          className="text-sm"
+          placeholder="Front, three-quarter and side views of the same object, no hands, neutral backdrop…"
         />
         <div className="mt-3 flex justify-end">
           <SaveButton onSave={saveSheets}>Save sheet prompts</SaveButton>

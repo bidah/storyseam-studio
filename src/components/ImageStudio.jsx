@@ -15,7 +15,7 @@ import { useEffect, useRef, useState } from "react";
 import {
   Wand2, Loader2, Sparkles, ImagePlus, X, Plus, Trash2, RefreshCw,
   Copy, Library, Pencil, Layers, AlertCircle, Check, ChevronDown, ChevronUp, Info,
-  IdCard, MapPin,
+  IdCard, MapPin, Package,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useShell } from "@/lib/shellContext";
@@ -41,11 +41,12 @@ const NO_PRESET = "__none__";
 const DEFAULT_MODEL = "__default__";
 
 // Display meta for the sheet tag ("" = plain image). The tag layers the
-// project's character/location sheet prompt into the generation server-side
-// and is saved on the record as `sheetType` provenance.
+// project's character/location/prop sheet prompt into the generation
+// server-side and is saved on the record as `sheetType` provenance.
 const SHEET_TYPES = {
-  character: { label: "Character sheet", icon: IdCard },
-  location: { label: "Location sheet", icon: MapPin },
+  character: { label: "Character sheet", short: "Character", icon: IdCard },
+  location: { label: "Location sheet", short: "Location", icon: MapPin },
+  prop: { label: "Prop sheet", short: "Prop", icon: Package },
 };
 
 /* ---------------------------------------------------------------- *
@@ -64,13 +65,17 @@ const fmtRevDate = (ts) => {
 // Every save is confirmed and stored server-side as a numbered, dated revision.
 function PromptLibraryDialog({ open, onOpenChange, prompts, sheetPrompts, revisions = [], onSave }) {
   const [list, setList] = useState(prompts);
-  const [sheets, setSheets] = useState({ character: "", location: "" });
+  const [sheets, setSheets] = useState({ character: "", location: "", prop: "" });
   const [saving, setSaving] = useState(false);
   const [confirming, setConfirming] = useState(false);
   useEffect(() => {
     if (!open) return;
     setList(prompts);
-    setSheets({ character: sheetPrompts?.character || "", location: sheetPrompts?.location || "" });
+    setSheets({
+      character: sheetPrompts?.character || "",
+      location: sheetPrompts?.location || "",
+      prop: sheetPrompts?.prop || "",
+    });
     setConfirming(false);
   }, [open, prompts, sheetPrompts]);
 
@@ -131,7 +136,7 @@ function PromptLibraryDialog({ open, onOpenChange, prompts, sheetPrompts, revisi
         <div className="space-y-1 pt-2">
           <h3 className="flex items-center gap-2 text-sm font-semibold"><IdCard size={14} className="text-primary" /> Sheet prompts</h3>
           <p className="text-sm text-muted-foreground">
-            Layered on top of the style when a generation is tagged as a character or location sheet.
+            Layered on top of the style when a generation is tagged as a character, location, or prop sheet.
             Also editable in Settings.
           </p>
         </div>
@@ -143,6 +148,10 @@ function PromptLibraryDialog({ open, onOpenChange, prompts, sheetPrompts, revisi
           <div>
             <Eyebrow className="normal-case tracking-normal text-foreground/70">Location sheet prompt</Eyebrow>
             <Textarea value={sheets.location} onChange={(e) => setSheets((s) => ({ ...s, location: e.target.value }))} rows={4} className="text-sm" placeholder="Contact-sheet instructions for locations…" />
+          </div>
+          <div>
+            <Eyebrow className="normal-case tracking-normal text-foreground/70">Prop sheet prompt</Eyebrow>
+            <Textarea value={sheets.prop} onChange={(e) => setSheets((s) => ({ ...s, prop: e.target.value }))} rows={4} className="text-sm" placeholder="Multi-view instructions for props — no hands, consistent scale…" />
           </div>
         </div>
 
@@ -200,7 +209,7 @@ export function GenerationCard({ gen, onOpen }) {
       {gen.sheetType && SHEET_TYPES[gen.sheetType] && gen.status === "ready" && (
         <Badge variant="info" className="pointer-events-none absolute left-1.5 top-1.5 z-10">
           {(() => { const TagIcon = SHEET_TYPES[gen.sheetType].icon; return <TagIcon size={11} />; })()}
-          {gen.sheetType === "character" ? "Character" : "Location"}
+          {SHEET_TYPES[gen.sheetType].short}
         </Badge>
       )}
       {gen.status === "ready" && gen.url ? (
@@ -421,8 +430,8 @@ export default function ImageStudio({
   countOptions = COUNTS,
   aspects = ASPECTS,
   refPickerSources, // MediaPicker `sources` (undefined = its default set)
-  // Show the character/location sheet checkboxes in the composer (surfaces whose
-  // backend understands `sheetType` — currently the Visual world).
+  // Show the character/location/prop sheet checkboxes in the composer (surfaces
+  // whose backend understands `sheetType` — currently the Visual world).
   sheetTagging = false,
   // Backend actions (each optional; a missing one hides its affordance)
   onGenerate,          // async ({prompt, model, count, aspectRatio, presetId, sheetType, refs, mode, base})
@@ -444,7 +453,7 @@ export default function ImageStudio({
   const [count, setCount] = useState(String(settings.count || 1));
   const [aspectRatio, setAspectRatio] = useState(settings.aspectRatio || "16:9");
   const [presetId, setPresetId] = useState(settings.presetId ?? (prompts?.[0]?.id ?? ""));
-  // "" | "character" | "location" — tag the next generation as a design sheet
+  // "" | "character" | "location" | "prop" — tag the next generation as a design sheet
   // (mutually exclusive; the server layers the matching sheet prompt on top of
   // the style preset and stamps the metadata on the generation).
   const [sheetType, setSheetType] = useState("");
