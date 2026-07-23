@@ -34,6 +34,7 @@ import { trimVideo } from "./trim_video.js";
 // References
 import { selectReference } from "./select_reference.js";
 import { autoAssignRefs } from "./auto_assign_refs.js";
+import { rebuildEpisodePlan } from "./rebuild_episode_plan.js";
 import { selectVideo } from "./select_video.js";
 import { listAudioRefs } from "./list_audio_refs.js";
 import { selectAudioRef } from "./select_audio_ref.js";
@@ -102,6 +103,7 @@ export function createTools(api: Api): ToolDefinition[] {
     // References
     selectReference(api),
     autoAssignRefs(api),
+    rebuildEpisodePlan(api),
     selectVideo(api),
     listAudioRefs(api),
     selectAudioRef(api),

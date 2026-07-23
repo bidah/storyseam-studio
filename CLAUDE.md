@@ -8,6 +8,25 @@ chat agent (`flue-agent/`, its own Cloudflare Worker `shot-studio-flue`, proxied
 `/eve`) drives the pipeline via typed tools + render skills. See `README.md` for
 architecture and how to run it.
 
+## Feature parity — GUI AND agent, always
+
+Every feature must work **both** ways: through the GUI **and** through the flue
+agent, which must be able to run the whole pipeline by itself. A new `/api/...`
+capability therefore ships with three parts, and a feature is not done until all
+three exist:
+
+1. the worker route (`worker/src/routes/`),
+2. the GUI surface (`src/routes/`),
+3. the agent surface — a typed tool (`flue-agent/src/tools/` + registration in
+   `tools/index.ts`) and, when the flow has more than one step, a skill playbook
+   (`flue-agent/src/skills/<name>/SKILL.md` + registration in `src/skills.ts`)
+   that wires the tools together the same way the GUI does.
+
+When touching an existing feature, check the agent side didn't fall behind
+(e.g. a GUI button calling a route no tool exposes = a parity gap — close it).
+Skill descriptions carry the behavioral rules (the agent model leans on them),
+so put hard constraints in the SKILL.md `description:` too, not just the body.
+
 ## Deploying — ship BOTH workers
 
 A feature usually spans **both** Cloudflare Workers: the API/UI in `worker/` **and**

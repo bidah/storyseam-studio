@@ -17,6 +17,7 @@ import videoFromAudioVfx from "./skills/video-from-audio-vfx/SKILL.md" with { ty
 import worldCreation from "./skills/world-creation/SKILL.md" with { type: "skill" };
 import visualWorld from "./skills/visual-world/SKILL.md" with { type: "skill" };
 import sheetGeneration from "./skills/sheet-generation/SKILL.md" with { type: "skill" };
+import assignRefs from "./skills/assign-refs/SKILL.md" with { type: "skill" };
 
 export const skills = [
   worldCreation,
@@ -25,6 +26,7 @@ export const skills = [
   scriptWriting,
   shotList,
   generateStoryboard,
+  assignRefs,
   generateMultishot,
   continueVideo,
   videoFromAudioVfx,
