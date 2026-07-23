@@ -33,6 +33,10 @@ export default function ProviderKeyScreen() {
   const save = () => {
     if (!plausible) return;
     (pick.id === 'fal' ? setFalKey : setAtlasKey)(draft);
+    // Saving a key also SELECTS that provider — this screen only shows when
+    // the selected BYOK provider has no key, so pasting the other provider's
+    // key must switch the selection to unlock.
+    setActiveProvider(pick.id);
     router.replace('/chat');
   };
 
@@ -105,8 +109,8 @@ export default function ProviderKeyScreen() {
           <ExternalLink size={12} color="#71717a" />
         </Pressable>
 
-        {/* This screen only shows when Higgsfield was toggled off — offer the
-            way back (re-enabling it makes the sign-in the render credential). */}
+        {/* This screen only shows when the selected BYOK provider has no key —
+            offer the way back (Higgsfield's credential is the sign-in itself). */}
         <Pressable
           className="mt-3"
           onPress={() => {
@@ -116,7 +120,7 @@ export default function ProviderKeyScreen() {
           accessibilityRole="button"
         >
           <Text className="text-[12px] text-muted-foreground underline">
-            Or re-enable Higgsfield and render with your sign-in
+            Or switch to Higgsfield and render with your sign-in
           </Text>
         </Pressable>
 

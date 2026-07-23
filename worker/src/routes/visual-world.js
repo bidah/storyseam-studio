@@ -47,11 +47,12 @@ import {
 // The render providers for THIS request. BYOK keys (fal / Atlas Cloud) are
 // stamped by the browser from localStorage — never stored server-side — with
 // the operator's optional FAL_KEY / ATLAS_KEY env secrets as dev fallbacks.
-// The Settings page's provider toggles ride as `x-disabled-providers` (a
-// disabled provider is dead for this request even if an env fallback exists),
-// and the picked ACTIVE provider as `x-render-provider` (it wins the catalog
-// default). `token` is the per-user Higgsfield OAuth bearer, nulled when
-// Higgsfield is toggled off.
+// The Settings page's SELECTION (exactly one provider in use at a time) rides
+// as `x-render-provider` (the selected backend — its models are the catalog)
+// and `x-disabled-providers` (the non-selected ids — their models leave the
+// catalog for NEW work). Credentials are NOT suppressed by the selection:
+// /poll must keep checking in-flight jobs started while another provider was
+// selected, so keys and the Higgsfield token stay usable regardless.
 const PROVIDER_IDS = new Set(["higgsfield", "fal", "atlas"]);
 function reqProviders(c, token) {
   const disabled = new Set(
@@ -62,9 +63,10 @@ function reqProviders(c, token) {
   );
   const activeRaw = str(c.req.header("x-render-provider"));
   return {
-    token: disabled.has("higgsfield") ? null : token,
-    falKey: disabled.has("fal") ? "" : str(c.req.header("x-fal-key") || c.env.FAL_KEY || ""),
-    atlasKey: disabled.has("atlas") ? "" : str(c.req.header("x-atlas-key") || c.env.ATLAS_KEY || ""),
+    token,
+    falKey: str(c.req.header("x-fal-key") || c.env.FAL_KEY || ""),
+    atlasKey: str(c.req.header("x-atlas-key") || c.env.ATLAS_KEY || ""),
+    disabled,
     active: PROVIDER_IDS.has(activeRaw) && !disabled.has(activeRaw) ? activeRaw : "",
   };
 }
@@ -638,7 +640,9 @@ async function resolveVideoModels(env, userId, token) {
 // (⇒ null) so a BYOK-only setup still works. Non-auth errors rethrow only when
 // no other provider can cover for the missing catalog.
 async function resolveHfCatalog(env, userId, prov, kind) {
-  if (!prov.token) return null;
+  // Skip the MCP round-trip entirely when Higgsfield isn't the selection —
+  // its models wouldn't enter the catalog anyway.
+  if (!prov.token || prov.disabled.has("higgsfield")) return null;
   try {
     return await (kind === "video"
       ? resolveVideoModels(env, userId, prov.token)
@@ -649,20 +653,22 @@ async function resolveHfCatalog(env, userId, prov, kind) {
   }
 }
 
-// The merged, provider-tagged model catalog for one media kind. The ACTIVE
-// provider (Settings toggle, `x-render-provider`) wins the default; otherwise
-// the default stays Higgsfield's (Nano Banana Pro / Seedance) when available,
-// else the first curated fal / Atlas model.
+// The provider-tagged model catalog for one media kind. Only the SELECTED
+// provider's models are offered for new work (non-selected providers are in
+// prov.disabled); its default model is the catalog default. When no selection
+// header rode along (older clients), all credentialed providers merge and the
+// default falls back Higgsfield → fal → Atlas, as before.
 function mergeCatalog(prov, hf, kind) {
+  const has = (id) => !prov.disabled.has(id);
   const models = [
-    ...(hf?.models || []).map((m) => ({ ...m, provider: "higgsfield" })),
-    ...(prov.falKey ? falCatalog(kind) : []),
-    ...(prov.atlasKey ? atlasCatalog(kind) : []),
+    ...(has("higgsfield") ? (hf?.models || []).map((m) => ({ ...m, provider: "higgsfield" })) : []),
+    ...(has("fal") && prov.falKey ? falCatalog(kind) : []),
+    ...(has("atlas") && prov.atlasKey ? atlasCatalog(kind) : []),
   ];
   const defaults = {
-    higgsfield: hf?.defaultId || "",
-    fal: prov.falKey ? falCatalog(kind)[0]?.id || "" : "",
-    atlas: prov.atlasKey ? atlasCatalog(kind)[0]?.id || "" : "",
+    higgsfield: has("higgsfield") ? hf?.defaultId || "" : "",
+    fal: has("fal") && prov.falKey ? falCatalog(kind)[0]?.id || "" : "",
+    atlas: has("atlas") && prov.atlasKey ? atlasCatalog(kind)[0]?.id || "" : "",
   };
   const defaultId =
     (prov.active && defaults[prov.active]) ||

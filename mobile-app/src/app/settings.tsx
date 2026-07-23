@@ -68,14 +68,21 @@ export default function SettingsSheet() {
   const queryClient = useQueryClient();
   const { key: falKey, setKey: setFalKey, clearKey: clearFalKey } = useFalKeyStore();
   const { key: atlasKey, setKey: setAtlasKey, clearKey: clearAtlasKey } = useAtlasKeyStore();
-  const { active, enabled, setActive, setEnabled } = useProvidersStore();
+  const { active, setActive } = useProvidersStore();
 
-  // Removing the last render credential (no other key AND Higgsfield toggled
-  // off) re-triggers the /fal-key gate (tabs layout), so close this sheet
-  // first — the redirect happens underneath it.
-  const removeKey = (clear: () => void, otherKey: string) => {
+  // Removing the SELECTED provider's key re-triggers the /fal-key gate (tabs
+  // layout), so close this sheet first — the redirect happens underneath it.
+  const removeKey = (id: ProviderId, clear: () => void) => {
     clear();
-    if (!otherKey && !enabled.higgsfield) router.dismissAll();
+    if (active === id) router.dismissAll();
+  };
+
+  // Selecting a BYOK provider without a stored key also closes the sheet so
+  // the /fal-key gate can ask for it.
+  const selectProvider = (id: ProviderId) => {
+    setActive(id);
+    const missingKey = (id === 'fal' && !falKey) || (id === 'atlas' && !atlasKey);
+    if (missingKey) router.dismissAll();
   };
 
   const signOut = async () => {
@@ -104,7 +111,7 @@ export default function SettingsSheet() {
           keyValue={falKey}
           plausible={isPlausibleFalKey}
           onSave={setFalKey}
-          onRemove={() => removeKey(clearFalKey, atlasKey)}
+          onRemove={() => removeKey('fal', clearFalKey)}
           placeholder="key_id:key_secret"
         />
       ),
@@ -117,7 +124,7 @@ export default function SettingsSheet() {
           keyValue={atlasKey}
           plausible={isPlausibleAtlasKey}
           onSave={setAtlasKey}
-          onRemove={() => removeKey(clearAtlasKey, falKey)}
+          onRemove={() => removeKey('atlas', clearAtlasKey)}
           placeholder="Atlas API key"
         />
       ),
@@ -164,27 +171,31 @@ export default function SettingsSheet() {
           <KeyRound size={18} color="#10b981" />
           <Text className="flex-1 text-[12px] leading-4 text-muted-foreground">
             Renders bill your accounts. Keys are stored only on this device (secure
-            keychain) and sent per-request — never on our servers. Toggle providers off
-            to hide their models; the active one is the default backend.
+            keychain) and sent per-request — never on our servers. One provider is in
+            use at a time: switching one on switches the others off. Jobs already
+            running on another provider still finish.
           </Text>
         </View>
         {PROVIDERS.map((p) => {
           const row = rows[p.id];
-          const isOn = enabled[p.id];
+          const isOn = active === p.id;
           return (
-            <View key={p.id} className={`gap-2 rounded-xl border border-border p-3 ${isOn ? '' : 'opacity-60'}`}>
+            <View key={p.id} className={`gap-2 rounded-xl border p-3 ${isOn ? 'border-primary/40' : 'border-border opacity-70'}`}>
               <View className="flex-row items-center gap-2">
                 <Text className="text-[14px] font-medium text-foreground">{p.label}</Text>
-                {active === p.id ? (
+                {isOn ? (
                   <View className="rounded-full bg-primary/15 px-2 py-0.5">
-                    <Text className="text-[11px] font-medium text-primary">Active</Text>
+                    <Text className="text-[11px] font-medium text-primary">In use</Text>
                   </View>
-                ) : isOn && row.hasCred ? (
-                  <Button size="sm" variant="ghost" title="Make active" onPress={() => setActive(p.id)} />
                 ) : null}
                 <View className="ml-auto">
                   <Host matchContents>
-                    <Switch value={isOn} onValueChange={(on) => setEnabled(p.id, on)} />
+                    <Switch
+                      value={isOn}
+                      onValueChange={(on) => {
+                        if (on) selectProvider(p.id);
+                      }}
+                    />
                   </Host>
                 </View>
               </View>

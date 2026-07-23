@@ -161,7 +161,15 @@ function ProviderKeyScreen({ userEmail }) {
 
           <form
             className="mt-4 w-full space-y-3"
-            onSubmit={(e) => { e.preventDefault(); if (plausible) pick.save(draft); }}
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (!plausible) return;
+              // Saving a key also SELECTS that provider — this screen only
+              // shows when the selected BYOK provider has no key, so pasting
+              // the other provider's key must switch the selection to unlock.
+              pick.save(draft);
+              setActiveProvider(pick.id);
+            }}
           >
             <Input
               type="password"
@@ -188,14 +196,14 @@ function ProviderKeyScreen({ userEmail }) {
             Create a key on {pick.label} <ExternalLink size={12} />
           </a>
 
-          {/* This screen only shows when Higgsfield was toggled off — offer the
-              way back (re-enabling it makes the sign-in the render credential). */}
+          {/* This screen only shows when the selected BYOK provider has no key —
+              offer the way back (Higgsfield's credential is the sign-in itself). */}
           <button
             type="button"
             onClick={() => setActiveProvider("higgsfield")}
             className="mt-3 text-xs text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
           >
-            Or re-enable Higgsfield and render with your sign-in
+            Or switch to Higgsfield and render with your sign-in
           </button>
 
           <div className="mt-8 flex items-center gap-2 text-xs text-muted-foreground">
@@ -221,10 +229,11 @@ export default function LoginGate({ children }) {
   const prefs = useProviderPrefs();
   if (isPending) return <Splash />;
   if (!session) return <Homepage />;
-  // Signing in WITH Higgsfield already provides a render credential — only
-  // demand a BYOK key when Higgsfield is disabled and no key exists.
-  if (!prefs.enabled.higgsfield && !falKey && !atlasKey) {
-    return <ProviderKeyScreen userEmail={session.user?.email} />;
-  }
+  // Exactly one provider is in use at a time. The Higgsfield sign-in is its
+  // own credential; a selected BYOK provider needs its key before the app can
+  // render — so gate only when the SELECTED provider's key is missing.
+  const needKey =
+    (prefs.active === "fal" && !falKey) || (prefs.active === "atlas" && !atlasKey);
+  if (needKey) return <ProviderKeyScreen userEmail={session.user?.email} />;
   return children;
 }

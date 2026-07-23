@@ -8,13 +8,16 @@
 // "visual-world" swr cache key and the canonical invalidate+revalidate pair.
 import { useEffect, useState } from "react";
 import { useLoaderData, useRevalidator } from "react-router";
-import { Loader2, Save, Plus, Trash2, IdCard, MapPin, Package, Palette, Check, SlidersHorizontal, KeyRound } from "lucide-react";
+import { Loader2, Save, Plus, Trash2, IdCard, MapPin, Package, Palette, Check, SlidersHorizontal, KeyRound, ExternalLink } from "lucide-react";
 import { invalidateTabCache } from "@/lib/tabCache";
 import { useFalKey, setFalKey, clearFalKey } from "@/lib/falKey";
+import { useAtlasKey, setAtlasKey, clearAtlasKey } from "@/lib/atlasKey";
+import { PROVIDERS, useProviderPrefs, setActiveProvider } from "@/lib/providers";
 import { swr, useRevalidateOnMount } from "@/lib/swr";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
@@ -37,40 +40,108 @@ async function put(path, body) {
   return j;
 }
 
-// The user's fal.ai API key (BYOK). Client-side only — lives in localStorage
-// (lib/falKey.js) and rides per-request as a header; removing it re-triggers
-// the mandatory key gate (components/Login.jsx) on the spot.
-function FalKeyPanel() {
-  const key = useFalKey();
+// One BYOK key editor row (fal.ai / Atlas Cloud). The key is client-side only —
+// localStorage, sent per-request as a header, never saved on our servers.
+function ByokKeyEditor({ label, keyValue, save, clear, placeholder, keysUrl }) {
   const [draft, setDraft] = useState("");
   const plausible = /^[\w:.-]{10,200}$/.test(draft.trim());
-  const masked = key ? `••••••••${key.slice(-4)}` : "";
+  const masked = keyValue ? `••••••••${keyValue.slice(-4)}` : "";
 
   return (
-    <Panel title={<span className="flex items-center gap-2"><KeyRound size={15} className="text-primary" /> fal.ai API key</span>}>
-      <p className="mb-3 text-sm text-muted-foreground">
-        Renders bill <b>your</b> fal.ai account. The key is stored only in this browser
-        (localStorage) and sent per-request to the generators — never saved on our servers.
-        Removing it locks the app until a key is entered again.
-      </p>
-      <div className="flex flex-wrap items-center gap-2">
-        <Input
-          type="password"
-          autoComplete="off"
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          placeholder={masked || "key_id:key_secret"}
-          className="h-8 w-[280px] font-mono text-xs"
-          aria-label="fal.ai API key"
-        />
-        <Button size="sm" disabled={!plausible} onClick={() => { setFalKey(draft); setDraft(""); }}>
-          {key ? "Replace key" : "Save key"}
+    <div className="flex flex-wrap items-center gap-2">
+      <Input
+        type="password"
+        autoComplete="off"
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        placeholder={masked || placeholder}
+        className="h-8 w-[260px] font-mono text-xs"
+        aria-label={`${label} API key`}
+      />
+      <Button size="sm" disabled={!plausible} onClick={() => { save(draft); setDraft(""); }}>
+        {keyValue ? "Replace key" : "Save key"}
+      </Button>
+      {keyValue ? (
+        <Button size="sm" variant="ghost" className="text-destructive hover:text-destructive" onClick={clear}>
+          Remove
         </Button>
-        {key ? (
-          <Button size="sm" variant="ghost" className="text-destructive hover:text-destructive" onClick={clearFalKey}>
-            Remove
-          </Button>
-        ) : null}
+      ) : null}
+      <a
+        href={keysUrl}
+        target="_blank"
+        rel="noreferrer"
+        className="inline-flex items-center gap-1 text-xs text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
+      >
+        Get a key <ExternalLink size={11} />
+      </a>
+    </div>
+  );
+}
+
+// Render providers: credentials for all three backends can coexist, but
+// exactly ONE provider is in use at a time — the Switches behave like a radio
+// group (turning one on turns the others off; the selected one can't be turned
+// off). The selection is the backend the composer AND the agent render with;
+// in-flight jobs from a previously selected provider still finish.
+function ProvidersPanel() {
+  const prefs = useProviderPrefs();
+  const falKey = useFalKey();
+  const atlasKey = useAtlasKey();
+
+  const rows = {
+    higgsfield: {
+      status: <span className="text-xs text-muted-foreground">Connected through your Higgsfield sign-in — no key needed.</span>,
+      hasCred: true,
+    },
+    fal: {
+      status: (
+        <ByokKeyEditor
+          label="fal.ai" keyValue={falKey} save={setFalKey} clear={clearFalKey}
+          placeholder="key_id:key_secret" keysUrl="https://fal.ai/dashboard/keys"
+        />
+      ),
+      hasCred: !!falKey,
+    },
+    atlas: {
+      status: (
+        <ByokKeyEditor
+          label="Atlas Cloud" keyValue={atlasKey} save={setAtlasKey} clear={clearAtlasKey}
+          placeholder="Atlas API key" keysUrl="https://www.atlascloud.ai/console/api-keys"
+        />
+      ),
+      hasCred: !!atlasKey,
+    },
+  };
+
+  return (
+    <Panel title={<span className="flex items-center gap-2"><KeyRound size={15} className="text-primary" /> Render providers</span>}>
+      <p className="mb-3 text-sm text-muted-foreground">
+        Renders bill <b>your</b> accounts. Keys are stored only in this browser (localStorage)
+        and sent per-request to the generators — never saved on our servers. You can keep
+        credentials for all three, but <b>one provider is in use at a time</b> — switching
+        one on switches the others off. Jobs already running on another provider still finish.
+      </p>
+      <div className="space-y-3">
+        {PROVIDERS.map((p) => {
+          const row = rows[p.id];
+          const isActive = prefs.active === p.id;
+          return (
+            <div key={p.id} className={`rounded-lg border p-3 ${isActive ? "border-primary/40" : "opacity-70"}`}>
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-medium">{p.label}</span>
+                {isActive ? <Badge variant="success">In use</Badge> : null}
+                <div className="ml-auto">
+                  <Switch
+                    checked={isActive}
+                    onCheckedChange={(on) => { if (on) setActiveProvider(p.id); }}
+                    aria-label={`Use ${p.label}`}
+                  />
+                </div>
+              </div>
+              <div className="mt-2">{row.status}</div>
+            </div>
+          );
+        })}
       </div>
     </Panel>
   );
@@ -169,7 +240,7 @@ function SettingsPage() {
 
       {error && <ErrorNote>{error}</ErrorNote>}
 
-      <FalKeyPanel />
+      <ProvidersPanel />
 
       <Panel title={<span className="flex items-center gap-2"><SlidersHorizontal size={15} className="text-primary" /> Generation defaults</span>}>
         <p className="mb-3 text-sm text-muted-foreground">

@@ -1,18 +1,20 @@
-// Render-provider preferences: which of the three generation backends
-// (Higgsfield / fal.ai / Atlas Cloud) are ENABLED, and which one is ACTIVE —
-// the default backend whose default model wins when no explicit model is
-// picked. Credentials can exist for all three at once; the toggles decide
-// which ones this browser actually uses.
+// Render-provider selection: exactly ONE of the three generation backends
+// (Higgsfield / fal.ai / Atlas Cloud) is in use at a time. Credentials for all
+// three can be stored side by side; the selection decides which backend the
+// composer and the agent render with. Selecting one deselects the others
+// (radio semantics — there is never zero or two "on").
 //
 // Client-side only (localStorage, like the BYOK keys). The projectFetch shim
-// translates the prefs into per-request headers:
-//   - a disabled provider's key is simply not sent, and the provider id rides
-//     in `x-disabled-providers` (so the worker also ignores its env-fallback
-//     key / the Higgsfield OAuth token),
-//   - the active provider rides as `x-render-provider` (wins the catalog
-//     default in /api/visual-world/models),
-//   - `/eve/*` agent sends carry the same as `x-flue-disabled-providers` /
-//     `x-flue-render-provider` (persisted per conversation in the flue DO).
+// translates the selection into per-request headers:
+//   - `x-render-provider` — the selected provider (wins the catalog default;
+//     the worker only offers the selected provider's models for NEW work),
+//   - `x-disabled-providers` — the two non-selected ids (they leave the model
+//     pickers; the worker still polls their in-flight jobs so switching
+//     providers never strands a processing generation),
+//   - stored BYOK keys ride regardless of selection (x-fal-key / x-atlas-key)
+//     for exactly that reason,
+//   - `/eve/*` agent sends carry the same as x-flue-* (persisted per
+//     conversation in the flue DO to steer the agent's default backend).
 
 import { useSyncExternalStore } from "react";
 
@@ -25,15 +27,12 @@ export const PROVIDERS = [
 ];
 const IDS = PROVIDERS.map((p) => p.id);
 
-// Higgsfield stays the default active provider — matches the pre-prefs
-// behavior (catalog default = Nano Banana Pro via Higgsfield when signed in).
+// Higgsfield is the default selection (the sign-in itself is its credential).
+// Tolerates the earlier `{ active, enabled }` stored shape — only `active`
+// matters now.
 function normalize(raw) {
   const o = raw && typeof raw === "object" ? raw : {};
-  const en = o.enabled && typeof o.enabled === "object" ? o.enabled : {};
-  const enabled = Object.fromEntries(IDS.map((id) => [id, en[id] !== false]));
-  let active = IDS.includes(o.active) ? o.active : "higgsfield";
-  if (!enabled[active]) active = IDS.find((id) => enabled[id]) || "higgsfield";
-  return { active, enabled };
+  return { active: IDS.includes(o.active) ? o.active : "higgsfield" };
 }
 
 let current = (() => {
@@ -52,19 +51,9 @@ export function getProviderPrefs() {
   return current;
 }
 
-// Making a provider active also enables it.
 export function setActiveProvider(id) {
-  if (!IDS.includes(id)) return;
-  save(normalize({ active: id, enabled: { ...current.enabled, [id]: true } }));
-}
-
-// Disabling the active provider hands "active" to the first remaining enabled
-// one; disabling the LAST enabled provider is a no-op (something must render).
-export function setProviderEnabled(id, on) {
-  if (!IDS.includes(id)) return;
-  const enabled = { ...current.enabled, [id]: !!on };
-  if (!IDS.some((x) => enabled[x])) return;
-  save(normalize({ active: current.active, enabled }));
+  if (!IDS.includes(id) || id === current.active) return;
+  save({ active: id });
 }
 
 function subscribe(fn) {
@@ -72,12 +61,12 @@ function subscribe(fn) {
   return () => listeners.delete(fn);
 }
 
-// Reactive read for the Settings panel.
+// Reactive read for the Settings panel / login gate.
 export function useProviderPrefs() {
   return useSyncExternalStore(subscribe, getProviderPrefs);
 }
 
-// "fal,atlas"-style value for the x-disabled-providers header ("" = none).
+// The two NON-selected ids for the x-disabled-providers header.
 export function disabledProvidersCsv() {
-  return IDS.filter((id) => !current.enabled[id]).join(",");
+  return IDS.filter((id) => id !== current.active).join(",");
 }

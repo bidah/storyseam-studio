@@ -69,9 +69,11 @@ function storedAtlasKey(): string {
   }
 }
 
-// The Settings provider toggles (app.ts setRenderPrefs → lib/render-prefs.ts):
-// disabled providers lose their tools below; the active one is called out in
-// the instructions so renders default to it.
+// The Settings provider selection (app.ts setRenderPrefs → lib/render-prefs.ts):
+// exactly one provider is in use at a time; the selection steers the default
+// backend via the instructions. Tools for the other providers stay AVAILABLE —
+// Higgsfield-only pipelines (multishot lip-sync, Seed Audio scenes) must keep
+// working whatever the selection, and in-flight jobs may still need polling.
 function storedRenderPrefs(): RenderPrefs {
   try {
     return readRenderPrefs(getCloudflareContext().storage.sql);
@@ -115,13 +117,12 @@ export default defineAgent(async ({ id }) => {
 
   const api = createApi(projectId);
   const tools = createTools(api);
-  // Provider toggles from Settings: a disabled provider's tools are simply
-  // absent this turn; the active one is called out in the instructions.
+  // All credentialed provider tools load regardless of the Settings selection
+  // (see storedRenderPrefs above) — the selection only steers the default.
   const prefs = storedRenderPrefs();
-  const disabled = new Set(prefs.disabled);
-  const higgsfieldTools = disabled.has("higgsfield") ? [] : await createHiggsfieldTools(userId);
-  const falTools = disabled.has("fal") ? [] : createFalTools(storedFalKey());
-  const atlasTools = disabled.has("atlas") ? [] : createAtlasTools(storedAtlasKey());
+  const higgsfieldTools = await createHiggsfieldTools(userId);
+  const falTools = createFalTools(storedFalKey());
+  const atlasTools = createAtlasTools(storedAtlasKey());
   const sandbox = await createSandbox(id);
 
   const PROVIDER_TOOLS: Record<string, string> = {
@@ -129,14 +130,10 @@ export default defineAgent(async ({ id }) => {
     fal: "the fal tools (fal_generate_image / fal_generate_video)",
     atlas: "the Atlas Cloud tools (atlas_generate_image / atlas_generate_video)",
   };
-  const providerNote = [
+  const providerNote =
     prefs.active && PROVIDER_TOOLS[prefs.active]
-      ? `\n\n## Render provider\n\nThe user's ACTIVE render provider is **${prefs.active}** — default to ${PROVIDER_TOOLS[prefs.active]} for image/video renders unless a skill requires a specific backend or the user asks for another.`
-      : "",
-    prefs.disabled.length
-      ? `${prefs.active ? " " : "\n\n## Render provider\n\n"}Disabled providers this conversation (tools absent): ${prefs.disabled.join(", ")}.`
-      : "",
-  ].join("");
+      ? `\n\n## Render provider\n\nThe user has SELECTED **${prefs.active}** as their render provider — use ${PROVIDER_TOOLS[prefs.active]} for image/video renders. Only use another backend when a skill is hard-bound to it (multishot lip-sync and Seed Audio scenes are Higgsfield-only) or the user explicitly asks.`
+      : "";
 
   return {
     model: selectedModel(),

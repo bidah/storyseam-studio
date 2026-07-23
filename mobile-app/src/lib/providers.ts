@@ -1,15 +1,16 @@
 import * as SecureStore from 'expo-secure-store';
 import { create } from 'zustand';
 
-// Render-provider preferences — RN port of the web src/lib/providers.js: which
-// of the three backends (Higgsfield / fal.ai / Atlas Cloud) are ENABLED, and
-// which one is ACTIVE (the default backend whose default model wins when none
-// is picked). The fetch shim translates the prefs into per-request headers:
-// a disabled provider's key is not sent and its id rides in
-// `x-disabled-providers` (also suppressing server env fallbacks / the
-// Higgsfield token); the active provider rides as `x-render-provider`. `/eve/*`
-// sends carry the x-flue-* variants (persisted per conversation in the flue DO;
-// the disabled CSV is sent even when empty so re-enabling overwrites it).
+// Render-provider selection — RN port of the web src/lib/providers.js: exactly
+// ONE of the three backends (Higgsfield / fal.ai / Atlas Cloud) is in use at a
+// time (radio semantics; selecting one deselects the others). Credentials for
+// all three can be stored side by side. The fetch shim translates the
+// selection into per-request headers: `x-render-provider` (the selected
+// backend — wins the catalog default) and `x-disabled-providers` (the two
+// non-selected ids — their models leave the pickers). Stored BYOK keys ride
+// regardless of selection so the worker can keep polling in-flight jobs from a
+// previously selected provider. `/eve/*` sends carry the x-flue-* variants
+// (persisted per conversation in the flue DO to steer the agent's default).
 
 const STORAGE_KEY = 'shot-studio.providers';
 
@@ -21,64 +22,45 @@ export const PROVIDERS = [
 export type ProviderId = (typeof PROVIDERS)[number]['id'];
 const IDS = PROVIDERS.map((p) => p.id);
 
-type Prefs = { active: ProviderId; enabled: Record<ProviderId, boolean> };
-
-// Higgsfield stays the default active provider — matches the web default.
-function normalize(raw: unknown): Prefs {
+// Higgsfield is the default selection (the sign-in itself is its credential).
+// Tolerates the earlier `{ active, enabled }` stored shape — only `active`
+// matters now.
+function normalizeActive(raw: unknown): ProviderId {
   const o = (raw && typeof raw === 'object' ? raw : {}) as Record<string, any>;
-  const en = o.enabled && typeof o.enabled === 'object' ? o.enabled : {};
-  const enabled = Object.fromEntries(IDS.map((id) => [id, en[id] !== false])) as Record<ProviderId, boolean>;
-  let active: ProviderId = IDS.includes(o.active) ? o.active : 'higgsfield';
-  if (!enabled[active]) active = IDS.find((id) => enabled[id]) || 'higgsfield';
-  return { active, enabled };
+  return IDS.includes(o.active) ? o.active : 'higgsfield';
 }
 
-type ProvidersState = Prefs & {
+type ProvidersState = {
+  active: ProviderId;
   hydrated: boolean;
   setActive: (id: ProviderId) => void;
-  setEnabled: (id: ProviderId, on: boolean) => void;
 };
 
-function persist(prefs: Prefs) {
-  SecureStore.setItemAsync(STORAGE_KEY, JSON.stringify(prefs)).catch(() => {});
-}
-
-export const useProvidersStore = create<ProvidersState>((set, get) => ({
-  ...normalize(null),
+export const useProvidersStore = create<ProvidersState>((set) => ({
+  active: 'higgsfield',
   hydrated: false,
-  // Making a provider active also enables it.
   setActive: (id) => {
-    const next = normalize({ active: id, enabled: { ...get().enabled, [id]: true } });
-    set(next);
-    persist(next);
-  },
-  // Disabling the active provider hands "active" to the first remaining
-  // enabled one; disabling the LAST enabled provider is a no-op.
-  setEnabled: (id, on) => {
-    const enabled = { ...get().enabled, [id]: !!on };
-    if (!IDS.some((x) => enabled[x])) return;
-    const next = normalize({ active: get().active, enabled });
-    set(next);
-    persist(next);
+    if (!IDS.includes(id)) return;
+    set({ active: id });
+    SecureStore.setItemAsync(STORAGE_KEY, JSON.stringify({ active: id })).catch(() => {});
   },
 }));
 
 // Sync reads for the fetch shim.
-export function getProviderPrefs(): Prefs {
-  const { active, enabled } = useProvidersStore.getState();
-  return { active, enabled };
+export function getActiveProvider(): ProviderId {
+  return useProvidersStore.getState().active;
 }
 
+// The two NON-selected ids for the disabled-providers header.
 export function disabledProvidersCsv(): string {
-  const { enabled } = useProvidersStore.getState();
-  return IDS.filter((id) => !enabled[id]).join(',');
+  const active = getActiveProvider();
+  return IDS.filter((id) => id !== active).join(',');
 }
 
 export function hydrateProviders(): Promise<void> {
   return SecureStore.getItemAsync(STORAGE_KEY)
     .then((v) => {
-      const prefs = normalize(v ? JSON.parse(v) : null);
-      useProvidersStore.setState({ ...prefs, hydrated: true });
+      useProvidersStore.setState({ active: normalizeActive(v ? JSON.parse(v) : null), hydrated: true });
     })
     .catch(() => {
       useProvidersStore.setState({ hydrated: true });
