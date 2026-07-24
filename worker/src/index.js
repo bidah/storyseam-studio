@@ -322,6 +322,30 @@ app.get("/files/*", (c) => {
   });
 });
 
+// --- desktop auto-update feed ----------------------------------------------
+// electron-updater's generic provider polls latest-mac.yml here and downloads
+// the signed artifacts next to it. The desktop publish step (desktop/scripts/
+// publish-updates.mjs) uploads both under this R2 prefix. Public on purpose:
+// the updater runs before login. Only this fixed prefix is reachable, and the
+// feed must never be cached (a stale feed hides new releases).
+app.get("/desktop/updates/*", async (c) => {
+  const name = decodeURIComponent(
+    new URL(c.req.url).pathname.slice("/desktop/updates/".length),
+  );
+  if (!name || name.includes("/") || name.includes("..")) {
+    return c.json({ error: "Bad update path" }, 400);
+  }
+  const obj = await c.env.BUCKET.get(`desktop/updates/${name}`);
+  if (!obj) return c.json({ error: "Not found" }, 404);
+  return new Response(obj.body, {
+    headers: {
+      "content-type": obj.httpMetadata?.contentType || "application/octet-stream",
+      "content-length": String(obj.size),
+      "cache-control": name.endsWith(".yml") ? "no-store" : "public, max-age=3600",
+    },
+  });
+});
+
 // --- live-sync SSE (script + timeline), backed by the ProjectEvents DO -------
 function eventsRoute(channel) {
   return (c) => {

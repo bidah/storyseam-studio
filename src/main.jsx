@@ -5,6 +5,7 @@ import { FlueProvider } from "@flue/react";
 import { createFlueClient } from "@flue/sdk";
 import { router } from "./router.jsx";
 import { installProjectScope } from "./lib/projectFetch.js";
+import { initDesktop } from "./lib/desktop-bootstrap.js";
 import "./index.css";
 
 // Inject the active project id into every same-origin request. Must run before
@@ -23,10 +24,15 @@ import "glowing/dist/index.css";
 // conversation instance id.
 const flueClient = createFlueClient({ baseUrl: "/eve" });
 
-ReactDOM.createRoot(document.getElementById("root")).render(
-  <React.StrictMode>
-    <FlueProvider client={flueClient}>
-      <RouterProvider router={router} />
-    </FlueProvider>
-  </React.StrictMode>
-);
+// Desktop (Electron) glue: hydrates the BYOK keys from the safeStorage vault
+// before the first render (the login gate reads them synchronously) and wires
+// notifications / drag-out / update toasts. Resolves immediately on the web.
+initDesktop(router).then(() => {
+  ReactDOM.createRoot(document.getElementById("root")).render(
+    <React.StrictMode>
+      <FlueProvider client={flueClient}>
+        <RouterProvider router={router} />
+      </FlueProvider>
+    </React.StrictMode>
+  );
+});

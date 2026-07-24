@@ -1,0 +1,64 @@
+{
+  "name": "shot-studio-desktop",
+  "productName": "Shot Studio",
+  "version": "0.1.0",
+  "description": "Shot Studio for macOS — the web studio in a native shell",
+  "private": true,
+  "type": "module",
+  "main": "main/index.js",
+  "author": "ROFI <rodrigofigueroa.name@gmail.com>",
+  "scripts": {
+    "sync": "node scripts/sync-shared.mjs",
+    "predev": "npm run sync",
+    "dev": "electron . --dev",
+    "prestart": "npm run sync",
+    "start": "electron .",
+    "predist": "npm run sync",
+    "dist": "electron-builder --mac",
+    "publish-updates": "node scripts/publish-updates.mjs"
+  },
+  "dependencies": {
+    "electron-updater": "^6.3.9"
+  },
+  "devDependencies": {
+    "electron": "^34.2.0",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "com.toonstudio.shotstudio",
+    "productName": "Shot Studio",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "main/**/*",
+      "preload/**/*",
+      "pages/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "../dist",
+        "to": "dist"
+      }
+    ],
+    "mac": {
+      "category": "public.app-category.video",
+      "target": [
+        { "target": "dmg", "arch": ["arm64", "x64"] },
+        { "target": "zip", "arch": ["arm64", "x64"] }
+      ],
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist",
+      "notarize": true
+    },
+    "publish": [
+      {
+        "provider": "generic",
+        "url": "https://shot-studio-uploads.rodrigofigueroa-name.workers.dev/desktop/updates"
+      }
+    ]
+  }
+}

@@ -16,6 +16,7 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Toaster } from "@/components/ui/sonner";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
   DropdownMenuSeparator, DropdownMenuTrigger,
@@ -398,6 +399,8 @@ export default function RootLayout() {
       </Tabs>
 
       <ImageModal image={modalImage} onClose={() => setModalImage(null)} />
+      {/* App-wide toasts (desktop update-ready affordance lives here too). */}
+      <Toaster position="bottom-right" />
       </ShellContext.Provider>
       </ProjectProvider>
       </LoginGate>

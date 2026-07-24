@@ -49,6 +49,19 @@ touches only one, deploy only that one — but check.
   run a local one with `WORKER=http://localhost:8787 npm run dev` + `cd worker &&
   npx wrangler dev`.
 
+## Desktop app (macOS, `desktop/`)
+
+Electron shell hosting the SAME Vite build on a privileged `app://` origin; an
+origin bridge forwards backend paths to the deployed Worker. The proxy path
+list is **`src/lib/routeTable.js`** — the single source of truth shared by
+`vite.config.js` and the bridge (vendored into `desktop/main/` by
+`npm --prefix desktop run sync`, auto-run by desktop scripts; parity test in
+`test/web/routeTable.test.js`). Add a new backend prefix ONLY there.
+`npm run desktop:dev` (HMR) / `desktop:start` (prod mode) / `desktop:dist`
+(signed build) / `desktop:publish` (upload update feed to R2). Details:
+`desktop/README.md`. Desktop-only renderer behavior hangs off `window.desktop`
+(`src/lib/desktop.js` seam) — the web build must stay unaffected.
+
 ## Routing & data
 
 URL routing is **React Router v7 in data mode** (`src/router.jsx` → `RootLayout` +

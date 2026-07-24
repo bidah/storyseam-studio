@@ -16,6 +16,7 @@ import {
   KeyRound, ExternalLink, LogOut,
 } from "lucide-react";
 import { useSession, authClient, signOut } from "@/lib/auth-client";
+import { desktop, isDesktop } from "@/lib/desktop";
 import { useFalKey, setFalKey } from "@/lib/falKey";
 import { useAtlasKey, setAtlasKey } from "@/lib/atlasKey";
 import { useProviderPrefs, setActiveProvider } from "@/lib/providers";
@@ -39,8 +40,29 @@ function Homepage() {
     setBusy(true);
     setErr(null);
     try {
-      // Redirects to Higgsfield and back to /api/auth/oauth2/callback/higgsfield;
-      // Better Auth creates the session, then returns to callbackURL ("/").
+      if (isDesktop) {
+        // Desktop (TOO-21): ask Better Auth for the authorize URL without
+        // navigating, hand it to the main process, which runs the flow in a
+        // child window sharing the app's session — the callback lands on the
+        // Worker's existing redirect URI and the session cookie is set into
+        // the Electron cookie jar. Then reload to pick the session up.
+        const { data, error } = await authClient.signIn.oauth2({
+          providerId: "higgsfield",
+          callbackURL: "/",
+          disableRedirect: true,
+        });
+        if (error) throw new Error(error.message || "Sign-in failed");
+        if (!data?.url) throw new Error("No authorize URL returned");
+        const res = await desktop.oauth.start(data.url);
+        if (!res?.ok) {
+          throw new Error(res?.reason === "closed" ? "Sign-in window closed" : "Sign-in timed out");
+        }
+        window.location.reload();
+        return;
+      }
+      // Web: redirects to Higgsfield and back to /api/auth/oauth2/callback/
+      // higgsfield; Better Auth creates the session, then returns to
+      // callbackURL ("/").
       await authClient.signIn.oauth2({ providerId: "higgsfield", callbackURL: "/" });
     } catch (e) {
       setErr(String(e?.message || e));

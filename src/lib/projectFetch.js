@@ -74,8 +74,9 @@ export function installProjectScope() {
       // Carry the picker's per-turn chat model on flue prompt sends. The flue
       // app whitelists it, so an out-of-range value is simply ignored.
       if (isEve(url)) headers.set("x-flue-model", getAgentModelSpecifier());
-      // The user's own BYOK keys (localStorage-only — lib/falKey.js /
-      // lib/atlasKey.js) ride per-request REGARDLESS of the provider selection,
+      // The user's own BYOK keys (client-side only — lib/falKey.js /
+      // lib/atlasKey.js; localStorage on web, the safeStorage vault on
+      // desktop) ride per-request REGARDLESS of the provider selection,
       // so the worker can keep polling in-flight jobs from a previously
       // selected provider: our API reads x-fal-key / x-atlas-key; agent sends
       // carry them as x-flue-* so the flue worker persists them into the
