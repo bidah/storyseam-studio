@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { View } from 'react-native';
-import { useLocalSearchParams } from 'expo-router';
+import { Stack, useLocalSearchParams } from 'expo-router';
 import { SegmentedNative } from '@/components/ui/segmented-native';
 import { WorldSurface } from '@/components/story/world';
 import { ScriptSurface } from '@/components/story/script';
@@ -25,9 +25,17 @@ export default function StoryScreen() {
 
   return (
     <View className="flex-1 bg-background">
-      <View className="px-4 pt-3">
-        <SegmentedNative options={SEGMENTS} value={seg} onChange={setSeg} />
-      </View>
+      <Stack.Screen
+        options={{
+          headerTitle: () => (
+            // The @expo/ui Host collapses to 0 width without an explicit size in
+            // the nav-bar title slot, so pin a width for it to lay out into.
+            <View style={{ width: 260 }}>
+              <SegmentedNative size="large" options={SEGMENTS} value={seg} onChange={setSeg} />
+            </View>
+          ),
+        }}
+      />
       {seg === 'world' ? <WorldSurface /> : seg === 'script' ? <ScriptSurface /> : <ShotsSurface />}
     </View>
   );

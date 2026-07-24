@@ -208,15 +208,23 @@ export const HEADER_BASE = {
 // menu (left) + refresh (right). A hook rather than a plain function because the
 // items read the active project and the query client, and the
 // `unstable_header*Items` callbacks run outside a component, so they can't.
-export function useTabHeaderOptions(title: string): NativeStackNavigationOptions {
+//
+// `refresh: false` drops the right-side refresh button entirely — used by tabs
+// that reload via pull-to-refresh (and/or host their own header title), so the
+// bar button would be redundant.
+export function useTabHeaderOptions(
+  title: string,
+  opts?: { refresh?: boolean },
+): NativeStackNavigationOptions {
+  const showRefresh = opts?.refresh ?? true;
   const menuItem = useMenuItem();
   const actionItems = useTabActionItems();
   return {
     ...HEADER_BASE,
     title,
     unstable_headerLeftItems: () => [menuItem],
-    unstable_headerRightItems: () => actionItems,
+    unstable_headerRightItems: () => (showRefresh ? actionItems : []),
     headerLeft: () => <MenuButton />,
-    headerRight: () => <TabHeaderActions />,
+    headerRight: showRefresh ? () => <TabHeaderActions /> : undefined,
   };
 }

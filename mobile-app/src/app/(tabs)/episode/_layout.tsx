@@ -7,7 +7,7 @@ import { HEADER_BASE, useTabHeaderOptions } from '@/components/header-buttons';
 // a sub-nav below it. `headerBackButtonDisplayMode: 'minimal'` drops the back
 // label so it's just the chevron — more breathing room for the beat title.
 export default function EpisodeLayout() {
-  const headerOptions = useTabHeaderOptions('Episode');
+  const headerOptions = useTabHeaderOptions('Episode', { refresh: false });
   return (
     <Stack screenOptions={{ contentStyle: { backgroundColor: '#0a0a0b' } }}>
       <Stack.Screen name="index" options={headerOptions} />

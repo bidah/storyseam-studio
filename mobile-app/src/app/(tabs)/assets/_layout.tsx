@@ -7,7 +7,7 @@ import { HEADER_BASE, useTabHeaderOptions } from '@/components/header-buttons';
 // header + native back button (label minimal → just the chevron, more room for
 // long folder names).
 export default function AssetsLayout() {
-  const headerOptions = useTabHeaderOptions('Assets');
+  const headerOptions = useTabHeaderOptions('Assets', { refresh: false });
   return (
     <Stack screenOptions={{ contentStyle: { backgroundColor: '#0a0a0b' } }}>
       <Stack.Screen name="index" options={headerOptions} />
