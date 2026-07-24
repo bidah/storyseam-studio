@@ -76,11 +76,12 @@ export default function ImageModelPickerSheet() {
     <>
       <Stack.Screen
         options={{
-          // Opaque header (theme-aware bg from the nav ThemeProvider) so content
-          // lays out below it in every state — no manual top padding, no header
-          // overlap when the "more" page grows to full height.
-          headerTransparent: false,
-          headerShadowVisible: false,
+          // Default iOS translucent (glass) floating header — same as the chat
+          // model picker. An opaque header (headerTransparent:false) draws a solid
+          // bar over the sheet's rounded top corners, squaring them and showing
+          // the nav theme's grey; the glass header lets the rounded corners and
+          // content show through. Content reserves the header's ~76pt via the
+          // paddingTop below.
           ...(page === 'default'
             ? {
                 title: 'Model',
@@ -115,8 +116,9 @@ export default function ImageModelPickerSheet() {
         }}
       />
       {/* Plain Views (no ScrollView/navigator) so fitToContents can measure the
-          height and hug the rows. */}
-      <View className="bg-background px-4 pb-8 pt-3">
+          height and hug the rows. The glass header floats over the content, so
+          reserve its ~76pt here (matches the chat model picker). */}
+      <View className="bg-background px-4 pb-8" style={{ paddingTop: 76 }}>
         {page === 'default' ? (
           <>
             <Card items={top} />

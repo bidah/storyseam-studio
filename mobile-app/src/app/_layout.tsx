@@ -112,7 +112,9 @@ export default function RootLayout() {
                     // Hug the model rows — no half-screen stop.
                     sheetAllowedDetents: 'fitToContents',
                     sheetGrabberVisible: true,
-                    sheetCornerRadius: 24,
+                    // Larger radius so the floating (detached) sheet's corners sit
+                    // in harmony with the phone's rounded screen corners.
+                    sheetCornerRadius: 44,
                     // Native header inside the sheet (title + close on the right).
                     headerShown: true,
                   }}
@@ -125,7 +127,9 @@ export default function RootLayout() {
                     // measure and hug the rows, like the option-picker.
                     sheetAllowedDetents: 'fitToContents',
                     sheetGrabberVisible: true,
-                    sheetCornerRadius: 24,
+                    // Larger radius so the floating (detached) sheet's corners sit
+                    // in harmony with the phone's rounded screen corners.
+                    sheetCornerRadius: 44,
                     // Native header inside the sheet (title + close/back).
                     headerShown: true,
                   }}
@@ -164,7 +168,9 @@ export default function RootLayout() {
                     // The sheet hugs its rows — no half-screen stop.
                     sheetAllowedDetents: 'fitToContents',
                     sheetGrabberVisible: true,
-                    sheetCornerRadius: 24,
+                    // Larger radius so the floating (detached) sheet's corners sit
+                    // in harmony with the phone's rounded screen corners.
+                    sheetCornerRadius: 44,
                     // Native header inside the sheet (title + close on the right).
                     headerShown: true,
                   }}
