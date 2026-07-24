@@ -5,7 +5,6 @@ import {
   Alert,
   FlatList,
   Platform,
-  Pressable,
   RefreshControl,
   Text,
   View,
@@ -13,6 +12,7 @@ import {
 } from 'react-native';
 import { router } from 'expo-router';
 import { Image } from 'expo-image';
+import { Galeria } from '@nandorojo/galeria';
 import * as Haptics from 'expo-haptics';
 import { toast } from 'sonner-native';
 import { Check, KeyRound } from 'lucide-react-native';
@@ -23,9 +23,10 @@ import { useHiggsfieldImages, useInvalidate, useProjectResource } from '@/lib/qu
 import type { HfItem, LibraryFolder } from './types';
 
 // Import from Higgsfield: infinite 3-column grid of the user's completed image
-// generations. Tap an un-imported tile → pick a destination folder (action
-// sheet) → POST /api/higgsfield/import. Imported tiles get an emerald ring and
-// open the viewer instead; long-press removes the imported copy.
+// generations. Tap any tile → native swipeable Galeria viewer (shared-element
+// transition, pinch-zoom) over the whole grid. Long-press is the action menu:
+// un-imported → pick a destination folder → POST /api/higgsfield/import;
+// imported (emerald ring) → remove the imported copy.
 
 // Basename of a Higgsfield delivery URL ("…/hf_2026…_<id>.png") — un-renamed
 // imports keep this file name, so a library match means "already imported".
@@ -57,6 +58,10 @@ export function ImportSection() {
     for (const f of lib.data?.folders ?? []) for (const im of f.images) m.set(im.name, im.rel);
     return m;
   }, [lib.data]);
+
+  // Full-res URLs (grid order) for the Galeria viewer — swipe traverses the
+  // whole grid; each tile is its own entry point + transition source.
+  const galleryUrls = useMemo(() => items.map((it) => it.rawUrl), [items]);
 
   const doImport = async (item: HfItem, folder: string) => {
     setBusyId(item.id);
@@ -113,12 +118,8 @@ export function ImportSection() {
     );
   };
 
-  const openViewer = (item: HfItem) =>
-    router.push({
-      pathname: '/viewer',
-      params: { url: item.rawUrl, kind: 'image', title: item.prompt || item.model || item.id },
-    });
-
+  // Long-press action menu. Tap is now "view" (Galeria), so the menu is just
+  // the write actions: import an un-imported tile, or remove an imported one.
   const showMenu = (item: HfItem, inLibrary: string | null) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
     if (Platform.OS !== 'ios') {
@@ -126,19 +127,16 @@ export function ImportSection() {
       else chooseDestination(item);
       return;
     }
-    const options = inLibrary
-      ? ['View', 'Remove from library', 'Cancel']
-      : ['View', 'Import to library', 'Cancel'];
+    const action = inLibrary ? 'Remove from library' : 'Import to library';
     ActionSheetIOS.showActionSheetWithOptions(
       {
         title: item.prompt || item.model || item.id,
-        options,
-        cancelButtonIndex: 2,
-        ...(inLibrary ? { destructiveButtonIndex: 1 } : {}),
+        options: [action, 'Cancel'],
+        cancelButtonIndex: 1,
+        ...(inLibrary ? { destructiveButtonIndex: 0 } : {}),
       },
       (i) => {
-        if (i === 0) openViewer(item);
-        else if (i === 1) {
+        if (i === 0) {
           if (inLibrary) removeImported(item, inLibrary);
           else chooseDestination(item);
         }
@@ -168,6 +166,7 @@ export function ImportSection() {
     return <ErrorNote message={String(err?.message || q.error)} onRetry={() => q.refetch()} />;
 
   return (
+    <Galeria urls={galleryUrls} theme="dark">
     <FlatList
       data={items}
       keyExtractor={(it) => it.id}
@@ -198,47 +197,49 @@ export function ImportSection() {
           </View>
         ) : null
       }
-      renderItem={({ item }) => {
+      renderItem={({ item, index }) => {
         const inLibrary = imported[item.id] || libraryByName.get(urlBasename(item.rawUrl)) || null;
         const busy = busyId === item.id;
         return (
-          <Pressable
-            onPress={() => (inLibrary ? openViewer(item) : chooseDestination(item))}
-            onLongPress={() => showMenu(item, inLibrary)}
-            disabled={busy}
-            style={{ width: cell, opacity: busy ? 0.5 : 1 }}
-          >
-            <View
-              className={
-                inLibrary
-                  ? 'overflow-hidden rounded-xl border-2 border-success'
-                  : 'overflow-hidden rounded-xl border border-border'
-              }
+          <View style={{ width: cell, opacity: busy ? 0.5 : 1 }}>
+            <Galeria.Image
+              index={index}
+              onLongPress={() => showMenu(item, inLibrary)}
               style={{ width: cell, height: cell }}
             >
-              <Image
-                source={{ uri: mediaUrl(item.thumb) || item.minUrl }}
-                style={{ width: '100%', height: '100%' }}
-                contentFit="cover"
-                transition={100}
-              />
-              {busy ? (
-                <View className="absolute inset-0 items-center justify-center">
-                  <ActivityIndicator />
-                </View>
-              ) : null}
-              {inLibrary ? (
-                <View className="absolute right-1.5 top-1.5 h-5 w-5 items-center justify-center rounded-full bg-success">
-                  <Check size={12} color="white" />
-                </View>
-              ) : null}
-            </View>
+              <View
+                className={
+                  inLibrary
+                    ? 'overflow-hidden rounded-xl border-2 border-success'
+                    : 'overflow-hidden rounded-xl border border-border'
+                }
+                style={{ width: cell, height: cell }}
+              >
+                <Image
+                  source={{ uri: mediaUrl(item.thumb) || item.minUrl }}
+                  style={{ width: '100%', height: '100%' }}
+                  contentFit="cover"
+                  transition={100}
+                />
+                {busy ? (
+                  <View className="absolute inset-0 items-center justify-center">
+                    <ActivityIndicator />
+                  </View>
+                ) : null}
+                {inLibrary ? (
+                  <View className="absolute right-1.5 top-1.5 h-5 w-5 items-center justify-center rounded-full bg-success">
+                    <Check size={12} color="white" />
+                  </View>
+                ) : null}
+              </View>
+            </Galeria.Image>
             <Text className="mt-1 text-[11px] text-muted-foreground" numberOfLines={1}>
               {item.prompt || item.model}
             </Text>
-          </Pressable>
+          </View>
         );
       }}
     />
+    </Galeria>
   );
 }

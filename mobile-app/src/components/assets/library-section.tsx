@@ -10,8 +10,8 @@ import {
   View,
   useWindowDimensions,
 } from 'react-native';
-import { router } from 'expo-router';
 import { Image } from 'expo-image';
+import { Galeria } from '@nandorojo/galeria';
 import * as Haptics from 'expo-haptics';
 import { toast } from 'sonner-native';
 import { Check, ChevronLeft } from 'lucide-react-native';
@@ -136,7 +136,12 @@ export function LibrarySection() {
   // ---- In-folder image grid -------------------------------------------------
   if (current) {
     const selCount = current.images.filter((i) => i.selected).length;
+    // Full-res URLs (grid order) for the Galeria viewer — tapping a tile opens
+    // a native, swipeable full-screen gallery with a shared-element transition.
+    // The tiles themselves keep showing thumbs; Galeria morphs thumb → full.
+    const galleryUrls = current.images.map((im) => mediaUrl(im.url) ?? '');
     return (
+      <Galeria urls={galleryUrls} theme="dark">
       <View className="flex-1">
         <View className="flex-row items-center gap-2 px-4 py-3">
           <Pressable
@@ -162,17 +167,8 @@ export function LibrarySection() {
           columnWrapperClassName="gap-2 px-4"
           contentContainerClassName="gap-2 pb-8"
           ListEmptyComponent={<Empty title="No images in this folder" />}
-          renderItem={({ item: im }) => (
-            <Pressable
-              onPress={() =>
-                router.push({
-                  pathname: '/viewer',
-                  params: { url: mediaUrl(im.url) ?? '', kind: 'image', title: im.name },
-                })
-              }
-              onLongPress={() => showMenu(im)}
-              style={{ width: cell }}
-            >
+          renderItem={({ item: im, index }) => (
+            <View style={{ width: cell }}>
               <View
                 className={
                   im.selected
@@ -181,12 +177,18 @@ export function LibrarySection() {
                 }
                 style={{ width: cell, height: cell }}
               >
-                <Image
-                  source={{ uri: mediaUrl(im.thumb || im.url) }}
-                  style={{ width: '100%', height: '100%' }}
-                  contentFit="cover"
-                  transition={100}
-                />
+                <Galeria.Image
+                  index={index}
+                  onLongPress={() => showMenu(im)}
+                  style={{ width: cell, height: cell }}
+                >
+                  <Image
+                    source={{ uri: mediaUrl(im.thumb || im.url) }}
+                    style={{ width: '100%', height: '100%' }}
+                    contentFit="cover"
+                    transition={100}
+                  />
+                </Galeria.Image>
                 {im.selected ? (
                   <View className="absolute right-1.5 top-1.5 h-5 w-5 items-center justify-center rounded-full bg-success">
                     <Check size={12} color="white" />
@@ -196,10 +198,11 @@ export function LibrarySection() {
               <Text className="mt-1 text-[11px] text-muted-foreground" numberOfLines={1}>
                 {im.name}
               </Text>
-            </Pressable>
+            </View>
           )}
         />
       </View>
+      </Galeria>
     );
   }
 

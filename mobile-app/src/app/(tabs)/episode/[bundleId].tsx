@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { Image } from 'expo-image';
+import { Galeria } from '@nandorojo/galeria';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import * as Haptics from 'expo-haptics';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -831,28 +832,20 @@ export default function BundleDetail() {
                   No references chosen for this shot yet.
                 </Text>
               ) : (
+                <Galeria
+                  urls={assignedThumbs.map((im) => mediaUrl(im.url) ?? '')}
+                  theme="dark"
+                >
                 <View className="mb-2 flex-row flex-wrap gap-2">
-                  {assignedThumbs.map((im) => (
+                  {assignedThumbs.map((im, idx) => (
                     <View key={im.rel} className="overflow-hidden rounded-lg border border-primary">
-                      <Pressable
-                        accessibilityRole="button"
-                        onPress={() =>
-                          router.push({
-                            pathname: '/viewer',
-                            params: {
-                              url: mediaUrl(im.url) as string,
-                              kind: 'image',
-                              title: refLabel(im.rel),
-                            },
-                          })
-                        }
-                      >
+                      <Galeria.Image index={idx} style={{ width: cell, height: cell }}>
                         <Image
                           source={{ uri: mediaUrl(im.thumb) }}
                           style={{ width: cell, height: cell }}
                           contentFit="cover"
                         />
-                      </Pressable>
+                      </Galeria.Image>
                       <Pressable
                         accessibilityRole="button"
                         accessibilityLabel="Remove reference"
@@ -869,6 +862,7 @@ export default function BundleDetail() {
                     </View>
                   ))}
                 </View>
+                </Galeria>
               )}
               <View className="flex-row gap-2">
                 <Button size="sm" variant="outline" title="Add references" onPress={addRefs}>
