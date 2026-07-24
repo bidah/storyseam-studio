@@ -1,7 +1,14 @@
 import { Host } from '@expo/ui';
 import { Picker, Text } from '@expo/ui/swift-ui';
-import { controlSize, pickerStyle, tag } from '@expo/ui/swift-ui/modifiers';
+import { controlSize, pickerStyle, scaleEffect, tag } from '@expo/ui/swift-ui/modifiers';
 import * as Haptics from 'expo-haptics';
+
+// `large` keeps controlSize large's roomy typography, but a segmented Picker
+// ignores `.frame(height:)` (its height is locked to controlSize, and there's
+// no step between `regular` ~34 and `large` ~44). So shrink the whole capsule a
+// touch with scaleEffect — it stays centered in its 44pt slot and lines up with
+// the nav-bar menu button.
+const LARGE_SCALE = 0.9;
 
 // Native SwiftUI segmented control (real UISegmentedControl under the hood).
 // On iOS 26 it adopts the Liquid Glass look automatically — no extra modifier.
@@ -28,7 +35,11 @@ export function SegmentedNative<T extends string>({
   return (
     <Host style={{ height: large ? 44 : 34 }}>
       <Picker
-        modifiers={[pickerStyle('segmented'), controlSize(large ? 'large' : 'regular')]}
+        modifiers={[
+          pickerStyle('segmented'),
+          controlSize(large ? 'large' : 'regular'),
+          ...(large ? [scaleEffect(LARGE_SCALE)] : []),
+        ]}
         selection={value}
         onSelectionChange={(selection: T) => {
           if (selection !== value) {
