@@ -1,9 +1,10 @@
 import { useCallback } from 'react';
-import { FlatList, Pressable, RefreshControl, Text, View } from 'react-native';
+import { FlatList, RefreshControl, Text, View } from 'react-native';
 import { router } from 'expo-router';
 import { Image } from 'expo-image';
 import { ChevronRight, Film, Play } from 'lucide-react-native';
 import { Badge } from '@/components/ui/badge';
+import { BouncyPressable } from '@/components/ui/bouncy-pressable';
 import { Empty, ErrorNote, Loading } from '@/components/ui/empty';
 import { mediaUrl } from '@/lib/api';
 import { useProjectResource } from '@/lib/queries';
@@ -83,9 +84,9 @@ export default function EpisodeIndex() {
     const signoff = signoffs[b.id];
     const signed = signedCount(signoff);
     return (
-      <Pressable
-        accessibilityRole="button"
-        className="mb-2.5 flex-row items-center gap-3 rounded-2xl border border-border bg-card p-3 active:bg-secondary"
+      <BouncyPressable
+        accessibilityLabel={`Open ${b.beatTitle || b.beat || b.id}`}
+        className="mb-2.5 flex-row items-center gap-3 rounded-2xl border border-border bg-card p-3"
         onPress={() => router.push(`/episode/${b.id}`)}
       >
         <BundleThumb still={stillFor(b.id)} takes={takes} />
@@ -104,7 +105,7 @@ export default function EpisodeIndex() {
           <SignPills signoff={signoff} />
         </View>
         <ChevronRight size={18} color="#52525b" />
-      </Pressable>
+      </BouncyPressable>
     );
   };
 
