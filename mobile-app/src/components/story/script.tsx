@@ -8,6 +8,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { router } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { toast } from 'sonner-native';
 import {
@@ -16,10 +17,6 @@ import {
   GitPullRequestArrow,
   ListChecks,
   Lock,
-  Pencil,
-  Pin,
-  Plus,
-  Trash2,
   Wand2,
   X,
 } from 'lucide-react-native';
@@ -29,7 +26,7 @@ import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { SegmentedNative } from '@/components/ui/segmented-native';
 import { Empty, ErrorNote, Loading } from '@/components/ui/empty';
-import { deleteJson, patchJson, postJson, putJson } from '@/lib/api';
+import { postJson, putJson } from '@/lib/api';
 import { CLIENT_ID } from '@/lib/client-id';
 import { agentIsBusy, useAgent, useSendToAgent } from '@/lib/agent/provider';
 import { generateShotListMessage, scriptEditRequest, scriptRewriteRequest } from '@/lib/agent/messages';
@@ -47,8 +44,8 @@ import { ScriptProposalReview } from './script-review';
 const MUTED = '#a1a1aa';
 const PRIMARY = '#10b981';
 
-type DraftMeta = { id: string; name: string; lineCount?: number; updatedAt?: string };
-type ScriptData = {
+export type DraftMeta = { id: string; name: string; lineCount?: number; updatedAt?: string };
+export type ScriptData = {
   title: string;
   doc: PMNode | null;
   updatedAt: string | null;
@@ -62,189 +59,6 @@ type ScriptData = {
   signedAt: string | null;
   shotlistExists: boolean;
 };
-
-// "2m ago" / "just now" — compact relative time for the drafts list.
-function relTime(iso?: string) {
-  if (!iso) return '';
-  const then = new Date(iso).getTime();
-  if (Number.isNaN(then)) return '';
-  const s = Math.round((Date.now() - then) / 1000);
-  if (s < 45) return 'just now';
-  const m = Math.round(s / 60);
-  if (m < 60) return `${m}m ago`;
-  const h = Math.round(m / 60);
-  if (h < 24) return `${h}h ago`;
-  return `${Math.round(h / 24)}d ago`;
-}
-
-/* ------------------------------------------------------------------ *
- * Drafts sheet — create / pin / rename / delete (the pinned draft is  *
- * the active one both this screen and the agent read/write).          *
- * ------------------------------------------------------------------ */
-
-function DraftsModal({
-  visible,
-  onClose,
-  drafts,
-  pinnedId,
-}: {
-  visible: boolean;
-  onClose: () => void;
-  drafts: DraftMeta[];
-  pinnedId: string;
-}) {
-  const invalidate = useInvalidate();
-  const [name, setName] = useState('');
-  const [renaming, setRenaming] = useState<string | null>(null);
-  const [renameValue, setRenameValue] = useState('');
-  const [busy, setBusy] = useState(false);
-
-  const run = async (fn: () => Promise<unknown>) => {
-    setBusy(true);
-    try {
-      await fn();
-      invalidate('script');
-    } catch (e: any) {
-      toast.error(String(e?.message || e || 'Draft operation failed'));
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const create = () =>
-    run(async () => {
-      await postJson('/api/script/drafts', {
-        name: name.trim() || undefined,
-        clientId: CLIENT_ID,
-      });
-      setName('');
-      onClose(); // the new draft is now pinned
-    });
-  const pin = (id: string) => {
-    if (id === pinnedId) return;
-    run(() => postJson('/api/script/pin', { id, clientId: CLIENT_ID }));
-  };
-  const rename = (id: string) =>
-    run(async () => {
-      const v = renameValue.trim();
-      if (v) await patchJson(`/api/script/drafts/${id}`, { name: v, clientId: CLIENT_ID });
-      setRenaming(null);
-    });
-  const remove = (id: string) => run(() => deleteJson(`/api/script/drafts/${id}`));
-
-  const sorted = [...drafts].sort((a, b) => (b.updatedAt || '').localeCompare(a.updatedAt || ''));
-
-  return (
-    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
-      <View className="flex-1 bg-background px-4 pt-5">
-        <View className="mb-3 flex-row items-center justify-between">
-          <View className="flex-row items-center gap-2">
-            <GitBranch size={16} color={PRIMARY} />
-            <Text className="text-lg font-semibold text-foreground">Drafts</Text>
-          </View>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Close drafts"
-            className="h-9 w-9 items-center justify-center rounded-full active:opacity-60"
-            onPress={onClose}
-          >
-            <X size={18} color={MUTED} />
-          </Pressable>
-        </View>
-        <Text className="mb-3 text-[12px] text-muted-foreground">
-          The pinned draft is the active version — both this app and the chat agent read and write
-          only the pinned draft. Creating a draft clones the current pinned one, then pins it.
-        </Text>
-
-        <View className="mb-4 flex-row gap-2">
-          <Input
-            className="flex-1"
-            value={name}
-            onChangeText={setName}
-            placeholder={`Draft ${drafts.length + 1}`}
-            onSubmitEditing={() => !busy && create()}
-          />
-          <Button title="Create" disabled={busy} onPress={create}>
-            <Plus size={15} color="white" />
-          </Button>
-        </View>
-
-        <ScrollView className="flex-1" contentContainerClassName="pb-8">
-          {sorted.map((d) => {
-            const isPinned = d.id === pinnedId;
-            return (
-              <View
-                key={d.id}
-                className={cn(
-                  'mb-2 rounded-xl border p-3',
-                  isPinned ? 'border-primary/50 bg-primary/5' : 'border-border bg-card',
-                )}
-              >
-                <View className="flex-row items-center gap-2">
-                  <Pressable
-                    accessibilityRole="button"
-                    accessibilityLabel={isPinned ? `${d.name} is pinned` : `Pin ${d.name}`}
-                    disabled={busy || isPinned}
-                    className="flex-1 flex-row items-center gap-2 active:opacity-60"
-                    onPress={() => pin(d.id)}
-                  >
-                    <Pin size={14} color={isPinned ? PRIMARY : MUTED} fill={isPinned ? PRIMARY : 'none'} />
-                    <View className="min-w-0 flex-1">
-                      {renaming === d.id ? (
-                        <TextInput
-                          autoFocus
-                          value={renameValue}
-                          onChangeText={setRenameValue}
-                          onBlur={() => rename(d.id)}
-                          onSubmitEditing={() => rename(d.id)}
-                          className="rounded-lg border border-primary bg-card px-2 py-1 text-[14px] text-foreground"
-                          placeholderTextColor="#71717a"
-                        />
-                      ) : (
-                        <Text className="text-[15px] font-medium text-foreground" numberOfLines={1}>
-                          {d.name}
-                        </Text>
-                      )}
-                      <Text className="mt-0.5 text-[11px] text-muted-foreground">
-                        {d.lineCount != null ? `${d.lineCount} lines · ` : ''}
-                        {relTime(d.updatedAt)}
-                        {isPinned ? ' · pinned' : ''}
-                      </Text>
-                    </View>
-                  </Pressable>
-                  <Pressable
-                    accessibilityRole="button"
-                    accessibilityLabel={`Rename ${d.name}`}
-                    disabled={busy}
-                    className="h-8 w-8 items-center justify-center rounded-full active:opacity-60"
-                    onPress={() => {
-                      setRenaming(d.id);
-                      setRenameValue(d.name);
-                    }}
-                  >
-                    <Pencil size={14} color={MUTED} />
-                  </Pressable>
-                  <Pressable
-                    accessibilityRole="button"
-                    accessibilityLabel={`Delete ${d.name}`}
-                    disabled={busy || drafts.length <= 1}
-                    className={cn(
-                      'h-8 w-8 items-center justify-center rounded-full active:opacity-60',
-                      drafts.length <= 1 && 'opacity-30',
-                    )}
-                    onPress={() => remove(d.id)}
-                  >
-                    <Trash2 size={14} color="#f87171" />
-                  </Pressable>
-                </View>
-              </View>
-            );
-          })}
-        </ScrollView>
-      </View>
-    </Modal>
-  );
-}
 
 /* ------------------------------------------------------------------ *
  * Sign sheet — name + acknowledgement, then POST /api/script/sign     *
@@ -458,7 +272,6 @@ export function ScriptSurface() {
   const agent = useAgent();
   const agentBusy = agentIsBusy(agent);
   const sendToAgent = useSendToAgent();
-  const [draftsOpen, setDraftsOpen] = useState(false);
   const [signOpen, setSignOpen] = useState(false);
   const [reviewOpen, setReviewOpen] = useState(false);
   const [editLine, setEditLine] = useState<ScriptLine | null>(null);
@@ -531,7 +344,12 @@ export function ScriptSurface() {
       >
         {/* Toolbar */}
         <View className="mb-3 flex-row flex-wrap items-center gap-2">
-          <Button size="sm" variant="outline" title={script.draftName || 'Draft'} onPress={() => setDraftsOpen(true)}>
+          <Button
+            size="sm"
+            variant="outline"
+            title={script.draftName || 'Draft'}
+            onPress={() => router.push('/(tabs)/story/drafts')}
+          >
             <GitBranch size={13} color="#fafafa" />
           </Button>
           {script.signed ? (
@@ -603,12 +421,6 @@ export function ScriptSurface() {
         )}
       </ScrollView>
 
-      <DraftsModal
-        visible={draftsOpen}
-        onClose={() => setDraftsOpen(false)}
-        drafts={script.drafts || []}
-        pinnedId={script.pinnedId}
-      />
       <SignModal
         visible={signOpen}
         onClose={() => setSignOpen(false)}

@@ -8,6 +8,19 @@ export default function StoryLayout() {
   return (
     <Stack screenOptions={{ contentStyle: { backgroundColor: '#0a0a0b' } }}>
       <Stack.Screen name="index" options={headerOptions} />
+      {/* Drafts — a native formSheet. Its "Drafts" title + close button live in
+          the nested drafts/_layout stack, so headerShown is off here (same
+          pattern as the Settings sheet / Chat history). */}
+      <Stack.Screen
+        name="drafts"
+        options={{
+          presentation: 'formSheet',
+          sheetAllowedDetents: [1],
+          sheetGrabberVisible: true,
+          sheetCornerRadius: 24,
+          headerShown: false,
+        }}
+      />
     </Stack>
   );
 }
