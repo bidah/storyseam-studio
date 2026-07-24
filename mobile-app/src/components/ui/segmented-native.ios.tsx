@@ -1,6 +1,6 @@
 import { Host } from '@expo/ui';
 import { Picker, Text } from '@expo/ui/swift-ui';
-import { pickerStyle, tag } from '@expo/ui/swift-ui/modifiers';
+import { controlSize, pickerStyle, tag } from '@expo/ui/swift-ui/modifiers';
 import * as Haptics from 'expo-haptics';
 
 // Native SwiftUI segmented control (real UISegmentedControl under the hood).
@@ -15,16 +15,20 @@ export function SegmentedNative<T extends string>({
   options,
   value,
   onChange,
+  size = 'regular',
 }: {
   options: { value: T; label: string }[];
   value: T;
   onChange: (v: T) => void;
   className?: string;
+  // 'large' bumps the control to the taller Photos-picker capsule; default slim.
+  size?: 'regular' | 'large';
 }) {
+  const large = size === 'large';
   return (
-    <Host style={{ height: 34 }}>
+    <Host style={{ height: large ? 44 : 34 }}>
       <Picker
-        modifiers={[pickerStyle('segmented')]}
+        modifiers={[pickerStyle('segmented'), controlSize(large ? 'large' : 'regular')]}
         selection={value}
         onSelectionChange={(selection: T) => {
           if (selection !== value) {
