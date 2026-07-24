@@ -214,7 +214,10 @@ app.use("*", async (c, next) => {
 app.get("/healthz", (c) => c.json({ ok: true, service: "shot-studio-uploads" }));
 
 // --- store an upload -------------------------------------------------------
-app.post("/upload", async (c) => {
+// Served on BOTH /upload (the historical absolute-URL endpoint,
+// VITE_UPLOAD_URL) and /api/upload (the SPA's same-origin default fallback —
+// rides the /api proxy in web dev and the desktop origin bridge).
+const storeUpload = async (c) => {
   const env = c.env;
   const url = new URL(c.req.url);
   const contentType = c.req.header("content-type") || "application/octet-stream";
@@ -235,7 +238,9 @@ app.post("/upload", async (c) => {
     .run();
 
   return c.json({ ok: true, id, url: `${url.origin}/files/${key}`, key, name, contentType, size });
-});
+};
+app.post("/upload", storeUpload);
+app.post("/api/upload", storeUpload);
 
 // --- recent uploads --------------------------------------------------------
 app.get("/uploads", async (c) => {

@@ -10,16 +10,20 @@ import { BrowserWindow, ipcMain } from "electron";
 
 const AUTH_TIMEOUT_MS = 5 * 60 * 1000;
 
-export function installAuth({ getMainWindow, workerOrigin }) {
+// doneOrigins: where the post-callback redirect can land. In prod that's the
+// Worker origin (Better Auth resolves callbackURL "/" against itself); in dev
+// the Vite proxy claims x-app-origin=localhost:3333, so Better Auth builds the
+// redirect_uri + callbackURL on the DEV origin instead — accept both.
+export function installAuth({ getMainWindow, doneOrigins }) {
   ipcMain.handle("oauth:start", async (event, authorizeUrl) => {
     if (typeof authorizeUrl !== "string" || !/^https:\/\//.test(authorizeUrl)) {
       throw new Error("oauth:start expects an https authorize URL");
     }
-    return openAuthWindow(authorizeUrl, getMainWindow(), workerOrigin);
+    return openAuthWindow(authorizeUrl, getMainWindow(), doneOrigins);
   });
 }
 
-function openAuthWindow(authorizeUrl, parent, workerOrigin) {
+function openAuthWindow(authorizeUrl, parent, doneOrigins) {
   return new Promise((resolve) => {
     const child = new BrowserWindow({
       parent: parent || undefined,
@@ -47,12 +51,14 @@ function openAuthWindow(authorizeUrl, parent, workerOrigin) {
     };
     const timer = setTimeout(() => settle({ ok: false, reason: "timeout" }), AUTH_TIMEOUT_MS);
 
-    // The flow is done when the child is being sent to the Worker origin
-    // anywhere OUTSIDE the auth API (Better Auth's callbackURL is "/"): the
-    // callback response that triggers that redirect has already set the session
-    // cookie. Checking will-redirect catches it before the Worker's SPA loads.
+    // The flow is done when the child is being sent to one of the app's own
+    // origins anywhere OUTSIDE the auth API (Better Auth's callbackURL is "/"):
+    // the callback response that triggers that redirect has already set the
+    // session cookie. Checking will-redirect catches it before the SPA loads.
     const isDone = (url) =>
-      url.startsWith(workerOrigin) && !url.startsWith(workerOrigin + "/api/auth/");
+      doneOrigins.some(
+        (o) => url.startsWith(o) && !url.startsWith(o + "/api/auth/"),
+      );
     const check = (url) => {
       if (isDone(url)) settle({ ok: true });
     };

@@ -88,7 +88,10 @@ function main() {
       minHeight: 640,
       show: false,
       backgroundColor: "#09090b",
-      titleBarStyle: "hiddenInset",
+      // Standard macOS title bar ON PURPOSE: the web UI owns every pixel of
+      // the content area (no drag regions), so the window needs the native
+      // bar to be moveable.
+      title: "Shot Studio",
       webPreferences: {
         preload: path.join(here, "..", "preload", "index.cjs"),
         contextIsolation: true,
@@ -97,6 +100,9 @@ function main() {
       },
     });
     trackWindowState(mainWindow);
+    // Keep the native bar reading "Shot Studio" — the SPA's <title> is the
+    // lowercase package name.
+    mainWindow.on("page-title-updated", (e) => e.preventDefault());
     mainWindow.once("ready-to-show", () => mainWindow.show());
     mainWindow.on("closed", () => {
       mainWindow = null;
@@ -142,7 +148,10 @@ function main() {
   app.whenReady().then(() => {
     registerBridge({ distDir: DIST_DIR, workerOrigin: WORKER_ORIGIN });
     installMenu();
-    installAuth({ getMainWindow, workerOrigin: WORKER_ORIGIN });
+    installAuth({
+      getMainWindow,
+      doneOrigins: [WORKER_ORIGIN, DEV_URL].filter(Boolean),
+    });
     installVault();
     installNotify({ getMainWindow });
     installUpdates({ getMainWindow, feedUrl: WORKER_ORIGIN + "/desktop/updates" });

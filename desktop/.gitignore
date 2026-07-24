@@ -2,3 +2,4 @@ node_modules/
 release/
 # vendored copy of src/lib/routeTable.js (scripts/sync-shared.mjs)
 main/routeTable.js
+.DS_Store
