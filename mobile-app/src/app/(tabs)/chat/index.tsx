@@ -25,13 +25,12 @@ import { KeyboardController, useReanimatedKeyboardAnimation } from 'react-native
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import { ArrowDown, CircleAlert, Sparkles } from 'lucide-react-native';
-import { Stack } from 'expo-router';
+import { router, Stack } from 'expo-router';
 import { File } from 'expo-file-system';
 import { agentIsBusy, useAgent, useConversations } from '@/lib/agent/provider';
 import { uploadFile } from '@/lib/api';
 import { ChatHeaderRight, useChatHeaderItems } from '@/components/chat/chat-header';
 import { Composer, type LocalAttachment } from '@/components/chat/composer';
-import { ConversationsOverlay } from '@/components/chat/conversations-overlay';
 import { deriveQA, isThinking, workingTool } from '@/components/chat/helpers';
 import { MessageRow } from '@/components/chat/message';
 import { chatColors } from '@/components/chat/theme';
@@ -130,7 +129,6 @@ export default function ChatScreen() {
   const agent = useAgent();
   const conv = useConversations();
   const insets = useSafeAreaInsets();
-  const [historyOpen, setHistoryOpen] = useState(false);
   // Inverted list: scroll offset 0 == newest at the visual bottom. atNewest
   // drives the "jump to latest" button (shown only when scrolled up into
   // history). remountKey bumps to snap back to the newest (see jumpToLatest).
@@ -157,7 +155,6 @@ export default function ChatScreen() {
       ? (initial.attachments as SentAttachment[][])
       : [];
     setAtNewest(true);
-    setHistoryOpen(false);
     setRemountKey((k) => k + 1);
   }, [activeId, getInitial]);
 
@@ -309,7 +306,7 @@ export default function ChatScreen() {
 
   const errorMessage = agent?.error ? String(agent.error?.message ?? agent.error) : null;
 
-  const onHistoryPress = useCallback(() => setHistoryOpen((v) => !v), []);
+  const onHistoryPress = useCallback(() => router.push('/(tabs)/chat/history'), []);
   const onNewChat = useCallback(() => {
     Haptics.selectionAsync().catch(() => {});
     conv.newChat();
@@ -379,10 +376,6 @@ export default function ChatScreen() {
           >
             <ArrowDown size={16} color={chatColors.foreground} />
           </Pressable>
-        ) : null}
-
-        {historyOpen ? (
-          <ConversationsOverlay conv={conv} onClose={() => setHistoryOpen(false)} />
         ) : null}
       </View>
 

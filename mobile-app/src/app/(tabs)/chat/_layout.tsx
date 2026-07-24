@@ -16,6 +16,23 @@ export default function ChatLayout() {
         unstable_headerLeftItems: () => [menuItem],
         headerLeft: () => <MenuButton />,
       }}
-    />
+    >
+      <Stack.Screen name="index" />
+      {/* Chat history — a full-size formSheet (single detent: opens fully,
+          swipe-down closes fully). Its header + rows live in the nested
+          history/_layout stack, so headerShown is off here — same pattern as
+          the Settings sheet. Registered in this stack (not the root) so it
+          renders inside <AgentProvider> and can read the conversation store. */}
+      <Stack.Screen
+        name="history"
+        options={{
+          presentation: 'formSheet',
+          sheetAllowedDetents: [1],
+          sheetGrabberVisible: true,
+          sheetCornerRadius: 24,
+          headerShown: false,
+        }}
+      />
+    </Stack>
   );
 }
