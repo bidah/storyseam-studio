@@ -10,33 +10,36 @@ import { isPlausibleFalKey, useFalKeyStore } from '@/lib/fal-key';
 import { isPlausibleAtlasKey, useAtlasKeyStore } from '@/lib/atlas-key';
 import { useProvidersStore } from '@/lib/providers';
 
-// Mandatory render-key step after sign-in (RN port of the web ProviderKeyScreen
-// in src/components/Login.jsx; route kept at /fal-key from the fal-only era).
-// One key from EITHER BYOK provider (fal.ai or Atlas Cloud) unlocks the tabs;
-// saving stores it in expo-secure-store (device-only) and returns to the tabs.
-// Renders bill the USER'S account — keys never touch our servers.
-const KEY_PROVIDERS = [
-  { id: 'fal', label: 'fal.ai', keysUrl: 'https://fal.ai/dashboard/keys', placeholder: 'key_id:key_secret' },
-  { id: 'atlas', label: 'Atlas Cloud', keysUrl: 'https://www.atlascloud.ai/console/api-keys', placeholder: 'Atlas API key' },
-] as const;
+// Mandatory render-key step (RN port of the web ProviderKeyScreen in
+// src/components/Login.jsx; route kept at /fal-key from the fal-only era).
+// The screen is single-provider ON PURPOSE — no fal/Atlas tab bar. It only
+// shows when the SELECTED BYOK provider has no key, so the provider it asks
+// for is exactly the active selection (each provider gets its own dedicated
+// screen). Saving stores the key in expo-secure-store (device-only) and
+// returns to the tabs. Renders bill the USER'S account — keys never touch our
+// servers.
+const KEY_PROVIDERS = {
+  fal: { id: 'fal', label: 'fal.ai', keysUrl: 'https://fal.ai/dashboard/keys', placeholder: 'key_id:key_secret' },
+  atlas: { id: 'atlas', label: 'Atlas Cloud', keysUrl: 'https://www.atlascloud.ai/console/api-keys', placeholder: 'Atlas API key' },
+} as const;
 
 export default function ProviderKeyScreen() {
   const { data: session } = useSession();
   const setFalKey = useFalKeyStore((s) => s.setKey);
   const setAtlasKey = useAtlasKeyStore((s) => s.setKey);
+  const active = useProvidersStore((s) => s.active);
   const setActiveProvider = useProvidersStore((s) => s.setActive);
   const queryClient = useQueryClient();
-  const [pick, setPick] = useState<(typeof KEY_PROVIDERS)[number]>(KEY_PROVIDERS[0]);
+  const provider = active === 'atlas' ? KEY_PROVIDERS.atlas : KEY_PROVIDERS.fal;
   const [draft, setDraft] = useState('');
-  const plausible = pick.id === 'fal' ? isPlausibleFalKey(draft) : isPlausibleAtlasKey(draft);
+  const plausible = provider.id === 'fal' ? isPlausibleFalKey(draft) : isPlausibleAtlasKey(draft);
 
   const save = () => {
     if (!plausible) return;
-    (pick.id === 'fal' ? setFalKey : setAtlasKey)(draft);
-    // Saving a key also SELECTS that provider — this screen only shows when
-    // the selected BYOK provider has no key, so pasting the other provider's
-    // key must switch the selection to unlock.
-    setActiveProvider(pick.id);
+    (provider.id === 'fal' ? setFalKey : setAtlasKey)(draft);
+    // Re-assert the selection (covers a deep-link landing here with the fal
+    // fallback) before unlocking the tabs.
+    setActiveProvider(provider.id);
     router.replace('/chat');
   };
 
@@ -56,40 +59,25 @@ export default function ProviderKeyScreen() {
           <KeyRound size={22} color="#0a0a0b" />
         </View>
         <Text className="mt-6 text-center text-2xl font-semibold text-foreground">
-          Connect a render key
+          Connect your {provider.label} key
         </Text>
         <Text className="mt-2 text-center text-[14px] leading-5 text-muted-foreground">
-          Shot Studio renders images and video with your own account — paste a fal.ai or
-          Atlas Cloud API key to continue. It is stored only on this device (secure
-          keychain), never on our servers, and you can add the other provider later in
+          Shot Studio renders images and video with your own account — paste your{' '}
+          {provider.label} API key to continue. It is stored only on this device (secure
+          keychain), never on our servers, and you can switch providers later in
           Settings.
         </Text>
-
-        <View className="mt-6 flex-row gap-1 rounded-xl border border-border bg-card p-1">
-          {KEY_PROVIDERS.map((p) => (
-            <Button
-              key={p.id}
-              size="sm"
-              variant={pick.id === p.id ? 'secondary' : 'ghost'}
-              title={p.label}
-              onPress={() => {
-                setPick(p);
-                setDraft('');
-              }}
-            />
-          ))}
-        </View>
 
         <Input
           value={draft}
           onChangeText={setDraft}
-          placeholder={pick.placeholder}
+          placeholder={provider.placeholder}
           autoCapitalize="none"
           autoCorrect={false}
           secureTextEntry
           autoFocus
           className="mt-4 w-full font-mono text-[13px]"
-          accessibilityLabel={`${pick.label} API key`}
+          accessibilityLabel={`${provider.label} API key`}
           onSubmitEditing={save}
         />
         <Button
@@ -102,10 +90,10 @@ export default function ProviderKeyScreen() {
 
         <Pressable
           className="mt-4 flex-row items-center gap-1.5"
-          onPress={() => Linking.openURL(pick.keysUrl)}
+          onPress={() => Linking.openURL(provider.keysUrl)}
           accessibilityRole="link"
         >
-          <Text className="text-[12px] text-muted-foreground underline">Create a key on {pick.label}</Text>
+          <Text className="text-[12px] text-muted-foreground underline">Create a key on {provider.label}</Text>
           <ExternalLink size={12} color="#71717a" />
         </Pressable>
 

@@ -1,0 +1,73 @@
+import { Fragment } from 'react';
+import { Host } from '@expo/ui';
+import { Button, Form, Picker, Section, Text, Toggle, VStack } from '@expo/ui/swift-ui';
+import { foregroundStyle, pickerStyle, tag } from '@expo/ui/swift-ui/modifiers';
+import { PROVIDERS_FOOTNOTE, type SettingsFormProps } from './settings-form.types';
+
+// Native SwiftUI settings (iOS): one grouped Form for the whole sheet —
+// account, chat-model menu picker, provider toggles, sign-out. iOS-only
+// imports live here (.ios.tsx); settings-form.tsx is the fallback.
+export default function SettingsForm({
+  name,
+  email,
+  models,
+  modelId,
+  onModelChange,
+  providers,
+  switchNonce,
+  onToggleProvider,
+  onManageKey,
+  apiOrigin,
+  onSignOut,
+}: SettingsFormProps) {
+  return (
+    <Host style={{ flex: 1 }}>
+      <Form>
+        <Section title="Account">
+          <VStack alignment="leading" spacing={2}>
+            <Text>{name}</Text>
+            <Text modifiers={[foregroundStyle({ type: 'hierarchical', style: 'secondary' })]}>
+              {email}
+            </Text>
+          </VStack>
+        </Section>
+
+        <Section title="Agent">
+          <Picker
+            label="Chat model"
+            selection={modelId}
+            onSelectionChange={(id) => onModelChange(String(id))}
+            modifiers={[pickerStyle('menu')]}
+          >
+            {models.map((m) => (
+              <Text key={m.id} modifiers={[tag(m.id)]}>
+                {m.label}
+              </Text>
+            ))}
+          </Picker>
+        </Section>
+
+        <Section title="Render providers" footer={<Text>{PROVIDERS_FOOTNOTE}</Text>}>
+          {providers.map((p) => (
+            <Fragment key={`${p.id}-${switchNonce}`}>
+              <Toggle isOn={p.isOn} onIsOnChange={(on) => onToggleProvider(p.id, on)}>
+                <Text>{p.label}</Text>
+                <Text>{p.subtitle}</Text>
+              </Toggle>
+              {p.byok ? (
+                <Button
+                  label={p.hasKey ? `Manage ${p.label} key…` : `Add ${p.label} key…`}
+                  onPress={() => onManageKey(p.id)}
+                />
+              ) : null}
+            </Fragment>
+          ))}
+        </Section>
+
+        <Section footer={<Text>{apiOrigin}</Text>}>
+          <Button role="destructive" label="Sign out" onPress={onSignOut} />
+        </Section>
+      </Form>
+    </Host>
+  );
+}

@@ -77,7 +77,26 @@ export default function RootLayout() {
                   name="settings"
                   options={{
                     presentation: 'formSheet',
-                    sheetAllowedDetents: [0.5, 1],
+                    // Single detent on purpose: opens fully, swipe-down closes
+                    // fully — no half-open stop hiding the provider cards.
+                    sheetAllowedDetents: [1],
+                    sheetGrabberVisible: true,
+                    sheetCornerRadius: 24,
+                    // Large collapsing title (shrinks into the bar on scroll).
+                    headerShown: true,
+                    headerLargeTitle: true,
+                    title: 'Settings',
+                  }}
+                />
+                <Stack.Screen
+                  name="provider-key"
+                  options={{
+                    presentation: 'formSheet',
+                    // Header shown: the sheet's Save button is a Stack.Toolbar
+                    // item, which renders into the navigation header.
+                    headerShown: true,
+                    // Compact: just a field + header, no reason for half-screen.
+                    sheetAllowedDetents: [0.35],
                     sheetGrabberVisible: true,
                     sheetCornerRadius: 24,
                   }}
