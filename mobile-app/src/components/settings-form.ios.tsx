@@ -1,8 +1,13 @@
 import { Fragment } from 'react';
 import { Host } from '@expo/ui';
-import { Button, Form, Picker, Section, Text, Toggle, VStack } from '@expo/ui/swift-ui';
-import { foregroundStyle, pickerStyle, tag } from '@expo/ui/swift-ui/modifiers';
+import { Button, Form, HStack, Picker, Section, Spacer, Text, Toggle, VStack } from '@expo/ui/swift-ui';
+import { background, foregroundStyle, pickerStyle, scrollContentBackground, tag } from '@expo/ui/swift-ui/modifiers';
 import { PROVIDERS_FOOTNOTE, type SettingsFormProps } from './settings-form.types';
+
+// The app's near-black page background (parity with the web app + the RN nav
+// theme). SwiftUI Forms default to systemGroupedBackground (dark gray), so we
+// hide that and paint this behind the grouped cells to match every other screen.
+const PAGE_BG = '#0a0a0b';
 
 // Native SwiftUI settings (iOS): one grouped Form for the whole sheet —
 // account, chat-model menu picker, provider toggles, sign-out. iOS-only
@@ -22,13 +27,15 @@ export default function SettingsForm({
 }: SettingsFormProps) {
   return (
     <Host style={{ flex: 1 }}>
-      <Form>
+      <Form modifiers={[scrollContentBackground('hidden'), background(PAGE_BG)]}>
         <Section title="Account">
           <VStack alignment="leading" spacing={2}>
             <Text>{name}</Text>
-            <Text modifiers={[foregroundStyle({ type: 'hierarchical', style: 'secondary' })]}>
-              {email}
-            </Text>
+            {email && email !== name ? (
+              <Text modifiers={[foregroundStyle({ type: 'hierarchical', style: 'secondary' })]}>
+                {email}
+              </Text>
+            ) : null}
           </VStack>
         </Section>
 
@@ -65,7 +72,11 @@ export default function SettingsForm({
         </Section>
 
         <Section footer={<Text>{apiOrigin}</Text>}>
-          <Button role="destructive" label="Sign out" onPress={onSignOut} />
+          <HStack>
+            <Spacer />
+            <Button role="destructive" label="Sign out" onPress={onSignOut} />
+            <Spacer />
+          </HStack>
         </Section>
       </Form>
     </Host>

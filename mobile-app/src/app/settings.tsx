@@ -49,10 +49,17 @@ export default function SettingsSheet() {
     router.replace('/sign-in');
   };
 
+  // Better-auth (OAuth) often seeds `name` with the email, which would render
+  // the email twice in the Account row — fall back to a label so the email
+  // only shows as the secondary line.
+  const email = session?.user?.email || '';
+  const rawName = session?.user?.name || '';
+  const name = rawName && rawName !== email ? rawName : 'Signed in';
+
   return (
     <SettingsForm
-      name={session?.user?.name || 'Signed in'}
-      email={session?.user?.email || ''}
+      name={name}
+      email={email}
       models={AGENT_MODELS}
       modelId={model}
       onModelChange={(id) => setModel(id as AgentModelId)}

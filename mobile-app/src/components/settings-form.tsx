@@ -31,9 +31,11 @@ export default function SettingsForm({
           <Text className="text-[15px] font-semibold text-foreground" numberOfLines={1}>
             {name}
           </Text>
-          <Text className="text-[13px] text-muted-foreground" numberOfLines={1}>
-            {email}
-          </Text>
+          {email && email !== name ? (
+            <Text className="text-[13px] text-muted-foreground" numberOfLines={1}>
+              {email}
+            </Text>
+          ) : null}
         </View>
       </Card>
 
