@@ -9,16 +9,14 @@ import {
   View,
   useWindowDimensions,
 } from 'react-native';
-import { router, useLocalSearchParams } from 'expo-router';
+import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { Image } from 'expo-image';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import * as Haptics from 'expo-haptics';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { toast } from 'sonner-native';
 import {
   Check,
-  ChevronLeft,
   Image as ImageIcon,
   Play,
   Plus,
@@ -232,7 +230,6 @@ function StillThumb({
 export default function BundleDetail() {
   const params = useLocalSearchParams<{ bundleId: string }>();
   const id = String(params.bundleId ?? '');
-  const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const invalidate = useInvalidate();
   const agent = useAgent();
@@ -572,41 +569,30 @@ export default function BundleDetail() {
 
   // --- render -------------------------------------------------------------------
 
-  const header = (
-    <View style={{ paddingTop: insets.top }} className="border-b border-border bg-background px-4 pb-3">
-      <View className="flex-row items-center gap-2">
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Back"
-          className="h-9 w-9 items-center justify-center rounded-full active:opacity-60"
-          onPress={() => router.back()}
-        >
-          <ChevronLeft size={22} color="#e4e4e7" />
-        </Pressable>
-        <Badge label={id} variant="outline" />
-        <Text className="flex-1 text-[16px] font-bold text-foreground" numberOfLines={1}>
-          {bundle?.beatTitle || bundle?.beat || ''}
-        </Text>
-      </View>
-      {bundle ? (
-        <View className="mt-2">
-          <SegmentedNative
-            options={[
-              { value: 'stills', label: 'Stills' },
-              { value: 'video', label: 'Video' },
-            ]}
-            value={mode}
-            onChange={setMode}
-          />
-        </View>
-      ) : null}
+  // Native header title = the beat title (falls back to the bundle id while the
+  // payload is still loading). The native back button + styling come from the
+  // Stack screen options in the episode _layout.
+  const screen = <Stack.Screen options={{ title: bundle?.beatTitle || bundle?.beat || '' }} />;
+
+  // The Stills/Video toggle sits just under the native header as a sub-nav (same
+  // pattern as the Assets/Story tabs), rendered only once the bundle is loaded.
+  const subNav = bundle ? (
+    <View className="px-4 pt-3">
+      <SegmentedNative
+        options={[
+          { value: 'stills', label: 'Stills' },
+          { value: 'video', label: 'Video' },
+        ]}
+        value={mode}
+        onChange={setMode}
+      />
     </View>
-  );
+  ) : null;
 
   if (ep.isPending || (!bundle && (fn.isPending || au.isPending))) {
     return (
       <View className="flex-1 bg-background">
-        {header}
+        {screen}
         <Loading />
       </View>
     );
@@ -614,7 +600,7 @@ export default function BundleDetail() {
   if (ep.isError) {
     return (
       <View className="flex-1 bg-background">
-        {header}
+        {screen}
         <ErrorNote message={(ep.error as Error)?.message || 'Failed to load'} onRetry={onRefresh} />
       </View>
     );
@@ -622,7 +608,7 @@ export default function BundleDetail() {
   if (!bundle) {
     return (
       <View className="flex-1 bg-background">
-        {header}
+        {screen}
         <Empty title="Bundle not found" hint={`No bundle "${id}" in the episode plan.`} />
       </View>
     );
@@ -637,7 +623,8 @@ export default function BundleDetail() {
 
   return (
     <View className="flex-1 bg-background">
-      {header}
+      {screen}
+      {subNav}
       <ScrollView
         contentContainerClassName="px-4 pb-28 pt-4"
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
