@@ -8,6 +8,7 @@ import { API_ORIGIN } from '@/lib/env';
 import { useFalKeyStore } from '@/lib/fal-key';
 import { useAtlasKeyStore } from '@/lib/atlas-key';
 import { PROVIDERS, useProvidersStore, type ProviderId } from '@/lib/providers';
+import { useThemeStore } from '@/lib/theme';
 
 // Settings sheet — state + navigation only; the UI is SettingsForm (a native
 // SwiftUI Form on iOS, RN fallback elsewhere). Key entry/removal lives in the
@@ -22,6 +23,7 @@ export default function SettingsSheet() {
   const falKey = useFalKeyStore((s) => s.key);
   const atlasKey = useAtlasKeyStore((s) => s.key);
   const { active, setActive } = useProvidersStore();
+  const { pref: themePref, setPref: setThemePref } = useThemeStore();
 
   // Native toggles flip optimistically; when a flip must NOT commit (keyless
   // on, or flipping the active one off — radio semantics), bumping the nonce
@@ -61,6 +63,8 @@ export default function SettingsSheet() {
     <SettingsForm
       name={name}
       email={email}
+      themePref={themePref}
+      onThemeChange={setThemePref}
       models={AGENT_MODELS}
       modelId={model}
       onModelChange={(id) => setModel(id as AgentModelId)}

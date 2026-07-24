@@ -4,6 +4,7 @@ import { Image } from 'expo-image';
 import { Badge } from '@/components/ui/badge';
 import { BouncyPressable } from '@/components/ui/bouncy-pressable';
 import { Empty, ErrorNote, Loading } from '@/components/ui/empty';
+import { useColors } from '@/lib/colors';
 import { mediaUrl } from '@/lib/api';
 import { useProjectResource } from '@/lib/queries';
 import type { LibraryFolder } from './types';
@@ -12,6 +13,7 @@ import type { LibraryFolder } from './types';
 // (a native screen, see app/(tabs)/assets/folder.tsx).
 
 export function LibrarySection() {
+  const colors = useColors();
   const { data, isPending, error, refetch, isRefetching } = useProjectResource<{
     folders: LibraryFolder[];
   }>('library');
@@ -31,7 +33,7 @@ export function LibrarySection() {
       data={folders}
       keyExtractor={(f) => f.folder}
       refreshControl={
-        <RefreshControl refreshing={isRefetching} onRefresh={() => refetch()} tintColor="#a1a1aa" />
+        <RefreshControl refreshing={isRefetching} onRefresh={() => refetch()} tintColor={colors.mutedForeground} />
       }
       contentContainerClassName="px-4 pb-8 pt-3"
       ListHeaderComponent={

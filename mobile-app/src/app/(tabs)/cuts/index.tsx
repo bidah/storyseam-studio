@@ -24,6 +24,7 @@ import { fmtTime, segDuration, type CutGen, type CutsPayload } from '@/component
 import { agentIsBusy, useAgent, useSendToAgent } from '@/lib/agent/provider';
 import { scoreCutMessage, stitchCutMessage } from '@/lib/agent/messages';
 import { mediaUrl } from '@/lib/api';
+import { useColors } from '@/lib/colors';
 import { useInvalidate, useProjectResource } from '@/lib/queries';
 import { cn } from '@/lib/utils';
 
@@ -49,6 +50,7 @@ export default function CutsScreen() {
   const invalidate = useInvalidate();
   const agent = useAgent();
   const busy = agentIsBusy(agent);
+  const colors = useColors();
 
   const [refreshing, setRefreshing] = useState(false);
   const [showVersions, setShowVersions] = useState(false);
@@ -137,7 +139,7 @@ export default function CutsScreen() {
         className="flex-1"
         contentContainerStyle={{ padding: 16, paddingBottom: 48, gap: 16 }}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#a1a1aa" />
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.mutedForeground} />
         }
       >
         {/* Range summary + stitch-plan health */}
@@ -151,7 +153,7 @@ export default function CutsScreen() {
           <Badge variant="success" label={`~${fmtTime(total)}`} />
           {fallbacks.length > 0 ? (
             <Badge variant="warning" label={`${fallbacks.length} fallback`}>
-              <TriangleAlert size={11} color="#fbbf24" />
+              <TriangleAlert size={11} color={colors.amber} />
             </Badge>
           ) : null}
           {missing.length > 0 ? (
@@ -159,7 +161,7 @@ export default function CutsScreen() {
               variant="warning"
               label={`${missing.length} missing take${missing.length === 1 ? '' : 's'}`}
             >
-              <TriangleAlert size={11} color="#fbbf24" />
+              <TriangleAlert size={11} color={colors.amber} />
             </Badge>
           ) : null}
         </View>
@@ -172,14 +174,14 @@ export default function CutsScreen() {
           className="flex-row items-center gap-3 rounded-2xl border border-border bg-card px-3 py-3 active:bg-secondary"
           onPress={() => router.push('/cuts/radio')}
         >
-          <Radio size={16} color="#10b981" />
+          <Radio size={16} color={colors.primary} />
           <View className="flex-1">
             <Text className="text-sm font-semibold text-foreground">Radio version</Text>
             <Text className="text-xs text-muted-foreground">
               Voice the dialogue, then build the animatic
             </Text>
           </View>
-          <ChevronRight size={16} color="#a1a1aa" />
+          <ChevronRight size={16} color={colors.mutedForeground} />
         </Pressable>
 
         {/* Latest (or user-picked) generation */}
@@ -187,9 +189,9 @@ export default function CutsScreen() {
           <Card className="gap-3 p-3">
             <View className="flex-row flex-wrap items-center gap-2">
               {activeGen.kind === 'scored' ? (
-                <Music size={15} color="#10b981" />
+                <Music size={15} color={colors.primary} />
               ) : (
-                <Play size={15} color="#10b981" />
+                <Play size={15} color={colors.primary} />
               )}
               <Text className="text-sm font-semibold text-foreground">v{activeGen.v}</Text>
               <Badge
@@ -208,7 +210,7 @@ export default function CutsScreen() {
                   accessibilityLabel={`Open cut v${activeGen.v} in editor`}
                   onPress={() => openInEditor(activeGen.v)}
                 >
-                  <Pencil size={18} color="#fafafa" />
+                  <Pencil size={18} color={colors.foreground} />
                 </Button>
                 <Button
                   size="icon"
@@ -217,7 +219,7 @@ export default function CutsScreen() {
                   loading={sharingV === activeGen.v}
                   onPress={() => share(activeGen)}
                 >
-                  {sharingV === activeGen.v ? null : <Share2 size={18} color="#fafafa" />}
+                  {sharingV === activeGen.v ? null : <Share2 size={18} color={colors.foreground} />}
                 </Button>
               </View>
             </View>
@@ -246,7 +248,7 @@ export default function CutsScreen() {
             disabled={busy || usable.length === 0}
             onPress={stitch}
           >
-            <RefreshCw size={15} color="#ecfdf5" />
+            <RefreshCw size={15} color={colors.primaryForeground} />
           </Button>
           <Button
             className="flex-1"
@@ -255,7 +257,7 @@ export default function CutsScreen() {
             disabled={busy || !output || music.length === 0}
             onPress={score}
           >
-            <Music size={15} color="#fafafa" />
+            <Music size={15} color={colors.foreground} />
           </Button>
         </View>
         {busy ? (
@@ -265,7 +267,7 @@ export default function CutsScreen() {
         ) : null}
         {output && output.kind !== 'scored' && music.length > 0 ? (
           <View className="flex-row items-center gap-2 rounded-xl border border-dashed border-border px-3 py-2.5">
-            <Music size={13} color="#38bdf8" />
+            <Music size={13} color={colors.info} />
             <Text className="flex-1 text-xs text-muted-foreground">
               {music.length} background-music cue{music.length === 1 ? '' : 's'} ready — Add music
               renders a scored version (it becomes the new latest).
@@ -283,7 +285,7 @@ export default function CutsScreen() {
               title={showVersions ? 'Hide versions' : `Versions (${history.length})`}
               onPress={() => setShowVersions((v) => !v)}
             >
-              <History size={14} color="#a1a1aa" />
+              <History size={14} color={colors.mutedForeground} />
             </Button>
             {showVersions ? (
               <Card className="gap-0 p-1">
@@ -302,9 +304,9 @@ export default function CutsScreen() {
                         )}
                       >
                         {g.kind === 'scored' ? (
-                          <Music size={14} color="#10b981" />
+                          <Music size={14} color={colors.primary} />
                         ) : (
-                          <Play size={14} color="#a1a1aa" />
+                          <Play size={14} color={colors.mutedForeground} />
                         )}
                         <View className="flex-1">
                           <Text className="text-sm font-semibold text-foreground">
@@ -325,7 +327,7 @@ export default function CutsScreen() {
                             setAutoPlay(true);
                           }}
                         >
-                          <Play size={16} color={isActive ? '#10b981' : '#fafafa'} />
+                          <Play size={16} color={isActive ? colors.primary : colors.foreground} />
                         </Button>
                         <Button
                           size="icon"
@@ -333,7 +335,7 @@ export default function CutsScreen() {
                           accessibilityLabel={`Open v${g.v} in editor`}
                           onPress={() => openInEditor(g.v)}
                         >
-                          <Pencil size={16} color="#fafafa" />
+                          <Pencil size={16} color={colors.foreground} />
                         </Button>
                         <Button
                           size="icon"
@@ -342,7 +344,7 @@ export default function CutsScreen() {
                           loading={sharingV === g.v}
                           onPress={() => share(g)}
                         >
-                          {sharingV === g.v ? null : <Share2 size={16} color="#fafafa" />}
+                          {sharingV === g.v ? null : <Share2 size={16} color={colors.foreground} />}
                         </Button>
                       </View>
                     </Fragment>

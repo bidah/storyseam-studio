@@ -15,6 +15,7 @@ import { Eyebrow } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { SegmentedNative } from '@/components/ui/segmented-native';
 import { patchJson, postJson } from '@/lib/api';
+import { useColors } from '@/lib/colors';
 import { cn } from '@/lib/utils';
 import type { SoundTrack, SoundVersion, TrackKind } from './types';
 
@@ -65,6 +66,7 @@ function Sheet({
   onClose: () => void;
   children: React.ReactNode;
 }) {
+  const colors = useColors();
   return (
     <Modal
       visible={visible}
@@ -81,7 +83,7 @@ function Sheet({
             className="h-8 w-8 items-center justify-center rounded-full bg-secondary active:opacity-60"
             onPress={onClose}
           >
-            <X size={16} color="#a1a1aa" />
+            <X size={16} color={colors.mutedForeground} />
           </Pressable>
         </View>
         <KeyboardAvoidingView

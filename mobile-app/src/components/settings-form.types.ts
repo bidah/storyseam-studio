@@ -1,4 +1,5 @@
 import type { ProviderId } from '@/lib/providers';
+import type { ThemePref } from '@/lib/theme';
 
 // Shared contract between the settings route (owns state + navigation) and
 // the two SettingsForm implementations (.ios.tsx native SwiftUI Form, .tsx
@@ -6,6 +7,8 @@ import type { ProviderId } from '@/lib/providers';
 export type SettingsFormProps = {
   name: string;
   email: string;
+  themePref: ThemePref;
+  onThemeChange: (pref: ThemePref) => void;
   models: readonly { id: string; label: string }[];
   modelId: string;
   onModelChange: (id: string) => void;

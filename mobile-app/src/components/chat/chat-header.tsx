@@ -1,7 +1,7 @@
 import { Pressable, View } from 'react-native';
 import type { NativeStackHeaderItem } from 'expo-router/build/react-navigation/native-stack/types';
 import { History, SquarePen } from 'lucide-react-native';
-import { chatColors } from './theme';
+import { useChatColors } from './theme';
 
 // Right-side controls for the Chat tab's native header: chat history · new chat.
 // The project switcher sits on the left (shared, see header-buttons.tsx); the
@@ -40,6 +40,7 @@ export function useChatHeaderItems({
 
 // Android/web fallback for useChatHeaderItems.
 export function ChatHeaderRight({ onHistoryPress, onNewChat }: ChatHeaderProps) {
+  const c = useChatColors();
   return (
     <View className="flex-row items-center gap-1">
       <Pressable
@@ -48,7 +49,7 @@ export function ChatHeaderRight({ onHistoryPress, onNewChat }: ChatHeaderProps) 
         className="h-9 w-9 items-center justify-center rounded-full active:opacity-60"
         onPress={onHistoryPress}
       >
-        <History size={18} color={chatColors.mutedForeground} />
+        <History size={18} color={c.mutedForeground} />
       </Pressable>
 
       <Pressable
@@ -57,7 +58,7 @@ export function ChatHeaderRight({ onHistoryPress, onNewChat }: ChatHeaderProps) 
         className="h-9 w-9 items-center justify-center rounded-full active:opacity-60"
         onPress={onNewChat}
       >
-        <SquarePen size={18} color={chatColors.mutedForeground} />
+        <SquarePen size={18} color={c.mutedForeground} />
       </Pressable>
     </View>
   );

@@ -30,6 +30,7 @@ import { agentIsBusy, useAgent, useSendToAgent } from '@/lib/agent/provider';
 import { renderRadioSceneMessage } from '@/lib/agent/messages';
 import { postJson, putJson } from '@/lib/api';
 import { createPickerRequest } from '@/lib/picker-bus';
+import { useColors } from '@/lib/colors';
 import { useInvalidate, useProjectResource } from '@/lib/queries';
 
 // Radio screen — the audio-only dialogue pass, and the animatic built on top of
@@ -43,11 +44,6 @@ import { useInvalidate, useProjectResource } from '@/lib/queries';
 // line PUTs the intent (/api/radio/line/:id) and re-reads; nothing here owns
 // document state.
 
-const MUTED = '#a1a1aa';
-const PRIMARY = '#10b981';
-const WARN = '#fbbf24';
-const INFO = '#38bdf8';
-
 /* ---------------------------------------------------------------- *
  * Casting row — one character + its cast voice.                      *
  * ---------------------------------------------------------------- */
@@ -60,6 +56,7 @@ function CastingRow({
   onCast: (character: string, voiceRef: VoiceRef | null) => void;
 }) {
   const { character, voiceRef, source } = entry;
+  const colors = useColors();
 
   // Reuses the existing /sound-picker sheet: it already resolves exactly the
   // { trackId, v, name, url } voiceRef this endpoint wants.
@@ -78,7 +75,7 @@ function CastingRow({
       </View>
       {voiceRef ? (
         <View className="flex-row items-center gap-2">
-          <Mic size={15} color={PRIMARY} />
+          <Mic size={15} color={colors.primary} />
           <Text className="flex-1 text-sm font-medium text-foreground" numberOfLines={1}>
             {voiceRef.name || 'Voice'}
             {voiceRef.v != null ? (
@@ -99,14 +96,14 @@ function CastingRow({
             accessibilityLabel={`Clear ${character}'s voice`}
             onPress={() => onCast(character, null)}
           >
-            <X size={16} color={MUTED} />
+            <X size={16} color={colors.mutedForeground} />
           </Button>
         </View>
       ) : (
         <View className="flex-row items-center gap-2">
           <Text className="flex-1 text-sm text-muted-foreground">no voice cast</Text>
           <Button size="sm" variant="outline" title="Cast voice" onPress={pickVoice}>
-            <Mic size={13} color="#fafafa" />
+            <Mic size={13} color={colors.foreground} />
           </Button>
         </View>
       )}
@@ -126,17 +123,18 @@ function LineCard({
   onSaveLine: (id: string, patch: { character?: string; text?: string }) => void;
 }) {
   const take = line.take;
+  const colors = useColors();
   return (
     <View className="gap-1.5 rounded-xl border border-border p-2.5">
       <View className="flex-row flex-wrap items-center gap-2">
         <Badge variant="outline" label={`shot ${line.shotId}`} />
         {line.voiceRef ? (
           <Badge variant="success" label={line.voiceRef.name || 'voice'}>
-            <Mic size={10} color={PRIMARY} />
+            <Mic size={10} color={colors.primary} />
           </Badge>
         ) : (
           <Badge variant="warning" label="no voice">
-            <CircleAlert size={10} color={WARN} />
+            <CircleAlert size={10} color={colors.amber} />
           </Badge>
         )}
         <View className="ml-auto flex-row items-center gap-1">
@@ -171,6 +169,7 @@ function LineCard({
  * ---------------------------------------------------------------- */
 
 export default function RadioScreen() {
+  const colors = useColors();
   const { data, isLoading, error, refetch } = useProjectResource<RadioPayload>('radio');
   // Coverage is a nice-to-have: its own query, so a failure degrades the Build
   // animatic button instead of breaking the screen (the web loader has to
@@ -282,7 +281,7 @@ export default function RadioScreen() {
           className="flex-1"
           contentContainerStyle={{ padding: 16, paddingBottom: 48, gap: 16 }}
           refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={MUTED} />
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.mutedForeground} />
           }
         >
           <View className="gap-3">
@@ -295,14 +294,14 @@ export default function RadioScreen() {
             <View className="flex-row flex-wrap items-center gap-2">
               <Badge variant="outline" label={`${scenes.length} scenes`} />
               <Badge variant="info" label={`${data?.readyLines || 0}/${data?.totalLines || 0} lines rendered`}>
-                <AudioLines size={11} color={INFO} />
+                <AudioLines size={11} color={colors.info} />
               </Badge>
               {animatic && animatic.shots > 0 ? (
                 <Badge
                   variant={animatic.withStill ? 'info' : 'muted'}
                   label={`${animatic.withStill}/${animatic.shots} shots with a still`}
                 >
-                  <ImageIcon size={11} color={animatic.withStill ? INFO : MUTED} />
+                  <ImageIcon size={11} color={animatic.withStill ? colors.info : colors.mutedForeground} />
                 </Badge>
               ) : null}
               {uncast > 0 ? (
@@ -310,7 +309,7 @@ export default function RadioScreen() {
                   variant="warning"
                   label={`${uncast} character${uncast > 1 ? 's' : ''} without a voice`}
                 >
-                  <CircleAlert size={11} color={WARN} />
+                  <CircleAlert size={11} color={colors.amber} />
                 </Badge>
               ) : null}
               {/* A shot that belongs to no bundle can't be matched to a still —
@@ -321,7 +320,7 @@ export default function RadioScreen() {
                   variant="warning"
                   label={`${animatic.unmatched} shot${animatic.unmatched > 1 ? 's' : ''} not in any bundle`}
                 >
-                  <CircleAlert size={11} color={WARN} />
+                  <CircleAlert size={11} color={colors.amber} />
                 </Badge>
               ) : null}
             </View>
@@ -335,7 +334,7 @@ export default function RadioScreen() {
                 disabled={sending || building || !data?.readyLines}
                 onPress={sendToEditor}
               >
-                {sending ? null : <Send size={14} color="#fafafa" />}
+                {sending ? null : <Send size={14} color={colors.foreground} />}
               </Button>
               <Button
                 className="flex-1"
@@ -344,7 +343,7 @@ export default function RadioScreen() {
                 disabled={building || sending || !animatic?.shots}
                 onPress={buildAnimatic}
               >
-                {building ? null : <Clapperboard size={14} color="#ecfdf5" />}
+                {building ? null : <Clapperboard size={14} color={colors.primaryForeground} />}
               </Button>
             </View>
             {animatic?.shots ? (
@@ -362,7 +361,7 @@ export default function RadioScreen() {
           {/* Casting */}
           <Card className="gap-2 p-3">
             <View className="flex-row items-center gap-2">
-              <Mic size={15} color={PRIMARY} />
+              <Mic size={15} color={colors.primary} />
               <Eyebrow className="mb-0">Casting</Eyebrow>
               <View className="ml-auto">
                 <Badge variant="outline" label={String(casting.length)} />
@@ -395,7 +394,7 @@ export default function RadioScreen() {
               return (
                 <Card key={`${scene.beat}:${scene.lines[0]?.id}`} className="gap-2.5 p-3">
                   <View className="flex-row flex-wrap items-center gap-2">
-                    <Film size={15} color={PRIMARY} />
+                    <Film size={15} color={colors.primary} />
                     <Text className="flex-1 text-sm font-semibold text-foreground" numberOfLines={1}>
                       {scene.beatTitle || scene.beat}
                     </Text>
@@ -408,7 +407,7 @@ export default function RadioScreen() {
                     disabled={busy || sceneUncast}
                     onPress={() => renderScene(scene)}
                   >
-                    <Mic size={13} color="#ecfdf5" />
+                    <Mic size={13} color={colors.primaryForeground} />
                   </Button>
                   {sceneUncast ? (
                     <Text className="text-[11px] text-muted-foreground">

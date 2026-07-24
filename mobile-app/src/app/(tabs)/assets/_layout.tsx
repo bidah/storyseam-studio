@@ -1,5 +1,6 @@
 import { Stack } from 'expo-router';
-import { HEADER_BASE, useTabHeaderOptions } from '@/components/header-buttons';
+import { useHeaderBase, useTabHeaderOptions } from '@/components/header-buttons';
+import { useColors } from '@/lib/colors';
 
 // Nested Stack so the Assets tab gets a native expo-router header (project switcher
 // + refresh/settings). See src/components/header-buttons.tsx. The in-folder image
@@ -8,10 +9,12 @@ import { HEADER_BASE, useTabHeaderOptions } from '@/components/header-buttons';
 // long folder names).
 export default function AssetsLayout() {
   const headerOptions = useTabHeaderOptions('Assets', { refresh: false });
+  const headerBase = useHeaderBase();
+  const colors = useColors();
   return (
-    <Stack screenOptions={{ contentStyle: { backgroundColor: '#0a0a0b' } }}>
+    <Stack screenOptions={{ contentStyle: { backgroundColor: colors.pageBg } }}>
       <Stack.Screen name="index" options={headerOptions} />
-      <Stack.Screen name="folder" options={{ ...HEADER_BASE, headerBackButtonDisplayMode: 'minimal' }} />
+      <Stack.Screen name="folder" options={{ ...headerBase, headerBackButtonDisplayMode: 'minimal' }} />
     </Stack>
   );
 }

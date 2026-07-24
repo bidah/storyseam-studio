@@ -1,36 +1,81 @@
+import { Fragment, useEffect, useRef, useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
-import { router } from 'expo-router';
-import { Check } from 'lucide-react-native';
+import { router, Stack } from 'expo-router';
+import { Check, X } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
-import { Eyebrow } from '@/components/ui/card';
-import { AGENT_MODELS, useAgentModelStore } from '@/lib/agent-model';
+import { AGENT_MODELS, type AgentModelId, useAgentModelStore } from '@/lib/agent-model';
+import { useColors } from '@/lib/colors';
 
-// Native formSheet model picker (mirrors the web picker: the id rides every
-// /eve request as x-flue-model, which the Worker's /eve proxy forwards into the
-// flue agent Durable Object, which maps it per turn).
+// Chat model picker — a native formSheet sized to its content
+// (sheetAllowedDetents: 'fitToContents' in _layout) with a native header, a
+// circular close button on the right, and one iOS inset-grouped card holding
+// the model rows (title + subtitle, hairline separators). Models only — no
+// effort control. The picked id rides every /eve request as x-flue-model, which
+// the Worker's /eve proxy forwards into the flue agent Durable Object.
 export default function ModelPickerSheet() {
   const { model, setModel } = useAgentModelStore();
+  // The tapped model shows its check for a beat before the sheet closes.
+  const [pending, setPending] = useState<AgentModelId | null>(null);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const colors = useColors();
+
+  useEffect(() => {
+    return () => {
+      if (timer.current) clearTimeout(timer.current);
+    };
+  }, []);
+
+  const pick = (id: AgentModelId) => {
+    if (pending) return; // ignore taps while a close is queued
+    Haptics.selectionAsync().catch(() => {});
+    setPending(id);
+    setModel(id); // persist immediately; the delay is only for the check-mark beat
+    timer.current = setTimeout(() => router.back(), 500);
+  };
+
+  const checkedId = pending ?? model;
 
   return (
-    <View className="flex-1 bg-background px-5 pt-6">
-      <Eyebrow>Chat model</Eyebrow>
-      {AGENT_MODELS.map((m) => (
-        <Pressable
-          key={m.id}
-          className="flex-row items-center justify-between rounded-xl px-3 py-3.5 active:bg-secondary"
-          onPress={() => {
-            Haptics.selectionAsync().catch(() => {});
-            setModel(m.id);
-            router.back();
-          }}
-        >
-          <View>
-            <Text className="text-[15px] font-medium text-foreground">{m.label}</Text>
-            <Text className="text-[13px] text-muted-foreground">{m.hint}</Text>
-          </View>
-          {model === m.id ? <Check size={18} color="#10b981" /> : null}
-        </Pressable>
-      ))}
-    </View>
+    <>
+      <Stack.Screen
+        options={{
+          title: 'Select model',
+          headerRight: () => (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Close"
+              hitSlop={8}
+              className="h-8 w-8 items-center justify-center rounded-full bg-secondary active:opacity-60"
+              onPress={() => router.back()}
+            >
+              <X size={18} color={colors.mutedForeground} />
+            </Pressable>
+          ),
+        }}
+      />
+      {/* The formSheet's native header floats transparently over the content
+          (glass), so the card reserves its ~56pt itself. */}
+      <View className="bg-background px-4 pb-8" style={{ paddingTop: 76 }}>
+        <View className="overflow-hidden rounded-[28px] border border-border bg-card">
+          {AGENT_MODELS.map((m, i) => (
+            <Fragment key={m.id}>
+              {i > 0 ? <View className="ml-4 h-px bg-border" /> : null}
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={m.label}
+                className="flex-row items-center justify-between px-4 py-4 active:bg-secondary"
+                onPress={() => pick(m.id)}
+              >
+                <View className="mr-3 flex-1">
+                  <Text className="text-[16px] font-medium text-foreground">{m.label}</Text>
+                  <Text className="mt-0.5 text-[13px] text-muted-foreground">{m.hint}</Text>
+                </View>
+                {checkedId === m.id ? <Check size={18} color={colors.primary} /> : null}
+              </Pressable>
+            </Fragment>
+          ))}
+        </View>
+      </View>
+    </>
   );
 }

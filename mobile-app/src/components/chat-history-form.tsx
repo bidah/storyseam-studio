@@ -1,12 +1,13 @@
 import { Pressable, ScrollView, Text, View } from 'react-native';
 import { Check, MessageSquare, Trash2 } from 'lucide-react-native';
 import { cn } from '@/lib/utils';
-import { chatColors } from '@/components/chat/theme';
+import { useChatColors } from '@/components/chat/theme';
 import type { ChatHistoryFormProps } from './chat-history-form.types';
 
 // Cross-platform fallback for the chat history sheet (the .ios.tsx sibling
 // renders one native SwiftUI Form). Same props, RN cards.
 export default function ChatHistoryForm({ chats, onSelect, onDelete }: ChatHistoryFormProps) {
+  const chatC = useChatColors();
   return (
     <ScrollView
       className="flex-1 bg-background"
@@ -29,9 +30,9 @@ export default function ChatHistoryForm({ chats, onSelect, onDelete }: ChatHisto
                 onPress={() => onSelect(c.id)}
               >
                 {c.active ? (
-                  <Check size={16} color={chatColors.primary} />
+                  <Check size={16} color={chatC.primary} />
                 ) : (
-                  <MessageSquare size={16} color={chatColors.mutedForeground} />
+                  <MessageSquare size={16} color={chatC.mutedForeground} />
                 )}
                 <Text className="min-w-0 flex-1 text-[15px] text-foreground" numberOfLines={1}>
                   {c.title}
@@ -44,7 +45,7 @@ export default function ChatHistoryForm({ chats, onSelect, onDelete }: ChatHisto
                 className="h-12 w-12 items-center justify-center active:opacity-60"
                 onPress={() => onDelete(c.id)}
               >
-                <Trash2 size={16} color={chatColors.mutedForeground} />
+                <Trash2 size={16} color={chatC.mutedForeground} />
               </Pressable>
             </View>
           ))}

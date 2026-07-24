@@ -11,6 +11,7 @@ import { Eyebrow } from '@/components/ui/card';
 import { postJson, patchJson } from '@/lib/api';
 import { useProjectStore } from '@/lib/project';
 import { useProjects, type Project } from '@/lib/queries';
+import { useColors } from '@/lib/colors';
 
 // Project switcher sheet. Switching sets the store id (every request header +
 // media URL follows), mirrors it server-side via /activate, and clears the
@@ -22,6 +23,7 @@ export default function ProjectsSheet() {
   const [creating, setCreating] = useState(false);
   const [name, setName] = useState('');
   const [renaming, setRenaming] = useState<Project | null>(null);
+  const colors = useColors();
 
   const activate = async (p: Project) => {
     if (p.id === projectId) {
@@ -88,7 +90,7 @@ export default function ProjectsSheet() {
           <Text className="flex-1 text-[15px] font-medium text-foreground" numberOfLines={1}>
             {p.name}
           </Text>
-          {p.id === projectId ? <Check size={18} color="#10b981" /> : null}
+          {p.id === projectId ? <Check size={18} color={colors.primary} /> : null}
         </Pressable>
       ))}
       <View className="mt-4 gap-3">
@@ -121,11 +123,11 @@ export default function ProjectsSheet() {
           </View>
         ) : (
           <Button variant="secondary" title="New project" onPress={() => setCreating(true)}>
-            <FolderPlus size={16} color="#fafafa" />
+            <FolderPlus size={16} color={colors.foreground} />
           </Button>
         )}
         <View className="flex-row items-center justify-center gap-1">
-          <Pencil size={11} color="#71717a" />
+          <Pencil size={11} color={colors.subtleForeground} />
           <Text className="text-xs text-muted-foreground">Long-press a project to rename</Text>
         </View>
       </View>

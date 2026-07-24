@@ -6,12 +6,14 @@ import { toast } from 'sonner-native';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { authClient, confirmSignedIn } from '@/lib/auth-client';
+import { useColors } from '@/lib/colors';
 
 export default function SignIn() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
   const [oauthBusy, setOauthBusy] = useState(false);
+  const colors = useColors();
 
   const signInEmail = async () => {
     if (!email.trim() || !password) return;
@@ -66,7 +68,7 @@ export default function SignIn() {
       >
         <View className="mb-4 items-center gap-3">
           <View className="h-16 w-16 items-center justify-center rounded-3xl bg-primary/15">
-            <Clapperboard size={30} color="#10b981" />
+            <Clapperboard size={30} color={colors.primary} />
           </View>
           <Text className="text-3xl font-bold text-foreground">Shot Studio</Text>
           <Text className="text-center text-sm text-muted-foreground">

@@ -33,7 +33,7 @@ import { ChatHeaderRight, useChatHeaderItems } from '@/components/chat/chat-head
 import { Composer, type LocalAttachment } from '@/components/chat/composer';
 import { deriveQA, isThinking, workingTool } from '@/components/chat/helpers';
 import { MessageRow } from '@/components/chat/message';
-import { chatColors } from '@/components/chat/theme';
+import { useChatColors } from '@/components/chat/theme';
 import type { AgentMessage, SentAttachment } from '@/components/chat/types';
 
 // The flue agent chat — native port of the web AgentChat.jsx on the shared
@@ -75,6 +75,7 @@ type Row = {
 
 // Pulsing "Thinking… / Agent is working…" row (shimmer stand-in).
 function ShimmerRow({ label }: { label: string }) {
+  const c = useChatColors();
   const opacity = useSharedValue(0.45);
   useEffect(() => {
     opacity.value = withRepeat(withTiming(1, { duration: 650 }), -1, true);
@@ -83,7 +84,7 @@ function ShimmerRow({ label }: { label: string }) {
   return (
     <Animated.View style={style}>
       <View className="flex-row items-center gap-2 px-4 py-1.5">
-        <ActivityIndicator size="small" color={chatColors.mutedForeground} />
+        <ActivityIndicator size="small" color={c.mutedForeground} />
         <Text className="text-sm text-muted-foreground">{label}</Text>
       </View>
     </Animated.View>
@@ -91,6 +92,7 @@ function ShimmerRow({ label }: { label: string }) {
 }
 
 function EmptyChat({ onSuggest }: { onSuggest: (s: string) => void }) {
+  const c = useChatColors();
   // The empty state has no scrollable list, so it lacks the transcript's
   // keyboardDismissMode. Tapping the background dismisses the keyboard (nested
   // suggestion Pressables still handle their own taps); accessible={false} keeps
@@ -101,7 +103,7 @@ function EmptyChat({ onSuggest }: { onSuggest: (s: string) => void }) {
       onPress={() => KeyboardController.dismiss()}
       className="flex-1 items-center justify-center gap-2 px-8"
     >
-      <Sparkles size={22} color={chatColors.mutedForeground} />
+      <Sparkles size={22} color={c.mutedForeground} />
       <Text className="text-center text-base font-medium text-foreground">
         Ask me to build the episode
       </Text>
@@ -126,6 +128,7 @@ function EmptyChat({ onSuggest }: { onSuggest: (s: string) => void }) {
 }
 
 export default function ChatScreen() {
+  const c = useChatColors();
   const agent = useAgent();
   const conv = useConversations();
   const insets = useSafeAreaInsets();
@@ -353,7 +356,7 @@ export default function ChatScreen() {
                 ) : null}
                 {errorMessage ? (
                   <View className="mx-4 mt-2 flex-row items-start gap-2 rounded-xl border border-destructive/40 bg-destructive/10 p-3">
-                    <CircleAlert size={15} color={chatColors.destructive} style={{ marginTop: 2 }} />
+                    <CircleAlert size={15} color={c.destructive} style={{ marginTop: 2 }} />
                     <View className="min-w-0 flex-1">
                       <Text className="text-sm font-medium text-foreground">Agent error</Text>
                       <Text className="text-xs text-muted-foreground">{errorMessage}</Text>
@@ -374,7 +377,7 @@ export default function ChatScreen() {
             style={{ transform: [{ translateX: -18 }] }}
             onPress={jumpToLatest}
           >
-            <ArrowDown size={16} color={chatColors.foreground} />
+            <ArrowDown size={16} color={c.foreground} />
           </Pressable>
         ) : null}
       </View>

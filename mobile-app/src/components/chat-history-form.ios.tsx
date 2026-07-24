@@ -16,12 +16,8 @@ import {
   foregroundStyle,
   scrollContentBackground,
 } from '@expo/ui/swift-ui/modifiers';
+import { useColors } from '@/lib/colors';
 import type { ChatHistoryFormProps } from './chat-history-form.types';
-
-// The app's near-black page background (parity with settings + the RN nav
-// theme). SwiftUI Forms default to systemGroupedBackground (dark gray), so we
-// hide that and paint this behind the grouped cells.
-const PAGE_BG = '#0a0a0b';
 
 // Native SwiftUI chat history (iOS): one grouped Form whose Section holds the
 // conversation rows — the same shape as the settings sheet. Each row is a
@@ -29,9 +25,12 @@ const PAGE_BG = '#0a0a0b';
 // the accent tint) with a native trailing swipe-to-delete. iOS-only imports
 // live here (.ios.tsx); chat-history-form.tsx is the fallback.
 export default function ChatHistoryForm({ chats, onSelect, onDelete }: ChatHistoryFormProps) {
+  // SwiftUI Forms default to systemGroupedBackground; hide it and paint the
+  // scheme's page background behind the grouped cells.
+  const colors = useColors();
   return (
     <Host style={{ flex: 1 }}>
-      <Form modifiers={[scrollContentBackground('hidden'), background(PAGE_BG)]}>
+      <Form modifiers={[scrollContentBackground('hidden'), background(colors.pageBg)]}>
         {chats.length === 0 ? (
           <Section>
             <ContentUnavailableView
@@ -49,7 +48,7 @@ export default function ChatHistoryForm({ chats, onSelect, onDelete }: ChatHisto
                     <Image
                       systemName={c.active ? 'checkmark.circle.fill' : 'bubble.left'}
                       size={16}
-                      color={c.active ? '#10b981' : '#71717a'}
+                      color={c.active ? colors.primary : colors.subtleForeground}
                     />
                     <Text>{c.title}</Text>
                     <Spacer />

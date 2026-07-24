@@ -7,6 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { BouncyPressable } from '@/components/ui/bouncy-pressable';
 import { Empty, ErrorNote, Loading } from '@/components/ui/empty';
 import { mediaUrl } from '@/lib/api';
+import { useColors } from '@/lib/colors';
 import { useProjectResource } from '@/lib/queries';
 import {
   signedCount,
@@ -34,6 +35,7 @@ function SignPills({ signoff }: { signoff?: Signoff }) {
 // falls back to a dark placeholder with a Play/Film glyph when only video
 // takes (no cheap poster frame) or nothing exists yet.
 function BundleThumb({ still, takes }: { still: StillTake | null; takes: VideoTake[] }) {
+  const colors = useColors();
   if (still) {
     return (
       <Image
@@ -45,12 +47,13 @@ function BundleThumb({ still, takes }: { still: StillTake | null; takes: VideoTa
   }
   return (
     <View className="h-[60px] w-[92px] items-center justify-center rounded-[10px] bg-secondary">
-      {takes.length > 0 ? <Play size={20} color="#10b981" /> : <Film size={20} color="#52525b" />}
+      {takes.length > 0 ? <Play size={20} color={colors.primary} /> : <Film size={20} color={colors.subtleForeground} />}
     </View>
   );
 }
 
 export default function EpisodeIndex() {
+  const colors = useColors();
   const ep = useProjectResource<EpisodePayload>('episode');
   const sb = useProjectResource<StoryboardPayload>('storyboard');
 
@@ -104,7 +107,7 @@ export default function EpisodeIndex() {
           </Text>
           <SignPills signoff={signoff} />
         </View>
-        <ChevronRight size={18} color="#52525b" />
+        <ChevronRight size={18} color={colors.subtleForeground} />
       </BouncyPressable>
     );
   };

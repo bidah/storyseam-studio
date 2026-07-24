@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, Text, TextInput, View } from 'react-native';
+import { useColors } from '@/lib/colors';
 import { cn } from '@/lib/utils';
 
 // Tap-to-edit inline field — the mobile port of the web World tab's
@@ -23,6 +24,7 @@ export function EditableField({
   multiline?: boolean;
   className?: string;
 }) {
+  const colors = useColors();
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(value ?? '');
   const [saving, setSaving] = useState(false);
@@ -59,7 +61,7 @@ export function EditableField({
           onChangeText={setDraft}
           onBlur={commit}
           placeholder={placeholder}
-          placeholderTextColor="#71717a"
+          placeholderTextColor={colors.subtleForeground}
           className={cn(
             'mt-1 rounded-lg border border-primary bg-card px-2.5 py-2 text-[14px] leading-5 text-foreground',
             multiline && 'min-h-16',
@@ -80,7 +82,7 @@ export function EditableField({
           >
             {(value ?? '').trim() || placeholder || '—'}
           </Text>
-          {saving ? <ActivityIndicator size="small" color="#a1a1aa" /> : null}
+          {saving ? <ActivityIndicator size="small" color={colors.mutedForeground} /> : null}
         </Pressable>
       )}
     </View>

@@ -16,6 +16,8 @@ import { toast } from 'sonner-native';
 import { Check } from 'lucide-react-native';
 import { Badge } from '@/components/ui/badge';
 import { Empty, ErrorNote, Loading } from '@/components/ui/empty';
+import { useColors } from '@/lib/colors';
+import { useEffectiveScheme } from '@/lib/theme';
 import { mediaUrl, postJson } from '@/lib/api';
 import { useInvalidate, useProjectResource } from '@/lib/queries';
 import type { LibraryFolder, LibraryImage } from '@/components/assets/types';
@@ -27,6 +29,8 @@ import type { LibraryFolder, LibraryImage } from '@/components/assets/types';
 // the list does, so opening is instant.
 
 export default function AssetFolderScreen() {
+  const colors = useColors();
+  const scheme = useEffectiveScheme();
   const { folder } = useLocalSearchParams<{ folder: string }>();
   const id = String(folder ?? '');
   const { data, isPending, error, refetch, isRefetching } = useProjectResource<{
@@ -131,7 +135,7 @@ export default function AssetFolderScreen() {
   };
 
   const refresh = (
-    <RefreshControl refreshing={isRefetching} onRefresh={() => refetch()} tintColor="#a1a1aa" />
+    <RefreshControl refreshing={isRefetching} onRefresh={() => refetch()} tintColor={colors.mutedForeground} />
   );
 
   if (isPending) {
@@ -165,7 +169,7 @@ export default function AssetFolderScreen() {
   const galleryUrls = current.images.map((im) => mediaUrl(im.url) ?? '');
 
   return (
-    <Galeria urls={galleryUrls} theme="dark">
+    <Galeria urls={galleryUrls} theme={scheme}>
       <View className="flex-1 bg-background">
         {screen}
         <FlatList

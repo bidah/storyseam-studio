@@ -1,5 +1,6 @@
 import { Stack } from 'expo-router';
-import { HEADER_BASE, useTabHeaderOptions } from '@/components/header-buttons';
+import { useHeaderBase, useTabHeaderOptions } from '@/components/header-buttons';
+import { useColors } from '@/lib/colors';
 
 // Episode Stack: the list (index) gets the native tab header; the bundle detail
 // ([bundleId]) pushes with a native header too — a native back button + the beat
@@ -8,12 +9,14 @@ import { HEADER_BASE, useTabHeaderOptions } from '@/components/header-buttons';
 // label so it's just the chevron — more breathing room for the beat title.
 export default function EpisodeLayout() {
   const headerOptions = useTabHeaderOptions('Episode', { refresh: false });
+  const headerBase = useHeaderBase();
+  const colors = useColors();
   return (
-    <Stack screenOptions={{ contentStyle: { backgroundColor: '#0a0a0b' } }}>
+    <Stack screenOptions={{ contentStyle: { backgroundColor: colors.pageBg } }}>
       <Stack.Screen name="index" options={headerOptions} />
       <Stack.Screen
         name="[bundleId]"
-        options={{ ...HEADER_BASE, headerBackButtonDisplayMode: 'minimal' }}
+        options={{ ...headerBase, headerBackButtonDisplayMode: 'minimal' }}
       />
     </Stack>
   );

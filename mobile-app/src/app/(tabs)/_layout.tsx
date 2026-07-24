@@ -3,6 +3,7 @@ import { ActivityIndicator, View } from 'react-native';
 import { Redirect } from 'expo-router';
 import { NativeTabs } from 'expo-router/unstable-native-tabs';
 import { useSession } from '@/lib/auth-client';
+import { useColors } from '@/lib/colors';
 import { AgentProvider } from '@/lib/agent/provider';
 import { useFalKeyStore } from '@/lib/fal-key';
 import { useAtlasKeyStore } from '@/lib/atlas-key';
@@ -49,6 +50,7 @@ export default function TabsLayout() {
   const { key: falKey, hydrated: falHydrated } = useFalKeyStore();
   const { key: atlasKey, hydrated: atlasHydrated } = useAtlasKeyStore();
   const { active, hydrated: providersHydrated } = useProvidersStore();
+  const colors = useColors();
 
   if (isPending || !falHydrated || !atlasHydrated || !providersHydrated) {
     return (
@@ -70,8 +72,13 @@ export default function TabsLayout() {
       <LiveSync />
       <AgentProvider>
         <NativeTabs
-          iconColor={{ selected: '#CBF74E' }}
-          labelStyle={{ selected: { color: '#CBF74E' } }}
+          // Selected tab = the high-contrast foreground (near-white on dark,
+          // near-black on light), unselected stays the native muted gray. The
+          // old lime accent (#CBF74E) failed contrast on a light tab bar; a
+          // bold-vs-muted neutral reads well in both schemes (like Apple's own
+          // apps) and is accessible.
+          iconColor={{ selected: colors.foreground }}
+          labelStyle={{ selected: { color: colors.foreground } }}
         >
           <NativeTabs.Trigger name="chat">
             <NativeTabs.Trigger.Label>Chat</NativeTabs.Trigger.Label>

@@ -44,6 +44,8 @@ import {
   trimMessage,
 } from '@/lib/agent/messages';
 import { createPickerRequest } from '@/lib/picker-bus';
+import { useColors } from '@/lib/colors';
+import { useEffectiveScheme } from '@/lib/theme';
 import { useInvalidate, useProjectResource } from '@/lib/queries';
 import { cn } from '@/lib/utils';
 import {
@@ -77,6 +79,7 @@ const SIGNER_KEY = 'shotStudioSigner';
 // Small local pieces
 
 function Chip({ on, label, onPress }: { on: boolean; label: string; onPress: () => void }) {
+  const colors = useColors();
   return (
     <Pressable
       accessibilityRole="button"
@@ -89,7 +92,7 @@ function Chip({ on, label, onPress }: { on: boolean; label: string; onPress: () 
         onPress();
       }}
     >
-      {on ? <Check size={12} color="#10b981" /> : null}
+      {on ? <Check size={12} color={colors.primary} /> : null}
       <Text className={cn('text-[12px] font-medium', on ? 'text-primary' : 'text-muted-foreground')}>
         {label}
       </Text>
@@ -98,6 +101,7 @@ function Chip({ on, label, onPress }: { on: boolean; label: string; onPress: () 
 }
 
 function SelectDot({ selected, onPress }: { selected: boolean; onPress: () => void }) {
+  const colors = useColors();
   return (
     <Pressable
       accessibilityRole="button"
@@ -111,7 +115,7 @@ function SelectDot({ selected, onPress }: { selected: boolean; onPress: () => vo
         onPress();
       }}
     >
-      <Check size={15} color={selected ? 'white' : 'transparent'} />
+      <Check size={15} color={selected ? colors.primaryForeground : 'transparent'} />
     </Pressable>
   );
 }
@@ -132,6 +136,7 @@ function TakeCard({
 }) {
   const src = mediaUrl(toPreviewSrc(take.url)) as string;
   const player = useVideoPlayer(src);
+  const colors = useColors();
   return (
     <View
       className={cn(
@@ -158,14 +163,14 @@ function TakeCard({
           }
         >
           <View className="h-11 w-11 items-center justify-center rounded-full bg-black/50">
-            <Play size={20} color="white" />
+            <Play size={20} color={colors.primaryForeground} />
           </View>
         </Pressable>
         <SelectDot selected={!!take.selected} onPress={() => onToggleSelect(take, !take.selected)} />
         {take.kind === 'trim' ? (
           <View className="absolute right-2 top-2">
             <Badge label="Trim" variant="warning">
-              <Scissors size={10} color="#fbbf24" />
+              <Scissors size={10} color={colors.amber} />
             </Badge>
           </View>
         ) : null}
@@ -181,7 +186,7 @@ function TakeCard({
             title="Trim"
             onPress={() => onOpenTrim(take, player.duration || 0)}
           >
-            <Scissors size={13} color="#e4e4e7" />
+            <Scissors size={13} color={colors.foreground} />
           </Button>
         ) : null}
       </View>
@@ -232,6 +237,8 @@ export default function BundleDetail() {
   const params = useLocalSearchParams<{ bundleId: string }>();
   const id = String(params.bundleId ?? '');
   const { width } = useWindowDimensions();
+  const colors = useColors();
+  const scheme = useEffectiveScheme();
   const invalidate = useInvalidate();
   const agent = useAgent();
   const agentBusy = agentIsBusy(agent);
@@ -646,7 +653,7 @@ export default function BundleDetail() {
               disabled={agentBusy}
               onPress={requestAllStills}
             >
-              <ImageIcon size={15} color="white" />
+              <ImageIcon size={15} color={colors.primaryForeground} />
             </Button>
 
             {bundle.shots.map((s) => {
@@ -663,14 +670,14 @@ export default function BundleDetail() {
                     </Text>
                     {shotStills.length > 0 ? (
                       <Badge label={`${shotStills.length}`} variant="success">
-                        <ImageIcon size={10} color="#10b981" />
+                        <ImageIcon size={10} color={colors.primary} />
                       </Badge>
                     ) : null}
                   </View>
                   <Text className="text-[14px] text-foreground">{s.summary || ''}</Text>
                   {dlg ? (
                     <View className="mt-1 flex-row items-start gap-1.5">
-                      <Speech size={13} color="#71717a" style={{ marginTop: 2 }} />
+                      <Speech size={13} color={colors.subtleForeground} style={{ marginTop: 2 }} />
                       <Text className="flex-1 text-[12px] text-muted-foreground">{dlg}</Text>
                     </View>
                   ) : null}
@@ -707,7 +714,7 @@ export default function BundleDetail() {
                       disabled={agentBusy}
                       onPress={() => requestStill(s)}
                     >
-                      <ImageIcon size={13} color={shotStills.length ? '#e4e4e7' : 'white'} />
+                      <ImageIcon size={13} color={shotStills.length ? colors.foreground : colors.primaryForeground} />
                     </Button>
                     {shotStills.length > 0 ? (
                       <Button
@@ -717,7 +724,7 @@ export default function BundleDetail() {
                         disabled={agentBusy}
                         onPress={() => requestNewAngle(s)}
                       >
-                        <RotateCcw size={13} color="#e4e4e7" />
+                        <RotateCcw size={13} color={colors.foreground} />
                       </Button>
                     ) : null}
                   </View>
@@ -749,7 +756,7 @@ export default function BundleDetail() {
                 {trim ? (
                   <View className="mt-3 rounded-xl border border-border bg-card p-3">
                     <View className="mb-2 flex-row items-center gap-1.5">
-                      <Scissors size={13} color="#e4e4e7" />
+                      <Scissors size={13} color={colors.foreground} />
                       <Text className="flex-1 text-[13px] font-semibold text-foreground">
                         Trim {trim.take.name || trim.take.file}
                       </Text>
@@ -790,7 +797,7 @@ export default function BundleDetail() {
                         disabled={!trimValid || agentBusy}
                         onPress={createTrim}
                       >
-                        <Scissors size={13} color="white" />
+                        <Scissors size={13} color={colors.primaryForeground} />
                       </Button>
                     </View>
                   </View>
@@ -834,7 +841,7 @@ export default function BundleDetail() {
               ) : (
                 <Galeria
                   urls={assignedThumbs.map((im) => mediaUrl(im.url) ?? '')}
-                  theme="dark"
+                  theme={scheme}
                 >
                 <View className="mb-2 flex-row flex-wrap gap-2">
                   {assignedThumbs.map((im, idx) => (
@@ -852,7 +859,7 @@ export default function BundleDetail() {
                         className="absolute right-1 top-1 h-6 w-6 items-center justify-center rounded-full bg-black/60"
                         onPress={() => removeRef(im.rel)}
                       >
-                        <X size={13} color="white" />
+                        <X size={13} color={colors.primaryForeground} />
                       </Pressable>
                       <View className="bg-black/60 px-1.5 py-0.5" style={{ width: cell }}>
                         <Text className="text-[10px] text-white/90" numberOfLines={1}>
@@ -866,7 +873,7 @@ export default function BundleDetail() {
               )}
               <View className="flex-row gap-2">
                 <Button size="sm" variant="outline" title="Add references" onPress={addRefs}>
-                  <Plus size={14} color="#e4e4e7" />
+                  <Plus size={14} color={colors.foreground} />
                 </Button>
                 <Button
                   size="sm"
@@ -875,7 +882,7 @@ export default function BundleDetail() {
                   loading={autoAssigning}
                   onPress={autoAssign}
                 >
-                  <Sparkles size={14} color="#e4e4e7" />
+                  <Sparkles size={14} color={colors.foreground} />
                 </Button>
               </View>
             </View>
@@ -902,11 +909,11 @@ export default function BundleDetail() {
                           on ? 'border-primary bg-primary' : 'border-border',
                         )}
                       >
-                        {on ? <Check size={14} color="white" /> : <Plus size={14} color="#71717a" />}
+                        {on ? <Check size={14} color={colors.primaryForeground} /> : <Plus size={14} color={colors.subtleForeground} />}
                       </View>
                       <View className="flex-1">
                         <View className="flex-row items-center gap-1.5">
-                          <Volume2 size={13} color={on ? '#10b981' : '#71717a'} />
+                          <Volume2 size={13} color={on ? colors.primary : colors.subtleForeground} />
                           <Text className="text-[14px] font-medium text-foreground">{a.label}</Text>
                         </View>
                         {a.order && a.order.length > 1 ? (
@@ -929,7 +936,7 @@ export default function BundleDetail() {
                   <Badge label={edited ? 'edited' : 'live'} variant={edited ? 'warning' : 'success'} />
                   {edited ? (
                     <Button size="sm" variant="outline" title="Reset" onPress={resetPrompt}>
-                      <RotateCcw size={12} color="#e4e4e7" />
+                      <RotateCcw size={12} color={colors.foreground} />
                     </Button>
                   ) : null}
                 </View>
@@ -1024,7 +1031,7 @@ export default function BundleDetail() {
                         )}
                         onPress={() => onSign(key, !on)}
                       >
-                        <Check size={16} color={on ? 'white' : '#3f3f46'} />
+                        <Check size={16} color={on ? colors.primaryForeground : colors.border} />
                       </Pressable>
                       <View className="flex-1">
                         <Text className="text-[14px] font-medium text-foreground">{label}</Text>
@@ -1044,7 +1051,7 @@ export default function BundleDetail() {
               disabled={!fullySigned || agentBusy}
               onPress={requestRender}
             >
-              <Wand2 size={15} color="white" />
+              <Wand2 size={15} color={colors.primaryForeground} />
             </Button>
             {!fullySigned ? (
               <Text className="-mt-4 text-center text-[11px] text-muted-foreground">

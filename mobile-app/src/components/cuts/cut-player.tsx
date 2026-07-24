@@ -5,6 +5,7 @@ import { VideoView, useVideoPlayer } from 'expo-video';
 import * as Haptics from 'expo-haptics';
 import { Clapperboard, Music } from 'lucide-react-native';
 import { cn } from '@/lib/utils';
+import { useColors } from '@/lib/colors';
 import { mediaUrl, toPreviewSrc } from '@/lib/api';
 import { fmtTime, segDuration, type CutGen } from './types';
 
@@ -24,6 +25,7 @@ type StripItem = {
 };
 
 export function CutPlayer({ gen, autoPlay = false }: { gen: CutGen; autoPlay?: boolean }) {
+  const colors = useColors();
   // Playback goes through the 720p preview proxy; `at`/`v` doubles as the
   // media cache-bust nonce (a re-stitch can reuse the same output URL).
   const src = mediaUrl(
@@ -112,9 +114,9 @@ export function CutPlayer({ gen, autoPlay = false }: { gen: CutGen; autoPlay?: b
                 )}
               >
                 {isCue ? (
-                  <Music size={12} color={active ? '#38bdf8' : '#a1a1aa'} />
+                  <Music size={12} color={active ? colors.info : colors.mutedForeground} />
                 ) : (
-                  <Clapperboard size={12} color={active ? '#10b981' : '#a1a1aa'} />
+                  <Clapperboard size={12} color={active ? colors.primary : colors.mutedForeground} />
                 )}
                 <Text
                   className={cn('text-xs font-medium text-foreground', active && 'font-semibold')}

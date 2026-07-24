@@ -9,6 +9,7 @@ import { Eyebrow } from '@/components/ui/card';
 import { mediaUrl } from '@/lib/api';
 import { resolvePickerRequest } from '@/lib/picker-bus';
 import { useProjectResource } from '@/lib/queries';
+import { useColors } from '@/lib/colors';
 
 // Pick image(s) from the asset library. Params:
 //   requestId — picker-bus id; resolves with string[] of `rel` keys (or null)
@@ -22,6 +23,7 @@ export default function LibraryPickerSheet() {
   const [picked, setPicked] = useState<string[]>([]);
   const { width } = useWindowDimensions();
   const cell = Math.floor((width - 16 * 2 - 8 * 2) / 3);
+  const colors = useColors();
 
   // Resolve null if the sheet is dismissed without a choice.
   useEffect(() => {
@@ -79,7 +81,7 @@ export default function LibraryPickerSheet() {
               className="flex-row items-center gap-1 active:opacity-60"
               onPress={() => setFolder(null)}
             >
-              <ChevronLeft size={16} color="#a1a1aa" />
+              <ChevronLeft size={16} color={colors.mutedForeground} />
               <Text className="text-sm font-medium text-muted-foreground">{current.folder}</Text>
             </Pressable>
             {multi ? (
@@ -111,7 +113,7 @@ export default function LibraryPickerSheet() {
                   />
                   {multi && selected ? (
                     <View className="absolute right-1.5 top-1.5 h-6 w-6 items-center justify-center rounded-full bg-primary">
-                      <Check size={14} color="white" />
+                      <Check size={14} color={colors.primaryForeground} />
                     </View>
                   ) : null}
                 </Pressable>

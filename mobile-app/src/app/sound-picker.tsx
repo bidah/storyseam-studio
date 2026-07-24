@@ -6,6 +6,7 @@ import { Empty, Loading } from '@/components/ui/empty';
 import { Eyebrow } from '@/components/ui/card';
 import { resolvePickerRequest } from '@/lib/picker-bus';
 import { useProjectResource } from '@/lib/queries';
+import { useColors } from '@/lib/colors';
 
 // Pick a voice take from the Sound Studio (used to attach a voice to a World
 // character). Resolves { trackId, v, name, url } or null. Prefers liked takes;
@@ -13,6 +14,7 @@ import { useProjectResource } from '@/lib/queries';
 export default function SoundPickerSheet() {
   const { requestId } = useLocalSearchParams<{ requestId?: string }>();
   const { data, isPending } = useProjectResource<any>('sounds');
+  const colors = useColors();
 
   useEffect(() => {
     return () => resolvePickerRequest(requestId, null);
@@ -63,7 +65,7 @@ export default function SoundPickerSheet() {
             }}
           >
             <View className="h-9 w-9 items-center justify-center rounded-full bg-secondary">
-              <Mic size={16} color="#a1a1aa" />
+              <Mic size={16} color={colors.mutedForeground} />
             </View>
             <View className="flex-1">
               <Text className="text-[15px] font-medium text-foreground" numberOfLines={1}>
@@ -73,7 +75,7 @@ export default function SoundPickerSheet() {
                 {item.name} · v{item.v}
               </Text>
             </View>
-            {item.liked ? <Heart size={16} color="#10b981" fill="#10b981" /> : null}
+            {item.liked ? <Heart size={16} color={colors.primary} fill={colors.primary} /> : null}
           </Pressable>
         )}
       />

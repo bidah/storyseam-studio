@@ -14,7 +14,7 @@ import { AGENT_MODELS, useAgentModelStore } from '@/lib/agent-model';
 import { transcribeAudio } from '@/lib/api';
 import { formatDuration, useAudioRecording } from '@/lib/use-audio-recording';
 import { GlassSurface } from './glass-surface';
-import { chatColors } from './theme';
+import { useChatColors } from './theme';
 
 // Image picked from the library, not yet uploaded (upload happens on send).
 export type LocalAttachment = {
@@ -39,6 +39,7 @@ export function Composer({
   /** Uploads + dispatches; resolves once the turn is dispatched. Throws to keep composer content. */
   onSubmit: (text: string, atts: LocalAttachment[]) => Promise<void>;
 }) {
+  const c = useChatColors();
   const insets = useSafeAreaInsets();
   const modelId = useAgentModelStore((s) => s.model);
   const model = AGENT_MODELS.find((m) => m.id === modelId) ?? AGENT_MODELS[0];
@@ -145,7 +146,7 @@ export function Composer({
       <View style={{ paddingHorizontal: 15, paddingBottom: Math.max(insets.bottom, 8) + 5 }}>
         <GlassSurface
           glassEffectStyle="regular"
-          fallbackColor={chatColors.card}
+          fallbackColor={c.card}
           style={{
             borderRadius: 24,
             overflow: 'hidden',
@@ -154,7 +155,7 @@ export function Composer({
             paddingBottom: 8,
             gap: 8,
             borderWidth: 1,
-            borderColor: chatColors.border,
+            borderColor: c.border,
           }}
         >
           {recording || transcribing ? (
@@ -175,7 +176,7 @@ export function Composer({
                       source={{ uri: a.uri }}
                       accessibilityLabel={a.name}
                       contentFit="cover"
-                      style={{ width: 56, height: 56, borderRadius: 8, backgroundColor: chatColors.muted }}
+                      style={{ width: 56, height: 56, borderRadius: 8, backgroundColor: c.muted }}
                     />
                     <Pressable
                       accessibilityRole="button"
@@ -183,7 +184,7 @@ export function Composer({
                       className="absolute -right-1.5 -top-1.5 h-5 w-5 items-center justify-center rounded-full bg-secondary"
                       onPress={() => setAtts((prev) => prev.filter((x) => x.id !== a.id))}
                     >
-                      <X size={11} color={chatColors.foreground} />
+                      <X size={11} color={c.foreground} />
                     </Pressable>
                   </View>
                 ))}
@@ -194,7 +195,7 @@ export function Composer({
           <TextInput
             className="max-h-32 px-1 py-1 text-[15px] leading-5 text-foreground"
             placeholder={pending ? 'Type your answer…' : 'Message the studio agent…'}
-            placeholderTextColor={chatColors.mutedForeground}
+            placeholderTextColor={c.mutedForeground}
             multiline
             value={text}
             onChangeText={setText}
@@ -212,7 +213,7 @@ export function Composer({
               )}
               onPress={pick}
             >
-              <ImagePlus size={17} color={chatColors.mutedForeground} />
+              <ImagePlus size={17} color={c.mutedForeground} />
             </Pressable>
 
             <Pressable
@@ -224,7 +225,7 @@ export function Composer({
               <Text className="text-[13px] font-medium text-foreground" numberOfLines={1}>
                 {model.label}
               </Text>
-              <ChevronDown size={13} color={chatColors.mutedForeground} />
+              <ChevronDown size={13} color={c.mutedForeground} />
             </Pressable>
 
             <View className="ml-auto">
@@ -238,24 +239,24 @@ export function Composer({
                     onStop();
                   }}
                 >
-                  <CircleStop size={19} color={chatColors.foreground} />
+                  <CircleStop size={19} color={c.foreground} />
                 </Pressable>
               ) : showMic ? (
                 <Pressable
                   accessibilityRole="button"
                   accessibilityLabel="Record voice message"
-                  style={{ backgroundColor: chatColors.higgsfield }}
+                  style={{ backgroundColor: c.higgsfield }}
                   className="h-9 w-9 items-center justify-center rounded-full active:opacity-80"
                   onPress={startRecording}
                 >
-                  <Mic size={18} color={chatColors.higgsfieldForeground} />
+                  <Mic size={18} color={c.higgsfieldForeground} />
                 </Pressable>
               ) : (
                 <Pressable
                   accessibilityRole="button"
                   accessibilityLabel={sending ? 'Sending' : 'Send'}
                   disabled={!canSend}
-                  style={{ backgroundColor: chatColors.higgsfield }}
+                  style={{ backgroundColor: c.higgsfield }}
                   className={cn(
                     'h-9 w-9 items-center justify-center rounded-full active:opacity-80',
                     !canSend && 'opacity-40',
@@ -263,9 +264,9 @@ export function Composer({
                   onPress={submit}
                 >
                   {sending ? (
-                    <ActivityIndicator size="small" color={chatColors.higgsfieldForeground} />
+                    <ActivityIndicator size="small" color={c.higgsfieldForeground} />
                   ) : (
-                    <ArrowUp size={18} color={chatColors.higgsfieldForeground} />
+                    <ArrowUp size={18} color={c.higgsfieldForeground} />
                   )}
                 </Pressable>
               )}
@@ -300,8 +301,9 @@ function PulsingDot() {
 }
 
 // The composer's input row while recording / transcribing: cancel · status ·
-// timer · confirm. Mirrors the reference app's RecordingInput.
-function RecordingBar({
+// timer · confirm. Mirrors the reference app's RecordingInput. Exported so the
+// Visual world composer reuses the exact same recording input.
+export function RecordingBar({
   transcribing,
   duration,
   onCancel,
@@ -312,6 +314,7 @@ function RecordingBar({
   onCancel: () => void;
   onConfirm: () => void;
 }) {
+  const c = useChatColors();
   return (
     <View className="h-11 flex-row items-center">
       <Pressable
@@ -324,12 +327,12 @@ function RecordingBar({
         )}
         onPress={onCancel}
       >
-        <X size={17} color={chatColors.mutedForeground} />
+        <X size={17} color={c.mutedForeground} />
       </Pressable>
 
       <View className="ml-3 flex-1 flex-row items-center gap-2">
         {transcribing ? (
-          <ActivityIndicator size="small" color={chatColors.mutedForeground} />
+          <ActivityIndicator size="small" color={c.mutedForeground} />
         ) : (
           <PulsingDot />
         )}
@@ -347,14 +350,14 @@ function RecordingBar({
         accessibilityRole="button"
         accessibilityLabel="Stop and transcribe"
         disabled={transcribing}
-        style={{ backgroundColor: chatColors.higgsfield }}
+        style={{ backgroundColor: c.higgsfield }}
         className={cn(
           'ml-3 h-9 w-9 items-center justify-center rounded-full active:opacity-80',
           transcribing && 'opacity-40',
         )}
         onPress={onConfirm}
       >
-        <Check size={18} color={chatColors.higgsfieldForeground} />
+        <Check size={18} color={c.higgsfieldForeground} />
       </Pressable>
     </View>
   );

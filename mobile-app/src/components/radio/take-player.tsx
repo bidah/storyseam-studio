@@ -11,6 +11,7 @@ import { useAudioPlayer, useAudioPlayerStatus } from 'expo-audio';
 import { Pause, Play } from 'lucide-react-native';
 import { Button } from '@/components/ui/button';
 import { mediaUrl } from '@/lib/api';
+import { useColors } from '@/lib/colors';
 
 type TakeAudio = {
   /** The url currently loaded, or null. */
@@ -62,6 +63,7 @@ export function TakeAudioProvider({ children }: { children: React.ReactNode }) {
 
 /** Play/pause button for one take url. Renders nothing without a url. */
 export function TakePlayButton({ url, label }: { url: string | null; label: string }) {
+  const colors = useColors();
   const audio = useContext(TakeAudioContext);
   if (!url || !audio) return null;
   const isCurrent = audio.current === mediaUrl(url);
@@ -73,7 +75,7 @@ export function TakePlayButton({ url, label }: { url: string | null; label: stri
       accessibilityLabel={isPlaying ? `Pause ${label}` : `Play ${label}`}
       onPress={() => audio.toggle(url)}
     >
-      {isPlaying ? <Pause size={16} color="#10b981" /> : <Play size={16} color="#fafafa" />}
+      {isPlaying ? <Pause size={16} color={colors.primary} /> : <Play size={16} color={colors.foreground} />}
     </Button>
   );
 }

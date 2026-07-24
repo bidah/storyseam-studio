@@ -2,19 +2,25 @@ import { Fragment } from 'react';
 import { Host } from '@expo/ui';
 import { Button, Form, HStack, Picker, Section, Spacer, Text, Toggle, VStack } from '@expo/ui/swift-ui';
 import { background, foregroundStyle, pickerStyle, scrollContentBackground, tag } from '@expo/ui/swift-ui/modifiers';
+import { useColors } from '@/lib/colors';
+import type { ThemePref } from '@/lib/theme';
 import { PROVIDERS_FOOTNOTE, type SettingsFormProps } from './settings-form.types';
 
-// The app's near-black page background (parity with the web app + the RN nav
-// theme). SwiftUI Forms default to systemGroupedBackground (dark gray), so we
-// hide that and paint this behind the grouped cells to match every other screen.
-const PAGE_BG = '#0a0a0b';
+// Appearance options, ordered System → Dark → Light (tags are the ThemePref).
+const THEME_OPTIONS: { id: ThemePref; label: string }[] = [
+  { id: 'system', label: 'System' },
+  { id: 'dark', label: 'Dark' },
+  { id: 'light', label: 'Light' },
+];
 
 // Native SwiftUI settings (iOS): one grouped Form for the whole sheet —
-// account, chat-model menu picker, provider toggles, sign-out. iOS-only
-// imports live here (.ios.tsx); settings-form.tsx is the fallback.
+// account, appearance, chat-model menu picker, provider toggles, sign-out.
+// iOS-only imports live here (.ios.tsx); settings-form.tsx is the fallback.
 export default function SettingsForm({
   name,
   email,
+  themePref,
+  onThemeChange,
   models,
   modelId,
   onModelChange,
@@ -25,9 +31,12 @@ export default function SettingsForm({
   apiOrigin,
   onSignOut,
 }: SettingsFormProps) {
+  // SwiftUI Forms default to systemGroupedBackground; hide it and paint the
+  // scheme's page background behind the grouped cells to match every screen.
+  const colors = useColors();
   return (
     <Host style={{ flex: 1 }}>
-      <Form modifiers={[scrollContentBackground('hidden'), background(PAGE_BG)]}>
+      <Form modifiers={[scrollContentBackground('hidden'), background(colors.pageBg)]}>
         <Section title="Account">
           <VStack alignment="leading" spacing={2}>
             <Text>{name}</Text>
@@ -37,6 +46,21 @@ export default function SettingsForm({
               </Text>
             ) : null}
           </VStack>
+        </Section>
+
+        <Section title="Appearance">
+          <Picker
+            label="Theme"
+            selection={themePref}
+            onSelectionChange={(id) => onThemeChange((id as ThemePref) ?? 'system')}
+            modifiers={[pickerStyle('segmented')]}
+          >
+            {THEME_OPTIONS.map((o) => (
+              <Text key={o.id} modifiers={[tag(o.id)]}>
+                {o.label}
+              </Text>
+            ))}
+          </Picker>
         </Section>
 
         <Section title="Agent">

@@ -1,11 +1,7 @@
 import { Host } from '@expo/ui';
 import { Button, Form, SecureField, Section, Text } from '@expo/ui/swift-ui';
 import { background, scrollContentBackground } from '@expo/ui/swift-ui/modifiers';
-
-// The app's near-black page background — SwiftUI Forms default to
-// systemGroupedBackground (dark gray), so hide that and paint this behind the
-// grouped cells to match the Settings form and every other screen.
-const PAGE_BG = '#0a0a0b';
+import { useColors } from '@/lib/colors';
 
 // Native SwiftUI key form (iOS) for the settings/provider-key screen — Host >
 // Form > Section > SecureField, the grouped-settings look. Pushed WITHIN the
@@ -29,9 +25,12 @@ export default function ProviderKeyForm({
   onTextChange: (text: string) => void;
   onRemove: () => void;
 }) {
+  // SwiftUI Forms default to systemGroupedBackground; hide it and paint the
+  // scheme's page background behind the grouped cells to match every screen.
+  const colors = useColors();
   return (
     <Host style={{ flex: 1 }}>
-      <Form modifiers={[scrollContentBackground('hidden'), background(PAGE_BG)]}>
+      <Form modifiers={[scrollContentBackground('hidden'), background(colors.pageBg)]}>
         <Section
           title="API key"
           footer={

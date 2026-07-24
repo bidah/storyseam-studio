@@ -7,6 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { postJson } from '@/lib/api';
 import { CLIENT_ID } from '@/lib/client-id';
+import { useColors } from '@/lib/colors';
 import { useInvalidate } from '@/lib/queries';
 import {
   diffLines,
@@ -23,8 +24,6 @@ import {
 // Mobile keeps it whole-proposal: Accept applies the proposed doc via
 // POST /api/script/proposal/accept { doc, title, clientId }; Reject discards
 // via POST /api/script/proposal/reject { clientId }.
-
-const MUTED = '#a1a1aa';
 
 function ContextRun({ lines }: { lines: ScriptLine[] }) {
   const [open, setOpen] = useState(lines.length <= 4);
@@ -73,6 +72,7 @@ export function ScriptProposalReview({
   baseTitle: string;
   onClose: () => void;
 }) {
+  const colors = useColors();
   const invalidate = useInvalidate();
   const [busy, setBusy] = useState<'accept' | 'reject' | null>(null);
 
@@ -132,12 +132,12 @@ export function ScriptProposalReview({
       {/* Header */}
       <View className="border-b border-primary/30 bg-card px-4 py-3">
         <View className="flex-row items-center gap-2">
-          <GitPullRequestArrow size={16} color="#10b981" />
+          <GitPullRequestArrow size={16} color={colors.primary} />
           <Text className="flex-1 text-[15px] font-semibold text-foreground">
             Proposed script edit
           </Text>
           <Badge variant="muted" label={String(proposal.source || 'agent')}>
-            <Bot size={11} color={MUTED} />
+            <Bot size={11} color={colors.mutedForeground} />
           </Badge>
         </View>
         <View className="mt-1.5 flex-row items-center gap-2">
@@ -180,7 +180,7 @@ export function ScriptProposalReview({
       <View className="flex-row gap-2 border-t border-border bg-card px-4 py-3 pb-5">
         {noChanges ? (
           <Button className="flex-1" title="Dismiss" loading={busy === 'reject'} onPress={reject}>
-            <X size={15} color="white" />
+            <X size={15} color={colors.primaryForeground} />
           </Button>
         ) : (
           <>
@@ -192,7 +192,7 @@ export function ScriptProposalReview({
               disabled={!!busy}
               onPress={reject}
             >
-              <X size={15} color="#fafafa" />
+              <X size={15} color={colors.foreground} />
             </Button>
             <Button
               className="flex-1"
@@ -201,7 +201,7 @@ export function ScriptProposalReview({
               disabled={!!busy}
               onPress={accept}
             >
-              <Check size={15} color="white" />
+              <Check size={15} color={colors.primaryForeground} />
             </Button>
           </>
         )}

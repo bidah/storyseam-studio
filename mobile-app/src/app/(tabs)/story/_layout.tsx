@@ -1,12 +1,14 @@
 import { Stack } from 'expo-router';
 import { useTabHeaderOptions } from '@/components/header-buttons';
+import { useColors } from '@/lib/colors';
 
 // Nested Stack so the Story tab gets a native expo-router header (project switcher
 // + refresh/settings). See src/components/header-buttons.tsx.
 export default function StoryLayout() {
   const headerOptions = useTabHeaderOptions('Story', { refresh: false });
+  const colors = useColors();
   return (
-    <Stack screenOptions={{ contentStyle: { backgroundColor: '#0a0a0b' } }}>
+    <Stack screenOptions={{ contentStyle: { backgroundColor: colors.pageBg } }}>
       <Stack.Screen name="index" options={headerOptions} />
       {/* Drafts — a native formSheet. Its "Drafts" title + close button live in
           the nested drafts/_layout stack, so headerShown is off here (same

@@ -24,6 +24,7 @@
 import { ActivityIndicator, Pressable, StyleSheet, Text, type ViewStyle } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { GlassView, isLiquidGlassAvailable, type GlassStyle } from 'expo-glass-effect';
+import { useColors } from '@/lib/colors';
 import { cn } from '@/lib/utils';
 import { Button as PressableButton, textVariants, type ButtonProps } from './button-base';
 
@@ -69,6 +70,7 @@ export function Button(props: ButtonProps) {
     ...rest
   } = props;
 
+  const colors = useColors();
   const v = variant ?? 'default';
   const g = GLASS[v];
   // Older iOS / Android, or a chromeless ghost → the plain Pressable base.
@@ -96,10 +98,14 @@ export function Button(props: ButtonProps) {
         style={[
           styles.content,
           geom,
-          g.border ? styles.border : null,
+          // Tinted glass (default/destructive) keeps a hairline; untinted
+          // (outline) uses the scheme border so it reads on a light page.
+          g.border ? { borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border } : null,
         ]}
       >
-        {loading ? <ActivityIndicator size="small" color="white" /> : null}
+        {/* On a tinted (emerald/red) glass the spinner stays white; on an
+            untinted glass it takes the foreground so it shows in light mode. */}
+        {loading ? <ActivityIndicator size="small" color={g.tint ? 'white' : colors.foreground} /> : null}
         {children}
         {title ? <Text className={cn(textVariants({ variant: v, size }), textClassName)}>{title}</Text> : null}
       </GlassView>
@@ -114,9 +120,5 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 8,
     overflow: 'hidden',
-  },
-  border: {
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(255,255,255,0.14)',
   },
 });

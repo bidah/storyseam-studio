@@ -10,17 +10,17 @@ import { CHAR_FIELDS, type VoiceRef, type WorldDoc } from '@/components/story/wo
 import { apiJson, deleteJson, mediaUrl, putJson } from '@/lib/api';
 import { createPickerRequest } from '@/lib/picker-bus';
 import { useInvalidate, useProjectResource } from '@/lib/queries';
+import { useColors } from '@/lib/colors';
 
 // Full character editor — opened as a formSheet from the World tab's character
 // row (src/components/story/world.tsx). Re-reads the world doc and finds the
 // character by id (the sound-picker pattern) so it can own all of its edits.
-const MUTED = '#a1a1aa';
-const PRIMARY = '#10b981';
 
 export default function CharacterSheet() {
   const { id } = useLocalSearchParams<{ id?: string }>();
   const { data, isPending, error, refetch } = useProjectResource<WorldDoc>('world');
   const invalidate = useInvalidate();
+  const colors = useColors();
 
   if (isPending) return <Loading />;
   if (error) return <ErrorNote message={String((error as any)?.message || error)} onRetry={refetch} />;
@@ -121,7 +121,7 @@ export default function CharacterSheet() {
             />
             <View className="flex-1 gap-1.5">
               <Button size="sm" variant="outline" title="Change sheet" onPress={pickSheet}>
-                <ImagePlus size={13} color="#fafafa" />
+                <ImagePlus size={13} color={colors.foreground} />
               </Button>
               <Button
                 size="sm"
@@ -130,13 +130,13 @@ export default function CharacterSheet() {
                 textClassName="text-muted-foreground"
                 onPress={() => onPatch({ sheetImage: null })}
               >
-                <X size={13} color={MUTED} />
+                <X size={13} color={colors.mutedForeground} />
               </Button>
             </View>
           </View>
         ) : (
           <Button size="sm" variant="outline" title="Link character sheet" onPress={pickSheet}>
-            <ImagePlus size={13} color="#fafafa" />
+            <ImagePlus size={13} color={colors.foreground} />
           </Button>
         )}
       </View>
@@ -147,7 +147,7 @@ export default function CharacterSheet() {
         {voiceRef ? (
           <View className="gap-1.5">
             <View className="flex-row items-center gap-2">
-              <Mic size={14} color={PRIMARY} />
+              <Mic size={14} color={colors.primary} />
               <Text className="flex-1 text-[14px] font-medium text-foreground" numberOfLines={1}>
                 {voiceRef.name || 'Voice'}
                 {voiceRef.v != null ? `  ·  v${voiceRef.v}` : ''}
@@ -155,7 +155,7 @@ export default function CharacterSheet() {
             </View>
             <View className="flex-row gap-1.5">
               <Button size="sm" variant="outline" title="Change voice" onPress={pickVoice}>
-                <Mic size={13} color="#fafafa" />
+                <Mic size={13} color={colors.foreground} />
               </Button>
               <Button
                 size="sm"
@@ -164,13 +164,13 @@ export default function CharacterSheet() {
                 textClassName="text-muted-foreground"
                 onPress={() => onPatch({ voiceRef: null })}
               >
-                <X size={13} color={MUTED} />
+                <X size={13} color={colors.mutedForeground} />
               </Button>
             </View>
           </View>
         ) : (
           <Button size="sm" variant="outline" title="Attach voice" onPress={pickVoice}>
-            <Mic size={13} color="#fafafa" />
+            <Mic size={13} color={colors.foreground} />
           </Button>
         )}
       </View>
@@ -186,7 +186,7 @@ export default function CharacterSheet() {
       ))}
 
       <Button size="sm" variant="ghost" title="Remove character" textClassName="text-destructive" onPress={remove}>
-        <Trash2 size={13} color="#f87171" />
+        <Trash2 size={13} color={colors.destructive} />
       </Button>
     </ScrollView>
   );

@@ -20,15 +20,13 @@ import { Empty, ErrorNote, Loading } from '@/components/ui/empty';
 import { mediaUrl, postJson, putJson } from '@/lib/api';
 import { agentIsBusy, useAgent, useSendToAgent } from '@/lib/agent/provider';
 import { createWorldMessage } from '@/lib/agent/messages';
+import { useColors } from '@/lib/colors';
 import { useInvalidate, useProjectResource } from '@/lib/queries';
 import { EditableField } from './field';
 
 // World sub-surface — port of src/routes/world.jsx (web). Every inline edit
 // merge-patches PUT /api/world (the worker shallow-merges known sections);
 // characters go through /api/world/character[/:id].
-
-const MUTED = '#a1a1aa';
-const PRIMARY = '#10b981';
 
 // The story map: the 5 questions that shape the story (verbatim from web).
 const MAP = [
@@ -87,6 +85,7 @@ export type WorldDoc = {
 // Summary row — tapping opens the full character editor in a formSheet screen
 // (src/app/character.tsx), which owns the detail fields, sheet image and voice.
 function CharacterCard({ char }: { char: WorldCharacter }) {
+  const colors = useColors();
   const sheet = char.sheetImage;
   const voiceRef = char.voiceRef;
 
@@ -109,7 +108,7 @@ function CharacterCard({ char }: { char: WorldCharacter }) {
           />
         ) : (
           <View className="items-center justify-center rounded-[10px] bg-secondary" style={{ width: 52, height: 52 }}>
-            <Users size={20} color={MUTED} />
+            <Users size={20} color={colors.mutedForeground} />
           </View>
         )}
         <View className="min-w-0 flex-1">
@@ -118,16 +117,17 @@ function CharacterCard({ char }: { char: WorldCharacter }) {
           </Text>
           <View className="mt-1 flex-row items-center gap-2">
             {char.archetype ? <Badge variant="muted" label={char.archetype} /> : null}
-            {voiceRef ? <Mic size={13} color={PRIMARY} /> : null}
+            {voiceRef ? <Mic size={13} color={colors.primary} /> : null}
           </View>
         </View>
-        <ChevronRight size={16} color={MUTED} />
+        <ChevronRight size={16} color={colors.mutedForeground} />
       </Pressable>
     </Card>
   );
 }
 
 export function WorldSurface() {
+  const colors = useColors();
   const { data, isPending, error, refetch, isRefetching } = useProjectResource<WorldDoc>('world');
   const invalidate = useInvalidate();
   const agent = useAgent();
@@ -173,7 +173,7 @@ export function WorldSurface() {
       loading={agentBusy}
       onPress={createWithAgent}
     >
-      {!agentBusy ? <Wand2 size={15} color="white" /> : null}
+      {!agentBusy ? <Wand2 size={15} color={colors.primaryForeground} /> : null}
     </Button>
   );
 
@@ -182,7 +182,7 @@ export function WorldSurface() {
       className="flex-1"
       contentContainerClassName="px-4 pb-28 pt-3"
       keyboardShouldPersistTaps="handled"
-      refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={refetch} tintColor={MUTED} />}
+      refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={refetch} tintColor={colors.mutedForeground} />}
     >
       {isEmpty ? (
         <View className="pt-8">
@@ -197,13 +197,13 @@ export function WorldSurface() {
           {/* Progress pills */}
           <View className="flex-row flex-wrap items-center gap-2">
             <Badge variant="outline" label={`${mapFilled}/${MAP.length} story map`}>
-              <Globe size={11} color={MUTED} />
+              <Globe size={11} color={colors.mutedForeground} />
             </Badge>
             <Badge variant="outline" label={`${depthFilled}/${DEPTH.length} story depth`}>
-              <BookOpen size={11} color={MUTED} />
+              <BookOpen size={11} color={colors.mutedForeground} />
             </Badge>
             <Badge variant="info" label={`${characters.length} characters`}>
-              <Users size={11} color="#60a5fa" />
+              <Users size={11} color={colors.info} />
             </Badge>
             {agentBusy ? <Badge variant="warning" label="agent working…" /> : null}
           </View>
@@ -211,7 +211,7 @@ export function WorldSurface() {
           {/* Title + logline */}
           <Card>
             <View className="mb-2 flex-row items-center gap-2">
-              <Sparkles size={15} color={PRIMARY} />
+              <Sparkles size={15} color={colors.primary} />
               <CardTitle>The series</CardTitle>
             </View>
             <EditableField
@@ -233,7 +233,7 @@ export function WorldSurface() {
           {/* Story map */}
           <Card>
             <View className="mb-2 flex-row items-center gap-2">
-              <Globe size={15} color={PRIMARY} />
+              <Globe size={15} color={colors.primary} />
               <CardTitle>Story map</CardTitle>
               <View className="ml-auto">
                 <Badge variant="outline" label={`${mapFilled}/${MAP.length}`} />
@@ -255,7 +255,7 @@ export function WorldSurface() {
           {/* Story depth */}
           <Card>
             <View className="mb-2 flex-row items-center gap-2">
-              <BookOpen size={15} color={PRIMARY} />
+              <BookOpen size={15} color={colors.primary} />
               <CardTitle>Story depth</CardTitle>
               <View className="ml-auto">
                 <Badge variant="outline" label={`${depthFilled}/${DEPTH.length}`} />
@@ -281,11 +281,11 @@ export function WorldSurface() {
           <View>
             <View className="mb-2 flex-row items-center justify-between">
               <View className="flex-row items-center gap-2">
-                <Users size={15} color={PRIMARY} />
+                <Users size={15} color={colors.primary} />
                 <CardTitle>Characters</CardTitle>
               </View>
               <Button size="sm" variant="outline" title="Add" onPress={addChar}>
-                <UserPlus size={13} color="#fafafa" />
+                <UserPlus size={13} color={colors.foreground} />
               </Button>
             </View>
             {characters.length === 0 ? (

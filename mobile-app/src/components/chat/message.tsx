@@ -5,7 +5,7 @@ import * as Haptics from 'expo-haptics';
 import { Check, ChevronRight, FileText, Wrench } from 'lucide-react-native';
 import { cn } from '@/lib/utils';
 import { ChatMarkdown } from './markdown';
-import { chatColors } from './theme';
+import { getChatColors, useChatColors } from './theme';
 import type {
   AgentMessage,
   AskQuestionInput,
@@ -25,10 +25,11 @@ import { userText } from './helpers';
 // so the answer is just the next user message: tapping an option sends its label
 // (a typed reply works the same way), and `deriveQA` resolves pending/answered.
 
-// Alpha-suffixed hex helpers for the amber question card (chatColors are 6-digit
-// hex; RN accepts 8-digit #RRGGBBAA).
-const AMBER_BORDER = `${chatColors.amber}55`;
-const AMBER_BG = `${chatColors.amber}14`;
+// Alpha-suffixed hex helpers for the amber question card (amber is a brand
+// constant across schemes; RN accepts 8-digit #RRGGBBAA).
+const AMBER = getChatColors('dark').amber;
+const AMBER_BORDER = `${AMBER}55`;
+const AMBER_BG = `${AMBER}14`;
 
 // An `ask_question` tool call, rendered as an interactive card. `part.input` is
 // `{ question, options: [{ id, label, style }] }`. Answerable only while it's the
@@ -102,6 +103,7 @@ function QuestionCard({
 // A compact chip for a flue `dynamic-tool` part. `state` is one of
 // input-available / output-available / output-error.
 function ToolChip({ part }: { part: MessagePart }) {
+  const c = useChatColors();
   const name = part.toolName || 'tool';
   const errored = part.state === 'output-error';
   const running = !errored && part.state !== 'output-available';
@@ -113,7 +115,7 @@ function ToolChip({ part }: { part: MessagePart }) {
           errored ? 'border-destructive/40 bg-destructive/10' : 'border-border bg-muted/50',
         )}
       >
-        <Wrench size={12} color={errored ? chatColors.destructive : chatColors.mutedForeground} />
+        <Wrench size={12} color={errored ? c.destructive : c.mutedForeground} />
         <Text
           className={cn('text-[12px]', errored ? 'text-destructive' : 'text-muted-foreground')}
           numberOfLines={1}
@@ -122,9 +124,9 @@ function ToolChip({ part }: { part: MessagePart }) {
           {errored ? ' · failed' : ''}
         </Text>
         {running ? (
-          <ActivityIndicator size="small" color={chatColors.mutedForeground} style={{ transform: [{ scale: 0.7 }] }} />
+          <ActivityIndicator size="small" color={c.mutedForeground} style={{ transform: [{ scale: 0.7 }] }} />
         ) : !errored ? (
-          <Check size={12} color={chatColors.mutedForeground} />
+          <Check size={12} color={c.mutedForeground} />
         ) : null}
       </View>
       {errored && part.errorText ? (
@@ -135,6 +137,7 @@ function ToolChip({ part }: { part: MessagePart }) {
 }
 
 function ReasoningRow({ part }: { part: MessagePart }) {
+  const c = useChatColors();
   const [open, setOpen] = useState(false);
   if (!part.text?.trim()) return null;
   return (
@@ -147,7 +150,7 @@ function ReasoningRow({ part }: { part: MessagePart }) {
       >
         <ChevronRight
           size={13}
-          color={chatColors.mutedForeground}
+          color={c.mutedForeground}
           style={{ transform: [{ rotate: open ? '90deg' : '0deg' }] }}
         />
         <Text className="text-[12px] font-medium text-muted-foreground">Reasoning</Text>
@@ -163,6 +166,7 @@ function ReasoningRow({ part }: { part: MessagePart }) {
 // aren't served, but a durably-recorded attachment (or an optimistic local echo)
 // carries a `url` we can render; images inline, everything else as a chip.
 function FilePart({ part }: { part: MessagePart }) {
+  const c = useChatColors();
   const isImage = part.mediaType?.startsWith('image/');
   if (part.url && isImage) {
     return (
@@ -171,13 +175,13 @@ function FilePart({ part }: { part: MessagePart }) {
         accessibilityLabel={part.filename || 'attachment'}
         contentFit="contain"
         transition={150}
-        style={{ width: 180, height: 180, borderRadius: 10, backgroundColor: chatColors.muted }}
+        style={{ width: 180, height: 180, borderRadius: 10, backgroundColor: c.muted }}
       />
     );
   }
   return (
     <View className="flex-row items-center gap-1.5 self-start rounded-md border border-border bg-muted/50 px-2 py-1">
-      <FileText size={12} color={chatColors.mutedForeground} />
+      <FileText size={12} color={c.mutedForeground} />
       <Text className="text-[12px] text-muted-foreground" numberOfLines={1}>
         {part.filename || part.mediaType || 'attachment'}
       </Text>
@@ -224,6 +228,7 @@ function PartView({
 // bubble (flue's `file` parts don't serve historical bytes, so `atts` comes from
 // the composer's ordinal-aligned record).
 function SentAttachments({ atts }: { atts: SentAttachment[] | null }) {
+  const c = useChatColors();
   if (!atts?.length) return null;
   return (
     <View className="mt-1.5 flex-row flex-wrap justify-end gap-1.5">
@@ -234,7 +239,7 @@ function SentAttachments({ atts }: { atts: SentAttachment[] | null }) {
           accessibilityLabel={a.name || 'attachment'}
           contentFit="cover"
           transition={150}
-          style={{ width: 76, height: 76, borderRadius: 10, backgroundColor: chatColors.muted }}
+          style={{ width: 76, height: 76, borderRadius: 10, backgroundColor: c.muted }}
         />
       ))}
     </View>

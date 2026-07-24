@@ -34,6 +34,7 @@ import { SegmentedNative } from '@/components/ui/segmented-native';
 import { agentIsBusy, useAgent, useSendToAgent } from '@/lib/agent/provider';
 import { renderAllPendingMessage, renderSoundMessage } from '@/lib/agent/messages';
 import { deleteJson, mediaUrl, patchJson, postJson } from '@/lib/api';
+import { useColors } from '@/lib/colors';
 import { useInvalidate, useProjectResource } from '@/lib/queries';
 import { cn } from '@/lib/utils';
 import { CreateTrackSheet, EditVersionSheet } from './sound-sheets';
@@ -72,6 +73,7 @@ function VersionRow({
   onTogglePlay: () => void;
   onEdit: () => void;
 }) {
+  const colors = useColors();
   const invalidate = useInvalidate();
   const agent = useAgent();
   const agentBusy = agentIsBusy(agent);
@@ -134,7 +136,7 @@ function VersionRow({
           <Badge variant="success" label="ready" />
         ) : (
           <Badge variant="warning" label="pending">
-            <Clock size={10} color="#f59e0b" />
+            <Clock size={10} color={colors.amber} />
           </Badge>
         )}
         {ver.duration ? (
@@ -157,12 +159,12 @@ function VersionRow({
               onTogglePlay();
             }}
           >
-            {playing ? <Pause size={16} color="#10b981" /> : <Play size={16} color="#e4e4e7" />}
+            {playing ? <Pause size={16} color={colors.primary} /> : <Play size={16} color={colors.foreground} />}
           </Pressable>
         ) : null}
         {!ready ? (
           <Button size="sm" disabled={agentBusy} onPress={requestRender}>
-            <Wand2 size={13} color="#ecfdf5" />
+            <Wand2 size={13} color={colors.primaryForeground} />
             <Text className="text-[13px] font-semibold text-primary-foreground">Render</Text>
           </Button>
         ) : null}
@@ -176,8 +178,8 @@ function VersionRow({
         >
           <Heart
             size={17}
-            color={ver.liked ? '#e11d48' : '#a1a1aa'}
-            fill={ver.liked ? '#e11d48' : 'none'}
+            color={ver.liked ? colors.destructive : colors.mutedForeground}
+            fill={ver.liked ? colors.destructive : 'none'}
           />
         </Pressable>
         <Pressable
@@ -186,7 +188,7 @@ function VersionRow({
           className="h-9 w-9 items-center justify-center rounded-full active:opacity-60"
           onPress={onEdit}
         >
-          <Pencil size={15} color="#a1a1aa" />
+          <Pencil size={15} color={colors.mutedForeground} />
         </Pressable>
         <Pressable
           accessibilityRole="button"
@@ -195,7 +197,7 @@ function VersionRow({
           disabled={busy}
           onPress={del}
         >
-          <Trash2 size={15} color="#a1a1aa" />
+          <Trash2 size={15} color={colors.mutedForeground} />
         </Pressable>
       </View>
     </View>
@@ -219,6 +221,7 @@ function TrackCard({
   onTogglePlay: (key: string, url: string) => void;
   onEdit: (track: SoundTrack, ver: SoundVersion) => void;
 }) {
+  const colors = useColors();
   const invalidate = useInvalidate();
   const Icon = KIND_ICON[trackKind(track)];
   const liked = track.versions.some((v) => v.liked);
@@ -297,11 +300,11 @@ function TrackCard({
   return (
     <Card className="mb-3 gap-3">
       <View className="flex-row items-center gap-2">
-        <Icon size={17} color="#10b981" />
+        <Icon size={17} color={colors.primary} />
         <Text className="flex-1 text-[15px] font-semibold text-foreground" numberOfLines={1}>
           {track.name}
         </Text>
-        {liked ? <Heart size={14} color="#e11d48" fill="#e11d48" /> : null}
+        {liked ? <Heart size={14} color={colors.destructive} fill={colors.destructive} /> : null}
         <Text className="text-[11px] text-muted-foreground">
           {track.versions.length} version{track.versions.length === 1 ? '' : 's'}
         </Text>
@@ -311,7 +314,7 @@ function TrackCard({
           className="h-8 w-8 items-center justify-center rounded-full active:opacity-60"
           onPress={menu}
         >
-          <MoreHorizontal size={17} color="#a1a1aa" />
+          <MoreHorizontal size={17} color={colors.mutedForeground} />
         </Pressable>
       </View>
       {versions.map((v) => {
@@ -338,6 +341,7 @@ export function SoundsSection() {
   const { data, isPending, error, refetch, isRefetching } = useProjectResource<{
     tracks: SoundTrack[];
   }>('sounds');
+  const colors = useColors();
   const invalidate = useInvalidate();
   const agent = useAgent();
   const agentBusy = agentIsBusy(agent);
@@ -396,12 +400,12 @@ export function SoundsSection() {
         />
         <View className="flex-row items-center gap-2">
           <Button size="sm" onPress={() => setCreateOpen(true)}>
-            <Plus size={14} color="#ecfdf5" />
+            <Plus size={14} color={colors.primaryForeground} />
             <Text className="text-[13px] font-semibold text-primary-foreground">New track</Text>
           </Button>
           {pending > 0 ? (
             <Button size="sm" variant="outline" disabled={agentBusy} onPress={renderAll}>
-              <Wand2 size={13} color="#e4e4e7" />
+              <Wand2 size={13} color={colors.foreground} />
               <Text className="text-[13px] font-semibold text-foreground">
                 Render all pending ({pending})
               </Text>
@@ -415,7 +419,7 @@ export function SoundsSection() {
         keyExtractor={(t) => t.id}
         contentContainerClassName="px-4 pb-8 pt-3"
         refreshControl={
-          <RefreshControl refreshing={isRefetching} onRefresh={() => refetch()} tintColor="#a1a1aa" />
+          <RefreshControl refreshing={isRefetching} onRefresh={() => refetch()} tintColor={colors.mutedForeground} />
         }
         ListEmptyComponent={<Empty title={emptyText} hint='Tap "New track" to create one.' />}
         renderItem={({ item }) => (

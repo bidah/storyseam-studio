@@ -1,4 +1,5 @@
 import { Stack } from 'expo-router';
+import { useColors } from '@/lib/colors';
 
 // Nested stack INSIDE the Settings formSheet (registered in the root _layout as
 // a single-detent formSheet). Because this stack lives inside the sheet, pushing
@@ -6,16 +7,15 @@ import { Stack } from 'expo-router';
 // a Back button — instead of stacking a second sheet on top. That sidesteps the
 // two-swipe-to-dismiss trap a focused text field creates in its own formSheet:
 // here the key screen is left with Back, and its input can safely autofocus.
-// Match the app's near-black page background (nav headers otherwise default to
-// the iOS systemGroupedBackground gray inside a formSheet).
-const PAGE_BG = '#0a0a0b';
-
+// Match the app's page background (nav headers otherwise default to the iOS
+// systemGroupedBackground gray inside a formSheet).
 export default function SettingsLayout() {
+  const colors = useColors();
   return (
     <Stack
       screenOptions={{
-        headerStyle: { backgroundColor: PAGE_BG },
-        headerLargeStyle: { backgroundColor: PAGE_BG },
+        headerStyle: { backgroundColor: colors.pageBg },
+        headerLargeStyle: { backgroundColor: colors.pageBg },
         headerShadowVisible: false,
       }}
     >

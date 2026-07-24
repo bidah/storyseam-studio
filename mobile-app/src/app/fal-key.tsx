@@ -9,6 +9,7 @@ import { authClient, useSession } from '@/lib/auth-client';
 import { isPlausibleFalKey, useFalKeyStore } from '@/lib/fal-key';
 import { isPlausibleAtlasKey, useAtlasKeyStore } from '@/lib/atlas-key';
 import { useProvidersStore } from '@/lib/providers';
+import { useColors } from '@/lib/colors';
 
 // Mandatory render-key step (RN port of the web ProviderKeyScreen in
 // src/components/Login.jsx; route kept at /fal-key from the fal-only era).
@@ -32,6 +33,7 @@ export default function ProviderKeyScreen() {
   const queryClient = useQueryClient();
   const provider = active === 'atlas' ? KEY_PROVIDERS.atlas : KEY_PROVIDERS.fal;
   const [draft, setDraft] = useState('');
+  const colors = useColors();
   const plausible = provider.id === 'fal' ? isPlausibleFalKey(draft) : isPlausibleAtlasKey(draft);
 
   const save = () => {
@@ -56,7 +58,7 @@ export default function ProviderKeyScreen() {
     >
       <View className="flex-1 items-center justify-center px-6">
         <View className="h-12 w-12 items-center justify-center rounded-2xl bg-primary">
-          <KeyRound size={22} color="#0a0a0b" />
+          <KeyRound size={22} color={colors.primaryForeground} />
         </View>
         <Text className="mt-6 text-center text-2xl font-semibold text-foreground">
           Connect your {provider.label} key
@@ -94,7 +96,7 @@ export default function ProviderKeyScreen() {
           accessibilityRole="link"
         >
           <Text className="text-[12px] text-muted-foreground underline">Create a key on {provider.label}</Text>
-          <ExternalLink size={12} color="#71717a" />
+          <ExternalLink size={12} color={colors.subtleForeground} />
         </Pressable>
 
         {/* This screen only shows when the selected BYOK provider has no key —
@@ -117,7 +119,7 @@ export default function ProviderKeyScreen() {
             <Text className="text-[12px] text-muted-foreground">Signed in as {session.user.email}</Text>
           ) : null}
           <Pressable className="flex-row items-center gap-1" onPress={signOut} accessibilityRole="button">
-            <LogOut size={12} color="#71717a" />
+            <LogOut size={12} color={colors.subtleForeground} />
             <Text className="text-[12px] text-muted-foreground underline">Sign out</Text>
           </Pressable>
         </View>

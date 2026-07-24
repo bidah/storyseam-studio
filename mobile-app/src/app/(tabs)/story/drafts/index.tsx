@@ -6,6 +6,7 @@ import { Pencil, Pin, Plus, Trash2 } from 'lucide-react-native';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Loading } from '@/components/ui/empty';
+import { useColors } from '@/lib/colors';
 import { deleteJson, patchJson, postJson } from '@/lib/api';
 import { CLIENT_ID } from '@/lib/client-id';
 import { useInvalidate, useProjectResource } from '@/lib/queries';
@@ -17,12 +18,6 @@ import type { ScriptData } from '@/components/story/script';
 // formSheet from story/_layout; the "Drafts" title + close button live in the
 // native header (see drafts/_layout). Reads the same cached `script` resource
 // the Script surface does, so opening is instant.
-
-const MUTED = '#a1a1aa';
-const PRIMARY = '#10b981';
-// Match the near-black page background of the sheet header (drafts/_layout
-// PAGE_BG) so the body never shows the iOS formSheet's default gray backing.
-const PAGE_BG = '#0a0a0b';
 
 // "2m ago" / "just now" — compact relative time for the drafts list.
 function relTime(iso?: string) {
@@ -39,6 +34,7 @@ function relTime(iso?: string) {
 }
 
 export default function DraftsSheet() {
+  const colors = useColors();
   const { data } = useProjectResource<ScriptData>('script');
   const invalidate = useInvalidate();
   const [name, setName] = useState('');
@@ -86,7 +82,7 @@ export default function DraftsSheet() {
   return (
     <ScrollView
       className="flex-1"
-      style={{ backgroundColor: PAGE_BG }}
+      style={{ backgroundColor: colors.pageBg }}
       contentContainerClassName="px-4 pt-4 pb-8"
       keyboardShouldPersistTaps="handled"
     >
@@ -104,7 +100,7 @@ export default function DraftsSheet() {
           onSubmitEditing={() => !busy && create()}
         />
         <Button title="Create" disabled={busy} onPress={create}>
-          <Plus size={15} color="white" />
+          <Plus size={15} color={colors.primaryForeground} />
         </Button>
       </View>
 
@@ -126,7 +122,11 @@ export default function DraftsSheet() {
                   className="flex-1 flex-row items-center gap-2 active:opacity-60"
                   onPress={() => pin(d.id)}
                 >
-                  <Pin size={14} color={isPinned ? PRIMARY : MUTED} fill={isPinned ? PRIMARY : 'none'} />
+                  <Pin
+                    size={14}
+                    color={isPinned ? colors.primary : colors.mutedForeground}
+                    fill={isPinned ? colors.primary : 'none'}
+                  />
                   <View className="min-w-0 flex-1">
                     {renaming === d.id ? (
                       <TextInput
@@ -136,7 +136,7 @@ export default function DraftsSheet() {
                         onBlur={() => rename(d.id)}
                         onSubmitEditing={() => rename(d.id)}
                         className="rounded-lg border border-primary bg-card px-2 py-1 text-[14px] text-foreground"
-                        placeholderTextColor="#71717a"
+                        placeholderTextColor={colors.subtleForeground}
                       />
                     ) : (
                       <Text className="text-[15px] font-medium text-foreground" numberOfLines={1}>
@@ -160,7 +160,7 @@ export default function DraftsSheet() {
                     setRenameValue(d.name);
                   }}
                 >
-                  <Pencil size={14} color={MUTED} />
+                  <Pencil size={14} color={colors.mutedForeground} />
                 </Pressable>
                 <Pressable
                   accessibilityRole="button"
@@ -172,7 +172,7 @@ export default function DraftsSheet() {
                   )}
                   onPress={() => remove(d.id)}
                 >
-                  <Trash2 size={14} color="#f87171" />
+                  <Trash2 size={14} color={colors.destructive} />
                 </Pressable>
               </View>
             </View>

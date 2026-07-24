@@ -1,25 +1,24 @@
 import { Pressable } from 'react-native';
 import { router, Stack } from 'expo-router';
 import { X } from 'lucide-react-native';
+import { useColors } from '@/lib/colors';
 
 // Nested stack INSIDE the Drafts formSheet (registered in story/_layout as a
 // formSheet). Living in the sheet, it draws the sheet's own native header —
 // the "Drafts" title + a close button — the same trick the Settings sheet and
 // Chat history use to get a native nav header inside a sheet. Match the app's
-// near-black page background (nav headers otherwise default to the iOS
+// page background (nav headers otherwise default to the iOS
 // systemGroupedBackground gray inside a formSheet).
-const PAGE_BG = '#0a0a0b';
-const FG = '#fafafa';
-
 export default function DraftsLayout() {
+  const colors = useColors();
   return (
     <Stack
       screenOptions={{
-        headerStyle: { backgroundColor: PAGE_BG },
+        headerStyle: { backgroundColor: colors.pageBg },
         headerShadowVisible: false,
-        headerTintColor: FG,
-        headerTitleStyle: { color: FG },
-        contentStyle: { backgroundColor: PAGE_BG },
+        headerTintColor: colors.foreground,
+        headerTitleStyle: { color: colors.foreground },
+        contentStyle: { backgroundColor: colors.pageBg },
       }}
     >
       <Stack.Screen
@@ -44,7 +43,7 @@ export default function DraftsLayout() {
               className="h-9 w-9 items-center justify-center rounded-full active:opacity-60"
               onPress={() => router.back()}
             >
-              <X size={20} color={FG} />
+              <X size={20} color={colors.foreground} />
             </Pressable>
           ),
         }}

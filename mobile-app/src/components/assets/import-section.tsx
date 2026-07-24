@@ -19,6 +19,8 @@ import { Check, KeyRound } from 'lucide-react-native';
 import { Empty, ErrorNote, Loading } from '@/components/ui/empty';
 import { ApiError, mediaUrl, postJson } from '@/lib/api';
 import { createPickerRequest } from '@/lib/picker-bus';
+import { useColors } from '@/lib/colors';
+import { useEffectiveScheme } from '@/lib/theme';
 import { useHiggsfieldImages, useInvalidate, useProjectResource } from '@/lib/queries';
 import type { HfItem, LibraryFolder } from './types';
 
@@ -39,6 +41,8 @@ function urlBasename(u: string) {
 }
 
 export function ImportSection() {
+  const colors = useColors();
+  const scheme = useEffectiveScheme();
   const q = useHiggsfieldImages();
   const lib = useProjectResource<{ folders: LibraryFolder[] }>('library');
   const invalidate = useInvalidate();
@@ -152,7 +156,7 @@ export function ImportSection() {
   if (needsAuth) {
     return (
       <View className="flex-1 items-center justify-center gap-3 px-8">
-        <KeyRound size={22} color="#a1a1aa" />
+        <KeyRound size={22} color={colors.mutedForeground} />
         <Text className="text-center text-sm text-muted-foreground">
           Your Higgsfield session expired. Ask the agent in the Chat tab to re-connect Higgsfield,
           then pull to refresh here.
@@ -166,7 +170,7 @@ export function ImportSection() {
     return <ErrorNote message={String(err?.message || q.error)} onRetry={() => q.refetch()} />;
 
   return (
-    <Galeria urls={galleryUrls} theme="dark">
+    <Galeria urls={galleryUrls} theme={scheme}>
     <FlatList
       data={items}
       keyExtractor={(it) => it.id}
@@ -177,7 +181,7 @@ export function ImportSection() {
         <RefreshControl
           refreshing={q.isRefetching && !q.isFetchingNextPage}
           onRefresh={() => q.refetch()}
-          tintColor="#a1a1aa"
+          tintColor={colors.mutedForeground}
         />
       }
       onEndReached={() => {
@@ -228,7 +232,7 @@ export function ImportSection() {
                 ) : null}
                 {inLibrary ? (
                   <View className="absolute right-1.5 top-1.5 h-5 w-5 items-center justify-center rounded-full bg-success">
-                    <Check size={12} color="white" />
+                    <Check size={12} color={colors.primaryForeground} />
                   </View>
                 ) : null}
               </View>

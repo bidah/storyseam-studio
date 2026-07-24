@@ -5,7 +5,7 @@ import * as Haptics from 'expo-haptics';
 import { SquarePen } from 'lucide-react-native';
 import { useConversations } from '@/lib/agent/provider';
 import { relTime } from '@/components/chat/helpers';
-import { chatColors } from '@/components/chat/theme';
+import { useChatColors } from '@/components/chat/theme';
 import ChatHistoryForm from '@/components/chat-history-form';
 
 // The Chats sheet — a full-size formSheet (single detent) presented from the
@@ -16,6 +16,7 @@ import ChatHistoryForm from '@/components/chat-history-form';
 // fresh one and dismisses. The Chat screen's own effect (keyed on activeId)
 // remounts the transcript onto whatever this leaves active.
 export default function ChatHistorySheet() {
+  const chatC = useChatColors();
   const conv = useConversations();
 
   const onSelect = useCallback(
@@ -69,7 +70,7 @@ export default function ChatHistorySheet() {
               className="h-9 w-9 items-center justify-center rounded-full active:opacity-60"
               onPress={onNewChat}
             >
-              <SquarePen size={18} color={chatColors.mutedForeground} />
+              <SquarePen size={18} color={chatC.mutedForeground} />
             </Pressable>
           ),
         }}

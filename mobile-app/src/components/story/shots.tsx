@@ -17,6 +17,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Empty, ErrorNote, Loading } from '@/components/ui/empty';
 import { postJson, putJson } from '@/lib/api';
+import { useColors } from '@/lib/colors';
 import { useInvalidate, useProjectResource } from '@/lib/queries';
 import { cn } from '@/lib/utils';
 
@@ -24,9 +25,6 @@ import { cn } from '@/lib/utils';
 // grouped by beat; the auto-packed <=15s multishot packs render as horizontal
 // chips that filter the list. Editing a shot goes through
 // PUT /api/shotlist/shot/:n (merge-patch; characters as an array, dur numeric).
-
-const MUTED = '#a1a1aa';
-const PRIMARY = '#10b981';
 
 type Shot = {
   n: number;
@@ -55,6 +53,7 @@ function fmtTime(total: number) {
  * ------------------------------------------------------------------ */
 
 function ShotEditModal({ shot, onClose }: { shot: Shot; onClose: () => void }) {
+  const colors = useColors();
   const invalidate = useInvalidate();
   const [busy, setBusy] = useState(false);
   const [f, setF] = useState({
@@ -111,7 +110,7 @@ function ShotEditModal({ shot, onClose }: { shot: Shot; onClose: () => void }) {
       <View className="flex-1 bg-background">
         <View className="flex-row items-center justify-between border-b border-border px-4 py-3">
           <View className="flex-row items-center gap-2">
-            <Film size={15} color={PRIMARY} />
+            <Film size={15} color={colors.primary} />
             <Text className="text-[16px] font-semibold text-foreground">Shot {shot.id}</Text>
             <Badge variant="muted" label={`#${shot.n}`} />
           </View>
@@ -121,7 +120,7 @@ function ShotEditModal({ shot, onClose }: { shot: Shot; onClose: () => void }) {
             className="h-9 w-9 items-center justify-center rounded-full active:opacity-60"
             onPress={onClose}
           >
-            <X size={18} color={MUTED} />
+            <X size={18} color={colors.mutedForeground} />
           </Pressable>
         </View>
         <ScrollView
@@ -149,6 +148,7 @@ function ShotEditModal({ shot, onClose }: { shot: Shot; onClose: () => void }) {
  * ------------------------------------------------------------------ */
 
 export function ShotsSurface() {
+  const colors = useColors();
   const { data, isPending, error, refetch, isRefetching } = useProjectResource<ShotlistData>('shotlist');
   const invalidate = useInvalidate();
   const [activePack, setActivePack] = useState<string | null>(null);
@@ -217,7 +217,7 @@ export function ShotsSurface() {
         <Badge variant="outline" label={`${shots.length} shots`} />
         <Badge variant="success" label={`~${fmtTime(runtime)} total`} />
         <Badge variant="info" label={`${packs.length} packs`}>
-          <Layers size={11} color="#60a5fa" />
+          <Layers size={11} color={colors.info} />
         </Badge>
       </View>
       {packs.length > 0 ? (
@@ -264,7 +264,7 @@ export function ShotsSurface() {
           className="mt-2 flex-row items-center gap-1 self-start rounded-md border border-dashed border-border px-2 py-1 active:opacity-60"
           onPress={() => setActivePack(null)}
         >
-          <X size={11} color={MUTED} />
+          <X size={11} color={colors.mutedForeground} />
           <Text className="text-[11px] text-muted-foreground">showing {effPack} — show all</Text>
         </Pressable>
       ) : null}
@@ -279,7 +279,7 @@ export function ShotsSurface() {
         loading={rebuilding}
         onPress={rebuild}
       >
-        {!rebuilding ? <RefreshCw size={14} color="#fafafa" /> : null}
+        {!rebuilding ? <RefreshCw size={14} color={colors.foreground} /> : null}
       </Button>
     </View>
   );
@@ -291,7 +291,7 @@ export function ShotsSurface() {
         sections={sections}
         keyExtractor={(s) => String(s.n)}
         stickySectionHeadersEnabled={false}
-        refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={refetch} tintColor={MUTED} />}
+        refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={refetch} tintColor={colors.mutedForeground} />}
         ListHeaderComponent={header}
         ListFooterComponent={shots.length > 0 ? footer : null}
         ListEmptyComponent={
@@ -305,7 +305,7 @@ export function ShotsSurface() {
         }
         renderSectionHeader={({ section }) => (
           <View className="flex-row items-center gap-2 pb-2 pt-4">
-            <Film size={14} color={PRIMARY} />
+            <Film size={14} color={colors.primary} />
             <Text className="flex-1 text-[15px] font-semibold text-foreground" numberOfLines={1}>
               {section.beatTitle || section.beat}
             </Text>

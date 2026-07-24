@@ -10,6 +10,7 @@ import { FolderKanban, RefreshCw } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { useQueryClient } from '@tanstack/react-query';
 import { postJson } from '@/lib/api';
+import { useColors } from '@/lib/colors';
 import { useProjectStore } from '@/lib/project';
 import { useProjects, type Project } from '@/lib/queries';
 
@@ -29,10 +30,6 @@ import { useProjects, type Project } from '@/lib/queries';
 //
 // Menu items take SF Symbols, not lucide glyphs (a native item can't host a
 // React icon); icon-only bar buttons pass an empty label + accessibilityLabel.
-
-const MUTED = '#a1a1aa';
-const BG = '#0a0a0b';
-const FG = '#fafafa';
 
 // Switch the active project the same way the /projects sheet does: flip the
 // stored id (every request header + media URL follows), drop the whole query
@@ -155,6 +152,7 @@ export function useTabActionItems(): NativeStackHeaderItem[] {
 // Android/web fallback for useMenuItem — no native menu there, so degrade to a
 // button that opens the /projects sheet (project switch + Settings live inside).
 export function MenuButton() {
+  const colors = useColors();
   return (
     <Pressable
       accessibilityRole="button"
@@ -162,7 +160,7 @@ export function MenuButton() {
       className="h-9 w-9 items-center justify-center rounded-full active:opacity-60"
       onPress={() => router.push('/projects')}
     >
-      <FolderKanban size={20} color={FG} />
+      <FolderKanban size={20} color={colors.foreground} />
     </Pressable>
   );
 }
@@ -171,6 +169,7 @@ export function MenuButton() {
 export function TabHeaderActions() {
   const projectId = useProjectStore((s) => s.projectId);
   const queryClient = useQueryClient();
+  const colors = useColors();
   return (
     <View className="flex-row items-center gap-1">
       <Pressable
@@ -182,27 +181,30 @@ export function TabHeaderActions() {
           queryClient.invalidateQueries({ queryKey: ['account'] });
         }}
       >
-        <RefreshCw size={17} color={MUTED} />
+        <RefreshCw size={17} color={colors.mutedForeground} />
       </Pressable>
     </View>
   );
 }
 
-// Shared dark-theme native header styling (colors, compact iOS title). Spread
+// Shared native header styling (colors, compact iOS title), scheme-aware. Spread
 // into each tab's Stack screenOptions; per-screen options add title/headerLeft/
 // Right. Titles are inline (not large): several tabs open with a fixed
 // <Segmented> sub-nav that a large title would draw over and clip.
-export const HEADER_BASE = {
-  headerShown: true,
-  headerLargeTitle: false,
-  headerShadowVisible: false,
-  headerStyle: { backgroundColor: BG },
-  headerLargeStyle: { backgroundColor: BG },
-  headerTintColor: FG,
-  headerTitleStyle: { color: FG },
-  headerLargeTitleStyle: { color: FG },
-  contentStyle: { backgroundColor: BG },
-} satisfies NativeStackNavigationOptions;
+export function useHeaderBase(): NativeStackNavigationOptions {
+  const colors = useColors();
+  return {
+    headerShown: true,
+    headerLargeTitle: false,
+    headerShadowVisible: false,
+    headerStyle: { backgroundColor: colors.pageBg },
+    headerLargeStyle: { backgroundColor: colors.pageBg },
+    headerTintColor: colors.foreground,
+    headerTitleStyle: { color: colors.foreground },
+    headerLargeTitleStyle: { color: colors.foreground },
+    contentStyle: { backgroundColor: colors.pageBg },
+  };
+}
 
 // Full options for a content tab's root screen: shared styling + title + the
 // menu (left) + refresh (right). A hook rather than a plain function because the
@@ -217,10 +219,11 @@ export function useTabHeaderOptions(
   opts?: { refresh?: boolean },
 ): NativeStackNavigationOptions {
   const showRefresh = opts?.refresh ?? true;
+  const headerBase = useHeaderBase();
   const menuItem = useMenuItem();
   const actionItems = useTabActionItems();
   return {
-    ...HEADER_BASE,
+    ...headerBase,
     title,
     unstable_headerLeftItems: () => [menuItem],
     unstable_headerRightItems: () => (showRefresh ? actionItems : []),

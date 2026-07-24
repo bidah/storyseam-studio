@@ -30,6 +30,7 @@ import { postJson, putJson } from '@/lib/api';
 import { CLIENT_ID } from '@/lib/client-id';
 import { agentIsBusy, useAgent, useSendToAgent } from '@/lib/agent/provider';
 import { generateShotListMessage, scriptEditRequest, scriptRewriteRequest } from '@/lib/agent/messages';
+import { useColors } from '@/lib/colors';
 import { useInvalidate, useProjectResource } from '@/lib/queries';
 import { cn } from '@/lib/utils';
 import { EditableField } from './field';
@@ -40,9 +41,6 @@ import { ScriptProposalReview } from './script-review';
 // draft (body edits stay agent-driven via proposals; see the web ScriptEditor
 // for the TipTap editing surface). Title edits, drafts (version control),
 // sign/unsign, and shot-list generation mirror the web toolbar 1:1.
-
-const MUTED = '#a1a1aa';
-const PRIMARY = '#10b981';
 
 export type DraftMeta = { id: string; name: string; lineCount?: number; updatedAt?: string };
 export type ScriptData = {
@@ -73,6 +71,7 @@ function SignModal({
   onClose: () => void;
   onSigned: (by: string) => Promise<boolean>;
 }) {
+  const colors = useColors();
   const [by, setBy] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -90,7 +89,7 @@ function SignModal({
       <View className="flex-1 bg-background px-4 pt-5">
         <View className="mb-2 flex-row items-center justify-between">
           <View className="flex-row items-center gap-2">
-            <CircleCheck size={16} color={PRIMARY} />
+            <CircleCheck size={16} color={colors.primary} />
             <Text className="text-lg font-semibold text-foreground">Sign & close script</Text>
           </View>
           <Pressable
@@ -99,7 +98,7 @@ function SignModal({
             className="h-9 w-9 items-center justify-center rounded-full active:opacity-60"
             onPress={onClose}
           >
-            <X size={18} color={MUTED} />
+            <X size={18} color={colors.mutedForeground} />
           </Pressable>
         </View>
         <Text className="mb-4 text-[13px] leading-5 text-muted-foreground">
@@ -115,7 +114,7 @@ function SignModal({
           loading={busy}
           onPress={submit}
         >
-          {!busy ? <CircleCheck size={15} color="white" /> : null}
+          {!busy ? <CircleCheck size={15} color={colors.primaryForeground} /> : null}
         </Button>
       </View>
     </Modal>
@@ -146,6 +145,7 @@ function EditPassageModal({
   onClose: () => void;
   onSend: (message: string) => void;
 }) {
+  const colors = useColors();
   const [mode, setMode] = useState<EditMode>('edit');
   const [draft, setDraft] = useState(''); // Edit tab: the rewritten passage text
   const [instruction, setInstruction] = useState(''); // Ask tab: the change to request
@@ -183,7 +183,7 @@ function EditPassageModal({
       <View className="flex-1 bg-background px-4 pt-5">
         <View className="mb-3 flex-row items-center justify-between">
           <View className="flex-row items-center gap-2">
-            <Wand2 size={16} color={PRIMARY} />
+            <Wand2 size={16} color={colors.primary} />
             <Text className="text-lg font-semibold text-foreground">Change passage</Text>
           </View>
           <Pressable
@@ -192,7 +192,7 @@ function EditPassageModal({
             className="h-9 w-9 items-center justify-center rounded-full active:opacity-60"
             onPress={onClose}
           >
-            <X size={18} color={MUTED} />
+            <X size={18} color={colors.mutedForeground} />
           </Pressable>
         </View>
 
@@ -212,7 +212,7 @@ function EditPassageModal({
               value={draft}
               onChangeText={setDraft}
               placeholder="Rewrite this passage…"
-              placeholderTextColor="#71717a"
+              placeholderTextColor={colors.subtleForeground}
               className="min-h-32 rounded-xl border border-primary bg-card px-3 py-2.5 text-[15px] leading-6 text-foreground"
               textAlignVertical="top"
             />
@@ -236,7 +236,7 @@ function EditPassageModal({
               value={instruction}
               onChangeText={setInstruction}
               placeholder="Describe the change… (e.g. make this line angrier, tighten it, fix the slug)"
-              placeholderTextColor="#71717a"
+              placeholderTextColor={colors.subtleForeground}
               className="min-h-24 rounded-xl border border-primary bg-card px-3 py-2.5 text-[15px] leading-6 text-foreground"
               textAlignVertical="top"
             />
@@ -250,7 +250,7 @@ function EditPassageModal({
           loading={busy}
           onPress={submit}
         >
-          {!busy ? <Wand2 size={15} color="white" /> : null}
+          {!busy ? <Wand2 size={15} color={colors.primaryForeground} /> : null}
         </Button>
         <Text className="mt-2 text-center text-[11px] text-muted-foreground">
           {busy
@@ -267,6 +267,7 @@ function EditPassageModal({
  * ------------------------------------------------------------------ */
 
 export function ScriptSurface() {
+  const colors = useColors();
   const { data, isPending, error, refetch, isRefetching } = useProjectResource<ScriptData>('script');
   const invalidate = useInvalidate();
   const agent = useAgent();
@@ -340,7 +341,7 @@ export function ScriptSurface() {
         className="flex-1"
         contentContainerClassName="px-4 pb-28 pt-3"
         keyboardShouldPersistTaps="handled"
-        refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={refetch} tintColor={MUTED} />}
+        refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={refetch} tintColor={colors.mutedForeground} />}
       >
         {/* Toolbar */}
         <View className="mb-3 flex-row flex-wrap items-center gap-2">
@@ -350,7 +351,7 @@ export function ScriptSurface() {
             title={script.draftName || 'Draft'}
             onPress={() => router.push('/(tabs)/story/drafts')}
           >
-            <GitBranch size={13} color="#fafafa" />
+            <GitBranch size={13} color={colors.foreground} />
           </Button>
           {script.signed ? (
             <Pressable
@@ -363,20 +364,20 @@ export function ScriptSurface() {
                 variant="success"
                 label={`Signed${script.signedAt ? ` ${new Date(script.signedAt).toLocaleDateString()}` : ''}`}
               >
-                <CircleCheck size={11} color={PRIMARY} />
+                <CircleCheck size={11} color={colors.primary} />
               </Badge>
             </Pressable>
           ) : (
             <Button size="sm" variant="outline" title="Sign script" onPress={() => setSignOpen(true)}>
-              <CircleCheck size={13} color="#fafafa" />
+              <CircleCheck size={13} color={colors.foreground} />
             </Button>
           )}
           {script.signed ? (
             <Button size="sm" title="Generate shot list" disabled={genDisabled} onPress={generate}>
               {script.shotlistExists ? (
-                <Lock size={13} color="white" />
+                <Lock size={13} color={colors.primaryForeground} />
               ) : (
-                <ListChecks size={13} color="white" />
+                <ListChecks size={13} color={colors.primaryForeground} />
               )}
             </Button>
           ) : null}
@@ -390,7 +391,7 @@ export function ScriptSurface() {
             className="mb-3 flex-row items-center gap-2.5 rounded-xl border border-warning/40 bg-warning/10 p-3 active:opacity-70"
             onPress={() => setReviewOpen(true)}
           >
-            <GitPullRequestArrow size={16} color="#f59e0b" />
+            <GitPullRequestArrow size={16} color={colors.amber} />
             <View className="flex-1">
               <Text className="text-[14px] font-semibold text-warning">Agent proposed changes</Text>
               <Text className="text-[12px] text-muted-foreground">Tap to review and accept or reject.</Text>

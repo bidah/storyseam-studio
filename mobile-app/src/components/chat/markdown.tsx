@@ -1,8 +1,8 @@
-import { useCallback } from 'react';
+import { useCallback, useMemo } from 'react';
 import { EnrichedMarkdownText, type MarkdownStyle, type LinkPressEvent } from 'react-native-enriched-markdown';
 import remend, { type RemendOptions } from 'remend';
 import * as WebBrowser from 'expo-web-browser';
-import { chatColors } from './theme';
+import { useChatColors, type ChatColors } from './theme';
 
 // Markdown rendering via react-native-enriched-markdown (the native renderer
 // behind react-native-streamdown), with `remend` closing off partial markdown
@@ -22,49 +22,45 @@ const remendConfig: RemendOptions = {
   setextHeadings: true,
 };
 
-// Dark-theme style for the native renderer (it can't read NativeWind classes).
-const baseStyle: MarkdownStyle = {
-  paragraph: { color: chatColors.foreground, fontSize: 16, lineHeight: 24, marginTop: 4, marginBottom: 4 },
-  h1: { color: chatColors.foreground, fontSize: 22, fontWeight: '700' },
-  h2: { color: chatColors.foreground, fontSize: 19, fontWeight: '700' },
-  h3: { color: chatColors.foreground, fontSize: 17, fontWeight: '600' },
-  h4: { color: chatColors.foreground, fontSize: 16, fontWeight: '600' },
-  h5: { color: chatColors.foreground, fontSize: 16, fontWeight: '600' },
-  h6: { color: chatColors.foreground, fontSize: 16, fontWeight: '600' },
-  list: { color: chatColors.foreground, fontSize: 16, lineHeight: 24, bulletColor: chatColors.mutedForeground, markerColor: chatColors.mutedForeground },
-  blockquote: {
-    color: chatColors.mutedForeground,
-    borderColor: chatColors.border,
-    backgroundColor: chatColors.card,
-  },
-  codeBlock: {
-    color: chatColors.foreground,
-    fontSize: 13,
-    backgroundColor: chatColors.muted,
-    borderColor: chatColors.border,
-    borderRadius: 8,
-    borderWidth: 1,
-    padding: 10,
-  },
-  code: { color: chatColors.foreground, backgroundColor: chatColors.muted, fontSize: 13 },
-  link: { color: chatColors.primary, underline: true },
-  table: {
-    color: chatColors.foreground,
-    fontSize: 13,
-    headerTextColor: chatColors.foreground,
-    headerBackgroundColor: chatColors.muted,
-    borderColor: chatColors.border,
-    rowEvenBackgroundColor: chatColors.card,
-    rowOddBackgroundColor: chatColors.background,
-  },
-  thematicBreak: { color: chatColors.border, height: 1 },
-};
-
-const mutedStyle: MarkdownStyle = {
-  ...baseStyle,
-  paragraph: { ...baseStyle.paragraph, color: chatColors.mutedForeground },
-  list: { ...baseStyle.list, color: chatColors.mutedForeground },
-};
+// Scheme-aware style for the native renderer (it can't read NativeWind classes).
+function makeBaseStyle(c: ChatColors): MarkdownStyle {
+  return {
+    paragraph: { color: c.foreground, fontSize: 16, lineHeight: 24, marginTop: 4, marginBottom: 4 },
+    h1: { color: c.foreground, fontSize: 22, fontWeight: '700' },
+    h2: { color: c.foreground, fontSize: 19, fontWeight: '700' },
+    h3: { color: c.foreground, fontSize: 17, fontWeight: '600' },
+    h4: { color: c.foreground, fontSize: 16, fontWeight: '600' },
+    h5: { color: c.foreground, fontSize: 16, fontWeight: '600' },
+    h6: { color: c.foreground, fontSize: 16, fontWeight: '600' },
+    list: { color: c.foreground, fontSize: 16, lineHeight: 24, bulletColor: c.mutedForeground, markerColor: c.mutedForeground },
+    blockquote: {
+      color: c.mutedForeground,
+      borderColor: c.border,
+      backgroundColor: c.card,
+    },
+    codeBlock: {
+      color: c.foreground,
+      fontSize: 13,
+      backgroundColor: c.muted,
+      borderColor: c.border,
+      borderRadius: 8,
+      borderWidth: 1,
+      padding: 10,
+    },
+    code: { color: c.foreground, backgroundColor: c.muted, fontSize: 13 },
+    link: { color: c.primary, underline: true },
+    table: {
+      color: c.foreground,
+      fontSize: 13,
+      headerTextColor: c.foreground,
+      headerBackgroundColor: c.muted,
+      borderColor: c.border,
+      rowEvenBackgroundColor: c.card,
+      rowOddBackgroundColor: c.background,
+    },
+    thematicBreak: { color: c.border, height: 1 },
+  };
+}
 
 export function ChatMarkdown({
   text,
@@ -75,6 +71,19 @@ export function ChatMarkdown({
   streaming?: boolean;
   muted?: boolean;
 }) {
+  const c = useChatColors();
+  const { baseStyle, mutedStyle } = useMemo(() => {
+    const base = makeBaseStyle(c);
+    return {
+      baseStyle: base,
+      mutedStyle: {
+        ...base,
+        paragraph: { ...base.paragraph, color: c.mutedForeground },
+        list: { ...base.list, color: c.mutedForeground },
+      } as MarkdownStyle,
+    };
+  }, [c]);
+
   const onLinkPress = useCallback((e: LinkPressEvent) => {
     const url = e?.url;
     if (url) WebBrowser.openBrowserAsync(url).catch(() => {});

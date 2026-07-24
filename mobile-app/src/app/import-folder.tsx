@@ -7,6 +7,7 @@ import { Eyebrow } from '@/components/ui/card';
 import { Loading } from '@/components/ui/empty';
 import { resolvePickerRequest } from '@/lib/picker-bus';
 import { useProjectResource } from '@/lib/queries';
+import { useColors } from '@/lib/colors';
 import type { LibraryFolder } from '@/components/assets/types';
 
 // "Add to library — pick a folder" as a formSheet (replaces the iOS action
@@ -17,6 +18,7 @@ export default function ImportFolderSheet() {
   const { requestId } = useLocalSearchParams<{ requestId?: string }>();
   const { data, isPending } = useProjectResource<{ folders: LibraryFolder[] }>('library');
   const [name, setName] = useState('higgsfield');
+  const colors = useColors();
 
   // Dismiss without picking → resolve null (no-op if already resolved).
   useEffect(() => {
@@ -58,7 +60,7 @@ export default function ImportFolderSheet() {
             onPress={() => pick(item.folder)}
           >
             <View className="h-9 w-9 items-center justify-center rounded-full bg-secondary">
-              {root ? <FolderRoot size={16} color="#a1a1aa" /> : <Folder size={16} color="#a1a1aa" />}
+              {root ? <FolderRoot size={16} color={colors.mutedForeground} /> : <Folder size={16} color={colors.mutedForeground} />}
             </View>
             <Text className="flex-1 text-[15px] font-medium text-foreground" numberOfLines={1}>
               {root ? '(library root)' : item.folder}
@@ -74,7 +76,7 @@ export default function ImportFolderSheet() {
           value={name}
           onChangeText={setName}
           placeholder="Folder name"
-          placeholderTextColor="#71717a"
+          placeholderTextColor={colors.subtleForeground}
           autoCapitalize="none"
           className="rounded-lg border border-border bg-card px-3 py-2.5 text-[15px] text-foreground"
         />

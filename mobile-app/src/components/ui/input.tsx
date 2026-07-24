@@ -1,9 +1,11 @@
 import { forwardRef } from 'react';
 import { TextInput, type TextInputProps } from 'react-native';
+import { useColors } from '@/lib/colors';
 import { cn } from '@/lib/utils';
 
 export const Input = forwardRef<TextInput, TextInputProps & { className?: string }>(
   function Input({ className, ...props }, ref) {
+    const colors = useColors();
     return (
       <TextInput
         ref={ref}
@@ -12,7 +14,7 @@ export const Input = forwardRef<TextInput, TextInputProps & { className?: string
           props.multiline && 'min-h-24',
           className,
         )}
-        placeholderTextColor="#71717a"
+        placeholderTextColor={colors.subtleForeground}
         {...props}
       />
     );

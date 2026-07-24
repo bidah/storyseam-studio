@@ -4,7 +4,8 @@ import { useEffect, useState } from 'react';
 import { View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { KeyboardProvider } from 'react-native-keyboard-controller';
-import { DarkTheme, Stack, ThemeProvider } from 'expo-router';
+import { DarkTheme, DefaultTheme, Stack, ThemeProvider } from 'expo-router';
+import { StatusBar } from 'expo-status-bar';
 import * as SplashScreen from 'expo-splash-screen';
 import { colorScheme } from 'nativewind';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -14,11 +15,10 @@ import { hydrateFalKey } from '@/lib/fal-key';
 import { hydrateAtlasKey } from '@/lib/atlas-key';
 import { hydrateProviders } from '@/lib/providers';
 import { hydrateProjectId } from '@/lib/project';
+import { hydrateTheme, useEffectiveScheme } from '@/lib/theme';
+import { getColors } from '@/lib/colors';
 
 SplashScreen.preventAutoHideAsync();
-
-// Dark is the product's default look (parity with the web app's `class="dark"`).
-colorScheme.set('dark');
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -26,30 +26,46 @@ const queryClient = new QueryClient({
   },
 });
 
-const navTheme = {
-  ...DarkTheme,
-  colors: {
-    ...DarkTheme.colors,
-    background: '#0a0a0b',
-    card: '#111113',
-    border: '#27272a',
-    primary: '#10b981',
-  },
-};
+// React Navigation theme (JS-drawn chrome), derived from the resolved scheme.
+function navThemeFor(scheme: 'dark' | 'light') {
+  const c = getColors(scheme);
+  const base = scheme === 'dark' ? DarkTheme : DefaultTheme;
+  return {
+    ...base,
+    colors: {
+      ...base.colors,
+      background: c.pageBg,
+      card: c.surface,
+      border: c.border,
+      primary: c.primary,
+      text: c.foreground,
+    },
+  };
+}
 
 export default function RootLayout() {
   const [booted, setBooted] = useState(false);
+  const scheme = useEffectiveScheme();
+  const colors = getColors(scheme);
+  const isDark = scheme === 'dark';
 
   useEffect(() => {
     hydrateAgentModel();
     hydrateFalKey();
     hydrateAtlasKey();
     hydrateProviders();
+    hydrateTheme();
     hydrateProjectId().finally(() => {
       setBooted(true);
       SplashScreen.hideAsync().catch(() => {});
     });
   }, []);
+
+  // Keep NativeWind's active scheme in lockstep with the resolved preference so
+  // the `.dark:root` CSS variables (global.css) flip for className-based surfaces.
+  useEffect(() => {
+    colorScheme.set(scheme);
+  }, [scheme]);
 
   if (!booted) return null;
 
@@ -57,9 +73,10 @@ export default function RootLayout() {
     <GestureHandlerRootView style={{ flex: 1 }}>
       <KeyboardProvider>
         <QueryClientProvider client={queryClient}>
-          <ThemeProvider value={navTheme}>
-            <View className="dark flex-1 bg-background">
-              <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: '#0a0a0b' } }}>
+          <ThemeProvider value={navThemeFor(scheme)}>
+            <StatusBar style={isDark ? 'light' : 'dark'} />
+            <View className={isDark ? 'dark flex-1 bg-background' : 'flex-1 bg-background'}>
+              <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.pageBg } }}>
                 <Stack.Screen name="index" />
                 <Stack.Screen name="(auth)/sign-in" />
                 <Stack.Screen name="(auth)/sign-up" />
@@ -92,9 +109,25 @@ export default function RootLayout() {
                   name="model-picker"
                   options={{
                     presentation: 'formSheet',
-                    sheetAllowedDetents: [0.4],
+                    // Hug the model rows — no half-screen stop.
+                    sheetAllowedDetents: 'fitToContents',
                     sheetGrabberVisible: true,
                     sheetCornerRadius: 24,
+                    // Native header inside the sheet (title + close on the right).
+                    headerShown: true,
+                  }}
+                />
+                <Stack.Screen
+                  name="image-model-picker"
+                  options={{
+                    presentation: 'formSheet',
+                    // Single screen (two in-place pages) so fitToContents can
+                    // measure and hug the rows, like the option-picker.
+                    sheetAllowedDetents: 'fitToContents',
+                    sheetGrabberVisible: true,
+                    sheetCornerRadius: 24,
+                    // Native header inside the sheet (title + close/back).
+                    headerShown: true,
                   }}
                 />
                 <Stack.Screen
@@ -125,6 +158,27 @@ export default function RootLayout() {
                   }}
                 />
                 <Stack.Screen
+                  name="option-picker"
+                  options={{
+                    presentation: 'formSheet',
+                    // The sheet hugs its rows — no half-screen stop.
+                    sheetAllowedDetents: 'fitToContents',
+                    sheetGrabberVisible: true,
+                    sheetCornerRadius: 24,
+                    // Native header inside the sheet (title + close on the right).
+                    headerShown: true,
+                  }}
+                />
+                <Stack.Screen
+                  name="generation"
+                  options={{
+                    presentation: 'formSheet',
+                    sheetAllowedDetents: [0.9, 1],
+                    sheetGrabberVisible: true,
+                    sheetCornerRadius: 24,
+                  }}
+                />
+                <Stack.Screen
                   name="import-folder"
                   options={{
                     presentation: 'formSheet',
@@ -144,13 +198,15 @@ export default function RootLayout() {
                   name="editor"
                   options={{
                     presentation: 'fullScreenModal',
+                    // Dark by design (like the viewer): the ported Edit Studio is
+                    // an always-dark creative surface, matching the web app.
                     contentStyle: { backgroundColor: '#0B0B0F' },
                     animation: 'slide_from_bottom',
                     gestureEnabled: false,
                   }}
                 />
               </Stack>
-              <Toaster theme="dark" position="top-center" />
+              <Toaster theme={scheme} position="top-center" />
             </View>
           </ThemeProvider>
         </QueryClientProvider>
