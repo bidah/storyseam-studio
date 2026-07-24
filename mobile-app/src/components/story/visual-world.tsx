@@ -44,6 +44,7 @@ import { apiFetch, apiJson, mediaUrl, postJson, transcribeAudio, uploadFile } fr
 import { createPickerRequest } from '@/lib/picker-bus';
 import { useImageModelPickerStore } from '@/lib/image-model-picker';
 import { useInvalidate, useProjectResource } from '@/lib/queries';
+import { useManualRefresh } from '@/lib/use-manual-refresh';
 import { useAudioRecording } from '@/lib/use-audio-recording';
 
 // Visual world — the World tab's image-generation surface, port of the web
@@ -216,7 +217,7 @@ function GenerationCell({
 }
 
 export function VisualWorldSurface() {
-  const { data, isPending, error, refetch, isRefetching } =
+  const { data, isPending, error, refetch } =
     useProjectResource<VisualWorldDoc>('visualWorld');
   if (isPending) return <Loading />;
   if (error)
@@ -224,21 +225,20 @@ export function VisualWorldSurface() {
   // Mounting the loaded surface only once data exists lets the composer seed
   // its state straight from the server-remembered settings (useState initial
   // values), with no seeding effect.
-  return <Loaded data={data as VisualWorldDoc} refetch={refetch} isRefetching={isRefetching} />;
+  return <Loaded data={data as VisualWorldDoc} refetch={refetch} />;
 }
 
 function Loaded({
   data,
   refetch,
-  isRefetching,
 }: {
   data: VisualWorldDoc;
   refetch: () => void;
-  isRefetching: boolean;
 }) {
   const c = useChatColors();
   const scheme = useEffectiveScheme();
   const invalidate = useInvalidate();
+  const { refreshing, onRefresh } = useManualRefresh(refetch);
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const agent = useAgent();
@@ -588,7 +588,7 @@ function Loaded({
         contentContainerClassName="px-4 pb-64 pt-3"
         keyboardShouldPersistTaps="handled"
         refreshControl={
-          <RefreshControl refreshing={isRefetching} onRefresh={refetch} tintColor={c.mutedForeground} />
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={c.mutedForeground} />
         }
       >
         {/* Status row: pending badge + let-the-agent-explore (web parity). */}

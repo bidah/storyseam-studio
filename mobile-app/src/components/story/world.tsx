@@ -22,6 +22,7 @@ import { agentIsBusy, useAgent, useSendToAgent } from '@/lib/agent/provider';
 import { createWorldMessage } from '@/lib/agent/messages';
 import { useColors } from '@/lib/colors';
 import { useInvalidate, useProjectResource } from '@/lib/queries';
+import { useManualRefresh } from '@/lib/use-manual-refresh';
 import { EditableField } from './field';
 
 // World sub-surface — port of src/routes/world.jsx (web). Every inline edit
@@ -128,7 +129,8 @@ function CharacterCard({ char }: { char: WorldCharacter }) {
 
 export function WorldSurface() {
   const colors = useColors();
-  const { data, isPending, error, refetch, isRefetching } = useProjectResource<WorldDoc>('world');
+  const { data, isPending, error, refetch } = useProjectResource<WorldDoc>('world');
+  const { refreshing, onRefresh } = useManualRefresh(refetch);
   const invalidate = useInvalidate();
   const agent = useAgent();
   const agentBusy = agentIsBusy(agent);
@@ -182,7 +184,7 @@ export function WorldSurface() {
       className="flex-1"
       contentContainerClassName="px-4 pb-28 pt-3"
       keyboardShouldPersistTaps="handled"
-      refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={refetch} tintColor={colors.mutedForeground} />}
+      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.mutedForeground} />}
     >
       {isEmpty ? (
         <View className="pt-8">

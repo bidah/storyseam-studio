@@ -36,6 +36,7 @@ import { renderAllPendingMessage, renderSoundMessage } from '@/lib/agent/message
 import { deleteJson, mediaUrl, patchJson, postJson } from '@/lib/api';
 import { useColors } from '@/lib/colors';
 import { useInvalidate, useProjectResource } from '@/lib/queries';
+import { useManualRefresh } from '@/lib/use-manual-refresh';
 import { cn } from '@/lib/utils';
 import { CreateTrackSheet, EditVersionSheet } from './sound-sheets';
 import { trackKind, type SoundTrack, type SoundVersion, type TrackKind } from './types';
@@ -338,9 +339,10 @@ function TrackCard({
 }
 
 export function SoundsSection() {
-  const { data, isPending, error, refetch, isRefetching } = useProjectResource<{
+  const { data, isPending, error, refetch } = useProjectResource<{
     tracks: SoundTrack[];
   }>('sounds');
+  const { refreshing, onRefresh } = useManualRefresh(refetch);
   const colors = useColors();
   const invalidate = useInvalidate();
   const agent = useAgent();
@@ -419,7 +421,7 @@ export function SoundsSection() {
         keyExtractor={(t) => t.id}
         contentContainerClassName="px-4 pb-8 pt-3"
         refreshControl={
-          <RefreshControl refreshing={isRefetching} onRefresh={() => refetch()} tintColor={colors.mutedForeground} />
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.mutedForeground} />
         }
         ListEmptyComponent={<Empty title={emptyText} hint='Tap "New track" to create one.' />}
         renderItem={({ item }) => (

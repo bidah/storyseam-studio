@@ -19,6 +19,7 @@ import { Empty, ErrorNote, Loading } from '@/components/ui/empty';
 import { postJson, putJson } from '@/lib/api';
 import { useColors } from '@/lib/colors';
 import { useInvalidate, useProjectResource } from '@/lib/queries';
+import { useManualRefresh } from '@/lib/use-manual-refresh';
 import { cn } from '@/lib/utils';
 
 // Shot list sub-surface — port of src/routes/shotlist.jsx (web). Shots are
@@ -149,7 +150,8 @@ function ShotEditModal({ shot, onClose }: { shot: Shot; onClose: () => void }) {
 
 export function ShotsSurface() {
   const colors = useColors();
-  const { data, isPending, error, refetch, isRefetching } = useProjectResource<ShotlistData>('shotlist');
+  const { data, isPending, error, refetch } = useProjectResource<ShotlistData>('shotlist');
+  const { refreshing, onRefresh } = useManualRefresh(refetch);
   const invalidate = useInvalidate();
   const [activePack, setActivePack] = useState<string | null>(null);
   const [editing, setEditing] = useState<Shot | null>(null);
@@ -291,7 +293,7 @@ export function ShotsSurface() {
         sections={sections}
         keyExtractor={(s) => String(s.n)}
         stickySectionHeadersEnabled={false}
-        refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={refetch} tintColor={colors.mutedForeground} />}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.mutedForeground} />}
         ListHeaderComponent={header}
         ListFooterComponent={shots.length > 0 ? footer : null}
         ListEmptyComponent={

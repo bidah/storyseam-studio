@@ -32,6 +32,7 @@ import { postJson, putJson } from '@/lib/api';
 import { createPickerRequest } from '@/lib/picker-bus';
 import { useColors } from '@/lib/colors';
 import { useInvalidate, useProjectResource } from '@/lib/queries';
+import { useManualRefresh } from '@/lib/use-manual-refresh';
 
 // Radio screen — the audio-only dialogue pass, and the animatic built on top of
 // it. Port of the web studio's src/routes/radio.jsx.
@@ -180,7 +181,7 @@ export default function RadioScreen() {
   const busy = agentIsBusy(agent);
   const send = useSendToAgent();
 
-  const [refreshing, setRefreshing] = useState(false);
+  const { refreshing, onRefresh } = useManualRefresh(refetch);
   const [sending, setSending] = useState(false);
   const [building, setBuilding] = useState(false);
 
@@ -193,15 +194,6 @@ export default function RadioScreen() {
     prevStatus.current = status;
     if (enteredReady) invalidate('radio', 'animatic');
   }, [status, invalidate]);
-
-  const onRefresh = useCallback(async () => {
-    setRefreshing(true);
-    try {
-      await refetch();
-    } finally {
-      setRefreshing(false);
-    }
-  }, [refetch]);
 
   const mutate = useCallback(
     async (path: string, body: unknown) => {

@@ -26,6 +26,7 @@ import { scoreCutMessage, stitchCutMessage } from '@/lib/agent/messages';
 import { mediaUrl } from '@/lib/api';
 import { useColors } from '@/lib/colors';
 import { useInvalidate, useProjectResource } from '@/lib/queries';
+import { useManualRefresh } from '@/lib/use-manual-refresh';
 import { cn } from '@/lib/utils';
 
 // Cuts tab — the complete-cut surface. The latest generation plays in an
@@ -52,7 +53,7 @@ export default function CutsScreen() {
   const busy = agentIsBusy(agent);
   const colors = useColors();
 
-  const [refreshing, setRefreshing] = useState(false);
+  const { refreshing, onRefresh } = useManualRefresh(refetch);
   const [showVersions, setShowVersions] = useState(false);
   const [playingV, setPlayingV] = useState<number | null>(null); // null = follow latest
   const [autoPlay, setAutoPlay] = useState(false);
@@ -68,15 +69,6 @@ export default function CutsScreen() {
     prevStatus.current = status;
     if (enteredReady) invalidate('cuts');
   }, [status, invalidate]);
-
-  const onRefresh = useCallback(async () => {
-    setRefreshing(true);
-    try {
-      await refetch();
-    } finally {
-      setRefreshing(false);
-    }
-  }, [refetch]);
 
   const send = useSendToAgent();
   const sendToAgent = useCallback(

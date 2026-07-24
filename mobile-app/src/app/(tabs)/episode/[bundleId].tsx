@@ -47,6 +47,7 @@ import { createPickerRequest } from '@/lib/picker-bus';
 import { useColors } from '@/lib/colors';
 import { useEffectiveScheme } from '@/lib/theme';
 import { useInvalidate, useProjectResource } from '@/lib/queries';
+import { useManualRefresh } from '@/lib/use-manual-refresh';
 import { cn } from '@/lib/utils';
 import {
   RESTRICTIONS,
@@ -566,14 +567,12 @@ export default function BundleDetail() {
 
   // --- refresh ----------------------------------------------------------------
 
-  const refreshing = ep.isRefetching || fn.isRefetching || au.isRefetching || sb.isRefetching;
-  const onRefresh = useCallback(() => {
-    ep.refetch();
-    fn.refetch();
-    au.refetch();
-    sb.refetch();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ep.refetch, fn.refetch, au.refetch, sb.refetch]);
+  const { refreshing, onRefresh } = useManualRefresh(
+    ep.refetch,
+    fn.refetch,
+    au.refetch,
+    sb.refetch,
+  );
 
   // --- render -------------------------------------------------------------------
 

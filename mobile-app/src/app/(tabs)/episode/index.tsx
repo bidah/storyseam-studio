@@ -1,4 +1,3 @@
-import { useCallback } from 'react';
 import { FlatList, RefreshControl, Text, View } from 'react-native';
 import { router } from 'expo-router';
 import { Image } from 'expo-image';
@@ -9,6 +8,7 @@ import { Empty, ErrorNote, Loading } from '@/components/ui/empty';
 import { mediaUrl } from '@/lib/api';
 import { useColors } from '@/lib/colors';
 import { useProjectResource } from '@/lib/queries';
+import { useManualRefresh } from '@/lib/use-manual-refresh';
 import {
   signedCount,
   type Bundle,
@@ -57,12 +57,7 @@ export default function EpisodeIndex() {
   const ep = useProjectResource<EpisodePayload>('episode');
   const sb = useProjectResource<StoryboardPayload>('storyboard');
 
-  const epRefetch = ep.refetch;
-  const sbRefetch = sb.refetch;
-  const onRefresh = useCallback(() => {
-    epRefetch();
-    sbRefetch();
-  }, [epRefetch, sbRefetch]);
+  const { refreshing, onRefresh } = useManualRefresh(ep.refetch, sb.refetch);
 
   const bundles = ep.data?.episode?.bundles ?? [];
   const videos = ep.data?.video ?? {};
@@ -133,7 +128,7 @@ export default function EpisodeIndex() {
             </Text>
           }
           refreshControl={
-            <RefreshControl refreshing={ep.isRefetching || sb.isRefetching} onRefresh={onRefresh} />
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
           }
         />
       )}

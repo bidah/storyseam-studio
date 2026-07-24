@@ -22,6 +22,7 @@ import { createPickerRequest } from '@/lib/picker-bus';
 import { useColors } from '@/lib/colors';
 import { useEffectiveScheme } from '@/lib/theme';
 import { useHiggsfieldImages, useInvalidate, useProjectResource } from '@/lib/queries';
+import { useManualRefresh } from '@/lib/use-manual-refresh';
 import type { HfItem, LibraryFolder } from './types';
 
 // Import from Higgsfield: infinite 3-column grid of the user's completed image
@@ -44,6 +45,7 @@ export function ImportSection() {
   const colors = useColors();
   const scheme = useEffectiveScheme();
   const q = useHiggsfieldImages();
+  const { refreshing, onRefresh } = useManualRefresh(q.refetch);
   const lib = useProjectResource<{ folders: LibraryFolder[] }>('library');
   const invalidate = useInvalidate();
   const { width } = useWindowDimensions();
@@ -179,8 +181,8 @@ export function ImportSection() {
       contentContainerClassName="gap-2 pb-8 pt-3"
       refreshControl={
         <RefreshControl
-          refreshing={q.isRefetching && !q.isFetchingNextPage}
-          onRefresh={() => q.refetch()}
+          refreshing={refreshing}
+          onRefresh={onRefresh}
           tintColor={colors.mutedForeground}
         />
       }

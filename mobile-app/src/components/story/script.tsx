@@ -32,6 +32,7 @@ import { agentIsBusy, useAgent, useSendToAgent } from '@/lib/agent/provider';
 import { generateShotListMessage, scriptEditRequest, scriptRewriteRequest } from '@/lib/agent/messages';
 import { useColors } from '@/lib/colors';
 import { useInvalidate, useProjectResource } from '@/lib/queries';
+import { useManualRefresh } from '@/lib/use-manual-refresh';
 import { cn } from '@/lib/utils';
 import { EditableField } from './field';
 import { ScreenplayView, SP_LABELS, docLines, type PMNode, type ScriptLine } from './screenplay';
@@ -268,7 +269,8 @@ function EditPassageModal({
 
 export function ScriptSurface() {
   const colors = useColors();
-  const { data, isPending, error, refetch, isRefetching } = useProjectResource<ScriptData>('script');
+  const { data, isPending, error, refetch } = useProjectResource<ScriptData>('script');
+  const { refreshing, onRefresh } = useManualRefresh(refetch);
   const invalidate = useInvalidate();
   const agent = useAgent();
   const agentBusy = agentIsBusy(agent);
@@ -341,7 +343,7 @@ export function ScriptSurface() {
         className="flex-1"
         contentContainerClassName="px-4 pb-28 pt-3"
         keyboardShouldPersistTaps="handled"
-        refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={refetch} tintColor={colors.mutedForeground} />}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.mutedForeground} />}
       >
         {/* Toolbar */}
         <View className="mb-3 flex-row flex-wrap items-center gap-2">

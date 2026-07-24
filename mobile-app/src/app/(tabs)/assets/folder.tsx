@@ -20,6 +20,7 @@ import { useColors } from '@/lib/colors';
 import { useEffectiveScheme } from '@/lib/theme';
 import { mediaUrl, postJson } from '@/lib/api';
 import { useInvalidate, useProjectResource } from '@/lib/queries';
+import { useManualRefresh } from '@/lib/use-manual-refresh';
 import type { LibraryFolder, LibraryImage } from '@/components/assets/types';
 
 // In-folder image grid — pushed from the Library folder list as its own native
@@ -33,9 +34,10 @@ export default function AssetFolderScreen() {
   const scheme = useEffectiveScheme();
   const { folder } = useLocalSearchParams<{ folder: string }>();
   const id = String(folder ?? '');
-  const { data, isPending, error, refetch, isRefetching } = useProjectResource<{
+  const { data, isPending, error, refetch } = useProjectResource<{
     folders: LibraryFolder[];
   }>('library');
+  const { refreshing, onRefresh } = useManualRefresh(refetch);
   const invalidate = useInvalidate();
   const { width } = useWindowDimensions();
   const cell = Math.floor((width - 16 * 2 - 8 * 2) / 3);
@@ -135,7 +137,7 @@ export default function AssetFolderScreen() {
   };
 
   const refresh = (
-    <RefreshControl refreshing={isRefetching} onRefresh={() => refetch()} tintColor={colors.mutedForeground} />
+    <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.mutedForeground} />
   );
 
   if (isPending) {
