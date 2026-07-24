@@ -104,6 +104,27 @@ export function createWorldMessage() {
   ].join('\n');
 }
 
+// Build the chat turn that kicks off the VISUAL world exploration — the "Let the
+// agent explore" button on the World tab's Visual world surface. Verbatim port of
+// the web AgentProvider's createVisualWorldMessage.
+export function createVisualWorldMessage(hint?: string) {
+  return [
+    `Let's explore the VISUAL world for this series — how the characters and places`,
+    `actually look. Load the visual-world skill and follow it.`,
+    ``,
+    hint
+      ? `Focus: ${hint}`
+      : `Start from the written world (get_world) and the visual world so far` +
+        ` (get_visual_world). Propose a few characters/places to visualize, then generate`,
+    `concept images with Nano Banana Pro (Higgsfield MCP generate_image), using the 2D`,
+    `prompt preset for the house style. Generate a small batch, and when the user likes a`,
+    `direction, iterate by passing a chosen image back as an image reference.`,
+    ``,
+    `Attach every result with attach_visual_generation so it appears on the World › Visual`,
+    `tab immediately. Keep the chat concise; the images do the talking.`,
+  ].join('\n');
+}
+
 // Inline "change this passage" request from the Script tab's edit sheet (Ask
 // agent tab): the user tapped a block of the screenplay and typed the change
 // they want. Verbatim port of the web AgentProvider's scriptEditRequest — routed

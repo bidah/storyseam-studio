@@ -27,6 +27,8 @@ export const RESOURCES = {
   // The animatic's coverage counts (how many shots have a still yet). Derived
   // from the same shot list as `radio`, so the two never disagree.
   animatic: '/api/animatic',
+  // The World tab's visual explorer (concept-image generations + prompt presets).
+  visualWorld: '/api/visual-world',
 } as const;
 
 export type ResourceKey = keyof typeof RESOURCES;

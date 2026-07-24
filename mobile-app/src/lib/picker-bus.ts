@@ -19,7 +19,7 @@ export function createPickerRequest(): { requestId: string; promise: Promise<any
 }
 
 // Called by the sheet. `result` is null when the user dismissed without picking.
-export function resolvePickerRequest(requestId: string | undefined, result: any) {
+export function resolvePickerRequest(requestId: string | null | undefined, result: any) {
   if (!requestId) return;
   const p = pending.get(requestId);
   if (!p) return;

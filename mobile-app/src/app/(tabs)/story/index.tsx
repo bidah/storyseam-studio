@@ -3,11 +3,15 @@ import { View } from 'react-native';
 import { Stack, useLocalSearchParams } from 'expo-router';
 import { SegmentedNative } from '@/components/ui/segmented-native';
 import { WorldSurface } from '@/components/story/world';
+import { VisualWorldSurface } from '@/components/story/visual-world';
 import { ScriptSurface } from '@/components/story/script';
 import { ShotsSurface } from '@/components/story/shots';
 
 // STORY tab — World | Script | Shot List, the writing half of the pipeline.
 // ?segment=world|script|shots deep-links straight into a sub-surface.
+// World splits again into Written world | Visual world (web parity: the World
+// tab's written bible vs. the concept-image explorer; nodes stays web-only);
+// ?world=visual deep-links straight into the visual surface.
 
 type Segment = 'world' | 'script' | 'shots';
 
@@ -17,8 +21,29 @@ const SEGMENTS: { value: Segment; label: string }[] = [
   { value: 'shots', label: 'Shots' },
 ];
 
+type WorldView = 'written' | 'visual';
+
+const WORLD_VIEWS: { value: WorldView; label: string }[] = [
+  { value: 'written', label: 'Written world' },
+  { value: 'visual', label: 'Visual world' },
+];
+
+// World sub-surface: the written bible or the visual (image-generation) world.
+// Same native segmented row as the Sounds section's Music|SFX|Voice switcher.
+function WorldTab({ initialView }: { initialView: WorldView }) {
+  const [view, setView] = useState<WorldView>(initialView);
+  return (
+    <View className="flex-1">
+      <View className="px-4 pt-3">
+        <SegmentedNative<WorldView> options={WORLD_VIEWS} value={view} onChange={setView} />
+      </View>
+      {view === 'written' ? <WorldSurface /> : <VisualWorldSurface />}
+    </View>
+  );
+}
+
 export default function StoryScreen() {
-  const { segment } = useLocalSearchParams<{ segment?: string }>();
+  const { segment, world } = useLocalSearchParams<{ segment?: string; world?: string }>();
   const [seg, setSeg] = useState<Segment>(
     segment === 'script' || segment === 'shots' ? segment : 'world',
   );
@@ -36,7 +61,15 @@ export default function StoryScreen() {
           ),
         }}
       />
-      {seg === 'world' ? <WorldSurface /> : seg === 'script' ? <ScriptSurface /> : <ShotsSurface />}
+      {seg === 'world' ? (
+        // Keyed by the param so a later ?world= deep link re-seeds the view
+        // (the segmented control still owns it in between).
+        <WorldTab key={world || 'none'} initialView={world === 'visual' ? 'visual' : 'written'} />
+      ) : seg === 'script' ? (
+        <ScriptSurface />
+      ) : (
+        <ShotsSurface />
+      )}
     </View>
   );
 }
