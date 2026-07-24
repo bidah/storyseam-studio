@@ -82,26 +82,10 @@ export default function RootLayout() {
                     sheetAllowedDetents: [1],
                     sheetGrabberVisible: true,
                     sheetCornerRadius: 24,
-                    // Large collapsing title (shrinks into the bar on scroll).
-                    headerShown: true,
-                    headerLargeTitle: true,
-                    title: 'Settings',
-                  }}
-                />
-                <Stack.Screen
-                  name="provider-key"
-                  options={{
-                    presentation: 'formSheet',
-                    // Header shown: the sheet's Save button is a Stack.Toolbar
-                    // item, which renders into the navigation header.
-                    headerShown: true,
-                    // Compact and FIXED: just a field + header. One detent, and
-                    // sheetExpandsWhenScrolledToEdge:false so dragging/scrolling
-                    // can't snap it open to a second (full-height) stop.
-                    sheetAllowedDetents: [0.35],
-                    sheetExpandsWhenScrolledToEdge: false,
-                    sheetGrabberVisible: true,
-                    sheetCornerRadius: 24,
+                    // The header is owned by settings/_layout's nested stack
+                    // (so the provider-key push gets its own Back button + Save
+                    // toolbar within the sheet), not this outer screen.
+                    headerShown: false,
                   }}
                 />
                 <Stack.Screen

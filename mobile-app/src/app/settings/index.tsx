@@ -11,9 +11,10 @@ import { PROVIDERS, useProvidersStore, type ProviderId } from '@/lib/providers';
 
 // Settings sheet — state + navigation only; the UI is SettingsForm (a native
 // SwiftUI Form on iOS, RN fallback elsewhere). Key entry/removal lives in the
-// /provider-key sheet pushed on top: toggling on a keyless BYOK provider opens
-// it, and its Save both stores the key and selects the provider, which is what
-// finally flips the toggle here.
+// settings/provider-key screen, pushed WITHIN this sheet's nested stack (see
+// settings/_layout): toggling on a keyless BYOK provider pushes it, and its
+// Save both stores the key and selects the provider, which is what finally
+// flips the toggle here.
 export default function SettingsSheet() {
   const { data: session } = useSession();
   const { model, setModel } = useAgentModelStore();
@@ -36,7 +37,7 @@ export default function SettingsSheet() {
     }
     if (id !== 'higgsfield' && !keyFor(id)) {
       setSwitchNonce((n) => n + 1);
-      router.push(`/provider-key?provider=${id}`);
+      router.push(`/settings/provider-key?provider=${id}`);
       return;
     }
     setActive(id);
@@ -78,7 +79,7 @@ export default function SettingsSheet() {
       }))}
       switchNonce={switchNonce}
       onToggleProvider={toggleProvider}
-      onManageKey={(id) => router.push(`/provider-key?provider=${id}`)}
+      onManageKey={(id) => router.push(`/settings/provider-key?provider=${id}`)}
       apiOrigin={API_ORIGIN}
       onSignOut={signOut}
     />

@@ -5,10 +5,12 @@ import { isPlausibleFalKey, useFalKeyStore } from '@/lib/fal-key';
 import { isPlausibleAtlasKey, useAtlasKeyStore } from '@/lib/atlas-key';
 import { useProvidersStore } from '@/lib/providers';
 
-// BYOK key sheet, presented ON TOP of the settings sheet: one provider per
-// presentation (?provider=fal|atlas), just the key field + a toolbar Save.
-// Saving also SELECTS the provider — this is what completes the settings
-// toggle the user flipped to get here.
+// BYOK key screen, pushed WITHIN the settings sheet's nested stack (see
+// settings/_layout) — one provider per push (?provider=fal|atlas), just the key
+// field + a toolbar Save, left via the Back button. Saving also SELECTS the
+// provider — this is what completes the settings toggle the user flipped to get
+// here. router.back() pops to the settings form; router.dismissAll() (remove of
+// the in-use key) closes the whole sheet so the /fal-key tabs gate takes over.
 const CONFIG = {
   fal: { label: 'fal.ai', placeholder: 'key_id:key_secret', plausible: isPlausibleFalKey },
   atlas: { label: 'Atlas Cloud', placeholder: 'Atlas API key', plausible: isPlausibleAtlasKey },
