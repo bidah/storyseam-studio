@@ -114,7 +114,6 @@ export default function RootLayout() {
                     sheetGrabberVisible: true,
                     // Larger radius so the floating (detached) sheet's corners sit
                     // in harmony with the phone's rounded screen corners.
-                    sheetCornerRadius: 44,
                     // Native header inside the sheet (title + close on the right).
                     headerShown: true,
                   }}
@@ -129,7 +128,6 @@ export default function RootLayout() {
                     sheetGrabberVisible: true,
                     // Larger radius so the floating (detached) sheet's corners sit
                     // in harmony with the phone's rounded screen corners.
-                    sheetCornerRadius: 44,
                     // Native header inside the sheet (title + close/back).
                     headerShown: true,
                   }}
@@ -140,7 +138,6 @@ export default function RootLayout() {
                     presentation: 'formSheet',
                     sheetAllowedDetents: [0.75, 1],
                     sheetGrabberVisible: true,
-                    sheetCornerRadius: 24,
                   }}
                 />
                 <Stack.Screen
@@ -149,7 +146,6 @@ export default function RootLayout() {
                     presentation: 'formSheet',
                     sheetAllowedDetents: [0.6, 1],
                     sheetGrabberVisible: true,
-                    sheetCornerRadius: 24,
                   }}
                 />
                 <Stack.Screen
@@ -158,7 +154,6 @@ export default function RootLayout() {
                     presentation: 'formSheet',
                     sheetAllowedDetents: [0.9, 1],
                     sheetGrabberVisible: true,
-                    sheetCornerRadius: 24,
                   }}
                 />
                 <Stack.Screen
@@ -170,7 +165,6 @@ export default function RootLayout() {
                     sheetGrabberVisible: true,
                     // Larger radius so the floating (detached) sheet's corners sit
                     // in harmony with the phone's rounded screen corners.
-                    sheetCornerRadius: 44,
                     // Native header inside the sheet (title + close on the right).
                     headerShown: true,
                   }}
@@ -181,7 +175,6 @@ export default function RootLayout() {
                     presentation: 'formSheet',
                     sheetAllowedDetents: [0.9, 1],
                     sheetGrabberVisible: true,
-                    sheetCornerRadius: 24,
                   }}
                 />
                 <Stack.Screen
@@ -190,7 +183,6 @@ export default function RootLayout() {
                     presentation: 'formSheet',
                     sheetAllowedDetents: [0.6, 1],
                     sheetGrabberVisible: true,
-                    sheetCornerRadius: 24,
                   }}
                 />
                 <Stack.Screen
