@@ -186,7 +186,7 @@ export function useEditorPlayback(
         // tick, so the player streams through instead of being re-seeked.
         if (justLoaded || seek) {
           try {
-            player.currentTime = framesToSec(local, fps);
+            player.currentTime = framesToSec(local + (it.offsetFrames || 0), fps);
             if (isPlaying) player.play();
             else player.pause();
           } catch {}
@@ -246,7 +246,9 @@ export function useEditorPlayback(
         // player streams through freely and IS the clock (see the play() loop).
         if (seek || switched) {
           try {
-            videoPlayer.currentTime = framesToSec(local, fps);
+            // Source in-point: a split's right half / head-trimmed clip starts
+            // `offsetFrames` into the media (the web <Video trimBefore>).
+            videoPlayer.currentTime = framesToSec(local + (item.offsetFrames || 0), fps);
             if (isPlaying) videoPlayer.play();
             else videoPlayer.pause();
           } catch {}
@@ -292,9 +294,14 @@ export function useEditorPlayback(
   const play = useCallback(() => {
     if (playingRef.current) return;
     // Restart from the top if parked at the very end.
-    if (frameRef.current >= durationInFrames - 1) applyFrame(0, true);
+    if (frameRef.current >= durationInFrames - 1) frameRef.current = 0;
     playingRef.current = true;
     setPlaying(true);
+    // Issue transport. applyFrame only presses play/pause on the native players
+    // when seeking or switching clips, so an explicit seek at the current
+    // playhead is what actually starts the already-loaded video + audio items.
+    // (It must run AFTER playingRef flips, so reconcile sees isPlaying=true.)
+    applyFrame(frameRef.current, true);
     lastTsRef.current = 0;
     stallRef.current = 0;
     const tick = (ts: number) => {
@@ -318,8 +325,9 @@ export function useEditorPlayback(
         } catch {}
         if (vt > 0.001) {
           // Video is producing time → it's the clock. Preview + playhead locked.
+          // vt is SOURCE time, so back out the item's in-point.
           stallRef.current = 0;
-          f = item.from + vt * fps;
+          f = item.from + vt * fps - (item.offsetFrames || 0);
         } else {
           // Freshly loaded / seeked clip not yet playing: hold, but don't stall
           // forever if the clip never starts.

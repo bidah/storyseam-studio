@@ -69,6 +69,12 @@ export interface TimelineItem {
   from: number;
   durationInFrames: number;
   sourceDurationInFrames?: number;
+  /**
+   * SOURCE IN-POINT: the item plays source frames [offsetFrames, offsetFrames +
+   * durationInFrames) — advanced on a split's right half / head-trim. ALWAYS
+   * 0/absent on image items (no source timeline).
+   */
+  offsetFrames?: number;
   /** Absent ⇒ "video". See the media-kind note above. */
   kind?: MediaKind;
   /** Image provenance: the shot whose picture slot this is. */

@@ -11,14 +11,17 @@
 // scrubbing stays at display refresh rate.
 // Web reference: /docs/modules/timeline ↔ this: /docs/react-native/timeline
 import { memo, useCallback, useEffect, useMemo, useState } from "react";
-import { LayoutChangeEvent, StyleSheet, Text, View } from "react-native";
+import {
+  LayoutChangeEvent,
+  NativeScrollEvent,
+  NativeSyntheticEvent,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Animated, {
-  runOnJS,
-  scrollTo,
-  useAnimatedReaction,
-  useAnimatedRef,
-  useAnimatedScrollHandler,
+  useAnimatedProps,
   useSharedValue,
   type SharedValue,
 } from "react-native-reanimated";
@@ -75,7 +78,6 @@ function TimelineImpl({
   const [containerW, setContainerW] = useState(0);
   const [scrollEnabled, setScrollEnabled] = useState(true);
 
-  const scrollRef = useAnimatedRef<Animated.ScrollView>();
   const pxSV = useSharedValue(pxPerSec);
   const userScrubbing = useSharedValue(false);
   const savedPx = useSharedValue(pxPerSec);
@@ -87,47 +89,69 @@ function TimelineImpl({
   const totalW = Math.max(framesToSec(durationInFrames, fps) * pxPerSec, containerW);
   const contentW = centerX * 2 + totalW;
 
-  // Follow the playhead: whenever the frame (or zoom) changes and the user is
-  // NOT actively scrubbing, keep the playhead under the fixed center line.
-  useAnimatedReaction(
-    () => ({ f: frameSV.value, px: pxSV.value }),
-    (cur) => {
-      if (userScrubbing.value) return;
-      const x = (cur.f / fps) * cur.px;
-      scrollTo(scrollRef, x, 0, false);
-    },
-    [fps],
+  // Follow the playhead. On this stack (RN 0.86 / New Arch / React Compiler)
+  // EVERY imperative scroll path is dead — reanimated's `scrollTo` never
+  // captures the Fabric tag, and `useAnimatedScrollHandler` events never fire
+  // (see the verified-on-device notes in src/app/(tabs)/chat/index.tsx). The one
+  // thing that DOES move a ScrollView programmatically is a *controlled*
+  // `contentOffset` fed through animatedProps, so the follow is expressed as a
+  // prop: while the user isn't scrubbing, the offset is derived from the
+  // playhead + zoom; while they are, we yield {} so native panning is free.
+  const followProps = useAnimatedProps(() =>
+    !userScrubbing.value
+      ? { contentOffset: { x: (frameSV.value / fps) * pxSV.value, y: 0 } }
+      : {},
   );
 
-  const scrubEndJS = useCallback(
+  // Scrub = plain JS scroll events (those DO fire; the reanimated handler
+  // variants don't). ~60fps at scrollEventThrottle=16 is plenty for a scrub.
+  const scrubbingJS = useCallback(
     (x: number) => {
-      const frame = (x / pxPerSec) * fps;
-      onScrubEnd(frame);
-    },
-    [pxPerSec, fps, onScrubEnd],
-  );
-
-  const scrollHandler = useAnimatedScrollHandler({
-    onBeginDrag: () => {
-      userScrubbing.value = true;
-      runOnJS(onScrubStart)();
-    },
-    onScroll: (e) => {
-      if (!userScrubbing.value) return;
-      const raw = (e.contentOffset.x / pxSV.value) * fps;
+      const raw = (x / pxSV.value) * fps;
       const frame = Math.max(0, Math.min(durationInFrames - 1, raw));
       frameSV.value = frame;
-      runOnJS(onScrub)(frame);
+      onScrub(frame);
     },
-    onEndDrag: (e) => {
+    [durationInFrames, fps, frameSV, pxSV, onScrub],
+  );
+  const onBeginDragJS = useCallback(() => {
+    userScrubbing.value = true;
+    onScrubStart();
+  }, [onScrubStart, userScrubbing]);
+  const onScrollJS = useCallback(
+    (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+      if (!userScrubbing.value) return; // ignore echoes of the controlled offset
+      scrubbingJS(e.nativeEvent.contentOffset.x);
+    },
+    [scrubbingJS, userScrubbing],
+  );
+  const commitScrub = useCallback(
+    (x: number) => {
+      const raw = (x / pxSV.value) * fps;
+      const frame = Math.max(0, Math.min(durationInFrames - 1, raw));
       userScrubbing.value = false;
-      runOnJS(scrubEndJS)(e.contentOffset.x);
+      onScrubEnd(frame);
     },
-    onMomentumEnd: (e) => {
-      userScrubbing.value = false;
-      runOnJS(scrubEndJS)(e.contentOffset.x);
+    [durationInFrames, fps, pxSV, userScrubbing, onScrubEnd],
+  );
+  const onEndDragJS = useCallback(
+    (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+      // If the fling has momentum, keep scrubbing until momentum settles —
+      // committing early would re-engage the controlled offset and fight the
+      // deceleration.
+      const v = e.nativeEvent.velocity?.x ?? 0;
+      if (Math.abs(v) > 0.05) return;
+      commitScrub(e.nativeEvent.contentOffset.x);
     },
-  });
+    [commitScrub],
+  );
+  const onMomentumEndJS = useCallback(
+    (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+      if (!userScrubbing.value) return;
+      commitScrub(e.nativeEvent.contentOffset.x);
+    },
+    [commitScrub, userScrubbing],
+  );
 
   // Pinch to zoom. Keeps the centered frame stable because the follow reaction
   // re-derives the scroll offset from pxSV.
@@ -145,6 +169,9 @@ function TimelineImpl({
   const pinch = useMemo(
     () =>
       Gesture.Pinch()
+        // JS-thread callbacks — worklet gesture callbacks never fire on this
+        // stack (see the note in TimelineItem.tsx).
+        .runOnJS(true)
         .onStart(() => {
           savedPx.value = pxSV.value;
         })
@@ -153,7 +180,7 @@ function TimelineImpl({
           pxSV.value = p;
         })
         .onEnd(() => {
-          runOnJS(commitPx)(pxSV.value);
+          commitPx(pxSV.value);
         }),
     [commitPx, pxSV, savedPx],
   );
@@ -187,11 +214,14 @@ function TimelineImpl({
 
       <GestureDetector gesture={pinch}>
         <AScrollView
-          ref={scrollRef}
           horizontal
           scrollEnabled={scrollEnabled}
           showsHorizontalScrollIndicator={false}
-          onScroll={scrollHandler}
+          animatedProps={followProps}
+          onScrollBeginDrag={onBeginDragJS}
+          onScroll={onScrollJS}
+          onScrollEndDrag={onEndDragJS}
+          onMomentumScrollEnd={onMomentumEndJS}
           scrollEventThrottle={16}
           decelerationRate="fast"
           contentContainerStyle={{ width: contentW }}

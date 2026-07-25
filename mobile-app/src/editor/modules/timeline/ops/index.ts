@@ -9,4 +9,5 @@ export { removeItemFromTimeline, removeItems } from "./remove";
 export { snapTargets, computeSnap } from "./snap";
 export { applyVerticalDrop, addPoolClip } from "./dragClip";
 export type { Drop, PoolItem } from "./dragClip";
-export { moveItem, trimItem } from "./edit";
+export { moveItem, trimItem, planSplit, applySplit } from "./edit";
+export type { SplitPlan } from "./edit";

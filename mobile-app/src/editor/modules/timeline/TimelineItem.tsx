@@ -10,11 +10,7 @@
 import { memo, useMemo } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
-import Animated, {
-  runOnJS,
-  useAnimatedStyle,
-  useSharedValue,
-} from "react-native-reanimated";
+import Animated, { useAnimatedStyle, useSharedValue } from "react-native-reanimated";
 import { Image } from "expo-image";
 import { SymbolView } from "expo-symbols";
 import type { Track, TimelineItem as TItem } from "@/editor/core/timeline";
@@ -81,8 +77,13 @@ function TimelineItemImpl({
   const dragX = useSharedValue(0);
   const trimW = useSharedValue(0);
 
+  // ALL gestures run their callbacks on the JS thread (.runOnJS(true)). Worklet
+  // gesture callbacks ride reanimated's event pipeline, which never fires on
+  // this stack (RN 0.86 / New Arch / React Compiler — the same dead pipeline as
+  // useAnimatedScrollHandler; see src/app/(tabs)/chat/index.tsx). JS callbacks
+  // use RNGH's plain event path, which works.
   const tap = useMemo(
-    () => Gesture.Tap().maxDuration(250).onEnd(() => runOnJS(onSelect)(item.id)),
+    () => Gesture.Tap().maxDuration(250).runOnJS(true).onEnd(() => onSelect(item.id)),
     [item.id, onSelect],
   );
 
@@ -90,24 +91,25 @@ function TimelineItemImpl({
     () =>
       Gesture.Pan()
         .activateAfterLongPress(280)
+        .runOnJS(true)
         .onStart(() => {
           dragX.value = 0;
-          runOnJS(onSelect)(item.id);
-          runOnJS(onDragActive)(true);
-          runOnJS(onMove)(item.id, item.from, "begin");
+          onSelect(item.id);
+          onDragActive(true);
+          onMove(item.id, item.from, "begin");
         })
         .onUpdate((e) => {
           dragX.value = e.translationX;
           const nf = Math.max(0, item.from + Math.round((e.translationX / pxPerSec) * fps));
-          runOnJS(onMove)(item.id, nf, "active");
+          onMove(item.id, nf, "active");
         })
         .onEnd(() => {
           const nf = Math.max(0, item.from + Math.round((dragX.value / pxPerSec) * fps));
-          runOnJS(onMove)(item.id, nf, "end");
+          onMove(item.id, nf, "end");
         })
         .onFinalize(() => {
           dragX.value = 0;
-          runOnJS(onDragActive)(false);
+          onDragActive(false);
         }),
     [item.id, item.from, pxPerSec, fps, onSelect, onDragActive, onMove],
   );
@@ -116,9 +118,10 @@ function TimelineItemImpl({
     () =>
       Gesture.Tap()
         .numberOfTaps(2)
+        .runOnJS(true)
         .onEnd(() => {
-          runOnJS(onSelect)(item.id);
-          if (onRequestActions) runOnJS(onRequestActions)(item.id);
+          onSelect(item.id);
+          onRequestActions?.(item.id);
         }),
     [item.id, onSelect, onRequestActions],
   );
@@ -131,26 +134,33 @@ function TimelineItemImpl({
   const trim = useMemo(
     () =>
       Gesture.Pan()
+        .runOnJS(true)
+        // Hold-to-grab, like the move gesture: an immediate horizontal drag is
+        // claimed by the ScrollView's native pan before the JS-thread
+        // scroll-disable can land, cancelling the trim. A short stationary
+        // hold makes the scroll pan give the touch up, after which the handle
+        // drag is ours.
+        .activateAfterLongPress(220)
         // Disable timeline scroll the instant the handle is touched so the
         // ScrollView can't claim the horizontal drag before trimming starts.
-        .onBegin(() => runOnJS(onDragActive)(true))
+        .onBegin(() => onDragActive(true))
         .onStart(() => {
           trimW.value = 0;
-          runOnJS(onSelect)(item.id);
-          runOnJS(onTrim)(item.id, item.durationInFrames, "begin");
+          onSelect(item.id);
+          onTrim(item.id, item.durationInFrames, "begin");
         })
         .onUpdate((e) => {
           trimW.value = e.translationX;
           const nd = Math.max(1, item.durationInFrames + Math.round((e.translationX / pxPerSec) * fps));
-          runOnJS(onTrim)(item.id, nd, "active");
+          onTrim(item.id, nd, "active");
         })
         .onEnd(() => {
           const nd = Math.max(1, item.durationInFrames + Math.round((trimW.value / pxPerSec) * fps));
-          runOnJS(onTrim)(item.id, nd, "end");
+          onTrim(item.id, nd, "end");
         })
         .onFinalize(() => {
           trimW.value = 0;
-          runOnJS(onDragActive)(false);
+          onDragActive(false);
         }),
     [item.id, item.durationInFrames, pxPerSec, fps, onSelect, onDragActive, onTrim],
   );

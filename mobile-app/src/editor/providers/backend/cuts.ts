@@ -32,6 +32,10 @@ type PoolResponse = { video?: PoolRaw[]; audio?: PoolRaw[] };
 
 export function createCutsBackend(opts: { fromCutV?: number } = {}): EditorBackend {
   const { fromCutV } = opts;
+  // Build-from-cut applies to the FIRST load only. Later loadTimeline calls
+  // (live-sync reloads on a foreign edit) must fetch the CURRENT document —
+  // re-building from the cut would clobber the very edit we're syncing in.
+  let builtFromCut = false;
 
   const toItem = (raw: PoolRaw, mediaType: "video" | "audio"): PoolItem => ({
     id: raw.id,
@@ -47,7 +51,8 @@ export function createCutsBackend(opts: { fromCutV?: number } = {}): EditorBacke
       // Opening on a specific cut version → build a fresh timeline from it
       // server-side. POST /api/timeline/from-cut saves it as THE editor timeline
       // and returns it. Otherwise resume whatever timeline is currently saved.
-      if (fromCutV != null) {
+      if (fromCutV != null && !builtFromCut) {
+        builtFromCut = true;
         const res = await postJson<{ ok: boolean; timeline: Timeline }>("/api/timeline/from-cut", {
           v: fromCutV,
           clientId: CLIENT_ID,
@@ -162,8 +167,14 @@ export function createCutsBackend(opts: { fromCutV?: number } = {}): EditorBacke
             while ((idx = buffer.indexOf("\n\n")) !== -1) {
               const frame = buffer.slice(0, idx);
               buffer = buffer.slice(idx + 2);
-              const data = frame
-                .split("\n")
+              const lines = frame.split("\n");
+              // Broadcast edits are UNNAMED `data:` frames; the ~25s liveness
+              // heartbeat is a NAMED `event: ping` frame. EventSource.onmessage
+              // ignores named events natively — this hand-parser must too, or
+              // every ping reloads the timeline (remounting every clip card and
+              // killing in-flight gestures).
+              if (lines.some((l) => l.startsWith("event:"))) continue;
+              const data = lines
                 .filter((l) => l.startsWith("data:"))
                 .map((l) => l.slice(5).trim())
                 .join("\n");

@@ -36,6 +36,8 @@ import {
   linkSelected,
   unlinkItem,
   removeItemFromTimeline,
+  planSplit,
+  applySplit,
   type DragPhase,
 } from "@/editor/modules/timeline";
 import { Inspector } from "@/editor/modules/timeline/Inspector";
@@ -82,6 +84,7 @@ export function Editor({ onClose }: { onClose?: () => void } = {}) {
     setTimeline,
     timelineRef,
     dirtyRef,
+    inGestureRef,
     mutate,
     beginGesture,
     endGesture,
@@ -124,6 +127,22 @@ export function Editor({ onClose }: { onClose?: () => void } = {}) {
     }, 600);
     return () => clearTimeout(t);
   }, [timeline, backend, dirtyRef]);
+
+  // Live-sync (web parity): reload when the timeline changes ELSEWHERE — the
+  // web editor or the agent's edit_timeline. Our own autosave echoes are
+  // suppressed by clientId inside subscribeTimeline. A foreign edit that lands
+  // mid-gesture or with unsaved local edits is skipped; the next SSE event or
+  // reopen reconciles.
+  useEffect(() => {
+    const off = backend.subscribeTimeline?.(() => {
+      if (inGestureRef.current || dirtyRef.current) return;
+      (async () => {
+        const { timeline: tl } = await backend.loadTimeline();
+        setTimeline(withSourceDurations(tl), { dirty: false });
+      })();
+    });
+    return off;
+  }, [backend, dirtyRef, inGestureRef, setTimeline]);
 
   // ---- selection -----------------------------------------------------------
   const selectId = useCallback((id: string) => {
@@ -234,6 +253,21 @@ export function Editor({ onClose }: { onClose?: () => void } = {}) {
     [selectId],
   );
 
+  // Split ("razor") the clip(s) under the playhead — the selected clips when
+  // the playhead is inside them, otherwise every non-disabled clip under it
+  // (razor across tracks), exactly like the web editor's S key. The right
+  // halves become the new selection so split-then-Delete trims a tail.
+  const splitClip = useCallback(() => {
+    const tl = timelineRef.current;
+    if (!tl) return;
+    const f = Math.round(playback.frameSV.value);
+    const plan = planSplit(tl, f, selectedIds);
+    if (!plan) return;
+    mutate((t) => applySplit(t, plan));
+    setSelectedId(plan.rightIds[0] ?? null);
+    setSelectedIds(new Set(plan.rightIds));
+  }, [mutate, playback, selectedIds, timelineRef]);
+
   const removeClip = useCallback(
     (id: string) => {
       mutate((t) => removeItemFromTimeline(t, id));
@@ -327,8 +361,8 @@ export function Editor({ onClose }: { onClose?: () => void } = {}) {
         <ToolButton
           icon="scissors"
           label="Split"
-          disabled={!selectedId}
-          onPress={() => {}}
+          disabled={!timeline}
+          onPress={splitClip}
         />
       </View>
 
@@ -407,8 +441,7 @@ const styles = StyleSheet.create({
     right: 0,
     bottom: 0,
     alignItems: "center",
-    justifyContent: "flex-end",
-    paddingBottom: 14,
+    justifyContent: "center",
   },
   timecode: {
     position: "absolute",

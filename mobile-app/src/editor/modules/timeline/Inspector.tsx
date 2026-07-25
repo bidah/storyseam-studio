@@ -77,7 +77,9 @@ function InspectorImpl({
         {item && (
           <ScrollView contentContainerStyle={styles.body}>
             <Field label={`Volume — ${Math.round((item.volume ?? 1) * 100)}%`}>
-              <Host matchContents>
+              {/* A slider has no intrinsic width — matchContents collapses it
+                  to zero, so the host must take an explicit height + stretch. */}
+              <Host style={styles.sliderHost}>
                 <Slider
                   value={item.volume ?? 1}
                   min={0}
@@ -90,7 +92,7 @@ function InspectorImpl({
             {isAudioTrack && (
               <>
                 <Field label={`Fade in — ${framesToSec(item.fadeInFrames || 0, fps).toFixed(1)}s`}>
-                  <Host matchContents>
+                  <Host style={styles.sliderHost}>
                     <Slider
                       value={framesToSec(item.fadeInFrames || 0, fps)}
                       min={0}
@@ -100,7 +102,7 @@ function InspectorImpl({
                   </Host>
                 </Field>
                 <Field label={`Fade out — ${framesToSec(item.fadeOutFrames || 0, fps).toFixed(1)}s`}>
-                  <Host matchContents>
+                  <Host style={styles.sliderHost}>
                     <Slider
                       value={framesToSec(item.fadeOutFrames || 0, fps)}
                       min={0}
@@ -126,31 +128,26 @@ function InspectorImpl({
             </View>
 
             <View style={styles.actions}>
+              {/* Labels go through the `label` prop — a raw string CHILD becomes
+                  a Fabric RawText inside the native host and crashes the app
+                  ("Text strings must be rendered within a <Text>"). */}
               {!isAudioTrack && !item.linkId && (
                 <Host matchContents style={styles.actionHost}>
-                  <Button variant="outlined" onPress={() => onDetachAudio(item.id)}>
-                    Detach audio
-                  </Button>
+                  <Button variant="outlined" label="Detach audio" onPress={() => onDetachAudio(item.id)} />
                 </Host>
               )}
               {canLink && (
                 <Host matchContents style={styles.actionHost}>
-                  <Button variant="outlined" onPress={onLinkSelected}>
-                    Link selected
-                  </Button>
+                  <Button variant="outlined" label="Link selected" onPress={onLinkSelected} />
                 </Host>
               )}
               {item.linkId && (
                 <Host matchContents style={styles.actionHost}>
-                  <Button variant="outlined" onPress={() => onUnlink(item.id)}>
-                    Unlink
-                  </Button>
+                  <Button variant="outlined" label="Unlink" onPress={() => onUnlink(item.id)} />
                 </Host>
               )}
               <Host matchContents style={styles.actionHost}>
-                <Button variant="filled" onPress={() => onRemove(item.id)}>
-                  Remove clip
-                </Button>
+                <Button variant="filled" label="Remove clip" onPress={() => onRemove(item.id)} />
               </Host>
             </View>
           </ScrollView>
@@ -192,6 +189,7 @@ const styles = StyleSheet.create({
   },
   actions: { marginTop: 20, gap: 10 },
   actionHost: { alignSelf: "stretch" },
+  sliderHost: { alignSelf: "stretch", height: 32 },
 });
 
 export const Inspector = memo(InspectorImpl);
