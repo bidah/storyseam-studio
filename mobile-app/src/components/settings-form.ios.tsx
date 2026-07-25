@@ -31,12 +31,14 @@ export default function SettingsForm({
   apiOrigin,
   onSignOut,
 }: SettingsFormProps) {
-  // SwiftUI Forms default to systemGroupedBackground; hide it and paint the
-  // scheme's page background behind the grouped cells to match every screen.
+  // SwiftUI Forms default to systemGroupedBackground; hide it and paint our own
+  // scheme-aware grouped background behind the cells. It must differ from the
+  // native cell color (white in light, gray in dark) or the cards vanish — hence
+  // `groupedBg`, not `pageBg` (which equals the white cell color in light mode).
   const colors = useColors();
   return (
     <Host style={{ flex: 1 }}>
-      <Form modifiers={[scrollContentBackground('hidden'), background(colors.pageBg)]}>
+      <Form modifiers={[scrollContentBackground('hidden'), background(colors.groupedBg)]}>
         <Section title="Account">
           <VStack alignment="leading" spacing={2}>
             <Text>{name}</Text>

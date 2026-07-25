@@ -7,16 +7,22 @@ import { useColors } from '@/lib/colors';
 // a Back button — instead of stacking a second sheet on top. That sidesteps the
 // two-swipe-to-dismiss trap a focused text field creates in its own formSheet:
 // here the key screen is left with Back, and its input can safely autofocus.
-// Match the app's page background (nav headers otherwise default to the iOS
-// systemGroupedBackground gray inside a formSheet).
+// Match the grouped Form background so the large-title header blends into the
+// list (nav headers otherwise default to the iOS systemGroupedBackground gray
+// inside a formSheet). The tint/title colors are set explicitly: without them
+// the native title follows the OS appearance, which renders white-on-white when
+// the JS theme is forced Light while the device is in Dark mode.
 export default function SettingsLayout() {
   const colors = useColors();
   return (
     <Stack
       screenOptions={{
-        headerStyle: { backgroundColor: colors.pageBg },
-        headerLargeStyle: { backgroundColor: colors.pageBg },
+        headerStyle: { backgroundColor: colors.groupedBg },
+        headerLargeStyle: { backgroundColor: colors.groupedBg },
         headerShadowVisible: false,
+        headerTintColor: colors.foreground,
+        headerTitleStyle: { color: colors.foreground },
+        headerLargeTitleStyle: { color: colors.foreground },
       }}
     >
       <Stack.Screen name="index" options={{ title: 'Settings', headerLargeTitle: true }} />

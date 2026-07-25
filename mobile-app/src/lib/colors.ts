@@ -12,6 +12,9 @@ import { useEffectiveScheme, type Scheme } from './theme';
 export type Colors = {
   // Surfaces (dark → light)
   pageBg: string; // the near-black / white page background
+  groupedBg: string; // page behind grouped SwiftUI Form cells — one step off the
+  // cell color so cards read (dark: near-black under gray cells; light: iOS
+  // systemGroupedBackground gray under white cells)
   surface: string; // cards, nav bar, headers
   surfaceAlt: string; // elevated / input fills
   muted: string; // subtle fills, code blocks
@@ -44,6 +47,7 @@ const BRAND = {
 
 const DARK: Colors = {
   pageBg: '#0a0a0b',
+  groupedBg: '#0a0a0b',
   surface: '#111113',
   surfaceAlt: '#18181b',
   muted: '#27272a',
@@ -56,6 +60,7 @@ const DARK: Colors = {
 
 const LIGHT: Colors = {
   pageBg: '#ffffff',
+  groupedBg: '#f2f2f7',
   surface: '#f4f4f5',
   surfaceAlt: '#ffffff',
   muted: '#f4f4f5',
