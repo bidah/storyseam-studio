@@ -5,6 +5,7 @@ import { Check, ChevronLeft, ChevronRight, X } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { resolvePickerRequest } from '@/lib/picker-bus';
 import { splitImageModels, useImageModelPickerStore } from '@/lib/image-model-picker';
+import { SHEET_CONTENT_STYLE } from '@/lib/sheet';
 import { useColors } from '@/lib/colors';
 
 // Image-model picker — a single fit-to-content formSheet (registered in the root
@@ -116,9 +117,10 @@ export default function ImageModelPickerSheet() {
         }}
       />
       {/* Plain Views (no ScrollView/navigator) so fitToContents can measure the
-          height and hug the rows. The glass header floats over the content, so
-          reserve its ~76pt here (matches the chat model picker). */}
-      <View className="bg-background px-4 pb-8" style={{ paddingTop: 76 }}>
+          height and hug the rows. The glass header floats over the content; the
+          content reserves space for it and cancels the nav-bar height the
+          fitToContents detent adds — see SHEET_CONTENT_STYLE. */}
+      <View className="bg-background px-4" style={SHEET_CONTENT_STYLE}>
         {page === 'default' ? (
           <>
             <Card items={top} />
