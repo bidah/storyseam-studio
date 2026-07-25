@@ -46,7 +46,6 @@ export default function ModelPickerSheet() {
               accessibilityRole="button"
               accessibilityLabel="Close"
               hitSlop={8}
-              className="h-8 w-8 items-center justify-center rounded-full bg-secondary active:opacity-60"
               onPress={() => router.back()}
             >
               <X size={18} color={colors.mutedForeground} />
