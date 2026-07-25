@@ -56,7 +56,7 @@ export default function ModelPickerSheet() {
       {/* The formSheet's native header floats transparently over the content
           (glass); the content reserves space for it and cancels the nav-bar
           height the fitToContents detent adds — see SHEET_CONTENT_STYLE. */}
-      <View className="bg-background px-4" style={SHEET_CONTENT_STYLE}>
+      <View className="bg-background px-8" style={SHEET_CONTENT_STYLE}>
         <View className="overflow-hidden rounded-[28px] border border-border bg-card">
           {AGENT_MODELS.map((m, i) => (
             <Fragment key={m.id}>
