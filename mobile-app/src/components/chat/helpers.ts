@@ -36,6 +36,23 @@ export function workingTool(messages: AgentMessage[], busy: boolean): string | n
   return trailing?.type === 'dynamic-tool' ? trailing.toolName || 'tool' : null;
 }
 
+// The agent is "reasoning" while a turn is in flight and the current assistant
+// message's trailing visible content is a reasoning block. The reasoning panel
+// is collapsed and static (it doesn't animate like streaming text), so a
+// prolonged chain-of-thought looks like the agent has stalled unless a shimmer
+// marker sits below it. Distinct from `isThinking` (nothing rendered yet) and
+// `workingTool` (trailing part is a tool call).
+export function isReasoning(messages: AgentMessage[], busy: boolean): boolean {
+  if (!busy) return false;
+  const last = messages[messages.length - 1];
+  if (!last || last.role === 'user') return false;
+  let trailing: MessagePart | null = null;
+  for (const p of last.parts || []) {
+    if (isVisible(p)) trailing = p;
+  }
+  return trailing?.type === 'reasoning';
+}
+
 // Compact "2m" / "3h" / "5d" relative time for the conversations list.
 export function relTime(ts: number | undefined): string {
   if (!ts) return '';

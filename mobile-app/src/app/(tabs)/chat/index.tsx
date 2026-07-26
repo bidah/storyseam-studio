@@ -31,7 +31,7 @@ import { agentIsBusy, useAgent, useConversations } from '@/lib/agent/provider';
 import { uploadFile } from '@/lib/api';
 import { ChatHeaderRight, useChatHeaderItems } from '@/components/chat/chat-header';
 import { Composer, type LocalAttachment } from '@/components/chat/composer';
-import { deriveQA, isThinking, workingTool } from '@/components/chat/helpers';
+import { deriveQA, isReasoning, isThinking, workingTool } from '@/components/chat/helpers';
 import { MessageRow } from '@/components/chat/message';
 import { useChatColors } from '@/components/chat/theme';
 import type { AgentMessage, SentAttachment } from '@/components/chat/types';
@@ -165,6 +165,7 @@ export default function ChatScreen() {
   const busy = agentIsBusy(agent);
   const thinking = useMemo(() => isThinking(messages, busy), [messages, busy]);
   const working = useMemo(() => workingTool(messages, busy), [messages, busy]);
+  const reasoning = useMemo(() => isReasoning(messages, busy), [messages, busy]);
   // Interactive `ask_question` cards: which one is pending vs already answered.
   const qa = useMemo(() => deriveQA(messages), [messages]);
   const canRespond = !busy;
@@ -353,6 +354,8 @@ export default function ChatScreen() {
                   <ShimmerRow label="Thinking…" />
                 ) : working ? (
                   <ShimmerRow label="Agent is working…" />
+                ) : reasoning ? (
+                  <ShimmerRow label="Reasoning…" />
                 ) : null}
                 {errorMessage ? (
                   <View className="mx-4 mt-2 flex-row items-start gap-2 rounded-xl border border-destructive/40 bg-destructive/10 p-3">
