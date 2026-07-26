@@ -3,7 +3,7 @@
 // characters and places look, plus a reference-lineage canvas. Prompt-engineered,
 // bulk image generation via the Higgsfield MCP (Nano Banana Pro by default).
 //
-// Backed by the R2 doc `state/<pid>/visual-world.json` (whole-document
+// Backed by the D1 doc `visual-world` (whole-document
 // read-modify-write, like world.json) and R2 image bytes under the `visual`
 // media kind (served at `/visual-media/<file>`). Two writers share the store:
 //   1. the in-app composer (this file's /generate + /poll), and

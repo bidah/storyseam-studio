@@ -1,10 +1,10 @@
 // World creation endpoints (/api/world*). The "world bible" that seeds the whole
 // series: the story map (the 5 shaping questions), the story-depth core elements,
-// and the character roster with type breakdowns. Backed by the R2 doc store
-// `state/<projectId>/world.json` (whole-document read-modify-write, exactly like
-// the shot list). Written by the agent's world-creation skill (save_world) and
-// edited field-by-field from the World tab.
-import { readDoc, writeDoc } from "../lib/docs.js";
+// and the character roster with type breakdowns. Backed by the D1 doc store
+// (`docs` row, name "world"), whole-document read-modify-write exactly like the
+// shot list. Written by the agent's world-creation skill (save_world) and edited
+// field-by-field from the World tab.
+import { readDoc, updateDoc } from "../lib/docs.js";
 import { assetRefUrl } from "../lib/media.js";
 
 // The story map — the 5 questions that shape the story (see the World tab).
@@ -162,7 +162,26 @@ function normalizeWorld(raw) {
 }
 
 const readWorld = async (env, pid) => normalizeWorld(await readDoc(env, pid, "world", null));
-const writeWorld = (env, pid, world) => writeDoc(env, pid, "world", world);
+
+// Every MUTATION goes through this, never a bare read-then-write. A plain
+// read-modify-write is last-writer-wins, and these routes are hammered
+// concurrently — the agent adds a cast in one burst, the Animatic creates a
+// roster of locations — so racing writers silently dropped each other's entries
+// (adding 8 characters in parallel reliably kept about half). `updateDoc` makes
+// the write conditional on the document's version and re-applies `mutate` on a
+// conflict, so every entry lands. `mutate` may run more than once: keep it pure.
+const editWorld = (env, pid, mutate) =>
+  updateDoc(env, pid, "world", emptyWorld(), (raw) => {
+    // The stored doc is whatever was last written; normalize inside the retry
+    // so each attempt starts from a well-formed world.
+    const world = normalizeWorld(raw);
+    const result = mutate(world) || {};
+    if (result.abort) return result;
+    // updateDoc persists the object it handed us, so copy the edited shape back.
+    for (const k of Object.keys(raw)) delete raw[k];
+    Object.assign(raw, world);
+    return result;
+  });
 
 // Attach (or clear, with a null voiceRef) a character's voice by case-insensitive
 // name. Returns true when a character matched — the voice then lives on the World
@@ -172,12 +191,13 @@ const writeWorld = (env, pid, world) => writeDoc(env, pid, "world", world);
 export async function setCharacterVoiceByName(env, pid, name, voiceRef) {
   const key = str(name).trim().toUpperCase();
   if (!key) return false;
-  const world = await readWorld(env, pid);
-  const idx = world.characters.findIndex((c) => str(c.name).trim().toUpperCase() === key);
-  if (idx < 0) return false;
-  world.characters[idx].voiceRef = normalizeVoiceRef(voiceRef);
-  await writeWorld(env, pid, world);
-  return true;
+  const res = await editWorld(env, pid, (world) => {
+    const idx = world.characters.findIndex((c) => str(c.name).trim().toUpperCase() === key);
+    if (idx < 0) return { abort: true, matched: false };
+    world.characters[idx].voiceRef = normalizeVoiceRef(voiceRef);
+    return { matched: true };
+  });
+  return !!res.matched;
 }
 
 export function registerWorld(app) {
@@ -210,19 +230,20 @@ export function registerWorld(app) {
     let body;
     try { body = await c.req.json(); } catch { return c.json({ error: "Invalid JSON body" }, 400); }
     const incoming = body && typeof body === "object" && body.world ? body.world : body;
-    const prev = await readWorld(c.env, pid);
-    const merged = {
-      title: keep(incoming?.title, prev.title),
-      logline: keep(incoming?.logline, prev.logline),
-      map: mergeSection(MAP_FIELDS, incoming?.map, prev.map),
-      depth: mergeSection(DEPTH_FIELDS, incoming?.depth, prev.depth),
-      characters: mergeRoster(CHAR_FIELDS, incoming?.characters, prev.characters, normalizeChar),
-      locations: mergeRoster(LOC_FIELDS, incoming?.locations, prev.locations, normalizeLocation),
-    };
-    const world = normalizeWorld(merged);
-    world.generatedAt = new Date().toISOString();
-    world.source = str(body?.source) || "agent";
-    await writeWorld(c.env, pid, world);
+    const { world } = await editWorld(c.env, pid, (prev) => {
+      const merged = normalizeWorld({
+        title: keep(incoming?.title, prev.title),
+        logline: keep(incoming?.logline, prev.logline),
+        map: mergeSection(MAP_FIELDS, incoming?.map, prev.map),
+        depth: mergeSection(DEPTH_FIELDS, incoming?.depth, prev.depth),
+        characters: mergeRoster(CHAR_FIELDS, incoming?.characters, prev.characters, normalizeChar),
+        locations: mergeRoster(LOC_FIELDS, incoming?.locations, prev.locations, normalizeLocation),
+      });
+      merged.generatedAt = new Date().toISOString();
+      merged.source = str(body?.source) || "agent";
+      Object.assign(prev, merged);
+      return { world: prev };
+    });
     return c.json({ ok: true, world });
   });
 
@@ -232,16 +253,17 @@ export function registerWorld(app) {
     const pid = c.get("projectId");
     let patch;
     try { patch = await c.req.json(); } catch { patch = {}; }
-    const world = await readWorld(c.env, pid);
-    if (typeof patch.title === "string") world.title = patch.title;
-    if (typeof patch.logline === "string") world.logline = patch.logline;
-    if (patch.map && typeof patch.map === "object") {
-      for (const f of MAP_FIELDS) if (f in patch.map) world.map[f] = str(patch.map[f]);
-    }
-    if (patch.depth && typeof patch.depth === "object") {
-      for (const f of DEPTH_FIELDS) if (f in patch.depth) world.depth[f] = str(patch.depth[f]);
-    }
-    await writeWorld(c.env, pid, world);
+    const { world } = await editWorld(c.env, pid, (world) => {
+      if (typeof patch.title === "string") world.title = patch.title;
+      if (typeof patch.logline === "string") world.logline = patch.logline;
+      if (patch.map && typeof patch.map === "object") {
+        for (const f of MAP_FIELDS) if (f in patch.map) world.map[f] = str(patch.map[f]);
+      }
+      if (patch.depth && typeof patch.depth === "object") {
+        for (const f of DEPTH_FIELDS) if (f in patch.depth) world.depth[f] = str(patch.depth[f]);
+      }
+      return { world };
+    });
     return c.json({ ok: true, world });
   });
 
@@ -250,37 +272,42 @@ export function registerWorld(app) {
     const pid = c.get("projectId");
     let body;
     try { body = await c.req.json(); } catch { body = {}; }
-    const world = await readWorld(c.env, pid);
-    const char = normalizeChar({ name: "New character", ...body }, world.characters.length);
-    world.characters.push(char);
-    await writeWorld(c.env, pid, world);
-    return c.json({ ok: true, character: char, world });
+    const { character, world } = await editWorld(c.env, pid, (world) => {
+      const char = normalizeChar({ name: "New character", ...body }, world.characters.length);
+      world.characters.push(char);
+      return { character: char, world };
+    });
+    return c.json({ ok: true, character, world });
   });
 
   // Edit one character in place.
   app.put("/api/world/character/:id", async (c) => {
     const pid = c.get("projectId");
     const id = c.req.param("id");
-    const world = await readWorld(c.env, pid);
-    const idx = world.characters.findIndex((x) => x.id === id);
-    if (idx < 0) return c.json({ error: `no character ${id}` }, 404);
     let patch;
     try { patch = await c.req.json(); } catch { patch = {}; }
-    world.characters[idx] = normalizeChar({ ...world.characters[idx], ...patch, id }, idx);
-    await writeWorld(c.env, pid, world);
-    return c.json({ ok: true, character: world.characters[idx], world });
+    const res = await editWorld(c.env, pid, (world) => {
+      const idx = world.characters.findIndex((x) => x.id === id);
+      if (idx < 0) return { abort: true, missing: true };
+      world.characters[idx] = normalizeChar({ ...world.characters[idx], ...patch, id }, idx);
+      return { character: world.characters[idx], world };
+    });
+    if (res.missing) return c.json({ error: `no character ${id}` }, 404);
+    return c.json({ ok: true, character: res.character, world: res.world });
   });
 
   // Remove a character.
   app.delete("/api/world/character/:id", async (c) => {
     const pid = c.get("projectId");
     const id = c.req.param("id");
-    const world = await readWorld(c.env, pid);
-    const before = world.characters.length;
-    world.characters = world.characters.filter((x) => x.id !== id);
-    if (world.characters.length === before) return c.json({ error: `no character ${id}` }, 404);
-    await writeWorld(c.env, pid, world);
-    return c.json({ ok: true, world });
+    const res = await editWorld(c.env, pid, (world) => {
+      const before = world.characters.length;
+      world.characters = world.characters.filter((x) => x.id !== id);
+      if (world.characters.length === before) return { abort: true, missing: true };
+      return { world };
+    });
+    if (res.missing) return c.json({ error: `no character ${id}` }, 404);
+    return c.json({ ok: true, world: res.world });
   });
 
   // Add a location to the roster.
@@ -288,39 +315,43 @@ export function registerWorld(app) {
     const pid = c.get("projectId");
     let body;
     try { body = await c.req.json(); } catch { body = {}; }
-    const world = await readWorld(c.env, pid);
-    const loc = normalizeLocation({ name: "New location", ...body }, world.locations.length);
-    if (loc.sheetImage?.rel) loc.sheetImage.refUrl = assetRefUrl(c.env, pid, loc.sheetImage.rel);
-    world.locations.push(loc);
-    await writeWorld(c.env, pid, world);
-    return c.json({ ok: true, location: loc, world });
+    const { location, world } = await editWorld(c.env, pid, (world) => {
+      const loc = normalizeLocation({ name: "New location", ...body }, world.locations.length);
+      world.locations.push(loc);
+      return { location: loc, world };
+    });
+    if (location.sheetImage?.rel) location.sheetImage.refUrl = assetRefUrl(c.env, pid, location.sheetImage.rel);
+    return c.json({ ok: true, location, world });
   });
 
   // Edit one location in place.
   app.put("/api/world/location/:id", async (c) => {
     const pid = c.get("projectId");
     const id = c.req.param("id");
-    const world = await readWorld(c.env, pid);
-    const idx = world.locations.findIndex((x) => x.id === id);
-    if (idx < 0) return c.json({ error: `no location ${id}` }, 404);
     let patch;
     try { patch = await c.req.json(); } catch { patch = {}; }
-    world.locations[idx] = normalizeLocation({ ...world.locations[idx], ...patch, id }, idx);
-    const loc = world.locations[idx];
-    if (loc.sheetImage?.rel) loc.sheetImage.refUrl = assetRefUrl(c.env, pid, loc.sheetImage.rel);
-    await writeWorld(c.env, pid, world);
-    return c.json({ ok: true, location: loc, world });
+    const res = await editWorld(c.env, pid, (world) => {
+      const idx = world.locations.findIndex((x) => x.id === id);
+      if (idx < 0) return { abort: true, missing: true };
+      world.locations[idx] = normalizeLocation({ ...world.locations[idx], ...patch, id }, idx);
+      return { location: world.locations[idx], world };
+    });
+    if (res.missing) return c.json({ error: `no location ${id}` }, 404);
+    if (res.location.sheetImage?.rel) res.location.sheetImage.refUrl = assetRefUrl(c.env, pid, res.location.sheetImage.rel);
+    return c.json({ ok: true, location: res.location, world: res.world });
   });
 
   // Remove a location.
   app.delete("/api/world/location/:id", async (c) => {
     const pid = c.get("projectId");
     const id = c.req.param("id");
-    const world = await readWorld(c.env, pid);
-    const before = world.locations.length;
-    world.locations = world.locations.filter((x) => x.id !== id);
-    if (world.locations.length === before) return c.json({ error: `no location ${id}` }, 404);
-    await writeWorld(c.env, pid, world);
-    return c.json({ ok: true, world });
+    const res = await editWorld(c.env, pid, (world) => {
+      const before = world.locations.length;
+      world.locations = world.locations.filter((x) => x.id !== id);
+      if (world.locations.length === before) return { abort: true, missing: true };
+      return { world };
+    });
+    if (res.missing) return c.json({ error: `no location ${id}` }, 404);
+    return c.json({ ok: true, world: res.world });
   });
 }

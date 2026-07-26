@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { makeEnv } from "./_fakes.js";
-import { docKey } from "../../worker/src/lib/docs.js";
+import { writeDoc } from "../../worker/src/lib/docs.js";
 import { mediaKey } from "../../worker/src/lib/media.js";
 import { pickTake, buildBundleIndex, readStillsContext } from "../../worker/src/lib/stills.js";
 
@@ -35,9 +35,7 @@ describe("pickTake", () => {
 // Seed a project's episode manifest so shot→bundle resolves from the
 // authoritative side.
 async function seedManifest(env, pid, bundles) {
-  await env.BUCKET.put(docKey(pid, "episode-manifest"), JSON.stringify({ bundles }), {
-    httpMetadata: { contentType: "application/json" },
-  });
+  await writeDoc(env, pid, "episode-manifest", { bundles });
 }
 
 describe("buildBundleIndex", () => {
@@ -82,11 +80,9 @@ describe("readStillsContext.resolve", () => {
     const env = makeEnv();
     await seedManifest(env, "p1", [{ id: "MS-01", shots: [{ id: "01" }] }]);
     // selections doc holds the stills map keyed [bundle][shot] → takes
-    await env.BUCKET.put(
-      docKey("p1", "selections"),
-      JSON.stringify({ stills: { "MS-01": { "01": [{ file: "take1.png" }] } } }),
-      { httpMetadata: { contentType: "application/json" } },
-    );
+    await writeDoc(env, "p1", "selections", {
+      stills: { "MS-01": { "01": [{ file: "take1.png" }] } },
+    });
     // and the storyboard bytes must be present
     await env.BUCKET.put(mediaKey("p1", "storyboard", "take1.png"), "png-bytes");
 

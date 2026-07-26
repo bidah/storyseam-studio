@@ -1,5 +1,5 @@
 // Sound Studio endpoints, ported from server/index.js (/api/sounds*). Backed by
-// the R2 doc store `state/<projectId>/sounds.json` (was `sounds.json` on disk).
+// the D1 doc store (`docs` row `sounds`).
 //
 // Sound Studio is a standalone audio library. Each "track" holds ordered
 // versions; editing a prompt saves a NEW version (which starts "pending"). The

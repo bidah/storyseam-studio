@@ -3,7 +3,7 @@
 // episode bundle, with multiple takes per shot so different camera angles can be
 // compared and one selected. It shares the Episode tab (Images mode).
 //
-// Backed by the same de-facto DB doc as episodes (`state/<pid>/selections.json`)
+// Backed by the same de-facto DB doc as episodes (the `selections` doc)
 // under a new `stills` map, and R2 image bytes under the `storyboard` media kind
 // (served at `/storyboard-media/<file>`):
 //

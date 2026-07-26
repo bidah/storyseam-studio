@@ -5,7 +5,7 @@
 // the Worker — media now lives in R2 under `media/<projectId>/...` — so they are
 // re-backed by R2 listings (`listMedia` / `BUCKET.list`) and the JSON doc store.
 //
-// Doc store: `state/<projectId>/selections.json` holds `db.library` (a map
+// Doc store: the `selections` doc holds `db.library` (a map
 // rel->true of picked asset-library images). The multishot manifest and the
 // shots metadata live in their own docs (`multishot` / `shots`).
 //

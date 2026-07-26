@@ -64,3 +64,38 @@ CREATE TABLE IF NOT EXISTS "verification" ("id" text not null primary key, "iden
 CREATE INDEX IF NOT EXISTS "session_userId_idx" on "session" ("userId");
 CREATE INDEX IF NOT EXISTS "account_userId_idx" on "account" ("userId");
 CREATE INDEX IF NOT EXISTS "verification_identifier_idx" on "verification" ("identifier");
+
+-- Per-project JSON application state. THE source of truth for the doc stores
+-- (world, shotlist, sounds, cuts, episode, visual-world, script, …), which used
+-- to live as R2 objects at `state/<projectId>/<name>.json`.
+--
+-- Why D1 and not R2: R2 is blob storage with no versioning, no transactions and
+-- no conditional semantics beyond etags — a `put` silently destroys the previous
+-- bytes, which is exactly how a world bible was lost. D1 gives real transactional
+-- writes, a `version` column for optimistic concurrency (replacing the etag
+-- retry dance), and Time Travel — 30 days of automatic point-in-time recovery
+-- for the whole database. Media blobs stay in R2, where they belong.
+CREATE TABLE IF NOT EXISTS docs (
+  project_id  TEXT NOT NULL,
+  name        TEXT NOT NULL,
+  json        TEXT NOT NULL,
+  version     INTEGER NOT NULL DEFAULT 1,  -- bumped per write; the CAS token
+  updated_at  TEXT NOT NULL,
+  PRIMARY KEY (project_id, name)
+);
+
+-- Per-document version history: the value each write REPLACED. Time Travel is
+-- whole-database and destructive, so it can't serve "undo just this document" —
+-- that's what this is for. Retention is a ring buffer per doc (see lib/history.js).
+CREATE TABLE IF NOT EXISTS doc_history (
+  project_id   TEXT NOT NULL,
+  name         TEXT NOT NULL,
+  ts           TEXT NOT NULL,   -- 2026-07-22T21-56-31-995Z, sorts lexicographically
+  json         TEXT NOT NULL,
+  source       TEXT,            -- the replaced doc's own provenance ("agent", "app", …)
+  generated_at TEXT,
+  size         INTEGER NOT NULL,
+  PRIMARY KEY (project_id, name, ts)
+);
+
+CREATE INDEX IF NOT EXISTS idx_doc_history_doc ON doc_history (project_id, name, ts DESC);

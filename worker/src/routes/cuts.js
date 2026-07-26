@@ -9,8 +9,7 @@
 // (`mediaKey(pid, "gen"|"sound-media", file)`); the sandbox pulls inputs from
 // presigned R2 GETs and pushes the output to a presigned R2 PUT. Filesystem
 // existence checks (`fs.existsSync`) become `mediaExists`. The selections DB and
-// the sounds doc are the R2 doc stores (`state/<pid>/selections.json`,
-// `state/<pid>/sounds.json`). Media URLs stay `/gen/<file>` / `/sound-media/<file>`.
+// the sounds doc are the D1 doc stores (`selections` and `sounds` rows). Media URLs stay `/gen/<file>` / `/sound-media/<file>`.
 import { readDoc, writeDoc } from "../lib/docs.js";
 import { mediaKey, mediaExists, listMediaSet } from "../lib/media.js";
 import { runNative, getSandbox } from "../lib/ffmpeg.js";

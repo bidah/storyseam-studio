@@ -1,19 +1,18 @@
-// Per-document version history for the project JSON doc stores.
+// Per-document version history for the project doc stores (D1 `doc_history`).
 //
-// R2 has NO object versioning: a `put` over an existing key destroys the old
-// bytes forever. That is how Whistlewood's world bible was lost — one partial
-// `save_world` overwrote the document and there was nothing to roll back to.
-// So every overwrite now parks the PREVIOUS bytes under
-// `history/<projectId>/<name>/<stamp>.json` before the new ones land.
+// Every overwrite parks the value it replaced, because losing content to a bad
+// write is the failure mode this app actually suffered: one partial `save_world`
+// flattened a world bible and, on the old R2 backend, there was nothing to roll
+// back to.
 //
-// This sits ABOVE the storage primitive on purpose (docs.js calls it, not the
-// routes), so it covers every doc store — world, shotlist, sounds, cuts,
-// episode, visual-world — and survives a future move of the doc backend to D1.
+// This is NOT redundant with D1 Time Travel. Time Travel restores the WHOLE
+// database to a point in time and is destructive — recovering one project's
+// world bible would roll back every other project's shot lists too. That's
+// disaster recovery; this is per-document undo. They cover different accidents.
 //
-// Note on D1 Time Travel: if/when these docs move to D1, its point-in-time
-// recovery is whole-DATABASE and destructive (restoring one project's doc would
-// roll back everything else). It's disaster recovery; this is per-doc undo. The
-// two are complementary, so this layer stays useful either way.
+// It sits ABOVE the storage primitive on purpose (docs.js calls it, not the
+// routes), so every doc store is covered — world, shotlist, sounds, cuts,
+// episode, visual-world, script.
 import { normalizeProjectId } from "./docs.js";
 
 // How many versions to keep per document. Small JSON, so this is cheap; the
@@ -25,26 +24,16 @@ const MAX_SNAPSHOTS = 50;
 // moment ago". Deliberately narrow — see the two escapes below.
 const MIN_INTERVAL_MS = 60_000;
 // Escape 1: the throttle only ever collapses versions from the SAME writer.
-// Rapid human edits collapse into one; an AGENT write landing on top of fresh
-// human edits always parks them, because that is precisely the sequence that
-// loses work.
+// Rapid human edits collapse into one; an AGENT write landing on fresh human
+// edits always parks them, because that is precisely the sequence that loses
+// work.
 // Escape 2: a write that shrinks the document by more than this always parks,
 // whoever made it — a sudden collapse in size is the signature of the accident
 // this whole file exists for (a partial save blanking most of a document).
 const SHRINK_RATIO = 0.75;
 
-// Doc names come from our own routes, but this key is user-reachable via the
-// history routes — keep it to a flat, boring segment.
-const safeName = (name) => String(name || "").replace(/[^a-zA-Z0-9._-]/g, "");
-
 // Filename-safe, lexicographically sortable: 2026-07-22T21-56-31-995Z.
 export const stamp = (d = new Date()) => d.toISOString().replace(/[:.]/g, "-");
-
-export const historyPrefix = (projectId, name) =>
-  `history/${normalizeProjectId(projectId)}/${safeName(name)}/`;
-
-export const snapshotKey = (projectId, name, ts) =>
-  `${historyPrefix(projectId, name)}${safeName(ts)}.json`;
 
 // Parse the stamp back into a real instant for display / throttling.
 function stampToDate(ts) {
@@ -57,59 +46,50 @@ function stampToDate(ts) {
   return Number.isNaN(d.getTime()) ? null : d;
 }
 
-// Newest first. Each entry carries the stored doc's own provenance (`source` /
-// `generatedAt`, stashed in R2 custom metadata at snapshot time) so the history
-// UI can say "agent" vs "app" without fetching every version.
+const withDate = (r) => ({
+  ts: r.ts,
+  at: stampToDate(r.ts)?.toISOString() ?? null,
+  size: r.size,
+  source: r.source || null,
+  generatedAt: r.generated_at || null,
+});
+
+// Newest first. Deliberately does NOT select `json` — a history list is a
+// picker, and pulling every stored version's body to render it would be silly.
 export async function listSnapshots(env, projectId, name) {
-  const prefix = historyPrefix(projectId, name);
-  const out = [];
-  let cursor;
-  do {
-    const res = await env.BUCKET.list({ prefix, cursor, limit: 1000, include: ["customMetadata"] });
-    for (const o of res.objects) {
-      const ts = o.key.slice(prefix.length).replace(/\.json$/, "");
-      out.push({
-        ts,
-        at: stampToDate(ts)?.toISOString() ?? null,
-        size: o.size,
-        source: o.customMetadata?.source || null,
-        generatedAt: o.customMetadata?.generatedAt || null,
-      });
-    }
-    cursor = res.truncated ? res.cursor : undefined;
-  } while (cursor);
-  out.sort((a, b) => (a.ts < b.ts ? 1 : -1));
-  return out;
+  const { results } = await env.DB.prepare(
+    "SELECT ts, size, source, generated_at FROM doc_history WHERE project_id = ? AND name = ? ORDER BY ts DESC",
+  )
+    .bind(normalizeProjectId(projectId), name)
+    .all();
+  return (results || []).map(withDate);
 }
 
 export async function readSnapshot(env, projectId, name, ts) {
-  const obj = await env.BUCKET.get(snapshotKey(projectId, name, ts));
-  if (!obj) return null;
+  const row = await env.DB.prepare(
+    "SELECT json FROM doc_history WHERE project_id = ? AND name = ? AND ts = ?",
+  )
+    .bind(normalizeProjectId(projectId), name, String(ts))
+    .first();
+  if (!row) return null;
   try {
-    return await obj.json();
+    return JSON.parse(row.json);
   } catch {
     return null;
   }
 }
 
-// Keep the newest MAX_SNAPSHOTS, drop the rest.
-async function prune(env, projectId, name, snapshots) {
-  const stale = snapshots.slice(MAX_SNAPSHOTS);
-  if (!stale.length) return;
-  await Promise.all(
-    stale.map((s) => env.BUCKET.delete(snapshotKey(projectId, name, s.ts))),
-  );
-}
-
-// Park `prevText` (the bytes we are about to overwrite) as a version. Call this
-// AFTER the new write has succeeded, so a failed/conflicting write leaves no
-// phantom history. `nextText` is only used to spot a destructive shrink.
+// Park `prevText` (the value we just overwrote) as a version. Call this AFTER
+// the new write has succeeded, so a failed/conflicting write leaves no phantom
+// history. `nextText` is only used to spot a destructive shrink.
 // Never throws: losing a snapshot must not fail the user's actual write.
 export async function snapshotPrevious(env, projectId, name, prevText, nextText, opts = {}) {
   try {
     if (!prevText || prevText === nextText) return null;
+    const pid = normalizeProjectId(projectId);
 
-    // Carry the doc's own provenance into R2 metadata for the history list.
+    // The replaced document's own provenance, so the history list can show who
+    // wrote it without loading every version.
     let source = "";
     let generatedAt = "";
     try {
@@ -117,11 +97,14 @@ export async function snapshotPrevious(env, projectId, name, prevText, nextText,
       source = String(parsed?.source ?? "");
       generatedAt = String(parsed?.generatedAt ?? "");
     } catch {
-      /* not our shape — still worth keeping the bytes */
+      /* not our shape — still worth keeping the value */
     }
 
-    const existing = await listSnapshots(env, projectId, name);
-    const newest = existing[0];
+    const newest = await env.DB.prepare(
+      "SELECT ts, source FROM doc_history WHERE project_id = ? AND name = ? ORDER BY ts DESC LIMIT 1",
+    )
+      .bind(pid, name)
+      .first();
     const shrank = nextText != null && nextText.length < prevText.length * SHRINK_RATIO;
     const sameWriter = newest ? (newest.source || "") === source : false;
     if (newest && !opts.force && !shrank && sameWriter) {
@@ -130,11 +113,17 @@ export async function snapshotPrevious(env, projectId, name, prevText, nextText,
     }
 
     const ts = stamp();
-    await env.BUCKET.put(snapshotKey(projectId, name, ts), prevText, {
-      httpMetadata: { contentType: "application/json" },
-      customMetadata: { ...(source && { source }), ...(generatedAt && { generatedAt }) },
-    });
-    await prune(env, projectId, name, [{ ts }, ...existing]);
+    await env.DB.batch([
+      env.DB.prepare(
+        "INSERT INTO doc_history (project_id, name, ts, json, source, generated_at, size) VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT (project_id, name, ts) DO NOTHING",
+      ).bind(pid, name, ts, prevText, source || null, generatedAt || null, prevText.length),
+      // Ring buffer: keep the newest MAX_SNAPSHOTS for this doc, drop the rest.
+      env.DB.prepare(
+        `DELETE FROM doc_history WHERE project_id = ? AND name = ? AND ts NOT IN (
+           SELECT ts FROM doc_history WHERE project_id = ? AND name = ? ORDER BY ts DESC LIMIT ?
+         )`,
+      ).bind(pid, name, pid, name, MAX_SNAPSHOTS),
+    ]);
     return ts;
   } catch {
     return null;

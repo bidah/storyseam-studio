@@ -2,7 +2,7 @@
 // is the R2 object `script/<projectId>.json` (the same object served by GET/PUT
 // /script in worker/src/index.js) — read/written straight from R2 here instead of
 // the Express HTTP round-trip. Sign-off lives in the selections DB doc
-// (`state/<projectId>/selections.json` → scriptSignoff[draftId]). Writes that
+// (the `selections` doc → scriptSignoff[draftId]). Writes that
 // change the pinned draft broadcast on the "script" channel for live-sync.
 import { readDoc, writeDoc } from "../lib/docs.js";
 import { broadcast } from "../lib/broadcast.js";

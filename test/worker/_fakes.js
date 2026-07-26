@@ -3,6 +3,8 @@
 // support + json()), put, head, list (prefix scan). Enough to unit-test the
 // storage helpers without wrangler/miniflare.
 
+import { DatabaseSync } from "node:sqlite";
+
 let etagSeq = 0;
 
 const toBytes = (body) =>
@@ -102,8 +104,14 @@ export function makeBucket(initial = {}) {
   };
 }
 
+// `DB` is a real in-memory SQLite by default: the doc stores live in D1 now, so
+// almost every helper under test needs one. Pass `overrides.DB` to substitute.
 export function makeEnv(overrides = {}) {
-  return { BUCKET: makeBucket(overrides.files || {}), ...overrides };
+  return {
+    BUCKET: makeBucket(overrides.files || {}),
+    DB: makeDocsDB(DOCS_SCHEMA),
+    ...overrides,
+  };
 }
 
 // A minimal D1 stand-in for the `jobs` table access in worker/src/lib/jobs.js.
@@ -189,3 +197,73 @@ export function makeSandbox({ id = "sbx_1", cmdId = "cmd_1", exitCode, logs = ""
     },
   };
 }
+
+// A D1 stand-in backed by a REAL in-memory SQLite (node:sqlite), rather than a
+// hand-written SQL matcher. The doc store leans on genuine SQL semantics —
+// `ON CONFLICT DO UPDATE`, the conditional `WHERE version = ?` compare-and-swap,
+// a `NOT IN (SELECT … LIMIT …)` ring-buffer prune — and faking those by pattern
+// matching would test the fake, not the code. This runs the actual statements.
+export function makeDocsDB(schema) {
+  const db = new DatabaseSync(":memory:");
+  db.exec(schema);
+
+  const exec = (sql, binds) => {
+    const stmt = db.prepare(sql);
+    // node:sqlite rejects null prototypes round-tripping as undefined; D1 binds
+    // undefined as null, so normalize the same way.
+    const args = binds.map((b) => (b === undefined ? null : b));
+    if (/^\s*select/i.test(sql)) return { rows: stmt.all(...args) };
+    const r = stmt.run(...args);
+    return { changes: Number(r.changes) };
+  };
+
+  const statement = (sql, binds = []) => ({
+    sql,
+    binds,
+    bind: (...args) => statement(sql, args),
+    async first() {
+      return exec(sql, binds).rows?.[0] ?? null;
+    },
+    async all() {
+      return { results: exec(sql, binds).rows ?? [], success: true };
+    },
+    async run() {
+      const { changes = 0 } = exec(sql, binds);
+      return { success: true, meta: { changes } };
+    },
+  });
+
+  return {
+    _db: db,
+    prepare: (sql) => statement(sql),
+    async batch(stmts) {
+      const out = [];
+      for (const s of stmts) out.push(await s.run());
+      return out;
+    },
+  };
+}
+
+// The doc-store slice of worker/schema.sql, inlined so the fake doesn't have to
+// read the file (and so a schema drift shows up as a failing test, not a silent
+// pass). Keep in sync with the `docs` / `doc_history` tables there.
+export const DOCS_SCHEMA = `
+CREATE TABLE docs (
+  project_id TEXT NOT NULL,
+  name       TEXT NOT NULL,
+  json       TEXT NOT NULL,
+  version    INTEGER NOT NULL DEFAULT 1,
+  updated_at TEXT NOT NULL,
+  PRIMARY KEY (project_id, name)
+);
+CREATE TABLE doc_history (
+  project_id   TEXT NOT NULL,
+  name         TEXT NOT NULL,
+  ts           TEXT NOT NULL,
+  json         TEXT NOT NULL,
+  source       TEXT,
+  generated_at TEXT,
+  size         INTEGER NOT NULL,
+  PRIMARY KEY (project_id, name, ts)
+);
+`;

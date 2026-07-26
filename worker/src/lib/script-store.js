@@ -9,10 +9,15 @@
 // versioning. Everything runs through normalizeStore so partial/legacy blobs are
 // always coerced to a well-formed v2 store.
 
+import { readDoc, writeDoc } from "./docs.js";
+
+// The doc-store name this lives under in D1.
+const SCRIPT_DOC = "script";
+
 const LEGACY_SCRIPT_KEY = "script/current.json";
 
-// R2 key for a project's script store — mirrors scriptKey() in index.js (kept in
-// sync here because that one isn't exported; behaviour must match byte-for-byte).
+// The PRE-CUTOVER R2 key for a project's script store. Read-only now: it exists
+// only so `readStore` can find and migrate a script that predates D1.
 export function scriptKey(projectId) {
   if (!projectId) return LEGACY_SCRIPT_KEY;
   const safe = String(projectId).replace(/[^a-zA-Z0-9._-]/g, "");
@@ -97,20 +102,33 @@ export const draftMeta = (d, pinnedId) => ({
 });
 export const metaList = (store) => store.drafts.map((d) => draftMeta(d, store.pinnedId));
 
-// Read/write the R2 script object directly (the Worker is the durable store, so
-// unlike Express there's no HTTP round-trip to /script). Always normalized.
+// The script store is an ordinary project document (`docs` row, name "script"),
+// so it inherits D1's transactional writes and the same per-document version
+// history as the world bible and the shot list. Always normalized.
+//
+// TRANSITIONAL: scripts written before the D1 cutover are R2 objects at
+// `script/<projectId>.json` — a key shape of their own, so docs.js's read-through
+// fallback (which looks under `state/…`) can't find them. Read those once and
+// seat them in D1. Removable with the docs.js fallback once neither fires.
 export async function readStore(env, projectId) {
-  const obj = await env.BUCKET.get(scriptKey(projectId));
+  const doc = await readDoc(env, projectId, SCRIPT_DOC, null);
+  if (doc) return normalizeStore(doc);
+
+  const obj = env.BUCKET ? await env.BUCKET.get(scriptKey(projectId)) : null;
   if (!obj) return normalizeStore(null);
+  let legacy = null;
   try {
-    return normalizeStore(await obj.json());
+    legacy = await obj.json();
   } catch {
     return normalizeStore(null);
   }
+  const store = normalizeStore(legacy);
+  try {
+    await writeDoc(env, projectId, SCRIPT_DOC, store);
+  } catch { /* backfill is opportunistic — the read still succeeds */ }
+  return store;
 }
 
 export async function writeStore(env, projectId, store) {
-  await env.BUCKET.put(scriptKey(projectId), JSON.stringify(store), {
-    httpMetadata: { contentType: "application/json" },
-  });
+  await writeDoc(env, projectId, SCRIPT_DOC, store);
 }

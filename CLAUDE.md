@@ -1,12 +1,37 @@
 # shot-studio
 
 Vite + React front-end (`src/`, port 3333) backed by a Cloudflare Worker
-(`worker/`, name `shot-studio-uploads` — D1 + R2 + KV + a `ProjectEvents`
+(`worker/`, name `shot-studio-uploads` — D1 for ALL per-project JSON state + R2
+for media blobs only + KV + a `ProjectEvents`
 Durable Object for live-sync SSE) for building the Whistlewood episode: script,
 shots, audio/video renders, cuts, and library. A [flue](https://flueframework.com)
 chat agent (`flue-agent/`, its own Cloudflare Worker `shot-studio-flue`, proxied at
 `/eve`) drives the pipeline via typed tools + render skills. See `README.md` for
 architecture and how to run it.
+
+## Storage — D1 for state, R2 for bytes
+
+**Per-project JSON state lives in D1, never as objects in R2.** Every doc store
+(world, shotlist, sounds, selections, cuts, episode-manifest, visual-world,
+radio, stills, script, …) is a row in the `docs` table keyed `(project_id,
+name)`, reached ONLY through `worker/src/lib/docs.js`. This is a multi-tenant
+app: per-tenant state belongs in the database, where it gets transactional
+writes, per-row scoping, and D1 **Time Travel** (30-day point-in-time recovery).
+R2 holds media bytes — images, audio, video, uploads — and nothing else. Do not
+add a new `*.json` object to R2 for app state.
+
+- **Mutations use `updateDoc`, not `readDoc` + `writeDoc`.** `updateDoc` is a
+  compare-and-swap on the row's `version` with jittered retry; a bare
+  read-then-write is last-writer-wins and silently drops concurrent edits (a
+  burst of parallel roster adds used to lose about half of them). Reserve
+  `writeDoc` for a genuine whole-document replace.
+- **Every write is versioned.** `docs.js` parks the value it replaced in
+  `doc_history` (`worker/src/lib/history.js`), surfaced by `/api/history/*`, the
+  `<DocHistory>` dialog, and the agent's `list_history` / `restore_version`.
+  Time Travel is whole-database and destructive, so it can't serve per-document
+  undo — that's what this is for.
+- Schema lives in `worker/schema.sql`; apply with
+  `npx wrangler d1 execute shot-studio-uploads --remote --file=schema.sql`.
 
 ## Feature parity — GUI AND agent, always
 
@@ -111,7 +136,7 @@ composition.
 
 Two unrelated things are called "still": **storyboard stills**
 (`db.stills[bundle][shot]`, `/storyboard-media/`, per shot, has takes — this is
-the animatic's picture) and **grabbed stills** (`state/<pid>/stills.json`,
+the animatic's picture) and **grabbed stills** (the `stills` doc,
 `/stills/`, frames captured from the preview). Don't mix them up.
 
 **Shot ids are a public key space.** `shot.id` keys `db.stills`; rewriting it

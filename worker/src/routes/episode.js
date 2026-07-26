@@ -1,7 +1,7 @@
 // Episode endpoints, ported from server/index.js (/api/final, /api/audio,
-// /api/episode*). Backed by the R2 doc store `state/<projectId>/selections.json`
+// /api/episode*). Backed by the D1 doc store (`docs` row `selections`)
 // (the de-facto DB, formerly `episode-multishot/selections.json`) and the
-// episode manifest doc `state/<projectId>/episode-manifest.json` (formerly
+// episode manifest doc (`docs` row `episode-manifest`, formerly
 // `episode-multishot/multishot_bundles.json`).
 //
 // MEDIA/FFMPEG NOTE: media lives in R2 now. Filesystem scans/existence checks are

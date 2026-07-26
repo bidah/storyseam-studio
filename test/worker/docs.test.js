@@ -2,7 +2,6 @@ import { describe, it, expect } from "vitest";
 import { makeEnv } from "./_fakes.js";
 import {
   normalizeProjectId,
-  docKey,
   readDoc,
   writeDoc,
   updateDoc,
@@ -26,15 +25,8 @@ describe("normalizeProjectId", () => {
   });
 });
 
-describe("docKey", () => {
-  it("builds the state/<pid>/<name>.json path", () => {
-    expect(docKey("p1", "selections")).toBe("state/p1/selections.json");
-    expect(docKey("", "sounds")).toBe("state/p_default/sounds.json");
-  });
-});
-
 describe("readDoc / writeDoc", () => {
-  it("round-trips a JSON document through R2", async () => {
+  it("round-trips a JSON document through D1", async () => {
     const env = makeEnv();
     await writeDoc(env, "p1", "selections", { library: { a: 1 } });
     expect(await readDoc(env, "p1", "selections")).toEqual({ library: { a: 1 } });
@@ -46,10 +38,20 @@ describe("readDoc / writeDoc", () => {
     expect(await readDoc(env, "p1", "missing")).toBeNull();
   });
 
-  it("returns the fallback when the stored bytes are not valid JSON", async () => {
+  it("returns the fallback when the stored value is not valid JSON", async () => {
     const env = makeEnv();
-    await env.BUCKET.put(docKey("p1", "corrupt"), "{not json", { httpMetadata: {} });
+    await env.DB.prepare(
+      "INSERT INTO docs (project_id, name, json, version, updated_at) VALUES (?, ?, ?, 1, ?)",
+    ).bind("p1", "corrupt", "{not json", new Date().toISOString()).run();
     expect(await readDoc(env, "p1", "corrupt", { safe: 1 })).toEqual({ safe: 1 });
+  });
+
+  it("scopes documents per project — one tenant cannot see another's", async () => {
+    const env = makeEnv();
+    await writeDoc(env, "p1", "world", { title: "One" });
+    await writeDoc(env, "p2", "world", { title: "Two" });
+    expect(await readDoc(env, "p1", "world")).toEqual({ title: "One" });
+    expect(await readDoc(env, "p2", "world")).toEqual({ title: "Two" });
   });
 });
 
@@ -79,5 +81,24 @@ describe("updateDoc (read-modify-write with optimistic concurrency)", () => {
     const result = await updateDoc(env, "p1", "d", {}, () => ({ abort: true, reason: "noop" }));
     expect(result).toMatchObject({ abort: true });
     expect(await readDoc(env, "p1", "d")).toEqual({ v: 1 }); // unchanged
+  });
+});
+
+describe("updateDoc under contention", () => {
+  it("lands every concurrent mutation instead of dropping some", async () => {
+    // The compare-and-swap is the whole point: a plain read-then-write is
+    // last-writer-wins, which silently dropped roster entries when the agent
+    // added a cast in one burst.
+    const env = makeEnv();
+    await writeDoc(env, "p1", "world", { characters: [] });
+    await Promise.all(
+      Array.from({ length: 12 }, (_, i) =>
+        updateDoc(env, "p1", "world", { characters: [] }, (doc) => {
+          doc.characters.push({ name: `C${i}` });
+        }),
+      ),
+    );
+    const doc = await readDoc(env, "p1", "world");
+    expect(doc.characters).toHaveLength(12);
   });
 });
