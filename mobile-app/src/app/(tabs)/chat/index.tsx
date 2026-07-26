@@ -28,6 +28,9 @@ import { ArrowDown, CircleAlert, Sparkles } from 'lucide-react-native';
 import { router, Stack } from 'expo-router';
 import { File } from 'expo-file-system';
 import { agentIsBusy, useAgent, useConversations } from '@/lib/agent/provider';
+import { peekTranscript, preloadTranscript } from '@/lib/agent/transcript-cache';
+import type { Chat } from '@/lib/agent/chat-store';
+import { cn } from '@/lib/utils';
 import { uploadFile } from '@/lib/api';
 import { ChatHeaderRight, useChatHeaderItems } from '@/components/chat/chat-header';
 import { Composer, type LocalAttachment } from '@/components/chat/composer';
@@ -73,6 +76,9 @@ type Row = {
   atts: SentAttachment[] | null;
 };
 
+// Stable empty transcript, so "no cover" keeps one identity across renders.
+const NO_MESSAGES: AgentMessage[] = [];
+
 // Pulsing "Thinking… / Agent is working…" row (shimmer stand-in).
 function ShimmerRow({ label }: { label: string }) {
   const c = useChatColors();
@@ -87,6 +93,42 @@ function ShimmerRow({ label }: { label: string }) {
         <ActivityIndicator size="small" color={c.mutedForeground} />
         <Text className="text-sm text-muted-foreground">{label}</Text>
       </View>
+    </Animated.View>
+  );
+}
+
+// Shown only for an EXISTING chat we have no local cover for (first open on this
+// device) while flue re-streams its durable history — a couple of breathing
+// bubbles in the transcript's own shape, so the real messages land into the
+// layout that's already there. Deliberately not a spinner: a centered spinner
+// reads as "the screen is broken", and it replaces the whole surface instead of
+// previewing it.
+// Heights stand in for message length — a couple of paragraphs, a couple of
+// one-liners — so the placeholder fills the transcript the way real turns do.
+const SKELETON = [
+  { mine: false, w: '78%', h: 64 },
+  { mine: true, w: '46%', h: 40 },
+  { mine: false, w: '88%', h: 128 },
+  { mine: true, w: '38%', h: 40 },
+  { mine: false, w: '82%', h: 88 },
+  { mine: false, w: '58%', h: 40 },
+] as const;
+
+function TranscriptSkeleton() {
+  const opacity = useSharedValue(0.35);
+  useEffect(() => {
+    opacity.value = withRepeat(withTiming(0.7, { duration: 900 }), -1, true);
+  }, [opacity]);
+  const style = useAnimatedStyle(() => ({ opacity: opacity.value }));
+  return (
+    <Animated.View style={style} className="flex-1 justify-end gap-3 px-4 pb-4" pointerEvents="none">
+      {SKELETON.map((s, i) => (
+        <View
+          key={i}
+          style={{ width: s.w as `${number}%`, height: s.h }}
+          className={cn('rounded-2xl', s.mine ? 'self-end bg-primary/20' : 'self-start bg-muted')}
+        />
+      ))}
     </Animated.View>
   );
 }
@@ -161,14 +203,56 @@ export default function ChatScreen() {
     setRemountKey((k) => k + 1);
   }, [activeId, getInitial]);
 
-  const messages: AgentMessage[] = agent?.messages ?? [];
+  // --- The cover (see src/lib/agent/transcript-cache.ts) ---
+  //
+  // flue re-streams this chat's durable transcript on every cold start, so
+  // `agent.messages` is empty for the first beat and the screen would flash the
+  // "Ask me to build the episode" empty state before the history popped in. flue
+  // can't be seeded, so we render our own local mirror of the last-seen transcript
+  // meanwhile and swap to the live one when it lands. The swap is a plain data
+  // change on the same inverted list — no remount, no scroll jump, and identical
+  // rows, so it reads as the chat simply being there.
+  //
+  // The active chat's cover is already in memory (the provider warms it during
+  // boot), so this is a render-time read — no state, no post-mount frame. The
+  // async branch below only covers switching into a chat whose cover hasn't been
+  // read this launch.
+  const memCover = peekTranscript(activeId);
+  const [asyncCover, setAsyncCover] = useState<{ id: string; messages: AgentMessage[] } | null>(
+    null,
+  );
+  useEffect(() => {
+    if (memCover) return;
+    let alive = true;
+    preloadTranscript(activeId).then((m) => {
+      if (alive && m.length) setAsyncCover({ id: activeId, messages: m });
+    });
+    return () => {
+      alive = false;
+    };
+  }, [activeId, memCover]);
+  const cover = memCover ?? (asyncCover?.id === activeId ? asyncCover.messages : NO_MESSAGES);
+
+  const live: AgentMessage[] = agent?.messages ?? [];
+  const historyReady: boolean = !!agent?.historyReady;
+  const showingCover = !historyReady && live.length === 0 && cover.length > 0;
+  const messages: AgentMessage[] = showingCover ? cover : live;
+  // No cover and nothing live yet: an EXISTING chat is still loading (skeleton),
+  // but a brand-new one has no server transcript to wait for — it gets the empty
+  // state right away. Mirrors the web `looksNew` gate in AgentChat.jsx.
+  const activeChat = (conv.list as Chat[]).find((ch) => ch.id === activeId);
+  const looksNew =
+    !activeChat || (activeChat.title === 'New chat' && !activeChat.attachments?.length);
+  const waitingForHistory = !historyReady && !looksNew;
   const busy = agentIsBusy(agent);
   const thinking = useMemo(() => isThinking(messages, busy), [messages, busy]);
   const working = useMemo(() => workingTool(messages, busy), [messages, busy]);
   const reasoning = useMemo(() => isReasoning(messages, busy), [messages, busy]);
   // Interactive `ask_question` cards: which one is pending vs already answered.
   const qa = useMemo(() => deriveQA(messages), [messages]);
-  const canRespond = !busy;
+  // A question card on the cover is a picture of one — answering it would send
+  // against a transcript flue hasn't handed us yet.
+  const canRespond = !busy && !showingCover;
 
   // Ordinal-align each user message with the images it was sent with (oldest→newest).
   const rows = useMemo<Row[]>(() => {
@@ -332,7 +416,11 @@ export default function ChatScreen() {
 
       <View className="relative min-h-0 flex-1">
         {rows.length === 0 ? (
-          <EmptyChat onSuggest={sendQuick} />
+          waitingForHistory ? (
+            <TranscriptSkeleton />
+          ) : (
+            <EmptyChat onSuggest={sendQuick} />
+          )
         ) : (
           <FlatList
             key={remountKey}

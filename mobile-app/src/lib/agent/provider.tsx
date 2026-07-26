@@ -27,6 +27,12 @@ import {
   withActiveForProject,
   type ChatStore,
 } from './chat-store';
+import {
+  dropTranscript,
+  preloadTranscript,
+  pruneTranscripts,
+  saveTranscript,
+} from './transcript-cache';
 
 // ---------------------------------------------------------------------------
 // A single shared flue agent conversation for the whole app — port of the web
@@ -72,8 +78,18 @@ function useConversationManager() {
   // Hydrate once from AsyncStorage, scoped to the project active at load time.
   useEffect(() => {
     let alive = true;
-    loadStore(getProjectId()).then((s) => {
-      if (alive) setStore(s);
+    loadStore(getProjectId()).then(async (s) => {
+      // Warm the last chat's local transcript cover BEFORE publishing the store:
+      // nothing renders until we do, so the chat screen's very first frame can
+      // read it synchronously (peekTranscript) and open already-drawn instead of
+      // flashing the empty state while flue re-streams durable history.
+      const id = activeChatId(s, getProjectId());
+      if (id) await preloadTranscript(id);
+      if (!alive) return;
+      setStore(s);
+      // Housekeeping: covers for chats this store no longer knows about (deleted
+      // on another launch, or shed by `trimStore`) are dead weight.
+      pruneTranscripts(s.order);
     });
     return () => {
       alive = false;
@@ -121,7 +137,8 @@ function useConversationManager() {
   );
 
   const deleteChat = useCallback(
-    (id: string) =>
+    (id: string) => {
+      dropTranscript(id); // its local cover goes with it
       update((prev) => {
         const chat = prev.chats[id];
         if (!chat) return prev;
@@ -134,7 +151,8 @@ function useConversationManager() {
         }
         // If that emptied the chat's project, hand it a fresh blank one.
         return withActiveForProject({ activeByProject, order, chats }, chat.projectId);
-      }),
+      });
+    },
     [update],
   );
 
@@ -344,6 +362,16 @@ function AgentSessionRunner({
     const title = deriveTitle(flueAgent.messages);
     if (title) conv.noteActivity(activeId, title);
   }, [flueAgent.messages, activeId, conv]);
+
+  // Mirror the transcript locally so the next cold start can draw this chat on
+  // the first frame instead of flashing the empty state while flue re-streams
+  // durable history (see transcript-cache.ts). Gated on `historyReady`: before
+  // it, `messages` is the empty pre-history state (or a resync's partial), and
+  // caching that would clobber a perfectly good cover with nothing.
+  useEffect(() => {
+    if (!flueAgent.historyReady) return;
+    saveTranscript(activeId, flueAgent.messages);
+  }, [flueAgent.historyReady, flueAgent.messages, activeId]);
 
   // Publish before paint so switching chats never flashes stale content.
   useLayoutEffect(() => {
