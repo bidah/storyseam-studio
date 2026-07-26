@@ -9,6 +9,7 @@ import {
   useState,
   type ReactNode,
 } from 'react';
+import { AppState } from 'react-native';
 import { router } from 'expo-router';
 import { useQueryClient } from '@tanstack/react-query';
 import { FlueProvider, useFlueAgent } from '@flue/react';
@@ -194,16 +195,52 @@ function useConversationManager() {
   );
 }
 
+// ---------------------------------------------------------------------------
+// Agent-stream resilience (a port of the data-firehose recovery in
+// src/lib/sse.ts, aimed at the flue observation instead).
+//
+// flue's SSE observation lives inside @flue/react's AgentSession and has NO
+// RN-aware liveness recovery: a fatal transport error (401/403/404) terminates
+// it for good with no reconnect, and a half-open socket (app backgrounded, Wi-Fi
+// ↔ cellular handoff) zombies it silently — reader.read() never resolves and
+// never throws. In every case `status` pins at submitted/streaming and the chat
+// sticks on "Thinking…" forever: the pending `submission-settled` is never
+// delivered, and even a subsequent send won't stream because the observation is
+// dead. `agents.abort` (the Stop button) is the ONLY manual escape today.
+//
+// We self-heal by REMOUNTING the runner (its `key` carries a resync nonce), which
+// builds a fresh AgentSession → fresh observe: it reloads durable history (picking
+// up any settlement that landed while we were dead) and reopens the SSE stream.
+// Resyncs are rate-limited so a genuinely-dead stream (a real auth expiry) surfaces
+// its error card instead of flash-looping.
+const AGENT_WATCHDOG_MS = 60000; // busy this long with zero transcript progress → stream is dead
+const RESYNC_MAX = 3; // at most this many remounts…
+const RESYNC_WINDOW_MS = 30000; // …within this window, then give up and leave the error visible
+
+// Is a tool call still in flight on the last assistant message? A long tool
+// (a render) legitimately streams no deltas for minutes, so the watchdog must
+// not mistake that quiet for a dead stream.
+function hasRunningTool(messages: any[]): boolean {
+  const last = messages[messages.length - 1];
+  if (!last || last.role === 'user') return false;
+  return (last.parts || []).some(
+    (p: any) =>
+      p.type === 'dynamic-tool' && p.state !== 'output-available' && p.state !== 'output-error',
+  );
+}
+
 function AgentSessionRunner({
   activeId,
   projectId,
   conv,
   publish,
+  requestResync,
 }: {
   activeId: string;
   projectId: string | null;
   conv: any;
   publish: (agent: any) => void;
+  requestResync: () => void;
 }) {
   // flue's durable key. The Worker prepends `${userId}~`; we own the rest.
   const id = `${projectId ?? ''}~${activeId}`;
@@ -237,6 +274,38 @@ function AgentSessionRunner({
     const settled = flueAgent.status === 'idle' || flueAgent.status === 'error';
     if (wasBusy && settled) invalidateProject();
   }, [flueAgent.status, invalidateProject]);
+
+  // --- Agent-stream resilience (see the block above the component) ---
+  const busy = flueAgent.status === 'submitted' || flueAgent.status === 'streaming';
+  const busyRef = useRef(busy);
+  busyRef.current = busy;
+
+  // (a) Fatal transport error (401/403/404) terminates the observation for good.
+  // Remount to reopen the stream, so the error can clear and the next send streams.
+  const errPrevRef = useRef(flueAgent.status);
+  useEffect(() => {
+    const prev = errPrevRef.current;
+    errPrevRef.current = flueAgent.status;
+    if (prev !== 'error' && flueAgent.status === 'error') requestResync();
+  }, [flueAgent.status, requestResync]);
+
+  // (b) Foreground: iOS silently kills the socket on background. A turn that was
+  // in flight while we were away may have finished (or zombied) — rebuild on return.
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (s) => {
+      if (s === 'active' && busyRef.current) requestResync();
+    });
+    return () => sub.remove();
+  }, [requestResync]);
+
+  // (c) Zombie watchdog: this effect re-arms on every transcript change, so during
+  // real streaming (deltas land constantly) it never fires. Only busy-with-zero-
+  // progress — and no tool legitimately running — for AGENT_WATCHDOG_MS trips it.
+  useEffect(() => {
+    if (!busy || hasRunningTool(flueAgent.messages)) return;
+    const timer = setTimeout(requestResync, AGENT_WATCHDOG_MS);
+    return () => clearTimeout(timer);
+  }, [busy, flueAgent.messages, requestResync]);
 
   // Adapt flue's surface (`messages`, `status`, `sendMessage`) to the shape the
   // rest of the app consumes (`messages`, `status`, `send`, `stop`, `error`).
@@ -291,16 +360,35 @@ export function AgentProvider({ children }: { children: ReactNode }) {
   // Per-project chat scoping (restore the last chat on project switch) is handled
   // inside the conversation manager — see `useConversationManager`.
 
+  // Remount the runner (fresh flue AgentSession → fresh SSE observe) to recover a
+  // dead/zombied agent stream — see the resilience block above AgentSessionRunner.
+  // Rate-limited: a stream that keeps dying (a real auth expiry) stops remounting
+  // after RESYNC_MAX in the window, so its error card stays put instead of looping.
+  const [resyncNonce, setResyncNonce] = useState(0);
+  const resyncTimesRef = useRef<number[]>([]);
+  const requestResync = useCallback(() => {
+    const now = Date.now();
+    const recent = resyncTimesRef.current.filter((t) => now - t < RESYNC_WINDOW_MS);
+    if (recent.length >= RESYNC_MAX) {
+      resyncTimesRef.current = recent;
+      return;
+    }
+    recent.push(now);
+    resyncTimesRef.current = recent;
+    setResyncNonce((n) => n + 1);
+  }, []);
+
   return (
     <FlueProvider client={flueClient}>
       <ConversationsContext.Provider value={conv}>
         {conv.hydrated && conv.activeId ? (
           <AgentSessionRunner
-            key={conv.activeId}
+            key={`${conv.activeId}:${resyncNonce}`}
             activeId={conv.activeId}
             projectId={conv.pid ?? null}
             conv={conv}
             publish={setAgent}
+            requestResync={requestResync}
           />
         ) : null}
         <AgentContext.Provider value={agent}>{agent ? children : null}</AgentContext.Provider>

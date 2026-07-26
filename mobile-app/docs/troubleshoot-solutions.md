@@ -5,6 +5,54 @@ the shipped fix — so the same symptom never has to be re-diagnosed from scratc
 
 ---
 
+## Chat stuck on "Thinking…" after an error (esp. flue 401), never recovers (2026-07-26)
+
+**Symptom.** The agent shows an error card ("agent error: flue api error 401:
+request failed" or similar), or the app returns from background mid-turn — and
+the chat is then stuck: the "Thinking…" shimmer stays up, the composer stays
+disabled, and even sending a new message never streams a reply. Only quitting
+the app (or tapping Stop, which POSTs `agents.abort`) escapes.
+
+**What it was NOT.** Not the shimmer logic (`isThinking` is just a function of
+`busy`), and not a server orphan the abort fix already covered. `busy` is pinned
+because `status` is stuck at `submitted`/`streaming`.
+
+**Root cause — the flue SSE observation dies and never reconnects.** `status`
+is owned entirely by `@flue/react`'s `AgentSession`, which drains
+`activeSubmissionIds`/`pendingSends` only when SSE chunks (`submission-settled`,
+the canonical user echo) arrive. That observation has **no RN-aware liveness
+recovery**:
+- A **fatal transport error (401/403/404)** makes the SDK emit `local_observation`
+  phase `"error"` and then **terminate the stream with no retry**. `status`
+  becomes `error`, but the stream is dead — a subsequent send POSTs fine and the
+  server streams a reply that **nothing is listening for**, so `status` re-pins at
+  `streaming` → "Thinking…" forever.
+- A **half-open socket** (backgrounding, Wi-Fi↔cellular handoff) zombies it
+  silently: `reader.read()` never resolves or throws, so no `submission-settled`
+  ever lands. durable-streams' visibility-based reconnect is **browser-only**
+  (gated on `typeof document`), so on RN it never arms.
+
+`src/lib/sse.ts` already guards the *data firehose* against exactly this
+(watchdog + `AppState` foreground rebuild), but the agent stream — buried inside
+`@flue/*` — never got it.
+
+**Fix (`src/lib/agent/provider.tsx`).** Self-heal by **remounting**
+`AgentSessionRunner` (its `key` carries a `resyncNonce`), which builds a fresh
+`AgentSession` → fresh `observe`: reloads durable history (picking up any
+settlement that landed while dead) and reopens the SSE stream. Triggers, all
+funneled through a rate-limited `requestResync` (`RESYNC_MAX` per
+`RESYNC_WINDOW_MS`, so a real auth expiry surfaces its card instead of
+flash-looping): (a) status transitions into `error`; (b) `AppState` → `active`
+while busy; (c) a zombie watchdog — busy with zero transcript progress for
+`AGENT_WATCHDOG_MS` and no tool legitimately running (a long render streams no
+deltas, so `hasRunningTool` suppresses the watchdog for it).
+
+**Note.** This is a client-side recovery, not a flue fix; the proper home for an
+idle-heartbeat is `@flue/sdk`'s observation `follow()` loop. Revisit if flue ships
+RN-aware stream liveness.
+
+---
+
 ## First Higgsfield OAuth login lands back on /sign-in; second login works (2026-07-16)
 
 **Symptom.** Tap "Sign in with Higgsfield" → the auth browser modal opens, the
