@@ -17,7 +17,7 @@
 // Remotion render ("Deliver") is a separate Stage-4 route (/api/render) and is
 // NOT ported here. The SSE stream (/api/timeline/events) is already wired in
 // index.js.
-import { readDoc, writeDoc } from "../lib/docs.js";
+import { readDoc, updateDoc } from "../lib/docs.js";
 import { listMedia, putMedia, mediaKey } from "../lib/media.js";
 import { broadcast } from "../lib/broadcast.js";
 
@@ -32,8 +32,18 @@ const bundleNum = (id) => {
   return m ? Number(m[1]) : 0;
 };
 
-const readSelections = (env, pid) => readDoc(env, pid, "selections", { library: {}, episode: {} });
-const writeSelections = (env, pid, db) => writeDoc(env, pid, "selections", db);
+const SELECTIONS_FALLBACK = { library: {}, episode: {} };
+const readSelections = (env, pid) => readDoc(env, pid, "selections", SELECTIONS_FALLBACK);
+// CONCURRENCY: `selections` is the SHARED de-facto DB — the Library, Episode,
+// Cuts, Script and Storyboard surfaces all keep their state in it. A
+// readDoc→writeDoc pair here writes the WHOLE document back, so it silently
+// reverts anything another surface changed in between. The Editor autosaves the
+// timeline every 600 ms while you drag, which makes this route the most likely
+// clobberer in the app. Every mutation therefore goes through `editSelections`
+// (compare-and-swap on the doc version). `mutate` may re-run — keep it pure and
+// do any side effects (media writes, cut building) BEFORE calling it.
+const editSelections = (env, pid, mutate) =>
+  updateDoc(env, pid, "selections", SELECTIONS_FALLBACK, mutate);
 
 // Normalized cut history for the API: existing files only, newest-first, url
 // added. Replaces the Express `getCutHistory(db)` — the `fs.existsSync` filter
@@ -443,14 +453,16 @@ export function registerTimeline(app) {
     const pid = c.get("projectId");
     let body;
     try { body = await c.req.json(); } catch { body = {}; }
-    const db = await readSelections(c.env, pid);
-    const list = Array.isArray(db.radioVersions) ? db.radioVersions : [];
-    const entry = body?.v != null ? list.find((r) => r.v === Number(body.v)) : list[list.length - 1];
-    if (!entry || !entry.timeline) return c.json({ error: "No matching radio version to load" }, 404);
-    db.editorTimeline = entry.timeline;
-    await writeSelections(c.env, pid, db);
+    const res = await editSelections(c.env, pid, (db) => {
+      const list = Array.isArray(db.radioVersions) ? db.radioVersions : [];
+      const entry = body?.v != null ? list.find((r) => r.v === Number(body.v)) : list[list.length - 1];
+      if (!entry || !entry.timeline) return { abort: true, missing: true };
+      db.editorTimeline = entry.timeline;
+      return { timeline: entry.timeline };
+    });
+    if (res.missing) return c.json({ error: "No matching radio version to load" }, 404);
     await broadcastTimeline(c, pid, body?.clientId);
-    return c.json({ ok: true, timeline: entry.timeline });
+    return c.json({ ok: true, timeline: res.timeline });
   });
 
   // Load a stored animatic version into the editor. Mirrors from-radio.
@@ -458,14 +470,16 @@ export function registerTimeline(app) {
     const pid = c.get("projectId");
     let body;
     try { body = await c.req.json(); } catch { body = {}; }
-    const db = await readSelections(c.env, pid);
-    const list = Array.isArray(db.animaticVersions) ? db.animaticVersions : [];
-    const entry = body?.v != null ? list.find((r) => r.v === Number(body.v)) : list[list.length - 1];
-    if (!entry || !entry.timeline) return c.json({ error: "No matching animatic version to load" }, 404);
-    db.editorTimeline = entry.timeline;
-    await writeSelections(c.env, pid, db);
+    const res = await editSelections(c.env, pid, (db) => {
+      const list = Array.isArray(db.animaticVersions) ? db.animaticVersions : [];
+      const entry = body?.v != null ? list.find((r) => r.v === Number(body.v)) : list[list.length - 1];
+      if (!entry || !entry.timeline) return { abort: true, missing: true };
+      db.editorTimeline = entry.timeline;
+      return { timeline: entry.timeline };
+    });
+    if (res.missing) return c.json({ error: "No matching animatic version to load" }, 404);
     await broadcastTimeline(c, pid, body?.clientId);
-    return c.json({ ok: true, timeline: entry.timeline });
+    return c.json({ ok: true, timeline: res.timeline });
   });
 
   // Media pool for the editor — every video generation on disk (+ every Sound
@@ -521,9 +535,9 @@ export function registerTimeline(app) {
     if (!timeline || !Array.isArray(timeline.tracks)) {
       return c.json({ error: "Body must be { timeline: { tracks: [...] } }" }, 400);
     }
-    const db = await readSelections(c.env, pid);
-    db.editorTimeline = timeline;
-    await writeSelections(c.env, pid, db);
+    // Only the timeline slot is replaced — NOT the whole document, which is
+    // what the old read-then-write did at autosave frequency.
+    await editSelections(c.env, pid, (db) => { db.editorTimeline = timeline; });
     await broadcastTimeline(c, pid, clientId);
     return c.json({ ok: true, timeline });
   });
@@ -534,11 +548,12 @@ export function registerTimeline(app) {
     const pid = c.get("projectId");
     let body;
     try { body = await c.req.json(); } catch { body = {}; }
+    // Build FIRST: buildTimelineFromCut probes media and writes a duration cache
+    // back to `selections`, so it must not run inside the compare-and-swap.
     const db = await readSelections(c.env, pid);
     const timeline = await buildTimelineFromCut(c.env, pid, db, body?.v);
     if (!timeline) return c.json({ error: "No matching cut generation to load" }, 404);
-    db.editorTimeline = timeline;
-    await writeSelections(c.env, pid, db);
+    await editSelections(c.env, pid, (doc) => { doc.editorTimeline = timeline; });
     await broadcastTimeline(c, pid, body?.clientId);
     return c.json({ ok: true, timeline });
   });
@@ -550,23 +565,31 @@ export function registerTimeline(app) {
     try { body = await c.req.json(); } catch { body = {}; }
     const ops = body?.ops;
     if (!Array.isArray(ops)) return c.json({ error: "Body must be { ops: [...] }" }, 400);
-    const db = await readSelections(c.env, pid);
-    if (!db.editorTimeline || !Array.isArray(db.editorTimeline.tracks)) {
+    const res = await editSelections(c.env, pid, (db) => {
+      if (!db.editorTimeline || !Array.isArray(db.editorTimeline.tracks)) {
+        return { abort: true, noTimeline: true };
+      }
+      applyTimelineOps(db.editorTimeline, ops);
+      return { timeline: db.editorTimeline };
+    });
+    if (res.noTimeline) {
       return c.json({ error: "No timeline loaded yet — load a cut into the editor first" }, 400);
     }
-    applyTimelineOps(db.editorTimeline, ops);
-    await writeSelections(c.env, pid, db);
     // The chat agent has no clientId, so open Editor tabs treat this as a
     // foreign edit and reload — reflecting agent edits in the UI right away.
     await broadcastTimeline(c, pid, body?.clientId);
-    return c.json({ ok: true, timeline: db.editorTimeline });
+    return c.json({ ok: true, timeline: res.timeline });
   });
 
   // Stills — frames "grabbed" from the editor preview via right-click. The PNG
   // bytes live in R2 (media/<pid>/stills/<file>, served at /stills/<file>); the
   // per-still metadata (source clip, playhead time, resolution, …) lives in the
   // `stills` doc so the Stills tab in the media pool can list + inspect them.
-  const readStills = (env, pid) => readDoc(env, pid, "stills", { items: [] });
+  const STILLS_FALLBACK = { items: [] };
+  const readStills = (env, pid) => readDoc(env, pid, "stills", STILLS_FALLBACK);
+  // Grabbing several frames in quick succession is normal, so the same CAS rule
+  // applies here; the R2 bytes are written before the mutate, never inside it.
+  const editStills = (env, pid, mutate) => updateDoc(env, pid, "stills", STILLS_FALLBACK, mutate);
 
   // List saved stills, newest-first, each with its public media URL.
   app.get("/api/stills", async (c) => {
@@ -600,9 +623,7 @@ export function registerTimeline(app) {
     await putMedia(c.env, pid, "stills", file, bytes, "image/png");
 
     const record = { id, file, createdAt: new Date().toISOString(), ...meta };
-    const doc = await readStills(c.env, pid);
-    doc.items = [record, ...(doc.items || [])];
-    await writeDoc(c.env, pid, "stills", doc);
+    await editStills(c.env, pid, (doc) => { doc.items = [record, ...(doc.items || [])]; });
     // The generic post-mutation middleware broadcasts "data" for /api/* writes.
     return c.json({ ok: true, still: { ...record, url: "/stills/" + file } });
   });
@@ -614,8 +635,7 @@ export function registerTimeline(app) {
     const doc = await readStills(c.env, pid);
     const hit = (doc.items || []).find((s) => s.id === id);
     if (hit?.file) await c.env.BUCKET.delete(mediaKey(pid, "stills", hit.file));
-    doc.items = (doc.items || []).filter((s) => s.id !== id);
-    await writeDoc(c.env, pid, "stills", doc);
+    await editStills(c.env, pid, (d) => { d.items = (d.items || []).filter((s) => s.id !== id); });
     return c.json({ ok: true });
   });
 }

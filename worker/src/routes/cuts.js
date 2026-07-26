@@ -10,7 +10,7 @@
 // presigned R2 GETs and pushes the output to a presigned R2 PUT. Filesystem
 // existence checks (`fs.existsSync`) become `mediaExists`. The selections DB and
 // the sounds doc are the D1 doc stores (`selections` and `sounds` rows). Media URLs stay `/gen/<file>` / `/sound-media/<file>`.
-import { readDoc, writeDoc } from "../lib/docs.js";
+import { readDoc, updateDoc } from "../lib/docs.js";
 import { mediaKey, mediaExists, listMediaSet } from "../lib/media.js";
 import { runNative, getSandbox } from "../lib/ffmpeg.js";
 import { createJob, startSandboxJob } from "../lib/jobs.js";
@@ -24,8 +24,15 @@ const b64 = (str) => {
 };
 
 // The de-facto selections DB (holds db.video, db.cut, db.cutHistory).
-const readDB = (env, pid) => readDoc(env, pid, "selections", { library: {}, episode: {} });
-const writeDB = (env, pid, db) => writeDoc(env, pid, "selections", db);
+const DB_FALLBACK = { library: {}, episode: {} };
+const readDB = (env, pid) => readDoc(env, pid, "selections", DB_FALLBACK);
+// CONCURRENCY: `selections` is the SHARED de-facto DB, so a readDoc→writeDoc
+// pair writes the whole document back and reverts whatever another surface
+// changed in between. Stitching and trimming are especially exposed: they run
+// ffmpeg for tens of seconds between reading the doc and appending their result.
+// Mutations go through `editDB` (compare-and-swap on the doc version), and the
+// long-running work stays OUTSIDE it — `mutate` may re-run.
+const editDB = (env, pid, mutate) => updateDoc(env, pid, "selections", DB_FALLBACK, mutate);
 
 // ---------------------------------------------------------------------------
 // Complete cuts: stitch the SELECTED take of each bundle, in order, into one mp4.
@@ -144,14 +151,14 @@ async function buildCutSegments(env, pid, { probe = true, genSet, db: dbIn } = {
   // for every un-probed take), caching the result on the take (picked.take is a
   // reference into db.video) so later cuts views never probe again. `probe:false`
   // (stitch) skips this entirely — the concat needs only the ordered file list.
-  let dirty = false;
+  let probed = null; // { <file>: seconds } — what this pass newly learned
   if (probe) {
     const need = picks.map((p) => p.picked?.take).filter((t) => t && !(Number(t.dur) > 0));
     if (need.length) {
       const durs = await probeDurations(env, pid, need.map((t) => t.file));
       for (const t of need) {
         const dur = durs[t.file];
-        if (dur) { t.dur = dur; dirty = true; }
+        if (dur) { t.dur = dur; (probed ||= {})[t.file] = dur; }
       }
     }
   }
@@ -177,7 +184,22 @@ async function buildCutSegments(env, pid, { probe = true, genSet, db: dbIn } = {
     });
     cursor += duration;
   }
-  if (dirty) { try { await writeDB(env, pid, db); } catch { /* cache best-effort */ } }
+  // Duration cache — best-effort. The durations live ON each take, so re-apply
+  // them by file id under the CAS: writing the whole doc back would revert any
+  // concurrent edit made during the probe (which is a sandbox round-trip).
+  if (probed) {
+    try {
+      await editDB(env, pid, (doc) => {
+        for (const entry of Object.values(doc.video || {})) {
+          const arr = Array.isArray(entry) ? entry : entry ? [entry] : [];
+          for (const take of arr) {
+            const dur = probed[take?.file];
+            if (dur && !(Number(take.dur) > 0)) take.dur = dur;
+          }
+        }
+      });
+    } catch { /* cache best-effort */ }
+  }
   return segs;
 }
 
@@ -454,7 +476,7 @@ export function registerCuts(app) {
     try {
       const env = c.env, pid = c.get("projectId");
       const db = await readDB(env, pid);
-      if (normalizeVideoSelections(db)) await writeDB(env, pid, db); // heal stale multi-selection first
+      if (normalizeVideoSelections(db)) await editDB(env, pid, (d) => { normalizeVideoSelections(d); }); // heal stale multi-selection first
       // One R2 list of the "gen" bucket, shared across every existence check in
       // this request (segments, history, scored versions) — was ~100 serial HEADs.
       const genSet = await listMediaSet(env, pid, "gen");
@@ -472,7 +494,7 @@ export function registerCuts(app) {
     try {
       const env = c.env, pid = c.get("projectId");
       const db = await readDB(env, pid);
-      if (normalizeVideoSelections(db)) await writeDB(env, pid, db); // stitch the take actually picked
+      if (normalizeVideoSelections(db)) await editDB(env, pid, (d) => { normalizeVideoSelections(d); }); // stitch the take actually picked
       // Probe durations here so the FROZEN segments carry real timecodes — the
       // player timeline reads them. (Probing is cached, so it's ~free once warm;
       // the concat itself needs only the file order, not the durations.)
@@ -491,9 +513,11 @@ export function registerCuts(app) {
       const at = new Date().toISOString();
       // Optimistic history entry — getCutHistory filters by mediaExists, so it
       // only surfaces once the async concat job writes the file to R2.
-      db.cutHistory.push({ v, kind: "stitch", file: outFile, at, range, totalDuration, segments: frozen });
-      db.cut = { range, segments: frozen, totalDuration, stitchedAt: at }; // legacy pointer
-      await writeDB(env, pid, db);
+      await editDB(env, pid, async (doc) => {
+        await ensureCutHistory(env, pid, doc);
+        doc.cutHistory.push({ v, kind: "stitch", file: outFile, at, range, totalDuration, segments: frozen });
+        doc.cut = { range, segments: frozen, totalDuration, stitchedAt: at }; // legacy pointer
+      });
 
       // The full-episode concat is long + its output is large (>100MB), so it
       // runs as an async Daytona job: pull each take from /files, concat, and
@@ -563,8 +587,11 @@ export function registerCuts(app) {
         baseV: base.v,
         music: cleanMusic(layout),
       };
-      db.cutHistory.push(entry);
-      await writeDB(env, pid, db);
+      // mixScore ran ffmpeg above; only the history append happens under the CAS.
+      await editDB(env, pid, async (doc) => {
+        await ensureCutHistory(env, pid, doc);
+        doc.cutHistory.push(entry);
+      });
 
       return c.json({ ok: true, version: v, url: "/gen/" + file, file, gainDb: entry.gainDb, count: layout.length, music: entry.music });
     } catch (e) {
@@ -636,10 +663,18 @@ export function registerCuts(app) {
       };
       // Insert right after the source so the trim card sits next to its original in
       // the carousel; not selected on creation (the user picks it in the UI).
-      list.splice(srcIdx + 1, 0, take);
-      db.video[bundle] = list;
-      await writeDB(env, pid, db);
-      return c.json({ ok: true, bundle, file, name: take.name, kind: "trim", trim, count: list.length, url: "/gen/" + file });
+      // Re-resolve the list inside the CAS: the ffmpeg run above took real time,
+      // and another take may have been attached to this bundle meanwhile.
+      const { count } = await editDB(env, pid, (doc) => {
+        doc.video = doc.video || {};
+        let cur = doc.video[bundle];
+        cur = Array.isArray(cur) ? cur : cur ? [cur] : [];
+        const at = cur.findIndex((v) => v.file === sourceFile);
+        cur.splice(at < 0 ? cur.length : at + 1, 0, take);
+        doc.video[bundle] = cur;
+        return { count: cur.length };
+      });
+      return c.json({ ok: true, bundle, file, name: take.name, kind: "trim", trim, count, url: "/gen/" + file });
     } catch (e) {
       return c.json({ error: String(e.message || e) }, 500);
     }

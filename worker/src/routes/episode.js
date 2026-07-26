@@ -10,14 +10,20 @@
 // stage repoints these to R2 streaming. The ffmpeg endpoints (/cuts, /stitch,
 // /score, /trim) are intentionally NOT ported here (handled separately). See the
 // TODO markers for the media-copy step still owed.
-import { readDoc, writeDoc } from "../lib/docs.js";
+import { readDoc, writeDoc, updateDoc } from "../lib/docs.js";
 import { listMedia, listMediaSet, mediaKey, filesUrl } from "../lib/media.js";
 import { buildBundles, charKey, bundleSpeakers } from "../lib/pack.js";
 import { normalizeShot } from "../lib/shots.js";
 
 // The de-facto selections DB (library picks + per-bundle episode selections).
-const readDB = (env, pid) => readDoc(env, pid, "selections", { library: {}, episode: {} });
-const writeDB = (env, pid, db) => writeDoc(env, pid, "selections", db);
+const DB_FALLBACK = { library: {}, episode: {} };
+const readDB = (env, pid) => readDoc(env, pid, "selections", DB_FALLBACK);
+// CONCURRENCY: `selections` is the SHARED de-facto DB (Library, Editor, Cuts,
+// Script and Storyboard all live in it), so a readDoc→writeDoc pair writes the
+// whole document back and reverts whatever another surface changed in between.
+// Mutations go through `editDB` — compare-and-swap on the doc version. `mutate`
+// may re-run, so keep it pure: do renders, probes and media writes BEFORE it.
+const editDB = (env, pid, mutate) => updateDoc(env, pid, "selections", DB_FALLBACK, mutate);
 // The episode manifest (the packed <=15s bundles); null when not seeded.
 const readManifest = (env, pid) => readDoc(env, pid, "episode-manifest", null);
 const writeManifest = (env, pid, m) => writeDoc(env, pid, "episode-manifest", m);
@@ -177,7 +183,7 @@ const selKey = (v) => Date.parse(v?.selectedAt) || Date.parse(v?.ts) || 0;
 
 // Collapse any bundle that ended up with >1 selected take down to the single
 // most-recently-selected one, so the UI, the disk, and the stitch always agree.
-// Returns true if it changed anything (caller should writeDB).
+// Returns true if it changed anything (caller should persist the doc).
 function normalizeVideoSelections(db) {
   let changed = false;
   for (const entry of Object.values(db.video || {})) {
@@ -229,14 +235,15 @@ export function registerEpisode(app) {
     try { body = await c.req.json(); } catch { body = {}; }
     const { bundle, rel, selected } = body || {};
     if (!bundle || !rel) return c.json({ error: "Missing 'bundle' or 'rel'" }, 400);
-    const db = await readDB(c.env, pid);
-    db.episodeAudio = db.episodeAudio || {};
-    const cur = new Set(db.episodeAudio[bundle] || []);
-    if (selected) cur.add(rel);
-    else cur.delete(rel);
-    db.episodeAudio[bundle] = [...cur];
-    await writeDB(c.env, pid, db);
-    return c.json({ ok: true, bundle, selected: db.episodeAudio[bundle] });
+    const { picked } = await editDB(c.env, pid, (db) => {
+      db.episodeAudio = db.episodeAudio || {};
+      const cur = new Set(db.episodeAudio[bundle] || []);
+      if (selected) cur.add(rel);
+      else cur.delete(rel);
+      db.episodeAudio[bundle] = [...cur];
+      return { picked: db.episodeAudio[bundle] };
+    });
+    return c.json({ ok: true, bundle, selected: picked });
   });
 
   // Revision signing: sign off one SECTION of a bundle (images | prompt | audio).
@@ -253,6 +260,8 @@ export function registerEpisode(app) {
       return c.json({ error: "Missing 'bundle' or invalid 'section'" }, 400);
     if (signed && !String(signedBy || "").trim())
       return c.json({ error: "Missing 'signedBy'" }, 400);
+    // Evaluate the needs gate BEFORE the compare-and-swap: it reads two other
+    // documents, and the mutate may re-run.
     const db = await readDB(c.env, pid);
     if (signed && (section === "images" || section === "audio")) {
       const [manifest, world] = await Promise.all([readManifest(c.env, pid), readWorld(c.env, pid)]);
@@ -271,12 +280,14 @@ export function registerEpisode(app) {
         }
       }
     }
-    db.signoffs = db.signoffs || {};
-    const cur = db.signoffs[bundle] || { images: null, prompt: null, audio: null };
-    cur[section] = signed ? { by: String(signedBy).trim(), at: new Date().toISOString() } : null;
-    db.signoffs[bundle] = cur;
-    await writeDB(c.env, pid, db);
-    return c.json({ ok: true, bundle, signoff: cur });
+    const { signoff } = await editDB(c.env, pid, (doc) => {
+      doc.signoffs = doc.signoffs || {};
+      const cur = doc.signoffs[bundle] || { images: null, prompt: null, audio: null };
+      cur[section] = signed ? { by: String(signedBy).trim(), at: new Date().toISOString() } : null;
+      doc.signoffs[bundle] = cur;
+      return { signoff: cur };
+    });
+    return c.json({ ok: true, bundle, signoff });
   });
 
   // Toggle a final-selection image as a chosen reference for one bundle/scene.
@@ -286,14 +297,15 @@ export function registerEpisode(app) {
     try { body = await c.req.json(); } catch { body = {}; }
     const { bundle, rel, selected } = body || {};
     if (!bundle || !rel) return c.json({ error: "Missing 'bundle' or 'rel'" }, 400);
-    const db = await readDB(c.env, pid);
-    db.episode = db.episode || {};
-    const cur = new Set(db.episode[bundle] || []);
-    if (selected) cur.add(rel);
-    else cur.delete(rel);
-    db.episode[bundle] = [...cur];
-    await writeDB(c.env, pid, db);
-    return c.json({ ok: true, bundle, selected: db.episode[bundle] });
+    const { picked } = await editDB(c.env, pid, (db) => {
+      db.episode = db.episode || {};
+      const cur = new Set(db.episode[bundle] || []);
+      if (selected) cur.add(rel);
+      else cur.delete(rel);
+      db.episode[bundle] = [...cur];
+      return { picked: db.episode[bundle] };
+    });
+    return c.json({ ok: true, bundle, selected: picked });
   });
 
   // Link one chosen reference to a scene NEED (an entry of bundle.images that
@@ -307,14 +319,15 @@ export function registerEpisode(app) {
     try { body = await c.req.json(); } catch { body = {}; }
     const { bundle, need, rel } = body || {};
     if (!bundle || !need) return c.json({ error: "Missing 'bundle' or 'need'" }, 400);
-    const db = await readDB(c.env, pid);
-    db.needLinks = db.needLinks || {};
-    const cur = db.needLinks[bundle] || {};
-    if (rel) cur[need] = String(rel);
-    else delete cur[need];
-    db.needLinks[bundle] = cur;
-    await writeDB(c.env, pid, db);
-    return c.json({ ok: true, bundle, links: cur });
+    const { links } = await editDB(c.env, pid, (db) => {
+      db.needLinks = db.needLinks || {};
+      const cur = db.needLinks[bundle] || {};
+      if (rel) cur[need] = String(rel);
+      else delete cur[need];
+      db.needLinks[bundle] = cur;
+      return { links: cur };
+    });
+    return c.json({ ok: true, bundle, links });
   });
 
   // Auto-assign: source every bundle's image + audio references from the World
@@ -382,10 +395,13 @@ export function registerEpisode(app) {
       });
     }
 
-    const db = await readDB(c.env, pid);
     let totalAssigned = 0;
     const summary = {};
     const locNoSheet = new Set();
+    await editDB(c.env, pid, (db) => {
+    totalAssigned = 0;
+    for (const k of Object.keys(summary)) delete summary[k];
+    locNoSheet.clear();
     if (!beat) {
       db.episode = {};
       db.episodeAudio = {};
@@ -417,7 +433,7 @@ export function registerEpisode(app) {
       summary[b.id] = images.length;
       totalAssigned += images.length;
     }
-    await writeDB(c.env, pid, db);
+    });
     return c.json({
       ok: true, beat, bundles: targets.length, totalAssigned, summary, source: "world",
       warnings: locNoSheet.size
@@ -455,11 +471,14 @@ export function registerEpisode(app) {
     const sameOld = {};
     for (const b of bundles) { const o = oldBySig[bundleSig(b)]; if (o) sameOld[b.id] = o; }
 
-    const db = await readDB(c.env, pid);
+    // Counters live OUTSIDE the mutate (the response reports them) and are reset
+    // at the top of each attempt, because `mutate` re-runs on a version conflict.
+    let stillsMoved = 0, stillsOrphaned = 0, videoMoved = 0, videoOrphaned = 0;
+    await editDB(c.env, pid, (db) => {
+    stillsMoved = 0; stillsOrphaned = 0; videoMoved = 0; videoOrphaned = 0;
 
     // (1) stills: remap by shot id — lossless.
     const newStills = {};
-    let stillsMoved = 0, stillsOrphaned = 0;
     for (const shotsMap of Object.values(db.stills || {})) {
       for (const [shotId, takes] of Object.entries(shotsMap || {})) {
         const nb = shotToNew[shotId];
@@ -472,7 +491,6 @@ export function registerEpisode(app) {
     // (2) videos: carry each old bundle's renders to whichever new bundle the
     //     majority of its shots landed in (dropped only if all its shots vanished).
     const newVideo = {};
-    let videoMoved = 0, videoOrphaned = 0;
     for (const [oldB, entry] of Object.entries(db.video || {})) {
       const arr = Array.isArray(entry) ? entry : entry ? [entry] : [];
       if (!arr.length) continue;
@@ -499,6 +517,8 @@ export function registerEpisode(app) {
     db.signoffs = carryUnchanged(db.signoffs);
     db.needLinks = carryUnchanged(db.needLinks);
 
+    });
+
     await writeManifest(c.env, pid, {
       ...(prev && typeof prev === "object" ? prev : {}),
       title: prev?.title || "Episode plan",
@@ -507,7 +527,6 @@ export function registerEpisode(app) {
       source: "rebuild",
       bundles,
     });
-    await writeDB(c.env, pid, db);
 
     const unchanged = Object.keys(sameOld).length;
     return c.json({
@@ -527,7 +546,9 @@ export function registerEpisode(app) {
     const [manifest, world] = await Promise.all([readManifest(c.env, pid), readWorld(c.env, pid)]);
     if (!manifest) return c.json({ episode: null });
     const db = await readDB(c.env, pid);
-    if (normalizeVideoSelections(db)) await writeDB(c.env, pid, db); // heal stale multi-selection
+    // Heal stale multi-selection. Re-applied inside the CAS so the repair can't
+    // revert a concurrent edit made between the read and the write.
+    if (normalizeVideoSelections(db)) await editDB(c.env, pid, (d) => { normalizeVideoSelections(d); });
     // Attach a list of rendered clips (newest last) for every bundle that has any
     // in R2. db.video[id] is an array of generations; tolerate the old single
     // object shape too. One R2 list (into a Set) replaces a per-take HEAD storm:
@@ -570,12 +591,13 @@ export function registerEpisode(app) {
     try { body = await c.req.json(); } catch { body = {}; }
     const { bundle, shot, file } = body || {};
     if (!bundle) return c.json({ error: "Missing 'bundle'" }, 400);
-    const db = await readDB(c.env, pid);
-    db.episodeFirstFrame = db.episodeFirstFrame || {};
-    if (file) db.episodeFirstFrame[bundle] = { shot: shot || null, file };
-    else delete db.episodeFirstFrame[bundle];
-    await writeDB(c.env, pid, db);
-    return c.json({ ok: true, bundle, firstFrame: db.episodeFirstFrame[bundle] || null });
+    const { firstFrame } = await editDB(c.env, pid, (db) => {
+      db.episodeFirstFrame = db.episodeFirstFrame || {};
+      if (file) db.episodeFirstFrame[bundle] = { shot: shot || null, file };
+      else delete db.episodeFirstFrame[bundle];
+      return { firstFrame: db.episodeFirstFrame[bundle] || null };
+    });
+    return c.json({ ok: true, bundle, firstFrame });
   });
 
   // Choose (or clear) the VIDEO STYLE CONTINUITY REFERENCE for a bundle's render —
@@ -588,12 +610,13 @@ export function registerEpisode(app) {
     try { body = await c.req.json(); } catch { body = {}; }
     const { bundle, from, file } = body || {};
     if (!bundle) return c.json({ error: "Missing 'bundle'" }, 400);
-    const db = await readDB(c.env, pid);
-    db.episodeRefVideo = db.episodeRefVideo || {};
-    if (file) db.episodeRefVideo[bundle] = { from: from || null, file };
-    else delete db.episodeRefVideo[bundle];
-    await writeDB(c.env, pid, db);
-    return c.json({ ok: true, bundle, refVideo: db.episodeRefVideo[bundle] || null });
+    const { refVideo } = await editDB(c.env, pid, (db) => {
+      db.episodeRefVideo = db.episodeRefVideo || {};
+      if (file) db.episodeRefVideo[bundle] = { from: from || null, file };
+      else delete db.episodeRefVideo[bundle];
+      return { refVideo: db.episodeRefVideo[bundle] || null };
+    });
+    return c.json({ ok: true, bundle, refVideo });
   });
 
   // Mark a rendered generation as selected/deselected (for stitching later).
@@ -603,22 +626,24 @@ export function registerEpisode(app) {
     try { body = await c.req.json(); } catch { body = {}; }
     const { bundle, file, selected } = body || {};
     if (!bundle || !file) return c.json({ error: "Missing 'bundle' or 'file'" }, 400);
-    const db = await readDB(c.env, pid);
-    const arr = Array.isArray(db.video?.[bundle]) ? db.video[bundle] : db.video?.[bundle] ? [db.video[bundle]] : [];
-    const g = arr.find((v) => v.file === file);
-    if (!g) return c.json({ error: "Generation not found" }, 404);
-    g.selected = !!selected;
-    // Single-selection: picking a take clears any other selected take in the
-    // bundle and stamps WHEN it was picked, so the most recent pick wins at
-    // stitch time even if stale flags linger.
-    if (g.selected) {
-      g.selectedAt = new Date().toISOString();
-      arr.forEach((v) => { if (v.file !== file) v.selected = false; });
-    }
-    db.video = db.video || {};
-    db.video[bundle] = arr;
-    await writeDB(c.env, pid, db);
-    return c.json({ ok: true, bundle, file, selected: g.selected });
+    const res = await editDB(c.env, pid, (db) => {
+      const arr = Array.isArray(db.video?.[bundle]) ? db.video[bundle] : db.video?.[bundle] ? [db.video[bundle]] : [];
+      const g = arr.find((v) => v.file === file);
+      if (!g) return { abort: true, missing: true };
+      g.selected = !!selected;
+      // Single-selection: picking a take clears any other selected take in the
+      // bundle and stamps WHEN it was picked, so the most recent pick wins at
+      // stitch time even if stale flags linger.
+      if (g.selected) {
+        g.selectedAt = new Date().toISOString();
+        arr.forEach((v) => { if (v.file !== file) v.selected = false; });
+      }
+      db.video = db.video || {};
+      db.video[bundle] = arr;
+      return { selected: g.selected };
+    });
+    if (res.missing) return c.json({ error: "Generation not found" }, 404);
+    return c.json({ ok: true, bundle, file, selected: res.selected });
   });
 
   // Save (or clear) an edited skill prompt for one bundle. Empty/omitted text
@@ -629,12 +654,13 @@ export function registerEpisode(app) {
     try { body = await c.req.json(); } catch { body = {}; }
     const { bundle, text } = body || {};
     if (!bundle) return c.json({ error: "Missing 'bundle'" }, 400);
-    const db = await readDB(c.env, pid);
-    db.prompt = db.prompt || {};
-    if (typeof text === "string" && text.length) db.prompt[bundle] = text;
-    else delete db.prompt[bundle];
-    await writeDB(c.env, pid, db);
-    return c.json({ ok: true, bundle, saved: !!db.prompt[bundle] });
+    const { saved } = await editDB(c.env, pid, (db) => {
+      db.prompt = db.prompt || {};
+      if (typeof text === "string" && text.length) db.prompt[bundle] = text;
+      else delete db.prompt[bundle];
+      return { saved: !!db.prompt[bundle] };
+    });
+    return c.json({ ok: true, bundle, saved });
   });
 
   // Attach a rendered Seedance clip to a bundle. APPENDS a new generation (keeps
@@ -645,7 +671,7 @@ export function registerEpisode(app) {
     try { body = await c.req.json(); } catch { body = {}; }
     const { bundle, url, jobId } = body || {};
     if (!bundle || !url) return c.json({ error: "Missing 'bundle' or 'url'" }, 400);
-    const db = await readDB(c.env, pid);
+    const { file, name, count } = await editDB(c.env, pid, (db) => {
     db.video = db.video || {};
     // normalize to an array (migrate old single-object / legacy <bundle>.mp4 entry)
     let list = db.video[bundle];
@@ -660,7 +686,8 @@ export function registerEpisode(app) {
     // ensureProxy) or the backfill job / lazy /proxy fallback.
     list.push({ file, name: `gen ${n}`, jobId: jobId || null, source: url, ts: new Date().toISOString() });
     db.video[bundle] = list;
-    await writeDB(c.env, pid, db);
-    return c.json({ ok: true, bundle, name: `gen ${n}`, count: list.length, url: "/gen/" + file });
+    return { file, name: `gen ${n}`, count: list.length };
+    });
+    return c.json({ ok: true, bundle, name, count, url: "/gen/" + file });
   });
 }

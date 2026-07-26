@@ -13,13 +13,19 @@
 // (`/asset/<rel>`, `/media/<file>`, `/multishot-media/<file>`) — the `/asset/*`,
 // `/media/*`, `/multishot-media/*` streaming routes serve the R2 objects. See the
 // TODO(stage2) markers for the media-copy / build-file work still owed.
-import { normalizeProjectId, readDoc, writeDoc } from "../lib/docs.js";
+import { normalizeProjectId, readDoc, updateDoc } from "../lib/docs.js";
 import { listMedia, listProxies, proxyKey, assetRefUrl } from "../lib/media.js";
 import { ensureAssetThumbs } from "../lib/proxy.js";
 
 // The de-facto selections DB (library picks + per-bundle episode selections).
-const readDB = (env, pid) => readDoc(env, pid, "selections", { library: {}, episode: {} });
-const writeDB = (env, pid, db) => writeDoc(env, pid, "selections", db);
+const DB_FALLBACK = { library: {}, episode: {} };
+const readDB = (env, pid) => readDoc(env, pid, "selections", DB_FALLBACK);
+// CONCURRENCY: `selections` is the SHARED de-facto DB (Editor, Episode, Cuts,
+// Script and Storyboard live in it too), so a readDoc→writeDoc pair writes the
+// whole document back and reverts whatever another surface changed in between.
+// Mutations go through `editDB` — compare-and-swap on the doc version. `mutate`
+// may re-run, so keep media copies/deletes OUTSIDE it.
+const editDB = (env, pid, mutate) => updateDoc(env, pid, "selections", DB_FALLBACK, mutate);
 
 // Image extensions accepted in the browsable asset library (was IMG_RE).
 const IMG_RE = /\.(png|jpe?g|webp|gif)$/i;
@@ -229,7 +235,7 @@ export function registerLibrary(app) {
     const rel = await resolveAssetRel(c.env, pid, body.rel);
     if (!rel) return badPath(c, pid, body.rel);
 
-    const db = await readDB(c.env, pid);
+    const { selected } = await editDB(c.env, pid, (db) => {
     db.library = db.library || {};
     let selected;
     if (db.library[rel]) {
@@ -247,21 +253,21 @@ export function registerLibrary(app) {
       // did fs.copyFileSync(src, final/<flatten(rel)>) so it shows in /api/final).
       selected = true;
     }
-    await writeDB(c.env, pid, db);
+    return { selected };
+    });
     return c.json({ ok: true, rel, selected });
   });
 
   // Drop a rel from db.library + every per-bundle episode pick (shared by
   // remove; mirrors the deselect branch of /toggle).
-  const deselectRel = async (env, pid, rel) => {
-    const db = await readDB(env, pid);
-    if (!db.library?.[rel]) return;
-    delete db.library[rel];
-    for (const k of Object.keys(db.episode || {})) {
-      db.episode[k] = (db.episode[k] || []).filter((r) => r !== rel);
-    }
-    await writeDB(env, pid, db);
-  };
+  const deselectRel = async (env, pid, rel) =>
+    editDB(env, pid, (db) => {
+      if (!db.library?.[rel]) return { abort: true };
+      delete db.library[rel];
+      for (const k of Object.keys(db.episode || {})) {
+        db.episode[k] = (db.episode[k] || []).filter((r) => r !== rel);
+      }
+    });
 
   // Delete an asset image from the library outright: the R2 original + its
   // thumb, plus its final_selection / episode membership if it was selected.
@@ -327,15 +333,16 @@ export function registerLibrary(app) {
       await c.env.BUCKET.delete(proxyKey(pid, "asset", rel));
     }
 
-    const db = await readDB(c.env, pid);
-    if (db.library?.[rel]) {
+    // The R2 copy/delete above is the side effect; only the rel rename runs
+    // under the compare-and-swap.
+    await editDB(c.env, pid, (db) => {
+      if (!db.library?.[rel]) return { abort: true };
       delete db.library[rel];
       db.library[newRel] = true;
       for (const k of Object.keys(db.episode || {})) {
         db.episode[k] = (db.episode[k] || []).map((r) => (r === rel ? newRel : r));
       }
-      await writeDB(c.env, pid, db);
-    }
+    });
     return c.json({ ok: true, rel: newRel, name: base });
   });
 
@@ -402,12 +409,14 @@ export function registerLibrary(app) {
     try { body = await c.req.json(); } catch { body = {}; }
     const { text } = body || {};
     if (typeof text !== "string") return c.json({ error: "Missing 'text'" }, 400);
-    const doc = (await readDoc(c.env, pid, "shots", null)) || { shots: [] };
-    const shots = Array.isArray(doc) ? doc : (doc.shots = doc.shots || []);
-    const shot = shots.find((s) => String(s.id) === String(c.req.param("id")));
-    if (!shot) return c.json({ error: `No such shot ${c.req.param("id")}` }, 404);
-    shot.seedanceText = text.replace(/\r\n/g, "\n").replace(/\s+$/, "");
-    await writeDoc(c.env, pid, "shots", doc);
+    const res = await updateDoc(c.env, pid, "shots", { shots: [] }, (doc) => {
+      const shots = Array.isArray(doc) ? doc : (doc.shots = doc.shots || []);
+      const shot = shots.find((s) => String(s.id) === String(c.req.param("id")));
+      if (!shot) return { abort: true, missing: true };
+      shot.seedanceText = text.replace(/\r\n/g, "\n").replace(/\s+$/, "");
+      return {};
+    });
+    if (res.missing) return c.json({ error: `No such shot ${c.req.param("id")}` }, 404);
     return c.json({ ok: true });
   });
 
@@ -423,12 +432,14 @@ export function registerLibrary(app) {
     try { body = await c.req.json(); } catch { body = {}; }
     const { text } = body || {};
     if (typeof text !== "string") return c.json({ error: "Missing 'text'" }, 400);
-    const doc = (await readDoc(c.env, pid, "shots", null)) || { shots: [] };
-    const shots = Array.isArray(doc) ? doc : (doc.shots = doc.shots || []);
-    const shot = shots.find((s) => String(s.id) === String(c.req.param("id")));
-    if (!shot) return c.json({ error: `No such shot ${c.req.param("id")}` }, 404);
-    shot.audioText = text.replace(/\r\n/g, "\n").replace(/\s+$/, "");
-    await writeDoc(c.env, pid, "shots", doc);
+    const res = await updateDoc(c.env, pid, "shots", { shots: [] }, (doc) => {
+      const shots = Array.isArray(doc) ? doc : (doc.shots = doc.shots || []);
+      const shot = shots.find((s) => String(s.id) === String(c.req.param("id")));
+      if (!shot) return { abort: true, missing: true };
+      shot.audioText = text.replace(/\r\n/g, "\n").replace(/\s+$/, "");
+      return {};
+    });
+    if (res.missing) return c.json({ error: `No such shot ${c.req.param("id")}` }, 404);
     return c.json({ ok: true });
   });
 

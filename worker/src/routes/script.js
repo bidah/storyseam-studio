@@ -4,7 +4,7 @@
 // the Express HTTP round-trip. Sign-off lives in the selections DB doc
 // (the `selections` doc → scriptSignoff[draftId]). Writes that
 // change the pinned draft broadcast on the "script" channel for live-sync.
-import { readDoc, writeDoc } from "../lib/docs.js";
+import { readDoc, updateDoc } from "../lib/docs.js";
 import { broadcast } from "../lib/broadcast.js";
 import {
   nowIso,
@@ -19,8 +19,13 @@ import {
 
 // The selections doc doubles as the de-facto DB (mirrors Express readDB/writeDB);
 // scriptSignoff is a top-level key on it.
-const readDB = (env, pid) => readDoc(env, pid, "selections", { library: {}, episode: {} });
-const writeDB = (env, pid, db) => writeDoc(env, pid, "selections", db);
+const DB_FALLBACK = { library: {}, episode: {} };
+const readDB = (env, pid) => readDoc(env, pid, "selections", DB_FALLBACK);
+// CONCURRENCY: `selections` is the SHARED de-facto DB, so a readDoc→writeDoc
+// pair here writes the whole document back and reverts whatever another surface
+// (Editor autosave, Episode picks, Library toggles) changed in between. Only the
+// sign-off slice is ours to touch, so mutate it under a compare-and-swap.
+const editDB = (env, pid, mutate) => updateDoc(env, pid, "selections", DB_FALLBACK, mutate);
 
 // Mirror of Express broadcastScript — fan the pinned-script change out to the
 // project's open Script tabs over SSE. Non-blocking: the DO fan-out runs under
@@ -72,12 +77,13 @@ export function registerScript(app) {
       const { signed = true, by } = body || {};
       const store = await readStore(c.env, pid);
       const d = pinnedDraft(store);
-      const db = await readDB(c.env, pid);
-      db.scriptSignoff = db.scriptSignoff || {};
-      if (signed) db.scriptSignoff[d.id] = { at: new Date().toISOString(), by: by || null };
-      else delete db.scriptSignoff[d.id];
-      await writeDB(c.env, pid, db);
-      return c.json({ ok: true, draftId: d.id, signed: !!signed, signedAt: db.scriptSignoff[d.id]?.at || null });
+      const { signedAt } = await editDB(c.env, pid, (db) => {
+        db.scriptSignoff = db.scriptSignoff || {};
+        if (signed) db.scriptSignoff[d.id] = { at: new Date().toISOString(), by: by || null };
+        else delete db.scriptSignoff[d.id];
+        return { signedAt: db.scriptSignoff[d.id]?.at || null };
+      });
+      return c.json({ ok: true, draftId: d.id, signed: !!signed, signedAt });
     } catch (e) {
       return c.json({ error: String(e.message || e) }, 500);
     }
@@ -100,8 +106,10 @@ export function registerScript(app) {
       await writeStore(c.env, pid, store);
       // Editing the script invalidates its sign-off — it must be re-signed before
       // the shot list can be (re)generated from it.
-      const db = await readDB(c.env, pid);
-      if (db.scriptSignoff?.[d.id]) { delete db.scriptSignoff[d.id]; await writeDB(c.env, pid, db); }
+      await editDB(c.env, pid, (db) => {
+        if (!db.scriptSignoff?.[d.id]) return { abort: true };
+        delete db.scriptSignoff[d.id];
+      });
       await broadcastScript(c, pid, { updatedAt: d.updatedAt, clientId: clientId ?? null, pinnedId: store.pinnedId });
       return c.json({ ok: true, updatedAt: d.updatedAt, draftId: d.id });
     } catch (e) {
@@ -157,8 +165,10 @@ export function registerScript(app) {
       d.updatedAt = nowIso();
       d.clientId = clientId ?? null;
       await writeStore(c.env, pid, store);
-      const db = await readDB(c.env, pid);
-      if (db.scriptSignoff?.[d.id]) { delete db.scriptSignoff[d.id]; await writeDB(c.env, pid, db); }
+      await editDB(c.env, pid, (db) => {
+        if (!db.scriptSignoff?.[d.id]) return { abort: true };
+        delete db.scriptSignoff[d.id];
+      });
       await broadcastScript(c, pid, { updatedAt: d.updatedAt, clientId: clientId ?? null, pinnedId: store.pinnedId });
       return c.json({ ok: true, updatedAt: d.updatedAt, draftId: d.id });
     } catch (e) {

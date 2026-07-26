@@ -26,7 +26,7 @@
 // The final "send to editor" builds an audio-only timeline from the rendered
 // takes and appends it to `db.radioVersions` in the selections doc, then loads
 // it as the editor's working timeline (mirrors /api/timeline/from-cut).
-import { readDoc, writeDoc, updateDoc } from "../lib/docs.js";
+import { readDoc, updateDoc } from "../lib/docs.js";
 import { setCharacterVoiceByName } from "./world.js";
 import { normalizeShot } from "../lib/shots.js";
 import { listMedia, mediaKey } from "../lib/media.js";
@@ -393,9 +393,15 @@ export function registerRadio(app) {
     };
     // Bounded history: this drops the OLDEST versions past the cap, and they are
     // gone for good — so say so in the response rather than reporting a bare ok.
-    const { pruned } = appendCapped(db.radioVersions, entry);
-    db.editorTimeline = timeline;
-    await writeDoc(c.env, pid, "selections", db);
+    // CAS on the shared `selections` doc: building the timeline above reads the
+    // sounds + shot list, which is long enough for a concurrent Editor autosave
+    // or still-attach to land inside the window and be clobbered.
+    let pruned = 0;
+    await updateDoc(c.env, pid, "selections", { library: {}, episode: {} }, (db) => {
+      db.radioVersions = Array.isArray(db.radioVersions) ? db.radioVersions : [];
+      ({ pruned } = appendCapped(db.radioVersions, entry));
+      db.editorTimeline = timeline;
+    });
 
     await broadcast(
       c.env, pid, "timeline",
@@ -508,7 +514,13 @@ export function registerRadio(app) {
       changes.push({ shot: s.id, n: s.n, from: s.dur, to: rounded });
       return { ...s, dur: rounded };
     });
-    await writeDoc(c.env, pid, "shotlist", { ...(slDoc || {}), generatedAt: new Date().toISOString(), shots: out });
+    // Re-apply the new durations by shot id under a CAS rather than writing the
+    // shot list we read back wholesale — the agent edits shots concurrently.
+    const byN = new Map(out.map((s) => [s.n, s.dur]));
+    await updateDoc(c.env, pid, "shotlist", { shots: [] }, (doc) => {
+      doc.shots = (doc.shots || []).map((s) => (byN.has(s.n) ? { ...s, dur: byN.get(s.n) } : s));
+      doc.generatedAt = new Date().toISOString();
+    });
     return c.json({
       ok: true,
       source: kind,

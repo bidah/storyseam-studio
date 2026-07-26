@@ -25,7 +25,7 @@
 // "New still…" modal prefills from these fields.
 //
 // CONCURRENCY: writes go through `updateDoc` (read-modify-write conditional on
-// the R2 etag), not readDoc→writeDoc. `selections.json` is a shared doc and the
+// the document version), not readDoc→writeDoc. `selections` is a shared doc and the
 // agent attaches takes back-to-back when filling a whole bundle or animatic, so
 // last-writer-wins silently drops takes. Same reasoning as radio.js.
 import { readDoc, updateDoc } from "../lib/docs.js";
