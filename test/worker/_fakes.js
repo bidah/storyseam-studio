@@ -75,9 +75,13 @@ export function makeBucket(initial = {}) {
       store.set(key, {
         bytes: toBytes(body),
         contentType: opts?.httpMetadata?.contentType || "application/octet-stream",
+        customMetadata: opts?.customMetadata,
         etag,
       });
       return { key, etag }; // R2 put resolves to the written object (truthy)
+    },
+    async delete(key) {
+      store.delete(key);
     },
     async list({ prefix = "", limit = 1000, cursor } = {}) {
       const keys = [...store.keys()].filter((k) => k.startsWith(prefix)).sort();
@@ -85,7 +89,12 @@ export function makeBucket(initial = {}) {
       const slice = keys.slice(start, start + limit);
       const truncated = start + limit < keys.length;
       return {
-        objects: slice.map((key) => ({ key })),
+        // `size` and `customMetadata` are what the version-history listing reads
+        // (lib/history.js) — real R2 returns them on list with include.
+        objects: slice.map((key) => {
+          const e = store.get(key);
+          return { key, size: e.bytes.length, customMetadata: e.customMetadata };
+        }),
         truncated,
         cursor: truncated ? String(start + limit) : undefined,
       };

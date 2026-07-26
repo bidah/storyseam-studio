@@ -14,6 +14,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Empty, Eyebrow, Panel, Spinner, ErrorNote, ConfirmModal } from "@/components/shared";
+import DocHistory from "@/components/DocHistory";
 import MediaPicker from "@/components/MediaPicker";
 
 /* ---------------------------------------------------------------- *
@@ -562,11 +563,16 @@ function World() {
               The world that makes the series — define it here before you write the script.
             </p>
           </div>
-          <Button onClick={createWithAgent} disabled={agentBusy}>
-            {agentBusy
-              ? <><Loader2 size={14} className="animate-spin" /> agent working…</>
-              : <><Wand2 size={14} /> Let's create the world</>}
-          </Button>
+          <div className="flex items-center gap-2">
+            {/* Every save parks the previous version — this is the way back if
+                a bad write (usually the agent's) flattens the bible. */}
+            <DocHistory doc="world" onRestored={refetch} />
+            <Button onClick={createWithAgent} disabled={agentBusy}>
+              {agentBusy
+                ? <><Loader2 size={14} className="animate-spin" /> agent working…</>
+                : <><Wand2 size={14} /> Let's create the world</>}
+            </Button>
+          </div>
         </div>
         <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
           <Badge variant="outline"><Globe size={11} /> {mapFilled}/{MAP.length} story map</Badge>

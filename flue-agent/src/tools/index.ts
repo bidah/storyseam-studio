@@ -68,6 +68,7 @@ import { attachLocationSheet } from "./attach_location_sheet.js";
 import { attachCharacterVoice } from "./attach_character_voice.js";
 import { listCharacterVoices } from "./list_character_voices.js";
 import { signBundle } from "./sign_bundle.js";
+import { listHistory, restoreVersion } from "./list_history.js";
 
 export function createTools(api: Api): ToolDefinition[] {
   return [
@@ -76,6 +77,8 @@ export function createTools(api: Api): ToolDefinition[] {
     // World / Script / Drafts
     getWorld(api),
     saveWorld(api),
+    listHistory(api),
+    restoreVersion(api),
     addWorldCharacter(api),
     addWorldLocation(api),
     getVisualWorld(api),
@@ -149,6 +152,7 @@ export function createReadTools(api: Api): ToolDefinition[] {
   return [
     // World / Script / Drafts
     getWorld(api),
+    listHistory(api),
     getVisualWorld(api),
     getScript(api),
     listDrafts(api),
