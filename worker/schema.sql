@@ -81,6 +81,14 @@ CREATE TABLE IF NOT EXISTS docs (
   json        TEXT NOT NULL,
   version     INTEGER NOT NULL DEFAULT 1,  -- bumped per write; the CAS token
   updated_at  TEXT NOT NULL,
+  -- Per-write nonce, used ONLY to make a multi-document write atomic: the
+  -- secondary rows in a batch are guarded on the primary row carrying the token
+  -- this attempt just wrote, so either every row lands or none does. Version
+  -- alone can't do that job — a concurrent writer bumping the primary by one
+  -- would satisfy a "version = expected + 1" guard and let a partial write
+  -- through. See `also` in lib/docs.js.
+  -- Existing databases: ALTER TABLE docs ADD COLUMN write_token TEXT;
+  write_token TEXT,
   PRIMARY KEY (project_id, name)
 );
 

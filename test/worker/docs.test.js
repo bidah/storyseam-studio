@@ -102,3 +102,64 @@ describe("updateDoc under contention", () => {
     expect(doc.characters).toHaveLength(12);
   });
 });
+
+describe("updateDoc `also` — multi-document atomicity", () => {
+  // Some operations span two documents and are only correct together. The
+  // episode rebuild re-keys every pick/still/render in `selections` from old
+  // bundle ids to new ones AND writes the new bundle definitions to
+  // `episode-manifest`; bundle ids are positional, so if one lands without the
+  // other the surviving picks point at the WRONG scenes.
+  it("writes every document together", async () => {
+    const env = makeEnv();
+    await writeDoc(env, "p1", "selections", { episode: { "MS-01": ["a.png"] } });
+    await writeDoc(env, "p1", "manifest", { bundles: ["old"] });
+    await updateDoc(env, "p1", "selections", {}, (db) => { db.episode = { "MS-02": ["a.png"] }; },
+      { also: [{ name: "manifest", value: { bundles: ["new"] } }] });
+    expect(await readDoc(env, "p1", "selections")).toEqual({ episode: { "MS-02": ["a.png"] } });
+    expect(await readDoc(env, "p1", "manifest")).toEqual({ bundles: ["new"] });
+  });
+
+  it("never writes the secondary when the primary's compare-and-swap loses", async () => {
+    const env = makeEnv();
+    await writeDoc(env, "p1", "selections", { v: 0 });
+    await writeDoc(env, "p1", "manifest", { bundles: ["old"] });
+    await expect(
+      updateDoc(env, "p1", "selections", {}, (db) => {
+        // Bump the version on EVERY attempt so the CAS can never win. Note it
+        // moves by exactly one, which is what defeats a naive "the primary's
+        // version is now what I expected plus one" guard — hence the nonce.
+        env.DB.prepare("UPDATE docs SET version = version + 1 WHERE project_id = ? AND name = ?")
+          .bind("p1", "selections").run();
+        db.v = 99;
+      }, { also: [{ name: "manifest", value: { bundles: ["new"] } }] }),
+    ).rejects.toThrow(/concurrent-write conflicts/);
+    // Neither half may have landed.
+    expect((await readDoc(env, "p1", "selections")).v).toBe(0);
+    expect(await readDoc(env, "p1", "manifest")).toEqual({ bundles: ["old"] });
+  });
+
+  it("creates a secondary that does not exist yet (the first rebuild)", async () => {
+    const env = makeEnv();
+    await updateDoc(env, "p1", "selections", { fresh: true }, (db) => { db.fresh = true; },
+      { also: [{ name: "manifest", value: { bundles: ["first"] } }] });
+    expect(await readDoc(env, "p1", "manifest")).toEqual({ bundles: ["first"] });
+  });
+
+  it("keeps a concurrent writer's change instead of reverting it", async () => {
+    const env = makeEnv();
+    await writeDoc(env, "p1", "selections", { episode: {} });
+    let first = true;
+    await updateDoc(env, "p1", "selections", {}, (db) => {
+      if (first) {
+        first = false;
+        env.DB.prepare("UPDATE docs SET json = ?, version = version + 1 WHERE project_id = ? AND name = ?")
+          .bind(JSON.stringify({ episode: {}, intruder: true }), "p1", "selections").run();
+      }
+      db.episode = { "MS-02": ["a.png"] };
+    }, { also: [{ name: "manifest", value: { bundles: ["new"] } }] });
+    const sel = await readDoc(env, "p1", "selections");
+    expect(sel.intruder).toBe(true);
+    expect(sel.episode).toEqual({ "MS-02": ["a.png"] });
+    expect(await readDoc(env, "p1", "manifest")).toEqual({ bundles: ["new"] });
+  });
+});

@@ -236,10 +236,20 @@ export function makeDocsDB(schema) {
   return {
     _db: db,
     prepare: (sql) => statement(sql),
+    // A real transaction, like D1's: the batch commits as a unit, so a test can
+    // actually observe the all-or-nothing guarantee that multi-document writes
+    // depend on (see `also` in lib/docs.js).
     async batch(stmts) {
-      const out = [];
-      for (const s of stmts) out.push(await s.run());
-      return out;
+      db.exec("BEGIN");
+      try {
+        const out = [];
+        for (const s of stmts) out.push(await s.run());
+        db.exec("COMMIT");
+        return out;
+      } catch (e) {
+        db.exec("ROLLBACK");
+        throw e;
+      }
     },
   };
 }
@@ -252,8 +262,9 @@ CREATE TABLE docs (
   project_id TEXT NOT NULL,
   name       TEXT NOT NULL,
   json       TEXT NOT NULL,
-  version    INTEGER NOT NULL DEFAULT 1,
-  updated_at TEXT NOT NULL,
+  version     INTEGER NOT NULL DEFAULT 1,
+  updated_at  TEXT NOT NULL,
+  write_token TEXT,
   PRIMARY KEY (project_id, name)
 );
 CREATE TABLE doc_history (

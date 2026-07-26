@@ -10,7 +10,7 @@
 // stage repoints these to R2 streaming. The ffmpeg endpoints (/cuts, /stitch,
 // /score, /trim) are intentionally NOT ported here (handled separately). See the
 // TODO markers for the media-copy step still owed.
-import { readDoc, writeDoc, updateDoc } from "../lib/docs.js";
+import { readDoc, updateDoc } from "../lib/docs.js";
 import { listMedia, listMediaSet, mediaKey, filesUrl } from "../lib/media.js";
 import { buildBundles, charKey, bundleSpeakers } from "../lib/pack.js";
 import { normalizeShot } from "../lib/shots.js";
@@ -23,10 +23,9 @@ const readDB = (env, pid) => readDoc(env, pid, "selections", DB_FALLBACK);
 // whole document back and reverts whatever another surface changed in between.
 // Mutations go through `editDB` — compare-and-swap on the doc version. `mutate`
 // may re-run, so keep it pure: do renders, probes and media writes BEFORE it.
-const editDB = (env, pid, mutate) => updateDoc(env, pid, "selections", DB_FALLBACK, mutate);
+const editDB = (env, pid, mutate, opts) => updateDoc(env, pid, "selections", DB_FALLBACK, mutate, opts);
 // The episode manifest (the packed <=15s bundles); null when not seeded.
 const readManifest = (env, pid) => readDoc(env, pid, "episode-manifest", null);
-const writeManifest = (env, pid, m) => writeDoc(env, pid, "episode-manifest", m);
 // Current shot list, normalized (same source the animatic/radio read from).
 const readShots = async (env, pid) => {
   const obj = await readDoc(env, pid, "shotlist", null);
@@ -474,6 +473,18 @@ export function registerEpisode(app) {
     // Counters live OUTSIDE the mutate (the response reports them) and are reset
     // at the top of each attempt, because `mutate` re-runs on a version conflict.
     let stillsMoved = 0, stillsOrphaned = 0, videoMoved = 0, videoOrphaned = 0;
+    // The remap below and the manifest write are ONE operation: bundle ids are
+    // positional slot numbers, so if only one of the two documents lands, the
+    // surviving picks/stills/renders point at the wrong scenes. `also` puts both
+    // in a single transaction — see `updateDoc`.
+    const manifest = {
+      ...(prev && typeof prev === "object" ? prev : {}),
+      title: prev?.title || "Episode plan",
+      totalShots: shots.length,
+      generatedAt: new Date().toISOString(),
+      source: "rebuild",
+      bundles,
+    };
     await editDB(c.env, pid, (db) => {
     stillsMoved = 0; stillsOrphaned = 0; videoMoved = 0; videoOrphaned = 0;
 
@@ -517,16 +528,7 @@ export function registerEpisode(app) {
     db.signoffs = carryUnchanged(db.signoffs);
     db.needLinks = carryUnchanged(db.needLinks);
 
-    });
-
-    await writeManifest(c.env, pid, {
-      ...(prev && typeof prev === "object" ? prev : {}),
-      title: prev?.title || "Episode plan",
-      totalShots: shots.length,
-      generatedAt: new Date().toISOString(),
-      source: "rebuild",
-      bundles,
-    });
+    }, { also: [{ name: "episode-manifest", value: manifest }] });
 
     const unchanged = Object.keys(sameOld).length;
     return c.json({
