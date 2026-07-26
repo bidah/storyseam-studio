@@ -34,7 +34,16 @@ function ProjectGate({ children }: { children: React.ReactNode }) {
     if (next) setProjectId(next);
   }, [hydrated, data, projectId, setProjectId]);
 
-  const ready = hydrated && !!projectId && !isPending;
+  // Render as soon as we know WHICH project to use — a stored, hydrated id is
+  // enough. `useProjects()` only VALIDATES that id (and picks a fallback when
+  // it's stale), which the effect above does in the background; blocking the
+  // whole tab tree on that round trip meant every cold start showed a spinner
+  // for as long as the network took, with the chat's local transcript sitting
+  // right there unable to paint. Only a device with no stored project yet has
+  // to wait for the list to choose one — including the extra render it takes
+  // the effect to store it, so nothing downstream ever sees a null project.
+  const adopting = !projectId && !!(data?.activeId || data?.projects?.[0]?.id);
+  const ready = hydrated && (!!projectId || (!isPending && !adopting));
   if (!ready && !isError) {
     return (
       <View className="flex-1 items-center justify-center bg-background">
