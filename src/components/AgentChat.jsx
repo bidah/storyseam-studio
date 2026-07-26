@@ -1125,6 +1125,19 @@ export default function AgentChat() {
               </MarkerIcon>
               <MarkerContent className="shimmer">Reasoning…</MarkerContent>
             </Marker>
+          ) : isBusy ? (
+            // Catch-all: the turn is still in flight but its trailing content is
+            // settled (a finished narration line, a completed tool) — none of the
+            // specific states above match. Without a marker here the transcript
+            // looks finished mid-turn (see the agent narrating "…now." then
+            // silently working). The indicator's presence must map exactly to
+            // "not done", so any busy turn always shows a shimmer.
+            <Marker>
+              <MarkerIcon>
+                <Loader2 className="animate-spin" />
+              </MarkerIcon>
+              <MarkerContent className="shimmer">Working…</MarkerContent>
+            </Marker>
           ) : null}
 
           {agent.error ? (

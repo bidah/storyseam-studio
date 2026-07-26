@@ -356,6 +356,12 @@ export default function ChatScreen() {
                   <ShimmerRow label="Agent is working…" />
                 ) : reasoning ? (
                   <ShimmerRow label="Reasoning…" />
+                ) : busy ? (
+                  // Catch-all: turn still in flight but its trailing content is
+                  // settled (a finished narration line, a completed tool) — none
+                  // of the specific states match. The indicator's presence must
+                  // map exactly to "not done", so any busy turn shows a shimmer.
+                  <ShimmerRow label="Working…" />
                 ) : null}
                 {errorMessage ? (
                   <View className="mx-4 mt-2 flex-row items-start gap-2 rounded-xl border border-destructive/40 bg-destructive/10 p-3">
