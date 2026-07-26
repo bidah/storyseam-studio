@@ -211,3 +211,111 @@ export function registerHistory(app) {
     return c.json({ ok: true, deleted: deleted.length, kept: kept.length, keptKeys: kept });
   });
 }
+
+// Duplicate a project — its documents AND its media — into a brand-new project.
+//
+// Documents are cheap: they are rows, and none of them embed the project id
+// (media is referenced by relative file name, resolved per active project), so
+// copying a row under a new `project_id` is enough. Media is the expensive half:
+// R2 keys are `media/<pid>/<kind>/<file>`, so every object has to be read and
+// re-written under the new prefix — the binding has no server-side copy.
+//
+// RESUMABLE by design. A project's renders run to hundreds of megabytes, which
+// is more than one request should stream, so each call copies until it hits a
+// budget and returns a cursor; keep calling with that cursor until `done`. The
+// SOURCE project is never touched.
+export function registerClone(app) {
+  const MAX_OBJECTS = 150;      // per call
+  const MAX_BYTES = 400 * 1024 * 1024;
+  // Objects are copied concurrently: each one is a read and a write against R2,
+  // so the request spends nearly all its time waiting on the network. Serially
+  // this ran at ~2 MB/s; a small pool takes a multi-gigabyte project from ~25
+  // minutes to a few. Kept modest so one clone can't monopolise the subrequest
+  // budget.
+  const CONCURRENCY = 12;
+
+  app.post("/api/admin/clone-project", async (c) => {
+    const userId = c.get("userId");
+    if (!userId) return c.json({ error: "Sign in required" }, 401);
+    let body;
+    try { body = await c.req.json(); } catch { body = {}; }
+
+    const from = normalizeProjectId(body?.from);
+    const env = c.env;
+
+    // Measure-only pass, so the size of the job is knowable before starting it.
+    if (body?.dryRun) {
+      let objects = 0, bytes = 0;
+      const byKind = {};
+      let cursor;
+      do {
+        const page = await env.BUCKET.list({ prefix: `media/${from}/`, cursor, limit: 1000 });
+        for (const o of page.objects) {
+          objects++; bytes += o.size;
+          const kind = o.key.split("/")[2] || "?";
+          byKind[kind] = byKind[kind] || { objects: 0, bytes: 0 };
+          byKind[kind].objects++; byKind[kind].bytes += o.size;
+        }
+        cursor = page.truncated ? page.cursor : undefined;
+      } while (cursor);
+      const { results: docs } = await env.DB.prepare(
+        "SELECT name, length(json) AS bytes FROM docs WHERE project_id = ?",
+      ).bind(from).all();
+      return c.json({ dryRun: true, from, docs, media: { objects, bytes, byKind } });
+    }
+
+    // First call mints the project and copies the documents; later calls pass
+    // `to` back and only continue the media copy.
+    let to = body?.to ? normalizeProjectId(body.to) : null;
+    const copiedDocs = [];
+    if (!to) {
+      const name = String(body?.name || "").trim() || "Copy";
+      to = `p_${crypto.randomUUID().replace(/-/g, "").slice(0, 8)}`;
+      const ts = new Date().toISOString();
+      await env.DB.prepare(
+        "INSERT INTO projects (id, name, created_at, updated_at, archived, owner_user_id) VALUES (?, ?, ?, ?, 0, ?)",
+      ).bind(to, name, ts, ts, userId).run();
+      const { results } = await env.DB.prepare(
+        "SELECT name, json FROM docs WHERE project_id = ?",
+      ).bind(from).all();
+      for (const row of results || []) {
+        await env.DB.prepare(
+          "INSERT INTO docs (project_id, name, json, version, updated_at) VALUES (?, ?, ?, 1, ?) ON CONFLICT (project_id, name) DO NOTHING",
+        ).bind(to, row.name, row.json, ts).run();
+        copiedDocs.push(row.name);
+      }
+    }
+
+    // Media, in budgeted batches. `skipped` counts objects already present, so a
+    // re-run after an interruption resumes instead of re-uploading.
+    let copied = 0, skipped = 0, bytes = 0, done = true;
+    let cursor = body?.cursor || undefined;
+    const prefix = `media/${from}/`;
+
+    const copyOne = async (o) => {
+      const destKey = `media/${to}/${o.key.slice(prefix.length)}`;
+      if (await env.BUCKET.head(destKey)) { skipped++; return; }
+      const src = await env.BUCKET.get(o.key);
+      if (!src) { skipped++; return; }
+      await env.BUCKET.put(destKey, src.body, { httpMetadata: src.httpMetadata });
+      copied++; bytes += o.size;
+    };
+
+    outer: do {
+      const page = await env.BUCKET.list({ prefix, cursor, limit: 1000 });
+      for (let i = 0; i < page.objects.length; i += CONCURRENCY) {
+        await Promise.all(page.objects.slice(i, i + CONCURRENCY).map(copyOne));
+        if (copied >= MAX_OBJECTS || bytes >= MAX_BYTES) {
+          // Resume from this page next call; already-copied objects are skipped
+          // by the head() check, so overlap is cheap and correctness is kept.
+          cursor = page.cursor;
+          done = false;
+          break outer;
+        }
+      }
+      cursor = page.truncated ? page.cursor : undefined;
+    } while (cursor);
+
+    return c.json({ ok: true, from, to, copiedDocs, copied, skipped, bytes, done, cursor: done ? null : cursor });
+  });
+}
