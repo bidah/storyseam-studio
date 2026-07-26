@@ -209,6 +209,11 @@ function AgentSessionRunner({
   const id = `${projectId ?? ''}~${activeId}`;
   const flueAgent = useFlueAgent({ name: AGENT_NAME, id });
 
+  // `stop` closes over `id`; reach it through a ref so it stays out of the
+  // `agent` memo deps (which key on `flueAgent` only).
+  const idRef = useRef(id);
+  idRef.current = id;
+
   // The turn that just settled may have written any project resource (save_shotlist,
   // save_world, a render…). The SSE firehose covers this too, but it is a single
   // remote stream that can be down without anyone noticing — this is the local,
@@ -247,9 +252,19 @@ function AgentSessionRunner({
       // flue's optional `AgentPromptImage[]` (`{ type:'image', data, mimeType }`).
       send: ({ message = '', images }: { message?: string; images?: any[] } = {}) =>
         flueAgent.sendMessage(message, images?.length ? { images } : undefined),
-      // flue's UseFlueAgentResult exposes no client-side cancel; keep a no-op so
-      // the composer's Stop button stays inert (parity with the web adapter).
-      stop: () => {},
+      // Cancel the in-flight turn. `useFlueAgent` surfaces no stop, but the
+      // underlying client does: `agents.abort` POSTs `/agents/:name/:id/abort`,
+      // which the flue worker threads as an AbortSignal through the running turn
+      // (and its in-flight tool calls) and settles the submission to `aborted`.
+      // The `/eve` proxy prepends `${userId}~`, so `id` matches the one
+      // `useFlueAgent` observes. Swallow errors — the SSE observation settles the
+      // turn regardless. This is also the ONLY recovery path when a turn orphans
+      // (DO evicted / hung tool mid-turn): without it `status` stays "streaming"
+      // forever, the composer stays disabled, and the chat is unrecoverably stuck
+      // on "Thinking…". Mirrors the web adapter (src/components/AgentProvider.jsx).
+      stop: () => {
+        flueClient.agents.abort(AGENT_NAME, idRef.current).catch(() => {});
+      },
     }),
     [flueAgent],
   );
