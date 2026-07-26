@@ -54,39 +54,53 @@ export function EditorComposition({ video, imageUrl }: EditorCompositionProps) {
   const flip = {
     transform: [{ scaleX: item?.flipH ? -1 : 1 }, { scaleY: item?.flipV ? -1 : 1 }],
   };
+  const isVideo = !!item?.src && !isImageItem(item);
 
-  let surface: React.ReactNode;
+  // Both A/B VideoViews stay MOUNTED (mount/unmount would re-attach the native
+  // player surface and stutter at every cut); the double-buffer swap is an
+  // opacity flip to `activeIndex`. Non-video states draw as overlays on top:
+  //   • no item (a gap)        → black frame, like the web composition
+  //   • slate (src: null)      → labelled placeholder card
+  //   • image item with a src  → the storyboard still, held on screen
+  let overlay: React.ReactNode = null;
   if (!item) {
-    // No item under the playhead (a gap): black frame, exactly like the web
-    // composition. The playback engine parks the video player on gaps, so
-    // rendering the VideoView here would show its frozen last frame instead.
-    surface = <View style={styles.surface} />;
+    overlay = <View style={[styles.overlay, styles.black]} />;
   } else if (isSlateItem(item)) {
-    surface = <Slate label={item.name || item.shot || "Slate"} />;
+    overlay = (
+      <View style={styles.overlay}>
+        <Slate label={item.name || item.shot || "Slate"} />
+      </View>
+    );
   } else if (isImageItem(item)) {
     const uri = imageUrl && item.src ? imageUrl(item.src) : item.src;
-    surface = (
-      <Image
-        source={uri ? { uri } : null}
-        style={[styles.surface, flip]}
-        contentFit="contain"
-        transition={0}
-      />
-    );
-  } else {
-    surface = (
-      <VideoView
-        player={video.player}
-        style={[styles.surface, flip]}
-        contentFit="contain"
-        nativeControls={false}
-      />
+    overlay = (
+      <View style={[styles.overlay, styles.black]}>
+        <Image
+          source={uri ? { uri } : null}
+          style={[styles.surface, flip]}
+          contentFit="contain"
+          transition={0}
+        />
+      </View>
     );
   }
 
   return (
     <View style={styles.stage} pointerEvents="none">
-      {surface}
+      {video.players.map((player, i) => (
+        <VideoView
+          key={i}
+          player={player}
+          style={[
+            styles.surface,
+            i === 0 ? null : styles.overlay,
+            isVideo && i === video.activeIndex ? flip : styles.hidden,
+          ]}
+          contentFit="contain"
+          nativeControls={false}
+        />
+      ))}
+      {overlay}
     </View>
   );
 }
@@ -103,6 +117,19 @@ const styles = StyleSheet.create({
     width: "100%",
     height: "100%",
   },
+  // Stacks a layer over the first VideoView (the stage centers its children,
+  // so only absolute-fill layers can cover the full frame).
+  overlay: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  black: { backgroundColor: "#000" },
+  hidden: { opacity: 0 },
   slate: {
     width: "100%",
     height: "100%",

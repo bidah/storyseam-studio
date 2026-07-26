@@ -136,6 +136,12 @@ export function createCutsBackend(opts: { fromCutV?: number } = {}): EditorBacke
     // expo-video plays the 720p proxy (lighter than full-res /gen mp4s). mediaUrl
     // injects ?projectId= because native players can't send headers. Local/picked
     // uris (file/content/asset) pass straight through.
+    // Do NOT set `useCaching` here: expo-video's cache layer (and any
+    // download-style cache, e.g. react-native-video's) needs Range/Content-Length
+    // support, and /proxy/* is an on-the-fly streamed transform — the cache
+    // scheme fails with AVFoundation "Operation Stopped" and the preview goes
+    // black (verified on-sim 2026-07-26). Cut smoothness comes from the A/B
+    // preload in useEditorPlayback instead.
     resolveSource(src): VideoSource {
       if (/^(file|content|asset):/.test(src)) return { uri: src };
       const url = mediaUrl(toPreviewSrc(src));
