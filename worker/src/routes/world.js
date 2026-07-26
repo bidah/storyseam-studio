@@ -85,6 +85,65 @@ function normalizeLocation(raw, i = 0) {
   return out;
 }
 
+// The agent's bulk save must never DESTROY what it didn't send. A partial
+// `save_world` (the model sending, say, just `{ title: "T" }`) used to overwrite
+// the whole document with blanks — that is how Whistlewood's world bible was
+// wiped on 2026-07-22. So on that path a field only overwrites when it arrives
+// with actual content: an omitted field, and an empty string, both keep what's
+// stored. Clearing a field on purpose is a HUMAN action and goes through
+// `PUT /api/world` (the World tab's inline editors), which still honours "".
+const keep = (incoming, prev) => {
+  if (incoming == null) return prev;
+  const s = str(incoming);
+  return s.trim() ? s : prev;
+};
+
+const mergeSection = (fields, incoming, prev) =>
+  Object.fromEntries(fields.map((f) => [f, keep(incoming?.[f], prev?.[f])]));
+
+// Merge one incoming character/location onto its stored twin, field by field.
+// `sheetImage`/`voiceRef` are objects, not strings: an explicit `null` means
+// unlink, an absent key means keep whatever is linked.
+function mergeEntry(fields, raw, prev, i, normalize) {
+  if (!prev) return normalize(raw, i);
+  const out = { ...prev };
+  for (const f of fields) out[f] = keep(raw?.[f], prev[f]);
+  if (raw && "sheetImage" in raw) out.sheetImage = normalizeSheetImage(raw.sheetImage);
+  if (raw && "voiceRef" in raw) out.voiceRef = normalizeVoiceRef(raw.voiceRef);
+  return normalize(out, i);
+}
+
+// Merge an incoming roster onto the stored one. Entries match by id, falling
+// back to a case-insensitive name so an agent that forgot to pass ids updates
+// the cast instead of duplicating it; unmatched entries are appended. Entries
+// the caller did NOT send are PRESERVED — removing one is an explicit DELETE,
+// never a side effect of a bulk save.
+function mergeRoster(fields, incoming, prev, normalize) {
+  if (!Array.isArray(incoming)) return prev;
+  const out = prev.slice();
+  const byId = new Map();
+  const byName = new Map();
+  out.forEach((e, i) => {
+    if (e.id) byId.set(e.id, i);
+    const n = str(e.name).trim().toLowerCase();
+    if (n && !byName.has(n)) byName.set(n, i);
+  });
+  for (const raw of incoming) {
+    const id = str(raw?.id);
+    const name = str(raw?.name).trim().toLowerCase();
+    const idx = id && byId.has(id) ? byId.get(id) : name && byName.has(name) ? byName.get(name) : -1;
+    if (idx >= 0) {
+      out[idx] = mergeEntry(fields, raw, out[idx], idx, normalize);
+    } else {
+      const entry = mergeEntry(fields, raw, null, out.length, normalize);
+      out.push(entry);
+      if (entry.id) byId.set(entry.id, out.length - 1);
+      if (name) byName.set(name, out.length - 1);
+    }
+  }
+  return out;
+}
+
 // Merge a (possibly partial) world onto the empty skeleton so every field always
 // exists and the UI never has to null-check. Sections are shallow-merged; unknown
 // keys are dropped.
@@ -138,12 +197,14 @@ export function registerWorld(app) {
     return c.json(world);
   });
 
-  // Replace the world bible (the agent's save_world). Overwrites the scalar/map/
-  // depth sections and the character roster with what's sent — BUT preserves the
-  // `characters` and `locations` arrays when the caller OMITS them. `save_world`
-  // can't express locations at all (and may omit characters), so a blind overwrite
-  // silently WIPED every location on each call. An explicitly-sent array still
-  // replaces; only a missing one is carried over from the stored world.
+  // Fill in the world bible (the agent's save_world). This is a MERGE, not a
+  // replace: everything the caller sends with content wins, everything else —
+  // omitted fields, empty strings, unmentioned cast/places — is carried over
+  // from the stored world (see `keep`/`mergeRoster` above). The agent is a
+  // fallible writer that regularly sends partial documents, so a blind
+  // overwrite here is a data-loss bug, not a feature; deletions are explicit
+  // (DELETE /api/world/character|location/:id) and clearing a field is the
+  // human PUT path.
   app.post("/api/world", async (c) => {
     const pid = c.get("projectId");
     let body;
@@ -151,9 +212,12 @@ export function registerWorld(app) {
     const incoming = body && typeof body === "object" && body.world ? body.world : body;
     const prev = await readWorld(c.env, pid);
     const merged = {
-      ...incoming,
-      characters: Array.isArray(incoming?.characters) ? incoming.characters : prev.characters,
-      locations: Array.isArray(incoming?.locations) ? incoming.locations : prev.locations,
+      title: keep(incoming?.title, prev.title),
+      logline: keep(incoming?.logline, prev.logline),
+      map: mergeSection(MAP_FIELDS, incoming?.map, prev.map),
+      depth: mergeSection(DEPTH_FIELDS, incoming?.depth, prev.depth),
+      characters: mergeRoster(CHAR_FIELDS, incoming?.characters, prev.characters, normalizeChar),
+      locations: mergeRoster(LOC_FIELDS, incoming?.locations, prev.locations, normalizeLocation),
     };
     const world = normalizeWorld(merged);
     world.generatedAt = new Date().toISOString();

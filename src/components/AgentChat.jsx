@@ -890,6 +890,9 @@ export default function AgentChat() {
         return;
       }
       promptEd.current?.appendText(heard);
+      // Put the caret back in the composer, but only after the recording bar
+      // has yielded the row again — the editor can't take focus while hidden.
+      setTimeout(() => promptEd.current?.focus(), 0);
     } catch (e) {
       setVoiceError(e?.message || "Transcription failed.");
     } finally {
@@ -1211,6 +1214,11 @@ export default function AgentChat() {
           </p>
         ) : null}
 
+        {/* The recording bar REPLACES the composer visually, but the composer row
+            below stays MOUNTED (just hidden) — `promptEd` is where the transcript
+            lands, and unmounting it for the duration of the take meant the ref was
+            already null when Whisper answered, so every dictation was silently
+            dropped on the floor. */}
         {rec.recording || transcribing ? (
           <div className="flex items-center gap-2 rounded-lg border bg-background px-2 py-1.5">
             <Button
@@ -1250,63 +1258,63 @@ export default function AgentChat() {
               )}
             </Button>
           </div>
-        ) : (
-          <div className="flex items-end gap-2">
-            <Button
-              size="icon"
-              variant="ghost"
-              onClick={() => { setPickerFor("composer"); setPickerOpen(true); }}
-              aria-label="Attach image"
-              title="Attach a reference — gallery, Visual world, or your computer"
-            >
-              <Paperclip size={16} />
+        ) : null}
+
+        <div className={cn("flex items-end gap-2", (rec.recording || transcribing) && "hidden")}>
+          <Button
+            size="icon"
+            variant="ghost"
+            onClick={() => { setPickerFor("composer"); setPickerOpen(true); }}
+            aria-label="Attach image"
+            title="Attach a reference — gallery, Visual world, or your computer"
+          >
+            <Paperclip size={16} />
+          </Button>
+          {/* TipTap composer — Enter sends, Shift+Enter breaks the line, and
+              "@" pops the attached-reference picker (chips send as @imageN). */}
+          <PromptEditor
+            ref={promptEd}
+            refs={mentionRefs}
+            placeholder="Message the studio agent…"
+            onChange={setText}
+            onSubmit={submit}
+            submitOnEnter
+            onPasteFiles={addFiles}
+            className="max-h-[180px] min-h-[38px] flex-1 overflow-y-auto rounded-lg border bg-background px-3 py-2 text-sm focus-within:ring-2 focus-within:ring-ring"
+          />
+          {/* Trailing actions mirror the mobile composer: while the agent is
+              working it's a Stop button; otherwise the mic stays available next
+              to Send so you can dictate into an empty draft OR keep appending
+              more voice to what's already typed. */}
+          {isBusy ? (
+            <Button size="icon" variant="secondary" onClick={agent.stop} aria-label="Stop">
+              <Square size={15} />
             </Button>
-            {/* TipTap composer — Enter sends, Shift+Enter breaks the line, and
-                "@" pops the attached-reference picker (chips send as @imageN). */}
-            <PromptEditor
-              ref={promptEd}
-              refs={mentionRefs}
-              placeholder="Message the studio agent…"
-              onChange={setText}
-              onSubmit={submit}
-              submitOnEnter
-              onPasteFiles={addFiles}
-              className="max-h-[180px] min-h-[38px] flex-1 overflow-y-auto rounded-lg border bg-background px-3 py-2 text-sm focus-within:ring-2 focus-within:ring-ring"
-            />
-            {/* Trailing actions mirror the mobile composer: while the agent is
-                working it's a Stop button; otherwise the mic stays available next
-                to Send so you can dictate into an empty draft OR keep appending
-                more voice to what's already typed. */}
-            {isBusy ? (
-              <Button size="icon" variant="secondary" onClick={agent.stop} aria-label="Stop">
-                <Square size={15} />
+          ) : (
+            <>
+              <Button
+                size="icon"
+                variant={hasDraft ? "ghost" : "default"}
+                onClick={startRecording}
+                aria-label="Record voice message"
+                title={hasDraft ? "Add more with voice" : "Record voice message"}
+              >
+                <Mic size={16} />
               </Button>
-            ) : (
-              <>
+              {hasDraft ? (
                 <Button
                   size="icon"
-                  variant={hasDraft ? "ghost" : "default"}
-                  onClick={startRecording}
-                  aria-label="Record voice message"
-                  title={hasDraft ? "Add more with voice" : "Record voice message"}
+                  onClick={submit}
+                  disabled={!canSend}
+                  aria-label="Send"
+                  title={uploading ? "Waiting for upload…" : "Send"}
                 >
-                  <Mic size={16} />
+                  {uploading ? <Loader2 size={15} className="animate-spin" /> : <Send size={15} />}
                 </Button>
-                {hasDraft ? (
-                  <Button
-                    size="icon"
-                    onClick={submit}
-                    disabled={!canSend}
-                    aria-label="Send"
-                    title={uploading ? "Waiting for upload…" : "Send"}
-                  >
-                    {uploading ? <Loader2 size={15} className="animate-spin" /> : <Send size={15} />}
-                  </Button>
-                ) : null}
-              </>
-            )}
-          </div>
-        )}
+              ) : null}
+            </>
+          )}
+        </div>
 
         <div className="mt-1.5 flex items-center">
           <ModelPicker disabled={isBusy} />

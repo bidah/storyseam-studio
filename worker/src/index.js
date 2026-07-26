@@ -172,6 +172,14 @@ app.use("*", async (c, next) => {
   c.set("projectId", pid);
 
   const isData = p.startsWith("/api/") && !p.startsWith("/api/auth/") && !p.startsWith("/api/projects");
+  // A WRITE we can't scope must never reach storage: `normalizeProjectId(null)`
+  // resolves to `p_default`, and `p_default` is a REAL project (Whistlewood), so
+  // an unscoped mutation silently lands in someone's actual world/shot list
+  // instead of failing. That is how Whistlewood's world bible got clobbered.
+  // Reads still fall back (worst case they 404); writes fail loudly.
+  if (isData && !pid && c.req.method !== "GET" && c.req.method !== "HEAD") {
+    return c.json({ error: "No active project — send x-project-id or ?projectId=" }, 400);
+  }
   if (isData && userId && pid && !(await userCanAccessProject(c.env, userId, pid))) {
     return c.json({ error: "Forbidden" }, 403);
   }

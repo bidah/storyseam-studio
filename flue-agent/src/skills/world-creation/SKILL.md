@@ -10,6 +10,9 @@ description: >-
   out the protagonist / antagonist / conflict / structure. You INTERVIEW the author
   with ask_question across the story map, story depth, and character roster, then
   write it back with save_world (call get_world first if a world already exists).
+  save_world MERGES: send only fields you have real answers for, omit the rest,
+  and NEVER send an empty string or invented filler — the author's existing world
+  must never be blanked by a save.
 ---
 
 # World creation (Shot Studio World tab)
@@ -70,10 +73,12 @@ The world bible has four parts:
    off to the **`story-architect`** subagent (it picks an arc — Hero's Journey,
    Story Circle, Three-Act, Save the Cat, Kishōtenketsu — and returns a beat
    outline); fold its result into `depth.structure`.
-4. **Save.** When you have enough, call **`save_world`** with the complete object.
-   It OVERWRITES the whole world, so send everything you know (merge the author's
-   new answers onto whatever `get_world` returned). Leave genuinely-unknown fields
-   as empty strings.
+4. **Save.** When you have enough, call **`save_world`** with what you learned.
+   It MERGES onto the stored world, so send the fields you have real answers for
+   and simply **omit** the rest — never send an empty string or invented filler
+   to "reset" a field (empty values are ignored, and a field the author already
+   filled in must not be blanked by a save). A character you don't mention keeps
+   its stored values; match an existing one by its `id` from `get_world`.
 5. **Hand back.** Tell the author you've written the world to the **World tab**,
    summarize the highlights in a line or two, and remind them they can **edit any
    field directly** there (or ask you to refine it). The tab live-updates via its

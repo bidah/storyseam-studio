@@ -9,7 +9,7 @@ export const saveWorld = (api: Api) =>
   defineTool({
     name: "save_world",
     description:
-      "Write the World bible shown on the World tab (the series' foundational world). Overwrites the story map (the 5 shaping questions), the story-depth core elements, and the character roster with what you send — call get_world first if a world already exists so you don't drop fields. Fill in what you learned from interviewing the author. Leave a field as an empty string if genuinely unknown. It does NOT touch LOCATIONS — this tool can't carry them, so places are preserved untouched; add a place with `add_world_location`, never here. Returns the saved world.",
+      "Fill in the World bible shown on the World tab (the series' foundational world): the story map (the 5 shaping questions), the story-depth core elements, and the character roster. This MERGES — send only what you actually learned from interviewing the author, and everything you omit keeps its stored value. NEVER send an empty string or invented filler to 'reset' a field: an empty value is ignored, and the way to clear something is for the author to clear it on the World tab. Characters match on id (from get_world) or on name, and a character you don't mention is left alone — remove one only when the author asks. It does NOT touch LOCATIONS; add a place with `add_world_location`, never here. Returns the saved world.",
     input: v.object({
       title: v.optional(d(v.string(), "The series / world title.")),
       logline: v.optional(d(v.string(), "One sentence that captures the series.")),

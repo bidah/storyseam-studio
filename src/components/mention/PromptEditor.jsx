@@ -179,12 +179,18 @@ const PromptEditor = forwardRef(function PromptEditor(
     setText: (text) => {
       editor?.commands.setContent(textToDoc(text), { emitUpdate: true });
     },
+    // Append at the very end of the doc WITHOUT relying on focus: dictation
+    // lands here while the composer is hidden behind the recording bar, and a
+    // hidden element can't take DOM focus (so `.focus("end")` would leave the
+    // selection wherever it was and drop the text in the wrong place, or
+    // nowhere). The caller re-focuses once the composer is visible again.
     appendText: (text) => {
       if (!editor) return;
       const { text: cur } = serialize(editor);
       editor
         .chain()
-        .focus("end")
+        // Clamps to the last valid text position, so this is the end of the doc.
+        .setTextSelection(editor.state.doc.content.size)
         .insertContent({ type: "text", text: cur ? ` ${text}` : text })
         .run();
     },
