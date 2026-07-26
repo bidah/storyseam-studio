@@ -49,6 +49,16 @@ touches only one, deploy only that one — but check.
   run a local one with `WORKER=http://localhost:8787 npm run dev` + `cd worker &&
   npx wrangler dev`.
 
+### Mobile OTA after a commit
+
+After **any commit that touches `mobile-app/`**, ask the user whether to publish
+an EAS **preview** OTA update (`cd mobile-app && npm run update:preview`, i.e.
+`eas update --channel preview --platform ios --environment preview`). Don't
+auto-publish — ask first, then run it if they say yes. A `PostToolUse` hook in
+`.claude/settings.json` posts a reminder on such commits so this isn't forgotten.
+(Renderer/JS-only changes ship over-the-air; a native/config change instead needs
+a fresh build, not an OTA.)
+
 ## Desktop app (macOS, `desktop/`)
 
 Electron shell hosting the SAME Vite build on a privileged `app://` origin; an

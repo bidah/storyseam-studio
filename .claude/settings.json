@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "statusMessage": "Checking for mobile-app commit…",
+            "timeout": 15,
+            "command": "c=$(jq -r '.tool_input.command // \"\"'); echo \"$c\" | grep -q 'git commit' || exit 0; git diff-tree --no-commit-id --name-only -r HEAD 2>/dev/null | grep -q '^mobile-app/' || exit 0; printf '%s' '{\"hookSpecificOutput\":{\"hookEventName\":\"PostToolUse\",\"additionalContext\":\"A commit touching mobile-app/ just landed. Project rule: ask the user whether to publish an EAS preview OTA update to the preview channel (npm run update:preview / eas update --channel preview). Do not auto-publish; ask first.\"}}'"
+          }
+        ]
+      }
+    ]
+  }
+}
