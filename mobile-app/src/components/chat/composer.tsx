@@ -51,8 +51,9 @@ export function Composer({
   const [transcribing, setTranscribing] = useState(false);
 
   const canSend = (text.trim().length > 0 || atts.length > 0) && !busy && !sending;
-  // Empty composer → the send button becomes a push-to-talk mic.
-  const showMic = !busy && !sending && text.trim().length === 0 && atts.length === 0;
+  // The mic is always available (except mid-turn / mid-send) so you can dictate
+  // into an empty composer OR keep appending more voice to an existing draft.
+  const showMic = !busy && !sending;
 
   const pick = async () => {
     try {
@@ -228,7 +229,7 @@ export function Composer({
               <ChevronDown size={13} color={c.mutedForeground} />
             </Pressable>
 
-            <View className="ml-auto">
+            <View className="ml-auto flex-row items-center gap-2">
               {busy ? (
                 <Pressable
                   accessibilityRole="button"
@@ -241,34 +242,54 @@ export function Composer({
                 >
                   <CircleStop size={19} color={c.foreground} />
                 </Pressable>
-              ) : showMic ? (
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel="Record voice message"
-                  style={{ backgroundColor: c.higgsfield }}
-                  className="h-9 w-9 items-center justify-center rounded-full active:opacity-80"
-                  onPress={startRecording}
-                >
-                  <Mic size={18} color={c.higgsfieldForeground} />
-                </Pressable>
               ) : (
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel={sending ? 'Sending' : 'Send'}
-                  disabled={!canSend}
-                  style={{ backgroundColor: c.higgsfield }}
-                  className={cn(
-                    'h-9 w-9 items-center justify-center rounded-full active:opacity-80',
-                    !canSend && 'opacity-40',
-                  )}
-                  onPress={submit}
-                >
-                  {sending ? (
-                    <ActivityIndicator size="small" color={c.higgsfieldForeground} />
-                  ) : (
-                    <ArrowUp size={18} color={c.higgsfieldForeground} />
-                  )}
-                </Pressable>
+                <>
+                  {/* Mic stays alongside Send: dictate into an empty draft, or
+                      keep appending more voice to what's already typed. */}
+                  {showMic ? (
+                    canSend ? (
+                      // Secondary next to Send.
+                      <Pressable
+                        accessibilityRole="button"
+                        accessibilityLabel="Record voice message"
+                        className="h-9 w-9 items-center justify-center rounded-full border border-border active:opacity-60"
+                        onPress={startRecording}
+                      >
+                        <Mic size={18} color={c.mutedForeground} />
+                      </Pressable>
+                    ) : (
+                      // Primary action when there's nothing to send yet.
+                      <Pressable
+                        accessibilityRole="button"
+                        accessibilityLabel="Record voice message"
+                        style={{ backgroundColor: c.higgsfield }}
+                        className="h-9 w-9 items-center justify-center rounded-full active:opacity-80"
+                        onPress={startRecording}
+                      >
+                        <Mic size={18} color={c.higgsfieldForeground} />
+                      </Pressable>
+                    )
+                  ) : null}
+                  {canSend || sending ? (
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel={sending ? 'Sending' : 'Send'}
+                      disabled={!canSend}
+                      style={{ backgroundColor: c.higgsfield }}
+                      className={cn(
+                        'h-9 w-9 items-center justify-center rounded-full active:opacity-80',
+                        !canSend && 'opacity-40',
+                      )}
+                      onPress={submit}
+                    >
+                      {sending ? (
+                        <ActivityIndicator size="small" color={c.higgsfieldForeground} />
+                      ) : (
+                        <ArrowUp size={18} color={c.higgsfieldForeground} />
+                      )}
+                    </Pressable>
+                  ) : null}
+                </>
               )}
             </View>
           </View>

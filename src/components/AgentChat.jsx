@@ -1273,33 +1273,37 @@ export default function AgentChat() {
               onPasteFiles={addFiles}
               className="max-h-[180px] min-h-[38px] flex-1 overflow-y-auto rounded-lg border bg-background px-3 py-2 text-sm focus-within:ring-2 focus-within:ring-ring"
             />
-            {/* Trailing action mirrors the mobile composer: while the agent is
-                working it's a Stop button; with a draft (text or attachments) it's
-                Send; and when empty it's the mic — start recording a voice message. */}
+            {/* Trailing actions mirror the mobile composer: while the agent is
+                working it's a Stop button; otherwise the mic stays available next
+                to Send so you can dictate into an empty draft OR keep appending
+                more voice to what's already typed. */}
             {isBusy ? (
               <Button size="icon" variant="secondary" onClick={agent.stop} aria-label="Stop">
                 <Square size={15} />
               </Button>
-            ) : hasDraft ? (
-              <Button
-                size="icon"
-                onClick={submit}
-                disabled={!canSend}
-                aria-label="Send"
-                title={uploading ? "Waiting for upload…" : "Send"}
-              >
-                {uploading ? <Loader2 size={15} className="animate-spin" /> : <Send size={15} />}
-              </Button>
             ) : (
-              <Button
-                size="icon"
-                variant="ghost"
-                onClick={startRecording}
-                aria-label="Record voice message"
-                title="Record voice message"
-              >
-                <Mic size={16} />
-              </Button>
+              <>
+                <Button
+                  size="icon"
+                  variant={hasDraft ? "ghost" : "default"}
+                  onClick={startRecording}
+                  aria-label="Record voice message"
+                  title={hasDraft ? "Add more with voice" : "Record voice message"}
+                >
+                  <Mic size={16} />
+                </Button>
+                {hasDraft ? (
+                  <Button
+                    size="icon"
+                    onClick={submit}
+                    disabled={!canSend}
+                    aria-label="Send"
+                    title={uploading ? "Waiting for upload…" : "Send"}
+                  >
+                    {uploading ? <Loader2 size={15} className="animate-spin" /> : <Send size={15} />}
+                  </Button>
+                ) : null}
+              </>
             )}
           </div>
         )}

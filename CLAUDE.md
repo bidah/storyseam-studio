@@ -51,13 +51,14 @@ touches only one, deploy only that one — but check.
 
 ### Mobile OTA after a commit
 
-After **any commit that touches `mobile-app/`**, ask the user whether to publish
-an EAS **preview** OTA update (`cd mobile-app && npm run update:preview`, i.e.
-`eas update --channel preview --platform ios --environment preview`). Don't
-auto-publish — ask first, then run it if they say yes. A `PostToolUse` hook in
-`.claude/settings.json` posts a reminder on such commits so this isn't forgotten.
-(Renderer/JS-only changes ship over-the-air; a native/config change instead needs
-a fresh build, not an OTA.)
+After **any commit that touches `mobile-app/`**, publish an EAS **preview** OTA
+update automatically — **do NOT ask first**. Run `cd mobile-app && npm run
+update:preview` (i.e. `eas update --channel preview --platform ios --environment
+preview`) as the last step after the commit, then tell the user it shipped. A
+`PostToolUse` hook in `.claude/settings.json` posts a reminder on such commits so
+this isn't forgotten. (Renderer/JS-only changes ship over-the-air; a
+native/config change instead needs a fresh build, not an OTA — in that case say
+so instead of running the OTA.)
 
 ## Desktop app (macOS, `desktop/`)
 
