@@ -36,9 +36,11 @@ import {
   linkSelected,
   unlinkItem,
   removeItemFromTimeline,
+  removeGap,
   planSplit,
   applySplit,
   type DragPhase,
+  type SelectedGap,
 } from "@/editor/modules/timeline";
 import { Inspector } from "@/editor/modules/timeline/Inspector";
 import { MediaPool } from "@/editor/modules/media";
@@ -88,6 +90,7 @@ export function Editor({ onClose }: { onClose?: () => void } = {}) {
     mutate,
     beginGesture,
     endGesture,
+    cancelGesture,
     undo,
     canUndo,
     resetHistory,
@@ -96,6 +99,7 @@ export function Editor({ onClose }: { onClose?: () => void } = {}) {
   const [pool, setPool] = useState<Pool | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [selectedGap, setSelectedGap] = useState<SelectedGap | null>(null);
   const [poolOpen, setPoolOpen] = useState(false);
   const [inspectorOpen, setInspectorOpen] = useState(false);
   const pxPerSecRef = useRef(48);
@@ -145,10 +149,33 @@ export function Editor({ onClose }: { onClose?: () => void } = {}) {
   }, [backend, dirtyRef, inGestureRef, setTimeline]);
 
   // ---- selection -----------------------------------------------------------
+  // Selecting a clip and a gap are mutually exclusive (web parity).
   const selectId = useCallback((id: string) => {
+    setSelectedGap(null);
     setSelectedId(id);
     setSelectedIds(new Set([id]));
   }, []);
+
+  // Gap taps: first tap selects the gap (the card shows its X), a second tap on
+  // the selected gap closes it — every later clip on the track pulls left.
+  const onSelectGap = useCallback(
+    (trackId: string, gap: { from: number; to: number }) => {
+      const same =
+        selectedGap &&
+        selectedGap.trackId === trackId &&
+        selectedGap.from === gap.from &&
+        selectedGap.to === gap.to;
+      if (same) {
+        mutate((t) => removeGap(t, trackId, gap));
+        setSelectedGap(null);
+        return;
+      }
+      setSelectedId(null);
+      setSelectedIds(new Set());
+      setSelectedGap({ trackId, from: gap.from, to: gap.to });
+    },
+    [mutate, selectedGap],
+  );
 
   const linkHighlightIds = useMemo(() => {
     const s = new Set<string>();
@@ -196,10 +223,16 @@ export function Editor({ onClose }: { onClose?: () => void } = {}) {
       const targets = snapTargets(tl, Math.round(currentFrameRef.current), exclude);
       const snapped = computeSnap(targets, newFrom, item.durationInFrames, thresh);
       const finalFrom = snapped ? snapped.from : newFrom;
+      // A drag released where it started is a no-op: drop the begin snapshot
+      // (else Undo fills with do-nothing entries) and skip the dirty autosave.
+      if (finalFrom === item.from) {
+        cancelGesture();
+        return;
+      }
       mutate((t) => moveItem(t, id, finalFrom), true);
       endGesture();
     },
-    [beginGesture, endGesture, mutate, selectId, timelineRef],
+    [beginGesture, cancelGesture, endGesture, mutate, selectId, timelineRef],
   );
 
   const onTrim = useCallback(
@@ -210,10 +243,15 @@ export function Editor({ onClose }: { onClose?: () => void } = {}) {
         return;
       }
       if (phase !== "end") return;
+      const item = findItem(timelineRef.current, id);
+      if (item && Math.round(newDuration) === item.durationInFrames) {
+        cancelGesture();
+        return;
+      }
       mutate((t) => trimItem(t, id, newDuration), true);
       endGesture();
     },
-    [beginGesture, endGesture, mutate, selectId],
+    [beginGesture, cancelGesture, endGesture, mutate, selectId, timelineRef],
   );
 
   // ---- add / inspector actions --------------------------------------------
@@ -329,12 +367,14 @@ export function Editor({ onClose }: { onClose?: () => void } = {}) {
         frameSV={playback.frameSV}
         playing={playback.playing}
         selectedId={selectedId}
+        selectedGap={selectedGap}
         linkHighlightIds={linkHighlightIds}
         selectionCount={selectedIds.size}
         onScrub={onScrub}
         onScrubStart={onScrubStart}
         onScrubEnd={onScrubEnd}
         onSelect={selectId}
+        onSelectGap={onSelectGap}
         onMove={onMove}
         onTrim={onTrim}
         onRequestActions={openInspector}
@@ -355,8 +395,15 @@ export function Editor({ onClose }: { onClose?: () => void } = {}) {
         <ToolButton
           icon="trash"
           label="Delete"
-          disabled={!selectedId}
-          onPress={() => selectedId && removeClip(selectedId)}
+          disabled={!selectedId && !selectedGap}
+          onPress={() => {
+            if (selectedGap) {
+              mutate((t) => removeGap(t, selectedGap.trackId, selectedGap));
+              setSelectedGap(null);
+            } else if (selectedId) {
+              removeClip(selectedId);
+            }
+          }}
         />
         <ToolButton
           icon="scissors"

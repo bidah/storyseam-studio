@@ -56,9 +56,14 @@ export function EditorComposition({ video, imageUrl }: EditorCompositionProps) {
   };
 
   let surface: React.ReactNode;
-  if (item && isSlateItem(item)) {
+  if (!item) {
+    // No item under the playhead (a gap): black frame, exactly like the web
+    // composition. The playback engine parks the video player on gaps, so
+    // rendering the VideoView here would show its frozen last frame instead.
+    surface = <View style={styles.surface} />;
+  } else if (isSlateItem(item)) {
     surface = <Slate label={item.name || item.shot || "Slate"} />;
-  } else if (item && isImageItem(item)) {
+  } else if (isImageItem(item)) {
     const uri = imageUrl && item.src ? imageUrl(item.src) : item.src;
     surface = (
       <Image

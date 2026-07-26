@@ -15,17 +15,19 @@ import {
   LayoutChangeEvent,
   NativeScrollEvent,
   NativeSyntheticEvent,
+  Pressable,
   StyleSheet,
   Text,
   View,
 } from "react-native";
+import { SymbolView } from "expo-symbols";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Animated, {
   useAnimatedProps,
   useSharedValue,
   type SharedValue,
 } from "react-native-reanimated";
-import { framesToSec, timelineDuration, type Timeline as TL } from "@/editor/core/timeline";
+import { framesToSec, gapsFor, timelineDuration, type Timeline as TL } from "@/editor/core/timeline";
 import { EditorTheme } from "@/editor/theme";
 import { LANE_H, formatTimecode, pickTickStep } from "./ruler";
 import { TimelineItem, type DragPhase } from "./TimelineItem";
@@ -35,11 +37,19 @@ const RULER_H = 26;
 const MIN_PX = 8;
 const MAX_PX = 320;
 
+export interface SelectedGap {
+  trackId: string;
+  from: number;
+  to: number;
+}
+
 export interface TimelineProps {
   timeline: TL | null;
   frameSV: SharedValue<number>;
   playing: boolean;
   selectedId: string | null;
+  /** The selected gap on a video lane (mutually exclusive with a clip selection). */
+  selectedGap: SelectedGap | null;
   linkHighlightIds: Set<string>;
   selectionCount: number;
   /** Live preview seek while dragging (throttled by the playback engine). */
@@ -49,6 +59,9 @@ export interface TimelineProps {
   /** Final committed frame when the scrub gesture settles. */
   onScrubEnd: (frame: number) => void;
   onSelect: (id: string) => void;
+  /** Tap on a gap between clips. First tap selects it (shows the X); a second
+   *  tap on the selected gap deletes it (pulls later clips left). */
+  onSelectGap: (trackId: string, gap: { from: number; to: number }) => void;
   onMove: (id: string, newFrom: number, phase: DragPhase) => void;
   onTrim: (id: string, newDuration: number, phase: DragPhase) => void;
   onRequestActions?: (id: string) => void;
@@ -61,12 +74,14 @@ function TimelineImpl({
   frameSV,
   playing,
   selectedId,
+  selectedGap,
   linkHighlightIds,
   selectionCount,
   onScrub,
   onScrubStart,
   onScrubEnd,
   onSelect,
+  onSelectGap,
   onMove,
   onTrim,
   onRequestActions,
@@ -250,6 +265,36 @@ function TimelineImpl({
                   },
                 ]}
               >
+                {/* Selectable gaps between video clips (web parity). Rendered
+                    UNDER the clip cards so a too-small gap never steals a
+                    clip's touches. */}
+                {track.type === "video" &&
+                  gapsFor(track).map((g, gi) => {
+                    const sel =
+                      !!selectedGap &&
+                      selectedGap.trackId === track.id &&
+                      selectedGap.from === g.from &&
+                      selectedGap.to === g.to;
+                    return (
+                      <Pressable
+                        key={`gap-${gi}`}
+                        onPress={() => onSelectGap(track.id, g)}
+                        style={[
+                          styles.gap,
+                          {
+                            left: framesToSec(g.from, fps) * pxPerSec,
+                            width: Math.max(18, framesToSec(g.to - g.from, fps) * pxPerSec),
+                          },
+                          sel && styles.gapSelected,
+                        ]}
+                        accessibilityLabel="Gap — tap to select, tap again to close it"
+                      >
+                        {sel ? (
+                          <SymbolView name="xmark.circle.fill" size={18} tintColor={EditorTheme.text} />
+                        ) : null}
+                      </Pressable>
+                    );
+                  })}
                 {track.items.map((item) => (
                   <TimelineItem
                     key={item.id}
@@ -312,6 +357,21 @@ const styles = StyleSheet.create({
     marginTop: 4,
     borderRadius: 4,
     overflow: "hidden",
+  },
+  gap: {
+    position: "absolute",
+    top: 4,
+    bottom: 4,
+    borderRadius: 6,
+    borderWidth: 1.5,
+    borderStyle: "dashed",
+    borderColor: "transparent",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  gapSelected: {
+    borderColor: EditorTheme.textDim,
+    backgroundColor: "rgba(255,255,255,0.12)",
   },
 });
 

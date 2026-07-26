@@ -30,6 +30,10 @@ export interface TimelineHistory {
   pushHistory: () => void;
   beginGesture: () => void;
   endGesture: () => void;
+  /** Close a gesture that turned out to be a NO-OP (drag released at the same
+   *  frame, trim back to the same length): drops the snapshot `beginGesture`
+   *  pushed so Undo isn't buried under do-nothing entries. */
+  cancelGesture: () => void;
   mutate: (fn: (tl: Timeline) => Timeline, silent?: boolean) => void;
   undo: () => void;
   resetHistory: () => void;
@@ -65,6 +69,13 @@ export function useTimelineHistory({ onUndo }: { onUndo?: () => void } = {}): Ti
   // call this on `.onEnd`/`.onFinalize` so the NEXT drag records its own undo.
   const endGesture = useCallback(() => {
     inGestureRef.current = false;
+  }, []);
+
+  const cancelGesture = useCallback(() => {
+    if (!inGestureRef.current) return;
+    inGestureRef.current = false;
+    histRef.current.pop();
+    setCanUndo(histRef.current.length > 0);
   }, []);
 
   const mutate = useCallback(
@@ -105,6 +116,7 @@ export function useTimelineHistory({ onUndo }: { onUndo?: () => void } = {}): Ti
     pushHistory,
     beginGesture,
     endGesture,
+    cancelGesture,
     mutate,
     undo,
     resetHistory,

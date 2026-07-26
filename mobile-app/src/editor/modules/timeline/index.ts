@@ -2,7 +2,7 @@
 // pure ops. Mirrors web-editor/src/modules/timeline/index.js.
 // Web reference: /docs/modules/timeline ↔ this: /docs/react-native/timeline
 export { Timeline } from "./Timeline";
-export type { TimelineProps } from "./Timeline";
+export type { TimelineProps, SelectedGap } from "./Timeline";
 export { TimelineItem } from "./TimelineItem";
 export type { TimelineItemProps, DragPhase } from "./TimelineItem";
 export { Waveform } from "./Waveform";

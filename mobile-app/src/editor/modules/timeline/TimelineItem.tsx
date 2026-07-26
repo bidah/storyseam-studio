@@ -103,8 +103,13 @@ function TimelineItemImpl({
           const nf = Math.max(0, item.from + Math.round((e.translationX / pxPerSec) * fps));
           onMove(item.id, nf, "active");
         })
-        .onEnd(() => {
-          const nf = Math.max(0, item.from + Math.round((dragX.value / pxPerSec) * fps));
+        .onEnd((_e, success) => {
+          // A CANCELLED pan (scroll stole it, detector reconfigured) must not
+          // commit its partial translation — report "no move" so the editor
+          // drops the gesture's undo snapshot instead.
+          const nf = success
+            ? Math.max(0, item.from + Math.round((dragX.value / pxPerSec) * fps))
+            : item.from;
           onMove(item.id, nf, "end");
         })
         .onFinalize(() => {
@@ -154,8 +159,10 @@ function TimelineItemImpl({
           const nd = Math.max(1, item.durationInFrames + Math.round((e.translationX / pxPerSec) * fps));
           onTrim(item.id, nd, "active");
         })
-        .onEnd(() => {
-          const nd = Math.max(1, item.durationInFrames + Math.round((trimW.value / pxPerSec) * fps));
+        .onEnd((_e, success) => {
+          const nd = success
+            ? Math.max(1, item.durationInFrames + Math.round((trimW.value / pxPerSec) * fps))
+            : item.durationInFrames;
           onTrim(item.id, nd, "end");
         })
         .onFinalize(() => {
@@ -255,13 +262,19 @@ function TimelineItemImpl({
         </View>
       </GestureDetector>
 
-      {selected && (
-        <GestureDetector gesture={trim}>
-          <View style={styles.handle} hitSlop={8}>
-            <View style={styles.handleBar} />
-          </View>
-        </GestureDetector>
-      )}
+      {/* The trim handle stays MOUNTED and is hidden via opacity/pointerEvents.
+          Mounting it conditionally on `selected` changed the card's native
+          subtree mid-gesture (drag-start selects the clip), which cancels the
+          active pan on the New Architecture — the "clip won't move" bug. */}
+      <GestureDetector gesture={trim}>
+        <View
+          style={[styles.handle, !selected && styles.handleHidden]}
+          hitSlop={selected ? 8 : undefined}
+          pointerEvents={selected ? "auto" : "none"}
+        >
+          <View style={styles.handleBar} />
+        </View>
+      </GestureDetector>
     </Animated.View>
   );
 }
@@ -306,6 +319,7 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(255,255,255,0.18)",
   },
   handleBar: { width: 3, height: 20, borderRadius: 2, backgroundColor: "#fff" },
+  handleHidden: { opacity: 0 },
 });
 
 export const TimelineItem = memo(TimelineItemImpl);

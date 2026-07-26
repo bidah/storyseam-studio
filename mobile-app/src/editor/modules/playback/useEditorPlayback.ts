@@ -227,24 +227,29 @@ export function useEditorPlayback(
         if (activeKeyRef.current !== pictureKey(item ?? null)) setActiveVideo(item ?? null);
       } else {
         const switched = videoSrcRef.current !== item.src;
+        // The ITEM changing matters even when the src doesn't: a split's two
+        // halves share one file, so crossing between them must re-seek to the
+        // entered half's in-point — after the halves have been moved or trimmed
+        // apart, the continuously-streaming file sits at the WRONG source time
+        // for the item now under the playhead.
+        const itemChanged = activeKeyRef.current !== pictureKey(item);
         if (switched) {
           try {
             videoPlayer.replace(resolveRef.current(item.src));
           } catch {}
           videoSrcRef.current = item.src;
-          setActiveVideo(item);
-        } else if (activeKeyRef.current !== pictureKey(item)) {
-          setActiveVideo(item);
         }
+        if (itemChanged) setActiveVideo(item);
         // Video carries its own audio unless muted / detached (cheap, per-frame).
         try {
           videoPlayer.muted = !!item.muted;
           videoPlayer.volume = item.muted ? 0 : item.volume ?? 1;
         } catch {}
-        // Hard-seek + (re)issue transport ONLY when a clip was just loaded or on
-        // an explicit seek. During steady playback the tick does neither, so the
-        // player streams through freely and IS the clock (see the play() loop).
-        if (seek || switched) {
+        // Hard-seek + (re)issue transport ONLY when the clip under the playhead
+        // changed (new file OR new item on the same file) or on an explicit
+        // seek. During steady playback the tick does neither, so the player
+        // streams through freely and IS the clock (see the play() loop).
+        if (seek || switched || itemChanged) {
           try {
             // Source in-point: a split's right half / head-trimmed clip starts
             // `offsetFrames` into the media (the web <Video trimBefore>).
@@ -320,14 +325,24 @@ export function useEditorPlayback(
       // every slate.
       if (item && !isImageItem(item) && videoSrcRef.current === item.src) {
         let vt = 0;
+        let running = false;
         try {
           vt = videoPlayer.currentTime;
+          running = videoPlayer.playing;
         } catch {}
-        if (vt > 0.001) {
+        if (vt > 0.001 && running) {
           // Video is producing time → it's the clock. Preview + playhead locked.
           // vt is SOURCE time, so back out the item's in-point.
           stallRef.current = 0;
           f = item.from + vt * fps - (item.offsetFrames || 0);
+        } else if (vt > 0.001) {
+          // The player stopped ON ITS OWN mid-item: the file ran out before the
+          // item's out-point (real encodes are routinely a hair shorter than
+          // the model's durationInFrames). Without this branch the frozen
+          // currentTime stays "the clock" and the playhead pins just before
+          // the boundary forever — playback dies at the first gap. Fall back
+          // to the wall clock so the playhead walks across the boundary.
+          f = cur + dt * fps;
         } else {
           // Freshly loaded / seeked clip not yet playing: hold, but don't stall
           // forever if the clip never starts.
