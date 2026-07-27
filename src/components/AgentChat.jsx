@@ -142,6 +142,121 @@ function Markdown({ text, animating = false, className }) {
   );
 }
 
+// --- Smooth streaming -------------------------------------------------------
+// Agent text does NOT reach the browser token by token. `@flue/runtime` writes
+// every assistant text delta through a batched canonical-record writer whose
+// pending batch flushes on a 1s timer (`CANONICAL_FLUSH_DELAY_MS`), and a delta
+// is only published to the client once its batch is durably appended. So the UI
+// receives roughly one second's worth of generated text — 250-300 characters,
+// often a whole paragraph and the start of the next — in a SINGLE React commit.
+// Streamdown then starts its per-word fadeIn on every one of those words at the
+// same instant, which is why two paragraphs look like they stream side by side
+// instead of one following the other. (Measured on both the local and deployed
+// workers; a fast model can land an entire six-paragraph answer in one commit.)
+//
+// The transport isn't ours to re-pace, so smooth it at the render edge: hold the
+// text that has arrived and reveal it forward at a steady rate, one word at a
+// time. Bursts become a continuous type-out in document order, and Streamdown
+// animates each word as it appears. Reveal never runs ahead of what arrived, and
+// the moment the part stops streaming we snap to the full text so nothing can be
+// left hidden behind the buffer.
+const REVEAL_WINDOW_MS = 900; // drain whatever is buffered over ~one flush interval
+const REVEAL_MIN_CPS = 45; // never crawl on a thin trickle
+const REVEAL_MAX_CPS = 1200; // never dump a huge backlog in one frame
+// A part that MOUNTS already long was joined mid-flight (reload, or reopening a
+// chat whose turn is still running) — that text is history, not new output, so
+// show it as-is rather than re-typing it. A genuine stream start mounts tiny (a
+// few characters), well under this, so it still animates.
+const REVEAL_JOIN_CHARS = 400;
+
+// Extend `to` to the end of the word it landed inside, so a partially revealed
+// word never renders (and markdown syntax like `**bold**` is never split
+// mid-token). Always advances past `to`, so progress can't stall.
+function wordEnd(s, to, target) {
+  if (to >= target) return target;
+  let i = to;
+  while (i < target && !/\s/.test(s[i])) i += 1;
+  return i;
+}
+
+function useSmoothText(text, streaming) {
+  const full = text ?? "";
+  const [count, setCount] = useState(
+    streaming && full.length <= REVEAL_JOIN_CHARS ? 0 : full.length,
+  );
+  // Refs are only ever touched from effects/callbacks, never mutated during
+  // render — the mobile port runs under React Compiler and the two must stay
+  // structurally identical (mobile-app/src/components/chat/use-smooth-text.ts).
+  const fullRef = useRef(full);
+  const countRef = useRef(count);
+  const rafRef = useRef(0);
+  const lastRef = useRef(0);
+
+  // Publish the latest arrived text to the rAF loop. Settled parts (history, or
+  // the turn just ended) skip the buffer entirely and show everything at once.
+  useEffect(() => {
+    fullRef.current = full;
+    if (!streaming) {
+      lastRef.current = 0;
+      countRef.current = full.length;
+      setCount(full.length);
+    }
+  }, [full, streaming]);
+
+  useEffect(() => {
+    if (!streaming) return undefined;
+    const step = (now) => {
+      rafRef.current = requestAnimationFrame(step);
+      const target = fullRef.current.length;
+      const pending = target - countRef.current;
+      if (pending <= 0) {
+        lastRef.current = now;
+        return;
+      }
+      // Clamp dt so a dropped frame (or a tab that just came back) doesn't
+      // teleport the reveal to the end.
+      const dt = lastRef.current ? Math.min(now - lastRef.current, 100) : 16;
+      lastRef.current = now;
+      const cps = Math.min(Math.max((pending / REVEAL_WINDOW_MS) * 1000, REVEAL_MIN_CPS), REVEAL_MAX_CPS);
+      const stride = Math.max(1, Math.round((cps * dt) / 1000));
+      const next = wordEnd(fullRef.current, Math.min(target, countRef.current + stride), target);
+      if (next === countRef.current) return;
+      countRef.current = next;
+      setCount(next);
+    };
+    rafRef.current = requestAnimationFrame(step);
+    return () => {
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+      rafRef.current = 0;
+      lastRef.current = 0;
+    };
+  }, [streaming]);
+
+  // rAF is frozen in a background tab. Catch up on both edges: going hidden so
+  // nothing is stranded behind the buffer, and coming back so a whole minute of
+  // buffered output doesn't replay as a type-out the user already waited for.
+  // Deliberately does NOT stop the loop — killing it here would freeze a
+  // still-streaming part at whatever had arrived.
+  useEffect(() => {
+    const catchUp = () => {
+      lastRef.current = 0;
+      countRef.current = fullRef.current.length;
+      setCount(countRef.current);
+    };
+    document.addEventListener("visibilitychange", catchUp);
+    return () => document.removeEventListener("visibilitychange", catchUp);
+  }, []);
+
+  return count >= full.length ? full : full.slice(0, count);
+}
+
+// A streaming `text` part, revealed at a steady rate rather than in transport
+// bursts. Split out so the reveal state lives on a component keyed to that part.
+function StreamedText({ text, streaming }) {
+  const shown = useSmoothText(text, streaming);
+  return <Markdown text={shown} animating={streaming} />;
+}
+
 function prettySize(n) {
   if (typeof n !== "number") return "";
   const kb = n / 1024;
@@ -388,7 +503,7 @@ function MessagePart({ part, qa, canRespond, onRespond, onRequestReference }) {
   switch (part.type) {
     case "text":
       return part.text ? (
-        <Markdown text={part.text} animating={part.state === "streaming"} />
+        <StreamedText text={part.text} streaming={part.state === "streaming"} />
       ) : null;
     case "reasoning":
       return part.text ? (
