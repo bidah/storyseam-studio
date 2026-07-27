@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Children, useCallback, useEffect, useMemo, useState } from 'react';
 import { ScrollView, StyleSheet, Text, View, type ViewStyle } from 'react-native';
 import Animated, {
   Easing,
@@ -60,20 +60,21 @@ const ROW_PAD = 20;
 const RECAP_W = 240;
 // A suggestion card is a poster, not a chip: big enough for a large headline over
 // a real paragraph of what the card would actually do.
-const SUGGESTION_W = 270;
+const SUGGESTION_W = 305;
 // The card's height is the BAND PLUS the text budget below it (see cardBlurb),
 // not a round number the text has to survive inside. That's why growing the band
 // grows the card: the artwork is the card's subject, and the copy under it is a
 // fixed three-lines-plus-four, so squeezing the two against a fixed height would
 // only ever cost the paragraph.
 // The band is a placeholder for ARTWORK — a generated image per card, once there
-// is one — so it's sized as a picture slot (270×168, a hair wider than 16:10),
+// is one — so it's sized as a picture slot (305×168, a touch wider than 16:9),
 // with the mesh gradient standing in until the image exists.
 const SUGGESTION_BAND = 168;
-const SUGGESTION_BODY = 196;
+const SUGGESTION_BODY = 214;
 const SUGGESTION_H = SUGGESTION_BAND + SUGGESTION_BODY;
-// A recap is a text row with a colour cap, so its band is a thin sliver.
-const CARD_BAND = 20;
+// A recap is a text row: its mesh is a thin spine down the LEFT edge (see
+// bandSide), so this is a width, not a height.
+const CARD_BAND = 10;
 
 // The colored header on each card, in place of the artwork these cards would
 // carry if the studio had a thumbnail for a prompt. A 3×3 SwiftUI/Compose mesh
@@ -150,8 +151,9 @@ const MESHES = [
 // surface (`border border-border bg-card`, same as <Card> and the episode /
 // shot / library rows) lifted off the page by a soft drop shadow, pressed
 // through the shared <BouncyPressable> so these tap like every other card.
-// A mesh-gradient band caps the top where a thumbnail would sit; the text sits
-// below it on the plain surface.
+// A mesh-gradient band caps the top where a thumbnail would sit (or runs down
+// the left as a spine — the recaps); the text sits beside it on the plain
+// surface.
 function PressCard({
   children,
   onPress,
@@ -160,6 +162,7 @@ function PressCard({
   style,
   bodyStyle,
   bandHeight = CARD_BAND,
+  bandSide = 'top',
 }: {
   children: React.ReactNode;
   onPress: () => void;
@@ -169,27 +172,38 @@ function PressCard({
   style?: ViewStyle;
   /** Overrides how the text block sits under the band (see cardBody). */
   bodyStyle?: ViewStyle;
-  /** How tall the mesh band is — scaled to the card, not fixed. */
+  /** The band's thickness — its height on top, its width as a left spine. */
   bandHeight?: number;
+  /** Which edge the mesh sits on — 'left' turns the cap into a spine. */
+  bandSide?: 'top' | 'left';
 }) {
   const palette = MESHES[seed % MESHES.length];
   // Shifted off the palette's own digit so two cards sharing a palette still
   // differ in shape, and so small seeds (a suggestion's index) don't all land
   // on shape 0.
   const points = MESH_SHAPES[(Math.floor(seed / MESHES.length) + seed * 3) % MESH_SHAPES.length];
+  // As a spine the band takes the cross axis from the row: width is its own,
+  // height stretches to the card's.
+  const band: ViewStyle = bandSide === 'left' ? { width: bandHeight } : { height: bandHeight };
   return (
     <BouncyPressable accessibilityLabel={label} onPress={onPress} style={styles.cardShadow}>
-      <View className="border border-border bg-card" style={[styles.card, style]}>
-        {MeshGradientView ? (
+      <View
+        className="border border-border bg-card"
+        style={[styles.card, bandSide === 'left' && styles.cardRow, style]}
+      >
+        {/* The spine is a FLAT fill on purpose: at 10pt wide a mesh reads as
+            colour noise, not art — the gradient earns its keep only on the wide
+            top bands. The seed still picks the colour, so a card keeps its hue. */}
+        {MeshGradientView && bandSide !== 'left' ? (
           <MeshGradientView
-            style={{ height: bandHeight }}
+            style={band}
             columns={3}
             rows={3}
             colors={palette as unknown as string[]}
             points={points}
           />
         ) : (
-          <View style={{ height: bandHeight, backgroundColor: palette[4] }} />
+          <View style={[band, { backgroundColor: palette[4] }]} />
         )}
         <View style={[styles.cardBody, bodyStyle]}>{children}</View>
       </View>
@@ -201,23 +215,30 @@ function PressCard({
 // that bleeds off both edges (the row's own padding supplies the page margin,
 // so a card can sit half-off-screen and invite the swipe).
 //
-// The row SNAPS a card at a time rather than coasting: `snapToInterval` is one
-// card plus the row's gap, so every rest position puts a card's left edge exactly
-// ROW_PAD from the screen — the same margin the first card has — instead of
-// leaving a swipe stopped mid-card. `snapToInterval` (not `pagingEnabled`, which
-// snaps to viewport widths) is what makes that work for cards narrower than the
-// screen, and `decelerationRate="fast"` keeps the flick from overshooting the
-// next card before the snap grabs it.
+// The row SNAPS a card at a time rather than coasting: every rest position puts
+// a card's left edge exactly ROW_PAD from the screen — the same margin the
+// first card has — instead of leaving a swipe stopped mid-card. The snap points
+// are EXPLICIT offsets (one per card, a card-plus-gap apart) rather than
+// `snapToInterval`, which proved unreliable on the recap row under the New
+// Architecture; `snapToOffsets` pins the exact same positions dependably.
+// (`pagingEnabled` is no good either way — it snaps to viewport widths.)
+// `decelerationRate="fast"` keeps the flick from overshooting the next card
+// before the snap grabs it.
 function Section({
   title,
   cardWidth,
   children,
 }: {
   title: string;
-  /** Card width for this row — snapping is that plus the row's gap. */
+  /** Card width for this row — snap offsets are that plus the row's gap apart. */
   cardWidth: number;
   children: React.ReactNode;
 }) {
+  const count = Children.count(children);
+  const offsets = useMemo(
+    () => Array.from({ length: count }, (_, i) => i * (cardWidth + ROW_GAP)),
+    [count, cardWidth],
+  );
   return (
     // gap-0.5, not the gap-3 the Discover section uses: the card row carries
     // 10pt of its own top padding (shadow-bleed room — see styles.row), so 2pt
@@ -234,7 +255,7 @@ function Section({
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.row}
         keyboardShouldPersistTaps="handled"
-        snapToInterval={cardWidth + ROW_GAP}
+        snapToOffsets={offsets}
         snapToAlignment="start"
         decelerationRate="fast"
         disableIntervalMomentum
@@ -394,14 +415,15 @@ export default function ChatHomeScreen() {
                 label={r.title}
                 seed={meshSeed(r.id)}
                 style={styles.recapCard}
+                bandSide="left"
                 onPress={() => openRecap(r.id)}
               >
                 <Text className="text-xs text-muted-foreground">{r.when}</Text>
                 {/* Small text on purpose — a recap is a row you recognize, not a
                     poster you read; the big headline type stays on the
-                    suggestion cards. Two lines at this size is what the card's
-                    height budgets for. */}
-                <Text className="mt-1 text-foreground" style={styles.recapTitle} numberOfLines={2}>
+                    suggestion cards. With the mesh as a spine the band costs no
+                    height, which is what buys the third line. */}
+                <Text className="mt-1 text-foreground" style={styles.recapTitle} numberOfLines={3}>
                   {r.title}
                 </Text>
               </PressCard>
@@ -434,7 +456,7 @@ export default function ChatHomeScreen() {
                 <Text className="text-foreground" style={styles.cardTitle} numberOfLines={3}>
                   {s.title}
                 </Text>
-                <Text className="text-muted-foreground" style={styles.cardBlurb} numberOfLines={4}>
+                <Text className="text-muted-foreground" style={styles.cardBlurb} numberOfLines={5}>
                   {s.blurb}
                 </Text>
               </PressCard>
@@ -482,12 +504,14 @@ const styles = StyleSheet.create({
     // drop shadow lives on the wrapper above, so nothing of ours gets cut.
     overflow: 'hidden',
   },
+  // A left-spine card lays out as a row: mesh first, text beside it.
+  cardRow: { flexDirection: 'row' },
   // Text sits on the plain surface below the band, pinned to the bottom so
   // one-liners and four-liners both hang off the same edge.
   cardBody: { flex: 1, justifyContent: 'flex-end', padding: 14 },
-  // Height budgets the bottom-hung text at the recap's small size: band (20)
-  // + padding (14×2) + timestamp eyebrow (16 + 4 gap) + two recapTitle lines
-  // (2×20). Grow a line and this grows with it, or the eyebrow clips first.
+  // The spine costs no height, so the budget is all text: padding (14×2) +
+  // timestamp eyebrow (16 + 4 gap) + three recapTitle lines (3×20). Grow a
+  // line and this grows with it, or the eyebrow clips first.
   recapCard: { width: RECAP_W, height: 108 },
   // A poster, not a chip. The height is the worst case of the layout below —
   // three lines of headline over four of paragraph, plus the padding — because a
@@ -510,8 +534,8 @@ const styles = StyleSheet.create({
   // card's name over the muted timestamp above it.
   recapTitle: { fontSize: 15, fontWeight: '600', lineHeight: 20 },
   // The paragraph under it. The leading on both texts is a budget, not taste: a
-  // three-line headline (90) plus its gap (8) plus four blurb lines (72) plus the
-  // body's padding (26) is 196, which is exactly what SUGGESTION_BODY reserves.
+  // three-line headline (90) plus its gap (8) plus five blurb lines (90) plus the
+  // body's padding (26) is 214, which is exactly what SUGGESTION_BODY reserves.
   // Grow either text and raise SUGGESTION_BODY with it, or the last line clips.
   cardBlurb: { marginTop: 8, fontSize: 14, lineHeight: 18 },
 });
