@@ -9,9 +9,10 @@ import Animated, {
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import { useConversations, useIsFreshChat } from '@/lib/agent/provider';
 import { setPendingDraft } from '@/lib/agent/pending-draft';
+import { takeComposerFocus } from '@/lib/agent/composer-focus';
 import type { Chat } from '@/lib/agent/chat-store';
 import { useProjectResource } from '@/lib/queries';
 import {
@@ -359,6 +360,17 @@ export default function ChatHomeScreen() {
     [openWithDraft],
   );
 
+  // Focus handed over from the tab bar's bottom accessory: tapping the pill on
+  // another tab navigates here and asks for the caret. Claimed on FOCUS (not on
+  // mount) because this screen is already mounted underneath a conversation, and
+  // read-and-clear so coming back later doesn't raise the keyboard again.
+  const [focusTick, setFocusTick] = useState(0);
+  useFocusEffect(
+    useCallback(() => {
+      if (takeComposerFocus()) setFocusTick((t) => t + 1);
+    }, []),
+  );
+
   return (
     <View className="flex-1 bg-background">
       {/* Content is TOP-aligned under the headline, not centered.
@@ -456,6 +468,7 @@ export default function ChatHomeScreen() {
         onStop={() => {}}
         onSubmit={onSubmit}
         onHeightChange={setComposerHeight}
+        focusTick={focusTick}
       />
     </View>
   );

@@ -49,6 +49,7 @@ import { useEffectiveScheme } from '@/lib/theme';
 import { useInvalidate, useProjectResource } from '@/lib/queries';
 import { useManualRefresh } from '@/lib/use-manual-refresh';
 import { cn } from '@/lib/utils';
+import { useTabBarScrollProps } from '@/lib/use-tab-bar-inset';
 import {
   RESTRICTIONS,
   SIGN_SECTIONS,
@@ -235,6 +236,7 @@ function StillThumb({
 // Detail screen
 
 export default function BundleDetail() {
+  const barInset = useTabBarScrollProps();
   const params = useLocalSearchParams<{ bundleId: string }>();
   const id = String(params.bundleId ?? '');
   const { width } = useWindowDimensions();
@@ -633,6 +635,7 @@ export default function BundleDetail() {
       {screen}
       {subNav}
       <ScrollView
+        {...barInset}
         contentContainerClassName="px-4 pb-28 pt-4"
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       >

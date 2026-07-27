@@ -34,6 +34,7 @@ import { useColors } from '@/lib/colors';
 import { useInvalidate, useProjectResource } from '@/lib/queries';
 import { useManualRefresh } from '@/lib/use-manual-refresh';
 import { cn } from '@/lib/utils';
+import { useTabBarScrollProps } from '@/lib/use-tab-bar-inset';
 import { EditableField } from './field';
 import { ScreenplayView, SP_LABELS, docLines, type PMNode, type ScriptLine } from './screenplay';
 import { ScriptProposalReview } from './script-review';
@@ -268,6 +269,7 @@ function EditPassageModal({
  * ------------------------------------------------------------------ */
 
 export function ScriptSurface() {
+  const barInset = useTabBarScrollProps();
   const colors = useColors();
   const { data, isPending, error, refetch } = useProjectResource<ScriptData>('script');
   const { refreshing, onRefresh } = useManualRefresh(refetch);
@@ -340,6 +342,7 @@ export function ScriptSurface() {
   return (
     <View className="flex-1">
       <ScrollView
+        {...barInset}
         className="flex-1"
         contentContainerClassName="px-4 pb-28 pt-3"
         keyboardShouldPersistTaps="handled"

@@ -28,6 +28,7 @@ import { useColors } from '@/lib/colors';
 import { useInvalidate, useProjectResource } from '@/lib/queries';
 import { useManualRefresh } from '@/lib/use-manual-refresh';
 import { cn } from '@/lib/utils';
+import { useTabBarScrollProps } from '@/lib/use-tab-bar-inset';
 
 // Cuts tab — the complete-cut surface. The latest generation plays in an
 // expo-video card with a seekable segment strip; stitching / scoring runs
@@ -47,6 +48,7 @@ async function downloadAndShare(gen: CutGen) {
 }
 
 export default function CutsScreen() {
+  const barInset = useTabBarScrollProps();
   const { data, isLoading, error, refetch } = useProjectResource<CutsPayload>('cuts');
   const invalidate = useInvalidate();
   const agent = useAgent();
@@ -128,6 +130,7 @@ export default function CutsScreen() {
   } else {
     body = (
       <ScrollView
+        {...barInset}
         className="flex-1"
         contentContainerStyle={{ padding: 16, paddingBottom: 48, gap: 16 }}
         refreshControl={

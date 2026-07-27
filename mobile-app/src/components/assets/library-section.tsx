@@ -8,6 +8,7 @@ import { useColors } from '@/lib/colors';
 import { mediaUrl } from '@/lib/api';
 import { useProjectResource } from '@/lib/queries';
 import { useManualRefresh } from '@/lib/use-manual-refresh';
+import { useTabBarScrollProps } from '@/lib/use-tab-bar-inset';
 import type { LibraryFolder } from './types';
 
 // Library folder list: tap a folder card → push the in-folder image grid
@@ -19,6 +20,7 @@ export function LibrarySection() {
     folders: LibraryFolder[];
   }>('library');
   const { refreshing, onRefresh } = useManualRefresh(refetch);
+  const barInset = useTabBarScrollProps();
 
   const folders = data?.folders ?? [];
 
@@ -32,6 +34,7 @@ export function LibrarySection() {
 
   return (
     <FlatList
+      {...barInset}
       data={folders}
       keyExtractor={(f) => f.folder}
       refreshControl={

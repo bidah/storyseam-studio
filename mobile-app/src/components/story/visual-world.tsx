@@ -47,6 +47,7 @@ import { useImageModelPickerStore } from '@/lib/image-model-picker';
 import { useInvalidate, useProjectResource } from '@/lib/queries';
 import { useManualRefresh } from '@/lib/use-manual-refresh';
 import { useAudioRecording } from '@/lib/use-audio-recording';
+import { useSuppressAgentAccessory } from '@/lib/agent/accessory-suppress';
 
 // Visual world — the World tab's image-generation surface, port of the web
 // World › Visual (src/routes/world/visual.jsx + the shared ImageStudio). The
@@ -217,6 +218,10 @@ function GenerationCell({
 }
 
 export function VisualWorldSurface() {
+  // This surface docks its OWN composer, so the tab bar's agent accessory
+  // stands down while it's up — same rule the Chat tab gets, but expressed per
+  // screen because Visual world is one segment inside the Story tab.
+  useSuppressAgentAccessory();
   const { data, isPending, error, refetch } =
     useProjectResource<VisualWorldDoc>('visualWorld');
   if (isPending) return <Loading />;

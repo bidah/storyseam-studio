@@ -1,10 +1,13 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { ActivityIndicator, View } from 'react-native';
-import { Redirect } from 'expo-router';
+import { Redirect, useSegments } from 'expo-router';
 import { NativeTabs } from 'expo-router/unstable-native-tabs';
+import { isLiquidGlassAvailable } from 'expo-glass-effect';
 import { useSession } from '@/lib/auth-client';
 import { useColors } from '@/lib/colors';
 import { AgentProvider } from '@/lib/agent/provider';
+import { useAgentAccessorySuppressed } from '@/lib/agent/accessory-suppress';
+import { AgentAccessory } from '@/components/chat/agent-accessory';
 import { useFalKeyStore } from '@/lib/fal-key';
 import { useAtlasKeyStore } from '@/lib/atlas-key';
 import { useProvidersStore } from '@/lib/providers';
@@ -54,12 +57,39 @@ function ProjectGate({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+// A UITabAccessory only makes sense on iOS 26 — older iOS and Android have no
+// such slot, and this is the same gate the liquid-glass surfaces already use.
+const accessorySupported = isLiquidGlassAvailable();
+
+// Which tab is showing, latched. `useSegments()` reports the CURRENT route
+// globally, so a root-level modal or sheet (/model-picker, /viewer, …) reads as
+// no tab at all; latching keeps the last real answer instead of letting the
+// accessory pop back in behind a sheet that was opened from the chat tab.
+function useFocusedTab(): string | undefined {
+  const segments = useSegments();
+  const tab = segments[0] === '(tabs)' ? (segments[1] as string | undefined) : undefined;
+  // Adjusted during render (React's "derive state from props" escape hatch)
+  // rather than in an effect: an effect would re-render every route change, and
+  // the answer has to be right on the FIRST render after one — the accessory is
+  // mounted from it.
+  const [latched, setLatched] = useState(tab);
+  if (tab && tab !== latched) setLatched(tab);
+  return tab ?? latched;
+}
+
 export default function TabsLayout() {
   const { data: session, isPending } = useSession();
   const { key: falKey, hydrated: falHydrated } = useFalKeyStore();
   const { key: atlasKey, hydrated: atlasHydrated } = useAtlasKeyStore();
   const { active, hydrated: providersHydrated } = useProvidersStore();
   const colors = useColors();
+  const focusedTab = useFocusedTab();
+  // One message bar at the bottom of the screen is enough, so the accessory
+  // stands down wherever a real <Composer> is already docked: the whole Chat
+  // tab, plus any screen that says so itself (Story › Visual world, which has
+  // its own image composer). Everywhere else it IS the way to reach the agent.
+  const suppressed = useAgentAccessorySuppressed();
+  const showAccessory = accessorySupported && focusedTab !== 'chat' && !suppressed;
 
   if (isPending || !falHydrated || !atlasHydrated || !providersHydrated) {
     return (
@@ -88,7 +118,27 @@ export default function TabsLayout() {
           // apps) and is accessible.
           iconColor={{ selected: colors.foreground }}
           labelStyle={{ selected: { color: colors.foreground } }}
+          // Collapse the tab bar (and with it, re-lay the accessory into its
+          // `inline` placement) as you scroll down. iOS 26+.
+          //
+          // DOES NOT FIRE YET, and not for anything we can fix here: UIKit picks
+          // the scroll view to track via `contentScrollView(for:)`, and that
+          // lookup can't see a UIScrollView nested inside a native stack — which
+          // every tab here is. react-native-screens#4145, open upstream; the
+          // `collapsable={false}` workaround from #3954 does not apply. Declared
+          // anyway because the intent is right and it starts working the day
+          // that lands. Verified dead on an iOS 26.4 simulator (2026-07-27).
+          minimizeBehavior="onScrollDown"
         >
+          {/* The studio agent, riding above the tab bar so it survives tab
+              switches. Toggling the element in and out is what adds/removes the
+              UITabAccessory (react-native-screens animates both). */}
+          {showAccessory ? (
+            <NativeTabs.BottomAccessory>
+              <AgentAccessory />
+            </NativeTabs.BottomAccessory>
+          ) : null}
+
           <NativeTabs.Trigger name="chat">
             <NativeTabs.Trigger.Label>Chat</NativeTabs.Trigger.Label>
             <NativeTabs.Trigger.Icon sf="bubble.left.and.text.bubble.right" />

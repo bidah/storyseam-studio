@@ -23,6 +23,7 @@ import { createWorldMessage } from '@/lib/agent/messages';
 import { useColors } from '@/lib/colors';
 import { useInvalidate, useProjectResource } from '@/lib/queries';
 import { useManualRefresh } from '@/lib/use-manual-refresh';
+import { useTabBarScrollProps } from '@/lib/use-tab-bar-inset';
 import { EditableField } from './field';
 
 // World sub-surface — port of src/routes/world.jsx (web). Every inline edit
@@ -128,6 +129,7 @@ function CharacterCard({ char }: { char: WorldCharacter }) {
 }
 
 export function WorldSurface() {
+  const barInset = useTabBarScrollProps();
   const colors = useColors();
   const { data, isPending, error, refetch } = useProjectResource<WorldDoc>('world');
   const { refreshing, onRefresh } = useManualRefresh(refetch);
@@ -181,6 +183,7 @@ export function WorldSurface() {
 
   return (
     <ScrollView
+      {...barInset}
       className="flex-1"
       contentContainerClassName="px-4 pb-28 pt-3"
       keyboardShouldPersistTaps="handled"

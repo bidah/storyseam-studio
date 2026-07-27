@@ -21,6 +21,7 @@ import { useEffectiveScheme } from '@/lib/theme';
 import { mediaUrl, postJson } from '@/lib/api';
 import { useInvalidate, useProjectResource } from '@/lib/queries';
 import { useManualRefresh } from '@/lib/use-manual-refresh';
+import { useTabBarScrollProps } from '@/lib/use-tab-bar-inset';
 import type { LibraryFolder, LibraryImage } from '@/components/assets/types';
 
 // In-folder image grid — pushed from the Library folder list as its own native
@@ -30,6 +31,7 @@ import type { LibraryFolder, LibraryImage } from '@/components/assets/types';
 // the list does, so opening is instant.
 
 export default function AssetFolderScreen() {
+  const barInset = useTabBarScrollProps();
   const colors = useColors();
   const scheme = useEffectiveScheme();
   const { folder } = useLocalSearchParams<{ folder: string }>();
@@ -175,6 +177,7 @@ export default function AssetFolderScreen() {
       <View className="flex-1 bg-background">
         {screen}
         <FlatList
+          {...barInset}
           data={current.images}
           keyExtractor={(im) => im.rel}
           numColumns={3}

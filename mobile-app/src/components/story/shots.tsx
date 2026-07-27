@@ -13,6 +13,7 @@ import { useColors } from '@/lib/colors';
 import { useInvalidate, useProjectResource } from '@/lib/queries';
 import { useManualRefresh } from '@/lib/use-manual-refresh';
 import { cn } from '@/lib/utils';
+import { useTabBarScrollProps } from '@/lib/use-tab-bar-inset';
 
 // Shot list sub-surface — port of src/routes/shotlist.jsx (web). Shots are
 // grouped by beat; the auto-packed <=15s multishot packs render as horizontal
@@ -46,6 +47,7 @@ function fmtTime(total: number) {
  * ------------------------------------------------------------------ */
 
 export function ShotsSurface() {
+  const barInset = useTabBarScrollProps();
   const colors = useColors();
   const { data, isPending, error, refetch } = useProjectResource<ShotlistData>('shotlist');
   const { refreshing, onRefresh } = useManualRefresh(refetch);
@@ -185,6 +187,7 @@ export function ShotsSurface() {
   return (
     <View className="flex-1">
       <SectionList
+        {...barInset}
         className="flex-1 px-4"
         sections={sections}
         keyExtractor={(s) => String(s.n)}

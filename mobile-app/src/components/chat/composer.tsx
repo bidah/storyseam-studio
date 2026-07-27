@@ -45,6 +45,7 @@ export function Composer({
   onStop,
   onSubmit,
   onHeightChange,
+  focusTick,
 }: {
   /** A HITL input request is awaiting an answer (typed text becomes its response). */
   pending: boolean;
@@ -54,6 +55,13 @@ export function Composer({
   onSubmit: (text: string, atts: LocalAttachment[]) => Promise<void>;
   /** Measured height of the docked bar, so the screen can inset the transcript. */
   onHeightChange?: (height: number) => void;
+  /**
+   * Bump to open the keyboard here. A counter rather than a ref so the screen
+   * can hand off focus without holding an imperative handle — the tab bar's
+   * bottom accessory can't host a text field (see lib/agent/composer-focus.ts),
+   * so tapping it lands on the screen that owns this bar and asks for the caret.
+   */
+  focusTick?: number;
 }) {
   const c = useChatColors();
   const insets = useSafeAreaInsets();
@@ -248,6 +256,15 @@ export function Composer({
           ) : null}
 
           <TextInput
+            // Focus handed over from the tab bar's accessory arrives as a
+            // REMOUNT (new key + `autoFocus`), not `inputRef.current.focus()`:
+            // on this stack the ref is only live inside an event handler —
+            // read from an effect it is still null, so the imperative call is
+            // a no-op (same family as the dead scroll refs the conversation
+            // screen works around). Remounting is safe: the draft lives in
+            // `text` above, not in the field.
+            key={`input-${focusTick ?? 0}`}
+            autoFocus={!!focusTick}
             ref={inputRef}
             className="max-h-32 px-1 py-1 text-[15px] leading-5 text-foreground"
             placeholder={pending ? 'Type your answer…' : 'Message the studio agent…'}

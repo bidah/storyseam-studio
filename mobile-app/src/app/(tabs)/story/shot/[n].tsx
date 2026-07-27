@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Empty } from '@/components/ui/empty';
 import { putJson } from '@/lib/api';
 import { useInvalidate, useProjectResource } from '@/lib/queries';
+import { useTabBarScrollProps } from '@/lib/use-tab-bar-inset';
 import type { Shot, ShotlistData } from '@/components/story/shots';
 
 // Shot editor — presented as a native formSheet from story/_layout, so the
@@ -17,6 +18,7 @@ import type { Shot, ShotlistData } from '@/components/story/shots';
 // array, dur numeric).
 
 function ShotForm({ shot }: { shot: Shot }) {
+  const barInset = useTabBarScrollProps();
   const invalidate = useInvalidate();
   const [busy, setBusy] = useState(false);
   const [f, setF] = useState({
@@ -74,6 +76,7 @@ function ShotForm({ shot }: { shot: Shot }) {
 
   return (
     <ScrollView
+      {...barInset}
       className="flex-1"
       contentContainerClassName="px-4 pb-24 pt-4"
       keyboardShouldPersistTaps="handled"

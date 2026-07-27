@@ -33,6 +33,7 @@ import { createPickerRequest } from '@/lib/picker-bus';
 import { useColors } from '@/lib/colors';
 import { useInvalidate, useProjectResource } from '@/lib/queries';
 import { useManualRefresh } from '@/lib/use-manual-refresh';
+import { useTabBarScrollProps } from '@/lib/use-tab-bar-inset';
 
 // Radio screen — the audio-only dialogue pass, and the animatic built on top of
 // it. Port of the web studio's src/routes/radio.jsx.
@@ -170,6 +171,7 @@ function LineCard({
  * ---------------------------------------------------------------- */
 
 export default function RadioScreen() {
+  const barInset = useTabBarScrollProps();
   const colors = useColors();
   const { data, isLoading, error, refetch } = useProjectResource<RadioPayload>('radio');
   // Coverage is a nice-to-have: its own query, so a failure degrades the Build
@@ -270,6 +272,7 @@ export default function RadioScreen() {
     <TakeAudioProvider>
       <View className="flex-1 bg-background">
         <ScrollView
+          {...barInset}
           className="flex-1"
           contentContainerStyle={{ padding: 16, paddingBottom: 48, gap: 16 }}
           refreshControl={

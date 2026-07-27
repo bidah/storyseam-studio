@@ -11,6 +11,7 @@ import { deleteJson, patchJson, postJson } from '@/lib/api';
 import { CLIENT_ID } from '@/lib/client-id';
 import { useInvalidate, useProjectResource } from '@/lib/queries';
 import { cn } from '@/lib/utils';
+import { useTabBarScrollProps } from '@/lib/use-tab-bar-inset';
 import type { ScriptData } from '@/components/story/script';
 
 // Drafts sheet — create / pin / rename / delete (the pinned draft is the active
@@ -34,6 +35,7 @@ function relTime(iso?: string) {
 }
 
 export default function DraftsSheet() {
+  const barInset = useTabBarScrollProps();
   const colors = useColors();
   const { data } = useProjectResource<ScriptData>('script');
   const invalidate = useInvalidate();
@@ -81,6 +83,7 @@ export default function DraftsSheet() {
 
   return (
     <ScrollView
+      {...barInset}
       className="flex-1"
       style={{ backgroundColor: colors.pageBg }}
       contentContainerClassName="px-4 pt-4 pb-8"

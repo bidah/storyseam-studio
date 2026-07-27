@@ -23,6 +23,7 @@ import { useColors } from '@/lib/colors';
 import { useEffectiveScheme } from '@/lib/theme';
 import { useHiggsfieldImages, useInvalidate, useProjectResource } from '@/lib/queries';
 import { useManualRefresh } from '@/lib/use-manual-refresh';
+import { useTabBarScrollProps } from '@/lib/use-tab-bar-inset';
 import type { HfItem, LibraryFolder } from './types';
 
 // Import from Higgsfield: infinite 3-column grid of the user's completed image
@@ -42,6 +43,7 @@ function urlBasename(u: string) {
 }
 
 export function ImportSection() {
+  const barInset = useTabBarScrollProps();
   const colors = useColors();
   const scheme = useEffectiveScheme();
   const q = useHiggsfieldImages();
@@ -174,6 +176,7 @@ export function ImportSection() {
   return (
     <Galeria urls={galleryUrls} theme={scheme}>
     <FlatList
+      {...barInset}
       data={items}
       keyExtractor={(it) => it.id}
       numColumns={3}

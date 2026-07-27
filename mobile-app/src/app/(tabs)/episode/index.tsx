@@ -9,6 +9,7 @@ import { mediaUrl } from '@/lib/api';
 import { useColors } from '@/lib/colors';
 import { useProjectResource } from '@/lib/queries';
 import { useManualRefresh } from '@/lib/use-manual-refresh';
+import { useTabBarScrollProps } from '@/lib/use-tab-bar-inset';
 import {
   signedCount,
   type Bundle,
@@ -53,6 +54,7 @@ function BundleThumb({ still, takes }: { still: StillTake | null; takes: VideoTa
 }
 
 export default function EpisodeIndex() {
+  const barInset = useTabBarScrollProps();
   const colors = useColors();
   const ep = useProjectResource<EpisodePayload>('episode');
   const sb = useProjectResource<StoryboardPayload>('storyboard');
@@ -117,6 +119,7 @@ export default function EpisodeIndex() {
         <Empty title="No episode plan yet" hint="Generate the shot list first — the bundles appear here." />
       ) : (
         <FlatList
+          {...barInset}
           data={bundles}
           keyExtractor={(b) => b.id}
           renderItem={renderItem}
