@@ -106,7 +106,12 @@ export function DiscoverSection() {
   const cards = useDiscover();
   return (
     <View className="gap-3">
-      <Text className="px-5 text-2xl font-bold text-foreground">Discover</Text>
+      {/* Same large-title metrics as the landing screen's section headlines
+          (see Section in app/(tabs)/chat/index.tsx), so the page reads as one
+          rhythm of 34pt headers. */}
+      <Text accessibilityRole="header" className="px-5 text-foreground" style={styles.headline}>
+        Discover
+      </Text>
       <View style={styles.stack}>
         {cards.map((card) => (
           <DiscoverPoster key={card.slug} card={card} />
@@ -117,6 +122,9 @@ export function DiscoverSection() {
 }
 
 const styles = StyleSheet.create({
+  // UIKit's large-title text style — kept in lockstep with bigTitle in
+  // app/(tabs)/chat/index.tsx.
+  headline: { fontSize: 34, fontWeight: '700', lineHeight: 41 },
   // The page margin lives here (matching the card rows above), and the posters
   // stack rather than scroll sideways.
   stack: { paddingHorizontal: 20, gap: 16 },

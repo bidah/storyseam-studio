@@ -26,9 +26,9 @@ import type { LocalAttachment } from '@/components/chat/composer';
 import { useChatComposer } from '@/components/chat/composer-host';
 import { relTime } from '@/components/chat/helpers';
 
-// The Home tab's LANDING screen — the hub for starting a chat. A line of
-// intent, then Recaps (the chats you already have — tap one to pick it back up)
-// and Try something new (the starter prompts). The typing surface here is the
+// The Home tab's LANDING screen — the hub for starting a chat. Recaps (the
+// chats you already have — tap one to pick it back up) lead, then Try
+// something new (the starter prompts). The typing surface here is the
 // tab bar's agent pill (see components/chat/agent-accessory.tsx): tapping it
 // mints a chat and lands in its conversation with the caret up, so this screen
 // docks no composer of its own.
@@ -44,7 +44,7 @@ import { relTime } from '@/components/chat/helpers';
 // while we don't know yet (a wrong deck for one beat is worse than none), the
 // evergreen pair when the digest can't be read at all.
 
-// The compact iOS bar under the status bar. The big "Chat" headline is OURS —
+// The compact iOS bar under the status bar. The section headlines are OURS —
 // in-content, wearing the large-title font — not a native large title, so the
 // bar contributes only its own 44pt to the chrome the scroll view runs beneath.
 const HEADER_BAR = 44;
@@ -217,7 +217,12 @@ function Section({
 }) {
   return (
     <View className="gap-3">
-      <Text className="px-5 text-2xl font-bold text-foreground">{title}</Text>
+      {/* Section headlines wear UIKit's large-title metrics (34pt bold) — the
+          screen has no headline of its own, so the first section's title IS the
+          page's big title, and the rest match it for one consistent rhythm. */}
+      <Text accessibilityRole="header" className="px-5 text-foreground" style={styles.bigTitle}>
+        {title}
+      </Text>
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
@@ -375,19 +380,6 @@ export default function ChatHomeScreen() {
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="interactive"
       >
-        {/* The emulated large title: the bar above is title-less, and this Text
-            wears UIKit's exact large-title metrics (system font, 34pt bold), so
-            it reads as the native headline — but it's content, and scrolls away
-            under the glass bar with everything else. */}
-        <View className="gap-1 px-5 pb-2">
-          <Text accessibilityRole="header" className="text-foreground" style={styles.bigTitle}>
-            Chat
-          </Text>
-          <Text className="text-base text-muted-foreground">
-            Ask me anything to create or talk about your story
-          </Text>
-        </View>
-
         {recaps.length ? (
           <Section title="Last chats" cardWidth={RECAP_W}>
             {recaps.map((r) => (
@@ -399,10 +391,11 @@ export default function ChatHomeScreen() {
                 onPress={() => openRecap(r.id)}
               >
                 <Text className="text-xs text-muted-foreground">{r.when}</Text>
-                {/* Same headline type as the suggestion posters (cardTitle), so
-                    the two rows read as one family. Two lines at this size is
-                    what the card's height budgets for. */}
-                <Text className="mt-1 text-foreground" style={styles.cardTitle} numberOfLines={2}>
+                {/* Small text on purpose — a recap is a row you recognize, not a
+                    poster you read; the big headline type stays on the
+                    suggestion cards. Two lines at this size is what the card's
+                    height budgets for. */}
+                <Text className="mt-1 text-foreground" style={styles.recapTitle} numberOfLines={2}>
                   {r.title}
                 </Text>
               </PressCard>
@@ -486,10 +479,10 @@ const styles = StyleSheet.create({
   // Text sits on the plain surface below the band, pinned to the bottom so
   // one-liners and four-liners both hang off the same edge.
   cardBody: { flex: 1, justifyContent: 'flex-end', padding: 14 },
-  // Height budgets the bottom-hung text at the poster headline size: band (56)
-  // + padding (14×2) + timestamp eyebrow (16 + 4 gap) + two cardTitle lines
-  // (2×29). Grow a line and this grows with it, or the eyebrow clips first.
-  recapCard: { width: RECAP_W, height: 162 },
+  // Height budgets the bottom-hung text at the recap's small size: band (56)
+  // + padding (14×2) + timestamp eyebrow (16 + 4 gap) + two recapTitle lines
+  // (2×20). Grow a line and this grows with it, or the eyebrow clips first.
+  recapCard: { width: RECAP_W, height: 144 },
   // A poster, not a chip. The height is the worst case of the layout below —
   // three lines of headline over four of paragraph, plus the padding — because a
   // card that clipped its own last line would hide the reason to tap it.
@@ -503,13 +496,16 @@ const styles = StyleSheet.create({
     paddingBottom: 12,
     paddingHorizontal: 16,
   },
-  // Well up from the old 18pt headline — at this card size an 18pt line reads as
-  // a label rather than the thing you're meant to read first — but under the
-  // screen's own 34pt "Chat", so a card can't outshout the page it sits on.
-  cardTitle: { fontSize: 28, fontWeight: '700', lineHeight: 29, letterSpacing: -0.4 },
+  // The Discover posters' title metrics (see title in components/chat/discover.tsx)
+  // so the two decks of big cards share one headline size — under the 34pt
+  // section headlines, so a card can't outshout the row it sits in.
+  cardTitle: { fontSize: 26, fontWeight: '700', lineHeight: 30, letterSpacing: -0.4 },
+  // The recap's small title — body-sized, semibold so it still reads as the
+  // card's name over the muted timestamp above it.
+  recapTitle: { fontSize: 15, fontWeight: '600', lineHeight: 20 },
   // The paragraph under it. The leading on both texts is a budget, not taste: a
-  // three-line headline (87) plus its gap (8) plus four blurb lines (72) plus the
-  // body's padding (26) is 193, which is what SUGGESTION_BODY (196) is reserving.
+  // three-line headline (90) plus its gap (8) plus four blurb lines (72) plus the
+  // body's padding (26) is 196, which is exactly what SUGGESTION_BODY reserves.
   // Grow either text and raise SUGGESTION_BODY with it, or the last line clips.
   cardBlurb: { marginTop: 8, fontSize: 14, lineHeight: 18 },
 });
