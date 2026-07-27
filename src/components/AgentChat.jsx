@@ -1453,7 +1453,7 @@ export default function AgentChat() {
           <PromptEditor
             ref={promptEd}
             refs={mentionRefs}
-            placeholder="Message the studio agent… (drop or paste a file to attach)"
+            placeholder="Message the studio agent…"
             onChange={setText}
             onSubmit={submit}
             submitOnEnter
