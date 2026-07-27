@@ -1,6 +1,7 @@
 import { Pressable, ScrollView, Text, View } from 'react-native';
 import { Check, MessageSquare, Trash2 } from 'lucide-react-native';
 import { cn } from '@/lib/utils';
+import { useColors } from '@/lib/colors';
 import { useChatColors } from '@/components/chat/theme';
 import type { ChatHistoryFormProps } from './chat-history-form.types';
 
@@ -8,9 +9,14 @@ import type { ChatHistoryFormProps } from './chat-history-form.types';
 // renders one native SwiftUI Form). Same props, RN cards.
 export default function ChatHistoryForm({ chats, onSelect, onDelete }: ChatHistoryFormProps) {
   const chatC = useChatColors();
+  const colors = useColors();
   return (
     <ScrollView
-      className="flex-1 bg-background"
+      className="flex-1"
+      // The grouped background, NOT `bg-background`: in light mode --background
+      // and --card are both pure white, so the card below would dissolve into
+      // the page. Same pairing the iOS sibling gives its SwiftUI Form.
+      style={{ backgroundColor: colors.groupedBg }}
       contentContainerClassName="grow px-4 pt-4 pb-10"
       keyboardShouldPersistTaps="handled"
     >

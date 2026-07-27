@@ -25,12 +25,15 @@ import type { ChatHistoryFormProps } from './chat-history-form.types';
 // the accent tint) with a native trailing swipe-to-delete. iOS-only imports
 // live here (.ios.tsx); chat-history-form.tsx is the fallback.
 export default function ChatHistoryForm({ chats, onSelect, onDelete }: ChatHistoryFormProps) {
-  // SwiftUI Forms default to systemGroupedBackground; hide it and paint the
-  // scheme's page background behind the grouped cells.
+  // SwiftUI Forms default to systemGroupedBackground; hide it and paint our own
+  // scheme-aware grouped background behind the cells. It must differ from the
+  // native cell color (white in light, gray in dark) or the cards vanish into
+  // the page — hence `groupedBg`, not `pageBg` (which IS the white cell color in
+  // light mode). Same pairing as the settings sheet.
   const colors = useColors();
   return (
     <Host style={{ flex: 1 }}>
-      <Form modifiers={[scrollContentBackground('hidden'), background(colors.pageBg)]}>
+      <Form modifiers={[scrollContentBackground('hidden'), background(colors.groupedBg)]}>
         {chats.length === 0 ? (
           <Section>
             <ContentUnavailableView
