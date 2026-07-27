@@ -157,6 +157,9 @@ export default defineAgent(async ({ id }) => {
   // per the Settings selection — both register the same `web_search` /
   // `fetch_url` names. Independent of the render-provider selection.
   const search = selectSearchTools(storedSearchPrefs());
+  // Persistent Daytona sandbox for this conversation (bash/skills). Its id lives
+  // in this DO's storage, so files survive across turns; undefined without
+  // DAYTONA_API_KEY, and flue falls back to a per-turn in-memory filesystem.
   const sandbox = await createSandbox(id);
 
   const PROVIDER_TOOLS: Record<string, string> = {
