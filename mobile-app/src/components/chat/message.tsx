@@ -2,7 +2,8 @@ import { memo, useState } from 'react';
 import { ActivityIndicator, Pressable, Text, View } from 'react-native';
 import { Image } from 'expo-image';
 import * as Haptics from 'expo-haptics';
-import { Check, ChevronRight, FileText, Wrench } from 'lucide-react-native';
+import * as WebBrowser from 'expo-web-browser';
+import { Check, ChevronRight, ExternalLink, FileText, Globe, Wrench } from 'lucide-react-native';
 import { cn } from '@/lib/utils';
 import { ChatMarkdown } from './markdown';
 import { getChatColors, useChatColors } from './theme';
@@ -13,7 +14,7 @@ import type {
   QuestionState,
   SentAttachment,
 } from './types';
-import { userText } from './helpers';
+import { hostOf, parseSourcesOutput, SOURCE_TOOLS, userText, type Source } from './helpers';
 
 // Renderers for each flue part type — a native port of the web AgentChat.jsx
 // message walk: every part of every message renders in order, by `type`
@@ -136,6 +137,74 @@ function ToolChip({ part }: { part: MessagePart }) {
   );
 }
 
+// A `web_search` / `fetch_url` result, rendered as a collapsed "Sources · N"
+// card that expands into one sub-card per reference. Web opens these in a new
+// tab; on mobile each sub-card opens the IN-APP browser (expo-web-browser, the
+// same handler markdown link taps use), so a tapped reference doesn't kick the
+// user out to Safari and lose the conversation.
+function SourcesCard({ data }: { data: { sources: Source[]; query: string } }) {
+  const c = useChatColors();
+  const [open, setOpen] = useState(false);
+  const { sources, query } = data;
+  return (
+    <View className="self-stretch rounded-md border border-border bg-muted/30">
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={open ? 'Collapse sources' : `Expand ${sources.length} sources`}
+        className="flex-row items-center gap-1.5 px-2.5 py-1.5 active:opacity-70"
+        onPress={() => setOpen((v) => !v)}
+      >
+        <ChevronRight
+          size={13}
+          color={c.mutedForeground}
+          style={{ transform: [{ rotate: open ? '90deg' : '0deg' }] }}
+        />
+        <Globe size={12} color={c.primary} />
+        <Text className="text-[12px] font-medium text-foreground">Sources</Text>
+        <Text className="text-[12px] text-muted-foreground">· {sources.length}</Text>
+        {query ? (
+          <Text className="flex-1 text-[12px] italic text-muted-foreground" numberOfLines={1}>
+            {query}
+          </Text>
+        ) : null}
+      </Pressable>
+      {open ? (
+        <View className="gap-1.5 border-t border-border p-1.5">
+          {sources.map((s, i) => (
+            <Pressable
+              key={`${s.url}:${i}`}
+              accessibilityRole="link"
+              accessibilityLabel={`Open ${s.title}`}
+              className="gap-0.5 rounded-md border border-border bg-background/60 p-2 active:opacity-70"
+              onPress={() => {
+                WebBrowser.openBrowserAsync(s.url).catch(() => {});
+              }}
+            >
+              <View className="flex-row items-center gap-1.5">
+                <Text className="flex-1 text-[12px] font-medium text-foreground" numberOfLines={2}>
+                  {s.title}
+                </Text>
+                <ExternalLink size={11} color={c.mutedForeground} />
+              </View>
+              <View className="flex-row items-center gap-1.5">
+                <Text className="flex-1 text-[11px] text-muted-foreground" numberOfLines={1}>
+                  {hostOf(s.url)}
+                  {s.publishedDate ? ` · ${s.publishedDate.slice(0, 10)}` : ''}
+                </Text>
+              </View>
+              {s.snippet ? (
+                <Text className="text-[11px] leading-4 text-muted-foreground" numberOfLines={2}>
+                  {s.snippet}
+                </Text>
+              ) : null}
+            </Pressable>
+          ))}
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
 function ReasoningRow({ part }: { part: MessagePart }) {
   const c = useChatColors();
   const [open, setOpen] = useState(false);
@@ -205,18 +274,26 @@ function PartView({
       return part.text ? <ChatMarkdown text={part.text} streaming={part.state === 'streaming'} /> : null;
     case 'reasoning':
       return <ReasoningRow part={part} />;
-    case 'dynamic-tool':
-      return part.toolName === 'ask_question' ? (
-        <QuestionCard
-          part={part}
-          pending={qa?.pendingId === part.toolCallId}
-          answer={part.toolCallId ? qa?.answered.get(part.toolCallId) : undefined}
-          canRespond={canRespond}
-          onRespond={onRespond}
-        />
-      ) : (
-        <ToolChip part={part} />
-      );
+    case 'dynamic-tool': {
+      if (part.toolName === 'ask_question') {
+        return (
+          <QuestionCard
+            part={part}
+            pending={qa?.pendingId === part.toolCallId}
+            answer={part.toolCallId ? qa?.answered.get(part.toolCallId) : undefined}
+            canRespond={canRespond}
+            onRespond={onRespond}
+          />
+        );
+      }
+      // A finished web search shows its references instead of a bare chip; an
+      // in-flight or failed one still falls through to ToolChip.
+      if (part.toolName && SOURCE_TOOLS.has(part.toolName)) {
+        const sources = parseSourcesOutput(part);
+        if (sources) return <SourcesCard data={sources} />;
+      }
+      return <ToolChip part={part} />;
+    }
     case 'file':
       return <FilePart part={part} />;
     default:

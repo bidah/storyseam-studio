@@ -99,3 +99,74 @@ export function deriveQA(messages: AgentMessage[]): QuestionState {
   }
   return { pendingId, answered };
 }
+
+// --- Web-search sources -----------------------------------------------------
+// The two web tools (`web_search` / `fetch_url`) share one result shape across
+// both backends — see flue-agent/src/lib/search-util.ts's `result()`:
+//   { provider, query?, count, results: [{ title, url, publishedDate, author,
+//     excerpts?, summary?, text? }] }
+export const SOURCE_TOOLS = new Set(['web_search', 'fetch_url']);
+
+export type Source = {
+  url: string;
+  title: string;
+  publishedDate: string | null;
+  snippet: string;
+};
+
+// Pull that payload off a finished tool part. The output arrives as the raw
+// object in the normal case, but tolerate a JSON string and the
+// `{ content: [{ type: "text", text }] }` envelope so a transport change
+// degrades to the plain ToolChip instead of throwing mid-render.
+export function parseSourcesOutput(
+  part: MessagePart,
+): { sources: Source[]; query: string } | null {
+  if (part.state !== 'output-available') return null;
+  const candidates: unknown[] = [];
+  const out = part.output;
+  if (out && typeof out === 'object' && !Array.isArray(out)) {
+    candidates.push(out);
+    const content = (out as Record<string, unknown>).content;
+    if (Array.isArray(content)) {
+      for (const c of content) {
+        const t = (c as Record<string, unknown>)?.text;
+        if (typeof t === 'string') candidates.push(t);
+      }
+    }
+  } else if (typeof out === 'string') {
+    candidates.push(out);
+  }
+  for (const candidate of candidates) {
+    let obj: any = candidate;
+    if (typeof obj === 'string') {
+      try {
+        obj = JSON.parse(obj);
+      } catch {
+        continue;
+      }
+    }
+    const rows = obj?.results;
+    if (!Array.isArray(rows)) continue;
+    const sources: Source[] = rows
+      .filter((r: any) => typeof r?.url === 'string' && r.url)
+      .map((r: any) => ({
+        url: r.url,
+        title: typeof r.title === 'string' && r.title ? r.title : r.url,
+        publishedDate: typeof r.publishedDate === 'string' ? r.publishedDate : null,
+        snippet:
+          (Array.isArray(r.excerpts) && typeof r.excerpts[0] === 'string' && r.excerpts[0]) ||
+          (typeof r.summary === 'string' && r.summary) ||
+          '',
+      }));
+    if (sources.length) {
+      return { sources, query: typeof obj.query === 'string' ? obj.query : '' };
+    }
+  }
+  return null;
+}
+
+// Hostname without the www., for the sub-card's secondary line.
+export function hostOf(url: string): string {
+  const m = /^[a-z]+:\/\/([^/?#]+)/i.exec(url);
+  return m ? m[1].replace(/^www\./, '') : url;
+}
