@@ -22,6 +22,8 @@ import {
   Mic,
   Images,
   Upload,
+  Globe,
+  ExternalLink,
 } from "lucide-react";
 import { useDropzone } from "react-dropzone";
 import { toast } from "sonner";
@@ -179,6 +181,122 @@ function ToolChip({ part }) {
   );
 }
 
+// The two web tools (`web_search` / `fetch_url`) share one result shape across
+// both backends — see flue-agent/src/lib/search-util.ts's `result()`:
+//   { provider, query?, count, results: [{ title, url, publishedDate, author,
+//     excerpts?, summary?, text? }] }
+const SOURCE_TOOLS = new Set(["web_search", "fetch_url"]);
+
+// Pull that payload off a finished tool part. The output arrives as the raw
+// object in the normal case, but tolerate a JSON string and the
+// `{ content: [{ type: "text", text }] }` envelope so a transport change
+// degrades to the plain ToolChip instead of throwing mid-render.
+function parseSourcesOutput(part) {
+  if (part.state !== "output-available") return null;
+  const candidates = [];
+  const out = part.output;
+  if (out && typeof out === "object" && !Array.isArray(out)) {
+    candidates.push(out);
+    if (Array.isArray(out.content)) {
+      for (const c of out.content) if (typeof c?.text === "string") candidates.push(c.text);
+    }
+  } else if (typeof out === "string") {
+    candidates.push(out);
+  }
+  for (const c of candidates) {
+    let obj = c;
+    if (typeof obj === "string") {
+      try {
+        obj = JSON.parse(obj);
+      } catch {
+        continue;
+      }
+    }
+    const results = obj?.results;
+    if (!Array.isArray(results)) continue;
+    const sources = results
+      .filter((r) => typeof r?.url === "string" && r.url)
+      .map((r) => ({
+        url: r.url,
+        title: typeof r.title === "string" && r.title ? r.title : r.url,
+        publishedDate: typeof r.publishedDate === "string" ? r.publishedDate : null,
+        snippet:
+          (Array.isArray(r.excerpts) && typeof r.excerpts[0] === "string" && r.excerpts[0]) ||
+          (typeof r.summary === "string" && r.summary) ||
+          "",
+      }));
+    if (sources.length) {
+      return { sources, query: typeof obj.query === "string" ? obj.query : "" };
+    }
+  }
+  return null;
+}
+
+function hostOf(url) {
+  try {
+    return new URL(url).hostname.replace(/^www\./, "");
+  } catch {
+    return url;
+  }
+}
+
+// A `web_search` / `fetch_url` result, rendered as a collapsed "Sources · N"
+// card that expands into one sub-card per reference. Each sub-card is a real
+// link, so it opens in a new tab (and middle-click / cmd-click work) rather than
+// being a div with an onClick.
+function SourcesCard({ data }) {
+  const [open, setOpen] = useState(false);
+  const { sources, query } = data;
+  return (
+    <div className="w-fit max-w-full overflow-hidden rounded-lg border bg-muted/30">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        className="flex w-full items-center gap-1.5 px-2 py-1.5 text-left text-xs text-muted-foreground hover:bg-muted/60"
+      >
+        <Globe size={12} className="text-primary" />
+        <span className="font-medium text-foreground">Sources</span>
+        <span>· {sources.length}</span>
+        {query ? <span className="truncate italic">“{query}”</span> : null}
+        <ChevronDown
+          size={12}
+          className={cn("ml-1 shrink-0 transition-transform", open && "rotate-180")}
+        />
+      </button>
+      {open ? (
+        <div className="space-y-1.5 border-t p-1.5">
+          {sources.map((s, i) => (
+            <a
+              key={`${s.url}:${i}`}
+              href={s.url}
+              target="_blank"
+              rel="noreferrer"
+              className="block rounded-md border bg-background/60 p-2 hover:border-primary/40 hover:bg-background"
+            >
+              <span className="flex items-center gap-1.5">
+                <span className="min-w-0 flex-1 truncate text-xs font-medium">{s.title}</span>
+                <ExternalLink size={11} className="shrink-0 text-muted-foreground" />
+              </span>
+              <span className="mt-0.5 flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                <span className="truncate">{hostOf(s.url)}</span>
+                {s.publishedDate ? (
+                  <span className="shrink-0">· {s.publishedDate.slice(0, 10)}</span>
+                ) : null}
+              </span>
+              {s.snippet ? (
+                <span className="mt-1 line-clamp-2 block text-[11px] text-muted-foreground">
+                  {s.snippet}
+                </span>
+              ) : null}
+            </a>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 // An `ask_question` tool call, rendered as an interactive card (flue's
 // non-blocking recreation of eve's HITL question). The tool's `input` carries
 // `{ question, options: [{ id, label, style }] }`. flue can't suspend a turn, so
@@ -279,19 +397,27 @@ function MessagePart({ part, qa, canRespond, onRespond, onRequestReference }) {
           <div className="mt-1 whitespace-pre-wrap break-words">{part.text}</div>
         </details>
       ) : null;
-    case "dynamic-tool":
-      return part.toolName === "ask_question" ? (
-        <QuestionCard
-          part={part}
-          pending={qa?.pendingId === part.toolCallId}
-          answer={qa?.answered.get(part.toolCallId)}
-          canRespond={canRespond}
-          onRespond={onRespond}
-          onRequestReference={onRequestReference}
-        />
-      ) : (
-        <ToolChip part={part} />
-      );
+    case "dynamic-tool": {
+      if (part.toolName === "ask_question") {
+        return (
+          <QuestionCard
+            part={part}
+            pending={qa?.pendingId === part.toolCallId}
+            answer={qa?.answered.get(part.toolCallId)}
+            canRespond={canRespond}
+            onRespond={onRespond}
+            onRequestReference={onRequestReference}
+          />
+        );
+      }
+      // A finished web search shows its references instead of a bare chip; an
+      // in-flight or failed one still falls through to ToolChip.
+      if (SOURCE_TOOLS.has(part.toolName)) {
+        const sources = parseSourcesOutput(part);
+        if (sources) return <SourcesCard data={sources} />;
+      }
+      return <ToolChip part={part} />;
+    }
     case "file":
       return <FilePart part={part} />;
     default:
