@@ -8,7 +8,7 @@
 // "visual-world" swr cache key and the canonical invalidate+revalidate pair.
 import { useEffect, useState } from "react";
 import { useLoaderData, useRevalidator } from "react-router";
-import { Loader2, Save, Plus, Trash2, IdCard, MapPin, Package, Palette, Check, SlidersHorizontal, KeyRound, ExternalLink, Globe } from "lucide-react";
+import { Loader2, Save, Plus, Trash2, IdCard, MapPin, Package, Palette, Check, SlidersHorizontal, KeyRound, ExternalLink, Globe, TerminalSquare } from "lucide-react";
 import { invalidateTabCache } from "@/lib/tabCache";
 import { useFalKey, setFalKey, clearFalKey } from "@/lib/falKey";
 import { useAtlasKey, setAtlasKey, clearAtlasKey } from "@/lib/atlasKey";
@@ -18,6 +18,7 @@ import {
   useFirecrawlKey, setFirecrawlKey, clearFirecrawlKey,
 } from "@/lib/searchKeys";
 import { SEARCH_PROVIDERS, useSearchProvider, setSearchProvider } from "@/lib/searchProviders";
+import { SANDBOX_MODES, useSandboxMode, setSandboxMode } from "@/lib/sandboxMode";
 import { swr, useRevalidateOnMount } from "@/lib/swr";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -221,6 +222,48 @@ function SearchPanel() {
   );
 }
 
+// Sandbox: where the agent's bash / skill execution runs. Radio semantics like
+// the panels above, and it takes effect on the very next message — the mode
+// rides every send and the agent picks its sandbox per turn. Default is
+// in-memory on purpose: a container is billed per conversation, so we only start
+// one for a chat the user deliberately switched over.
+function SandboxPanel() {
+  const active = useSandboxMode();
+  return (
+    <Panel title={<span className="flex items-center gap-2"><TerminalSquare size={15} className="text-primary" /> Sandbox</span>}>
+      <p className="mb-3 text-sm text-muted-foreground">
+        Where the agent runs shell commands and multi-step skills. <b>In-memory resets
+        between messages</b> — files the agent writes in one reply are gone by the next.
+        Switch to a container when a job has to write something now and read it back
+        later. Applies to <b>new messages in every chat</b>, and takes effect immediately.
+      </p>
+      <div className="space-y-3">
+        {SANDBOX_MODES.map((m) => {
+          const isActive = active === m.id;
+          return (
+            <div key={m.id} className={`rounded-lg border p-3 ${isActive ? "border-primary/40" : "opacity-70"}`}>
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-medium">{m.label}</span>
+                {isActive ? <Badge variant="success">In use</Badge> : null}
+                {m.id === "memory" ? <Badge variant="muted">Default</Badge> : null}
+                {m.id === "daytona" ? <Badge variant="warning">Billed</Badge> : null}
+                <div className="ml-auto">
+                  <Switch
+                    checked={isActive}
+                    onCheckedChange={(on) => { if (on) setSandboxMode(m.id); }}
+                    aria-label={`Run the agent's shell on ${m.label}`}
+                  />
+                </div>
+              </div>
+              <p className="mt-1 text-xs text-muted-foreground">{m.blurb}</p>
+            </div>
+          );
+        })}
+      </div>
+    </Panel>
+  );
+}
+
 // Save button with a transient "Saved" confirmation.
 function SaveButton({ onSave, children = "Save" }) {
   const [state, setState] = useState("idle"); // idle | saving | saved
@@ -317,6 +360,8 @@ function SettingsPage() {
       <ProvidersPanel />
 
       <SearchPanel />
+
+      <SandboxPanel />
 
       <Panel title={<span className="flex items-center gap-2"><SlidersHorizontal size={15} className="text-primary" /> Generation defaults</span>}>
         <p className="mb-3 text-sm text-muted-foreground">

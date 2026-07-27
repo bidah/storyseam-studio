@@ -16,6 +16,7 @@ import { getAtlasKey } from "@/lib/atlasKey";
 import { getProviderPrefs, disabledProvidersCsv } from "@/lib/providers";
 import { getExaKey, getFirecrawlKey } from "@/lib/searchKeys";
 import { getSearchProvider } from "@/lib/searchProviders";
+import { getSandboxMode } from "@/lib/sandboxMode";
 
 const STORAGE_KEY = "shot-studio:projectId";
 
@@ -103,6 +104,10 @@ export function installProjectScope() {
         headers.set("x-flue-search-provider", getSearchProvider());
         headers.set("x-flue-exa-key", getExaKey() || "");
         headers.set("x-flue-firecrawl-key", getFirecrawlKey() || "");
+        // Settings › Sandbox (lib/sandboxMode.js). Also agent-only, and sent on
+        // every send so switching back to in-memory takes effect immediately —
+        // the flue worker treats an absent header as "leave it as it was".
+        headers.set("x-flue-sandbox", getSandboxMode());
       }
       // Send the Better Auth session cookie with every same-origin API call —
       // the `/eve/*` flue proxy relies on it to mint the per-user identity.

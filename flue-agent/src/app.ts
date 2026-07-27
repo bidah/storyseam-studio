@@ -110,6 +110,10 @@ const DISABLED_HEADER = "x-flue-disabled-providers";
 const SEARCH_PROVIDER_HEADER = "x-flue-search-provider";
 const EXA_KEY_HEADER = "x-flue-exa-key";
 const FIRECRAWL_KEY_HEADER = "x-flue-firecrawl-key";
+// Settings › Sandbox: "memory" (default) or "daytona". Persisted via
+// setSandboxMode; whistlewood.ts only spins up a real container for a
+// conversation that asked for one — see lib/sandbox-prefs.ts.
+const SANDBOX_HEADER = "x-flue-sandbox";
 
 // Generated Durable Object binding for each agent: `whistlewood.ts` ->
 // class FlueWhistlewoodAgent -> env.FLUE_WHISTLEWOOD_AGENT.
@@ -127,6 +131,7 @@ type ModelStub = {
     exaKey?: string;
     firecrawlKey?: string;
   }): Promise<void>;
+  setSandboxMode(mode: string): Promise<void>;
 };
 type Env = Record<string, DurableObjectNamespace | undefined>;
 
@@ -176,6 +181,7 @@ const applyModelSelection: MiddlewareHandler = async (c, next) => {
   const searchProvider = c.req.header(SEARCH_PROVIDER_HEADER);
   const exaKey = c.req.header(EXA_KEY_HEADER);
   const firecrawlKey = c.req.header(FIRECRAWL_KEY_HEADER);
+  const sandboxMode = c.req.header(SANDBOX_HEADER);
   const wantModel = isAllowedModel(requested);
   const wantFalKey = isPlausibleFalKey(falKey);
   const wantAtlasKey = isPlausibleAtlasKey(atlasKey);
@@ -184,9 +190,12 @@ const applyModelSelection: MiddlewareHandler = async (c, next) => {
   // them over what's stored, so a partial set never clobbers the rest.
   const wantSearch =
     searchProvider !== undefined || exaKey !== undefined || firecrawlKey !== undefined;
+  // Absent header leaves the stored mode alone, so an older client (or the
+  // mobile app before it ships the toggle) never silently flips a conversation.
+  const wantSandbox = sandboxMode !== undefined;
   if (
     c.req.method === "POST" &&
-    (wantModel || wantFalKey || wantAtlasKey || wantPrefs || wantSearch)
+    (wantModel || wantFalKey || wantAtlasKey || wantPrefs || wantSearch || wantSandbox)
   ) {
     const name = c.req.param("name") ?? "";
     const bindingName = AGENT_BINDINGS[name];
@@ -219,6 +228,9 @@ const applyModelSelection: MiddlewareHandler = async (c, next) => {
               : {}),
           });
         }
+        // Unknown values fall back to "memory" DO-side, so a client can never
+        // push a conversation onto an unexpected (paid) backend.
+        if (wantSandbox) await stub.setSandboxMode(sandboxMode as string);
       } catch {
         /* keep the stored / default model + keys */
       }

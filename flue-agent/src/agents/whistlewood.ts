@@ -34,6 +34,12 @@ import {
   writeSearchPrefs,
   type SearchPrefs,
 } from "../lib/search-prefs.js";
+import {
+  DEFAULT_SANDBOX_MODE,
+  readSandboxMode,
+  writeSandboxMode,
+  type SandboxMode,
+} from "../lib/sandbox-prefs.js";
 
 export const description =
   "Whistlewood production agent — drives the script → shots → renders → cuts → library pipeline.";
@@ -101,6 +107,17 @@ function storedSearchPrefs(): SearchPrefs {
   }
 }
 
+// Settings › Sandbox: whether this conversation gets a persistent Daytona
+// container or flue's per-turn in-memory filesystem (app.ts setSandboxMode →
+// lib/sandbox-prefs.ts). Defaults to in-memory — Daytona is opt-in per chat.
+function storedSandboxMode(): SandboxMode {
+  try {
+    return readSandboxMode(getCloudflareContext().storage.sql);
+  } catch {
+    return DEFAULT_SANDBOX_MODE;
+  }
+}
+
 // Native Agents SDK extension for this agent's generated Durable Object. Adds
 // `setModel` / `setFalKey` / `setAtlasKey` / `setRenderPrefs` RPCs that persist
 // the caller-selected chat model, BYOK render keys, and provider toggles for
@@ -133,6 +150,9 @@ export const cloudflare = extend<CloudflareAgentLike & { ctx: DurableObjectState
           const sql = this.ctx.storage.sql;
           writeSearchPrefs(sql, mergeSearchPrefs(readSearchPrefs(sql), incoming));
         }
+        async setSandboxMode(mode: string): Promise<void> {
+          writeSandboxMode(this.ctx.storage.sql, mode);
+        }
       },
   },
 );
@@ -157,10 +177,13 @@ export default defineAgent(async ({ id }) => {
   // per the Settings selection — both register the same `web_search` /
   // `fetch_url` names. Independent of the render-provider selection.
   const search = selectSearchTools(storedSearchPrefs());
-  // Persistent Daytona sandbox for this conversation (bash/skills). Its id lives
-  // in this DO's storage, so files survive across turns; undefined without
-  // DAYTONA_API_KEY, and flue falls back to a per-turn in-memory filesystem.
-  const sandbox = await createSandbox(id);
+  // Sandbox for bash/skill execution. OPT-IN per conversation: only a chat the
+  // user switched to Daytona in Settings gets a real (paid, persistent)
+  // container — its id lives in this DO's storage so files survive across turns.
+  // Everything else stays on flue's free per-turn in-memory filesystem, which is
+  // also where we land if the mode is on but DAYTONA_API_KEY is unset.
+  const sandbox =
+    storedSandboxMode() === "daytona" ? await createSandbox(id) : undefined;
 
   const PROVIDER_TOOLS: Record<string, string> = {
     higgsfield: "the Higgsfield tools (generate_image / generate_video / generate_audio)",
@@ -178,6 +201,10 @@ export default defineAgent(async ({ id }) => {
     tools: [...tools, ...higgsfieldTools, ...falTools, ...atlasTools, ...search.tools],
     skills,
     subagents: createSubagents(api, search.tools),
-    ...(sandbox ? { sandbox, cwd: "/workspace" } : {}),
+    // No `cwd` override: flue uses the provider's own working directory
+    // (/home/daytona), which is the only place the sandbox's non-root `daytona`
+    // user can actually write. A `/workspace` cwd silently broke every bash call
+    // on Daytona — `mkdir /workspace` is Permission denied outside the home dir.
+    ...(sandbox ? { sandbox } : {}),
   };
 });

@@ -44,10 +44,6 @@ const AUTO_DELETE_MINUTES = 7 * 24 * 60;
 // Seconds to wait for a stopped/archived sandbox to come back up. Restoring an
 // archived sandbox pulls its disk back from cold storage, so allow generously.
 const START_TIMEOUT_SECONDS = 180;
-// The cwd flue is configured with in whistlewood.ts. Daytona's default snapshot
-// starts at /home/daytona, so the directory has to be created on first use or
-// every `exec` with this cwd fails.
-const WORKSPACE = "/workspace";
 
 function sql(): SqlLike {
   return getCloudflareContext().storage.sql as SqlLike;
@@ -61,7 +57,10 @@ function readSandboxId(): string {
       .exec(`SELECT value FROM ${TABLE} WHERE key = ?`, SANDBOX_ID_KEY)
       .toArray()[0]?.value;
     return typeof value === "string" ? value : "";
-  } catch {
+  } catch (error) {
+    // Loud on purpose: silently returning "" here means every turn creates a
+    // brand-new sandbox, which is the exact failure this module exists to fix.
+    console.error("[sandbox] could not read stored sandbox id", error);
     return "";
   }
 }
@@ -76,9 +75,10 @@ function writeSandboxId(id: string): void {
       SANDBOX_ID_KEY,
       id,
     );
-  } catch {
+  } catch (error) {
     // A conversation that can't persist the id still gets a working sandbox for
-    // this turn; it just won't be the same one next turn.
+    // this turn; it just won't be the same one next turn — so say so.
+    console.error(`[sandbox] could not persist sandbox id ${id}`, error);
   }
 }
 
@@ -114,7 +114,6 @@ async function createFresh(client: Daytona): Promise<DaytonaSandbox> {
     // No user data — just enough to spot strays in the Daytona dashboard.
     labels: { app: "shot-studio-flue" },
   });
-  await sandbox.process.executeCommand(`mkdir -p ${WORKSPACE}`);
   writeSandboxId(sandbox.id);
   return sandbox;
 }
@@ -123,12 +122,15 @@ async function createFresh(client: Daytona): Promise<DaytonaSandbox> {
 // otherwise a new one.
 async function resolveSandbox(client: Daytona): Promise<DaytonaSandbox> {
   const storedId = readSandboxId();
+  console.log(
+    storedId
+      ? `[sandbox] reusing stored sandbox ${storedId}`
+      : "[sandbox] no stored sandbox for this conversation, creating one",
+  );
   if (storedId) {
     try {
       const existing = await client.get(storedId);
       await ensureRunning(existing);
-      // Cheap guard: the directory is missing if the sandbox predates this code.
-      await existing.process.executeCommand(`mkdir -p ${WORKSPACE}`);
       return existing;
     } catch (error) {
       console.error(
