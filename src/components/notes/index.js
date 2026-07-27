@@ -2,6 +2,7 @@
 export {
   Screenplay,
   buildInitialContent,
+  elementsToDoc,
   SP_TYPES,
   SP_LABELS,
   SP_NEXT_ON_ENTER,

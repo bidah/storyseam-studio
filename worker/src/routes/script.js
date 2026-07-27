@@ -209,19 +209,22 @@ export function registerScript(app) {
 
   // Create a new draft. By default it clones the current pinned draft's content
   // (so "save current, keep writing on a fresh version"); pass { blank: true } to
-  // start empty. The new draft becomes pinned; the previous one stays in history.
+  // start empty, or pass an explicit { doc, title } to SEED the draft — that's the
+  // import path (a converted .fountain lands as its own draft). The new draft
+  // becomes pinned; the previous one stays in history.
   app.post("/api/script/drafts", async (c) => {
     const pid = c.get("projectId");
     try {
       let body;
       try { body = await c.req.json(); } catch { body = {}; }
-      const { name, blank, clientId } = body || {};
+      const { name, blank, clientId, doc, title } = body || {};
+      const seeded = doc !== undefined; // explicit content seed (importer)
       const store = await readStore(c.env, pid);
       const cur = pinnedDraft(store);
       const draft = makeDraft({
         name: typeof name === "string" && name.trim() ? name.trim() : `Draft ${store.drafts.length + 1}`,
-        title: blank ? "" : cur.title,
-        doc: blank ? null : cur.doc,
+        title: seeded ? (typeof title === "string" ? title : "") : (blank ? "" : cur.title),
+        doc: seeded ? (doc ?? null) : (blank ? null : cur.doc),
         clientId: clientId ?? null,
       });
       store.drafts.push(draft);

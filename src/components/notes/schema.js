@@ -88,6 +88,27 @@ export function buildInitialContent(stored) {
   };
 }
 
+// A flat screenplay `{ type, text }[]` → the ProseMirror doc of `screenplay`
+// nodes the editor renders. Mirrors the agent-side elementsToDoc
+// (flue-agent/src/lib/script.ts) so importers (see src/lib/fountain.js) can seed
+// a draft with the exact shape /api/script stores. Unknown types fall back to
+// "action"; an empty result gets one paragraph (the schema needs ≥1 block).
+export function elementsToDoc(elements) {
+  const content = (elements || [])
+    .filter((el) => el && typeof el.text === "string")
+    .map((el) => {
+      const spType = SP_TYPES.includes(el.type) ? el.type : "action";
+      const text = el.text ?? "";
+      return {
+        type: "screenplay",
+        attrs: { spType },
+        content: text ? [{ type: "text", text }] : [],
+      };
+    });
+  if (content.length === 0) content.push({ type: "paragraph" });
+  return { type: "doc", content };
+}
+
 /* ---------------------------------------------------------------- *
  * Screenplay block                                                 *
  * ---------------------------------------------------------------- */

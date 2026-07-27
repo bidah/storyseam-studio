@@ -17,7 +17,7 @@ import { Placeholder } from "@tiptap/extension-placeholder";
 import { TaskList, TaskItem } from "@tiptap/extension-list";
 import {
   Check, Loader2, Cloud, PenLine, Save, Pencil,
-  GitBranch, Plus, Trash2, Pin, CircleCheck, ListChecks, Lock,
+  GitBranch, Plus, Trash2, Pin, CircleCheck, ListChecks, Lock, FileUp,
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -33,9 +33,10 @@ import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger,
 } from "@/components/ui/dialog";
 import {
-  Screenplay, SlashCommand, buildInitialContent,
+  Screenplay, SlashCommand, buildInitialContent, elementsToDoc,
   SP_TYPES, SP_LABELS, SP_PLACEHOLDERS,
 } from "@/components/notes";
+import { parseFountain } from "@/lib/fountain";
 import ScriptDiffReview from "@/components/ScriptDiffReview";
 import ScriptSelectionAsk from "@/components/ScriptSelectionAsk";
 
@@ -287,6 +288,78 @@ function DraftControls({ drafts, pinnedId, currentName, flush, reload }) {
         </div>
       </DialogContent>
     </Dialog>
+  );
+}
+
+/* ---------------------------------------------------------------- *
+ * Import — turn a screenplay file into a new draft. Fountain (.fountain)
+ * for now; the parser produces the same `{type,text}[]` elements the editor
+ * stores, so an import lands as a fully-formatted, non-destructive new draft
+ * (the current draft is untouched) that becomes pinned.
+ * ---------------------------------------------------------------- */
+
+// Filename → a tidy draft name, e.g. "whistlewood.fountain" → "whistlewood (imported)".
+const importDraftName = (filename) =>
+  `${filename.replace(/\.[^./]+$/, "").trim() || "Untitled"} (imported)`.slice(0, 80);
+
+function ImportControls({ flush, reload }) {
+  const inputRef = useRef(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState(null);
+
+  const onPick = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = ""; // let the same file be re-picked after an edit
+    if (!file) return;
+    setBusy(true);
+    setErr(null);
+    try {
+      await flush?.(); // never lose an in-flight edit to the current draft
+      const text = await file.text();
+      const { title, elements } = parseFountain(text);
+      if (!elements.length) {
+        throw new Error("No screenplay content found — is this a Fountain file?");
+      }
+      // Seed a brand-new draft with the converted doc; it becomes pinned server-side.
+      await draftsApi("/api/script/drafts", "POST", {
+        name: importDraftName(file.name),
+        title: title || file.name.replace(/\.[^./]+$/, ""),
+        doc: elementsToDoc(elements),
+      });
+      await reload(); // pinned draft changed → editor remounts on the import
+    } catch (e2) {
+      setErr(String(e2.message || e2));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <>
+      <input
+        ref={inputRef}
+        type="file"
+        accept=".fountain,.txt,text/plain"
+        className="hidden"
+        onChange={onPick}
+      />
+      <Button
+        variant="outline"
+        size="sm"
+        className="h-7 gap-1.5 text-xs"
+        disabled={busy}
+        onClick={() => inputRef.current?.click()}
+        title="Import a Fountain (.fountain) screenplay as a new draft"
+      >
+        {busy ? <Loader2 size={13} className="animate-spin" /> : <FileUp size={13} />}
+        Import
+      </Button>
+      {err && (
+        <span className="max-w-[16rem] truncate text-[11px] text-destructive" role="alert" title={err}>
+          {err}
+        </span>
+      )}
+    </>
   );
 }
 
@@ -577,6 +650,7 @@ function Editor({ initial, drafts, pinnedId, currentName, reload, signed: signed
           flush={saveNow}
           reload={reload}
         />
+        <ImportControls flush={saveNow} reload={reload} />
         <span className="mx-0.5 h-5 w-px bg-border" aria-hidden />
         <ShotlistGate
           draftId={draftId}
