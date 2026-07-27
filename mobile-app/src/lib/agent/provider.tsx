@@ -10,13 +10,14 @@ import {
   type ReactNode,
 } from 'react';
 import { AppState } from 'react-native';
-import { router } from 'expo-router';
 import * as Haptics from 'expo-haptics';
+import { create } from 'zustand';
 import { useQueryClient } from '@tanstack/react-query';
 import { FlueProvider, useFlueAgent } from '@flue/react';
 import { createFlueClient } from '@flue/sdk';
 import { API_ORIGIN } from '../env';
 import { getProjectId, useProjectStore } from '../project';
+import { useOpenChat } from './chat-route';
 import {
   activeChatId,
   chatsForProject,
@@ -65,6 +66,23 @@ const flueClient = createFlueClient({ baseUrl: `${API_ORIGIN}/eve` });
 
 const AgentContext = createContext<any>(null);
 const ConversationsContext = createContext<any>(null);
+
+// The same two values, mirrored into a module store — the session's reach OUTSIDE
+// the provider's subtree.
+//
+// <AgentProvider> is mounted inside the tab layout (it needs the resolved project,
+// and it renders nothing until flue publishes a session, which no sign-in screen
+// should wait on). The chat modal, though, is a ROOT stack route — it has to be,
+// or presenting it would switch the visible tab out from under the user — so it
+// renders as a sibling of the tabs and context can't reach it. A native modal
+// leaves the tabs mounted underneath, so the session is alive and merely out of
+// context reach; this store is how the modal gets at the very same one (never a
+// second flue session).
+//
+// The hooks below read context FIRST and fall back to this, so nothing inside the
+// provider changes behaviour.
+type AgentBus = { agent: any; conv: any };
+const useAgentBus = create<AgentBus>(() => ({ agent: null, conv: null }));
 
 function useConversationManager() {
   const [store, setStore] = useState<ChatStore | null>(null);
@@ -431,6 +449,13 @@ export function AgentProvider({ children }: { children: ReactNode }) {
     setResyncNonce((n) => n + 1);
   }, []);
 
+  // Mirror the published session for consumers outside this subtree (the chat
+  // modal — see useAgentBus). Before paint, like the context publish, so the
+  // modal's first frame reads the same agent the tabs are rendering.
+  useLayoutEffect(() => {
+    useAgentBus.setState({ agent, conv });
+  }, [agent, conv]);
+
   return (
     <FlueProvider client={flueClient}>
       <ConversationsContext.Provider value={conv}>
@@ -451,15 +476,24 @@ export function AgentProvider({ children }: { children: ReactNode }) {
 }
 
 export function useAgent() {
+  // Context inside the provider's subtree, the mirror store outside it (the chat
+  // modal is a root route — see useAgentBus). Both are read unconditionally
+  // because hooks can't be; context wins when it's there.
   const ctx = useContext(AgentContext);
-  if (!ctx) throw new Error('useAgent must be used within <AgentProvider>');
-  return ctx;
+  const bus = useAgentBus((s) => s.agent);
+  const agent = ctx ?? bus;
+  if (!agent) throw new Error('useAgent must be used within <AgentProvider> (or after it mounts)');
+  return agent;
 }
 
 export function useConversations() {
   const ctx = useContext(ConversationsContext);
-  if (!ctx) throw new Error('useConversations must be used within <AgentProvider>');
-  return ctx;
+  const bus = useAgentBus((s) => s.conv);
+  const conv = ctx ?? bus;
+  if (!conv) {
+    throw new Error('useConversations must be used within <AgentProvider> (or after it mounts)');
+  }
+  return conv;
 }
 
 // Is the agent mid-turn (can't accept a new `send`)?
@@ -488,27 +522,30 @@ export function useIsFreshChat(): boolean {
   return untouched && (agent?.messages?.length ?? 0) === 0;
 }
 
-// Drive the agent from anywhere in the UI and reveal the Chat tab so the user
-// lands where the turn streams in. On the web app chat is an always-visible
-// side panel, so a bare `agent.send` is enough; on mobile chat is its own tab,
-// so every "drive the agent from a button" surface (World/Script/Render/
-// Stitch/Trim/Score/Sound…) must navigate to Chat. This is the single
-// mechanism for that — prefer it over calling `agent.send` directly from those
-// surfaces. Returns the send promise (rejects if the agent is mid-turn; the
-// button should already be disabled via `agentIsBusy`).
+// Drive the agent from anywhere in the UI and reveal the conversation so the user
+// lands where the turn streams in. On the web app chat is an always-visible side
+// panel, so a bare `agent.send` is enough; on mobile the conversation is its own
+// screen, so every "drive the agent from a button" surface (World/Script/Render/
+// Stitch/Trim/Score/Sound…) must navigate to it. This is the single mechanism for
+// that — prefer it over calling `agent.send` directly from those surfaces.
+//
+// WHICH presentation it opens is `useOpenChat`'s call: in-stack on the Home tab,
+// the chat modal from anywhere else. These buttons live on Story / Episode /
+// Cuts / Assets, so in practice this is the modal — pressing Render no longer
+// throws the user onto another tab to watch it stream.
+//
+// Returns the send promise (rejects if the agent is mid-turn; the button should
+// already be disabled via `agentIsBusy`).
 export function useSendToAgent() {
   const agent = useAgent();
   const conv = useConversations();
+  const openChat = useOpenChat();
   const activeId: string | null = conv.activeId;
   return useCallback(
     (message: string) => {
-      // Land on the CONVERSATION screen, not the chat tab's landing screen —
-      // the turn streams into the active chat, which has its own route now.
-      // `navigate` (not `push`) so driving the agent twice doesn't stack two
-      // copies of the same chat.
-      router.navigate(activeId ? `/(tabs)/chat/${activeId}` : '/(tabs)/chat');
+      openChat(activeId);
       return agent?.send?.({ message });
     },
-    [agent, activeId],
+    [agent, activeId, openChat],
   );
 }

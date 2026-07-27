@@ -8,7 +8,6 @@ import { useColors } from '@/lib/colors';
 import { AgentProvider } from '@/lib/agent/provider';
 import { useAgentAccessorySuppressed } from '@/lib/agent/accessory-suppress';
 import { AgentAccessory } from '@/components/chat/agent-accessory';
-import { QuickComposerOverlay, useQuickComposer } from '@/components/chat/quick-composer';
 import { useFalKeyStore } from '@/lib/fal-key';
 import { useAtlasKeyStore } from '@/lib/atlas-key';
 import { useProvidersStore } from '@/lib/providers';
@@ -69,16 +68,14 @@ export default function TabsLayout() {
   const { active, hydrated: providersHydrated } = useProvidersStore();
   const colors = useColors();
   // One message bar at the bottom of the screen is enough, so the accessory
-  // stands down wherever a real <Composer> is docked — a conversation screen
-  // (chat/[id]), Story › Visual world's image composer — each of which says so
-  // itself via useSuppressAgentAccessory. Everywhere else, INCLUDING the Home
-  // tab's landing screen, the pill IS the way to reach the agent: tapping it
-  // starts a chat and lands in its conversation with the caret up.
+  // stands down wherever a real <Composer> is docked and FOCUSED — a conversation
+  // screen (chat/[id]), Story › Visual world's image composer — each of which says
+  // so itself via useSuppressAgentAccessory. Everywhere else, INCLUDING the Home
+  // tab's landing screen, the pill IS the way to reach the agent: tapping it opens
+  // the current session whole (in-stack here, as a modal from any other tab — see
+  // lib/agent/chat-route.ts).
   const suppressed = useAgentAccessorySuppressed();
-  // While the pill has "morphed" into the quick composer, the accessory itself
-  // stands down — the overlay is its expanded form (see quick-composer.tsx).
-  const quickOpen = useQuickComposer((s) => s.open);
-  const showAccessory = accessorySupported && !suppressed && !quickOpen;
+  const showAccessory = accessorySupported && !suppressed;
 
   if (isPending || !falHydrated || !atlasHydrated || !providersHydrated) {
     return (
@@ -153,10 +150,6 @@ export default function TabsLayout() {
             <NativeTabs.Trigger.Icon sf="photo.on.rectangle.angled" />
           </NativeTabs.Trigger>
         </NativeTabs>
-        {/* The pill's expanded form, overlaid on the whole tab UI so it can
-            morph in from ANY tab. Must live inside <AgentProvider> (it mints
-            chats) — and after NativeTabs, so it draws on top. */}
-        <QuickComposerOverlay />
         </View>
       </AgentProvider>
     </ProjectGate>

@@ -47,7 +47,6 @@ export function Composer({
   onSubmit,
   onHeightChange,
   focusTick,
-  restOffset,
 }: {
   /** A HITL input request is awaiting an answer (typed text becomes its response). */
   pending: boolean;
@@ -58,19 +57,13 @@ export function Composer({
   /** Measured height of the docked bar, so the screen can inset the transcript. */
   onHeightChange?: (height: number) => void;
   /**
-   * Bump to open the keyboard here. A counter rather than a ref so a host can
-   * ask for the caret without holding an imperative handle — the quick-composer
-   * overlay bumps it each time the accessory pill morphs into this bar.
+   * Non-zero to open the keyboard here. A number rather than a ref so a host can
+   * ask for the caret without holding an imperative handle (the focus happens by
+   * remounting the input — see the field below): the conversation passes 1 when it
+   * was opened from the tab bar's accessory pill, which is a tap on something that
+   * looks like a text field and should leave you typing.
    */
   focusTick?: number;
-  /**
-   * Extra lift while the keyboard is CLOSED. The chat screens dock this bar
-   * inside a tab screen, whose safe area already ends above the tab bar — but
-   * the quick-composer overlay lives outside the tab navigator, where bottom:0
-   * is the window edge, so it passes the tab bar's height here to rest where
-   * the accessory pill sat. Ignored once the keyboard is up (the bar rides it).
-   */
-  restOffset?: number;
 }) {
   const c = useChatColors();
   const insets = useSafeAreaInsets();
@@ -192,9 +185,11 @@ export function Composer({
 
   return (
     <KeyboardStickyView
-      // Negative closed offset = lifted while the keyboard is down (positive
-      // values push the sticky view DOWN in this lib's coordinate space).
-      offset={{ closed: -(restOffset ?? 0), opened: insets.bottom }}
+      // The bar docks on the bottom edge of whatever screen hosts it (whose safe
+      // area already ends above the tab bar), so it needs no lift while the
+      // keyboard is down; `opened` is what keeps it clear of the home indicator
+      // once the keyboard has it.
+      offset={{ closed: 0, opened: insets.bottom }}
       style={{ position: 'absolute', left: 0, right: 0, bottom: 0 }}
     >
       <View

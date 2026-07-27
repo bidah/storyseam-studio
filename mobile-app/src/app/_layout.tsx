@@ -96,6 +96,19 @@ export default function RootLayout() {
                 <Stack.Screen name="(auth)/sign-in" />
                 <Stack.Screen name="(auth)/sign-up" />
                 <Stack.Screen name="(tabs)" />
+                {/* The chat modal — the studio agent over whatever tab you were
+                    on, opened by the tab bar's accessory pill from everywhere but
+                    Home (see lib/agent/chat-route.ts). A ROOT route on purpose:
+                    presenting it from inside a tab's stack would switch the
+                    visible tab first, which is the exact thing it exists to
+                    avoid. `presentation: 'modal'` is the page-sheet look — rounded
+                    top corners, the app stepping back behind it, swipe-down to
+                    dismiss. Its own nested stack (hub → conversation) owns the
+                    headers, so no header here. */}
+                <Stack.Screen
+                  name="session"
+                  options={{ presentation: 'modal', headerShown: false }}
+                />
                 <Stack.Screen
                   name="projects"
                   options={{

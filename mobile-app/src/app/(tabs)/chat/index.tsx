@@ -9,8 +9,8 @@ import Animated, {
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
-import { router } from 'expo-router';
 import { useConversations, useIsFreshChat } from '@/lib/agent/provider';
+import { openChatModal } from '@/lib/agent/chat-route';
 import { setPendingDraft } from '@/lib/agent/pending-draft';
 import type { Chat } from '@/lib/agent/chat-store';
 import { useProjectResource } from '@/lib/queries';
@@ -26,16 +26,19 @@ import type { LocalAttachment } from '@/components/chat/composer';
 import { useChatComposer } from '@/components/chat/composer-host';
 import { relTime } from '@/components/chat/helpers';
 
-// The Home tab's LANDING screen — the hub for starting a chat. Recaps (the
-// chats you already have — tap one to pick it back up) lead, then Try
-// something new (the starter prompts). The typing surface here is the
-// tab bar's agent pill (see components/chat/agent-accessory.tsx): tapping it
-// mints a chat and lands in its conversation with the caret up, so this screen
-// docks no composer of its own.
+// The Home tab's LANDING screen — the hub for starting a chat, and a LAUNCHER
+// rather than a place a conversation lives. Recaps (the chats you already have —
+// tap one to pick it back up) lead, then Try something new (the starter prompts).
+// It docks no composer of its own: the tab bar's agent pill is the typing surface
+// here (see components/chat/agent-accessory.tsx).
 //
-// It holds no transcript: a suggestion tap mints a chat and PUSHES `[id]`,
-// which is what makes the native header morph (menu slides right of a back
-// button, history gains new chat — see ./_layout.tsx).
+// Every card OPENS THE CHAT MODAL (src/app/session/), which is also what the pill
+// opens from every tab — so the conversation is one surface, reached identically
+// from anywhere, and closing it always puts you back where you were. See
+// lib/agent/chat-route.ts for why that beat pushing inside this tab's stack.
+//
+// This screen holds no transcript: a suggestion tap mints a chat, parks the first
+// message, and hands both to that modal.
 //
 // "Try something new" is DERIVED, not a fixed list — see lib/suggestions.ts. The
 // deck comes from the pipeline digest (/api/status), each card carries a composed
@@ -69,8 +72,8 @@ const SUGGESTION_W = 270;
 const SUGGESTION_BAND = 168;
 const SUGGESTION_BODY = 196;
 const SUGGESTION_H = SUGGESTION_BAND + SUGGESTION_BODY;
-// A recap is a text row with a colour cap, so its band stays small.
-const CARD_BAND = 56;
+// A recap is a text row with a colour cap, so its band is a thin sliver.
+const CARD_BAND = 20;
 
 // The colored header on each card, in place of the artwork these cards would
 // carry if the studio had a thumbnail for a prompt. A 3×3 SwiftUI/Compose mesh
@@ -216,7 +219,10 @@ function Section({
   children: React.ReactNode;
 }) {
   return (
-    <View className="gap-3">
+    // gap-0.5, not the gap-3 the Discover section uses: the card row carries
+    // 10pt of its own top padding (shadow-bleed room — see styles.row), so 2pt
+    // here lands the headline the same 12pt from the cards as Discover's.
+    <View className="gap-0.5">
       {/* Section headlines wear UIKit's large-title metrics (34pt bold) — the
           screen has no headline of its own, so the first section's title IS the
           page's big title, and the rest match it for one consistent rhythm. */}
@@ -331,18 +337,18 @@ export default function ChatHomeScreen() {
 
   const openRecap = useCallback((id: string) => {
     Haptics.selectionAsync().catch(() => {});
-    router.push(`/(tabs)/chat/${id}`);
+    openChatModal(id);
   }, []);
 
-  // Start a conversation: park the first message where the conversation screen
-  // will pick it up, then push that screen. The send itself HAS to happen there
-  // — the shared flue session only repoints at the new chat a render later (see
+  // Start a conversation: park the first message where the conversation will pick
+  // it up, then open the modal on it. The send itself HAS to happen there — the
+  // shared flue session only repoints at the new chat a render later (see
   // lib/agent/pending-draft.ts).
   const openWithDraft = useCallback(
     (text: string, attachments: LocalAttachment[]) => {
       const id: string = reusable && conv.activeId ? conv.activeId : conv.newChat();
       setPendingDraft(id, { text, attachments });
-      router.push(`/(tabs)/chat/${id}`);
+      openChatModal(id);
     },
     [conv, reusable],
   );
@@ -356,9 +362,9 @@ export default function ChatHomeScreen() {
   );
 
   // This screen docks NO composer — the tab bar's agent pill (the accessory) is
-  // the way to start typing here, and it can't share the bottom edge with a
-  // second bar. Registering null also clears whatever a popped conversation
-  // left on the stack's shared composer.
+  // the way to start typing here, and it can't share the bottom edge with a second
+  // bar. Registering null also clears whatever a popped conversation left on this
+  // stack's shared composer.
   useChatComposer(null);
 
   return (
@@ -479,10 +485,10 @@ const styles = StyleSheet.create({
   // Text sits on the plain surface below the band, pinned to the bottom so
   // one-liners and four-liners both hang off the same edge.
   cardBody: { flex: 1, justifyContent: 'flex-end', padding: 14 },
-  // Height budgets the bottom-hung text at the recap's small size: band (56)
+  // Height budgets the bottom-hung text at the recap's small size: band (20)
   // + padding (14×2) + timestamp eyebrow (16 + 4 gap) + two recapTitle lines
   // (2×20). Grow a line and this grows with it, or the eyebrow clips first.
-  recapCard: { width: RECAP_W, height: 144 },
+  recapCard: { width: RECAP_W, height: 108 },
   // A poster, not a chip. The height is the worst case of the layout below —
   // three lines of headline over four of paragraph, plus the padding — because a
   // card that clipped its own last line would hide the reason to tap it.

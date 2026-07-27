@@ -1,10 +1,9 @@
 import { ActivityIndicator, Pressable, Text, View } from 'react-native';
-import { router } from 'expo-router';
 import { NativeTabs } from 'expo-router/unstable-native-tabs';
 import * as Haptics from 'expo-haptics';
 import { ArrowUp, CircleStop, MessageSquareText } from 'lucide-react-native';
-import { agentIsBusy, useAgent } from '@/lib/agent/provider';
-import { useQuickComposer } from './quick-composer';
+import { agentIsBusy, useAgent, useConversations } from '@/lib/agent/provider';
+import { useOpenChat } from '@/lib/agent/chat-route';
 import { useChatColors } from './theme';
 
 // The studio agent's presence in the tab bar — a UITabAccessory (iOS 26+) that
@@ -16,9 +15,11 @@ import { useChatColors } from './theme';
 //   - No keyboard avoidance. The accessory lives in the tab bar's frame and
 //     nothing (UIKit or react-native-screens) lifts it when the keyboard comes
 //     up, so a live <TextInput> here would be typed into from under the
-//     keyboard. Tapping instead MORPHS the pill into the real <Composer> in
-//     place — the quick-composer overlay fades in over this exact spot with
-//     the keyboard, and the pill stands down (see quick-composer.tsx).
+//     keyboard. Tapping instead OPENS THE CHAT — the whole conversation, with the
+//     real <Composer> docked at the bottom and the caret already in it. (It used
+//     to fade a composer-only overlay in over this spot, which put a bar on
+//     screen with no transcript above it: a message to a conversation you
+//     couldn't see, and no way to check on the turn you'd just sent.)
 //   - Two copies exist at once. react-native-screens renders the accessory once
 //     per placement (`regular` and `inline`) and switches between them by
 //     toggling layer opacity — so local state is NOT shared between them, and
@@ -40,6 +41,8 @@ export function AgentAccessory() {
   const inline = placement === 'inline';
   const c = useChatColors();
   const agent = useAgent();
+  const conv = useConversations();
+  const openChat = useOpenChat();
   const busy = agentIsBusy(agent);
 
   // The accessory's own height is UIKit's to choose (it sizes the
@@ -47,17 +50,23 @@ export function AgentAccessory() {
   // here measures it. Screens that need to clear it read the tab's safe-area
   // bottom instead — see lib/use-tab-bar-inset.ts.
 
-  // Mid-turn the pill behaves like a mini player: it takes you to the
-  // conversation that's streaming. Otherwise it morphs into the composer right
-  // here: the overlay fades in over the pill's spot, keyboard up, and only a
-  // SEND mints the chat and opens its conversation screen (quick-composer.tsx).
+  // One destination in every state — the CURRENT session, opened whole. Like a
+  // mini player: mid-turn it takes you to the conversation that's streaming, and
+  // idle it takes you to the same one with the caret up, ready for the next
+  // message. Nothing is minted on a tap; the project's active chat already exists
+  // (`withActiveForProject`), blank if it has never been used.
+  //
+  // WHERE it opens is `useOpenChat`'s call, and it turns on which tab you're on:
+  // pushed inside the Home tab's stack when Home is what you're looking at, and
+  // the chat modal from anywhere else — so reaching the agent from Episode or Cuts
+  // doesn't cost you the tab you were working in (lib/agent/chat-route.ts).
+  //
+  // The keyboard only comes up when the agent is idle: mid-turn you tapped this to
+  // see how the work is going, and a keyboard would cover the reply landing.
   const open = () => {
     Haptics.selectionAsync().catch(() => {});
-    if (busy && agent?.chatId) {
-      router.navigate(`/(tabs)/chat/${agent.chatId}`);
-      return;
-    }
-    useQuickComposer.getState().show();
+    const id: string | null = agent?.chatId ?? conv.activeId ?? null;
+    openChat(id, { focus: !busy });
   };
 
   const stop = () => {
@@ -107,8 +116,8 @@ export function AgentAccessory() {
 
       {/* Same slot in both states so the two placements' controls line up:
           stop while a turn is in flight, otherwise the composer's send button
-          echoed as an affordance (it opens the composer like the rest of the
-          pill — there is nothing to send from here). */}
+          echoed as an affordance (it opens the chat like the rest of the pill —
+          there is nothing to send from here). */}
       {busy ? (
         <Pressable
           accessibilityRole="button"

@@ -4,6 +4,7 @@ import { router, Stack } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { SquarePen } from 'lucide-react-native';
 import { useConversations } from '@/lib/agent/provider';
+import { openChatModal } from '@/lib/agent/chat-route';
 import { relTime } from '@/components/chat/helpers';
 import { useChatColors } from '@/components/chat/theme';
 import ChatHistoryForm from '@/components/chat-history-form';
@@ -14,21 +15,22 @@ import ChatHistoryForm from '@/components/chat-history-form';
 // native SwiftUI Form on iOS, RN cards elsewhere).
 //
 // Both actions here NAVIGATE rather than mutate the active chat in place, since
-// a conversation is its own route now: selecting one lands on it, and New chat
-// lands on the tab's landing screen (which IS the new chat — nothing to disable).
-// Both first unwind to that landing screen, so picking a chat from inside a chat
-// swaps rather than stacking a second conversation behind you.
+// a conversation is its own route now: selecting one opens it as the chat modal
+// (the single presentation — see lib/agent/chat-route.ts), and New chat lands on
+// the tab's landing screen (which IS the new chat — nothing to disable). Both
+// first unwind to that landing screen, so picking a chat from inside this sheet
+// swaps rather than stacking anything behind you.
 export default function ChatHistorySheet() {
   const chatC = useChatColors();
   const conv = useConversations();
 
   // Dismiss the sheet AND pop back to the tab's landing screen, then optionally
-  // push a conversation. The push waits a frame: dismissing a formSheet is a
-  // native transition, and dispatching the push in the same tick can be
-  // swallowed by it.
+  // open a conversation as the modal. The second navigation waits a frame:
+  // dismissing a formSheet is a native transition, and presenting the modal in the
+  // same tick can be swallowed by it (doubly so now that both ends are modals).
   const leaveTo = useCallback((chatId?: string) => {
     router.dismissTo('/(tabs)/chat');
-    if (chatId) requestAnimationFrame(() => router.push(`/(tabs)/chat/${chatId}`));
+    if (chatId) requestAnimationFrame(() => openChatModal(chatId));
   }, []);
 
   const onSelect = useCallback(
