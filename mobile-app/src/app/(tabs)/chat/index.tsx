@@ -767,8 +767,6 @@ export default function ChatScreen() {
               renderItem={renderItem}
               style={styles.list}
               contentContainerStyle={styles.listContent}
-              contentInsetAdjustmentBehavior="never"
-              automaticallyAdjustContentInsets={false}
               keyboardShouldPersistTaps="handled"
               keyboardDismissMode="interactive"
               onScroll={onScroll}
