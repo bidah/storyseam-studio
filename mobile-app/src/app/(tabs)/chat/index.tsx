@@ -17,6 +17,7 @@ import {
   type ViewStyle,
 } from 'react-native';
 import Animated, {
+  Easing,
   useAnimatedProps,
   useAnimatedStyle,
   useSharedValue,
@@ -311,6 +312,23 @@ function SuggestionSkeletons() {
 
 export type Recap = { id: string; title: string; when: string };
 
+// A one-shot entrance for the landing screen: it fades up (and drifts a few
+// points) as it mounts, so opening a fresh chat resolves instead of snapping
+// into place. Mount-only — nothing replays while the screen is up, and the
+// transform means layout (and the native large title's insets) never moves.
+function useEnterFade() {
+  const t = useSharedValue(0);
+  useEffect(() => {
+    t.value = withTiming(1, { duration: 620, easing: Easing.out(Easing.cubic) });
+  }, [t]);
+  return useAnimatedStyle(() => ({
+    // Opacity runs slightly ahead of the drift, so the screen is legible for most
+    // of the travel rather than arriving all at once at the end.
+    opacity: Math.min(1, t.value * 1.35),
+    transform: [{ translateY: (1 - t.value) * 16 }],
+  }));
+}
+
 // iOS large-title chrome: a 44pt bar plus 52pt of headline, under the status
 // bar. The scroll view spans the full screen BENEATH that (which is what lets
 // the title collapse as you drag), so its own height overstates the visible
@@ -345,6 +363,7 @@ function EmptyChat({
   composerOverlap: number;
 }) {
   const insets = useSafeAreaInsets();
+  const enter = useEnterFade();
   const [viewport, setViewport] = useState(0);
   // The scroll view runs the full height of the screen (the composer floats over
   // it), so the visible band excludes the composer's overhang as well as the
@@ -366,8 +385,11 @@ function EmptyChat({
     [status, isError],
   );
   return (
-    <ScrollView
-      style={styles.list}
+    // Animated.ScrollView (not a wrapper View) so the fade rides the SAME native
+    // scroll view the large "Chat" title tracks — wrapping it would break
+    // contentInsetAdjustmentBehavior.
+    <Animated.ScrollView
+      style={[styles.list, enter]}
       onLayout={(e) => setViewport(e.nativeEvent.layout.height)}
       contentContainerStyle={[
         styles.emptyContent,
@@ -432,7 +454,7 @@ function EmptyChat({
           ))
         )}
       </Section>
-    </ScrollView>
+    </Animated.ScrollView>
   );
 }
 
