@@ -4,7 +4,7 @@ import { router, Stack, useLocalSearchParams } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { Check, X } from 'lucide-react-native';
 import { resolvePickerRequest } from '@/lib/picker-bus';
-import { SHEET_CONTENT_STYLE } from '@/lib/sheet';
+import { useSheetContentStyle } from '@/lib/sheet';
 import { useColors } from '@/lib/colors';
 
 // Generic option picker — a native formSheet sized to its content
@@ -36,6 +36,8 @@ export default function OptionPickerSheet() {
   const [pending, setPending] = useState<string | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const colors = useColors();
+  // 16 == the px-4 below, so the gap under the card matches the sides.
+  const contentStyle = useSheetContentStyle(16);
 
   // Resolve null if the sheet closes without a pick (a real pick resolved
   // first, so this second resolve is a no-op) and cancel a queued close.
@@ -80,10 +82,10 @@ export default function OptionPickerSheet() {
       />
       {/* The formSheet's native header floats transparently over the content
           (glass); the content reserves space for it and cancels the nav-bar
-          height the fitToContents detent adds — see SHEET_CONTENT_STYLE. One
+          height the fitToContents detent adds — see useSheetContentStyle. One
           iOS inset-grouped card with hairline dividers and a big liquid-glass
           radius — matches the chat model picker. */}
-      <View className="bg-background px-4" style={SHEET_CONTENT_STYLE}>
+      <View className="bg-background px-4" style={contentStyle}>
         <View className="overflow-hidden rounded-[28px] border border-border bg-card">
           {list.map((opt, i) => (
             <Fragment key={opt.value}>

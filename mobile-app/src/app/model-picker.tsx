@@ -5,7 +5,7 @@ import { Check, X } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { modelsForProvider, type AgentModelId, useAgentModelStore } from '@/lib/agent-model';
 import { useChatProviderStore } from '@/lib/chat-provider';
-import { SHEET_CONTENT_STYLE } from '@/lib/sheet';
+import { useSheetContentStyle } from '@/lib/sheet';
 import { useColors } from '@/lib/colors';
 
 // Chat model picker — a native formSheet sized to its content
@@ -24,6 +24,8 @@ export default function ModelPickerSheet() {
   const [pending, setPending] = useState<AgentModelId | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const colors = useColors();
+  // 32 == the px-8 below, so the gap under the card matches the sides.
+  const contentStyle = useSheetContentStyle(32);
 
   useEffect(() => {
     return () => {
@@ -60,8 +62,8 @@ export default function ModelPickerSheet() {
       />
       {/* The formSheet's native header floats transparently over the content
           (glass); the content reserves space for it and cancels the nav-bar
-          height the fitToContents detent adds — see SHEET_CONTENT_STYLE. */}
-      <View className="bg-background px-8" style={SHEET_CONTENT_STYLE}>
+          height the fitToContents detent adds — see useSheetContentStyle. */}
+      <View className="bg-background px-8" style={contentStyle}>
         <View className="overflow-hidden rounded-[28px] border border-border bg-card">
           {models.map((m, i) => (
             <Fragment key={m.id}>

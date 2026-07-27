@@ -5,7 +5,7 @@ import { Check, ChevronLeft, ChevronRight, X } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { resolvePickerRequest } from '@/lib/picker-bus';
 import { splitImageModels, useImageModelPickerStore } from '@/lib/image-model-picker';
-import { SHEET_CONTENT_STYLE } from '@/lib/sheet';
+import { useSheetContentStyle } from '@/lib/sheet';
 import { useColors } from '@/lib/colors';
 
 // Image-model picker — a single fit-to-content formSheet (registered in the root
@@ -22,6 +22,8 @@ export default function ImageModelPickerSheet() {
   const [pending, setPending] = useState<string | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const colors = useColors();
+  // 16 == the px-4 below, so the gap under the card matches the sides.
+  const contentStyle = useSheetContentStyle(16);
 
   // Single screen, so this fires only on real sheet dismissal — resolve null (a
   // pick resolves first, making this a no-op) and cancel a pending close.
@@ -119,8 +121,8 @@ export default function ImageModelPickerSheet() {
       {/* Plain Views (no ScrollView/navigator) so fitToContents can measure the
           height and hug the rows. The glass header floats over the content; the
           content reserves space for it and cancels the nav-bar height the
-          fitToContents detent adds — see SHEET_CONTENT_STYLE. */}
-      <View className="bg-background px-4" style={SHEET_CONTENT_STYLE}>
+          fitToContents detent adds — see useSheetContentStyle. */}
+      <View className="bg-background px-4" style={contentStyle}>
         {page === 'default' ? (
           <>
             <Card items={top} />
