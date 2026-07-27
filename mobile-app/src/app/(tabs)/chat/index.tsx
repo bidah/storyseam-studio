@@ -389,7 +389,7 @@ export default function ChatHomeScreen() {
         </View>
 
         {recaps.length ? (
-          <Section title="Recaps" cardWidth={RECAP_W}>
+          <Section title="Last chats" cardWidth={RECAP_W}>
             {recaps.map((r) => (
               <PressCard
                 key={r.id}
@@ -399,7 +399,10 @@ export default function ChatHomeScreen() {
                 onPress={() => openRecap(r.id)}
               >
                 <Text className="text-xs text-muted-foreground">{r.when}</Text>
-                <Text className="mt-1 text-lg font-semibold leading-6 text-foreground" numberOfLines={4}>
+                {/* Same headline type as the suggestion posters (cardTitle), so
+                    the two rows read as one family. Two lines at this size is
+                    what the card's height budgets for. */}
+                <Text className="mt-1 text-foreground" style={styles.cardTitle} numberOfLines={2}>
                   {r.title}
                 </Text>
               </PressCard>
@@ -483,7 +486,10 @@ const styles = StyleSheet.create({
   // Text sits on the plain surface below the band, pinned to the bottom so
   // one-liners and four-liners both hang off the same edge.
   cardBody: { flex: 1, justifyContent: 'flex-end', padding: 14 },
-  recapCard: { width: RECAP_W, height: 130 },
+  // Height budgets the bottom-hung text at the poster headline size: band (56)
+  // + padding (14×2) + timestamp eyebrow (16 + 4 gap) + two cardTitle lines
+  // (2×29). Grow a line and this grows with it, or the eyebrow clips first.
+  recapCard: { width: RECAP_W, height: 162 },
   // A poster, not a chip. The height is the worst case of the layout below —
   // three lines of headline over four of paragraph, plus the padding — because a
   // card that clipped its own last line would hide the reason to tap it.
