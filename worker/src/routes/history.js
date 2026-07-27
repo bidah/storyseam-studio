@@ -226,13 +226,16 @@ export function registerHistory(app) {
 // SOURCE project is never touched.
 export function registerClone(app) {
   const MAX_OBJECTS = 150;      // per call
-  const MAX_BYTES = 400 * 1024 * 1024;
+  const MAX_BYTES = 250 * 1024 * 1024;
   // Objects are copied concurrently: each one is a read and a write against R2,
   // so the request spends nearly all its time waiting on the network. Serially
-  // this ran at ~2 MB/s; a small pool takes a multi-gigabyte project from ~25
-  // minutes to a few. Kept modest so one clone can't monopolise the subrequest
-  // budget.
-  const CONCURRENCY = 12;
+  // this ran at ~2 MB/s, which puts a multi-gigabyte project near half an hour.
+  //
+  // The ceiling is NOT the subrequest budget — it's the Workers limit on
+  // SIMULTANEOUS OPEN CONNECTIONS. Each object holds two at once (the source
+  // stream and the destination upload), so a pool of 12 reliably died with
+  // "Response closed due to connection limit" mid-copy. Four leaves headroom.
+  const CONCURRENCY = 4;
 
   app.post("/api/admin/clone-project", async (c) => {
     const userId = c.get("userId");
@@ -288,34 +291,53 @@ export function registerClone(app) {
 
     // Media, in budgeted batches. `skipped` counts objects already present, so a
     // re-run after an interruption resumes instead of re-uploading.
+    // Failures are reported rather than surfacing as a bare 500: a clone is a
+    // long, resumable job and the caller needs to know WHICH object broke and how
+    // far it got, so it can pick up from there.
     let copied = 0, skipped = 0, bytes = 0, done = true;
     let cursor = body?.cursor || undefined;
     const prefix = `media/${from}/`;
+    let failed = null;
 
     const copyOne = async (o) => {
       const destKey = `media/${to}/${o.key.slice(prefix.length)}`;
-      if (await env.BUCKET.head(destKey)) { skipped++; return; }
-      const src = await env.BUCKET.get(o.key);
-      if (!src) { skipped++; return; }
-      await env.BUCKET.put(destKey, src.body, { httpMetadata: src.httpMetadata });
-      copied++; bytes += o.size;
+      try {
+        if (await env.BUCKET.head(destKey)) { skipped++; return; }
+        const src = await env.BUCKET.get(o.key);
+        if (!src) { skipped++; return; }
+        await env.BUCKET.put(destKey, src.body, { httpMetadata: src.httpMetadata });
+        copied++; bytes += o.size;
+      } catch (e) {
+        failed = failed || { key: o.key, size: o.size, error: String(e?.message || e) };
+      }
     };
 
+    // Resume by KEY, not by list cursor. A whole project fits in one 1000-object
+    // page, so a cursor is null every time and each call would restart the scan
+    // from the first object — re-head()ing everything already copied. That grows
+    // with progress (quadratic in calls) and had throughput collapsing to well
+    // under 1 MB/s by the third call. `startAfter` picks up exactly where the
+    // last call stopped, so every call does only new work.
+    //
+    // `after` advances only on a FULLY completed chunk, so a partial chunk is
+    // redone rather than skipped; the head() check makes that overlap free.
+    let after = body?.after || undefined;
     outer: do {
-      const page = await env.BUCKET.list({ prefix, cursor, limit: 1000 });
+      const page = await env.BUCKET.list({ prefix, cursor, startAfter: after, limit: 1000 });
+      if (!page.objects.length) break;
       for (let i = 0; i < page.objects.length; i += CONCURRENCY) {
-        await Promise.all(page.objects.slice(i, i + CONCURRENCY).map(copyOne));
-        if (copied >= MAX_OBJECTS || bytes >= MAX_BYTES) {
-          // Resume from this page next call; already-copied objects are skipped
-          // by the head() check, so overlap is cheap and correctness is kept.
-          cursor = page.cursor;
-          done = false;
-          break outer;
-        }
+        const chunk = page.objects.slice(i, i + CONCURRENCY);
+        await Promise.all(chunk.map(copyOne));
+        if (failed) { done = false; break outer; }
+        after = chunk[chunk.length - 1].key;
+        if (copied >= MAX_OBJECTS || bytes >= MAX_BYTES) { done = false; break outer; }
       }
       cursor = page.truncated ? page.cursor : undefined;
     } while (cursor);
 
-    return c.json({ ok: true, from, to, copiedDocs, copied, skipped, bytes, done, cursor: done ? null : cursor });
+    return c.json({
+      ok: !failed, from, to, copiedDocs, copied, skipped, bytes, done, failed,
+      after: done ? null : after ?? null,
+    });
   });
 }
