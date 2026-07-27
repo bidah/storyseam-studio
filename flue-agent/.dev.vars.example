@@ -22,3 +22,8 @@ DAYTONA_API_KEY=""
 
 # Higgsfield generation MCP endpoint (OAuth-protected; token bridged from worker).
 HIGGSFIELD_MCP_URL=""
+
+# Exa (https://exa.ai) API key — powers the agent's web_search / fetch_url tools.
+# Operator-owned (not BYOK). Without it both tools are absent and the agent has
+# no web access.
+EXA_API_KEY=""

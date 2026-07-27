@@ -11,6 +11,7 @@ import { createTools } from "../tools/index.js";
 import { createHiggsfieldTools } from "../lib/higgsfield.js";
 import { createFalTools } from "../lib/fal.js";
 import { createAtlasTools } from "../lib/atlas.js";
+import { createExaTools } from "../lib/exa.js";
 import { createSandbox } from "../lib/sandbox.js";
 import { skills } from "../skills.js";
 import { createSubagents } from "../subagents.js";
@@ -123,6 +124,9 @@ export default defineAgent(async ({ id }) => {
   const higgsfieldTools = await createHiggsfieldTools(userId);
   const falTools = createFalTools(storedFalKey());
   const atlasTools = createAtlasTools(storedAtlasKey());
+  // Web search / page reading (Exa). Operator-keyed off EXA_API_KEY, absent
+  // without it — not tied to the render-provider selection.
+  const exaTools = createExaTools();
   const sandbox = await createSandbox(id);
 
   const PROVIDER_TOOLS: Record<string, string> = {
@@ -138,7 +142,7 @@ export default defineAgent(async ({ id }) => {
   return {
     model: selectedModel(),
     instructions: providerNote ? `${instructions}${providerNote}` : instructions,
-    tools: [...tools, ...higgsfieldTools, ...falTools, ...atlasTools],
+    tools: [...tools, ...higgsfieldTools, ...falTools, ...atlasTools, ...exaTools],
     skills,
     subagents: createSubagents(api),
     ...(sandbox ? { sandbox, cwd: "/workspace" } : {}),
