@@ -23,8 +23,9 @@ import { ChatHeaderRight, useChatHeaderItems } from '@/components/chat/chat-head
 //   right — history alone on the landing screen, history + new chat on a
 //           conversation. The shared item keeps its glass capsule across the
 //           push; the new one fades in.
-//   title — a large "Chat" that collapses into the conversation's compact title
-//           as part of the same transition.
+//   title — the landing screen paints its own big "Chat" headline in the scroll
+//           content (the bar stays title-less), so pushing a conversation fades
+//           the bar's title in rather than collapsing a large one.
 //
 // On Android/web there is no `leftItemsSupplementBackButton` equivalent —
 // `headerLeft` REPLACES the back button — so the menu stands down on [id] and
@@ -71,8 +72,11 @@ export default function ChatLayout() {
       <Stack.Screen
         name="index"
         options={{
-          // The landing screen's ScrollView is what the large title tracks.
-          headerLargeTitle: true,
+          // The big "Chat" headline is EMULATED in the screen body — a plain
+          // Text in the scroll content wearing the large-title font — so it
+          // scrolls away with the page like any other content. The bar itself
+          // stays title-less to avoid doubling up with it.
+          title: '',
           unstable_headerLeftItems: () => [menuItem],
           headerLeft: () => <MenuButton />,
           unstable_headerRightItems: () => homeItems,

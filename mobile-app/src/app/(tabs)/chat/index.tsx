@@ -41,11 +41,33 @@ import { relTime } from '@/components/chat/helpers';
 // while we don't know yet (a wrong deck for one beat is worse than none), the
 // evergreen pair when the digest can't be read at all.
 
-// iOS large-title chrome: a 44pt bar plus 52pt of headline, under the status
-// bar. The scroll view spans the full screen BENEATH that (which is what lets
-// the title collapse as you drag), so its own height overstates the visible
-// band by exactly this much.
-const LARGE_HEADER = 44 + 52;
+// The compact iOS bar under the status bar. The big "Chat" headline is OURS —
+// in-content, wearing the large-title font — not a native large title, so the
+// bar contributes only its own 44pt to the chrome the scroll view runs beneath.
+const HEADER_BAR = 44;
+
+// Card geometry, up here because the snap interval is derived from it: a row
+// rests on multiples of (card + gap), so these three numbers have to agree or a
+// snapped card sits at the wrong margin.
+const ROW_GAP = 12;
+const ROW_PAD = 20;
+const RECAP_W = 240;
+// A suggestion card is a poster, not a chip: big enough for a large headline over
+// a real paragraph of what the card would actually do.
+const SUGGESTION_W = 270;
+// The card's height is the BAND PLUS the text budget below it (see cardBlurb),
+// not a round number the text has to survive inside. That's why growing the band
+// grows the card: the artwork is the card's subject, and the copy under it is a
+// fixed three-lines-plus-four, so squeezing the two against a fixed height would
+// only ever cost the paragraph.
+// The band is a placeholder for ARTWORK — a generated image per card, once there
+// is one — so it's sized as a picture slot (270×168, a hair wider than 16:10),
+// with the mesh gradient standing in until the image exists.
+const SUGGESTION_BAND = 168;
+const SUGGESTION_BODY = 196;
+const SUGGESTION_H = SUGGESTION_BAND + SUGGESTION_BODY;
+// A recap is a text row with a colour cap, so its band stays small.
+const CARD_BAND = 56;
 
 // The colored header on each card, in place of the artwork these cards would
 // carry if the studio had a thumbnail for a prompt. A 3×3 SwiftUI/Compose mesh
@@ -130,6 +152,8 @@ function PressCard({
   label,
   seed,
   style,
+  bodyStyle,
+  bandHeight = CARD_BAND,
 }: {
   children: React.ReactNode;
   onPress: () => void;
@@ -137,6 +161,10 @@ function PressCard({
   /** Stable number this card's header is derived from — see meshSeed. */
   seed: number;
   style?: ViewStyle;
+  /** Overrides how the text block sits under the band (see cardBody). */
+  bodyStyle?: ViewStyle;
+  /** How tall the mesh band is — scaled to the card, not fixed. */
+  bandHeight?: number;
 }) {
   const palette = MESHES[seed % MESHES.length];
   // Shifted off the palette's own digit so two cards sharing a palette still
@@ -148,16 +176,16 @@ function PressCard({
       <View className="border border-border bg-card" style={[styles.card, style]}>
         {MeshGradientView ? (
           <MeshGradientView
-            style={styles.cardHeader}
+            style={{ height: bandHeight }}
             columns={3}
             rows={3}
             colors={palette as unknown as string[]}
             points={points}
           />
         ) : (
-          <View style={[styles.cardHeader, { backgroundColor: palette[4] }]} />
+          <View style={{ height: bandHeight, backgroundColor: palette[4] }} />
         )}
-        <View style={styles.cardBody}>{children}</View>
+        <View style={[styles.cardBody, bodyStyle]}>{children}</View>
       </View>
     </BouncyPressable>
   );
@@ -166,7 +194,24 @@ function PressCard({
 // A landing section: a bold headline over a horizontally scrolling row of cards
 // that bleeds off both edges (the row's own padding supplies the page margin,
 // so a card can sit half-off-screen and invite the swipe).
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+//
+// The row SNAPS a card at a time rather than coasting: `snapToInterval` is one
+// card plus the row's gap, so every rest position puts a card's left edge exactly
+// ROW_PAD from the screen — the same margin the first card has — instead of
+// leaving a swipe stopped mid-card. `snapToInterval` (not `pagingEnabled`, which
+// snaps to viewport widths) is what makes that work for cards narrower than the
+// screen, and `decelerationRate="fast"` keeps the flick from overshooting the
+// next card before the snap grabs it.
+function Section({
+  title,
+  cardWidth,
+  children,
+}: {
+  title: string;
+  /** Card width for this row — snapping is that plus the row's gap. */
+  cardWidth: number;
+  children: React.ReactNode;
+}) {
   return (
     <View className="gap-3">
       <Text className="px-5 text-2xl font-bold text-foreground">{title}</Text>
@@ -175,6 +220,10 @@ function Section({ title, children }: { title: string; children: React.ReactNode
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.row}
         keyboardShouldPersistTaps="handled"
+        snapToInterval={cardWidth + ROW_GAP}
+        snapToAlignment="start"
+        decelerationRate="fast"
+        disableIntervalMomentum
       >
         {children}
       </ScrollView>
@@ -196,11 +245,15 @@ function SuggestionSkeletons() {
       {[0, 1, 2].map((i) => (
         <Animated.View key={i} style={[style, styles.cardShadow]} pointerEvents="none">
           <View className="border border-border bg-card" style={[styles.card, styles.suggestionCard]}>
-            <View style={[styles.cardHeader, { backgroundColor: MESHES[i][4] }]} />
-            <View style={styles.cardBody}>
-              <View className="h-3 w-16 rounded bg-muted" />
-              <View className="mt-2 h-4 w-32 rounded bg-muted" />
-              <View className="mt-1.5 h-4 w-20 rounded bg-muted" />
+            <View style={{ height: SUGGESTION_BAND, backgroundColor: MESHES[i][4] }} />
+            {/* Two bars for the headline, three for the paragraph — the real
+                card's proportions, so nothing shifts when the deck lands. */}
+            <View style={[styles.cardBody, styles.suggestionBody]}>
+              <View className="h-7 w-44 rounded bg-muted" />
+              <View className="mt-2 h-7 w-28 rounded bg-muted" />
+              <View className="mt-4 h-3.5 w-48 rounded bg-muted" />
+              <View className="mt-2 h-3.5 w-44 rounded bg-muted" />
+              <View className="mt-2 h-3.5 w-24 rounded bg-muted" />
             </View>
           </View>
         </Animated.View>
@@ -238,7 +291,7 @@ export default function ChatHomeScreen() {
   // it), so the visible band excludes the composer's overhang as well as the
   // header. `contentInsetAdjustmentBehavior="automatic"` already clears the tab
   // bar itself, so only the overhang above it is ours to reserve.
-  const band = viewport ? Math.max(0, viewport - insets.top - LARGE_HEADER - composerHeight) : 0;
+  const band = viewport ? Math.max(0, viewport - insets.top - HEADER_BAR - composerHeight) : 0;
 
   // Every project starts with a blank chat (`withActiveForProject`), and this
   // screen is that chat's face. Reuse it when it's still untouched instead of
@@ -309,13 +362,12 @@ export default function ChatHomeScreen() {
   return (
     <View className="flex-1 bg-background">
       {/* Content is TOP-aligned under the headline, not centered.
-          A ScrollView rather than a plain View for two reasons: it's the scroll
-          view the native large "Chat" title tracks (contentInsetAdjustmentBehavior
-          = "automatic" — the title collapses as you drag), and it bounces at both
-          ends even when everything fits, so the surface feels alive instead of
-          nailed down. minHeight is the measured visible band — enough to fill the
-          screen and bounce, without a header's worth of dead space to scroll
-          through. */}
+          A ScrollView rather than a plain View for two reasons:
+          contentInsetAdjustmentBehavior="automatic" lays it out under the
+          transparent bar and tab bar for the glass scroll-under, and it bounces
+          at both ends even when everything fits, so the surface feels alive
+          instead of nailed down. minHeight is the measured visible band — enough
+          to fill the screen and bounce, without dead space to scroll through. */}
       <Animated.ScrollView
         style={[styles.list, enter]}
         onLayout={(e) => setViewport(e.nativeEvent.layout.height)}
@@ -330,12 +382,21 @@ export default function ChatHomeScreen() {
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="interactive"
       >
-        <Text className="px-5 pb-2 text-base text-muted-foreground">
-          Ask me anything to create or talk about your story
-        </Text>
+        {/* The emulated large title: the bar above is title-less, and this Text
+            wears UIKit's exact large-title metrics (system font, 34pt bold), so
+            it reads as the native headline — but it's content, and scrolls away
+            under the glass bar with everything else. */}
+        <View className="gap-1 px-5 pb-2">
+          <Text accessibilityRole="header" className="text-foreground" style={styles.bigTitle}>
+            Chat
+          </Text>
+          <Text className="text-base text-muted-foreground">
+            Ask me anything to create or talk about your story
+          </Text>
+        </View>
 
         {recaps.length ? (
-          <Section title="Recaps">
+          <Section title="Recaps" cardWidth={RECAP_W}>
             {recaps.map((r) => (
               <PressCard
                 key={r.id}
@@ -353,7 +414,7 @@ export default function ChatHomeScreen() {
           </Section>
         ) : null}
 
-        <Section title="Try something new">
+        <Section title="Try something new" cardWidth={SUGGESTION_W}>
           {isLoading ? (
             <SuggestionSkeletons />
           ) : (
@@ -368,15 +429,18 @@ export default function ChatHomeScreen() {
                 // as work lands, and position-seeded headers would reshuffle with it.
                 seed={meshSeed(s.id)}
                 style={styles.suggestionCard}
+                bodyStyle={styles.suggestionBody}
+                bandHeight={SUGGESTION_BAND}
                 onPress={() => onSuggest(s.prompt)}
               >
-                {s.subtitle ? (
-                  <Text className="text-xs text-muted-foreground" numberOfLines={2}>
-                    {s.subtitle}
-                  </Text>
-                ) : null}
-                <Text className="mt-1 text-lg font-semibold leading-6 text-foreground" numberOfLines={2}>
+                {/* Poster order: the headline reads FIRST, hanging off the mesh
+                    band, and the paragraph explains it underneath. (A recap is
+                    the other way round — its timestamp is an eyebrow.) */}
+                <Text className="text-foreground" style={styles.cardTitle} numberOfLines={3}>
                   {s.title}
+                </Text>
+                <Text className="text-muted-foreground" style={styles.cardBlurb} numberOfLines={4}>
+                  {s.blurb}
                 </Text>
               </PressCard>
             ))
@@ -399,6 +463,8 @@ export default function ChatHomeScreen() {
 
 const styles = StyleSheet.create({
   list: { flex: 1 },
+  // UIKit's large-title text style: SF Pro at 34pt bold, 41pt line height.
+  bigTitle: { fontSize: 34, fontWeight: '700', lineHeight: 41 },
   content: { paddingTop: 8, paddingBottom: 24, gap: 20 },
   // Only until the viewport is measured (one frame) — then a minHeight takes over.
   grow: { flexGrow: 1 },
@@ -406,7 +472,7 @@ const styles = StyleSheet.create({
   // the edge and invite the sideways swipe. The vertical padding is room for the
   // drop shadow and for the press grow to bleed into — without it the row clips
   // both, squaring off the corners against its own edge.
-  row: { paddingHorizontal: 20, paddingVertical: 10, gap: 12 },
+  row: { paddingHorizontal: ROW_PAD, paddingVertical: 10, gap: ROW_GAP },
   // The shadow lives on its own wrapper because the card body clips (overflow
   // hidden) to hold its corner radius, and on iOS a clipping view drops its own
   // shadow.
@@ -426,15 +492,30 @@ const styles = StyleSheet.create({
     // drop shadow lives on the wrapper above, so nothing of ours gets cut.
     overflow: 'hidden',
   },
-  // The "artwork" band — a fixed slab of colour at the top of every card.
-  cardHeader: { height: 56 },
   // Text sits on the plain surface below the band, pinned to the bottom so
   // one-liners and four-liners both hang off the same edge.
   cardBody: { flex: 1, justifyContent: 'flex-end', padding: 14 },
-  recapCard: { width: 240, height: 130 },
-  // Taller than a recap: a suggestion carries an eyebrow line (what's missing,
-  // how many shots) above its headline, and the height is the worst case of both
-  // at their line caps — a card that clipped its own subtitle would hide the
-  // number that makes it worth tapping.
-  suggestionCard: { width: 215, height: 168 },
+  recapCard: { width: RECAP_W, height: 130 },
+  // A poster, not a chip. The height is the worst case of the layout below —
+  // three lines of headline over four of paragraph, plus the padding — because a
+  // card that clipped its own last line would hide the reason to tap it.
+  suggestionCard: { width: SUGGESTION_W, height: SUGGESTION_H },
+  // The suggestion card reads TOP-DOWN, unlike the recap's bottom-hung text: the
+  // headline sits right under the mesh band with one padding's worth of air
+  // between them, and the paragraph flows below it.
+  suggestionBody: {
+    justifyContent: 'flex-start',
+    paddingTop: 14,
+    paddingBottom: 12,
+    paddingHorizontal: 16,
+  },
+  // Well up from the old 18pt headline — at this card size an 18pt line reads as
+  // a label rather than the thing you're meant to read first — but under the
+  // screen's own 34pt "Chat", so a card can't outshout the page it sits on.
+  cardTitle: { fontSize: 28, fontWeight: '700', lineHeight: 29, letterSpacing: -0.4 },
+  // The paragraph under it. The leading on both texts is a budget, not taste: a
+  // three-line headline (87) plus its gap (8) plus four blurb lines (72) plus the
+  // body's padding (26) is 193, which is what SUGGESTION_BODY (196) is reserving.
+  // Grow either text and raise SUGGESTION_BODY with it, or the last line clips.
+  cardBlurb: { marginTop: 8, fontSize: 14, lineHeight: 18 },
 });

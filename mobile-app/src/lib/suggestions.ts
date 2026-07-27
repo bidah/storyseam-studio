@@ -53,6 +53,16 @@ export type Suggestion = {
   title: string;
   /** One line of context under the title, or null. */
   subtitle: string | null;
+  /**
+   * The same context as `subtitle`, written as a short paragraph — what the card
+   * would actually do, not just the number that makes it due. Three texts rather
+   * than two because the two surfaces have very different room: the web panel's
+   * 2×2 grid of ~200px cards can only carry the one-line `subtitle`, while the
+   * mobile row's 270×280 cards are big enough that a single clause under a large
+   * headline reads as unfinished. Both are derived from the same status, so a
+   * card never says one thing on the phone and another on the desktop.
+   */
+  blurb: string;
   /** The composed brief the click sends to the agent. Never just the title. */
   prompt: string;
 };
@@ -237,6 +247,8 @@ const STATUS_CARD: Suggestion = {
       kind: 'status',
   title: 'Where does it stand?',
   subtitle: 'A read on the whole episode',
+  blurb:
+    'A read on the whole episode — what’s finished, what’s half-done, and what’s actually blocking progress. Then the single next thing worth doing, and why that one before the others.',
   prompt:
     'Give me a status read on this episode: what’s finished, what’s half-done, and what’s blocking progress. Then recommend the single next thing to do and why that one before the others.',
 };
@@ -252,6 +264,8 @@ export const FALLBACK_SUGGESTIONS: Suggestion[] = [
       kind: 'status',
     title: 'What should I do next?',
     subtitle: 'Pick up where we left off',
+    blurb:
+      'Pick up where we left off. I’ll look at where the project actually stands, choose the one move most worth making now, tell you why it comes before the alternatives, and start on it with you.',
     prompt:
       'Look at where this project actually is and pick the one thing most worth doing next. Tell me why it comes before the alternatives, then start on it with me.',
   },
@@ -302,6 +316,8 @@ export function buildSuggestions(
       kind: 'world',
       title: 'Build your story world',
       subtitle: 'The bible everything else is made from',
+      blurb:
+        'Everything downstream is made from the bible — the world and its rules, who wants what, and what it costs them. We’ll build it one question at a time, with options whenever you’re stuck.',
       prompt:
         'Let’s create the story world and bible for this project. Interview me one question at a time — the world and its rules, the protagonist and what they want, the antagonist or opposing force, what’s at stake, and the theme — and offer me two or three concrete options whenever I’m stuck instead of leaving the question open. Then write it into the world bible, and add the cast and the places we named to the roster.',
     });
@@ -313,6 +329,7 @@ export function buildSuggestions(
       kind: 'world',
       title: 'Finish the world bible',
       subtitle: `${joinList(mapMissing.map(label))} still empty`,
+      blurb: `The bible is started, but ${joinList(mapMissing.map(label))} ${mapMissing.length === 1 ? 'is' : 'are'} still blank. I’ll read what’s already there and ask you about each hole one at a time, with options that fit the world you have.`,
       prompt: `The world bible is started but ${joinList(mapMissing.map(label))} ${mapMissing.length === 1 ? 'is' : 'are'} still empty. Read the world first so you build on what’s there, then ask me about each missing piece one at a time — with two or three options that fit the world we already have — and save the answers into the bible.`,
     });
   }
@@ -323,6 +340,7 @@ export function buildSuggestions(
       kind: 'world',
       title: 'Deepen the story',
       subtitle: `${joinList(depthMissing.map(label))} still empty`,
+      blurb: `The map is filled in, so the layer under it is what’s left: ${joinList(depthMissing.map(label))}. I’ll propose a version of each that follows from what’s already established, say why it makes the story stronger, and save what you approve.`,
       prompt: `The story map is filled in, so let’s do the story depth: ${joinList(depthMissing.map(label))}. Read the world bible, propose a version of each that follows from what’s already established, tell me why each choice makes the story stronger, and save what I approve.`,
     });
   }
@@ -341,6 +359,11 @@ export function buildSuggestions(
         charCount || locCount
           ? `${plural(charCount, 'character')}, ${plural(locCount, 'place')} so far`
           : 'No cast or places yet',
+      blurb: `An episode needs people to put in scenes and places to put them in — ${
+        charCount || locCount
+          ? `${plural(charCount, 'character')} and ${plural(locCount, 'place')} so far`
+          : 'and there are none on the roster yet'
+      }. I’ll propose a few more that belong in this world and would earn a scene.`,
       prompt: `Let’s extend the world. Read the bible, then propose three or four more characters — each with an archetype, what they want, what they need, their arc and how they speak — plus two or three locations that belong in this world and would earn a scene. Show them to me as a list I can pick from, and add the ones I approve to the roster.`,
     });
   }
@@ -353,6 +376,8 @@ export function buildSuggestions(
       kind: 'script',
       title: 'Write your script',
       subtitle: 'The bible is ready to become an episode',
+      blurb:
+        'The bible is ready to become an episode. We’ll pick the arc to build on and map the premise onto it first — then, once the beats feel right, I’ll draft the opening scenes for you to react to.',
       prompt:
         'The world bible is filled in, so let’s write the script. Start with the story-architect: ask me which arc to build on, map the premise onto it, and show me the beat outline. Once I’m happy with the beats, write the opening scenes into the script as a proposal I can review — proper sluglines, action and dialogue in the voices from the bible — and stop after the first two or three scenes so I can react before you keep going.',
     });
@@ -377,6 +402,7 @@ export function buildSuggestions(
         kind: 'review',
         title: d.title,
         subtitle: `${d.label[0].toUpperCase()}${d.label.slice(1)} hasn’t read it yet`,
+        blurb: `${d.label[0].toUpperCase()}${d.label.slice(1)} ${d.does}, and hasn’t read this draft yet. It reads the pinned draft itself and comes back with findings first — nothing in the script changes until you say which fixes to apply.`,
         prompt: reviewMessage(id, { lines }),
       });
     }
@@ -390,6 +416,7 @@ export function buildSuggestions(
         kind: 'review',
         title: `Re-check with ${d.label}`,
         subtitle: last?.summary ? `Last pass: ${last.summary}` : 'The script changed since its last pass',
+        blurb: `The script has changed since ${d.label} last read it${last?.summary ? ` — last pass: ${last.summary}` : ''}. A fresh pass reads the current draft and says which of its earlier notes the rewrite already resolved.`,
         prompt: reviewMessage(id, { stale: true }),
       });
     }
@@ -403,6 +430,8 @@ export function buildSuggestions(
       kind: 'visual',
       title: 'Create the visual world',
       subtitle: 'Decide what this story looks like',
+      blurb:
+        'Decide what this story looks like — palette, light, lens, texture, how stylized it goes. I’ll offer a couple of directions, then generate concept frames of the key locations so you can see one before locking it.',
       prompt: `Let’s create the visual world for this story. Read the world bible, then propose a look — palette, light, lens, texture, the level of stylization — in a couple of options I can choose between, and say which one fits the tone. Once I pick, generate concept frames for the key locations so we can see the style and lock it in.`,
     });
   }
@@ -415,6 +444,7 @@ export function buildSuggestions(
       kind: 'sheets',
       title: 'Design the cast',
       subtitle: `No sheet for ${joinList(missingSheets)}`,
+      blurb: `${joinList(missingSheets)} ${missingSheets.length === 1 ? 'has' : 'have'} no character sheet yet. I’ll design them from their descriptions in the bible, in the visual style you locked, and keep every sheet consistent with the rest of the cast.`,
       prompt: `Generate character sheets for ${joinList(missingSheets)}. Use their appearance and voice from the world bible plus the visual style we locked, keep every sheet consistent with the others, show them to me before saving, and attach the ones I approve to their roster cards.`,
     });
   }
@@ -426,6 +456,7 @@ export function buildSuggestions(
       kind: 'sheets',
       title: 'Build the places',
       subtitle: `No reference art for ${joinList(missingLocSheets)}`,
+      blurb: `${joinList(missingLocSheets)} ${missingLocSheets.length === 1 ? 'has' : 'have'} no reference art yet. I’ll build a locked background for each from its description in the bible, so every shot set there matches the one before it.`,
       prompt: `Generate location sheets for ${joinList(missingLocSheets)} — a locked background per place, in the visual style we established, from each location's description in the world bible. Show them to me first, then attach the ones I approve to their roster cards.`,
     });
   }
@@ -438,6 +469,7 @@ export function buildSuggestions(
       kind: 'shots',
       title: 'Break it into shots',
       subtitle: s.signed ? 'The script is signed off' : 'Turn the script into a shot list',
+      blurb: `${s.signed ? 'The script is signed off, so it can become a shot list' : 'The script is ready to become a shot list'} — the beat each shot serves, its location, who’s in it, the camera, the action and its dialogue. You’ll see the count and the rough running time before anything is saved.`,
       prompt: `Let’s turn the script into a shot list. Read the pinned draft, then break it into shots — for each one the beat it serves, the location slug, who’s in it, the camera, the action, its dialogue and a rough duration. Keep the scene order, tell me how many shots and roughly how long the episode comes out, and save it once I’ve looked.`,
     });
   }
@@ -458,6 +490,11 @@ export function buildSuggestions(
         gap === shots
           ? `No stills yet · ${plural(shots, 'shot')}`
           : `${gap} of ${shots} shots have no still`,
+      blurb: `${
+        gap === shots
+          ? `Nothing is boarded yet — ${plural(shots, 'shot')} waiting for a still.`
+          : `${gap} of ${shots} shots still have no storyboard still.`
+      } I’ll generate them in shot order in the locked style, using the character and location sheets so the cast stays consistent, and stop after a first batch for your note.`,
       prompt: `${plural(gap, 'shot')} still ${gap === 1 ? 'has' : 'have'} no storyboard still${which.length ? ` (starting with ${joinList(which.map((n) => `shot ${n}`))})` : ''}. Generate them in shot order using the locked visual style, each shot's own prompt, and the character and location sheets as references so the cast stays consistent. Do a first batch, show me the results, and wait for my note before continuing.`,
     });
   }
@@ -477,6 +514,9 @@ export function buildSuggestions(
         : voiced === 0
           ? `Nothing voiced yet · ${plural(lines, 'line')}`
           : `${lines - voiced} of ${lines} lines unvoiced`,
+      blurb: cast
+        ? `${plural(lines - voiced, 'dialogue line')} ${lines - voiced === 1 ? 'is' : 'are'} still unvoiced. I’ll render them in script order with each character’s cast voice and tell you which takes I’d keep, so you can hear the episode before you look at it.`
+        : `Nobody is cast yet, so nothing can be voiced. I’ll propose a voice for each speaking character from their description in the bible, and once you approve the casting, render all ${plural(lines, 'line')} in script order.`,
       prompt: cast
         ? `${plural(lines - voiced, 'dialogue line')} ${lines - voiced === 1 ? 'is' : 'are'} still unvoiced. Render them with each character's cast voice, in script order, and tell me which takes you'd keep. Play them back to me as a radio version so I can hear the episode before we look at it.`
         : `Let's make the radio version. Read the dialogue, propose a voice for each speaking character from the world bible's descriptions, and once I approve the casting render the lines in script order so I can hear the whole episode.`,
@@ -493,6 +533,7 @@ export function buildSuggestions(
       kind: 'render',
       title: 'Render the shots',
       subtitle: `${bundles - rendered} of ${bundles} bundles unrendered`,
+      blurb: `${plural(bundles - rendered, 'bundle')} of ${bundles} still ${bundles - rendered === 1 ? 'has' : 'have'} no video. I’ll render them in order from each bundle’s first frame and reference video, then report which came back clean and which want another take.`,
       prompt: `${plural(bundles - rendered, 'bundle')} still ${bundles - rendered === 1 ? 'has' : 'have'} no video. Render them in order, using each bundle's first frame and reference video where one is set, and report which came back clean and which need another take.`,
     });
   }
@@ -503,6 +544,8 @@ export function buildSuggestions(
       kind: 'cut',
       title: 'Stitch the complete cut',
       subtitle: 'Every bundle is rendered',
+      blurb:
+        'Every bundle is rendered, so the episode can be assembled end to end — the selected take of each in order, with the dialogue and sound in place. Then I’ll give you the running time and score where it drags.',
       prompt: `Every bundle is rendered, so stitch the complete cut: the selected take of each bundle in order, with the dialogue and sound in place. Then tell me the running time and score the cut — where it drags, where a beat lands early, what I should look at first.`,
     });
   }
