@@ -62,7 +62,10 @@ const PromptEditor = forwardRef(function PromptEditor(
     onChange, // (plainText) — fired on every edit with the serialized text
     onSubmit, // Enter (when submitOnEnter) or Cmd/Ctrl+Enter (always)
     submitOnEnter = false,
-    onPasteFiles, // (File[]) — image files pasted into the editor
+    // (File[]) — files pasted OR dropped onto the editor, unfiltered. The
+    // consumer classifies and rejects (AgentChat takes images + documents), so
+    // this stays agnostic about what a given composer accepts.
+    onPasteFiles,
     className,
     autoFocus = false,
   },
@@ -134,12 +137,25 @@ const PromptEditor = forwardRef(function PromptEditor(
         }
         return false;
       },
+      // Cmd/Ctrl+V of a file (a screenshot, a PDF copied in Finder) — hand the
+      // raw files up; ProseMirror would otherwise drop them or paste a name.
       handlePaste: (view, event) => {
-        const files = Array.from(event.clipboardData?.files || []).filter((f) =>
-          f.type.startsWith("image/"),
-        );
+        const files = Array.from(event.clipboardData?.files || []);
         if (files.length && onPasteFilesRef.current) {
           event.preventDefault();
+          onPasteFilesRef.current(files);
+          return true;
+        }
+        return false;
+      },
+      // Dropping ONTO the editor. The composer may also sit inside a dropzone
+      // that catches drops on the surrounding chrome, so stop propagation here
+      // — otherwise the same files get added twice, once by each handler.
+      handleDrop: (view, event) => {
+        const files = Array.from(event.dataTransfer?.files || []);
+        if (files.length && onPasteFilesRef.current) {
+          event.preventDefault();
+          event.stopPropagation();
           onPasteFilesRef.current(files);
           return true;
         }

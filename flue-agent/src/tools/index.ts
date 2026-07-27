@@ -69,11 +69,15 @@ import { attachCharacterVoice } from "./attach_character_voice.js";
 import { listCharacterVoices } from "./list_character_voices.js";
 import { signBundle } from "./sign_bundle.js";
 import { listHistory, restoreVersion } from "./list_history.js";
+// Chat attachments
+import { readDocument } from "./read_document.js";
 
 export function createTools(api: Api): ToolDefinition[] {
   return [
     // Interaction
     askQuestion(),
+    // Chat attachments (a truncated document block → read the rest)
+    readDocument(api),
     // World / Script / Drafts
     getWorld(api),
     saveWorld(api),
@@ -150,6 +154,8 @@ export function createTools(api: Api): ToolDefinition[] {
 // the parent still applies any recommended changes with the write tools above.
 export function createReadTools(api: Api): ToolDefinition[] {
   return [
+    // Chat attachments
+    readDocument(api),
     // World / Script / Drafts
     getWorld(api),
     listHistory(api),

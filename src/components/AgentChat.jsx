@@ -20,7 +20,11 @@ import {
   ChevronDown,
   Cpu,
   Mic,
+  Images,
+  Upload,
 } from "lucide-react";
+import { useDropzone } from "react-dropzone";
+import { toast } from "sonner";
 import { Streamdown, defaultRemarkPlugins } from "streamdown";
 import remarkBreaks from "remark-breaks";
 import { cn } from "@/lib/utils";
@@ -48,6 +52,7 @@ import {
   DropdownMenu,
   DropdownMenuTrigger,
   DropdownMenuContent,
+  DropdownMenuItem,
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
 } from "@/components/ui/dropdown-menu";
@@ -66,6 +71,14 @@ import {
 import MediaPicker from "@/components/MediaPicker";
 import PromptEditor from "@/components/mention/PromptEditor";
 import { refTagLabel, splitRefTags } from "@/lib/refTags";
+import {
+  ATTACH_ACCEPT,
+  MAX_ATTACHMENT_BYTES,
+  buildDocumentBlock,
+  classifyFile,
+  extractDocument,
+  uploadAttachment,
+} from "@/lib/attachments";
 
 // ---------------------------------------------------------------------------
 // Chat rendering walks every part of every flue message in order and renders
@@ -79,19 +92,25 @@ import { refTagLabel, splitRefTags } from "@/lib/refTags";
 // just the next ordinary user message: clicking an option sends its label, and a
 // typed reply works the same way. No `inputResponses` resume path.
 //
-// Attachments: images picked from the composer are uploaded to Cloudflare R2
-// (POST /api/upload) for a durable thumbnail URL, and sent to flue as base64
-// `images` (its `sendMessage` takes `{ images: [{ data, mimeType }] }`) so the
-// model can actually see them. flue's `file` parts don't serve historical bytes,
-// so we remember what each user turn was sent with (in `attByMsgId`, keyed by the
-// flue message id) and render the thumbnails back into that turn's bubble from the
-// R2 URL. Clicking any transcript image opens a full-size lightbox.
+// Attachments: everything the user attaches — dropped on the composer, pasted
+// with Cmd/Ctrl+V, picked from the gallery, or chosen from disk — is uploaded to
+// Cloudflare R2 (POST /api/upload) for a durable URL. From there the two kinds
+// diverge (see src/lib/attachments.js):
+//
+//   image — sent to flue as base64 `images` (its `sendMessage` takes
+//           `{ images: [{ data, mimeType }] }`) so the model can actually SEE
+//           it, plus its absolute URL in the text so the agent can re-import it
+//           as a generation reference.
+//   doc   — a PDF / .txt / .md / .docx …, extracted to text by POST /api/extract
+//           and inlined into the message body, so the agent ingests the document
+//           with the turn. Long documents are inlined up to a budget and the
+//           agent reads the remainder with its `read_document` tool.
+//
+// flue's `file` parts don't serve historical bytes, so we remember what each
+// user turn was sent with (in `attByMsgId`, keyed by the flue message id) and
+// render the thumbnails back into that turn's bubble from the R2 URL. Clicking
+// any transcript image opens a full-size lightbox.
 // ---------------------------------------------------------------------------
-
-// Where attachment uploads go. Defaults to the Cloudflare Worker
-// (VITE_UPLOAD_URL) — an R2-backed endpoint that also records each upload in
-// D1 — and falls back to the local Express endpoint when it isn't configured.
-const UPLOAD_ENDPOINT = import.meta.env.VITE_UPLOAD_URL || "/api/upload";
 
 // Shared markdown renderer for anything the agent authors (text parts *and* the
 // prompt of an inline input-request card). eve emits paragraphs and numbered
@@ -320,20 +339,38 @@ function userMessageText(message) {
     .join("");
 }
 
-// Thumbnails for the images a user turn was sent with, rendered back into the
-// bubble (flue's projection doesn't keep servable image parts, so `atts` is
-// supplied by the composer's id-keyed record).
+// What a user turn was sent with, rendered back into the bubble (flue's
+// projection doesn't keep servable image parts, so `atts` is supplied by the
+// composer's id-keyed record). Images get a thumbnail; documents get a named
+// chip — there's nothing to look at, but the turn should still show what it
+// carried.
 function SentAttachments({ atts }) {
   if (!atts?.length) return null;
   return (
     <AttachmentGroup className="mt-1.5 max-w-[92%] justify-end">
-      {atts.map((a, i) => (
-        <Attachment key={i} size="sm" orientation="vertical" className="w-20">
-          <AttachmentMedia variant="image">
-            <img src={a.url} alt={a.name || "attachment"} />
-          </AttachmentMedia>
-        </Attachment>
-      ))}
+      {atts.map((a, i) =>
+        a.kind === "doc" ? (
+          <Attachment key={i} size="sm" className="min-w-0 max-w-52">
+            <AttachmentMedia>
+              <FileText />
+            </AttachmentMedia>
+            <AttachmentContent>
+              <AttachmentTitle>{a.name || "document"}</AttachmentTitle>
+              {a.chars ? (
+                <AttachmentDescription>
+                  {a.chars.toLocaleString()} chars
+                </AttachmentDescription>
+              ) : null}
+            </AttachmentContent>
+          </Attachment>
+        ) : (
+          <Attachment key={i} size="sm" orientation="vertical" className="w-20">
+            <AttachmentMedia variant="image">
+              <img src={a.url} alt={a.name || "attachment"} />
+            </AttachmentMedia>
+          </Attachment>
+        ),
+      )}
     </AttachmentGroup>
   );
 }
@@ -719,15 +756,18 @@ export default function AgentChat() {
   // Interactive `ask_question` cards: which one is pending vs already answered.
   const qa = useMemo(() => deriveQA(messages), [messages]);
 
-  const uploading = attachments.some((a) => a.state === "uploading");
+  // Still in flight: bytes going up, or a document being read on the server.
+  const uploading = attachments.some((a) => a.state === "uploading" || a.state === "processing");
   const doneAttachments = attachments.filter((a) => a.state === "done");
   // "@" mention targets and their imageN labels — numbered over the non-error
-  // attachments in tray order (errored uploads drop out of the numbering, and
-  // the PromptEditor prunes chips whose attachment disappears).
+  // IMAGES in tray order (errored uploads drop out of the numbering, and the
+  // PromptEditor prunes chips whose attachment disappears). Documents are never
+  // @-taggable: the tags name a reference image the agent can re-import, and a
+  // PDF's content is inlined into the message instead.
   const mentionRefs = useMemo(
     () =>
       attachments
-        .filter((a) => a.state !== "error")
+        .filter((a) => a.state !== "error" && a.kind !== "doc")
         .map((a) => ({ id: a.id, thumb: a.previewUrl || a.url, url: a.url, name: a.name })),
     [attachments],
   );
@@ -756,49 +796,100 @@ export default function AgentChat() {
     setAtBottom(true);
   };
 
-  async function uploadOne(file, id) {
+  const patchAttachment = (id, patch) =>
+    setAttachments((prev) => prev.map((a) => (a.id === id ? { ...a, ...patch } : a)));
+
+  // Upload to R2, then — for a document — extract its text so submit() can
+  // inline it. The tray shows "uploading" → "processing" (reading the file) →
+  // "done"; `canSend` waits on both so a message never ships with an
+  // attachment the agent can't see yet.
+  async function uploadOne(file, id, kind) {
     try {
-      const resp = await fetch(UPLOAD_ENDPOINT, {
-        method: "POST",
-        headers: {
-          "content-type": file.type || "application/octet-stream",
-          "x-filename": encodeURIComponent(file.name),
-        },
-        body: file,
+      const data = await uploadAttachment(file);
+      if (kind !== "doc") {
+        patchAttachment(id, { state: "done", url: data.url, size: data.size ?? file.size });
+        return;
+      }
+      patchAttachment(id, { state: "processing", url: data.url, size: data.size ?? file.size });
+      const doc = await extractDocument({ key: data.key, url: data.url });
+      patchAttachment(id, {
+        state: "done",
+        text: doc.text || "",
+        chars: doc.chars ?? (doc.text || "").length,
+        truncated: !!doc.truncated,
       });
-      const data = await resp.json().catch(() => ({}));
-      if (!resp.ok) throw new Error(data.error || `Upload failed (${resp.status})`);
-      setAttachments((prev) =>
-        prev.map((a) =>
-          a.id === id ? { ...a, state: "done", url: data.url, size: data.size ?? a.size } : a,
-        ),
-      );
     } catch (e) {
-      setAttachments((prev) =>
-        prev.map((a) => (a.id === id ? { ...a, state: "error", error: String(e.message || e) } : a)),
-      );
+      patchAttachment(id, { state: "error", error: String(e.message || e) });
     }
   }
 
+  // The single entry point for every way a file arrives: drop, paste, or the
+  // file dialog. Images and documents are both welcome; anything else (audio,
+  // video, archives) is refused here with a reason rather than silently
+  // vanishing, which is what the old `image/`-only filter did.
   function addFiles(fileList) {
-    const files = Array.from(fileList || []).filter((f) => f.type.startsWith("image/"));
-    if (!files.length) return;
-    const entries = files.map((f) => ({
+    const incoming = Array.from(fileList || []);
+    if (!incoming.length) return;
+    const rejected = [];
+    const accepted = [];
+    for (const f of incoming) {
+      const kind = classifyFile(f);
+      if (!kind) {
+        rejected.push(`${f.name} isn't a supported type`);
+      } else if (f.size > MAX_ATTACHMENT_BYTES) {
+        rejected.push(`${f.name} is over ${Math.round(MAX_ATTACHMENT_BYTES / 1024 / 1024)}MB`);
+      } else {
+        accepted.push({ file: f, kind });
+      }
+    }
+    if (rejected.length) {
+      toast.error(rejected.length === 1 ? rejected[0] : `${rejected.length} files skipped`, {
+        description: rejected.length > 1 ? rejected.join(" · ") : undefined,
+      });
+    }
+    if (!accepted.length) return;
+
+    const entries = accepted.map(({ file, kind }) => ({
       id: crypto.randomUUID(),
-      name: f.name,
-      size: f.size,
-      contentType: f.type,
-      // Retain the raw File so send can convert it to base64 for flue's
+      kind,
+      name: file.name,
+      size: file.size,
+      contentType: file.type || "application/octet-stream",
+      // Retain the raw File so send can convert an image to base64 for flue's
       // `images` (the R2 URL is only for the persisted thumbnail in the bubble).
-      file: f,
+      // Documents don't need it — their text comes back from /api/extract.
+      file,
       state: "uploading",
       url: null,
-      previewUrl: URL.createObjectURL(f),
+      previewUrl: kind === "image" ? URL.createObjectURL(file) : null,
+      text: null,
+      chars: 0,
+      truncated: false,
       error: null,
     }));
     setAttachments((prev) => [...prev, ...entries]);
-    entries.forEach((e, i) => uploadOne(files[i], e.id));
+    entries.forEach((e, i) => uploadOne(accepted[i].file, e.id, e.kind));
   }
+
+  // Drag-and-drop over the whole composer footer — the attachment tray, the
+  // input row and the buttons — plus the file dialog behind the paperclip's
+  // "Upload a file…" item. `noClick`/`noKeyboard` because the composer is a
+  // text field, not a click-to-browse drop box; the dialog opens from the menu.
+  // Rejections are folded back into `addFiles` so `classifyFile` owns the one
+  // definition of what's allowed and can say WHY a file was refused.
+  const {
+    getRootProps: getDropRootProps,
+    getInputProps: getDropInputProps,
+    open: openFileDialog,
+    isDragActive,
+  } = useDropzone({
+    onDrop: (acceptedFiles, rejections) =>
+      addFiles([...acceptedFiles, ...(rejections || []).map((r) => r.file)]),
+    accept: ATTACH_ACCEPT,
+    multiple: true,
+    noClick: true,
+    noKeyboard: true,
+  });
 
   // Items picked from the MediaPicker (asset gallery, Visual World generations,
   // or a fresh PC upload). Each becomes a "done" attachment: uploads already
@@ -818,6 +909,7 @@ export default function AgentChat() {
           }
           return {
             id: crypto.randomUUID(),
+            kind: "image",
             name: it.name || "image",
             size: file.size,
             contentType: file.type || "image/png",
@@ -830,6 +922,7 @@ export default function AgentChat() {
         } catch (e) {
           return {
             id: crypto.randomUUID(),
+            kind: "image",
             name: it.name || "image",
             size: 0,
             contentType: "image/png",
@@ -912,7 +1005,11 @@ export default function AgentChat() {
     // Capture the done attachments (with their retained `file`) before
     // clearing, each stamped with the imageN label the composer numbered it
     // with — the history renderer maps @imageN chips back through these.
-    const done = doneAttachments;
+    // Images and documents part ways here: an image is something the model
+    // LOOKS at (base64 + a re-importable URL), a document is something it READS
+    // (extracted text inlined below).
+    const done = doneAttachments.filter((a) => a.kind !== "doc");
+    const docs = doneAttachments.filter((a) => a.kind === "doc");
     const sent = done.map((a) => ({
       url: a.url,
       name: a.name,
@@ -941,18 +1038,46 @@ export default function AgentChat() {
     const tagNote = mentions.length
       ? "; tags like @image1 in the message above refer to these attached images by number"
       : "";
-    const body = refLines.length
-      ? `${t ? `${t}\n\n` : ""}Attached reference image${refLines.length > 1 ? "s" : ""} ` +
+    const imageBlock = refLines.length
+      ? `Attached reference image${refLines.length > 1 ? "s" : ""} ` +
         `(absolute URL${refLines.length > 1 ? "s" : ""}, usable directly as a Higgsfield ` +
         `generation reference via media_import_url)${tagNote}:\n${refLines.join("\n")}`
-      : t;
+      : "";
+    // Documents ride as extracted TEXT — a PDF can't go in an image slot, and
+    // handing the agent a bare URL would leave it unable to open the thing.
+    // buildDocumentBlock inlines up to its budget and points read_document at
+    // the rest. See src/lib/attachments.js.
+    const docBlock = buildDocumentBlock(
+      docs.map((a) => ({
+        name: a.name,
+        url: /^https?:\/\//.test(a.url || "")
+          ? a.url
+          : a.url
+            ? new URL(a.url, window.location.origin).href
+            : null,
+        contentType: a.contentType,
+        chars: a.chars,
+        text: a.text,
+      })),
+    );
+    const body = [t, imageBlock, docBlock].filter(Boolean).join("\n\n");
 
     // Remember this batch until the correlation effect sees the flue user message
     // carrying `body` and keys the thumbnails to its id (survives reload; immune
     // to ordinal drift from out-of-composer sends). `displayText` is what the
     // bubble re-renders — the typed text with tags, not the URL block. Then
     // clear the composer.
-    if (sent.length) pendingAttsRef.current.push({ text: body, atts: sent, displayText: t });
+    const record = [
+      ...sent,
+      ...docs.map((a) => ({
+        kind: "doc",
+        url: a.url,
+        name: a.name,
+        contentType: a.contentType,
+        chars: a.chars,
+      })),
+    ];
+    if (record.length) pendingAttsRef.current.push({ text: body, atts: record, displayText: t });
     clearComposer();
 
     // flue takes images out-of-band as base64 `{ data, mimeType }`, not as
@@ -1052,7 +1177,24 @@ export default function AgentChat() {
   };
 
   return (
-    <aside className="flex h-full w-[495px] shrink-0 flex-col border-l bg-card">
+    <aside
+      {...getDropRootProps({
+        className: "relative flex h-full w-[495px] shrink-0 flex-col border-l bg-card",
+      })}
+    >
+      {/* The file dialog's input, opened by the attach menu. `noClick` keeps it
+          from firing on a stray click anywhere in the panel. */}
+      <input {...getDropInputProps()} />
+      {/* Files can be dropped anywhere on the chat panel, not just the composer
+          strip — so the whole aside is the drop target and this covers it. */}
+      {isDragActive ? (
+        <div className="pointer-events-none absolute inset-2 z-30 flex items-center justify-center rounded-xl border-2 border-dashed border-primary bg-background/85 text-sm font-medium text-primary">
+          <span className="flex items-center gap-2">
+            <Upload size={16} />
+            Drop images or documents to attach
+          </span>
+        </div>
+      ) : null}
       <div className="relative min-h-0 flex-1">
         {/* New chat + previous-chats controls, floating over the top-right of the
             transcript, each in its own rounded wrapper so they read over the
@@ -1174,8 +1316,10 @@ export default function AgentChat() {
           <AttachmentGroup className="mb-2">
             {attachments.map((a) => (
               <Attachment key={a.id} state={a.state} size="sm">
-                <AttachmentMedia variant="image">
-                  {a.previewUrl || a.url ? (
+                <AttachmentMedia variant={a.kind === "doc" ? "icon" : "image"}>
+                  {a.kind === "doc" ? (
+                    <FileText />
+                  ) : a.previewUrl || a.url ? (
                     <img src={a.previewUrl || a.url} alt={a.name} />
                   ) : (
                     <ImageIcon />
@@ -1189,9 +1333,13 @@ export default function AgentChat() {
                   <AttachmentDescription>
                     {a.state === "uploading"
                       ? "Uploading…"
-                      : a.state === "error"
-                        ? a.error || "Upload failed"
-                        : prettySize(a.size)}
+                      : a.state === "processing"
+                        ? "Reading…"
+                        : a.state === "error"
+                          ? a.error || "Upload failed"
+                          : a.kind === "doc"
+                            ? `${(a.chars || 0).toLocaleString()} chars · ${prettySize(a.size)}`
+                            : prettySize(a.size)}
                   </AttachmentDescription>
                 </AttachmentContent>
                 <AttachmentActions>
@@ -1261,21 +1409,51 @@ export default function AgentChat() {
         ) : null}
 
         <div className={cn("flex items-end gap-2", (rec.recording || transcribing) && "hidden")}>
-          <Button
-            size="icon"
-            variant="ghost"
-            onClick={() => { setPickerFor("composer"); setPickerOpen(true); }}
-            aria-label="Attach image"
-            title="Attach a reference — gallery, Visual world, or your computer"
-          >
-            <Paperclip size={16} />
-          </Button>
+          {/* Two ways in, one button: the media picker for reference IMAGES
+              already in the project (gallery / Visual world / a PC upload), and
+              the plain file dialog for anything from disk — including the PDFs
+              and text files the agent reads rather than looks at. Dropping or
+              pasting a file skips the menu entirely. */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                size="icon"
+                variant="ghost"
+                aria-label="Attach a file"
+                title="Attach — reference images, or a PDF / text file to read"
+              >
+                <Paperclip size={16} />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="w-60">
+              <DropdownMenuItem
+                onSelect={() => { setPickerFor("composer"); setPickerOpen(true); }}
+              >
+                <Images size={15} />
+                <div className="flex flex-col">
+                  <span>Reference images…</span>
+                  <span className="text-[11px] text-muted-foreground">
+                    Gallery, Visual world, or your computer
+                  </span>
+                </div>
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => openFileDialog()}>
+                <Upload size={15} />
+                <div className="flex flex-col">
+                  <span>Upload a file…</span>
+                  <span className="text-[11px] text-muted-foreground">
+                    PDF, text, Markdown, Word, or an image
+                  </span>
+                </div>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
           {/* TipTap composer — Enter sends, Shift+Enter breaks the line, and
               "@" pops the attached-reference picker (chips send as @imageN). */}
           <PromptEditor
             ref={promptEd}
             refs={mentionRefs}
-            placeholder="Message the studio agent…"
+            placeholder="Message the studio agent… (drop or paste a file to attach)"
             onChange={setText}
             onSubmit={submit}
             submitOnEnter
