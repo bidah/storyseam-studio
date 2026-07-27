@@ -856,7 +856,7 @@ export default function ChatScreen() {
               accessibilityLabel="Jump to latest"
               className="absolute left-1/2"
               // Sits just above the floating composer, not behind it.
-              style={{ transform: [{ translateX: -18 }], bottom: composerOverlap + 12 }}
+              style={{ transform: [{ translateX: -21 }], bottom: composerOverlap + 12 }}
               onPress={jumpToLatest}
             >
               {/* Liquid glass, like the composer it floats above — the transcript
@@ -869,14 +869,14 @@ export default function ChatScreen() {
                 fallbackColor={c.card}
                 fallbackBorderColor={c.border}
                 style={{
-                  width: 36,
-                  height: 36,
-                  borderRadius: 18,
+                  width: 42,
+                  height: 42,
+                  borderRadius: 21,
                   alignItems: 'center',
                   justifyContent: 'center',
                 }}
               >
-                <ArrowDown size={16} color={c.foreground} />
+                <ArrowDown size={19} color={c.foreground} />
               </GlassSurface>
             </Pressable>
           ) : null}
