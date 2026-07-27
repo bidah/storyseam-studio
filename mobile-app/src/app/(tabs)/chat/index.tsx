@@ -754,7 +754,7 @@ export default function ChatScreen() {
           composerOverlap={composerOverlap}
         />
       ) : (
-        <View className="relative min-h-0 flex-1" style={{ marginBottom: TAB_BAR }}>
+        <View className="relative min-h-0 flex-1" style={{ marginBottom: TAB_BAR, overflow: 'visible' }}>
           {rows.length === 0 ? (
             <TranscriptSkeleton />
           ) : (
@@ -767,6 +767,8 @@ export default function ChatScreen() {
               renderItem={renderItem}
               style={styles.list}
               contentContainerStyle={styles.listContent}
+              contentInsetAdjustmentBehavior="never"
+              automaticallyAdjustContentInsets={false}
               keyboardShouldPersistTaps="handled"
               keyboardDismissMode="interactive"
               onScroll={onScroll}
@@ -832,7 +834,7 @@ export default function ChatScreen() {
 }
 
 const styles = StyleSheet.create({
-  list: { flex: 1 },
+  list: { flex: 1, overflow: 'visible' },
   listContent: { flexGrow: 1, gap: 16, paddingVertical: 16 },
   emptyContent: { paddingTop: 8, paddingBottom: 24, gap: 20 },
   // Only until the viewport is measured (one frame) — then a minHeight takes
