@@ -1,12 +1,12 @@
 import { Pressable, ScrollView, Text, View } from 'react-native';
 import { Host, Picker, Switch } from '@expo/ui';
-import { ChevronRight, KeyRound, UserRound } from 'lucide-react-native';
+import { ChevronRight, KeyRound, TerminalSquare, UserRound } from 'lucide-react-native';
 import { Button } from '@/components/ui/button';
 import { Card, Eyebrow } from '@/components/ui/card';
 import { Segmented } from '@/components/ui/segmented';
 import { useColors } from '@/lib/colors';
 import type { ThemePref } from '@/lib/theme';
-import { PROVIDERS_FOOTNOTE, type SettingsFormProps } from './settings-form.types';
+import { PROVIDERS_FOOTNOTE, SANDBOXES_FOOTNOTE, type SettingsFormProps } from './settings-form.types';
 
 const THEME_OPTIONS: { value: ThemePref; label: string }[] = [
   { value: 'system', label: 'System' },
@@ -28,6 +28,8 @@ export default function SettingsForm({
   switchNonce,
   onToggleProvider,
   onManageKey,
+  sandboxes,
+  onToggleSandbox,
   apiOrigin,
   onSignOut,
 }: SettingsFormProps) {
@@ -105,6 +107,30 @@ export default function SettingsForm({
                 <ChevronRight size={12} color={colors.primary} />
               </Pressable>
             ) : null}
+          </View>
+        ))}
+      </Card>
+
+      <Eyebrow className="mt-2">Sandbox providers</Eyebrow>
+      <Card className="gap-3">
+        <View className="flex-row items-center gap-3">
+          <TerminalSquare size={18} color={colors.primary} />
+          <Text className="flex-1 text-[12px] leading-4 text-muted-foreground">{SANDBOXES_FOOTNOTE}</Text>
+        </View>
+        {sandboxes.map((sb) => (
+          <View
+            key={sb.id}
+            className={`gap-2 rounded-xl border p-3 ${sb.isOn ? 'border-primary/40' : 'border-border opacity-70'}`}
+          >
+            <View className="flex-row items-center gap-2">
+              <View className="flex-1">
+                <Text className="text-[14px] font-medium text-foreground">{sb.label}</Text>
+                <Text className="text-[12px] text-muted-foreground">{sb.subtitle}</Text>
+              </View>
+              <Host matchContents key={switchNonce}>
+                <Switch value={sb.isOn} onValueChange={(on) => onToggleSandbox(sb.id, on)} />
+              </Host>
+            </View>
           </View>
         ))}
       </Card>

@@ -8,6 +8,7 @@ import { API_ORIGIN } from '@/lib/env';
 import { useFalKeyStore } from '@/lib/fal-key';
 import { useAtlasKeyStore } from '@/lib/atlas-key';
 import { PROVIDERS, useProvidersStore, type ProviderId } from '@/lib/providers';
+import { SANDBOXES, useSandboxStore, type SandboxModeId } from '@/lib/sandbox-mode';
 import { useThemeStore } from '@/lib/theme';
 
 // Settings sheet — state + navigation only; the UI is SettingsForm (a native
@@ -23,6 +24,7 @@ export default function SettingsSheet() {
   const falKey = useFalKeyStore((s) => s.key);
   const atlasKey = useAtlasKeyStore((s) => s.key);
   const { active, setActive } = useProvidersStore();
+  const { active: sandbox, setActive: setSandbox } = useSandboxStore();
   const { pref: themePref, setPref: setThemePref } = useThemeStore();
 
   // Native toggles flip optimistically; when a flip must NOT commit (keyless
@@ -43,6 +45,17 @@ export default function SettingsSheet() {
       return;
     }
     setActive(id);
+  };
+
+  // Radio semantics, same as the render providers: switching one on switches
+  // the other off, and flipping the active one OFF is not a valid state — the
+  // nonce bump remounts that toggle back on.
+  const toggleSandbox = (id: SandboxModeId, on: boolean) => {
+    if (!on) {
+      setSwitchNonce((n) => n + 1);
+      return;
+    }
+    setSandbox(id);
   };
 
   const signOut = async () => {
@@ -84,6 +97,16 @@ export default function SettingsSheet() {
       switchNonce={switchNonce}
       onToggleProvider={toggleProvider}
       onManageKey={(id) => router.push(`/settings/provider-key?provider=${id}`)}
+      sandboxes={SANDBOXES.map((s) => ({
+        id: s.id,
+        label: s.label,
+        isOn: sandbox === s.id,
+        subtitle:
+          s.id === 'memory'
+            ? 'Default — resets between messages'
+            : 'Files last the whole conversation · billed',
+      }))}
+      onToggleSandbox={toggleSandbox}
       apiOrigin={API_ORIGIN}
       onSignOut={signOut}
     />

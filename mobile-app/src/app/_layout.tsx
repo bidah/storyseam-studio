@@ -14,6 +14,7 @@ import { hydrateAgentModel } from '@/lib/agent-model';
 import { hydrateFalKey } from '@/lib/fal-key';
 import { hydrateAtlasKey } from '@/lib/atlas-key';
 import { hydrateProviders } from '@/lib/providers';
+import { hydrateSandboxMode } from '@/lib/sandbox-mode';
 import { hydrateProjectId } from '@/lib/project';
 import { hydrateTheme, useEffectiveScheme } from '@/lib/theme';
 import { getColors } from '@/lib/colors';
@@ -54,6 +55,7 @@ export default function RootLayout() {
     hydrateFalKey();
     hydrateAtlasKey();
     hydrateProviders();
+    hydrateSandboxMode();
     hydrateTheme();
     hydrateProjectId().finally(() => {
       setBooted(true);

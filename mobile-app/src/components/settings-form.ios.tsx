@@ -4,7 +4,7 @@ import { Button, Form, HStack, Picker, Section, Spacer, Text, Toggle, VStack } f
 import { background, foregroundStyle, pickerStyle, scrollContentBackground, tag } from '@expo/ui/swift-ui/modifiers';
 import { useColors } from '@/lib/colors';
 import type { ThemePref } from '@/lib/theme';
-import { PROVIDERS_FOOTNOTE, type SettingsFormProps } from './settings-form.types';
+import { PROVIDERS_FOOTNOTE, SANDBOXES_FOOTNOTE, type SettingsFormProps } from './settings-form.types';
 
 // Appearance options, ordered System → Dark → Light (tags are the ThemePref).
 const THEME_OPTIONS: { id: ThemePref; label: string }[] = [
@@ -28,6 +28,8 @@ export default function SettingsForm({
   switchNonce,
   onToggleProvider,
   onManageKey,
+  sandboxes,
+  onToggleSandbox,
   apiOrigin,
   onSignOut,
 }: SettingsFormProps) {
@@ -94,6 +96,19 @@ export default function SettingsForm({
                 />
               ) : null}
             </Fragment>
+          ))}
+        </Section>
+
+        <Section title="Sandbox providers" footer={<Text>{SANDBOXES_FOOTNOTE}</Text>}>
+          {sandboxes.map((sb) => (
+            <Toggle
+              key={`${sb.id}-${switchNonce}`}
+              isOn={sb.isOn}
+              onIsOnChange={(on) => onToggleSandbox(sb.id, on)}
+            >
+              <Text>{sb.label}</Text>
+              <Text>{sb.subtitle}</Text>
+            </Toggle>
           ))}
         </Section>
 

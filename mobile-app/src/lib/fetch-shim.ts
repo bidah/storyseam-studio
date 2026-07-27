@@ -22,6 +22,7 @@ import { getAgentModelSpecifier } from './agent-model';
 import { getFalKey } from './fal-key';
 import { getAtlasKey } from './atlas-key';
 import { getActiveProvider, disabledProvidersCsv } from './providers';
+import { getSandboxMode } from './sandbox-mode';
 
 function needsStreaming(path: string) {
   return path.startsWith('/eve') || /\/api\/(data|script|timeline)\/events/.test(path);
@@ -71,6 +72,11 @@ export function installFetchShim() {
     if (atlasKey) headers.set(eve ? 'x-flue-atlas-key' : 'x-atlas-key', atlasKey);
     headers.set(eve ? 'x-flue-disabled-providers' : 'x-disabled-providers', disabledProvidersCsv());
     headers.set(eve ? 'x-flue-render-provider' : 'x-render-provider', getActiveProvider());
+    // Sandbox selection (lib/sandbox-mode.ts) is AGENT-ONLY — where the agent's
+    // bash/skills run. Sent on every /eve send so switching back to in-memory
+    // takes effect immediately; the flue worker reads an absent header as
+    // "leave the conversation's stored mode alone".
+    if (eve) headers.set('x-flue-sandbox', getSandboxMode());
     if (!headers.has('cookie')) {
       const cookie = getSessionCookie();
       if (cookie) headers.set('cookie', cookie);
