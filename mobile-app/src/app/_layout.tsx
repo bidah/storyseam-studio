@@ -19,7 +19,7 @@ import { hydrateSandboxMode } from '@/lib/sandbox-mode';
 import { hydrateSearchProvider } from '@/lib/search-provider';
 import { hydrateSearchKeys } from '@/lib/search-keys';
 import { hydrateProjectId } from '@/lib/project';
-import { hydrateTheme, useEffectiveScheme } from '@/lib/theme';
+import { applyNativeScheme, hydrateTheme, useEffectiveScheme, useThemeStore } from '@/lib/theme';
 import { getColors } from '@/lib/colors';
 
 SplashScreen.preventAutoHideAsync();
@@ -49,6 +49,7 @@ function navThemeFor(scheme: 'dark' | 'light') {
 
 export default function RootLayout() {
   const [booted, setBooted] = useState(false);
+  const themePref = useThemeStore((s) => s.pref);
   const scheme = useEffectiveScheme();
   const colors = getColors(scheme);
   const isDark = scheme === 'dark';
@@ -74,6 +75,12 @@ export default function RootLayout() {
   useEffect(() => {
     colorScheme.set(scheme);
   }, [scheme]);
+
+  // …and UIKit's, so the native chrome (nav bars, SwiftUI Forms, keyboard)
+  // follows the preference instead of the OS. Headers can then stay color-free.
+  useEffect(() => {
+    applyNativeScheme(themePref);
+  }, [themePref]);
 
   if (!booted) return null;
 

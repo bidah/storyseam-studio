@@ -64,6 +64,19 @@ export function getEffectiveScheme(): Scheme {
   return pref;
 }
 
+// Push the preference down to UIKit as an app-wide `overrideUserInterfaceStyle`.
+// Without this the JS theme and the *native* chrome disagree: nav bars, the
+// SwiftUI `@expo/ui` Forms, alerts and the keyboard keep following the OS while
+// only the RN-drawn surfaces flip. It also lets the large-title headers in the
+// Settings / Chats sheets stay color-free — see `settings/_layout`, where any
+// per-render header-config update makes react-native-screens drop the large
+// title inside a formSheet, so the header must inherit its colors from here
+// rather than be restyled from JS on every theme change.
+export function applyNativeScheme(pref: ThemePref) {
+  // `'unspecified'` clears the override and hands control back to the OS.
+  Appearance.setColorScheme(pref === 'system' ? 'unspecified' : pref);
+}
+
 export function hydrateTheme() {
   AsyncStorage.getItem(STORAGE_KEY)
     .then((v) => {

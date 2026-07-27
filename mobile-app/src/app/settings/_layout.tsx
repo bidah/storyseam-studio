@@ -1,5 +1,4 @@
 import { Stack } from 'expo-router';
-import { useColors } from '@/lib/colors';
 
 // Nested stack INSIDE the Settings formSheet (registered in the root _layout as
 // a single-detent formSheet). Because this stack lives inside the sheet, pushing
@@ -7,24 +6,20 @@ import { useColors } from '@/lib/colors';
 // a Back button — instead of stacking a second sheet on top. That sidesteps the
 // two-swipe-to-dismiss trap a focused text field creates in its own formSheet:
 // here the key screen is left with Back, and its input can safely autofocus.
-// Match the grouped Form background so the large-title header blends into the
-// list (nav headers otherwise default to the iOS systemGroupedBackground gray
-// inside a formSheet). The tint/title colors are set explicitly: without them
-// the native title follows the OS appearance, which renders white-on-white when
-// the JS theme is forced Light while the device is in Dark mode.
+//
+// These options are deliberately STATIC — no `useColors()`, no theme-derived
+// colors. react-native-screens drops the large title when the header config is
+// re-applied on an already-presented screen inside a formSheet: the "Settings"
+// headline is laid out (it stays in the a11y tree) but never painted, in every
+// scheme and whatever color you give it. Re-rendering this layout on a theme
+// flip was enough to trigger it, so the header instead inherits its colors from
+// UIKit — which follows the app's theme because the root layout pushes the
+// preference down with `Appearance.setColorScheme` (see lib/theme). Inside a
+// formSheet that default is systemGroupedBackground, i.e. the grouped Form
+// background the settings form already paints.
 export default function SettingsLayout() {
-  const colors = useColors();
   return (
-    <Stack
-      screenOptions={{
-        headerStyle: { backgroundColor: colors.groupedBg },
-        headerLargeStyle: { backgroundColor: colors.groupedBg },
-        headerShadowVisible: false,
-        headerTintColor: colors.foreground,
-        headerTitleStyle: { color: colors.foreground },
-        headerLargeTitleStyle: { color: colors.foreground },
-      }}
-    >
+    <Stack screenOptions={{ headerShadowVisible: false }}>
       <Stack.Screen name="index" options={{ title: 'Settings', headerLargeTitle: true }} />
       <Stack.Screen name="provider-key" options={{ title: 'API key' }} />
       <Stack.Screen name="search-key" options={{ title: 'Search key' }} />
