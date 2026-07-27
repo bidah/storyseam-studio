@@ -338,6 +338,12 @@ function useEnterFade() {
   }));
 }
 
+// The compact nav bar (44pt, under the status bar). The transcript now runs the
+// FULL height of the screen — `headerTransparent` puts it under the bar so the
+// glass has something moving behind it — so the list reserves this much at its
+// top edge to sit clear of the bar at rest.
+const COMPACT_HEADER = 44;
+
 // iOS large-title chrome: a 44pt bar plus 52pt of headline, under the status
 // bar. The scroll view spans the full screen BENEATH that (which is what lets
 // the title collapse as you drag), so its own height overstates the visible
@@ -591,6 +597,14 @@ export default function ChatScreen() {
   // which the list no longer occupies. Reserving the bar's full height here too
   // would leave a dead band between the newest message and the composer.
   const composerOverlap = composerHeight;
+  // The list's frame now starts at the top of the SCREEN (transparent header),
+  // so the oldest message would otherwise rest under the bar. Reserved as
+  // content padding rather than a contentInset: the stick-to-bottom pin measures
+  // `contentSize - layoutHeight`, which insets would shift out from under it.
+  const listContentStyle = useMemo(
+    () => [styles.listContent, { paddingTop: insets.top + COMPACT_HEADER + 16 }],
+    [insets.top],
+  );
   const spacerStyle = useAnimatedStyle(() => ({
     height: composerOverlap + Math.max(0, -keyboardHeight.value - bottomInset),
   }));
@@ -785,6 +799,25 @@ export default function ChatScreen() {
           // top to collapse against, and the stream reads better under a slim
           // bar.
           headerLargeTitle: showEmpty,
+          // Liquid-glass header (iOS 26). Three parts, all required:
+          //   - `headerTransparent` → the native bar becomes translucent AND the
+          //     screen is laid out UNDER it (edgesForExtendedLayout), so the
+          //     transcript actually passes behind the bar. Without content moving
+          //     back there, glass has nothing to refract and reads as a flat tint.
+          //   - the two transparent backgrounds override `useHeaderBase`'s solid
+          //     `pageBg`, which is what kept the bar opaque white. react-native-
+          //     screens builds an OPAQUE appearance for any background whose alpha
+          //     isn't 0 — `headerStyle` feeds the standard appearance and
+          //     `headerLargeStyle` the scroll-edge one (the bar at rest), so
+          //     leaving either set keeps a solid bar in that state.
+          //   - `scrollEdgeEffects.top` is the iOS 26 effect itself: the
+          //     progressive blur/fade UIKit draws on the scroll view where it
+          //     slides under the bar. 'soft' = soft-edged (no dividing line);
+          //     'hard' adds the hairline, 'hidden' turns it off.
+          headerTransparent: true,
+          headerStyle: { backgroundColor: 'transparent' },
+          headerLargeStyle: { backgroundColor: 'transparent' },
+          scrollEdgeEffects: { top: 'soft' },
           unstable_headerRightItems: () => headerItems,
           headerRight: () => (
             <ChatHeaderRight onHistoryPress={onHistoryPress} onNewChat={onNewChat} />
@@ -811,7 +844,7 @@ export default function ChatScreen() {
               keyExtractor={(r) => r.key}
               renderItem={renderItem}
               style={styles.list}
-              contentContainerStyle={styles.listContent}
+              contentContainerStyle={listContentStyle}
               keyboardShouldPersistTaps="handled"
               keyboardDismissMode="interactive"
               onScroll={onScroll}
