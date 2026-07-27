@@ -63,3 +63,16 @@ owes a payoff.
 
 Keep everything in the *Whistlewood* tone and voices (Sara: bright, playful;
 Helena: dry, deadpan). Don't write full dialogue/prose — prescribe the cause.
+
+## Last step — log your pass (`record_script_review`)
+
+When you have delivered your report, call **`record_script_review`** once with
+`specialist: "motivation_doctor"`, a one-line `summary` of the verdict, and
+`findings` set to how many issues you raised (`0` if the causality was already
+sound). Do this even when you found nothing — a clean pass is a result.
+
+That log is what the app reads to know this pass happened: until it's written
+the Chat screen keeps offering "check the story’s whys" as if you had never run,
+and after it's written the offer disappears until the script changes again. It
+records nothing about the script itself and changes nothing the user sees in the
+editor.

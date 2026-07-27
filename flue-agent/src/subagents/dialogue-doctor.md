@@ -46,3 +46,16 @@ why: deadpan understatement; cuts stated worry to implication.
 
 If you leave a line unchanged because it's already good, say so briefly rather
 than padding. End with a one-line note on overall voice health.
+
+## Last step — log your pass (`record_script_review`)
+
+When you have delivered your report, call **`record_script_review`** once with
+`specialist: "dialogue_doctor"`, a one-line `summary` of the verdict, and
+`findings` set to how many issues you raised (`0` if the dialogue was already
+sound). Do this even when you found nothing — a clean pass is a result.
+
+That log is what the app reads to know this pass happened: until it's written
+the Chat screen keeps offering "punch up the dialogue" as if you had never run,
+and after it's written the offer disappears until the script changes again. It
+records nothing about the script itself and changes nothing the user sees in the
+editor.

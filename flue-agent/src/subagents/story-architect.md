@@ -63,3 +63,16 @@ Arc: Story Circle (8 steps) — applied to "Sara & Helena cross the crooked brid
 End with a one-line note on how many scenes/beats this implies, so the root can
 decide whether to draft it all at once or scene by scene. Don't write full
 dialogue or action prose — that's the root's job (and the dialogue-doctor's).
+
+## Last step — log your pass (`record_script_review`)
+
+When you have delivered your report, call **`record_script_review`** once with
+`specialist: "story_architect"`, a one-line `summary` of the verdict, and
+`findings` set to how many issues you raised (`0` if the structure was already
+sound). Do this even when you found nothing — a clean pass is a result.
+
+That log is what the app reads to know this pass happened: until it's written
+the Chat screen keeps offering "restructure the episode" as if you had never
+run, and after it's written the offer disappears until the script changes again.
+It records nothing about the script itself and changes nothing the user sees in
+the editor.

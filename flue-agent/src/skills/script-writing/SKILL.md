@@ -10,7 +10,10 @@ description: >-
   transitions — this skill drives it through the get_script / save_script /
   append_script tools. The script is version-controlled into drafts and every
   edit applies ONLY to the pinned (active) draft; list_drafts / new_draft /
-  pin_draft manage the versions.
+  pin_draft manage the versions. To improve a script, delegate to the specialists
+  (story-architect / plot-doctor / motivation-doctor / dialogue-doctor) instead of
+  reviewing by hand, and pick one get_script's `reviews` block calls `pending`
+  over one it calls `fresh` — a fresh doctor already cleared this exact revision.
 ---
 
 # Script writing (Shot Studio Script tab)
@@ -130,6 +133,24 @@ then apply what they return (offer `new_draft` before a big change):
   character (want / wound / trauma / fear), not authorial convenience; a different
   lane from `plot-doctor`'s logical coherence.
 - **`dialogue-doctor`** — voice consistency, subtext, and punch-up on the lines.
+
+### Which doctors have already run
+
+`get_script` (and `get_status`) return a **`reviews`** block bucketing all four
+specialists against the pinned draft's current revision:
+
+- **`pending`** — never run on this script. Offer these first.
+- **`stale`** — they ran, but the script has been edited since (or on another
+  draft), so their findings are against text that no longer exists. Worth a
+  re-run after a big change.
+- **`fresh`** — they read this exact revision; `latest[<id>]` carries the pass's
+  `summary`, `findings` count and time. **Don't re-run a fresh one** unless the
+  user asks — say what it already found instead.
+
+Read that before suggesting a review, so "let's make the script better" reaches
+for the doctor that hasn't looked yet rather than the one that just cleared it.
+Each specialist logs its own pass (`record_script_review`) as its last act — you
+never call that tool yourself; you just read the result.
 
 ## Style
 

@@ -4,6 +4,7 @@ import type { ToolDefinition } from "@flue/runtime";
 
 import type { Api } from "./lib/api.js";
 import { createReadTools } from "./tools/index.js";
+import { recordScriptReview } from "./tools/record_script_review.js";
 
 import dialogueDoctor from "./subagents/dialogue-doctor.md" with { type: "markdown" };
 import motivationDoctor from "./subagents/motivation-doctor.md" with { type: "markdown" };
@@ -17,7 +18,9 @@ import threeAct from "./subagents/three-act.md" with { type: "markdown" };
 
 // Script-specialist subagents ported from the eve agent (agent/subagents/*).
 // Advisor pattern: they analyze/recommend and the parent (whistlewood) applies
-// their output — none carry *write* tools. They DO carry read-only context
+// their output — none can touch the script (the sole exception is
+// `record_script_review`, their own log book — see createSubagents). They DO
+// carry read-only context
 // tools (get_script/get_world/get_shotlist) so each pulls the full pinned draft
 // itself instead of relying on the parent to inline the whole script into the
 // `task` prompt (long verbatim copies get truncated by the parent model).
@@ -78,38 +81,46 @@ export function createSubagents(
   api: Api,
   searchTools: ToolDefinition[] = [],
 ): AgentProfile[] {
+  // `record_script_review` is the ONE non-read tool a specialist carries, and it
+  // writes no script content — it stamps this specialist's log book so the app
+  // (and the next turn) can tell an unreviewed script from a cleared one, which
+  // is what drives the chat's "make the script better with X" suggestions. It
+  // belongs to the doctor rather than the parent because the doctor is the one
+  // that knows it finished; the parent forgets to log it. The nested ARC experts
+  // below don't get it — story_architect records the one pass on their behalf.
   const readTools = [...createReadTools(api), ...searchTools];
+  const doctorTools = [...readTools, recordScriptReview(api)];
 
   const dialogueDoctorProfile = defineAgentProfile({
     name: "dialogue_doctor",
     description:
-      "Dialogue doctor for the screenplay. Delegate to it to sharpen spoken lines: keep each character's voice consistent, add subtext (say less, imply more), cut on-the-nose exposition, tune rhythm, and punch up flat exchanges. It calls get_script to read the current pinned draft itself, so you need only name the scene/beats to focus on — no need to paste the script. It returns before/after rewrites with a one-line reason for each. It reviews and rewrites the dialogue — it does not edit the script itself.",
+      "Dialogue doctor for the screenplay. Delegate to it to sharpen spoken lines: keep each character's voice consistent, add subtext (say less, imply more), cut on-the-nose exposition, tune rhythm, and punch up flat exchanges. It calls get_script to read the current pinned draft itself, so you need only name the scene/beats to focus on — no need to paste the script. It returns before/after rewrites with a one-line reason for each. It reviews and rewrites the dialogue — it does not edit the script itself. It logs its pass with record_script_review when it finishes, so the app stops offering a review that already happened.",
     instructions: dialogueDoctor,
-    tools: readTools,
+    tools: doctorTools,
   });
 
   const motivationDoctorProfile = defineAgentProfile({
     name: "motivation_doctor",
     description:
-      "Motivation & causality doctor — the 'why' behind everything that happens. Delegate to it to check that every action, choice, reversal, and event is *caused* — rooted in a character's want, wound/trauma, fear, or need — rather than occurring for plot convenience. It surfaces unmotivated beats and 'and then' coincidences and prescribes the backstory/trauma or causal link that would justify or replace them. A different lane from plot-doctor (logical/continuity coherence) and story-architect (structure). It calls get_script to read the current pinned draft itself — no need to paste the script. It returns the missing 'whys' with fixes. It analyzes and recommends — it does not edit the script itself.",
+      "Motivation & causality doctor — the 'why' behind everything that happens. Delegate to it to check that every action, choice, reversal, and event is *caused* — rooted in a character's want, wound/trauma, fear, or need — rather than occurring for plot convenience. It surfaces unmotivated beats and 'and then' coincidences and prescribes the backstory/trauma or causal link that would justify or replace them. A different lane from plot-doctor (logical/continuity coherence) and story-architect (structure). It calls get_script to read the current pinned draft itself — no need to paste the script. It returns the missing 'whys' with fixes. It analyzes and recommends — it does not edit the script itself. It logs its pass with record_script_review when it finishes, so the app stops offering a review that already happened.",
     instructions: motivationDoctor,
-    tools: readTools,
+    tools: doctorTools,
   });
 
   const plotDoctorProfile = defineAgentProfile({
     name: "plot_doctor",
     description:
-      "Plot-hole & continuity doctor for the screenplay. Delegate to it to audit the script for logical gaps, plot holes, continuity/timeline errors, unmotivated character behavior, unplanted setups and unpaid payoffs, and to get concrete, coherence-restoring fixes. It calls get_script to read the current pinned draft itself — no need to paste the script; just name any scenes to focus on. It returns a prioritized issue list with a suggested fix for each. It analyzes and recommends — it does not edit the script itself.",
+      "Plot-hole & continuity doctor for the screenplay. Delegate to it to audit the script for logical gaps, plot holes, continuity/timeline errors, unmotivated character behavior, unplanted setups and unpaid payoffs, and to get concrete, coherence-restoring fixes. It calls get_script to read the current pinned draft itself — no need to paste the script; just name any scenes to focus on. It returns a prioritized issue list with a suggested fix for each. It analyzes and recommends — it does not edit the script itself. It logs its pass with record_script_review when it finishes, so the app stops offering a review that already happened.",
     instructions: plotDoctor,
-    tools: readTools,
+    tools: doctorTools,
   });
 
   const storyArchitectProfile = defineAgentProfile({
     name: "story_architect",
     description:
-      "Story architect for building a new story or restructuring an existing one. Delegate here when the user wants to plot/outline a story, choose a narrative structure, or map the episode to an arc. It asks the user which arc to build (hero's journey, story circle, three-act, save-the-cat, kishotenketsu, or other), then consults the matching in-house arc expert and returns a beat-by-beat outline fitted to the premise. When restructuring an existing episode it calls get_script to read the current pinned draft itself. It outlines — the root writes the outline into the script.",
+      "Story architect for building a new story or restructuring an existing one. Delegate here when the user wants to plot/outline a story, choose a narrative structure, or map the episode to an arc. It asks the user which arc to build (hero's journey, story circle, three-act, save-the-cat, kishotenketsu, or other), then consults the matching in-house arc expert and returns a beat-by-beat outline fitted to the premise. When restructuring an existing episode it calls get_script to read the current pinned draft itself. It outlines — the root writes the outline into the script. It logs its pass with record_script_review when it finishes, so the app stops offering a review that already happened.",
     instructions: storyArchitect,
-    tools: readTools,
+    tools: doctorTools,
     subagents: [
       herosJourneyProfile,
       storyCircleProfile,

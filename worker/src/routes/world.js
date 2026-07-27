@@ -8,9 +8,9 @@ import { readDoc, updateDoc } from "../lib/docs.js";
 import { assetRefUrl } from "../lib/media.js";
 
 // The story map — the 5 questions that shape the story (see the World tab).
-const MAP_FIELDS = ["world", "protagonist", "antagonist", "stakes", "theme"];
+export const MAP_FIELDS = ["world", "protagonist", "antagonist", "stakes", "theme"];
 // Story depth — the core elements that make us understand the story.
-const DEPTH_FIELDS = ["premise", "wantVsNeed", "conflict", "obstacles", "structure"];
+export const DEPTH_FIELDS = ["premise", "wantVsNeed", "conflict", "obstacles", "structure"];
 // One character's type breakdown.
 const CHAR_FIELDS = ["name", "archetype", "role", "want", "need", "traits", "arc", "voice", "appearance"];
 // One location's fields. `slug` is the KEY that a shot's `location` string resolves
@@ -161,7 +161,7 @@ function normalizeWorld(raw) {
   return base;
 }
 
-const readWorld = async (env, pid) => normalizeWorld(await readDoc(env, pid, "world", null));
+export const readWorld = async (env, pid) => normalizeWorld(await readDoc(env, pid, "world", null));
 
 // Every MUTATION goes through this, never a bare read-then-write. A plain
 // read-modify-write is last-writer-wins, and these routes are hammered

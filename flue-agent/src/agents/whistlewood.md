@@ -32,6 +32,14 @@ Shot Studio is organized into these areas, each backed by tools you can call. Th
 also the pipeline order: **World → Script → Shot list → Storyboard/stills → Sound / Radio
 → Renders → Complete cuts → Editor timeline → Library.**
 
+**`get_status` is your bearings.** It returns one small digest of that whole pipeline —
+counts and flags, no content — plus a `stage` word for what's blocking progress. Call it
+for "where are we / what's next / what's the status", and whenever you're about to
+propose a next step, instead of fetching each section to count by hand. It also carries
+`script.reviews`, i.e. which script doctors have read the current draft (see the
+`script-writing` skill). Then reach for the section's own read tool when you need the
+actual content.
+
 - **World** — the series' *world bible* and the **first** step of the pipeline (the tab
   before Script). It holds the **story map** (the 5 shaping questions: world, protagonist +
   goal, antagonist, stakes, theme), the **story depth** (premise, want-vs-need, conflict,

@@ -24,12 +24,26 @@ import {
   Upload,
   Globe,
   ExternalLink,
+  Globe2,
+  PenLine,
+  Stethoscope,
+  Palette,
+  UserSquare2,
+  ListChecks,
+  LayoutGrid,
+  AudioLines,
+  Clapperboard,
+  Film,
+  Compass,
 } from "lucide-react";
 import { useDropzone } from "react-dropzone";
 import { toast } from "sonner";
 import { Streamdown, defaultRemarkPlugins } from "streamdown";
 import remarkBreaks from "remark-breaks";
 import { cn } from "@/lib/utils";
+import { buildSuggestions, FALLBACK_SUGGESTIONS } from "@/lib/suggestions";
+import { Eyebrow } from "@/components/shared";
+import { useShell } from "@/lib/shellContext";
 import { Button } from "@/components/ui/button";
 import {
   Sheet,
@@ -840,6 +854,221 @@ function ChatHistorySheet({ conv, triggerClassName }) {
   );
 }
 
+/* ---------------------------------------------------------------- *
+ * The landing screen of an empty chat: Recaps + Try something new   *
+ * ---------------------------------------------------------------- */
+
+// A card's icon, by what the card is ABOUT (`kind` from lib/suggestions.ts). The
+// deck stays import-free so it can be vendored into the mobile app, so it names
+// the subject and each platform maps that to its own icon set — this is the web
+// half of that map.
+const KIND_ICONS = {
+  world: Globe2,
+  script: PenLine,
+  review: Stethoscope,
+  visual: Palette,
+  sheets: UserSquare2,
+  shots: ListChecks,
+  board: LayoutGrid,
+  voice: AudioLines,
+  render: Clapperboard,
+  cut: Film,
+  status: Compass,
+};
+
+// One card. Deliberately NOT the mobile card: over this panel's near-flat surface
+// a mesh-gradient header has nothing to refract and just adds noise at 495px, so
+// the identity comes from a tinted icon tile instead. Same anatomy otherwise —
+// an icon, a headline, and a line of context — and the same two-texts contract:
+// what's rendered is the short version, what's SENT is the composed brief.
+//
+// CARD_H is fixed rather than content-sized, and the text block is pushed to the
+// bottom edge, so every card in the grid is the same rectangle no matter whether
+// its title runs to one line or two. It's the worst case of both clamps (a
+// two-line title over a two-line subtitle) plus the icon tile, so nothing clips.
+const CARD_H = "h-[8.25rem]";
+
+function LandingCard({ icon: Icon, eyebrow, title, onClick, label }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={label}
+      className={cn(
+        CARD_H,
+        "group flex flex-col items-start rounded-xl border bg-card p-3 text-left shadow-sm transition-colors hover:border-primary/40 hover:bg-accent/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+      )}
+    >
+      <span className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary transition-colors group-hover:bg-primary/15">
+        <Icon size={15} />
+      </span>
+      <span className="mt-auto line-clamp-2 text-sm font-medium leading-snug text-foreground">
+        {title}
+      </span>
+      {eyebrow ? (
+        <span className="mt-1 line-clamp-2 text-[11px] leading-snug text-muted-foreground">
+          {eyebrow}
+        </span>
+      ) : null}
+    </button>
+  );
+}
+
+function LandingSkeleton() {
+  return (
+    <div className="grid grid-cols-2 gap-2">
+      {[0, 1, 2, 3].map((i) => (
+        <div
+          key={i}
+          className={cn(CARD_H, "flex animate-pulse flex-col rounded-xl border bg-card p-3")}
+        >
+          <div className="size-7 rounded-lg bg-muted" />
+          <div className="mt-auto h-3.5 w-4/5 rounded bg-muted" />
+          <div className="mt-1.5 h-3 w-2/3 rounded bg-muted" />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// A landing section: an eyebrow heading over a wrapped two-up grid. A grid rather
+// than the mobile row's sideways swipe — there's no thumb here, and a horizontal
+// scroller in a 495px panel would hide half its content behind a gesture a mouse
+// doesn't really have. Both sections are capped (see the caller) so the block
+// stays a calm couple of rows instead of a wall.
+function LandingSection({ title, loading, children }) {
+  return (
+    <section className="space-y-2">
+      <Eyebrow>{title}</Eyebrow>
+      {loading ? (
+        <LandingSkeleton />
+      ) : (
+        <div className="grid grid-cols-2 gap-2">{children}</div>
+      )}
+    </section>
+  );
+}
+
+// "12m ago", but "just now" for the last minute — relTime's own answer there is
+// "now", and "now ago" reads like a typo.
+function recapWhen(ts) {
+  const t = relTime(ts);
+  if (!t) return null;
+  return t === "now" ? "just now" : `${t} ago`;
+}
+
+// The empty chat. Two sections, centered in the transcript: Recaps (the chats you
+// already have — click one to pick it back up) and Try something new (the derived
+// deck). `reloadKey` re-reads the digest, so finishing a stage in another tab
+// retires its card here without a manual refresh.
+//
+// The block centers when it fits and scrolls when it doesn't (min-h-full + auto
+// margins), so a day-one project gets a calm centered pair of cards and a
+// mid-pipeline one just grows downward instead of being clipped.
+function ChatLanding({ conv, onSuggest, reloadKey }) {
+  // undefined = still reading, null = we couldn't read it. Those are different
+  // decks: unknown state must NOT render the day-one "build your story world"
+  // card at someone whose episode is finished.
+  const [status, setStatus] = useState(undefined);
+
+  // Writes stop at UNMOUNT — not on every re-run of the effect below. The
+  // difference matters: `reloadKey` bumps once within a second of mount (the
+  // shell's readiness ping), so the usual per-effect `let alive` flag would
+  // invalidate the very first request every time, and if the replacement request
+  // then hung, a response we already had in hand was thrown away and the skeleton
+  // never resolved. That was a permanent-loading bug on every page load.
+  // Re-armed on mount, not just initialized: StrictMode double-invokes effects in
+  // dev (mount → cleanup → mount on the SAME instance, so the same refs), and a
+  // flag that's only ever cleared stays cleared through that second mount —
+  // discarding every response for the life of the screen.
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+  // Instead of cancelling, order the responses: apply any outcome that isn't
+  // older than the one already showing. A slow refetch can then never un-render
+  // the deck, and whichever request answers first wins until a newer one does.
+  const seqRef = useRef(0);
+  const appliedRef = useRef(0);
+
+  useEffect(() => {
+    const seq = (seqRef.current += 1);
+    const apply = (value) => {
+      if (!mountedRef.current || seq < appliedRef.current) return;
+      appliedRef.current = seq;
+      setStatus(value);
+    };
+    fetch("/api/status")
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
+      .then(apply)
+      // null (not undefined) ends the loading state: we tried and couldn't tell,
+      // which renders the stage-agnostic fallback deck rather than skeletons.
+      .catch(() => apply(null));
+  }, [reloadKey]);
+
+  // Four cards: a wrapped 2×2, which is as much as this panel can show without
+  // becoming a wall. The deck's own default (six) is the mobile row's budget.
+  const suggestions = useMemo(
+    () => (status ? buildSuggestions(status, { max: 4 }) : FALLBACK_SUGGESTIONS),
+    [status],
+  );
+
+  // This empty chat isn't a recap of itself, and neither is an untouched one.
+  // Two, not the mobile row's ten: this is a shortcut back into the last thing
+  // you were doing, and the full list is one click away in the Chats sheet.
+  const recaps = useMemo(
+    () =>
+      conv.list
+        .filter((c) => c.id !== conv.activeId && c.title && c.title !== "New chat")
+        .slice(0, 2),
+    [conv.list, conv.activeId],
+  );
+
+  return (
+    <div className="flex min-h-full flex-col justify-center py-6">
+      <div className="mx-auto w-full max-w-[26rem] space-y-5">
+        {/* Left-aligned, like the section headings under it — a centered line
+            over left-aligned eyebrows reads as a misalignment, not a flourish.
+            The BLOCK is what's centered in the panel. */}
+        <p className="text-sm text-muted-foreground">
+          Ask me anything to create or talk about your story
+        </p>
+
+        {recaps.length ? (
+          <LandingSection title="Recaps">
+            {recaps.map((c) => (
+              <LandingCard
+                key={c.id}
+                icon={MessageSquare}
+                title={c.title}
+                eyebrow={recapWhen(c.updatedAt)}
+                label={`Open chat: ${c.title}`}
+                onClick={() => conv.switchChat(c.id)}
+              />
+            ))}
+          </LandingSection>
+        ) : null}
+
+        <LandingSection title="Try something new" loading={status === undefined}>
+          {suggestions.map((s) => (
+            <LandingCard
+              key={s.id}
+              icon={KIND_ICONS[s.kind] || Sparkles}
+              title={s.title}
+              eyebrow={s.subtitle}
+              label={s.subtitle ? `${s.title} — ${s.subtitle}` : s.title}
+              onClick={() => onSuggest(s.prompt)}
+            />
+          ))}
+        </LandingSection>
+      </div>
+    </div>
+  );
+}
+
 // Compact model picker for the composer. Reflects the localStorage-backed
 // selection and writes it back. Disabled mid-turn so a switch can't land halfway
 // through a reply.
@@ -889,6 +1118,10 @@ export default function AgentChat() {
   // Shared session: the same instance the sound-studio Render buttons drive.
   const agent = useAgent();
   const conv = useConversations();
+  // The shell's data-change nonce (bumped by the /api/data/events firehose, a
+  // project switch, and the Refresh button). The landing screen re-reads the
+  // pipeline digest on it, so finishing a stage anywhere retires its card here.
+  const { reloadKey } = useShell();
   const [text, setText] = useState("");
   const [attachments, setAttachments] = useState([]);
   const [atBottom, setAtBottom] = useState(true);
@@ -1337,6 +1570,14 @@ export default function AgentChat() {
     await agent.send({ message: body, images });
   };
 
+  // Send a UI-composed turn (a landing card's brief) as-is. No attachment
+  // bookkeeping: these are always plain text.
+  const sendQuick = (text) => {
+    if (isBusy || !text) return;
+    setAtBottom(true);
+    agent.send({ message: text }).catch(() => {});
+  };
+
   // Answer a pending `ask_question` card by clicking an option: send its label as
   // the next user message. (Attachments are keyed by message id now, so button
   // answers need no bookkeeping.)
@@ -1468,14 +1709,7 @@ export default function AgentChat() {
               <p className="text-sm">Loading up your latest chat…</p>
             </div>
           ) : messages.length === 0 ? (
-            <div className="flex h-full flex-col items-center justify-center gap-2 text-center text-muted-foreground">
-              <Sparkles size={22} />
-              <p className="text-sm">Ask me to build the episode.</p>
-              <p className="max-w-[16rem] text-xs">
-                e.g. “create a rain-ambience sound”, “stitch the complete cut”, or “assign the
-                library images to bundles”. Attach a reference image with the paperclip.
-              </p>
-            </div>
+            <ChatLanding conv={conv} onSuggest={sendQuick} reloadKey={reloadKey} />
           ) : (
             messages.map((m) => (
               <AgentMessage

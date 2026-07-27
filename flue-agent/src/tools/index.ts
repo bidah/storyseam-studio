@@ -5,6 +5,8 @@ import type { Api } from "../lib/api.js";
 
 // Interaction (no api — asks the user via an interactive chat card)
 import { askQuestion } from "./ask_question.js";
+// Pipeline status (the whole-project digest)
+import { getStatus } from "./get_status.js";
 // World / Script / Drafts / Shotlist / Episode
 import { getWorld } from "./get_world.js";
 import { saveWorld } from "./save_world.js";
@@ -21,6 +23,7 @@ import { applyScriptProposal } from "./apply_script_proposal.js";
 import { listDrafts } from "./list_drafts.js";
 import { newDraft } from "./new_draft.js";
 import { pinDraft } from "./pin_draft.js";
+import { recordScriptReview } from "./record_script_review.js";
 import { getShotlist } from "./get_shotlist.js";
 import { saveShotlist } from "./save_shotlist.js";
 import { listShots } from "./list_shots.js";
@@ -78,6 +81,8 @@ export function createTools(api: Api): ToolDefinition[] {
     askQuestion(),
     // Chat attachments (a truncated document block → read the rest)
     readDocument(api),
+    // Where the episode stands (counts + flags for the whole pipeline)
+    getStatus(api),
     // World / Script / Drafts
     getWorld(api),
     saveWorld(api),
@@ -96,6 +101,7 @@ export function createTools(api: Api): ToolDefinition[] {
     listDrafts(api),
     newDraft(api),
     pinDraft(api),
+    recordScriptReview(api),
     // Shotlist / Episode
     getShotlist(api),
     saveShotlist(api),
@@ -156,6 +162,8 @@ export function createReadTools(api: Api): ToolDefinition[] {
   return [
     // Chat attachments
     readDocument(api),
+    // Where the episode stands
+    getStatus(api),
     // World / Script / Drafts
     getWorld(api),
     listHistory(api),

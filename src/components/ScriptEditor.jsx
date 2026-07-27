@@ -18,12 +18,16 @@ import { TaskList, TaskItem } from "@tiptap/extension-list";
 import {
   Check, Loader2, Cloud, PenLine, Save, Pencil,
   GitBranch, Plus, Trash2, Pin, CircleCheck, ListChecks, Lock, FileUp,
+  Stethoscope, RotateCcw,
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { CLIENT_ID } from "@/lib/clientId";
 import { readTabCache, writeTabCache } from "@/lib/tabCache";
 import { useAgent, agentIsBusy, generateShotListMessage } from "@/components/AgentProvider";
+// The specialists table + the brief each chip sends are SHARED with the chat's
+// suggestion cards, so a chip and a card ask for exactly the same thing.
+import { DOCTORS, reviewMessage } from "@/lib/suggestions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -32,6 +36,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger,
 } from "@/components/ui/dialog";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   Screenplay, SlashCommand, buildInitialContent, elementsToDoc,
   SP_TYPES, SP_LABELS, SP_PLACEHOLDERS,
@@ -367,6 +372,70 @@ function ImportControls({ flush, reload }) {
  * The editor (mounted only once the initial content is loaded)     *
  * ---------------------------------------------------------------- */
 
+// Which script doctors have read this draft, and a one-click way to run the ones
+// that haven't. `reviews` comes straight off GET /api/script
+// ({ latest, pending, stale, fresh } — see worker/src/lib/reviews.js); the
+// specialists log their own passes, so this is a read-only view of their log book
+// plus a button per chip.
+//
+// The state is the point: without it "run the plot doctor" is a coin flip on
+// whether it already ran, and a script quietly gets the same review four times
+// while never seeing the other three. A chip is therefore always one of three
+// things — never run (outline, the invitation), read this revision (filled, with
+// its verdict on hover), or read an older one (outline + re-run icon).
+function ReviewChips({ reviews }) {
+  const agent = useAgent();
+  const agentBusy = agentIsBusy(agent);
+  const fresh = new Set(reviews?.fresh || []);
+  const stale = new Set(reviews?.stale || []);
+
+  const run = (id, isStale) => {
+    agent.send({ message: reviewMessage(id, { stale: isStale }) }).catch(() => {});
+  };
+
+  return (
+    <div className="flex flex-wrap items-center gap-1">
+      <span className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground">
+        <Stethoscope size={13} /> Doctors
+      </span>
+      {DOCTORS.map((d) => {
+        const isFresh = fresh.has(d.id);
+        const isStale = stale.has(d.id);
+        const last = reviews?.latest?.[d.id] || null;
+        const tip = isFresh
+          ? `${last?.summary || "No issues reported"}${last?.at ? ` · ${relTime(last.at)}` : ""}`
+          : isStale
+            ? `Read an older revision${last?.at ? ` ${relTime(last.at)}` : ""} — run it again on this one`
+            : `Never run on this draft — ${d.does}`;
+        return (
+          <Tooltip key={d.id}>
+            <TooltipTrigger asChild>
+              <Button
+                variant={isFresh ? "secondary" : "outline"}
+                size="sm"
+                className={cn("h-7 gap-1 text-xs", isFresh && "text-primary")}
+                disabled={agentBusy}
+                onClick={() => run(d.id, isStale)}
+              >
+                {isFresh ? (
+                  <Check size={12} />
+                ) : isStale ? (
+                  <RotateCcw size={12} />
+                ) : null}
+                {d.chip}
+                {isFresh && last?.findings != null ? (
+                  <span className="text-muted-foreground">{last.findings}</span>
+                ) : null}
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent className="max-w-xs">{tip}</TooltipContent>
+          </Tooltip>
+        );
+      })}
+    </div>
+  );
+}
+
 // Pipeline gate on the Script toolbar: SIGN the pinned draft → unlock GENERATE
 // SHOT LIST (agent-driven, via the shot-list skill). Once a shot list already
 // exists, Generate is locked (no destructive re-run). `signed` is driven from
@@ -534,7 +603,7 @@ function ScriptSignModal({ open, onOpenChange, busy, onConfirm }) {
   );
 }
 
-function Editor({ initial, drafts, pinnedId, currentName, reload, signed: signedInit, shotlistExists, draftId }) {
+function Editor({ initial, drafts, pinnedId, currentName, reload, signed: signedInit, shotlistExists, draftId, reviews }) {
   const [saveState, setSaveState] = useState("saved"); // "saved" | "saving" | "error"
   // Local sign-off mirror: editing clears the server-side sign-off, so drop it
   // whenever we autosave; the Sign button sets it back.
@@ -659,6 +728,8 @@ function Editor({ initial, drafts, pinnedId, currentName, reload, signed: signed
           onSignedChange={setSigned}
         />
         <span className="mx-0.5 h-5 w-px bg-border" aria-hidden />
+        <ReviewChips reviews={reviews} />
+        <span className="mx-0.5 h-5 w-px bg-border" aria-hidden />
         <span className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground">
           <PenLine size={13} /> Screenplay
         </span>
@@ -782,6 +853,7 @@ export default function ScriptEditor({ reloadKey = 0, liveKey = 0 }) {
       signed={stored.signed}
       shotlistExists={stored.shotlistExists}
       draftId={stored.draftId}
+      reviews={stored.reviews}
     />
   );
 }

@@ -6,6 +6,7 @@
 // change the pinned draft broadcast on the "script" channel for live-sync.
 import { readDoc, updateDoc } from "../lib/docs.js";
 import { broadcast } from "../lib/broadcast.js";
+import { SPECIALISTS, isSpecialist, readReviews, recordReview, reviewState } from "../lib/reviews.js";
 import {
   nowIso,
   makeDraft,
@@ -44,6 +45,10 @@ export function registerScript(app) {
       const db = await readDB(c.env, pid);
       const sign = db.scriptSignoff?.[d.id] || null;
       const shotlist = await readDoc(c.env, pid, "shotlist", null);
+      const reviews = reviewState(await readReviews(c.env, pid), {
+        pinnedId: d.id,
+        scriptUpdatedAt: d.updatedAt,
+      });
       return c.json({
         title: d.title,
         doc: d.doc,
@@ -61,6 +66,11 @@ export function registerScript(app) {
         signed: !!sign,
         signedAt: sign?.at || null,
         shotlistExists: !!shotlist,
+        // Which script specialists have looked at THIS revision of the pinned
+        // draft ({ latest, pending, stale, fresh } — see lib/reviews.js). The
+        // agent reads it to know which doctor to offer next; the app renders it
+        // as the Script tab's review chips and the chat's suggestion cards.
+        reviews,
       });
     } catch (e) {
       return c.json({ error: String(e.message || e) }, 500);
@@ -301,6 +311,73 @@ export function registerScript(app) {
       const d = pinnedDraft(store);
       await broadcastScript(c, pid, { updatedAt: d.updatedAt, clientId, pinnedId: store.pinnedId });
       return c.json({ ok: true, drafts: metaList(store), pinnedId: store.pinnedId });
+    } catch (e) {
+      return c.json({ error: String(e.message || e) }, 500);
+    }
+  });
+
+  // --- Specialist reviews (which script doctors have run) -------------------
+  // Read the review state for the pinned draft: every specialist bucketed into
+  // pending / stale / fresh, plus its latest pass. See lib/reviews.js for why
+  // this is keyed by specialist and invalidated by an edit, not by a new draft.
+  app.get("/api/script/reviews", async (c) => {
+    const pid = c.get("projectId");
+    try {
+      const store = await readStore(c.env, pid);
+      const d = pinnedDraft(store);
+      const state = reviewState(await readReviews(c.env, pid), {
+        pinnedId: d.id,
+        scriptUpdatedAt: d.updatedAt,
+      });
+      return c.json({
+        specialists: SPECIALISTS,
+        draftId: d.id,
+        draftName: d.name,
+        scriptUpdatedAt: d.updatedAt,
+        ...state,
+      });
+    } catch (e) {
+      return c.json({ error: String(e.message || e) }, 500);
+    }
+  });
+
+  // Record a specialist's pass over the pinned draft. Called by the doctor
+  // itself (flue-agent's `record_script_review`) as its last act, so the record
+  // reflects what it actually read: the draft + revision are snapshotted HERE
+  // from the pinned draft rather than trusted from the body, which keeps a
+  // careless caller from stamping a pass onto the wrong revision.
+  app.post("/api/script/reviews", async (c) => {
+    const pid = c.get("projectId");
+    try {
+      let body;
+      try { body = await c.req.json(); } catch { body = {}; }
+      const { specialist, summary, findings } = body || {};
+      if (!isSpecialist(specialist)) {
+        return c.json({ error: `unknown specialist "${specialist}" — expected one of ${SPECIALISTS.join(", ")}` }, 400);
+      }
+      const store = await readStore(c.env, pid);
+      const d = pinnedDraft(store);
+      const n = Number(findings);
+      const entry = {
+        at: nowIso(),
+        draftId: d.id,
+        draftName: d.name,
+        scriptUpdatedAt: d.updatedAt,
+        summary: typeof summary === "string" ? summary.slice(0, 600) : "",
+        findings: Number.isFinite(n) ? Math.max(0, Math.round(n)) : null,
+      };
+      await recordReview(c.env, pid, specialist, entry);
+      // The /api/* firehose skips /api/script (those writes get their own
+      // targeted `script` channel), and this isn't a script edit — so announce it
+      // on `data` by hand or the chat's suggestion cards and the Script tab's
+      // review chips sit stale until the next unrelated write.
+      broadcast(c.env, pid, "data", {
+        path: "/api/script/reviews",
+        resource: "script-reviews",
+        clientId: c.req.header("x-client-id") || null,
+        at: Date.now(),
+      }, c.executionCtx);
+      return c.json({ ok: true, specialist, entry });
     } catch (e) {
       return c.json({ error: String(e.message || e) }, 500);
     }
