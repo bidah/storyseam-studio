@@ -45,6 +45,7 @@ import {
 import { BouncyPressable } from '@/components/ui/bouncy-pressable';
 import { ChatHeaderRight, useChatHeaderItems } from '@/components/chat/chat-header';
 import { Composer, type LocalAttachment } from '@/components/chat/composer';
+import { GlassSurface } from '@/components/chat/glass-surface';
 import { deriveQA, isReasoning, isThinking, relTime, workingTool } from '@/components/chat/helpers';
 import { MessageRow } from '@/components/chat/message';
 import { useChatColors } from '@/components/chat/theme';
@@ -53,10 +54,14 @@ import type { AgentMessage, SentAttachment } from '@/components/chat/types';
 // The flue agent chat — native port of the web AgentChat.jsx on the shared
 // AgentProvider session (the same instance other tabs' Render buttons drive).
 //
-// The transcript is an *inverted* FlatList. Data is newest-first, so the newest
-// message rests at the visual bottom by construction — the chat opens at the
-// latest and stays pinned as the agent streams. A chat switch remounts the list
-// (key bump) to land back at the newest instantly.
+// The transcript is a NATURAL-ORDER FlatList (oldest→newest, newest at the
+// bottom). It used to be `inverted`, which made "pinned to the newest" free —
+// but `inverted` is a scaleY(-1) transform, and iOS 26 flips the liquid-glass
+// tab bar's scroll-edge effect along with it: the fade meant for the thin strip
+// passing under the bar landed on the whole body instead, washing the text to
+// ~15% opacity. Un-inverted, the effect lands where it belongs and content
+// fades correctly as it slides under the bar — at the cost of having to keep
+// ourselves at the bottom by hand (`pinned`, below).
 //
 // Scrolling the list *programmatically* is the hard part on this stack (Expo SDK
 // 57 / RN 0.86 / React 19 / New Architecture / React Compiler). EVERY imperative
@@ -70,9 +75,13 @@ import type { AgentMessage, SentAttachment } from '@/components/chat/types';
 // The one thing that DOES move it is a *controlled* contentOffset — a prop, not
 // a ref. So we inject an Animated.ScrollView as the FlatList's scroll view
 // (renderScrollComponent; cloneElement only clobbers ref, not animatedProps) and
-// hand it an animated contentOffset. "Jump to latest" animates that offset from
-// the current position to 0 (newest) with withTiming; the rest of the time
-// animatedProps yields {} so native momentum scrolling is untouched.
+// hand it an animated contentOffset. That one mechanism now does double duty:
+// "Jump to latest" animates the offset to the content's end, and `pinned` holds
+// it there so the view follows the agent's stream (RN has no stick-to-bottom
+// primitive — maintainVisibleContentPosition anchors insertions ABOVE the
+// viewport, not below). A drag drops the pin so the gesture isn't fought;
+// coming back to the end re-arms it. Otherwise animatedProps yields {} so
+// native momentum scrolling is untouched.
 
 // "Try something new" is DERIVED, not a fixed list — see lib/suggestions.ts. The
 // deck comes from the pipeline digest (/api/status), each card carries a composed
@@ -463,15 +472,19 @@ export default function ChatScreen() {
   const agent = useAgent();
   const conv = useConversations();
   const insets = useSafeAreaInsets();
-  // Inverted list: scroll offset 0 == newest at the visual bottom. atNewest
-  // drives the "jump to latest" button (shown only when scrolled up into
-  // history). remountKey bumps to snap back to the newest (see jumpToLatest).
+  // Natural-order list: the newest message is at the BOTTOM, so "at newest"
+  // means scrolled to the end. atNewest drives the "jump to latest" button
+  // (shown only when scrolled up into history); remountKey bumps on chat switch.
   const [atNewest, setAtNewest] = useState(true);
   const [remountKey, setRemountKey] = useState(0);
-  // "Jump to latest" animates a controlled contentOffset (see file header).
-  // offsetY tracks the live scroll position (inverted: 0 == newest); jumpAnimating
-  // gates the controlled offset so native scrolling is free the rest of the time.
+  // Scroll state lives in shared values because the ONLY programmatic scroll
+  // that works on this stack is a controlled contentOffset fed through
+  // animatedProps (see file header). contentH/layoutH are what let us compute
+  // where "the bottom" is; `pinned` sticks us there as the agent streams.
   const offsetY = useSharedValue(0);
+  const contentH = useSharedValue(0);
+  const layoutH = useSharedValue(0);
+  const pinned = useSharedValue(true);
   const jumpTarget = useSharedValue(0);
   const jumpAnimating = useSharedValue(false);
   // One entry per user turn (ordinal-aligned to user messages): the images
@@ -489,8 +502,9 @@ export default function ChatScreen() {
       ? (initial.attachments as SentAttachment[][])
       : [];
     setAtNewest(true);
+    pinned.value = true;
     setRemountKey((k) => k + 1);
-  }, [activeId, getInitial]);
+  }, [activeId, getInitial, pinned]);
 
   // --- The cover (see src/lib/agent/transcript-cache.ts) ---
   //
@@ -557,9 +571,6 @@ export default function ChatScreen() {
     });
   }, [messages]);
 
-  // Inverted FlatList wants newest first.
-  const data = useMemo(() => rows.slice().reverse(), [rows]);
-
   // The composer floats OVER the transcript (docked absolutely, so messages
   // slide under its glass), and rides the keyboard via a transform. The list
   // reserves matching space at the newest (visual-bottom) edge — which, for an
@@ -576,11 +587,10 @@ export default function ChatScreen() {
   // pink until the list stopped short of the bar) that only clears once you
   // scroll. The composer still floats over the last stretch of the list, which
   // is the underlap the glass actually needs.
-  const TAB_BAR = bottomInset + 49; // standard UITabBar + home-indicator inset
   // How far the composer overlaps the list — everything below that is tab bar,
   // which the list no longer occupies. Reserving the bar's full height here too
   // would leave a dead band between the newest message and the composer.
-  const composerOverlap = Math.max(0, composerHeight - TAB_BAR);
+  const composerOverlap = composerHeight;
   const spacerStyle = useAnimatedStyle(() => ({
     height: composerOverlap + Math.max(0, -keyboardHeight.value - bottomInset),
   }));
@@ -612,7 +622,7 @@ export default function ChatScreen() {
       if (busy || !label) return;
       Haptics.selectionAsync().catch(() => {});
       recordAttachments([]);
-      if (!atNewest) setRemountKey((k) => k + 1);
+      pinned.value = true;
       setAtNewest(true);
       void agent?.send?.({ message: label });
     },
@@ -640,42 +650,78 @@ export default function ChatScreen() {
 
       recordAttachments(sent);
       // Snap to the newest so the sent turn (and the reply) are in view.
-      if (!atNewest) setRemountKey((k) => k + 1);
+      pinned.value = true;
       setAtNewest(true);
       void agent?.send?.({ message: t, images: images.length ? images : undefined });
     },
     [agent, recordAttachments, atNewest],
   );
 
-  // Inverted list: y ≈ 0 means we're at the newest message. Track the live
-  // offset so a jump can animate from wherever we are.
+  // Natural order: the bottom of the content is the newest message.
   const onScroll = useCallback(
     (e: NativeSyntheticEvent<NativeScrollEvent>) => {
-      const y = e.nativeEvent.contentOffset.y;
-      offsetY.value = y;
-      const near = y < 80;
+      const { contentOffset, contentSize, layoutMeasurement } = e.nativeEvent;
+      offsetY.value = contentOffset.y;
+      contentH.value = contentSize.height;
+      layoutH.value = layoutMeasurement.height;
+      const fromBottom = contentSize.height - layoutMeasurement.height - contentOffset.y;
+      const near = fromBottom < 80;
+      // Re-arm the stick-to-bottom pin only once you've come back to the end;
+      // scrolling up into history releases it (onScrollBeginDrag).
+      if (near) pinned.value = true;
       setAtNewest((prev) => (prev === near ? prev : near));
     },
-    [offsetY],
+    [offsetY, contentH, layoutH, pinned],
   );
 
-  // Animate to the newest (offset 0) by driving a controlled contentOffset —
-  // the only programmatic scroll that works on this stack (see file header).
-  // onScroll clears the button as it nears the bottom.
+  // A drag is the user taking over: drop the pin so the controlled offset stops
+  // fighting the gesture. onScroll re-arms it when they return to the bottom.
+  const onScrollBeginDrag = useCallback(() => {
+    pinned.value = false;
+  }, [pinned]);
+
+  // Keep the bottom reachable as content grows mid-stream. Setting contentH here
+  // (rather than waiting for the next onScroll) is what makes the pin follow
+  // streaming text — no scroll event fires while the agent is typing.
+  const onContentSizeChange = useCallback(
+    (_w: number, h: number) => {
+      contentH.value = h;
+    },
+    [contentH],
+  );
+
+  const onListLayout = useCallback(
+    (e: { nativeEvent: { layout: { height: number } } }) => {
+      layoutH.value = e.nativeEvent.layout.height;
+    },
+    [layoutH],
+  );
+
+  // Animate to the newest (the content's end) by driving a controlled
+  // contentOffset — the only programmatic scroll that works on this stack.
   const jumpToLatest = useCallback(() => {
     jumpTarget.value = offsetY.value;
     jumpAnimating.value = true;
-    jumpTarget.value = withTiming(0, { duration: 350 }, (finished) => {
+    const bottom = Math.max(0, contentH.value - layoutH.value);
+    jumpTarget.value = withTiming(bottom, { duration: 350 }, (finished) => {
       'worklet';
-      if (finished) jumpAnimating.value = false;
+      if (finished) {
+        jumpAnimating.value = false;
+        pinned.value = true;
+      }
     });
-  }, [offsetY, jumpTarget, jumpAnimating]);
+  }, [offsetY, jumpTarget, jumpAnimating, contentH, layoutH, pinned]);
 
-  // Only feed a controlled contentOffset during a jump; otherwise yield {} so
-  // native momentum scrolling is untouched.
-  const scrollAnimatedProps = useAnimatedProps(() =>
-    jumpAnimating.value ? { contentOffset: { x: 0, y: jumpTarget.value } } : {},
-  );
+  // Feed a controlled contentOffset while jumping, and while pinned to the end
+  // (which is how the view follows the agent's stream now that the list is no
+  // longer inverted). Otherwise yield {} so native scrolling is untouched.
+  const scrollAnimatedProps = useAnimatedProps(() => {
+    if (jumpAnimating.value) return { contentOffset: { x: 0, y: jumpTarget.value } };
+    if (pinned.value) {
+      return { contentOffset: { x: 0, y: Math.max(0, contentH.value - layoutH.value) } };
+    }
+    return {};
+  });
 
   // Inject an Animated.ScrollView as the FlatList's scroll view so the jump's
   // animatedProps have a Fabric-animatable target (cloneElement clobbers ref,
@@ -754,15 +800,14 @@ export default function ChatScreen() {
           composerOverlap={composerOverlap}
         />
       ) : (
-        <View className="relative min-h-0 flex-1" style={{ marginBottom: TAB_BAR, overflow: 'visible' }}>
+        <View className="relative min-h-0 flex-1">
           {rows.length === 0 ? (
             <TranscriptSkeleton />
           ) : (
             <FlatList
               key={remountKey}
               renderScrollComponent={renderScrollComponent}
-              inverted
-              data={data}
+              data={rows}
               keyExtractor={(r) => r.key}
               renderItem={renderItem}
               style={styles.list}
@@ -770,9 +815,12 @@ export default function ChatScreen() {
               keyboardShouldPersistTaps="handled"
               keyboardDismissMode="interactive"
               onScroll={onScroll}
+              onScrollBeginDrag={onScrollBeginDrag}
+              onContentSizeChange={onContentSizeChange}
+              onLayout={onListLayout}
               scrollEventThrottle={16}
-              // Inverted → ListHeaderComponent renders at the visual bottom (newest).
-              ListHeaderComponent={
+              // Natural order → the newest edge is the FOOTER (visual bottom).
+              ListFooterComponent={
                 <>
                   {thinking ? (
                     <ShimmerRow label="Thinking…" />
@@ -806,12 +854,30 @@ export default function ChatScreen() {
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="Jump to latest"
-              className="absolute left-1/2 h-9 w-9 items-center justify-center rounded-full border border-border bg-card active:opacity-70"
+              className="absolute left-1/2"
               // Sits just above the floating composer, not behind it.
               style={{ transform: [{ translateX: -18 }], bottom: composerOverlap + 12 }}
               onPress={jumpToLatest}
             >
-              <ArrowDown size={16} color={c.foreground} />
+              {/* Liquid glass, like the composer it floats above — the transcript
+                  scrolls beneath it, which is exactly the backdrop glass wants.
+                  Interactive: UIKit swells it under the press, so no active
+                  opacity here (that would fight the swell). */}
+              <GlassSurface
+                glassEffectStyle="regular"
+                isInteractive
+                fallbackColor={c.card}
+                fallbackBorderColor={c.border}
+                style={{
+                  width: 36,
+                  height: 36,
+                  borderRadius: 18,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <ArrowDown size={16} color={c.foreground} />
+              </GlassSurface>
             </Pressable>
           ) : null}
         </View>
@@ -832,8 +898,8 @@ export default function ChatScreen() {
 }
 
 const styles = StyleSheet.create({
-  list: { flex: 1, overflow: 'visible' },
-  listContent: { flexGrow: 1, gap: 16, paddingVertical: 16 },
+  list: { flex: 1 },
+  listContent: { flexGrow: 1, justifyContent: 'flex-end', gap: 16, paddingVertical: 16 },
   emptyContent: { paddingTop: 8, paddingBottom: 24, gap: 20 },
   // Only until the viewport is measured (one frame) — then a minHeight takes
   // over; see EmptyChat.
