@@ -3,7 +3,7 @@ import { Pressable } from 'react-native';
 import { router, Stack } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { SquarePen } from 'lucide-react-native';
-import { useConversations, useIsFreshChat } from '@/lib/agent/provider';
+import { useConversations } from '@/lib/agent/provider';
 import { relTime } from '@/components/chat/helpers';
 import { useChatColors } from '@/components/chat/theme';
 import ChatHistoryForm from '@/components/chat-history-form';
@@ -11,25 +11,32 @@ import ChatHistoryForm from '@/components/chat-history-form';
 // The Chats sheet — a full-size formSheet (single detent) presented from the
 // Chat tab's stack, so it lives inside <AgentProvider> and can read the shared
 // conversation store. State + navigation only; the UI is ChatHistoryForm (a
-// native SwiftUI Form on iOS, RN cards elsewhere). Selecting a chat switches
-// the active conversation and dismisses; the New chat header button mints a
-// fresh one and dismisses. The Chat screen's own effect (keyed on activeId)
-// remounts the transcript onto whatever this leaves active.
+// native SwiftUI Form on iOS, RN cards elsewhere).
+//
+// Both actions here NAVIGATE rather than mutate the active chat in place, since
+// a conversation is its own route now: selecting one lands on it, and New chat
+// lands on the tab's landing screen (which IS the new chat — nothing to disable).
+// Both first unwind to that landing screen, so picking a chat from inside a chat
+// swaps rather than stacking a second conversation behind you.
 export default function ChatHistorySheet() {
   const chatC = useChatColors();
   const conv = useConversations();
-  // Same rule as the Chat tab's header: on a blank chat there is nothing to
-  // start fresh FROM, so New chat greys out instead of stacking up empty
-  // conversations (see `useIsFreshChat`).
-  const freshChat = useIsFreshChat();
+
+  // Dismiss the sheet AND pop back to the tab's landing screen, then optionally
+  // push a conversation. The push waits a frame: dismissing a formSheet is a
+  // native transition, and dispatching the push in the same tick can be
+  // swallowed by it.
+  const leaveTo = useCallback((chatId?: string) => {
+    router.dismissTo('/(tabs)/chat');
+    if (chatId) requestAnimationFrame(() => router.push(`/(tabs)/chat/${chatId}`));
+  }, []);
 
   const onSelect = useCallback(
     (id: string) => {
       Haptics.selectionAsync().catch(() => {});
-      conv.switchChat(id);
-      router.back();
+      leaveTo(id);
     },
-    [conv],
+    [leaveTo],
   );
 
   const onDelete = useCallback(
@@ -42,9 +49,8 @@ export default function ChatHistorySheet() {
 
   const onNewChat = useCallback(() => {
     Haptics.selectionAsync().catch(() => {});
-    conv.newChat();
-    router.back();
-  }, [conv]);
+    leaveTo();
+  }, [leaveTo]);
 
   const chats = conv.list.map((c: { id: string; title?: string; updatedAt?: number }) => ({
     id: c.id,
@@ -64,7 +70,6 @@ export default function ChatHistorySheet() {
               label: '',
               icon: { type: 'sfSymbol', name: 'square.and.pencil' },
               accessibilityLabel: 'New chat',
-              disabled: freshChat,
               onPress: onNewChat,
             },
           ],
@@ -72,10 +77,7 @@ export default function ChatHistorySheet() {
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="New chat"
-              accessibilityState={{ disabled: freshChat }}
-              disabled={freshChat}
               className="h-9 w-9 items-center justify-center rounded-full active:opacity-60"
-              style={freshChat ? { opacity: 0.35 } : undefined}
               onPress={onNewChat}
             >
               <SquarePen size={18} color={chatC.mutedForeground} />

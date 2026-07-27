@@ -1,24 +1,102 @@
-import { Stack } from 'expo-router';
+import { router, Stack } from 'expo-router';
 import { MenuButton, useHeaderBase, useMenuItem } from '@/components/header-buttons';
+import { ChatHeaderRight, useChatHeaderItems } from '@/components/chat/chat-header';
 
-// Nested Stack so the Chat tab gets a native expo-router header. The message
-// stream reads better with a compact title than a large one, so large title is
-// off here; the menu (liquid-glass context menu) lives on the left, history +
-// new chat are set from the screen (they need live chat state).
+// The Chat tab's stack. Two screens, and the split is the point:
+//
+//   index  — the LANDING screen. Recaps, starter cards, and a composer. It is
+//            the "new chat" surface; there is no transcript here.
+//   [id]   — one conversation, PUSHED on top of it.
+//
+// Pushing rather than swapping content in place is what buys the native header
+// MORPH. Everything below is declared per-screen (here, not from inside the
+// screen bodies) so UIKit knows both configurations before the transition
+// starts and can animate between them instead of snapping after the fact:
+//
+//   left  — `headerBackVisible: true` sets UIKit's `leftItemsSupplementBackButton`,
+//           so the system back chevron takes the corner and the shared menu item
+//           SLIDES right of it rather than being replaced by it (the default:
+//           left items and the back button are mutually exclusive).
+//           `headerBackButtonDisplayMode: 'minimal'` keeps it a bare chevron —
+//           otherwise it drags the previous screen's "Chat" title along and eats
+//           the bar.
+//   right — history alone on the landing screen, history + new chat on a
+//           conversation. The shared item keeps its glass capsule across the
+//           push; the new one fades in.
+//   title — a large "Chat" that collapses into the conversation's compact title
+//           as part of the same transition.
+//
+// On Android/web there is no `leftItemsSupplementBackButton` equivalent —
+// `headerLeft` REPLACES the back button — so the menu stands down on [id] and
+// the back button gets the corner to itself.
+
+const openHistory = () => router.push('/(tabs)/chat/history');
+
+// "New chat" from inside a conversation = pop back to the landing screen, which
+// IS the new chat (it mints one on first send, or reuses a still-blank active
+// one). Nothing to disable, and the pop runs the header morph in reverse.
+const goNewChat = () => router.dismissTo('/(tabs)/chat');
+
 export default function ChatLayout() {
   const headerBase = useHeaderBase();
   const menuItem = useMenuItem();
+  const homeItems = useChatHeaderItems({ onHistoryPress: openHistory });
+  const chatItems = useChatHeaderItems({ onHistoryPress: openHistory, onNewChat: goNewChat });
+
   return (
     <Stack
       screenOptions={{
         ...headerBase,
-        headerLargeTitle: false,
         title: 'Chat',
-        unstable_headerLeftItems: () => [menuItem],
-        headerLeft: () => <MenuButton />,
+        // Liquid-glass header (iOS 26). Three parts, all required:
+        //   - `headerTransparent` → the native bar becomes translucent AND the
+        //     screen is laid out UNDER it (edgesForExtendedLayout), so content
+        //     actually passes behind the bar. Without content moving back there,
+        //     glass has nothing to refract and reads as a flat tint.
+        //   - the two transparent backgrounds override `useHeaderBase`'s solid
+        //     `pageBg`, which is what kept the bar opaque. react-native-screens
+        //     builds an OPAQUE appearance for any background whose alpha isn't 0
+        //     — `headerStyle` feeds the standard appearance and `headerLargeStyle`
+        //     the scroll-edge one (the bar at rest), so leaving either set keeps
+        //     a solid bar in that state.
+        //   - `scrollEdgeEffects.top` is the iOS 26 effect itself: the progressive
+        //     blur/fade UIKit draws on the scroll view where it slides under the
+        //     bar. 'soft' = soft-edged (no dividing line).
+        headerTransparent: true,
+        headerStyle: { backgroundColor: 'transparent' },
+        headerLargeStyle: { backgroundColor: 'transparent' },
+        scrollEdgeEffects: { top: 'soft' },
       }}
     >
-      <Stack.Screen name="index" />
+      <Stack.Screen
+        name="index"
+        options={{
+          // The landing screen's ScrollView is what the large title tracks.
+          headerLargeTitle: true,
+          unstable_headerLeftItems: () => [menuItem],
+          headerLeft: () => <MenuButton />,
+          unstable_headerRightItems: () => homeItems,
+          headerRight: () => <ChatHeaderRight onHistoryPress={openHistory} />,
+        }}
+      />
+
+      {/* One conversation. Compact title: a transcript has no top to collapse
+          against, and the stream reads better under a slim bar. The screen adds
+          only its `title` (the chat's own) on top of this. */}
+      <Stack.Screen
+        name="[id]"
+        options={{
+          headerLargeTitle: false,
+          headerBackVisible: true,
+          headerBackButtonDisplayMode: 'minimal',
+          unstable_headerLeftItems: () => [menuItem],
+          unstable_headerRightItems: () => chatItems,
+          headerRight: () => (
+            <ChatHeaderRight onHistoryPress={openHistory} onNewChat={goNewChat} />
+          ),
+        }}
+      />
+
       {/* Chat history — a full-size formSheet (single detent: opens fully,
           swipe-down closes fully). Its header + rows live in the nested
           history/_layout stack, so headerShown is off here — same pattern as

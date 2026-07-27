@@ -114,15 +114,20 @@ function useConversationManager() {
     update((prev) => withActiveForProject(prev, pid));
   }, [pid, store, update]);
 
+  // Mint a chat, make it active, and RETURN its id — the caller needs it to
+  // navigate to that chat's route (`/(tabs)/chat/<id>`). The chat is built
+  // outside the updater so the id survives a double-invoked updater (StrictMode)
+  // and is readable synchronously here.
   const newChat = useCallback(() => {
-    update((prev) => {
-      const c = makeChat(pid ?? null);
-      return trimStore({
+    const c = makeChat(pid ?? null);
+    update((prev) =>
+      trimStore({
         activeByProject: { ...prev.activeByProject, [pid || '']: c.id },
         order: [c.id, ...prev.order],
         chats: { ...prev.chats, [c.id]: c },
-      });
-    });
+      }),
+    );
+    return c.id;
   }, [update, pid]);
 
   const switchChat = useCallback(
@@ -346,6 +351,11 @@ function AgentSessionRunner({
   // `agentIsBusy`), so map idle → "ready".
   const agent = useMemo(
     () => ({
+      // Which chat this session is bound to. The context publishes ONE agent at
+      // a time, so a screen opened for a specific chat must be able to tell
+      // whether the runner has caught up to it yet (it repoints a render later,
+      // keyed on activeId) before rendering a transcript or sending a draft.
+      chatId: activeId,
       messages: flueAgent.messages,
       status: flueAgent.status === 'idle' ? 'ready' : flueAgent.status,
       error: flueAgent.error,
@@ -368,7 +378,7 @@ function AgentSessionRunner({
         flueClient.agents.abort(AGENT_NAME, idRef.current).catch(() => {});
       },
     }),
-    [flueAgent],
+    [flueAgent, activeId],
   );
 
   // Keep the chat list titled + floated from the live transcript (flue owns the
@@ -457,15 +467,17 @@ export function agentIsBusy(agent: any) {
   return agent?.status === 'submitted' || agent?.status === 'streaming';
 }
 
-// Is the active chat already a blank one? "New chat" from here mints a second
-// empty conversation that looks IDENTICAL to the one on screen — a press with no
-// feedback, which reads as a dead button. Every New chat control disables on
-// this instead.
+// Is the active chat still a blank one? The chat landing screen asks this before
+// sending its first message: a blank active chat is REUSED rather than pushed
+// aside, so the per-project placeholder (`withActiveForProject` mints one for
+// every project) doesn't pile up as a row of untouched "New chat" entries in
+// history. Anything else and the landing screen mints a fresh chat.
 //
 // Untouched = the store still has the placeholder title (it's derived from the
 // first user line, so any real chat has one) and no composer attachments. The
-// title check is what keeps an existing chat enabled during the beat where flue
-// hasn't re-streamed its durable history yet and `messages` is still empty.
+// title check is what keeps an existing chat out of the reuse path during the
+// beat where flue hasn't re-streamed its durable history yet and `messages` is
+// still empty.
 export function useIsFreshChat(): boolean {
   const agent = useAgent();
   const conv = useConversations();
@@ -486,11 +498,17 @@ export function useIsFreshChat(): boolean {
 // button should already be disabled via `agentIsBusy`).
 export function useSendToAgent() {
   const agent = useAgent();
+  const conv = useConversations();
+  const activeId: string | null = conv.activeId;
   return useCallback(
     (message: string) => {
-      router.navigate('/(tabs)/chat');
+      // Land on the CONVERSATION screen, not the chat tab's landing screen —
+      // the turn streams into the active chat, which has its own route now.
+      // `navigate` (not `push`) so driving the agent twice doesn't stack two
+      // copies of the same chat.
+      router.navigate(activeId ? `/(tabs)/chat/${activeId}` : '/(tabs)/chat');
       return agent?.send?.({ message });
     },
-    [agent],
+    [agent, activeId],
   );
 }
