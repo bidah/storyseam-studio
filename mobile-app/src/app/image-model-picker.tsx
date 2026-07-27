@@ -22,8 +22,8 @@ export default function ImageModelPickerSheet() {
   const [pending, setPending] = useState<string | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const colors = useColors();
-  // 16 == the px-4 below, so the gap under the card matches the sides.
-  const contentStyle = useSheetContentStyle(16);
+  // 32 == the px-8 below, so the gap under the card matches the sides.
+  const contentStyle = useSheetContentStyle(32);
 
   // Single screen, so this fires only on real sheet dismissal — resolve null (a
   // pick resolves first, making this a no-op) and cancel a pending close.
@@ -122,7 +122,7 @@ export default function ImageModelPickerSheet() {
           height and hug the rows. The glass header floats over the content; the
           content reserves space for it and cancels the nav-bar height the
           fitToContents detent adds — see useSheetContentStyle. */}
-      <View className="bg-background px-4" style={contentStyle}>
+      <View className="bg-background px-8" style={contentStyle}>
         {page === 'default' ? (
           <>
             <Card items={top} />

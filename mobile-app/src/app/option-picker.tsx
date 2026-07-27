@@ -36,8 +36,8 @@ export default function OptionPickerSheet() {
   const [pending, setPending] = useState<string | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const colors = useColors();
-  // 16 == the px-4 below, so the gap under the card matches the sides.
-  const contentStyle = useSheetContentStyle(16);
+  // 32 == the px-8 below, so the gap under the card matches the sides.
+  const contentStyle = useSheetContentStyle(32);
 
   // Resolve null if the sheet closes without a pick (a real pick resolved
   // first, so this second resolve is a no-op) and cancel a queued close.
@@ -85,7 +85,7 @@ export default function OptionPickerSheet() {
           height the fitToContents detent adds — see useSheetContentStyle. One
           iOS inset-grouped card with hairline dividers and a big liquid-glass
           radius — matches the chat model picker. */}
-      <View className="bg-background px-4" style={contentStyle}>
+      <View className="bg-background px-8" style={contentStyle}>
         <View className="overflow-hidden rounded-[28px] border border-border bg-card">
           {list.map((opt, i) => (
             <Fragment key={opt.value}>
