@@ -8,11 +8,16 @@
 // "visual-world" swr cache key and the canonical invalidate+revalidate pair.
 import { useEffect, useState } from "react";
 import { useLoaderData, useRevalidator } from "react-router";
-import { Loader2, Save, Plus, Trash2, IdCard, MapPin, Package, Palette, Check, SlidersHorizontal, KeyRound, ExternalLink } from "lucide-react";
+import { Loader2, Save, Plus, Trash2, IdCard, MapPin, Package, Palette, Check, SlidersHorizontal, KeyRound, ExternalLink, Globe } from "lucide-react";
 import { invalidateTabCache } from "@/lib/tabCache";
 import { useFalKey, setFalKey, clearFalKey } from "@/lib/falKey";
 import { useAtlasKey, setAtlasKey, clearAtlasKey } from "@/lib/atlasKey";
 import { PROVIDERS, useProviderPrefs, setActiveProvider } from "@/lib/providers";
+import {
+  useExaKey, setExaKey, clearExaKey,
+  useFirecrawlKey, setFirecrawlKey, clearFirecrawlKey,
+} from "@/lib/searchKeys";
+import { SEARCH_PROVIDERS, useSearchProvider, setSearchProvider } from "@/lib/searchProviders";
 import { swr, useRevalidateOnMount } from "@/lib/swr";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -147,6 +152,75 @@ function ProvidersPanel() {
   );
 }
 
+// Web search: which backend the agent's `web_search` / `fetch_url` tools run
+// on. Radio semantics like the render providers, but simpler — exactly one
+// backend is loaded per conversation and there are no in-flight jobs to strand,
+// so switching takes effect on the very next message. Keys are optional here:
+// the flue worker carries operator keys, and /eve/health reports which, so we
+// can tell the user a provider already works without one.
+function SearchPanel() {
+  const active = useSearchProvider();
+  const exaKey = useExaKey();
+  const firecrawlKey = useFirecrawlKey();
+  const [operator, setOperator] = useState(null); // { exa, firecrawl } | null
+
+  useEffect(() => {
+    let alive = true;
+    fetch("/eve/health")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => { if (alive && j?.search) setOperator(j.search); })
+      .catch(() => { /* health is best-effort — panel still works */ });
+    return () => { alive = false; };
+  }, []);
+
+  const keys = {
+    exa: { value: exaKey, save: setExaKey, clear: clearExaKey },
+    firecrawl: { value: firecrawlKey, save: setFirecrawlKey, clear: clearFirecrawlKey },
+  };
+
+  return (
+    <Panel title={<span className="flex items-center gap-2"><Globe size={15} className="text-primary" /> Web search</span>}>
+      <p className="mb-3 text-sm text-muted-foreground">
+        How the agent reaches the open web — for research, fact-checking, and reading links
+        you paste. <b>One provider is in use at a time</b>; the agent's tools are named the
+        same either way, so switching changes nothing else. Your own key is optional and
+        takes precedence when set; keys stay in this browser and are never saved on our servers.
+      </p>
+      <div className="space-y-3">
+        {SEARCH_PROVIDERS.map((p) => {
+          const isActive = active === p.id;
+          const k = keys[p.id];
+          const hasOperatorKey = operator?.[p.id];
+          return (
+            <div key={p.id} className={`rounded-lg border p-3 ${isActive ? "border-primary/40" : "opacity-70"}`}>
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-medium">{p.label}</span>
+                {isActive ? <Badge variant="success">In use</Badge> : null}
+                {!k.value && hasOperatorKey ? <Badge variant="muted">Built-in key</Badge> : null}
+                {!k.value && hasOperatorKey === false ? <Badge variant="warning">Needs a key</Badge> : null}
+                <div className="ml-auto">
+                  <Switch
+                    checked={isActive}
+                    onCheckedChange={(on) => { if (on) setSearchProvider(p.id); }}
+                    aria-label={`Use ${p.label} for web search`}
+                  />
+                </div>
+              </div>
+              <p className="mt-1 text-xs text-muted-foreground">{p.blurb}</p>
+              <div className="mt-2">
+                <ByokKeyEditor
+                  label={p.label} keyValue={k.value} save={k.save} clear={k.clear}
+                  placeholder={p.placeholder} keysUrl={p.keysUrl}
+                />
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </Panel>
+  );
+}
+
 // Save button with a transient "Saved" confirmation.
 function SaveButton({ onSave, children = "Save" }) {
   const [state, setState] = useState("idle"); // idle | saving | saved
@@ -241,6 +315,8 @@ function SettingsPage() {
       {error && <ErrorNote>{error}</ErrorNote>}
 
       <ProvidersPanel />
+
+      <SearchPanel />
 
       <Panel title={<span className="flex items-center gap-2"><SlidersHorizontal size={15} className="text-primary" /> Generation defaults</span>}>
         <p className="mb-3 text-sm text-muted-foreground">

@@ -7,6 +7,7 @@ import { isAllowedModel } from "./lib/models.js";
 import { isPlausibleFalKey } from "./lib/fal-key.js";
 import { isPlausibleAtlasKey } from "./lib/atlas-key.js";
 import { parseRenderPrefs, type RenderPrefs } from "./lib/render-prefs.js";
+import { isPlausibleSearchKey } from "./lib/search-prefs.js";
 
 // --- Observability -----------------------------------------------------------
 // Surface agent failures to Cloudflare Workers Logs (wrangler.jsonc enables
@@ -102,6 +103,13 @@ const ATLAS_KEY_HEADER = "x-flue-atlas-key";
 // and steers the agent toward the active one.
 const PROVIDER_HEADER = "x-flue-render-provider";
 const DISABLED_HEADER = "x-flue-disabled-providers";
+// Settings › Web search: the DEFAULT search backend plus the user's BYOK keys
+// for each (same localStorage-only model as the render keys). Persisted via
+// setSearchPrefs; whistlewood.ts loads exactly one backend's web_search /
+// fetch_url tools from them.
+const SEARCH_PROVIDER_HEADER = "x-flue-search-provider";
+const EXA_KEY_HEADER = "x-flue-exa-key";
+const FIRECRAWL_KEY_HEADER = "x-flue-firecrawl-key";
 
 // Generated Durable Object binding for each agent: `whistlewood.ts` ->
 // class FlueWhistlewoodAgent -> env.FLUE_WHISTLEWOOD_AGENT.
@@ -114,6 +122,11 @@ type ModelStub = {
   setFalKey(key: string): Promise<void>;
   setAtlasKey(key: string): Promise<void>;
   setRenderPrefs(prefs: RenderPrefs): Promise<void>;
+  setSearchPrefs(prefs: {
+    provider?: string;
+    exaKey?: string;
+    firecrawlKey?: string;
+  }): Promise<void>;
 };
 type Env = Record<string, DurableObjectNamespace | undefined>;
 
@@ -160,11 +173,21 @@ const applyModelSelection: MiddlewareHandler = async (c, next) => {
   const atlasKey = c.req.header(ATLAS_KEY_HEADER);
   const provider = c.req.header(PROVIDER_HEADER);
   const disabledCsv = c.req.header(DISABLED_HEADER);
+  const searchProvider = c.req.header(SEARCH_PROVIDER_HEADER);
+  const exaKey = c.req.header(EXA_KEY_HEADER);
+  const firecrawlKey = c.req.header(FIRECRAWL_KEY_HEADER);
   const wantModel = isAllowedModel(requested);
   const wantFalKey = isPlausibleFalKey(falKey);
   const wantAtlasKey = isPlausibleAtlasKey(atlasKey);
   const wantPrefs = provider !== undefined || disabledCsv !== undefined;
-  if (c.req.method === "POST" && (wantModel || wantFalKey || wantAtlasKey || wantPrefs)) {
+  // Any of the three search headers being present is enough — the DO merges
+  // them over what's stored, so a partial set never clobbers the rest.
+  const wantSearch =
+    searchProvider !== undefined || exaKey !== undefined || firecrawlKey !== undefined;
+  if (
+    c.req.method === "POST" &&
+    (wantModel || wantFalKey || wantAtlasKey || wantPrefs || wantSearch)
+  ) {
     const name = c.req.param("name") ?? "";
     const bindingName = AGENT_BINDINGS[name];
     const ns = bindingName
@@ -181,6 +204,21 @@ const applyModelSelection: MiddlewareHandler = async (c, next) => {
         if (wantAtlasKey) await stub.setAtlasKey(atlasKey as string);
         // Provider prefs are validated in parseRenderPrefs (unknown ids drop).
         if (wantPrefs) await stub.setRenderPrefs(parseRenderPrefs(provider, disabledCsv));
+        // Search prefs: only forward fields that were actually sent, and only
+        // key values that look like keys — an empty/garbage header is a CLEAR
+        // (Settings' Remove button), while an absent one leaves the stored key
+        // untouched. The provider id is whitelisted DO-side.
+        if (wantSearch) {
+          await stub.setSearchPrefs({
+            ...(searchProvider !== undefined ? { provider: searchProvider } : {}),
+            ...(exaKey !== undefined
+              ? { exaKey: isPlausibleSearchKey(exaKey) ? exaKey : "" }
+              : {}),
+            ...(firecrawlKey !== undefined
+              ? { firecrawlKey: isPlausibleSearchKey(firecrawlKey) ? firecrawlKey : "" }
+              : {}),
+          });
+        }
       } catch {
         /* keep the stored / default model + keys */
       }
@@ -199,6 +237,12 @@ app.get("/health", (c) =>
   c.json({
     ok: true,
     providers: { anthropic: Boolean(process.env.ANTHROPIC_API_KEY) },
+    // Operator-side search keys. Reported (as booleans — never the key) so
+    // Settings can tell the user a backend already works without their own key.
+    search: {
+      exa: Boolean(process.env.EXA_API_KEY),
+      firecrawl: Boolean(process.env.FIRECRAWL_API_KEY),
+    },
   }),
 );
 app.use("/agents/:name/:id", requireProxyUser);

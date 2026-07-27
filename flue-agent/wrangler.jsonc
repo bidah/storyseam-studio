@@ -40,7 +40,10 @@
   //                            in the conversation DO (lib/fal-key.ts), not here.
   //   ATLAS_KEY              - OPTIONAL Atlas Cloud fallback key — same BYOK model,
   //                            header x-flue-atlas-key (lib/atlas-key.ts).
-  //   EXA_API_KEY            - Exa search key powering web_search / fetch_url
-  //                            (lib/exa.ts). Operator-owned, NOT BYOK; without it
-  //                            the agent simply has no web access.
+  //   EXA_API_KEY            - OPTIONAL operator fallback for Exa web search
+  //   FIRECRAWL_API_KEY      - OPTIONAL operator fallback for Firecrawl web search
+  //                            Primary path for both is BYOK (x-flue-exa-key /
+  //                            x-flue-firecrawl-key → lib/search-prefs.ts). Which
+  //                            backend serves web_search / fetch_url is the user's
+  //                            Settings › Web search choice (lib/search.ts).
 }

@@ -11,7 +11,7 @@ import { createTools } from "../tools/index.js";
 import { createHiggsfieldTools } from "../lib/higgsfield.js";
 import { createFalTools } from "../lib/fal.js";
 import { createAtlasTools } from "../lib/atlas.js";
-import { createExaTools } from "../lib/exa.js";
+import { selectSearchTools } from "../lib/search.js";
 import { createSandbox } from "../lib/sandbox.js";
 import { skills } from "../skills.js";
 import { createSubagents } from "../subagents.js";
@@ -27,6 +27,13 @@ import {
   writeRenderPrefs,
   type RenderPrefs,
 } from "../lib/render-prefs.js";
+import {
+  EMPTY_SEARCH_PREFS,
+  mergeSearchPrefs,
+  readSearchPrefs,
+  writeSearchPrefs,
+  type SearchPrefs,
+} from "../lib/search-prefs.js";
 
 export const description =
   "Whistlewood production agent — drives the script → shots → renders → cuts → library pipeline.";
@@ -83,6 +90,17 @@ function storedRenderPrefs(): RenderPrefs {
   }
 }
 
+// Settings › Web search: the default search provider plus this conversation's
+// BYOK Exa / Firecrawl keys (app.ts setSearchPrefs → lib/search-prefs.ts).
+// Exactly one backend's tools load — see lib/search.ts.
+function storedSearchPrefs(): SearchPrefs {
+  try {
+    return readSearchPrefs(getCloudflareContext().storage.sql);
+  } catch {
+    return { ...EMPTY_SEARCH_PREFS };
+  }
+}
+
 // Native Agents SDK extension for this agent's generated Durable Object. Adds
 // `setModel` / `setFalKey` / `setAtlasKey` / `setRenderPrefs` RPCs that persist
 // the caller-selected chat model, BYOK render keys, and provider toggles for
@@ -104,6 +122,17 @@ export const cloudflare = extend<CloudflareAgentLike & { ctx: DurableObjectState
         async setRenderPrefs(prefs: RenderPrefs): Promise<void> {
           writeRenderPrefs(this.ctx.storage.sql, prefs);
         }
+        // MERGES rather than replaces: an absent header must leave the stored
+        // key alone (a client that doesn't send keys can't wipe them), while a
+        // present-but-empty one clears it — see mergeSearchPrefs.
+        async setSearchPrefs(incoming: {
+          provider?: unknown;
+          exaKey?: unknown;
+          firecrawlKey?: unknown;
+        }): Promise<void> {
+          const sql = this.ctx.storage.sql;
+          writeSearchPrefs(sql, mergeSearchPrefs(readSearchPrefs(sql), incoming));
+        }
       },
   },
 );
@@ -124,9 +153,10 @@ export default defineAgent(async ({ id }) => {
   const higgsfieldTools = await createHiggsfieldTools(userId);
   const falTools = createFalTools(storedFalKey());
   const atlasTools = createAtlasTools(storedAtlasKey());
-  // Web search / page reading (Exa). Operator-keyed off EXA_API_KEY, absent
-  // without it — not tied to the render-provider selection.
-  const exaTools = createExaTools();
+  // Web search / page reading. Exactly ONE backend (Exa or Firecrawl) loads,
+  // per the Settings selection — both register the same `web_search` /
+  // `fetch_url` names. Independent of the render-provider selection.
+  const search = selectSearchTools(storedSearchPrefs());
   const sandbox = await createSandbox(id);
 
   const PROVIDER_TOOLS: Record<string, string> = {
@@ -142,9 +172,9 @@ export default defineAgent(async ({ id }) => {
   return {
     model: selectedModel(),
     instructions: providerNote ? `${instructions}${providerNote}` : instructions,
-    tools: [...tools, ...higgsfieldTools, ...falTools, ...atlasTools, ...exaTools],
+    tools: [...tools, ...higgsfieldTools, ...falTools, ...atlasTools, ...search.tools],
     skills,
-    subagents: createSubagents(api),
+    subagents: createSubagents(api, search.tools),
     ...(sandbox ? { sandbox, cwd: "/workspace" } : {}),
   };
 });

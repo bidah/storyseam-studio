@@ -1,7 +1,8 @@
 import { defineAgentProfile, type AgentProfile } from "@flue/runtime";
 
+import type { ToolDefinition } from "@flue/runtime";
+
 import type { Api } from "./lib/api.js";
-import { createExaTools } from "./lib/exa.js";
 import { createReadTools } from "./tools/index.js";
 
 import dialogueDoctor from "./subagents/dialogue-doctor.md" with { type: "markdown" };
@@ -68,12 +69,16 @@ const threeActProfile = defineAgentProfile({
 // truncated by the model). These are reads only — the advisors still never
 // write; the parent applies their recommendations.
 //
-// The Exa tools (web_search / fetch_url) ride along for the same reason: a
-// subagent's tools are self-contained (nothing inherits from the parent), so
-// without them a specialist researching a period, place, or real-world detail
-// would have to bounce back through the root. Also read-only.
-export function createSubagents(api: Api): AgentProfile[] {
-  const readTools = [...createReadTools(api), ...createExaTools()];
+// The web-search tools (web_search / fetch_url, whichever backend the root
+// resolved) ride along for the same reason: a subagent's tools are
+// self-contained — nothing inherits from the parent — so without them a
+// specialist researching a period, place, or real-world detail would have to
+// bounce back through the root. Also read-only.
+export function createSubagents(
+  api: Api,
+  searchTools: ToolDefinition[] = [],
+): AgentProfile[] {
+  const readTools = [...createReadTools(api), ...searchTools];
 
   const dialogueDoctorProfile = defineAgentProfile({
     name: "dialogue_doctor",

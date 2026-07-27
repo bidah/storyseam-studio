@@ -14,6 +14,8 @@ import { getAgentModelSpecifier } from "@/lib/agentModel";
 import { getFalKey } from "@/lib/falKey";
 import { getAtlasKey } from "@/lib/atlasKey";
 import { getProviderPrefs, disabledProvidersCsv } from "@/lib/providers";
+import { getExaKey, getFirecrawlKey } from "@/lib/searchKeys";
+import { getSearchProvider } from "@/lib/searchProviders";
 
 const STORAGE_KEY = "shot-studio:projectId";
 
@@ -92,6 +94,16 @@ export function installProjectScope() {
       if (atlasKey) headers.set(eve ? "x-flue-atlas-key" : "x-atlas-key", atlasKey);
       headers.set(eve ? "x-flue-disabled-providers" : "x-disabled-providers", disabledProvidersCsv());
       headers.set(eve ? "x-flue-render-provider" : "x-render-provider", active);
+      // Web search (lib/searchProviders.js + lib/searchKeys.js) is AGENT-ONLY —
+      // no `/api/*` route searches — so these ride `/eve/*` sends only. Exactly
+      // one backend loads per turn; the keys are optional (the flue worker
+      // carries operator keys as a fallback). Both key headers are sent even
+      // when empty so a Remove in Settings clears the stored key server-side.
+      if (eve) {
+        headers.set("x-flue-search-provider", getSearchProvider());
+        headers.set("x-flue-exa-key", getExaKey() || "");
+        headers.set("x-flue-firecrawl-key", getFirecrawlKey() || "");
+      }
       // Send the Better Auth session cookie with every same-origin API call —
       // the `/eve/*` flue proxy relies on it to mint the per-user identity.
       init = { credentials: "include", ...(init || {}), headers };

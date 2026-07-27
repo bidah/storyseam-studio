@@ -11,11 +11,12 @@ import { toast } from "sonner";
 import { desktop, isDesktop } from "@/lib/desktop";
 import { initFalKey } from "@/lib/falKey";
 import { initAtlasKey } from "@/lib/atlasKey";
+import { initSearchKeys } from "@/lib/searchKeys";
 import { onProjectChange } from "@/lib/projectFetch";
 
 export async function initDesktop(router) {
   if (!isDesktop) return;
-  await Promise.all([initFalKey(), initAtlasKey()]);
+  await Promise.all([initFalKey(), initAtlasKey(), initSearchKeys()]);
   desktop.onNavigate?.((path) => router.navigate(path));
   installDragOut();
   watchPipelineEvents();

@@ -23,7 +23,9 @@ DAYTONA_API_KEY=""
 # Higgsfield generation MCP endpoint (OAuth-protected; token bridged from worker).
 HIGGSFIELD_MCP_URL=""
 
-# Exa (https://exa.ai) API key — powers the agent's web_search / fetch_url tools.
-# Operator-owned (not BYOK). Without it both tools are absent and the agent has
-# no web access.
+# Web search — the agent's web_search / fetch_url tools. Exactly ONE backend
+# loads per conversation, chosen in Settings › Web search. These are the
+# OPERATOR fallbacks; a user's own key (BYOK, localStorage → x-flue-exa-key /
+# x-flue-firecrawl-key) wins when present. With neither, that backend is absent.
 EXA_API_KEY=""
+FIRECRAWL_API_KEY=""
