@@ -30,7 +30,7 @@ import * as Haptics from 'expo-haptics';
 import { ArrowDown, CircleAlert } from 'lucide-react-native';
 import { router, Stack } from 'expo-router';
 import { File } from 'expo-file-system';
-import { agentIsBusy, useAgent, useConversations } from '@/lib/agent/provider';
+import { agentIsBusy, useAgent, useConversations, useIsFreshChat } from '@/lib/agent/provider';
 import { peekTranscript, preloadTranscript } from '@/lib/agent/transcript-cache';
 import type { Chat } from '@/lib/agent/chat-store';
 import { cn } from '@/lib/utils';
@@ -787,7 +787,14 @@ export default function ChatScreen() {
   }, [conv]);
   // Native bar button items on iOS, the <ChatHeaderRight> row elsewhere — see
   // src/components/chat/chat-header.tsx.
-  const headerItems = useChatHeaderItems({ onHistoryPress, onNewChat });
+  // Already on a blank chat ⇒ New chat would mint an identical-looking empty
+  // one and nothing on screen would move, so the control greys out instead.
+  const freshChat = useIsFreshChat();
+  const headerItems = useChatHeaderItems({
+    onHistoryPress,
+    onNewChat,
+    newChatDisabled: freshChat,
+  });
 
   return (
     <View className="flex-1 bg-background">
@@ -820,7 +827,11 @@ export default function ChatScreen() {
           scrollEdgeEffects: { top: 'soft' },
           unstable_headerRightItems: () => headerItems,
           headerRight: () => (
-            <ChatHeaderRight onHistoryPress={onHistoryPress} onNewChat={onNewChat} />
+            <ChatHeaderRight
+              onHistoryPress={onHistoryPress}
+              onNewChat={onNewChat}
+              newChatDisabled={freshChat}
+            />
           ),
         }}
       />

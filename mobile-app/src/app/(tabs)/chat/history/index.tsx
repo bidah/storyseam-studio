@@ -3,7 +3,7 @@ import { Pressable } from 'react-native';
 import { router, Stack } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { SquarePen } from 'lucide-react-native';
-import { useConversations } from '@/lib/agent/provider';
+import { useConversations, useIsFreshChat } from '@/lib/agent/provider';
 import { relTime } from '@/components/chat/helpers';
 import { useChatColors } from '@/components/chat/theme';
 import ChatHistoryForm from '@/components/chat-history-form';
@@ -18,6 +18,10 @@ import ChatHistoryForm from '@/components/chat-history-form';
 export default function ChatHistorySheet() {
   const chatC = useChatColors();
   const conv = useConversations();
+  // Same rule as the Chat tab's header: on a blank chat there is nothing to
+  // start fresh FROM, so New chat greys out instead of stacking up empty
+  // conversations (see `useIsFreshChat`).
+  const freshChat = useIsFreshChat();
 
   const onSelect = useCallback(
     (id: string) => {
@@ -60,6 +64,7 @@ export default function ChatHistorySheet() {
               label: '',
               icon: { type: 'sfSymbol', name: 'square.and.pencil' },
               accessibilityLabel: 'New chat',
+              disabled: freshChat,
               onPress: onNewChat,
             },
           ],
@@ -67,7 +72,10 @@ export default function ChatHistorySheet() {
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="New chat"
+              accessibilityState={{ disabled: freshChat }}
+              disabled={freshChat}
               className="h-9 w-9 items-center justify-center rounded-full active:opacity-60"
+              style={freshChat ? { opacity: 0.35 } : undefined}
               onPress={onNewChat}
             >
               <SquarePen size={18} color={chatC.mutedForeground} />

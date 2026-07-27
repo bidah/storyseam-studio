@@ -14,11 +14,15 @@ import { useChatColors } from './theme';
 type ChatHeaderProps = {
   onHistoryPress: () => void;
   onNewChat: () => void;
+  // The active chat is already blank — see `useIsFreshChat`. New chat greys out
+  // rather than minting an indistinguishable second empty conversation.
+  newChatDisabled?: boolean;
 };
 
 export function useChatHeaderItems({
   onHistoryPress,
   onNewChat,
+  newChatDisabled,
 }: ChatHeaderProps): NativeStackHeaderItem[] {
   return [
     {
@@ -33,13 +37,18 @@ export function useChatHeaderItems({
       label: '',
       icon: { type: 'sfSymbol', name: 'square.and.pencil' },
       accessibilityLabel: 'New chat',
+      disabled: newChatDisabled,
       onPress: onNewChat,
     },
   ];
 }
 
 // Android/web fallback for useChatHeaderItems.
-export function ChatHeaderRight({ onHistoryPress, onNewChat }: ChatHeaderProps) {
+export function ChatHeaderRight({
+  onHistoryPress,
+  onNewChat,
+  newChatDisabled,
+}: ChatHeaderProps) {
   const c = useChatColors();
   return (
     <View className="flex-row items-center gap-1">
@@ -55,7 +64,10 @@ export function ChatHeaderRight({ onHistoryPress, onNewChat }: ChatHeaderProps) 
       <Pressable
         accessibilityRole="button"
         accessibilityLabel="New chat"
+        accessibilityState={{ disabled: !!newChatDisabled }}
+        disabled={newChatDisabled}
         className="h-9 w-9 items-center justify-center rounded-full active:opacity-60"
+        style={newChatDisabled ? { opacity: 0.35 } : undefined}
         onPress={onNewChat}
       >
         <SquarePen size={18} color={c.mutedForeground} />

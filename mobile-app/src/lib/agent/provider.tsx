@@ -457,6 +457,25 @@ export function agentIsBusy(agent: any) {
   return agent?.status === 'submitted' || agent?.status === 'streaming';
 }
 
+// Is the active chat already a blank one? "New chat" from here mints a second
+// empty conversation that looks IDENTICAL to the one on screen — a press with no
+// feedback, which reads as a dead button. Every New chat control disables on
+// this instead.
+//
+// Untouched = the store still has the placeholder title (it's derived from the
+// first user line, so any real chat has one) and no composer attachments. The
+// title check is what keeps an existing chat enabled during the beat where flue
+// hasn't re-streamed its durable history yet and `messages` is still empty.
+export function useIsFreshChat(): boolean {
+  const agent = useAgent();
+  const conv = useConversations();
+  const chat = (conv.list as { id: string; title?: string; attachments?: unknown[] }[]).find(
+    (c) => c.id === conv.activeId,
+  );
+  const untouched = !chat || (chat.title === 'New chat' && !chat.attachments?.length);
+  return untouched && (agent?.messages?.length ?? 0) === 0;
+}
+
 // Drive the agent from anywhere in the UI and reveal the Chat tab so the user
 // lands where the turn streams in. On the web app chat is an always-visible
 // side panel, so a bare `agent.send` is enough; on mobile chat is its own tab,
