@@ -1,5 +1,6 @@
 import { memo, useState } from 'react';
 import { ActivityIndicator, Pressable, Text, View } from 'react-native';
+import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { Image } from 'expo-image';
 import * as Haptics from 'expo-haptics';
 import * as WebBrowser from 'expo-web-browser';
@@ -208,25 +209,77 @@ function SourcesCard({ data }: { data: { sources: Source[]; query: string } }) {
 function ReasoningRow({ part }: { part: MessagePart }) {
   const c = useChatColors();
   const [open, setOpen] = useState(false);
+  // Natural height of the body, measured while it's clipped to 0 — Yoga still
+  // lays the child out at its content height, so onLayout reports the real
+  // number before it has ever been visible. That's what the reveal animates to.
+  //
+  // It has to be a SHARED value, not JS state: React Compiler is on in this app,
+  // and a `bodyH` captured from useState freezes at its first-render 0 inside
+  // the worklet — the chevron (no JS capture) turned while the body stayed
+  // clipped shut. Shared values are read on the UI thread, so they can't go stale.
+  const bodyH = useSharedValue(0);
+  // 0 = collapsed, 1 = open. Drives the height reveal AND the chevron rotation
+  // off one value, so the two can't drift apart mid-animation.
+  const progress = useSharedValue(0);
+
+  const bodyStyle = useAnimatedStyle(() => ({
+    height: progress.value * bodyH.value,
+    opacity: progress.value,
+  }));
+  // The chevron rotates on a wrapper View, not on the SVG's own style: a
+  // transform handed to react-native-svg doesn't take, which is why the open
+  // state used to show a still-pointing-right chevron.
+  const chevronStyle = useAnimatedStyle(() => ({
+    transform: [{ rotate: `${progress.value * 90}deg` }],
+  }));
+
   if (!part.text?.trim()) return null;
+
+  const toggle = () => {
+    const next = !open;
+    setOpen(next);
+    // Writing a Reanimated shared value, which the immutability rule doesn't
+    // model (same reason chat/index.tsx disables it file-wide).
+    // eslint-disable-next-line react-hooks/immutability
+    progress.value = withTiming(next ? 1 : 0, {
+      duration: 220,
+      easing: Easing.out(Easing.quad),
+    });
+  };
+
   return (
-    <View className="self-stretch rounded-md border border-border bg-muted/30">
+    <View className="my-1 self-stretch rounded-lg border border-border bg-muted/30">
       <Pressable
         accessibilityRole="button"
+        accessibilityState={{ expanded: open }}
         accessibilityLabel={open ? 'Collapse reasoning' : 'Expand reasoning'}
-        className="flex-row items-center gap-1.5 px-2.5 py-1.5 active:opacity-70"
-        onPress={() => setOpen((v) => !v)}
+        className="flex-row items-center gap-2 px-3.5 py-3"
+        onPress={toggle}
       >
-        <ChevronRight
-          size={13}
-          color={c.mutedForeground}
-          style={{ transform: [{ rotate: open ? '90deg' : '0deg' }] }}
-        />
+        <Animated.View style={chevronStyle}>
+          <ChevronRight size={13} color={c.mutedForeground} />
+        </Animated.View>
         <Text className="text-[12px] font-medium text-muted-foreground">Reasoning</Text>
       </Pressable>
-      {open ? (
-        <Text className="px-2.5 pb-2 text-[12px] leading-4 text-muted-foreground">{part.text}</Text>
-      ) : null}
+      {/* Always mounted (that's what keeps bodyH measured) and clipped to the
+          animated height; untouchable while collapsed. */}
+      <Animated.View style={[bodyStyle, { overflow: 'hidden' }]} pointerEvents={open ? 'auto' : 'none'}>
+        {/* Absolutely positioned so the clip doesn't squash it: an in-flow child
+            of a height:0 parent measures 0 (verified on-device — onLayout
+            reported 0 every time, so the reveal had nothing to open to), while
+            an absolute one is sized by its content and pinned to the full width. */}
+        <View
+          style={{ position: 'absolute', left: 0, right: 0, top: 0 }}
+          onLayout={(e) => {
+            // eslint-disable-next-line react-hooks/immutability
+            bodyH.value = e.nativeEvent.layout.height;
+          }}
+        >
+          <Text className="px-3.5 pb-3.5 text-[12px] leading-4 text-muted-foreground">
+            {part.text}
+          </Text>
+        </View>
+      </Animated.View>
     </View>
   );
 }
