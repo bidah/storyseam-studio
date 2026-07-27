@@ -16,12 +16,16 @@ export default function ProviderKeyForm({
   placeholder,
   hasKey,
   maskedKey,
+  footnote,
   onTextChange,
   onRemove,
 }: {
   placeholder: string;
   hasKey: boolean;
   maskedKey: string;
+  // Extra line under the field — the web-search keys use it to say the backend
+  // already works on the worker's operator key.
+  footnote?: string;
   onTextChange: (text: string) => void;
   onRemove: () => void;
 }) {
@@ -35,8 +39,8 @@ export default function ProviderKeyForm({
           title="API key"
           footer={
             <Text>
-              Stored only on this device (secure keychain) and sent per-request — never on
-              our servers.
+              {'Stored only on this device (secure keychain) and sent per-request — never on ' +
+                'our servers.' + (footnote ? ` ${footnote}` : '')}
             </Text>
           }
         >

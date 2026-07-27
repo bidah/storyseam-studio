@@ -8,7 +8,7 @@
 // "visual-world" swr cache key and the canonical invalidate+revalidate pair.
 import { useEffect, useState } from "react";
 import { useLoaderData, useRevalidator } from "react-router";
-import { Loader2, Save, Plus, Trash2, IdCard, MapPin, Package, Palette, Check, SlidersHorizontal, KeyRound, ExternalLink, Globe, TerminalSquare } from "lucide-react";
+import { Loader2, Save, Plus, Trash2, IdCard, MapPin, Package, Palette, Check, SlidersHorizontal, KeyRound, ExternalLink, Globe, TerminalSquare, Cpu } from "lucide-react";
 import { invalidateTabCache } from "@/lib/tabCache";
 import { useFalKey, setFalKey, clearFalKey } from "@/lib/falKey";
 import { useAtlasKey, setAtlasKey, clearAtlasKey } from "@/lib/atlasKey";
@@ -19,6 +19,7 @@ import {
 } from "@/lib/searchKeys";
 import { SEARCH_PROVIDERS, useSearchProvider, setSearchProvider } from "@/lib/searchProviders";
 import { SANDBOX_MODES, useSandboxMode, setSandboxMode } from "@/lib/sandboxMode";
+import { CHAT_PROVIDERS, useChatProvider, setChatProvider } from "@/lib/chatProvider";
 import { swr, useRevalidateOnMount } from "@/lib/swr";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -89,6 +90,66 @@ function ByokKeyEditor({ label, keyValue, save, clear, placeholder, keysUrl }) {
 // group (turning one on turns the others off; the selected one can't be turned
 // off). The selection is the backend the composer AND the agent render with;
 // in-flight jobs from a previously selected provider still finish.
+// Chat provider: which model catalog the chat agent's model picker offers.
+// Radio semantics — exactly one at a time, and switching snaps the picker (and
+// the next message) to that provider's models (lib/agentModel.js reconciles the
+// selection). Cloudflare Workers AI is the keyless default; Cerebras is opt-in
+// and gated on a worker key, which /eve/health reports. The choice rides no
+// header of its own — the selected model's specifier already names its provider.
+function ChatProviderPanel() {
+  const active = useChatProvider();
+  const [providers, setProviders] = useState(null); // { anthropic, cerebras } | null
+
+  useEffect(() => {
+    let alive = true;
+    fetch("/eve/health")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => { if (alive && j?.providers) setProviders(j.providers); })
+      .catch(() => { /* health is best-effort — panel still works */ });
+    return () => { alive = false; };
+  }, []);
+
+  return (
+    <Panel title={<span className="flex items-center gap-2"><Cpu size={15} className="text-primary" /> Chat provider</span>}>
+      <p className="mb-3 text-sm text-muted-foreground">
+        Which models the chat agent's model picker offers. <b>One provider is in use at a time</b> —
+        switching snaps the picker, and the next message, to that provider's models. <b>Cerebras</b>
+        serves Gemma 4 31B, Z.AI GLM-4.7 and GPT-OSS 120B on ultra-fast inference through Cloudflare
+        AI Gateway, and needs a Cerebras key configured on the agent worker.
+      </p>
+      <div className="space-y-3">
+        {CHAT_PROVIDERS.map((p) => {
+          const isActive = active === p.id;
+          // Cloudflare Workers AI is always available (keyless); Cerebras is
+          // gated on CEREBRAS_API_KEY, reported by /eve/health.
+          const gated = p.id !== "cloudflare";
+          const available = !gated || providers?.[p.id];
+          return (
+            <div key={p.id} className={`rounded-lg border p-3 ${isActive ? "border-primary/40" : "opacity-70"}`}>
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-medium">{p.label}</span>
+                {isActive ? <Badge variant="success">In use</Badge> : null}
+                {p.id === "cloudflare" ? <Badge variant="muted">Default</Badge> : null}
+                {gated && available ? <Badge variant="muted">Ready</Badge> : null}
+                {gated && available === false ? <Badge variant="warning">Needs a key</Badge> : null}
+                <div className="ml-auto">
+                  <Switch
+                    checked={isActive}
+                    disabled={!available}
+                    onCheckedChange={(on) => { if (on && available) setChatProvider(p.id); }}
+                    aria-label={`Use ${p.label} for chat`}
+                  />
+                </div>
+              </div>
+              <p className="mt-1 text-xs text-muted-foreground">{p.blurb}</p>
+            </div>
+          );
+        })}
+      </div>
+    </Panel>
+  );
+}
+
 function ProvidersPanel() {
   const prefs = useProviderPrefs();
   const falKey = useFalKey();
@@ -356,6 +417,8 @@ function SettingsPage() {
       </div>
 
       {error && <ErrorNote>{error}</ErrorNote>}
+
+      <ChatProviderPanel />
 
       <ProvidersPanel />
 

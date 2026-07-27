@@ -30,6 +30,13 @@ export const ALLOWED_MODELS = new Set<string>([
   "anthropic/claude-sonnet-5",
   "anthropic/claude-opus-4.6",
   "anthropic/claude-fable-5",
+  // Cerebras — built-in pi-ai catalog provider (openai-completions). Needs
+  // CEREBRAS_API_KEY on this worker (+ CEREBRAS_GATEWAY_URL to route via CF AI
+  // Gateway — see app.ts). Opt-in on the client (Settings › Chat provider);
+  // selecting one without the key errors on that turn. All three do tool calls.
+  "cerebras/gemma-4-31b",
+  "cerebras/zai-glm-4.7",
+  "cerebras/gpt-oss-120b",
 ]);
 
 export function isAllowedModel(model: unknown): model is string {

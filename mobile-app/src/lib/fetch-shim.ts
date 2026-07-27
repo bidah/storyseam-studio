@@ -23,6 +23,8 @@ import { getFalKey } from './fal-key';
 import { getAtlasKey } from './atlas-key';
 import { getActiveProvider, disabledProvidersCsv } from './providers';
 import { getSandboxMode } from './sandbox-mode';
+import { getSearchProvider } from './search-provider';
+import { getExaKey, getFirecrawlKey } from './search-keys';
 
 function needsStreaming(path: string) {
   return path.startsWith('/eve') || /\/api\/(data|script|timeline)\/events/.test(path);
@@ -77,6 +79,17 @@ export function installFetchShim() {
     // takes effect immediately; the flue worker reads an absent header as
     // "leave the conversation's stored mode alone".
     if (eve) headers.set('x-flue-sandbox', getSandboxMode());
+    // Web search (lib/search-provider.ts / lib/search-keys.ts) is AGENT-ONLY
+    // too — no `/api/*` route searches the web, so there is no non-`x-flue-`
+    // variant. The keys are OPTIONAL: the flue worker carries operator keys and
+    // a user key only takes precedence when present.
+    if (eve) {
+      headers.set('x-flue-search-provider', getSearchProvider());
+      const exaKey = getExaKey();
+      if (exaKey) headers.set('x-flue-exa-key', exaKey);
+      const firecrawlKey = getFirecrawlKey();
+      if (firecrawlKey) headers.set('x-flue-firecrawl-key', firecrawlKey);
+    }
     if (!headers.has('cookie')) {
       const cookie = getSessionCookie();
       if (cookie) headers.set('cookie', cookie);

@@ -147,6 +147,22 @@ if (process.env.ANTHROPIC_GATEWAY_URL) {
   });
 }
 
+// Route the built-in `cerebras/*` provider (a pi-ai catalog provider,
+// openai-completions wire) through Cloudflare AI Gateway when CEREBRAS_GATEWAY_URL
+// is configured — same override pattern as anthropic above, and it keeps clean
+// `cerebras/gemma-4-31b` specifiers everywhere. CEREBRAS_GATEWAY_URL is the CF AI
+// Gateway Cerebras endpoint, e.g.
+//   https://gateway.ai.cloudflare.com/v1/<account_id>/<gateway_id>/cerebras
+// The catalog default baseUrl (https://api.cerebras.ai/v1) is used when unset, so
+// setting only CEREBRAS_API_KEY still works (direct, no gateway). The key is
+// required for any cerebras/* turn; without it that turn errors.
+if (process.env.CEREBRAS_GATEWAY_URL) {
+  registerProvider("cerebras", {
+    baseUrl: process.env.CEREBRAS_GATEWAY_URL,
+    apiKey: process.env.CEREBRAS_API_KEY,
+  });
+}
+
 // The single auth boundary. The shot-studio-uploads worker mints a short-lived
 // HMAC token on `x-flue-proxy-user`; we verify it AND that the authenticated
 // principal owns this conversation (its user id is the `userId~projectId~chatId`
@@ -248,7 +264,10 @@ const app = new Hono();
 app.get("/health", (c) =>
   c.json({
     ok: true,
-    providers: { anthropic: Boolean(process.env.ANTHROPIC_API_KEY) },
+    providers: {
+      anthropic: Boolean(process.env.ANTHROPIC_API_KEY),
+      cerebras: Boolean(process.env.CEREBRAS_API_KEY),
+    },
     // Operator-side search keys. Reported (as booleans — never the key) so
     // Settings can tell the user a backend already works without their own key.
     search: {

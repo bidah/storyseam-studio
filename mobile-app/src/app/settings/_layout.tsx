@@ -27,6 +27,10 @@ export default function SettingsLayout() {
     >
       <Stack.Screen name="index" options={{ title: 'Settings', headerLargeTitle: true }} />
       <Stack.Screen name="provider-key" options={{ title: 'API key' }} />
+      <Stack.Screen name="search-key" options={{ title: 'Search key' }} />
+      <Stack.Screen name="style-prompts" options={{ title: 'Style presets' }} />
+      <Stack.Screen name="style-prompt" options={{ title: 'Style preset' }} />
+      <Stack.Screen name="sheet-prompt" options={{ title: 'Sheet prompt' }} />
     </Stack>
   );
 }

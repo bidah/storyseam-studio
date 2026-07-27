@@ -3,7 +3,8 @@ import { Pressable, Text, View } from 'react-native';
 import { router, Stack } from 'expo-router';
 import { Check, X } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
-import { AGENT_MODELS, type AgentModelId, useAgentModelStore } from '@/lib/agent-model';
+import { modelsForProvider, type AgentModelId, useAgentModelStore } from '@/lib/agent-model';
+import { useChatProviderStore } from '@/lib/chat-provider';
 import { SHEET_CONTENT_STYLE } from '@/lib/sheet';
 import { useColors } from '@/lib/colors';
 
@@ -15,6 +16,10 @@ import { useColors } from '@/lib/colors';
 // the Worker's /eve proxy forwards into the flue agent Durable Object.
 export default function ModelPickerSheet() {
   const { model, setModel } = useAgentModelStore();
+  // Only the active Settings › Chat provider's models (the selection is kept in
+  // that catalog by agent-model's reconcile, so `model` is always one of these).
+  const provider = useChatProviderStore((s) => s.active);
+  const models = modelsForProvider(provider);
   // The tapped model shows its check for a beat before the sheet closes.
   const [pending, setPending] = useState<AgentModelId | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -58,7 +63,7 @@ export default function ModelPickerSheet() {
           height the fitToContents detent adds — see SHEET_CONTENT_STYLE. */}
       <View className="bg-background px-8" style={SHEET_CONTENT_STYLE}>
         <View className="overflow-hidden rounded-[28px] border border-border bg-card">
-          {AGENT_MODELS.map((m, i) => (
+          {models.map((m, i) => (
             <Fragment key={m.id}>
               {i > 0 ? <View className="ml-4 h-px bg-border" /> : null}
               <Pressable

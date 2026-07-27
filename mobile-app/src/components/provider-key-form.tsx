@@ -8,12 +8,14 @@ export default function ProviderKeyForm({
   placeholder,
   hasKey,
   maskedKey,
+  footnote,
   onTextChange,
   onRemove,
 }: {
   placeholder: string;
   hasKey: boolean;
   maskedKey: string;
+  footnote?: string;
   onTextChange: (text: string) => void;
   onRemove: () => void;
 }) {
@@ -31,7 +33,7 @@ export default function ProviderKeyForm({
       />
       <Text className="text-[12px] leading-4 text-muted-foreground">
         Stored only on this device (secure keychain) and sent per-request — never on our
-        servers.
+        servers.{footnote ? ` ${footnote}` : ''}
       </Text>
       {hasKey ? (
         <Button variant="destructive" title={`Remove key ${maskedKey}`} onPress={onRemove} />

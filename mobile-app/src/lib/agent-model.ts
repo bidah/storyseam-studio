@@ -1,25 +1,50 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { create } from 'zustand';
+import {
+  DEFAULT_CHAT_PROVIDER,
+  getChatProvider,
+  useChatProviderStore,
+  type ChatProviderId,
+} from './chat-provider';
 
 // The chat agent's model picker (port of the web src/lib/agentModel.js).
 // The selected model's full specifier (`spec`) rides every /eve request as the
 // x-flue-model header (fetch shim); the Worker's /eve proxy forwards it and the
-// flue agent persists it per conversation. Cloudflare Workers AI models
-// (`cloudflare/@cf/…`) need no key; Claude (`anthropic/…`) needs ANTHROPIC_API_KEY
-// on the flue worker. Keep in lockstep with flue-agent/src/lib/models.ts + web.
+// flue agent persists it per conversation. `group` is the Settings › Chat
+// provider (lib/chat-provider.ts) the model belongs to — the picker only shows
+// the active group. Cloudflare Workers AI models (`cloudflare/@cf/…`) need no
+// key; Claude (`anthropic/…`) needs ANTHROPIC_API_KEY; Cerebras (`cerebras/…`)
+// needs CEREBRAS_API_KEY on the flue worker. Keep in lockstep with
+// flue-agent/src/lib/models.ts + web src/lib/agentModel.js.
 
 export const AGENT_MODELS = [
-  { id: 'kimi-k2.6', spec: 'cloudflare/@cf/moonshotai/kimi-k2.6', label: 'Kimi K2.6', hint: 'Default · economical' },
-  { id: 'gpt-oss-120b', spec: 'cloudflare/@cf/openai/gpt-oss-120b', label: 'GPT-OSS 120B', hint: 'Reasoning' },
-  { id: 'glm-4.7-flash', spec: 'cloudflare/@cf/zai-org/glm-4.7-flash', label: 'GLM 4.7 Flash', hint: 'Fast · 131k ctx' },
-  { id: 'claude-sonnet-5', spec: 'anthropic/claude-sonnet-5', label: 'Sonnet 5', hint: 'Claude · needs key' },
-  { id: 'claude-opus-4.6', spec: 'anthropic/claude-opus-4.6', label: 'Opus 4.6', hint: 'Claude · most capable' },
-  { id: 'claude-fable-5', spec: 'anthropic/claude-fable-5', label: 'Fable 5', hint: 'Claude · creative' },
+  { id: 'kimi-k2.6', spec: 'cloudflare/@cf/moonshotai/kimi-k2.6', label: 'Kimi K2.6', hint: 'Default · economical', group: 'cloudflare' },
+  { id: 'gpt-oss-120b', spec: 'cloudflare/@cf/openai/gpt-oss-120b', label: 'GPT-OSS 120B', hint: 'Reasoning', group: 'cloudflare' },
+  { id: 'glm-4.7-flash', spec: 'cloudflare/@cf/zai-org/glm-4.7-flash', label: 'GLM 4.7 Flash', hint: 'Fast · 131k ctx', group: 'cloudflare' },
+  { id: 'claude-sonnet-5', spec: 'anthropic/claude-sonnet-5', label: 'Sonnet 5', hint: 'Claude · needs key', group: 'cloudflare' },
+  { id: 'claude-opus-4.6', spec: 'anthropic/claude-opus-4.6', label: 'Opus 4.6', hint: 'Claude · most capable', group: 'cloudflare' },
+  { id: 'claude-fable-5', spec: 'anthropic/claude-fable-5', label: 'Fable 5', hint: 'Claude · creative', group: 'cloudflare' },
+  // Cerebras (Settings › Chat provider = Cerebras). Gemma is the default.
+  { id: 'cerebras-gemma-4-31b', spec: 'cerebras/gemma-4-31b', label: 'Gemma 4 31B', hint: 'Default · 131k ctx · vision', group: 'cerebras' },
+  { id: 'cerebras-glm-4.7', spec: 'cerebras/zai-glm-4.7', label: 'GLM 4.7', hint: 'Z.AI · reasoning', group: 'cerebras' },
+  { id: 'cerebras-gpt-oss-120b', spec: 'cerebras/gpt-oss-120b', label: 'GPT-OSS 120B', hint: 'Reasoning · fast', group: 'cerebras' },
 ] as const;
 
 export type AgentModelId = (typeof AGENT_MODELS)[number]['id'];
 
-export const DEFAULT_AGENT_MODEL: AgentModelId = AGENT_MODELS[0].id;
+// The default model per provider group is the FIRST entry tagged with it — Kimi
+// for cloudflare, Gemma for cerebras. Switching provider snaps to that default.
+export function modelGroupOf(id: string): ChatProviderId {
+  return (AGENT_MODELS.find((m) => m.id === id)?.group as ChatProviderId) ?? DEFAULT_CHAT_PROVIDER;
+}
+export function defaultModelForProvider(providerId: ChatProviderId): AgentModelId {
+  return (AGENT_MODELS.find((m) => m.group === providerId) ?? AGENT_MODELS[0]).id;
+}
+export function modelsForProvider(providerId: ChatProviderId) {
+  return AGENT_MODELS.filter((m) => m.group === providerId);
+}
+
+export const DEFAULT_AGENT_MODEL: AgentModelId = defaultModelForProvider(DEFAULT_CHAT_PROVIDER);
 
 const STORAGE_KEY = 'shot-studio:agentModel';
 
@@ -47,10 +72,15 @@ export function getAgentModel(): AgentModelId {
 
 // The full flue specifier for the current selection (e.g.
 // `cloudflare/@cf/moonshotai/kimi-k2.6`) — the value sent as `x-flue-model`.
+// Derived against the active chat provider so the header always agrees with
+// Settings › Chat provider even across a hydration race (falls back to that
+// provider's default when the stored model belongs to another group).
 export function getAgentModelSpecifier(): string {
+  const provider = getChatProvider();
   const id = useAgentModelStore.getState().model;
   const m = AGENT_MODELS.find((x) => x.id === id);
-  return (m ?? AGENT_MODELS[0]).spec;
+  const eff = m && m.group === provider ? m : AGENT_MODELS.find((x) => x.group === provider) ?? AGENT_MODELS[0];
+  return eff.spec;
 }
 
 export function hydrateAgentModel() {
@@ -60,3 +90,14 @@ export function hydrateAgentModel() {
     })
     .catch(() => {});
 }
+
+// Keep the selection inside the active provider's catalog: when Settings › Chat
+// provider changes (incl. its hydration), snap the model to that provider's
+// default unless the current one already belongs to it. setModel persists +
+// notifies, so both pickers re-render with the right selection highlighted.
+useChatProviderStore.subscribe((s) => {
+  const cur = useAgentModelStore.getState().model;
+  if (modelGroupOf(cur) !== s.active) {
+    useAgentModelStore.getState().setModel(defaultModelForProvider(s.active));
+  }
+});

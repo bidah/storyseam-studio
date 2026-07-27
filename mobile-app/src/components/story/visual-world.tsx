@@ -42,6 +42,7 @@ import { agentIsBusy, useAgent, useSendToAgent } from '@/lib/agent/provider';
 import { createVisualWorldMessage } from '@/lib/agent/messages';
 import { apiFetch, apiJson, mediaUrl, postJson, transcribeAudio, uploadFile } from '@/lib/api';
 import { createPickerRequest } from '@/lib/picker-bus';
+import { ASPECTS } from '@/lib/gen-defaults';
 import { useImageModelPickerStore } from '@/lib/image-model-picker';
 import { useInvalidate, useProjectResource } from '@/lib/queries';
 import { useManualRefresh } from '@/lib/use-manual-refresh';
@@ -55,7 +56,6 @@ import { useAudioRecording } from '@/lib/use-audio-recording';
 // canvas is deliberately NOT ported — that stays web-only.
 
 
-const ASPECTS = ['16:9', '9:16', '1:1', '4:3', '3:4', '21:9'];
 const COUNTS = [1, 2, 3, 4];
 
 // Sheet tag display meta ('' = plain image). The tag layers the project's

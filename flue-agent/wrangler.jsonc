@@ -31,6 +31,10 @@
   // Secrets (set with `wrangler secret put` in prod, `.dev.vars` locally):
   //   ANTHROPIC_API_KEY      - Anthropic key (used by the anthropic provider)
   //   ANTHROPIC_GATEWAY_URL  - CF AI Gateway anthropic endpoint (optional; enables gateway routing)
+  //   CEREBRAS_API_KEY       - Cerebras key (used by the cerebras/* models — the opt-in
+  //                            Settings › Chat provider choice). Required for cerebras turns.
+  //   CEREBRAS_GATEWAY_URL   - CF AI Gateway Cerebras endpoint (optional; enables gateway routing):
+  //                            https://gateway.ai.cloudflare.com/v1/<account_id>/<gateway_id>/cerebras
   //   FLUE_PROXY_SECRET      - shared HMAC key with the shot-studio-uploads worker
   //   SHOT_STUDIO_API        - base URL of the shot-studio-uploads worker JSON API
   //   DAYTONA_API_KEY        - Daytona sandbox creds (optional; bash falls back to in-memory sandbox)
