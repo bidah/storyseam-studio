@@ -26,8 +26,10 @@ import { useDiscoverEntry } from '@/lib/use-discover';
 
 // The hero eats most of the screen. It runs under the transparent header
 // (`contentInsetAdjustmentBehavior="never"`), so the bar's glass has a picture
-// to refract on the way in.
+// to refract on the way in. The flat trim pulls the ratio back so the text
+// block clears the fold — at the bare ratio the picture crowded the copy out.
 const HERO_RATIO = 0.62;
+const HERO_TRIM = 80;
 
 export default function DiscoverDetailScreen() {
   const { slug } = useLocalSearchParams<{ slug: string }>();
@@ -83,7 +85,7 @@ export default function DiscoverDetailScreen() {
         <Link.AppleZoomTarget>
           <Image
             source={card.image ? { uri: card.image } : undefined}
-            style={[styles.hero, { height: Math.round(height * HERO_RATIO) }]}
+            style={[styles.hero, { height: Math.round(height * HERO_RATIO) - HERO_TRIM }]}
             contentFit="cover"
             contentPosition="center"
             cachePolicy="memory-disk"
