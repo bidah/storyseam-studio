@@ -28,12 +28,14 @@ import { ArrowDown, CircleAlert } from 'lucide-react-native';
 import { router, Stack, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { File } from 'expo-file-system';
 import { agentIsBusy, useAgent, useConversations } from '@/lib/agent/provider';
+import { useSuppressAgentAccessory } from '@/lib/agent/accessory-suppress';
 import { takePendingDraft } from '@/lib/agent/pending-draft';
 import { peekTranscript, preloadTranscript } from '@/lib/agent/transcript-cache';
 import type { Chat } from '@/lib/agent/chat-store';
 import { cn } from '@/lib/utils';
 import { uploadFile } from '@/lib/api';
-import { Composer, type LocalAttachment } from '@/components/chat/composer';
+import type { LocalAttachment } from '@/components/chat/composer';
+import { useChatComposer, useComposerHeight } from '@/components/chat/composer-host';
 import { GlassSurface } from '@/components/chat/glass-surface';
 import { deriveQA, isReasoning, isThinking, workingTool } from '@/components/chat/helpers';
 import { MessageRow } from '@/components/chat/message';
@@ -174,6 +176,10 @@ export default function ConversationScreen() {
   // that turn was sent with, re-rendered into its bubble.
   const sentAttachmentsRef = useRef<SentAttachment[][]>([]);
 
+  // This screen docks the real composer, so the tab bar's agent pill stands
+  // down while it's up (one message bar at the bottom is enough).
+  useSuppressAgentAccessory();
+
   const getInitial = conv.getInitial as (id: string) => { attachments?: unknown };
 
   // Point the shared session at this route's chat. A no-op when we got here by
@@ -283,12 +289,13 @@ export default function ConversationScreen() {
     });
   }, [messages]);
 
-  // The composer floats OVER the transcript (docked absolutely, so messages
-  // slide under its glass), and rides the keyboard via a transform. The list
-  // reserves matching space at the newest (bottom) edge: the bar's own measured
-  // height, plus however far the keyboard has lifted it (keyboardHeight is
-  // negative while open, and the sticky view already absorbs the bottom inset).
-  const [composerHeight, setComposerHeight] = useState(0);
+  // The stack layout's SHARED composer (see composer-host.tsx) floats over the
+  // transcript — this screen slid in underneath it — and rides the keyboard via
+  // a transform. The list reserves matching space at the newest (bottom) edge:
+  // the bar's measured height, plus however far the keyboard has lifted it
+  // (keyboardHeight is negative while open, and the sticky view already absorbs
+  // the bottom inset).
+  const composerHeight = useComposerHeight();
   const { height: keyboardHeight } = useReanimatedKeyboardAnimation();
   const bottomInset = insets.bottom;
   // The transcript stops at the tab bar's top edge, NOT at the window bottom.
@@ -479,6 +486,16 @@ export default function ConversationScreen() {
 
   const errorMessage = live && agent?.error ? String(agent.error?.message ?? agent.error) : null;
 
+  // Point the stack's shared composer at this conversation while it's focused
+  // (a recap tap, the history sheet, a fresh push — the bar itself never moved).
+  const onStop = useCallback(() => agent?.stop?.(), [agent]);
+  useChatComposer(
+    useMemo(
+      () => ({ pending: !!qa.pendingId && !busy, busy, onStop, onSubmit }),
+      [qa.pendingId, busy, onStop, onSubmit],
+    ),
+  );
+
   return (
     <View className="flex-1 bg-background">
       {/* Everything else about this bar — the back button beside the menu, the
@@ -572,17 +589,6 @@ export default function ConversationScreen() {
           </Pressable>
         ) : null}
       </View>
-
-      {/* Docked over the content (box-none so the transcript keeps scrolling
-          everywhere the bar isn't) — that's what puts moving pixels behind the
-          composer's liquid glass. */}
-      <Composer
-        pending={!!qa.pendingId && !busy}
-        busy={busy}
-        onStop={() => agent?.stop?.()}
-        onSubmit={onSubmit}
-        onHeightChange={setComposerHeight}
-      />
     </View>
   );
 }

@@ -4,7 +4,7 @@ import { NativeTabs } from 'expo-router/unstable-native-tabs';
 import * as Haptics from 'expo-haptics';
 import { ArrowUp, CircleStop, MessageSquareText } from 'lucide-react-native';
 import { agentIsBusy, useAgent } from '@/lib/agent/provider';
-import { requestComposerFocus } from '@/lib/agent/composer-focus';
+import { useQuickComposer } from './quick-composer';
 import { useChatColors } from './theme';
 
 // The studio agent's presence in the tab bar — a UITabAccessory (iOS 26+) that
@@ -16,8 +16,9 @@ import { useChatColors } from './theme';
 //   - No keyboard avoidance. The accessory lives in the tab bar's frame and
 //     nothing (UIKit or react-native-screens) lifts it when the keyboard comes
 //     up, so a live <TextInput> here would be typed into from under the
-//     keyboard. Tapping hands off to the real <Composer> on the chat tab
-//     instead (see lib/agent/composer-focus.ts).
+//     keyboard. Tapping instead MORPHS the pill into the real <Composer> in
+//     place — the quick-composer overlay fades in over this exact spot with
+//     the keyboard, and the pill stands down (see quick-composer.tsx).
 //   - Two copies exist at once. react-native-screens renders the accessory once
 //     per placement (`regular` and `inline`) and switches between them by
 //     toggling layer opacity — so local state is NOT shared between them, and
@@ -47,16 +48,16 @@ export function AgentAccessory() {
   // bottom instead — see lib/use-tab-bar-inset.ts.
 
   // Mid-turn the pill behaves like a mini player: it takes you to the
-  // conversation that's streaming. Otherwise it's "start writing" — the chat
-  // tab's landing screen, with its composer focused.
+  // conversation that's streaming. Otherwise it morphs into the composer right
+  // here: the overlay fades in over the pill's spot, keyboard up, and only a
+  // SEND mints the chat and opens its conversation screen (quick-composer.tsx).
   const open = () => {
     Haptics.selectionAsync().catch(() => {});
     if (busy && agent?.chatId) {
       router.navigate(`/(tabs)/chat/${agent.chatId}`);
       return;
     }
-    requestComposerFocus();
-    router.navigate('/(tabs)/chat');
+    useQuickComposer.getState().show();
   };
 
   const stop = () => {

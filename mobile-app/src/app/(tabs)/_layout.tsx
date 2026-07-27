@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { ActivityIndicator, View } from 'react-native';
-import { Redirect, useSegments } from 'expo-router';
+import { Redirect } from 'expo-router';
 import { NativeTabs } from 'expo-router/unstable-native-tabs';
 import { isLiquidGlassAvailable } from 'expo-glass-effect';
 import { useSession } from '@/lib/auth-client';
@@ -8,6 +8,7 @@ import { useColors } from '@/lib/colors';
 import { AgentProvider } from '@/lib/agent/provider';
 import { useAgentAccessorySuppressed } from '@/lib/agent/accessory-suppress';
 import { AgentAccessory } from '@/components/chat/agent-accessory';
+import { QuickComposerOverlay, useQuickComposer } from '@/components/chat/quick-composer';
 import { useFalKeyStore } from '@/lib/fal-key';
 import { useAtlasKeyStore } from '@/lib/atlas-key';
 import { useProvidersStore } from '@/lib/providers';
@@ -61,35 +62,23 @@ function ProjectGate({ children }: { children: React.ReactNode }) {
 // such slot, and this is the same gate the liquid-glass surfaces already use.
 const accessorySupported = isLiquidGlassAvailable();
 
-// Which tab is showing, latched. `useSegments()` reports the CURRENT route
-// globally, so a root-level modal or sheet (/model-picker, /viewer, …) reads as
-// no tab at all; latching keeps the last real answer instead of letting the
-// accessory pop back in behind a sheet that was opened from the chat tab.
-function useFocusedTab(): string | undefined {
-  const segments = useSegments();
-  const tab = segments[0] === '(tabs)' ? (segments[1] as string | undefined) : undefined;
-  // Adjusted during render (React's "derive state from props" escape hatch)
-  // rather than in an effect: an effect would re-render every route change, and
-  // the answer has to be right on the FIRST render after one — the accessory is
-  // mounted from it.
-  const [latched, setLatched] = useState(tab);
-  if (tab && tab !== latched) setLatched(tab);
-  return tab ?? latched;
-}
-
 export default function TabsLayout() {
   const { data: session, isPending } = useSession();
   const { key: falKey, hydrated: falHydrated } = useFalKeyStore();
   const { key: atlasKey, hydrated: atlasHydrated } = useAtlasKeyStore();
   const { active, hydrated: providersHydrated } = useProvidersStore();
   const colors = useColors();
-  const focusedTab = useFocusedTab();
   // One message bar at the bottom of the screen is enough, so the accessory
-  // stands down wherever a real <Composer> is already docked: the whole Chat
-  // tab, plus any screen that says so itself (Story › Visual world, which has
-  // its own image composer). Everywhere else it IS the way to reach the agent.
+  // stands down wherever a real <Composer> is docked — a conversation screen
+  // (chat/[id]), Story › Visual world's image composer — each of which says so
+  // itself via useSuppressAgentAccessory. Everywhere else, INCLUDING the Home
+  // tab's landing screen, the pill IS the way to reach the agent: tapping it
+  // starts a chat and lands in its conversation with the caret up.
   const suppressed = useAgentAccessorySuppressed();
-  const showAccessory = accessorySupported && focusedTab !== 'chat' && !suppressed;
+  // While the pill has "morphed" into the quick composer, the accessory itself
+  // stands down — the overlay is its expanded form (see quick-composer.tsx).
+  const quickOpen = useQuickComposer((s) => s.open);
+  const showAccessory = accessorySupported && !suppressed && !quickOpen;
 
   if (isPending || !falHydrated || !atlasHydrated || !providersHydrated) {
     return (
@@ -110,6 +99,7 @@ export default function TabsLayout() {
     <ProjectGate>
       <LiveSync />
       <AgentProvider>
+        <View className="flex-1">
         <NativeTabs
           // Selected tab = the high-contrast foreground (near-white on dark,
           // near-black on light), unselected stays the native muted gray. The
@@ -139,9 +129,12 @@ export default function TabsLayout() {
             </NativeTabs.BottomAccessory>
           ) : null}
 
+          {/* Still the `chat` ROUTE (the stack of landing + conversations), but
+              presented as Home: it's the recaps-and-suggestions hub, and the
+              typing surface is the accessory pill riding the tab bar above. */}
           <NativeTabs.Trigger name="chat">
-            <NativeTabs.Trigger.Label>Chat</NativeTabs.Trigger.Label>
-            <NativeTabs.Trigger.Icon sf="bubble.left.and.text.bubble.right" />
+            <NativeTabs.Trigger.Label>Home</NativeTabs.Trigger.Label>
+            <NativeTabs.Trigger.Icon sf="house" />
           </NativeTabs.Trigger>
           <NativeTabs.Trigger name="story">
             <NativeTabs.Trigger.Label>Story</NativeTabs.Trigger.Label>
@@ -160,6 +153,11 @@ export default function TabsLayout() {
             <NativeTabs.Trigger.Icon sf="photo.on.rectangle.angled" />
           </NativeTabs.Trigger>
         </NativeTabs>
+        {/* The pill's expanded form, overlaid on the whole tab UI so it can
+            morph in from ANY tab. Must live inside <AgentProvider> (it mints
+            chats) — and after NativeTabs, so it draws on top. */}
+        <QuickComposerOverlay />
+        </View>
       </AgentProvider>
     </ProjectGate>
   );

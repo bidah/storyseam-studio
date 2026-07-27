@@ -35,9 +35,10 @@ export type LocalAttachment = {
 };
 
 // Composer: a liquid-glass bar that FLOATS over the transcript, riding the
-// keyboard (KeyboardStickyView translates it). It's docked absolutely by the
-// chat screen, which pads the list by `onHeightChange` so messages scroll
-// *underneath* — that pass-behind is the whole point of the glass: without
+// keyboard (KeyboardStickyView translates it). The chat stack's layout docks ONE
+// instance over the whole stack (see composer-host.tsx) — screens push and pop
+// underneath it — and screens pad their lists by `onHeightChange` so messages
+// scroll *underneath*. That pass-behind is the whole point of the glass: without
 // content moving under it there's nothing to refract and it reads as a flat card.
 export function Composer({
   pending,
@@ -46,6 +47,7 @@ export function Composer({
   onSubmit,
   onHeightChange,
   focusTick,
+  restOffset,
 }: {
   /** A HITL input request is awaiting an answer (typed text becomes its response). */
   pending: boolean;
@@ -56,12 +58,19 @@ export function Composer({
   /** Measured height of the docked bar, so the screen can inset the transcript. */
   onHeightChange?: (height: number) => void;
   /**
-   * Bump to open the keyboard here. A counter rather than a ref so the screen
-   * can hand off focus without holding an imperative handle — the tab bar's
-   * bottom accessory can't host a text field (see lib/agent/composer-focus.ts),
-   * so tapping it lands on the screen that owns this bar and asks for the caret.
+   * Bump to open the keyboard here. A counter rather than a ref so a host can
+   * ask for the caret without holding an imperative handle — the quick-composer
+   * overlay bumps it each time the accessory pill morphs into this bar.
    */
   focusTick?: number;
+  /**
+   * Extra lift while the keyboard is CLOSED. The chat screens dock this bar
+   * inside a tab screen, whose safe area already ends above the tab bar — but
+   * the quick-composer overlay lives outside the tab navigator, where bottom:0
+   * is the window edge, so it passes the tab bar's height here to rest where
+   * the accessory pill sat. Ignored once the keyboard is up (the bar rides it).
+   */
+  restOffset?: number;
 }) {
   const c = useChatColors();
   const insets = useSafeAreaInsets();
@@ -183,7 +192,9 @@ export function Composer({
 
   return (
     <KeyboardStickyView
-      offset={{ closed: 0, opened: insets.bottom }}
+      // Negative closed offset = lifted while the keyboard is down (positive
+      // values push the sticky view DOWN in this lib's coordinate space).
+      offset={{ closed: -(restOffset ?? 0), opened: insets.bottom }}
       style={{ position: 'absolute', left: 0, right: 0, bottom: 0 }}
     >
       <View

@@ -1,11 +1,12 @@
 import { router, Stack } from 'expo-router';
 import { MenuButton, useHeaderBase, useMenuItem } from '@/components/header-buttons';
 import { ChatHeaderRight, useChatHeaderItems } from '@/components/chat/chat-header';
+import { ChatComposerScope } from '@/components/chat/composer-host';
 
 // The Chat tab's stack. Two screens, and the split is the point:
 //
-//   index  — the LANDING screen. Recaps, starter cards, and a composer. It is
-//            the "new chat" surface; there is no transcript here.
+//   index  — the LANDING screen (the Home tab's face). Recaps and starter
+//            cards; the tab bar's agent pill is the typing surface here.
 //   [id]   — one conversation, PUSHED on top of it.
 //
 // Pushing rather than swapping content in place is what buys the native header
@@ -33,9 +34,10 @@ import { ChatHeaderRight, useChatHeaderItems } from '@/components/chat/chat-head
 
 const openHistory = () => router.push('/(tabs)/chat/history');
 
-// "New chat" from inside a conversation = pop back to the landing screen, which
-// IS the new chat (it mints one on first send, or reuses a still-blank active
-// one). Nothing to disable, and the pop runs the header morph in reverse.
+// "New chat" from inside a conversation = pop back to the landing screen — the
+// home for starting one (the accessory pill there mints it, reusing a
+// still-blank active chat). Nothing to disable, and the pop runs the header
+// morph in reverse.
 const goNewChat = () => router.dismissTo('/(tabs)/chat');
 
 export default function ChatLayout() {
@@ -45,6 +47,11 @@ export default function ChatLayout() {
   const chatItems = useChatHeaderItems({ onHistoryPress: openHistory, onNewChat: goNewChat });
 
   return (
+    // The scope hosts the ONE composer for the whole stack, overlaid on it the
+    // way the tab bar persists beneath it: pushing a conversation slides the
+    // screen in under the bar instead of bringing a second bar along. Screens
+    // register their handlers via useChatComposer (see composer-host.tsx).
+    <ChatComposerScope>
     <Stack
       screenOptions={{
         ...headerBase,
@@ -101,6 +108,22 @@ export default function ChatLayout() {
         }}
       />
 
+      {/* A Discover poster, opened. Pushed like a conversation (back chevron,
+          shared menu item), but title-less: the hero runs under the transparent
+          bar and carries the name itself. The card that opened it ZOOMS into
+          that hero — expo-router wires the transition through the href, so
+          nothing here configures it beyond being a plain pushed screen. */}
+      <Stack.Screen
+        name="discover/[slug]"
+        options={{
+          title: '',
+          headerLargeTitle: false,
+          headerBackVisible: true,
+          headerBackButtonDisplayMode: 'minimal',
+          unstable_headerLeftItems: () => [menuItem],
+        }}
+      />
+
       {/* Chat history — a full-size formSheet (single detent: opens fully,
           swipe-down closes fully). Its header + rows live in the nested
           history/_layout stack, so headerShown is off here — same pattern as
@@ -117,5 +140,6 @@ export default function ChatLayout() {
         }}
       />
     </Stack>
+    </ChatComposerScope>
   );
 }
