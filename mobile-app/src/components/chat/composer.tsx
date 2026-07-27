@@ -1,5 +1,15 @@
 import { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Animated, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Animated,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+  type LayoutChangeEvent,
+} from 'react-native';
 import { KeyboardController, KeyboardStickyView } from 'react-native-keyboard-controller';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
@@ -13,7 +23,7 @@ import { cn } from '@/lib/utils';
 import { AGENT_MODELS, useAgentModelStore } from '@/lib/agent-model';
 import { transcribeAudio } from '@/lib/api';
 import { formatDuration, useAudioRecording } from '@/lib/use-audio-recording';
-import { GlassSurface } from './glass-surface';
+import { GlassGroup, GlassSurface } from './glass-surface';
 import { useChatColors } from './theme';
 
 // Image picked from the library, not yet uploaded (upload happens on send).
@@ -24,13 +34,17 @@ export type LocalAttachment = {
   mime: string;
 };
 
-// Composer: glass surface riding the keyboard (KeyboardStickyView translates
-// it; the message list reserves matching space via its animated footer spacer).
+// Composer: a liquid-glass bar that FLOATS over the transcript, riding the
+// keyboard (KeyboardStickyView translates it). It's docked absolutely by the
+// chat screen, which pads the list by `onHeightChange` so messages scroll
+// *underneath* — that pass-behind is the whole point of the glass: without
+// content moving under it there's nothing to refract and it reads as a flat card.
 export function Composer({
   pending,
   busy,
   onStop,
   onSubmit,
+  onHeightChange,
 }: {
   /** A HITL input request is awaiting an answer (typed text becomes its response). */
   pending: boolean;
@@ -38,6 +52,8 @@ export function Composer({
   onStop: () => void;
   /** Uploads + dispatches; resolves once the turn is dispatched. Throws to keep composer content. */
   onSubmit: (text: string, atts: LocalAttachment[]) => Promise<void>;
+  /** Measured height of the docked bar, so the screen can inset the transcript. */
+  onHeightChange?: (height: number) => void;
 }) {
   const c = useChatColors();
   const insets = useSafeAreaInsets();
@@ -49,6 +65,16 @@ export function Composer({
   const rec = useAudioRecording();
   const [recording, setRecording] = useState(false);
   const [transcribing, setTranscribing] = useState(false);
+  const inputRef = useRef<TextInput>(null);
+
+  // Report the bar's height up so the transcript can reserve room under it.
+  const measure = (e: LayoutChangeEvent) => onHeightChange?.(e.nativeEvent.layout.height);
+
+  // Everything on the card that isn't a control is a target for the input: the
+  // dead space beside the model chip, the padding around the row, the gap under
+  // the placeholder. Tapping any of it opens the keyboard, so the whole bar
+  // behaves like one big text field instead of a narrow line to aim at.
+  const focusInput = () => inputRef.current?.focus();
 
   const canSend = (text.trim().length > 0 || atts.length > 0) && !busy && !sending;
   // The mic is always available (except mid-turn / mid-send) so you can dictate
@@ -148,20 +174,33 @@ export function Composer({
   };
 
   return (
-    <KeyboardStickyView offset={{ closed: 0, opened: insets.bottom }}>
-      <View style={{ paddingHorizontal: 15, paddingBottom: Math.max(insets.bottom, 8) + 5 }}>
+    <KeyboardStickyView
+      offset={{ closed: 0, opened: insets.bottom }}
+      style={{ position: 'absolute', left: 0, right: 0, bottom: 0 }}
+    >
+      <View
+        onLayout={measure}
+        style={{ paddingHorizontal: 15, paddingBottom: Math.max(insets.bottom, 8) + 5 }}
+      >
+        <GlassGroup spacing={12}>
         <GlassSurface
           glassEffectStyle="regular"
+          // Interactive glass: UIKit swells the surface under a press (and under
+          // a press-and-hold) and springs it back on release. Free, native, and
+          // it makes the whole bar feel like one physical control — which is
+          // exactly what the tap-anywhere-to-focus target promises.
+          isInteractive
           fallbackColor={c.card}
+          // No border on the glass path — see GlassSurface: a CALayer border
+          // can't follow the interactive swell, so it reads as a second, static
+          // edge inside the growing one.
+          fallbackBorderColor={c.border}
           style={{
             borderRadius: 24,
-            overflow: 'hidden',
             paddingHorizontal: 12,
             paddingTop: 10,
             paddingBottom: 8,
             gap: 8,
-            borderWidth: 1,
-            borderColor: c.border,
           }}
         >
           {recording || transcribing ? (
@@ -173,6 +212,16 @@ export function Composer({
             />
           ) : (
           <>
+          {/* Behind everything else: the card's dead space, focusing the input.
+              Rendered first so every control below paints (and hit-tests) on top
+              of it. Not an accessibility element — the TextInput already is. */}
+          <Pressable
+            accessible={false}
+            importantForAccessibility="no-hide-descendants"
+            style={StyleSheet.absoluteFill}
+            onPress={focusInput}
+          />
+
           {atts.length > 0 ? (
             <ScrollView horizontal showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="handled">
               <View className="flex-row gap-3 py-1">
@@ -199,6 +248,7 @@ export function Composer({
           ) : null}
 
           <TextInput
+            ref={inputRef}
             className="max-h-32 px-1 py-1 text-[15px] leading-5 text-foreground"
             placeholder={pending ? 'Type your answer…' : 'Message the studio agent…'}
             placeholderTextColor={c.mutedForeground}
@@ -208,7 +258,10 @@ export function Composer({
             editable={!sending}
           />
 
-          <View className="flex-row items-center">
+          {/* box-none: the row itself is transparent to touches, so the empty
+              stretch between the model chip and the send/mic group falls through
+              to the focus target underneath instead of being swallowed here. */}
+          <View className="flex-row items-center" pointerEvents="box-none">
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="Attach image"
@@ -234,7 +287,7 @@ export function Composer({
               <ChevronDown size={13} color={c.mutedForeground} />
             </Pressable>
 
-            <View className="ml-auto flex-row items-center gap-2">
+            <View className="ml-auto flex-row items-center gap-2" pointerEvents="box-none">
               {busy ? (
                 <Pressable
                   accessibilityRole="button"
@@ -301,6 +354,7 @@ export function Composer({
           </>
           )}
         </GlassSurface>
+        </GlassGroup>
       </View>
     </KeyboardStickyView>
   );

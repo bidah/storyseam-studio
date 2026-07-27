@@ -29,6 +29,10 @@ export const RESOURCES = {
   animatic: '/api/animatic',
   // The World tab's visual explorer (concept-image generations + prompt presets).
   visualWorld: '/api/visual-world',
+  // Where the episode stands: one small counts-and-flags digest of the whole
+  // pipeline. Feeds the Chat screen's suggestion cards (lib/suggestions.ts) —
+  // which is why it's a digest and not seven full-section fetches.
+  status: '/api/status',
 } as const;
 
 export type ResourceKey = keyof typeof RESOURCES;
