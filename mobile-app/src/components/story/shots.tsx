@@ -1,22 +1,14 @@
 import { useMemo, useState } from 'react';
-import {
-  Alert,
-  Modal,
-  Pressable,
-  RefreshControl,
-  ScrollView,
-  SectionList,
-  Text,
-  View,
-} from 'react-native';
+import { Alert, Pressable, RefreshControl, ScrollView, SectionList, Text, View } from 'react-native';
+import { router } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { toast } from 'sonner-native';
 import { Film, Layers, RefreshCw, X } from 'lucide-react-native';
 import { Badge } from '@/components/ui/badge';
+import { BouncyPressable } from '@/components/ui/bouncy-pressable';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Empty, ErrorNote, Loading } from '@/components/ui/empty';
-import { postJson, putJson } from '@/lib/api';
+import { postJson } from '@/lib/api';
 import { useColors } from '@/lib/colors';
 import { useInvalidate, useProjectResource } from '@/lib/queries';
 import { useManualRefresh } from '@/lib/use-manual-refresh';
@@ -24,10 +16,10 @@ import { cn } from '@/lib/utils';
 
 // Shot list sub-surface — port of src/routes/shotlist.jsx (web). Shots are
 // grouped by beat; the auto-packed <=15s multishot packs render as horizontal
-// chips that filter the list. Editing a shot goes through
-// PUT /api/shotlist/shot/:n (merge-patch; characters as an array, dur numeric).
+// chips that filter the list. Tapping a shot opens the /story/shot/:n formSheet
+// (native header + close button), which saves via PUT /api/shotlist/shot/:n.
 
-type Shot = {
+export type Shot = {
   n: number;
   id: string;
   beat: string;
@@ -42,106 +34,11 @@ type Shot = {
   prompt?: string;
 };
 type Pack = { id: string; from: string; to: string; shotIds: string[]; count: number; durationEst: number };
-type ShotlistData = { shots: Shot[]; packs: Pack[] };
+export type ShotlistData = { shots: Shot[]; packs: Pack[] };
 
 function fmtTime(total: number) {
   const s = Math.max(0, Math.round(total));
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
-}
-
-/* ------------------------------------------------------------------ *
- * Shot edit sheet                                                     *
- * ------------------------------------------------------------------ */
-
-function ShotEditModal({ shot, onClose }: { shot: Shot; onClose: () => void }) {
-  const colors = useColors();
-  const invalidate = useInvalidate();
-  const [busy, setBusy] = useState(false);
-  const [f, setF] = useState({
-    location: shot.location || '',
-    characters: (shot.characters || []).join(', '),
-    camera: shot.camera || '',
-    action: shot.action || '',
-    dialogue: shot.dialogue || '',
-    audioSync: shot.audioSync || '',
-    dur: shot.dur != null ? String(shot.dur) : '',
-    prompt: shot.prompt || '',
-  });
-  const set = (k: keyof typeof f) => (v: string) => setF((prev) => ({ ...prev, [k]: v }));
-
-  const save = async () => {
-    setBusy(true);
-    try {
-      await putJson(`/api/shotlist/shot/${shot.n}`, {
-        location: f.location,
-        characters: f.characters.split(',').map((x) => x.trim()).filter(Boolean),
-        camera: f.camera,
-        action: f.action,
-        dialogue: f.dialogue,
-        audioSync: f.audioSync,
-        dur: Number(f.dur) || 0,
-        prompt: f.prompt,
-      });
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
-      invalidate('shotlist');
-      onClose();
-    } catch (e: any) {
-      toast.error(String(e?.message || e || 'Save failed'));
-      setBusy(false);
-    }
-  };
-
-  const field = (label: string, key: keyof typeof f, opts?: { multiline?: boolean; numeric?: boolean; placeholder?: string }) => (
-    <View className="mb-3">
-      <Text className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-        {label}
-      </Text>
-      <Input
-        value={f[key]}
-        onChangeText={set(key)}
-        multiline={opts?.multiline}
-        keyboardType={opts?.numeric ? 'decimal-pad' : 'default'}
-        placeholder={opts?.placeholder}
-      />
-    </View>
-  );
-
-  return (
-    <Modal visible animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
-      <View className="flex-1 bg-background">
-        <View className="flex-row items-center justify-between border-b border-border px-4 py-3">
-          <View className="flex-row items-center gap-2">
-            <Film size={15} color={colors.primary} />
-            <Text className="text-[16px] font-semibold text-foreground">Shot {shot.id}</Text>
-            <Badge variant="muted" label={`#${shot.n}`} />
-          </View>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Close shot editor"
-            className="h-9 w-9 items-center justify-center rounded-full active:opacity-60"
-            onPress={onClose}
-          >
-            <X size={18} color={colors.mutedForeground} />
-          </Pressable>
-        </View>
-        <ScrollView
-          className="flex-1"
-          contentContainerClassName="px-4 pb-24 pt-4"
-          keyboardShouldPersistTaps="handled"
-        >
-          {field('Location', 'location')}
-          {field('Characters (comma-separated)', 'characters', { placeholder: 'Sara, Helena' })}
-          {field('Camera', 'camera')}
-          {field('Action', 'action', { multiline: true })}
-          {field('Dialogue', 'dialogue', { multiline: true })}
-          {field('Audio sync', 'audioSync', { multiline: true })}
-          {field('Duration (s)', 'dur', { numeric: true })}
-          {field('Seedance prompt', 'prompt', { multiline: true })}
-          <Button title="Save shot" loading={busy} onPress={save} />
-        </ScrollView>
-      </View>
-    </Modal>
-  );
 }
 
 /* ------------------------------------------------------------------ *
@@ -154,7 +51,6 @@ export function ShotsSurface() {
   const { refreshing, onRefresh } = useManualRefresh(refetch);
   const invalidate = useInvalidate();
   const [activePack, setActivePack] = useState<string | null>(null);
-  const [editing, setEditing] = useState<Shot | null>(null);
   const [rebuilding, setRebuilding] = useState(false);
 
   const shots = data?.shots || [];
@@ -315,14 +211,10 @@ export function ShotsSurface() {
           </View>
         )}
         renderItem={({ item: s }) => (
-          <Pressable
-            accessibilityRole="button"
+          <BouncyPressable
             accessibilityLabel={`Edit shot ${s.id}`}
-            className="mb-2 rounded-xl border border-border bg-card p-3 active:bg-secondary"
-            onPress={() => {
-              Haptics.selectionAsync().catch(() => {});
-              setEditing(s);
-            }}
+            className="mb-2 rounded-xl border border-border bg-card p-3"
+            onPress={() => router.push(`/story/shot/${s.n}`)}
           >
             <View className="flex-row items-center gap-2">
               <Badge variant="muted" label={s.id} />
@@ -342,10 +234,9 @@ export function ShotsSurface() {
                 {s.dialogue}
               </Text>
             ) : null}
-          </Pressable>
+          </BouncyPressable>
         )}
       />
-      {editing ? <ShotEditModal key={editing.n} shot={editing} onClose={() => setEditing(null)} /> : null}
     </View>
   );
 }

@@ -11,6 +11,7 @@ import {
 } from 'react';
 import { AppState } from 'react-native';
 import { router } from 'expo-router';
+import * as Haptics from 'expo-haptics';
 import { useQueryClient } from '@tanstack/react-query';
 import { FlueProvider, useFlueAgent } from '@flue/react';
 import { createFlueClient } from '@flue/sdk';
@@ -284,13 +285,27 @@ function AgentSessionRunner({
   // on the status settling out of a busy phase (submitted/streaming → idle/error)
   // — the flue equivalent of "the turn just ended". This replaces eve's onFinish
   // as the moment to refetch project data touched by the turn.
+  //
+  // It is also the ONLY correct moment for the "reply landed" haptic: the tap
+  // must fire when the turn is DONE, not when the first token arrives, so it
+  // hangs off this same busy → settled edge (edge-triggered ⇒ exactly one tap
+  // per turn, however many deltas streamed). Light impact for a normal finish,
+  // the Error notification pattern when the turn settled by failing. Living in
+  // the provider rather than the chat screen means the tap still fires when the
+  // user has navigated to another tab while the agent worked.
   const prevStatusRef = useRef(flueAgent.status);
   useEffect(() => {
     const prev = prevStatusRef.current;
     prevStatusRef.current = flueAgent.status;
     const wasBusy = prev === 'submitted' || prev === 'streaming';
     const settled = flueAgent.status === 'idle' || flueAgent.status === 'error';
-    if (wasBusy && settled) invalidateProject();
+    if (!wasBusy || !settled) return;
+    invalidateProject();
+    if (flueAgent.status === 'error') {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {});
+    } else {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+    }
   }, [flueAgent.status, invalidateProject]);
 
   // --- Agent-stream resilience (see the block above the component) ---

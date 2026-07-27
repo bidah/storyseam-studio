@@ -86,7 +86,12 @@ export function Composer({
 
   const submit = async () => {
     if (!canSend) return;
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+    // Two taps bracket a turn: this small one on send, and a matching Light
+    // impact when the agent's reply FINISHES (see lib/agent/provider.tsx). Kept
+    // at Light so the pair reads as one soft "sent … answered" rhythm rather
+    // than a thump on the way out; it fires on press so the button still feels
+    // instant while onSubmit uploads any attachments.
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
     setSending(true);
     try {
       await onSubmit(text, atts);

@@ -23,6 +23,18 @@ export default function StoryLayout() {
           headerShown: false,
         }}
       />
+      {/* Shot editor — same native formSheet treatment as Drafts; its title +
+          close button live in the nested shot/_layout stack. */}
+      <Stack.Screen
+        name="shot"
+        options={{
+          presentation: 'formSheet',
+          sheetAllowedDetents: [1],
+          sheetGrabberVisible: true,
+          sheetCornerRadius: 24,
+          headerShown: false,
+        }}
+      />
     </Stack>
   );
 }
