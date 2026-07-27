@@ -74,7 +74,7 @@
     "web": "expo start --web",
     "lint": "expo lint",
     "update:dev": "eas update --channel development --platform ios",
-    "update:preview": "eas update --channel preview --platform ios --environment preview",
+    "update:preview": "eas update --channel preview --platform ios --environment preview --message \"$(git log -1 --pretty=%s)\"",
     "update:production": "eas update --channel production --platform ios"
   },
   "private": true
