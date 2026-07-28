@@ -9,6 +9,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
+import { SquarePen } from 'lucide-react-native';
 import { useConversations, useIsFreshChat } from '@/lib/agent/provider';
 import { openChatModal } from '@/lib/agent/chat-route';
 import { setPendingDraft } from '@/lib/agent/pending-draft';
@@ -23,8 +24,10 @@ import {
 } from '@/lib/suggestions';
 import { BouncyPressable } from '@/components/ui/bouncy-pressable';
 import { DiscoverSection } from '@/components/chat/discover';
+import { ProBanner } from '@/components/chat/pro-banner';
 import type { LocalAttachment } from '@/components/chat/composer';
 import { useChatComposer } from '@/components/chat/composer-host';
+import { useChatColors } from '@/components/chat/theme';
 import { relTime } from '@/components/chat/helpers';
 
 // The Home tab's LANDING screen — the hub for starting a chat, and a LAUNCHER
@@ -52,8 +55,8 @@ import { relTime } from '@/components/chat/helpers';
 // evergreen pair when the digest can't be read at all.
 
 // The compact iOS bar under the status bar. The section headlines are OURS —
-// in-content, wearing the large-title font — not a native large title, so the
-// bar contributes only its own 44pt to the chrome the scroll view runs beneath.
+// in-content — not a native large title, so the bar contributes only its own
+// 44pt to the chrome the scroll view runs beneath.
 const HEADER_BAR = 44;
 
 // Card geometry, up here because the snap interval is derived from it: a row
@@ -240,14 +243,11 @@ function PressCard({
 function Section({
   title,
   cardWidth,
-  small,
   children,
 }: {
   title: string;
   /** Card width for this row — snap offsets are that plus the row's gap apart. */
   cardWidth: number;
-  /** Half-size headline — every section below the page-title one wears this. */
-  small?: boolean;
   children: React.ReactNode;
 }) {
   const count = Children.count(children);
@@ -260,15 +260,10 @@ function Section({
     // 10pt of its own top padding (shadow-bleed room — see styles.row), so 2pt
     // here lands the headline the same 12pt from the cards as Discover's.
     <View className="gap-0.5">
-      {/* Only the FIRST section's headline wears UIKit's large-title metrics
-          (34pt bold) — the screen has no headline of its own, so the project
-          name up top IS the page's big title. The sections under it step down
-          to half that size so they read as subheads, not rival titles. */}
-      <Text
-        accessibilityRole="header"
-        className="px-5 text-foreground"
-        style={small ? styles.smallTitle : styles.bigTitle}
-      >
+      {/* One headline size for every section, the project name at the top
+          included: the page is a stack of peer decks, and a 34pt large title on
+          the first one made it read as a page header the rest hung off. */}
+      <Text accessibilityRole="header" className="px-5 text-foreground" style={styles.sectionTitle}>
         {title}
       </Text>
       <ScrollView
@@ -339,6 +334,7 @@ function useEnterFade() {
 
 export default function ChatHomeScreen() {
   const conv = useConversations();
+  const colors = useChatColors();
   const insets = useSafeAreaInsets();
   const enter = useEnterFade();
   const [viewport, setViewport] = useState(0);
@@ -353,8 +349,9 @@ export default function ChatHomeScreen() {
   const reusable = useIsFreshChat();
 
   // The recap headline is the active project's name — the page title, really
-  // (see Section). "Last chats" only covers the beat before the account's
-  // project list has loaded.
+  // (see Section), which is why the section renders even with nothing to recap.
+  // "Last chats" only covers the beat before the account's project list has
+  // loaded.
   const projectId = useProjectStore((s) => s.projectId);
   const { data: projectsData } = useProjects();
   const projectName = projectsData?.projects.find((p) => p.id === projectId)?.name;
@@ -402,6 +399,16 @@ export default function ChatHomeScreen() {
     [conv, reusable],
   );
 
+  // The empty-state card: no draft to park, just the chat itself with the
+  // keyboard up — the same hand-off the tab bar's pill makes when it's tapped on
+  // its input, and the same blank-chat reuse, so tapping it twice can't leave two
+  // untouched "New chat" rows behind.
+  const startChat = useCallback(() => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+    const id: string = reusable && conv.activeId ? conv.activeId : conv.newChat();
+    openChatModal(id, { focus: true });
+  }, [conv, reusable]);
+
   const onSuggest = useCallback(
     (prompt: string) => {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
@@ -435,9 +442,18 @@ export default function ChatHomeScreen() {
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="interactive"
       >
-        {recaps.length ? (
-          <Section title={projectName ? titleCase(projectName) : 'Last chats'} cardWidth={RECAP_W}>
-            {recaps.map((r) => (
+        {/* The upgrade pitch, above the project's own sections — the app
+            talking about itself, so it's the one card that brings its own
+            colour instead of taking the theme's. */}
+        <ProBanner />
+
+        {/* ALWAYS rendered, empty or not: this section's headline is the project
+            name, which is also the page's title, so hiding the section on a
+            project with no chats yet left the screen with no title at all. With
+            nothing to recap the row carries a single Start chat card instead. */}
+        <Section title={projectName ? titleCase(projectName) : 'Last chats'} cardWidth={RECAP_W}>
+          {recaps.length ? (
+            recaps.map((r) => (
               <PressCard
                 key={r.id}
                 label={r.title}
@@ -455,11 +471,29 @@ export default function ChatHomeScreen() {
                   {r.title}
                 </Text>
               </PressCard>
-            ))}
-          </Section>
-        ) : null}
+            ))
+          ) : (
+            // The empty state is a CARD, not a line of grey text, so the row keeps
+            // its shape and the one thing to do here is the thing you tap. It opens
+            // the same chat the pill would (reusing a still-blank active chat) with
+            // the keyboard up, since an empty deck means there's nothing to read
+            // and everything to type.
+            <PressCard
+              label="Start chat"
+              seed={meshSeed('start-chat')}
+              style={styles.recapCard}
+              bandSide="none"
+              onPress={startChat}
+            >
+              <SquarePen size={18} color={colors.mutedForeground} />
+              <Text className="mt-1 text-foreground" style={styles.recapTitle} numberOfLines={2}>
+                Start chat
+              </Text>
+            </PressCard>
+          )}
+        </Section>
 
-        <Section title="Continue building your story" cardWidth={SUGGESTION_W} small>
+        <Section title="Continue building your story" cardWidth={SUGGESTION_W}>
           {isLoading ? (
             <SuggestionSkeletons />
           ) : (
@@ -503,11 +537,9 @@ export default function ChatHomeScreen() {
 
 const styles = StyleSheet.create({
   list: { flex: 1 },
-  // UIKit's large-title text style: SF Pro at 34pt bold, 41pt line height.
-  bigTitle: { fontSize: 34, fontWeight: '700', lineHeight: 41 },
-  // Half the large title, for every section headline below the first — kept in
-  // lockstep with headline in components/chat/discover.tsx.
-  smallTitle: { fontSize: 20, fontWeight: '700', lineHeight: 25 },
+  // Every section headline on the screen — kept in lockstep with headline in
+  // components/chat/discover.tsx so the four decks read as one list.
+  sectionTitle: { fontSize: 20, fontWeight: '700', lineHeight: 25 },
   content: { paddingTop: 8, paddingBottom: 24, gap: 20 },
   // Only until the viewport is measured (one frame) — then a minHeight takes over.
   grow: { flexGrow: 1 },
