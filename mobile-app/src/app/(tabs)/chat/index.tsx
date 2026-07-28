@@ -442,6 +442,22 @@ export default function ChatHomeScreen() {
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="interactive"
       >
+        {/* The page's own headline, back above everything (it was dropped in
+            553e4d4, when the section headlines were asked to carry the screen).
+            The bar above is title-less and this Text wears UIKit's exact
+            large-title metrics, so it reads as the native headline — but it is
+            content, so it scrolls away under the glass with the rest of the
+            page. It sits ABOVE the Pro banner because it names the screen; the
+            banner is an insert on it, not its title. */}
+        <View className="gap-1 px-5 pb-1">
+          <Text accessibilityRole="header" className="text-foreground" style={styles.bigTitle}>
+            Home
+          </Text>
+          <Text className="text-base text-muted-foreground">
+            Ask me anything to create or talk about your story
+          </Text>
+        </View>
+
         {/* The upgrade pitch, above the project's own sections — the app
             talking about itself, so it's the one card that brings its own
             colour instead of taking the theme's. */}
@@ -537,6 +553,10 @@ export default function ChatHomeScreen() {
 
 const styles = StyleSheet.create({
   list: { flex: 1 },
+  // UIKit's large-title text style: SF Pro at 34pt bold, 41pt line height. The
+  // PAGE's headline — the only 34pt type on the screen, which is what keeps the
+  // section headlines below reading as subheads rather than rival titles.
+  bigTitle: { fontSize: 34, fontWeight: '700', lineHeight: 41 },
   // Every section headline on the screen — kept in lockstep with headline in
   // components/chat/discover.tsx so the four decks read as one list.
   sectionTitle: { fontSize: 20, fontWeight: '700', lineHeight: 25 },
