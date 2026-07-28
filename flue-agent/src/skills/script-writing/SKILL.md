@@ -55,7 +55,7 @@ it's accepted. There are two ways it gets accepted, and you drive both:
 
 1. **You apply it after confirming.** After proposing, tell the user what you
    changed and **ask whether they want it applied** (a plain question, or
-   `ask_question` for a clear yes/no). If they say yes ("ok apply", "do it",
+   `render_ui` with two `Action`s for a clear yes/no). If they say yes ("ok apply", "do it",
    "go ahead"), call **`apply_script_proposal`** to commit it for them — then
    confirm it's live. Don't tell the user you *can't* apply it; you can.
 2. **They accept it themselves** on the Script tab — in bulk or cherry-picking

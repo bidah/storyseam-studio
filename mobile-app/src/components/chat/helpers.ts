@@ -73,7 +73,11 @@ export function userText(message: AgentMessage): string {
     .join('');
 }
 
-// Resolve the answer state of every `ask_question` card. flue has no server-side
+// The tools whose parts render as an answerable card. `render_ui` is the live
+// one; `ask_question` only ever turns up replaying an older conversation.
+export const QUESTION_TOOLS = new Set(['render_ui', 'ask_question']);
+
+// Resolve the answer state of every question card. flue has no server-side
 // `inputResponse`, so "answered" is derived from the transcript: a question is
 // answered by the first user message after it (its text is the answer); the one
 // unanswered question — the last with no user message following — is `pendingId`
@@ -85,7 +89,8 @@ export function deriveQA(messages: AgentMessage[]): QuestionState {
     const m = messages[i];
     if (m.role !== 'assistant') continue;
     for (const p of m.parts || []) {
-      if (p.type !== 'dynamic-tool' || p.toolName !== 'ask_question' || !p.toolCallId) continue;
+      if (p.type !== 'dynamic-tool' || !QUESTION_TOOLS.has(p.toolName ?? '') || !p.toolCallId)
+        continue;
       let ans: string | null = null;
       for (let j = i + 1; j < messages.length; j++) {
         if (messages[j].role === 'user') {

@@ -1,6 +1,15 @@
-// Copy the empty-chat suggestion deck from the web app (../src/lib/suggestions.ts)
-// into this app's src/lib/, so both surfaces offer the same cards with the same
-// composed prompts. Run after editing the web file:
+// Copy the suggestion deck from the web app (../src/lib/suggestions.ts) to the
+// two places that also need it, so every surface offers the same cards with the
+// same composed prompts:
+//
+//   · this app's src/lib/          — the mobile Chat tab's cards
+//   · ../worker/src/lib/           — the DETERMINISTIC FLOOR under
+//     POST /api/next-questions, the follow-ups shown after a finished turn.
+//     That route generates its four suggestions with a small model, and falls
+//     back to this deck whenever generation fails or comes back short — so the
+//     worker needs the same pure function, not a second implementation of it.
+//
+// Run after editing the web file:
 //
 //   npm --prefix mobile-app run sync:suggestions
 //
@@ -21,7 +30,10 @@ import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const SRC = path.resolve(__dirname, "..", "..", "src", "lib", "suggestions.ts");
-const DST = path.resolve(__dirname, "..", "src", "lib", "suggestions.ts");
+const DSTS = [
+  ["mobile", path.resolve(__dirname, "..", "src", "lib", "suggestions.ts")],
+  ["worker", path.resolve(__dirname, "..", "..", "worker", "src", "lib", "suggestions.ts")],
+];
 
 const BANNER =
   "// VENDORED from shot-studio/src/lib/suggestions.ts — DO NOT EDIT HERE.\n" +
@@ -36,10 +48,16 @@ if (!fs.existsSync(SRC)) {
 
 const original = fs.readFileSync(SRC, "utf8");
 const next = BANNER + "\n" + original;
-const current = fs.existsSync(DST) ? fs.readFileSync(DST, "utf8") : null;
-if (current === next) {
-  console.log("[sync] suggestions.ts already up to date.");
-  process.exit(0);
+let wrote = 0;
+for (const [name, dst] of DSTS) {
+  const current = fs.existsSync(dst) ? fs.readFileSync(dst, "utf8") : null;
+  if (current === next) {
+    console.log(`[sync] ${name}: already up to date.`);
+    continue;
+  }
+  fs.mkdirSync(path.dirname(dst), { recursive: true });
+  fs.writeFileSync(dst, next);
+  console.log(`[sync] ${name}: suggestions.ts → ${path.relative(path.resolve(__dirname, "..", ".."), dst)}`);
+  wrote += 1;
 }
-fs.writeFileSync(DST, next);
-console.log("[sync] suggestions.ts → src/lib/suggestions.ts");
+if (!wrote) process.exit(0);

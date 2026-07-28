@@ -6,6 +6,8 @@ import * as Haptics from 'expo-haptics';
 import * as WebBrowser from 'expo-web-browser';
 import { Check, ChevronRight, ExternalLink, FileText, Globe, Wrench } from 'lucide-react-native';
 import { cn } from '@/lib/utils';
+import { StudioUI } from '@/genui/StudioUI';
+import { detectOptions } from '@/genui/detect-options';
 import { ChatMarkdown } from './markdown';
 import { getChatColors, useChatColors } from './theme';
 import type {
@@ -15,17 +17,29 @@ import type {
   QuestionState,
   SentAttachment,
 } from './types';
-import { hostOf, parseSourcesOutput, SOURCE_TOOLS, userText, type Source } from './helpers';
+import {
+  hostOf,
+  parseSourcesOutput,
+  QUESTION_TOOLS,
+  SOURCE_TOOLS,
+  userText,
+  type Source,
+} from './helpers';
 
 // Renderers for each flue part type — a native port of the web AgentChat.jsx
 // message walk: every part of every message renders in order, by `type`
 // (`text`, `reasoning`, `dynamic-tool`, `file`).
 //
-// Interactive questions: flue has no BLOCKING HITL, so the `ask_question` tool
-// is a non-blocking recreation — its `dynamic-tool` part renders as a
-// `QuestionCard` with clickable options. There is no server-side `inputResponse`,
-// so the answer is just the next user message: tapping an option sends its label
-// (a typed reply works the same way), and `deriveQA` resolves pending/answered.
+// Interactive questions: flue has no BLOCKING HITL, so the `render_ui` tool is a
+// non-blocking recreation — its `dynamic-tool` part carries an openui-lang
+// program that renders through the shared component contract (src/genui/) as an
+// interactive card: option rows, thumbnail grids, recommendations,
+// confirmations. There is no server-side `inputResponse`, so the answer is just
+// the next user message: tapping a component sends its `send` string (a typed
+// reply works the same way), and `deriveQA` resolves pending/answered.
+//
+// `ask_question` was the predecessor and still appears in older transcripts, so
+// `QuestionCard` stays for those — new turns only ever produce `render_ui`.
 
 // Alpha-suffixed hex helpers for the amber question card (amber is a brand
 // constant across schemes; RN accepts 8-digit #RRGGBBAA).
@@ -316,18 +330,45 @@ function PartView({
   qa,
   canRespond,
   onRespond,
+  offerOptions,
 }: {
   part: MessagePart;
   qa?: QuestionState;
   canRespond: boolean;
   onRespond?: (label: string) => void;
+  offerOptions: boolean;
 }) {
   switch (part.type) {
-    case 'text':
-      return part.text ? <ChatMarkdown text={part.text} streaming={part.state === 'streaming'} /> : null;
+    case 'text': {
+      if (!part.text) return null;
+      const streaming = part.state === 'streaming';
+      // Models keep writing choices as "A) … B) …" prose however firmly the
+      // generative-ui skill says to draw them. `offerOptions` is set only on the
+      // last assistant message of a settled turn that produced no card of its
+      // own, so a rescued list is answerable exactly when a real one would be —
+      // and older messages keep their plain markdown.
+      const rescued = !streaming && offerOptions ? detectOptions(part.text) : null;
+      if (!rescued) return <ChatMarkdown text={part.text} streaming={streaming} />;
+      return (
+        <>
+          {rescued.body ? <ChatMarkdown text={rescued.body} /> : null}
+          <StudioUI lang={rescued.program} answerable={canRespond} onRespond={onRespond} />
+        </>
+      );
+    }
     case 'reasoning':
       return <ReasoningRow part={part} />;
     case 'dynamic-tool': {
+      if (part.toolName === 'render_ui') {
+        const pending = qa?.pendingId === part.toolCallId;
+        return (
+          <StudioUI
+            lang={(part.input as { lang?: string } | undefined)?.lang}
+            answerable={pending && canRespond}
+            onRespond={onRespond}
+          />
+        );
+      }
       if (part.toolName === 'ask_question') {
         return (
           <QuestionCard
@@ -382,12 +423,14 @@ export const MessageRow = memo(function MessageRow({
   qa,
   canRespond,
   onRespond,
+  isLast = false,
 }: {
   message: AgentMessage;
   atts: SentAttachment[] | null;
   qa?: QuestionState;
   canRespond: boolean;
   onRespond?: (label: string) => void;
+  isLast?: boolean;
 }) {
   if (message.role === 'user') {
     const text = userText(message);
@@ -404,6 +447,12 @@ export const MessageRow = memo(function MessageRow({
       </View>
     );
   }
+  // A prose choice list is only worth rescuing on the newest assistant turn,
+  // and only when the agent didn't already draw a card — otherwise the message
+  // would carry two competing sets of buttons.
+  const drewCard = (message.parts || []).some(
+    (p) => p.type === 'dynamic-tool' && QUESTION_TOOLS.has(p.toolName ?? ''),
+  );
   return (
     <View className="gap-2 px-4">
       {(message.parts || []).map((part, i) => (
@@ -413,6 +462,7 @@ export const MessageRow = memo(function MessageRow({
           qa={qa}
           canRespond={canRespond}
           onRespond={onRespond}
+          offerOptions={isLast && !drewCard}
         />
       ))}
     </View>

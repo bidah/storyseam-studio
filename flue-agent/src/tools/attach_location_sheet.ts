@@ -7,7 +7,7 @@ export const attachLocationSheet = (api: Api) =>
   defineTool({
     name: "attach_location_sheet",
     description:
-      "Link a project library image to a World location as its location-sheet reference (the reference art shown on the World tab, and auto-supplied to shots set at that location). Pass the location's `id` (from get_world) and the image's `rel` path (from list_library) — the image must already be in the asset library. For a Visual-tab generation, first promote it with save_generation_to_library (which returns the `rel`); never try to move image bytes yourself. The full url/thumb/name are resolved from the library for you. Pass `clear: true` (no rel) to unlink the current sheet. When more than one image could fit, DON'T guess — show the candidate thumbnails as markdown (`![](thumb-url)`) and ask_question which one before calling this.",
+      "Link a project library image to a World location as its location-sheet reference (the reference art shown on the World tab, and auto-supplied to shots set at that location). Pass the location's `id` (from get_world) and the image's `rel` path (from list_library) — the image must already be in the asset library. For a Visual-tab generation, first promote it with save_generation_to_library (which returns the `rel`); never try to move image bytes yourself. The full url/thumb/name are resolved from the library for you. Pass `clear: true` (no rel) to unlink the current sheet. When more than one image could fit, DON'T guess — draw the candidate thumbnails with render_ui (a MediaGrid) and let the user pick before calling this.",
     input: v.object({
       locationId: d(
         v.pipe(v.string(), v.minLength(1)),

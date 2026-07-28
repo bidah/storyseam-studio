@@ -46,6 +46,7 @@ import { registerTranscribe } from "./routes/transcribe.js";
 import { registerExtract } from "./routes/extract.js";
 import { registerChatTitle } from "./routes/chat-title.js";
 import { registerStatus } from "./routes/status.js";
+import { registerNextQuestions } from "./routes/next-questions.js";
 import { createAuth } from "./auth.js";
 import { broadcast } from "./lib/broadcast.js";
 import { normalizeProjectId } from "./lib/docs.js";
@@ -507,6 +508,7 @@ registerTranscribe(app);
 registerExtract(app);
 registerChatTitle(app);
 registerStatus(app);
+registerNextQuestions(app);
 
 // --- flue chat agent proxy -------------------------------------------------
 // The chat agent (flue) runs as its own Cloudflare Worker (shot-studio-flue).

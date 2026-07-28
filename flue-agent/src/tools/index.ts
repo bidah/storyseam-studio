@@ -4,7 +4,7 @@ import type { ToolDefinition } from "@flue/runtime";
 import type { Api } from "../lib/api.js";
 
 // Interaction (no api — asks the user via an interactive chat card)
-import { askQuestion } from "./ask_question.js";
+import { renderUi } from "./render_ui.js";
 // Pipeline status (the whole-project digest)
 import { getStatus } from "./get_status.js";
 // World / Script / Drafts / Shotlist / Episode
@@ -78,7 +78,7 @@ import { readDocument } from "./read_document.js";
 export function createTools(api: Api): ToolDefinition[] {
   return [
     // Interaction
-    askQuestion(),
+    renderUi(),
     // Chat attachments (a truncated document block → read the rest)
     readDocument(api),
     // Where the episode stands (counts + flags for the whole pipeline)

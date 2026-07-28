@@ -74,7 +74,7 @@ Episode tab from those packs. No media is generated in this skill.
      than one beat) is very likely a real character; a **one-off** (a single line) is
      usually a background bit-part. Don't hard-code the line count as the rule — a single
      pivotal line can still be a real character, so use judgement and let the user decide.
-   - `ask_question`: list the likely-real ones and ask which to add to the World. For each
+   - `render_ui`: an `OptionList` of the likely-real ones, asking which to add to the World. For each
      the user confirms, call `add_world_character` with the **exact** shot-list name and a
      one-line `role` that cites where they appear (e.g. "Shopkeeper Miles buys the burner
      from — shots 44–46"). Leave want/need/arc empty for the user to flesh out later.

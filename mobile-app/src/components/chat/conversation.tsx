@@ -38,6 +38,8 @@ import type { LocalAttachment } from '@/components/chat/composer';
 import { useChatComposer, useComposerHeight } from '@/components/chat/composer-host';
 import { GlassSurface } from '@/components/chat/glass-surface';
 import { deriveQA, isReasoning, isThinking, workingTool } from '@/components/chat/helpers';
+import { NextQuestions } from '@/genui/NextQuestions';
+import { shouldOfferNext } from '@/genui/next-questions';
 import { MessageRow } from '@/components/chat/message';
 import { useChatColors } from '@/components/chat/theme';
 import type { AgentMessage, SentAttachment } from '@/components/chat/types';
@@ -92,6 +94,8 @@ type Row = {
   key: string;
   message: AgentMessage;
   atts: SentAttachment[] | null;
+  /** Newest message in the transcript — the only one allowed to offer options. */
+  isLast: boolean;
 };
 
 // Stable empty transcript, so "no cover" keeps one identity across renders.
@@ -308,7 +312,7 @@ export function Conversation({
         ordinal += 1;
         atts = sentAttachmentsRef.current[ordinal] ?? null;
       }
-      return { key: m.id ?? `msg-${i}`, message: m, atts };
+      return { key: m.id ?? `msg-${i}`, message: m, atts, isLast: i === messages.length - 1 };
     });
   }, [messages]);
 
@@ -502,9 +506,12 @@ export function Conversation({
         qa={qa}
         canRespond={canRespond}
         onRespond={onRespond}
+        // Only the settled newest turn may rescue a prose choice list — mid-turn
+        // the text is still arriving, and older turns keep their markdown.
+        isLast={item.isLast && !busy}
       />
     ),
-    [qa, canRespond, onRespond],
+    [qa, canRespond, onRespond, busy],
   );
 
   const errorMessage = live && agent?.error ? String(agent.error?.message ?? agent.error) : null;
@@ -559,6 +566,21 @@ export function Conversation({
             // Natural order → the newest edge is the FOOTER (visual bottom).
             ListFooterComponent={
               <>
+                {/* "Where to go next" — only when the agent finished and left
+                    nothing open. A pending question card already owns the next
+                    move. Sits at the newest edge, above the error row. */}
+                {shouldOfferNext({
+                  hasMessages: messages.length > 0,
+                  lastIsAssistant: messages[messages.length - 1]?.role === 'assistant',
+                  busy,
+                  pendingQuestion: !!qa.pendingId,
+                }) ? (
+                  <NextQuestions
+                    messages={messages}
+                    canRespond={canRespond}
+                    onRespond={onRespond}
+                  />
+                ) : null}
                 {thinking ? (
                   <ShimmerRow label="Thinking…" />
                 ) : working ? (

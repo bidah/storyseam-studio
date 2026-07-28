@@ -1,0 +1,770 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "Card": {
+      "$ref": "#/$defs/Card"
+    },
+    "Section": {
+      "$ref": "#/$defs/Section"
+    },
+    "Text": {
+      "$ref": "#/$defs/Text"
+    },
+    "Callout": {
+      "$ref": "#/$defs/Callout"
+    },
+    "Option": {
+      "$ref": "#/$defs/Option"
+    },
+    "OptionList": {
+      "$ref": "#/$defs/OptionList"
+    },
+    "MediaItem": {
+      "$ref": "#/$defs/MediaItem"
+    },
+    "MediaGrid": {
+      "$ref": "#/$defs/MediaGrid"
+    },
+    "Recommendation": {
+      "$ref": "#/$defs/Recommendation"
+    },
+    "Column": {
+      "$ref": "#/$defs/Column"
+    },
+    "Compare": {
+      "$ref": "#/$defs/Compare"
+    },
+    "KeyValue": {
+      "$ref": "#/$defs/KeyValue"
+    },
+    "Steps": {
+      "$ref": "#/$defs/Steps"
+    },
+    "Chips": {
+      "$ref": "#/$defs/Chips"
+    },
+    "Action": {
+      "$ref": "#/$defs/Action"
+    },
+    "Actions": {
+      "$ref": "#/$defs/Actions"
+    }
+  },
+  "required": [
+    "Card",
+    "Section",
+    "Text",
+    "Callout",
+    "Option",
+    "OptionList",
+    "MediaItem",
+    "MediaGrid",
+    "Recommendation",
+    "Column",
+    "Compare",
+    "KeyValue",
+    "Steps",
+    "Chips",
+    "Action",
+    "Actions"
+  ],
+  "additionalProperties": false,
+  "$defs": {
+    "Card": {
+      "type": "object",
+      "properties": {
+        "children": {
+          "type": "array",
+          "items": {
+            "anyOf": [
+              {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/Text"
+                  },
+                  {
+                    "$ref": "#/$defs/Callout"
+                  },
+                  {
+                    "$ref": "#/$defs/OptionList"
+                  },
+                  {
+                    "$ref": "#/$defs/MediaGrid"
+                  },
+                  {
+                    "$ref": "#/$defs/Recommendation"
+                  },
+                  {
+                    "$ref": "#/$defs/Compare"
+                  },
+                  {
+                    "$ref": "#/$defs/KeyValue"
+                  },
+                  {
+                    "$ref": "#/$defs/Steps"
+                  },
+                  {
+                    "$ref": "#/$defs/Chips"
+                  },
+                  {
+                    "$ref": "#/$defs/Actions"
+                  }
+                ]
+              },
+              {
+                "$ref": "#/$defs/Section"
+              }
+            ]
+          }
+        }
+      },
+      "required": [
+        "children"
+      ],
+      "additionalProperties": false,
+      "description": "Root of every rendered UI — children stack vertically inside one card in the chat. Keep it to two or three blocks: this sits in a narrow chat rail, under a message that has already done the explaining."
+    },
+    "Text": {
+      "type": "object",
+      "properties": {
+        "text": {
+          "type": "string"
+        },
+        "style": {
+          "type": "string",
+          "enum": [
+            "body",
+            "muted",
+            "strong",
+            "title"
+          ]
+        }
+      },
+      "required": [
+        "text"
+      ],
+      "additionalProperties": false,
+      "description": "A line or paragraph of prose. style: 'title' a small section heading · 'strong' emphasis · 'muted' a quiet aside · 'body' (default). Use ONE short Text to frame a decision — the chat message above already carries your explanation, so do not repeat it here."
+    },
+    "Callout": {
+      "type": "object",
+      "properties": {
+        "variant": {
+          "type": "string",
+          "enum": [
+            "info",
+            "success",
+            "warning",
+            "danger"
+          ]
+        },
+        "title": {
+          "type": "string"
+        },
+        "description": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "variant",
+        "title"
+      ],
+      "additionalProperties": false,
+      "description": "A tinted banner for something the user must notice before choosing: a cost, an overwrite warning, a blocked prerequisite, a render that will take minutes. Use 'danger' only for destructive or irreversible consequences."
+    },
+    "OptionList": {
+      "type": "object",
+      "properties": {
+        "options": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Option"
+          }
+        },
+        "header": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "footnote": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "select": {
+          "type": "string",
+          "enum": [
+            "one",
+            "many"
+          ]
+        },
+        "send": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "confirm": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "options"
+      ],
+      "additionalProperties": false,
+      "description": "THE default way to ask the author to choose — an inset card of Option rows separated by hairlines. Use it for 2–6 choices that need more than a bare label: models, durations, takes, drafts, characters to add, next steps. header: a small uppercase label above the card. footnote: one quiet line beneath it (e.g. 'Or just tell me what you want instead.'). select: 'one' (default) — a tap picks that item and sends immediately. 'many' — taps toggle, and nothing is sent until the confirm button — use 'many' whenever the author may legitimately want SEVERAL of the listed things (which speakers to add to the World, which takes to keep). send: REQUIRED when select is 'many': the lead of the composed message, to which the picked items' `send` values are appended after a colon — e.g. send \"Add these characters to the World\" + picks \"Miles\", \"Vera\" posts \"Add these characters to the World: Miles, Vera\". Ignored when select is 'one'. confirm: the confirm button's label when select is 'many' (default \"Continue\"). Ignored when select is 'one'."
+    },
+    "Option": {
+      "type": "object",
+      "properties": {
+        "title": {
+          "type": "string"
+        },
+        "send": {
+          "type": "string"
+        },
+        "subtitle": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "meta": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "image": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "badge": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "selected": {
+          "type": "boolean"
+        },
+        "tone": {
+          "type": "string",
+          "enum": [
+            "normal",
+            "danger"
+          ]
+        }
+      },
+      "required": [
+        "title",
+        "send"
+      ],
+      "additionalProperties": false,
+      "description": "One choice in an OptionList, rendered as a tappable row. title: the choice. send: the message sent AS THE USER when this is picked — write it as the user would ('Use the second reference'), never as an instruction to yourself. subtitle: one line of why-you'd-pick-this. meta: a short right-aligned qualifier (\"~40s\", \"12 credits\", \"shot03\"). image: a thumbnail URL for the row's leading badge. badge: a tiny pill (\"Recommended\", \"Current\"). selected: marks the option already in force. tone 'danger' for a destructive choice."
+    },
+    "MediaGrid": {
+      "type": "object",
+      "properties": {
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/MediaItem"
+          }
+        },
+        "header": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "columns": {
+          "type": "number"
+        },
+        "select": {
+          "type": "string",
+          "enum": [
+            "one",
+            "many"
+          ]
+        },
+        "send": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "confirm": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "items"
+      ],
+      "additionalProperties": false,
+      "description": "A grid of image thumbnails — the RIGHT way to ask which reference, still, take or character sheet to use. ALWAYS prefer this over listing image URLs as markdown. Tapping a thumbnail opens it FULL-SCREEN for a proper look; picking is a separate explicit control, so the author can inspect before committing. columns: 2 (default) or 3; use 3 only for six or more small thumbnails. select: 'one' (default) — a tap picks that item and sends immediately. 'many' — taps toggle, and nothing is sent until the confirm button — use 'many' when several images are legitimately wanted (a multi-reference generation). send: REQUIRED when select is 'many': the lead of the composed message, to which the picked items' `send` values are appended after a colon — e.g. send \"Add these characters to the World\" + picks \"Miles\", \"Vera\" posts \"Add these characters to the World: Miles, Vera\". Ignored when select is 'one'. confirm: the confirm button's label when select is 'many' (default \"Continue\"). Ignored when select is 'one'."
+    },
+    "MediaItem": {
+      "type": "object",
+      "properties": {
+        "src": {
+          "type": "string"
+        },
+        "send": {
+          "type": "string"
+        },
+        "label": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "caption": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "selected": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "src",
+        "send"
+      ],
+      "additionalProperties": false,
+      "description": "One pickable image in a MediaGrid. src: the image URL (a /storyboard-media, /library or generation URL from the tools — never invent one). send: the message sent AS THE USER when this is picked — write it as the user would ('Use the second reference'), never as an instruction to yourself; in a 'many' grid make it a NOUN PHRASE instead (\"the dawn clearing\"), because the picks are joined into one sentence. label: a short name under the thumbnail. caption: one extra line of context. selected: marks the current pick."
+    },
+    "Recommendation": {
+      "type": "object",
+      "properties": {
+        "title": {
+          "type": "string"
+        },
+        "body": {
+          "type": "string"
+        },
+        "send": {
+          "type": "string"
+        },
+        "cta": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "image": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "badge": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "meta": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "bullets": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "title",
+        "body",
+        "send"
+      ],
+      "additionalProperties": false,
+      "description": "A single recommended course of action, presented as a hero card with one big call-to-action button. Use it when you have ONE thing to propose and want a clean yes — a render you're about to submit, a plan you'd run next, a draft you'd pin. title: the proposal. body: two sentences of why. send: the message sent AS THE USER when this is picked — write it as the user would ('Use the second reference'), never as an instruction to yourself (the go-ahead). cta: the button text (\"Render it\", \"Do it\") — default \"Continue\". bullets: up to 4 short supporting facts. image: a preview thumbnail. meta: cost/duration (\"~90s · 12 credits\")."
+    },
+    "Compare": {
+      "type": "object",
+      "properties": {
+        "columns": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Column"
+          }
+        },
+        "header": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "columns"
+      ],
+      "additionalProperties": false,
+      "description": "Two or three options weighed side by side on identical rows — models, providers, takes, drafts. Use it only when the choice genuinely turns on comparing the SAME attributes; a plain OptionList reads better for everything else. Never more than 3 columns: the chat rail is narrow."
+    },
+    "Column": {
+      "type": "object",
+      "properties": {
+        "label": {
+          "type": "string"
+        },
+        "rows": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "label": {
+                "type": "string"
+              },
+              "value": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "label",
+              "value"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "badge": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "send": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "label",
+        "rows"
+      ],
+      "additionalProperties": false,
+      "description": "One side of a Compare. label: what this column is (\"Seedance\", \"Veo 3.1\"). rows: the same {label, value} keys IN THE SAME ORDER as every other column, so they line up. badge: a tiny pill (\"Recommended\"). send: the message sent AS THE USER when this is picked — write it as the user would ('Use the second reference'), never as an instruction to yourself — supply it to make the whole column pickable."
+    },
+    "KeyValue": {
+      "type": "object",
+      "properties": {
+        "rows": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "label": {
+                "type": "string"
+              },
+              "value": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "label",
+              "value"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "header": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "rows"
+      ],
+      "additionalProperties": false,
+      "description": "A compact label/value detail block — the parameters of a render you're about to submit, a shot's settings, a cut's stats. Pair it with Actions to make a confirmation."
+    },
+    "Steps": {
+      "type": "object",
+      "properties": {
+        "steps": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "title": {
+                "type": "string"
+              },
+              "detail": {
+                "type": "string"
+              },
+              "meta": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "title"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "header": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "current": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "steps"
+      ],
+      "additionalProperties": false,
+      "description": "An ordered plan, numbered, shown BEFORE you run a multi-step pipeline so the author can see what's coming. steps: {title, detail?, meta?}. current: index of the step in progress (0-based) — omit when nothing has started yet."
+    },
+    "Chips": {
+      "type": "object",
+      "properties": {
+        "labels": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "labels"
+      ],
+      "additionalProperties": false,
+      "description": "A row of small follow-up pills. Tapping one sends its label verbatim as the user's next message, so write each as something the AUTHOR would say ('Show me the other takes'). Use for cheap side-quests offered alongside the main choice — never as the main choice itself."
+    },
+    "Actions": {
+      "type": "object",
+      "properties": {
+        "actions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Action"
+          }
+        },
+        "direction": {
+          "type": "string",
+          "enum": [
+            "row",
+            "column"
+          ]
+        }
+      },
+      "required": [
+        "actions"
+      ],
+      "additionalProperties": false,
+      "description": "A group of buttons — the plain yes/no/other choice. direction: 'row' (default) for two or three short labels, 'column' when the labels are sentences."
+    },
+    "Action": {
+      "type": "object",
+      "properties": {
+        "label": {
+          "type": "string"
+        },
+        "send": {
+          "type": "string"
+        },
+        "variant": {
+          "type": "string",
+          "enum": [
+            "primary",
+            "secondary"
+          ]
+        },
+        "tone": {
+          "type": "string",
+          "enum": [
+            "normal",
+            "danger"
+          ]
+        }
+      },
+      "required": [
+        "label",
+        "send"
+      ],
+      "additionalProperties": false,
+      "description": "One button. label: the button text. send: the message sent AS THE USER when this is picked — write it as the user would ('Use the second reference'), never as an instruction to yourself. Exactly ONE action in a group should be 'primary'. tone 'danger' for destructive or irreversible choices (overwrite, delete, regenerate over existing work)."
+    },
+    "Section": {
+      "type": "object",
+      "properties": {
+        "title": {
+          "type": "string"
+        },
+        "children": {
+          "type": "array",
+          "items": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/Text"
+              },
+              {
+                "$ref": "#/$defs/Callout"
+              },
+              {
+                "$ref": "#/$defs/OptionList"
+              },
+              {
+                "$ref": "#/$defs/MediaGrid"
+              },
+              {
+                "$ref": "#/$defs/Recommendation"
+              },
+              {
+                "$ref": "#/$defs/Compare"
+              },
+              {
+                "$ref": "#/$defs/KeyValue"
+              },
+              {
+                "$ref": "#/$defs/Steps"
+              },
+              {
+                "$ref": "#/$defs/Chips"
+              },
+              {
+                "$ref": "#/$defs/Actions"
+              }
+            ]
+          }
+        },
+        "subtitle": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "title",
+        "children"
+      ],
+      "additionalProperties": false,
+      "description": "A titled group of blocks, separated from its neighbours by a rule. Only reach for it when one card genuinely carries two distinct groups (e.g. 'The references' and 'What I'd do'); a single-section card should skip it and put the blocks straight in the Card."
+    }
+  }
+}

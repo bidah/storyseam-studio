@@ -7,7 +7,7 @@ export const attachCharacterSheet = (api: Api) =>
   defineTool({
     name: "attach_character_sheet",
     description:
-      "Link a project library image to a World character as their character-sheet reference (the portrait shown on the World tab). Pass the character's `id` (from get_world) and the image's `rel` path (from list_library) — the image must already be in the asset library. The full url/thumb/name are resolved from the library for you. Pass `clear: true` (no rel) to unlink the current sheet. When more than one image could fit, DON'T guess — show the candidate thumbnails as markdown (`![](thumb-url)`) and ask_question which one before calling this.",
+      "Link a project library image to a World character as their character-sheet reference (the portrait shown on the World tab). Pass the character's `id` (from get_world) and the image's `rel` path (from list_library) — the image must already be in the asset library. The full url/thumb/name are resolved from the library for you. Pass `clear: true` (no rel) to unlink the current sheet. When more than one image could fit, DON'T guess — draw the candidate thumbnails with render_ui (a MediaGrid) and let the user pick before calling this.",
     input: v.object({
       characterId: d(
         v.pipe(v.string(), v.minLength(1)),

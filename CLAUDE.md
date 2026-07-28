@@ -144,6 +144,46 @@ the animatic's picture) and **grabbed stills** (the `stills` doc,
 orphans generated media. `POST /api/shotlist` preserves stored ids and warns
 when it has to invent one — never "fix" that by renumbering.
 
+## Generative chat UI (`render_ui`)
+
+The agent asks the author things by calling **`render_ui`**, whose input is an
+**OpenUI Lang** program rendered client-side through one shared component
+contract. Tapping a component posts its `send` string as the next user message —
+flue can't suspend a turn, so that transcript round-trip *is* the answer channel
+(`deriveQA` decides which card is still live). `ask_question` is gone; its parts
+still render in old transcripts.
+
+**`src/genui/contract.ts` is canonical** — component names, zod schemas, prop
+types, descriptions. Two renderer sets implement it: `src/genui/renderers.jsx`
+(shadcn) and `mobile-app/src/genui/renderers.tsx` (React Native, Galeria
+previews, `SemiPillButton` CTA). Same names, same props, different pixels.
+
+Two client-side companions render through the same `<StudioUI>`, so they are
+indistinguishable from a card the agent drew:
+
+- **`detect-options.ts`** rescues a trailing `A)`/`1.` choice list the model
+  wrote as prose into a real `OptionList`. Heuristics are deliberately strict
+  (trailing position, sequential markers, 2–6 short items, a cue word or `?`
+  above, newest settled turn only, no card already drawn) — a false positive
+  turns a recap into buttons that post nonsense.
+- **`next-questions.ts` + `POST /api/next-questions`** are the "where to go
+  next" follow-ups under a finished turn. The route grounds a small Workers AI
+  model on `buildStatus` (the real pipeline digest) plus an explicit capability
+  list, and **falls back to `buildSuggestions`** — the deterministic deck — when
+  generation fails or comes back short, so the floor is always real moves.
+  `worker/src/lib/suggestions.ts` is vendored by
+  `npm --prefix mobile-app run sync:suggestions`, which now writes both the
+  mobile and worker copies.
+
+**After ANY contract edit, run `npm run genui:sync`** — it vendors the contract
+into `mobile-app/src/genui/`, regenerates the agent's `generative-ui` SKILL.md
+from `SKILL.template.md`, and re-emits `flue-agent/src/lib/genui-schema.json`
+(which `render_ui` parses against, so a malformed program comes back to the
+model as a correctable error instead of a broken card). Skip the sync and the
+agent gets prompted with components the renderers don't have — the same silent
+drift the `render-fn` sync rule exists to prevent. Edit
+`src/genui/contract.ts` and `SKILL.template.md`, never the generated copies.
+
 ## UI stack
 
 The front-end is built on **Tailwind CSS v4** + **shadcn/ui** (New York style, zinc base,

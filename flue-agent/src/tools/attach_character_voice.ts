@@ -8,7 +8,7 @@ export const attachCharacterVoice = (api: Api) =>
   defineTool({
     name: "attach_character_voice",
     description:
-      "Attach a liked Sound Studio voice take to a World character as their voice (shown and playable on the World tab). Pass the character's `id` (from get_world) and the voice's `trackId` + version `v` (from list_character_voices). Only liked, rendered voice takes can be attached. Omit `v` to take the track's first liked take. Pass `clear: true` (no trackId) to remove the character's voice. When more than one voice could fit, DON'T guess — list them (with their playable urls) and ask_question which one before calling this.",
+      "Attach a liked Sound Studio voice take to a World character as their voice (shown and playable on the World tab). Pass the character's `id` (from get_world) and the voice's `trackId` + version `v` (from list_character_voices). Only liked, rendered voice takes can be attached. Omit `v` to take the track's first liked take. Pass `clear: true` (no trackId) to remove the character's voice. When more than one voice could fit, DON'T guess — list them (with their playable urls) and render_ui an OptionList to pick from before calling this.",
     input: v.object({
       characterId: d(
         v.pipe(v.string(), v.minLength(1)),

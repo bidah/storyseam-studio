@@ -9,8 +9,8 @@ description: >-
   ("create the locations", "generate <place name>"). Location and prop art is
   ALWAYS a sheet (style preset + sheet prompt + a mandatory reference image),
   and the user ALWAYS picks the reference: an image ATTACHED to the requesting
-  message IS that pick — use it, don't re-ask; otherwise ask_question with
-  candidate thumbnails and STOP before generating — never auto-pick. Layer the
+  message IS that pick — use it, don't re-ask; otherwise render_ui a MediaGrid
+  of candidate thumbnails and STOP before generating — never auto-pick. Layer the
   sheet prompt (get_visual_world sheetPrompts) between style preset and
   subject, attach with attach_visual_generation (sheetType set), and offer to
   link it as the roster's sheetImage.
@@ -100,7 +100,7 @@ sheet prompt already dictates the layout (views, neutral background, no text);
 repeat none of that. Aspect ratio: **the project default `settings.aspectRatio`**
 (from `get_visual_world`, normally `16:9`) unless the user asks otherwise. If
 the backend rejects that ratio or delivers a different shape, do NOT quietly
-keep the wrong-shaped image — say what happened and `ask_question` whether to
+keep the wrong-shaped image — say what happened and `render_ui` whether to
 keep it, reframe/outpaint it, or regenerate.
 
 ## Step 4 — References: attached image first; REQUIRED for locations and props
@@ -123,10 +123,10 @@ its `refUrl` with `media_import_url` and pass it in `medias[]` (role from Step 2
 - **Prop sheet** — a reference image is **MANDATORY, and the USER picks it** —
   the same ask-first flow as locations below: candidates are prior generations
   of this prop (`get_visual_world`) or a library image (`list_library`); show
-  every candidate's thumbnail and `ask_question` (always including the
-  `{ id:"upload", label:"Upload a reference image" }` option — in the app it
-  opens the media picker: PC upload, library, or prior generations), then STOP.
-  If none exist, `ask_question` for an upload or offer to concept the prop
+  every candidate in a `MediaGrid` (always alongside an
+  `Action("Upload a reference image", "I'll attach a reference image")` — in the
+  app it opens the media picker: PC upload, library, or prior generations), then STOP.
+  If none exist, `render_ui` for an upload or offer to concept the prop
   first — never generate a prop sheet with no reference and no user pick.
 - **Location sheet** — a reference image is **MANDATORY, and the USER picks it**:
   a location sheet is always style prompt + sheet prompt + a reference image, so
@@ -140,13 +140,13 @@ its `refUrl` with `media_import_url` and pass it in `medias[]` (role from Step 2
   1. Look for candidates **of this place**: the location's `sheetImage`
      (`get_world`), prior generations of this place (`get_visual_world`), or a
      library image (`list_library`).
-  2. Show every candidate's thumbnail as markdown (`![](thumb-url)`) and
-     `ask_question` which to use — always include an option like
-     `{ id:"upload", label:"Upload a different reference image" }` —
+  2. `render_ui` a `MediaGrid` of every candidate's thumbnail, asking which to
+     use — always alongside an
+     `Action("Upload a different reference image", "I'll attach a reference image")` —
      then STOP and wait, even if there is only one candidate.
-  3. If NONE exist, `ask_question` with options like
-     `{ id:"upload", label:"Upload a reference image", style:"primary" }`
-     and `{ id:"pick-gen", label:"Generate a concept first, then the sheet" }`.
+  3. If NONE exist, `render_ui` `Actions` like
+     `Action("Upload a reference image", "I'll attach a reference image", "primary")`
+     and `Action("Generate a concept first", "Concept it first, then do the sheet")`.
      Keep the upload label CLEAN — no parenthetical about paperclips or how to
      attach; in the app that option opens the media picker (PC upload, library,
      or prior generations). Then STOP. When their reply arrives (a picked image

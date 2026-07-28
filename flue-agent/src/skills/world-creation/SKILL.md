@@ -8,7 +8,7 @@ description: >-
   "world-building", "define the characters", "figure out the story", "what is the
   story about", "story map", "story depth", "premise / theme / stakes", or to work
   out the protagonist / antagonist / conflict / structure. You INTERVIEW the author
-  with ask_question across the story map, story depth, and character roster, then
+  with render_ui across the story map, story depth, and character roster, then
   write it back with save_world (call get_world first if a world already exists).
   save_world MERGES: send only fields you have real answers for, omit the rest,
   and NEVER send an empty string or invented filler — the author's existing world
@@ -60,7 +60,7 @@ The world bible has four parts:
    it — fill gaps and refine rather than starting over, and preserve character
    `id`s so you update characters instead of duplicating them. Tell the author
    what's already there.
-2. **Grill in small rounds.** Use the built-in **`ask_question`** tool, a few
+2. **Grill in small rounds.** Use the built-in **`render_ui`** tool, a few
    focused questions at a time — don't dump all fifteen at once. Natural order:
    - Round 1 — the **story map**: world, protagonist + goal, antagonist, stakes, theme.
    - Round 2 — the **story depth**: premise, want-vs-need, conflict/why-we-care,
@@ -100,8 +100,8 @@ pick — never guess.**
 1. `get_world` to get the character's `id`.
 2. `list_library` to see the asset-library images (each has a `rel`, `url`, `thumb`).
 3. Narrow to the plausible portraits for that character. If exactly one fits, attach
-   it. If several do, **show the thumbnails as markdown previews** — e.g.
-   `1. ![](/thumb/<rel>)` … — and `ask_question` which one (one option per image).
+   it. If several do, **draw them with `render_ui`** — a `MediaGrid` of `MediaItem`s
+   built from each candidate's `thumb` — and let the user pick.
 4. `attach_character_sheet({ characterId, rel })`. Unlink with `{ characterId, clear: true }`.
 
 **Voice:**
@@ -110,7 +110,7 @@ pick — never guess.**
    If it's empty, tell the user to like a voice take on the Sounds tab first (only
    liked voice takes are attachable).
 3. If several fit, list them with their playable `url`s so the user can hear each,
-   then `ask_question` which one.
+   then `render_ui` an `OptionList` of the takes to pick from.
 4. `attach_character_voice({ characterId, trackId, v })`. Unlink with `{ characterId, clear: true }`.
 
 Then, as always, tell the user what you linked and that the World tab refreshes via its

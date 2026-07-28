@@ -85,6 +85,10 @@ import {
   formatDuration,
 } from "@/lib/useVoiceRecording";
 import MediaPicker from "@/components/MediaPicker";
+import { StudioUI, isReferenceUpload } from "@/genui/StudioUI";
+import { detectOptions } from "@/genui/detect-options";
+import { NextQuestions } from "@/genui/NextQuestions";
+import { shouldOfferNext } from "@/genui/next-questions";
 import PromptEditor from "@/components/mention/PromptEditor";
 import { refTagLabel, splitRefTags } from "@/lib/refTags";
 import {
@@ -102,11 +106,16 @@ import {
 // scanning only the last message.
 //
 // Interactive questions: flue has no BLOCKING HITL (a tool can't suspend a turn),
-// so the `ask_question` tool is a non-blocking recreation — its `dynamic-tool`
-// part renders as a `QuestionCard` with clickable options (see `QuestionCard` /
-// `deriveQA`). Because there is no server-side `inputResponse`, the answer is
-// just the next ordinary user message: clicking an option sends its label, and a
-// typed reply works the same way. No `inputResponses` resume path.
+// so the `render_ui` tool is a non-blocking recreation — its `dynamic-tool` part
+// carries an openui-lang program that renders through the shared component
+// contract (src/genui/) as an interactive card: option rows, thumbnail grids,
+// recommendations, confirmations. Because there is no server-side
+// `inputResponse`, the answer is just the next ordinary user message: tapping a
+// component sends its `send` string, and a typed reply works the same way. No
+// `inputResponses` resume path. `deriveQA` decides which card is still live.
+//
+// `ask_question` was the predecessor and still appears in older transcripts, so
+// `QuestionCard` stays for those — new turns only ever produce `render_ui`.
 //
 // Attachments: everything the user attaches — dropped on the composer, pasted
 // with Cmd/Ctrl+V, picked from the gallery, or chosen from disk — is uploaded to
@@ -513,12 +522,25 @@ function FilePart({ part }) {
   );
 }
 
-function MessagePart({ part, qa, canRespond, onRespond, onRequestReference }) {
+function MessagePart({ part, qa, canRespond, onRespond, onRequestReference, offerOptions }) {
   switch (part.type) {
-    case "text":
-      return part.text ? (
-        <StreamedText text={part.text} streaming={part.state === "streaming"} />
-      ) : null;
+    case "text": {
+      if (!part.text) return null;
+      const streaming = part.state === "streaming";
+      // Models keep writing choices as "A) … B) …" prose however firmly the
+      // generative-ui skill says to draw them. `offerOptions` is set only on the
+      // last assistant message of a settled turn that produced no card of its
+      // own, so a rescued list is answerable exactly when a real one would be —
+      // and older messages keep their plain markdown.
+      const rescued = !streaming && offerOptions ? detectOptions(part.text) : null;
+      if (!rescued) return <StreamedText text={part.text} streaming={streaming} />;
+      return (
+        <>
+          {rescued.body ? <StreamedText text={rescued.body} /> : null}
+          <StudioUI lang={rescued.program} answerable={canRespond} onRespond={onRespond} />
+        </>
+      );
+    }
     case "reasoning":
       return part.text ? (
         <details className="rounded-md border bg-muted/30 px-2 py-1 text-xs text-muted-foreground">
@@ -527,6 +549,20 @@ function MessagePart({ part, qa, canRespond, onRespond, onRequestReference }) {
         </details>
       ) : null;
     case "dynamic-tool": {
+      if (part.toolName === "render_ui") {
+        const pending = qa?.pendingId === part.toolCallId;
+        return (
+          <StudioUI
+            lang={part.input?.lang}
+            answerable={pending && canRespond}
+            onRespond={(message) =>
+              // The reference-upload choice opens the MediaPicker rather than
+              // posting its text; everything else is an ordinary reply.
+              isReferenceUpload(message) ? onRequestReference?.() : onRespond?.(message)
+            }
+          />
+        );
+      }
       if (part.toolName === "ask_question") {
         return (
           <QuestionCard
@@ -554,7 +590,11 @@ function MessagePart({ part, qa, canRespond, onRespond, onRequestReference }) {
   }
 }
 
-// Resolve the answer state of every `ask_question` card in the thread. flue has
+// The tools whose parts render as an answerable card. `render_ui` is the live
+// one; `ask_question` only ever turns up replaying an older conversation.
+const QUESTION_TOOLS = new Set(["render_ui", "ask_question"]);
+
+// Resolve the answer state of every question card in the thread. flue has
 // no `inputResponse` channel, so "answered" is derived from the transcript: a
 // question is answered by the first user message after it (its text is the
 // answer); the one unanswered question — the last with no user message following
@@ -566,7 +606,7 @@ function deriveQA(messages) {
     const m = messages[i];
     if (m.role !== "assistant") continue;
     for (const p of m.parts || []) {
-      if (p.type !== "dynamic-tool" || p.toolName !== "ask_question") continue;
+      if (p.type !== "dynamic-tool" || !QUESTION_TOOLS.has(p.toolName)) continue;
       let ans = null;
       for (let j = i + 1; j < messages.length; j++) {
         if (messages[j].role === "user") {
@@ -657,7 +697,15 @@ function UserText({ text, atts }) {
   );
 }
 
-function AgentMessage({ message, attEntry, qa, canRespond, onRespond, onRequestReference }) {
+function AgentMessage({
+  message,
+  attEntry,
+  qa,
+  canRespond,
+  onRespond,
+  onRequestReference,
+  isLast,
+}) {
   const isUser = message.role === "user";
   if (isUser) {
     // Legacy entries are a plain atts array; newer ones are { atts, displayText }
@@ -677,6 +725,12 @@ function AgentMessage({ message, attEntry, qa, canRespond, onRespond, onRequestR
       </div>
     );
   }
+  // A prose choice list is only worth rescuing on the newest assistant turn,
+  // and only when the agent didn't already draw a card — otherwise the message
+  // would carry two competing sets of buttons.
+  const drewCard = (message.parts || []).some(
+    (p) => p.type === "dynamic-tool" && QUESTION_TOOLS.has(p.toolName),
+  );
   return (
     <div className="flex flex-col gap-2">
       {(message.parts || []).map((part, i) => (
@@ -687,6 +741,7 @@ function AgentMessage({ message, attEntry, qa, canRespond, onRespond, onRequestR
           canRespond={canRespond}
           onRespond={onRespond}
           onRequestReference={onRequestReference}
+          offerOptions={isLast && !drewCard}
         />
       ))}
     </div>
@@ -1711,7 +1766,7 @@ export default function AgentChat() {
           ) : messages.length === 0 ? (
             <ChatLanding conv={conv} onSuggest={sendQuick} reloadKey={reloadKey} />
           ) : (
-            messages.map((m) => (
+            messages.map((m, i) => (
               <AgentMessage
                 key={m.id}
                 message={m}
@@ -1720,9 +1775,21 @@ export default function AgentChat() {
                 canRespond={!isBusy}
                 onRespond={onRespond}
                 onRequestReference={onRequestReference}
+                isLast={i === messages.length - 1 && !isBusy}
               />
             ))
           )}
+
+          {/* "Where to go next" — only when the agent finished and left nothing
+              open. A pending question card already owns the next move. */}
+          {shouldOfferNext({
+            hasMessages: messages.length > 0,
+            lastIsAssistant: messages[messages.length - 1]?.role === "assistant",
+            busy: isBusy,
+            pendingQuestion: !!qa.pendingId,
+          }) ? (
+            <NextQuestions messages={messages} canRespond={!isBusy} onRespond={onRespond} />
+          ) : null}
 
           {thinking ? (
             <Marker>
