@@ -3,7 +3,6 @@ import { ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-n
 import { Image } from 'expo-image';
 import { Link, Stack, router, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Sparkles } from 'lucide-react-native';
 import { Button } from '@/components/ui/button';
 import { Empty } from '@/components/ui/empty';
 import { useChatComposer } from '@/components/chat/composer-host';
@@ -41,6 +40,10 @@ export default function DiscoverDetailScreen() {
   // already in the session cache and the colour is there on the first frame of
   // the zoom rather than snapping in once the screen has landed.
   const { blurhash, tint } = useImageTint(card?.image, card?.blurhash);
+  // The two text colours the whole article is set in — from the picture when its
+  // tint is known, from the theme until then.
+  const foreground = tint?.foreground ?? colors.foreground;
+  const subtle = tint?.subtle ?? colors.mutedForeground;
   const conv = useConversations();
   const reusable = useIsFreshChat();
 
@@ -97,34 +100,50 @@ export default function DiscoverDetailScreen() {
           />
         </Link.AppleZoomTarget>
 
-        {/* Everything under the hero sits on the picture's own colour (the
-            blurhash's average term — see lib/image-tint.ts), the same fill the
-            card's caption block wears. That's what makes the zoom continuous:
-            the poster grows into a bigger version of itself, colour and all. */}
+        {/* The MASTHEAD carries the picture's own colour (the blurhash's average
+            term — see lib/image-tint.ts), the same fill the card's caption block
+            wears. That's what makes the zoom continuous: the poster grows into a
+            bigger version of itself, colour and all — and then the colour stops.
+            Only the headline block is tinted; the story below it runs on the
+            page, which is what keeps a long read legible instead of setting
+            three screens of body copy on an arbitrary photographic colour. */}
         <View
-          style={[styles.body, { backgroundColor: tint?.background ?? colors.pageBg }]}
+          className="gap-2 px-5 pb-6 pt-6"
+          style={{ backgroundColor: tint?.background ?? colors.pageBg }}
         >
-          <View className="gap-3 px-5 pt-6">
-            <Text style={[styles.kicker, { color: tint?.subtle ?? colors.mutedForeground }]}>
-              {card.kicker.toUpperCase()}
+          <Text style={[styles.kicker, { color: subtle }]}>{card.kicker.toUpperCase()}</Text>
+          <Text style={[styles.title, { color: foreground }]}>{card.title}</Text>
+          <Text style={[styles.standfirst, { color: subtle }]}>{card.tagline}</Text>
+        </View>
+
+        {/* The story, set like an App Store Today piece: one paragraph whose
+            opening phrase is bold and in the page's foreground colour, running
+            STRAIGHT INTO the body text rather than sitting over it — hence a
+            nested <Text>, which inherits the parent's line box so the two
+            weights share a single flowing paragraph. Then heading-over-paragraph
+            the rest of the way down, all in the app's own text colours. */}
+        <View style={[styles.body, { backgroundColor: colors.pageBg }]}>
+          <View className="px-5 pt-7">
+            <Text style={[styles.lead, { color: colors.mutedForeground }]}>
+              <Text style={[styles.leadOpener, { color: colors.foreground }]}>
+                {card.lead.opener}
+              </Text>
+              {card.lead.rest}
             </Text>
-            <Text style={[styles.title, { color: tint?.foreground ?? colors.foreground }]}>
-              {card.title}
-            </Text>
-            <Text style={[styles.copy, { color: tint?.subtle ?? colors.mutedForeground }]}>
-              {card.body}
-            </Text>
+
+            {card.sections.map((s) => (
+              <View key={s.heading}>
+                <Text style={[styles.heading, { color: colors.foreground }]}>{s.heading}</Text>
+                <Text style={[styles.copy, { color: colors.mutedForeground }]}>{s.body}</Text>
+              </View>
+            ))}
           </View>
 
-          <View className="px-5 pt-7">
-            <Button title="Start this" onPress={start} size="lg">
-              <Sparkles size={18} color="#ecfdf5" />
-            </Button>
+          <View className="px-5 pt-9">
+            <Button title="Try this" onPress={start} size="lg" />
             {/* Says what the button will actually do, because it doesn't open a
                 form — it opens a conversation that has already started. */}
-            <Text
-              style={[styles.note, { color: tint?.subtle ?? colors.mutedForeground }]}
-            >
+            <Text style={[styles.note, { color: colors.mutedForeground }]}>
               Opens a new chat with this brief already sent.
             </Text>
           </View>
@@ -134,13 +153,22 @@ export default function DiscoverDetailScreen() {
   );
 }
 
+// Editorial type scale, one step up from the app's UI type: this screen is
+// something to READ, and body copy set at row-label size reads as a caption. The
+// leading is generous for the same reason — long paragraphs need the air.
 const styles = StyleSheet.create({
   hero: { width: '100%', backgroundColor: '#0b0b0c' },
   // Runs to the bottom of the scroll view, so the colour block ends with the
   // page rather than stopping under the last line of text.
-  body: { flexGrow: 1, minHeight: 400, paddingBottom: 40 },
+  body: { flexGrow: 1, paddingBottom: 40 },
   kicker: { fontSize: 12, fontWeight: '700', letterSpacing: 1.1 },
   title: { fontSize: 32, fontWeight: '700', lineHeight: 37, letterSpacing: -0.6 },
-  copy: { fontSize: 16, lineHeight: 24 },
+  standfirst: { fontSize: 17, lineHeight: 23 },
+  lead: { fontSize: 19, lineHeight: 27 },
+  // Same size and leading as the paragraph it opens — only the weight and the
+  // colour change, or the two halves stop being one sentence.
+  leadOpener: { fontSize: 19, lineHeight: 27, fontWeight: '700' },
+  heading: { fontSize: 22, fontWeight: '700', lineHeight: 27, marginTop: 30, marginBottom: 8 },
+  copy: { fontSize: 18, lineHeight: 26 },
   note: { marginTop: 12, fontSize: 13, textAlign: 'center' },
 });
