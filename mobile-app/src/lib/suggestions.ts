@@ -2,11 +2,11 @@
 // Edit the web copy, then run `npm --prefix mobile-app run sync:suggestions`
 // (scripts/sync-suggestions.mjs).
 
-// The empty chat's "Try something new" cards — composed from where the project
-// actually stands. THE source of truth for both surfaces: the web AgentChat
-// landing and, vendored, the mobile Chat tab (mobile-app/src/lib/suggestions.ts,
-// refreshed by `npm --prefix mobile-app run sync:suggestions`). Edit this file,
-// not the copy.
+// The empty chat's "Continue building your story" cards — composed from where
+// the project actually stands. THE source of truth for both surfaces: the web
+// AgentChat landing and, vendored, the mobile Chat tab
+// (mobile-app/src/lib/suggestions.ts, refreshed by
+// `npm --prefix mobile-app run sync:suggestions`). Edit this file, not the copy.
 //
 // These used to be four fixed strings sent verbatim ("Let's create the world"),
 // which had two problems. The card was the whole prompt, so the agent got a

@@ -8,7 +8,7 @@ import { useImageTint } from '@/lib/image-tint';
 import { useDiscover, type DiscoverCard } from '@/lib/use-discover';
 
 // The Chat landing screen's DISCOVER row: full-width posters under the
-// horizontally scrolling "Try something new" deck. Wide on purpose — these are
+// horizontally scrolling "Continue building your story" deck. Wide on purpose —
 // the big moves (see lib/discover.ts), and they get the page's whole width the
 // way the small derived cards get a swipe.
 //

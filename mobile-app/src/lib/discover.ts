@@ -1,7 +1,8 @@
 // The Chat landing screen's DISCOVER deck — the full-width posters under "Try
 // something new".
 //
-// The two decks answer different questions on purpose. "Try something new" is
+// The two decks answer different questions on purpose. "Continue building your
+// story" is
 // DERIVED (see suggestions.ts): small cards, composed from where the project
 // actually stands, and a card retires the moment its gap closes. Discover is
 // EDITORIAL: a fixed, hand-written set of the big moves the studio can make —

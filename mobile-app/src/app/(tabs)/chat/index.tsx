@@ -29,7 +29,8 @@ import { relTime } from '@/components/chat/helpers';
 
 // The Home tab's LANDING screen — the hub for starting a chat, and a LAUNCHER
 // rather than a place a conversation lives. Recaps (the chats you already have —
-// tap one to pick it back up) lead, then Try something new (the starter prompts).
+// tap one to pick it back up) lead, then Continue building your story (the
+// starter prompts).
 // It docks no composer of its own: the tab bar's agent pill is the typing surface
 // here (see components/chat/agent-accessory.tsx).
 //
@@ -41,7 +42,9 @@ import { relTime } from '@/components/chat/helpers';
 // This screen holds no transcript: a suggestion tap mints a chat, parks the first
 // message, and hands both to that modal.
 //
-// "Try something new" is DERIVED, not a fixed list — see lib/suggestions.ts. The
+// "Continue building your story" is DERIVED, not a fixed list — see
+// lib/suggestions.ts (where the same deck is called "Try something new", the
+// name the web landing still uses). The
 // deck comes from the pipeline digest (/api/status), each card carries a composed
 // brief rather than its own title as the prompt, and a card retires when its gap
 // closes. Loading and failure are separate states here on purpose: skeletons
@@ -456,7 +459,7 @@ export default function ChatHomeScreen() {
           </Section>
         ) : null}
 
-        <Section title="Try something new" cardWidth={SUGGESTION_W} small>
+        <Section title="Continue building your story" cardWidth={SUGGESTION_W} small>
           {isLoading ? (
             <SuggestionSkeletons />
           ) : (

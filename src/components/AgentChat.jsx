@@ -854,9 +854,9 @@ function ChatHistorySheet({ conv, triggerClassName }) {
   );
 }
 
-/* ---------------------------------------------------------------- *
- * The landing screen of an empty chat: Recaps + Try something new   *
- * ---------------------------------------------------------------- */
+/* ------------------------------------------------------------------------ *
+ * The landing screen of an empty chat: Recaps + Continue building your story *
+ * ------------------------------------------------------------------------ */
 
 // A card's icon, by what the card is ABOUT (`kind` from lib/suggestions.ts). The
 // deck stays import-free so it can be vendored into the mobile app, so it names
@@ -958,9 +958,9 @@ function recapWhen(ts) {
 }
 
 // The empty chat. Two sections, centered in the transcript: Recaps (the chats you
-// already have — click one to pick it back up) and Try something new (the derived
-// deck). `reloadKey` re-reads the digest, so finishing a stage in another tab
-// retires its card here without a manual refresh.
+// already have — click one to pick it back up) and Continue building your story
+// (the derived deck). `reloadKey` re-reads the digest, so finishing a stage in
+// another tab retires its card here without a manual refresh.
 //
 // The block centers when it fits and scrolls when it doesn't (min-h-full + auto
 // margins), so a day-one project gets a calm centered pair of cards and a
@@ -1052,7 +1052,7 @@ function ChatLanding({ conv, onSuggest, reloadKey }) {
           </LandingSection>
         ) : null}
 
-        <LandingSection title="Try something new" loading={status === undefined}>
+        <LandingSection title="Continue building your story" loading={status === undefined}>
           {suggestions.map((s) => (
             <LandingCard
               key={s.id}
