@@ -187,7 +187,14 @@ export function deriveTitle(messages: any[] | undefined): string | null {
       .join(' ')
       .replace(/\s+/g, ' ')
       .trim();
-    if (text) return text.length > 48 ? `${text.slice(0, 47).trimEnd()}…` : text;
+    // 90 chars is THREE lines of the Home tab's recap card (a 240pt card fits ~28
+    // at its 15pt semibold), which is what that card shows. It used to be 48 — one
+    // line and a bit — and the cards looked like they were truncating when they
+    // were simply out of text. Everywhere else this string is rendered on one line
+    // and truncates on render (the history rows, the chat modal's nav bar), so a
+    // longer cap costs them nothing. Chats titled under the old cap keep their
+    // short title until their transcript is next loaded and re-derived.
+    if (text) return text.length > 90 ? `${text.slice(0, 89).trimEnd()}…` : text;
   }
   return null;
 }
