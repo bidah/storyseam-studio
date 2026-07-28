@@ -106,9 +106,9 @@ export function DiscoverSection() {
   const cards = useDiscover();
   return (
     <View className="gap-3">
-      {/* Same large-title metrics as the landing screen's section headlines
-          (see Section in app/(tabs)/chat/index.tsx), so the page reads as one
-          rhythm of 34pt headers. */}
+      {/* Same half-size headline as the landing screen's lower sections (see
+          smallTitle in app/(tabs)/chat/index.tsx) — only the project name up
+          top wears the 34pt large title. */}
       <Text accessibilityRole="header" className="px-5 text-foreground" style={styles.headline}>
         Discover
       </Text>
@@ -122,9 +122,9 @@ export function DiscoverSection() {
 }
 
 const styles = StyleSheet.create({
-  // UIKit's large-title text style — kept in lockstep with bigTitle in
+  // Half the large title — kept in lockstep with smallTitle in
   // app/(tabs)/chat/index.tsx.
-  headline: { fontSize: 34, fontWeight: '700', lineHeight: 41 },
+  headline: { fontSize: 20, fontWeight: '700', lineHeight: 25 },
   // The page margin lives here (matching the card rows above), and the posters
   // stack rather than scroll sideways.
   stack: { paddingHorizontal: 20, gap: 16 },
@@ -145,6 +145,6 @@ const styles = StyleSheet.create({
   // frame or two before the tint is known.
   caption: { paddingHorizontal: 16, paddingTop: 12, paddingBottom: 14 },
   kicker: { fontSize: 11, fontWeight: '700', letterSpacing: 1.1 },
-  title: { fontSize: 26, fontWeight: '700', lineHeight: 30, letterSpacing: -0.4, marginTop: 3 },
+  title: { fontSize: 17, fontWeight: '700', lineHeight: 21, letterSpacing: -0.2, marginTop: 3 },
   tagline: { fontSize: 14, lineHeight: 18, marginTop: 2 },
 });

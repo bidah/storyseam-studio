@@ -13,7 +13,8 @@ import { useConversations, useIsFreshChat } from '@/lib/agent/provider';
 import { openChatModal } from '@/lib/agent/chat-route';
 import { setPendingDraft } from '@/lib/agent/pending-draft';
 import type { Chat } from '@/lib/agent/chat-store';
-import { useProjectResource } from '@/lib/queries';
+import { useProjectResource, useProjects } from '@/lib/queries';
+import { useProjectStore } from '@/lib/project';
 import {
   buildSuggestions,
   FALLBACK_SUGGESTIONS,
@@ -70,7 +71,7 @@ const SUGGESTION_W = 305;
 // is one — so it's sized as a picture slot (305×168, a touch wider than 16:9),
 // with the mesh gradient standing in until the image exists.
 const SUGGESTION_BAND = 168;
-const SUGGESTION_BODY = 214;
+const SUGGESTION_BODY = 187;
 const SUGGESTION_H = SUGGESTION_BAND + SUGGESTION_BODY;
 // A recap is a text row: its mesh is a thin spine down the LEFT edge (see
 // bandSide), so this is a width, not a height.
@@ -97,6 +98,14 @@ const MESH_SHAPES = [
   [[0, 0], [0.35, 0], [1, 0], [0, 0.6], [0.65, 0.35], [1, 0.65], [0, 1], [0.6, 1], [1, 1]],
   [[0, 0], [0.5, 0], [1, 0], [0, 0.3], [0.7, 0.7], [1, 0.6], [0, 1], [0.3, 1], [1, 1]],
 ];
+
+// The recap section's headline is the ACTIVE PROJECT'S NAME (it doubles as the
+// page title — see Section), worn in Title Case whatever casing the stored name
+// has. Only first letters are touched: the rest of each word keeps its casing,
+// so an all-caps acronym in a name survives.
+function titleCase(s: string): string {
+  return s.replace(/(^|\s)\S/g, (c) => c.toUpperCase());
+}
 
 // FNV-1a, so a chat id maps to a stable number without pulling in a hash lib.
 function meshSeed(id: string): number {
@@ -151,9 +160,10 @@ const MESHES = [
 // surface (`border border-border bg-card`, same as <Card> and the episode /
 // shot / library rows) lifted off the page by a soft drop shadow, pressed
 // through the shared <BouncyPressable> so these tap like every other card.
-// A mesh-gradient band caps the top where a thumbnail would sit (or runs down
-// the left as a spine — the recaps); the text sits beside it on the plain
-// surface.
+// A mesh-gradient band caps the top where a thumbnail would sit; `'none'` leaves
+// the card plain white, which is what the recaps wear — at a spine's width the
+// colour was decoration competing with the titles, and a row of white cards reads
+// as one list.
 function PressCard({
   children,
   onPress,
@@ -174,8 +184,8 @@ function PressCard({
   bodyStyle?: ViewStyle;
   /** The band's thickness — its height on top, its width as a left spine. */
   bandHeight?: number;
-  /** Which edge the mesh sits on — 'left' turns the cap into a spine. */
-  bandSide?: 'top' | 'left';
+  /** Which edge the mesh sits on — 'left' is a spine, 'none' is no mesh at all. */
+  bandSide?: 'top' | 'left' | 'none';
 }) {
   const palette = MESHES[seed % MESHES.length];
   // Shifted off the palette's own digit so two cards sharing a palette still
@@ -191,10 +201,10 @@ function PressCard({
         className="border border-border bg-card"
         style={[styles.card, bandSide === 'left' && styles.cardRow, style]}
       >
-        {/* The spine is a FLAT fill on purpose: at 10pt wide a mesh reads as
-            colour noise, not art — the gradient earns its keep only on the wide
-            top bands. The seed still picks the colour, so a card keeps its hue. */}
-        {MeshGradientView && bandSide !== 'left' ? (
+        {/* No band at all on a plain card. Otherwise: a mesh on the wide top
+            bands, and a FLAT fill for a spine — at 10pt wide a gradient reads as
+            colour noise, not art, though the seed still picks the hue. */}
+        {bandSide === 'none' ? null : MeshGradientView && bandSide !== 'left' ? (
           <MeshGradientView
             style={band}
             columns={3}
@@ -227,11 +237,14 @@ function PressCard({
 function Section({
   title,
   cardWidth,
+  small,
   children,
 }: {
   title: string;
   /** Card width for this row — snap offsets are that plus the row's gap apart. */
   cardWidth: number;
+  /** Half-size headline — every section below the page-title one wears this. */
+  small?: boolean;
   children: React.ReactNode;
 }) {
   const count = Children.count(children);
@@ -244,10 +257,15 @@ function Section({
     // 10pt of its own top padding (shadow-bleed room — see styles.row), so 2pt
     // here lands the headline the same 12pt from the cards as Discover's.
     <View className="gap-0.5">
-      {/* Section headlines wear UIKit's large-title metrics (34pt bold) — the
-          screen has no headline of its own, so the first section's title IS the
-          page's big title, and the rest match it for one consistent rhythm. */}
-      <Text accessibilityRole="header" className="px-5 text-foreground" style={styles.bigTitle}>
+      {/* Only the FIRST section's headline wears UIKit's large-title metrics
+          (34pt bold) — the screen has no headline of its own, so the project
+          name up top IS the page's big title. The sections under it step down
+          to half that size so they read as subheads, not rival titles. */}
+      <Text
+        accessibilityRole="header"
+        className="px-5 text-foreground"
+        style={small ? styles.smallTitle : styles.bigTitle}
+      >
         {title}
       </Text>
       <ScrollView
@@ -284,8 +302,8 @@ function SuggestionSkeletons() {
             {/* Two bars for the headline, three for the paragraph — the real
                 card's proportions, so nothing shifts when the deck lands. */}
             <View style={[styles.cardBody, styles.suggestionBody]}>
-              <View className="h-7 w-44 rounded bg-muted" />
-              <View className="mt-2 h-7 w-28 rounded bg-muted" />
+              <View className="h-5 w-44 rounded bg-muted" />
+              <View className="mt-1 h-5 w-28 rounded bg-muted" />
               <View className="mt-4 h-3.5 w-48 rounded bg-muted" />
               <View className="mt-2 h-3.5 w-44 rounded bg-muted" />
               <View className="mt-2 h-3.5 w-24 rounded bg-muted" />
@@ -330,6 +348,13 @@ export default function ChatHomeScreen() {
   // screen is that chat's face. Reuse it when it's still untouched instead of
   // minting a second one, or history fills up with identical "New chat" rows.
   const reusable = useIsFreshChat();
+
+  // The recap headline is the active project's name — the page title, really
+  // (see Section). "Last chats" only covers the beat before the account's
+  // project list has loaded.
+  const projectId = useProjectStore((s) => s.projectId);
+  const { data: projectsData } = useProjects();
+  const projectName = projectsData?.projects.find((p) => p.id === projectId)?.name;
 
   // The suggestion deck — the shared project-scoped query, so it's cached across
   // chat switches and invalidated by the SSE firehose (which is how a card
@@ -408,14 +433,14 @@ export default function ChatHomeScreen() {
         keyboardDismissMode="interactive"
       >
         {recaps.length ? (
-          <Section title="Last chats" cardWidth={RECAP_W}>
+          <Section title={projectName ? titleCase(projectName) : 'Last chats'} cardWidth={RECAP_W}>
             {recaps.map((r) => (
               <PressCard
                 key={r.id}
                 label={r.title}
                 seed={meshSeed(r.id)}
                 style={styles.recapCard}
-                bandSide="left"
+                bandSide="none"
                 onPress={() => openRecap(r.id)}
               >
                 <Text className="text-xs text-muted-foreground">{r.when}</Text>
@@ -431,7 +456,7 @@ export default function ChatHomeScreen() {
           </Section>
         ) : null}
 
-        <Section title="Try something new" cardWidth={SUGGESTION_W}>
+        <Section title="Try something new" cardWidth={SUGGESTION_W} small>
           {isLoading ? (
             <SuggestionSkeletons />
           ) : (
@@ -477,6 +502,9 @@ const styles = StyleSheet.create({
   list: { flex: 1 },
   // UIKit's large-title text style: SF Pro at 34pt bold, 41pt line height.
   bigTitle: { fontSize: 34, fontWeight: '700', lineHeight: 41 },
+  // Half the large title, for every section headline below the first — kept in
+  // lockstep with headline in components/chat/discover.tsx.
+  smallTitle: { fontSize: 20, fontWeight: '700', lineHeight: 25 },
   content: { paddingTop: 8, paddingBottom: 24, gap: 20 },
   // Only until the viewport is measured (one frame) — then a minHeight takes over.
   grow: { flexGrow: 1 },
@@ -509,9 +537,10 @@ const styles = StyleSheet.create({
   // Text sits on the plain surface below the band, pinned to the bottom so
   // one-liners and four-liners both hang off the same edge.
   cardBody: { flex: 1, justifyContent: 'flex-end', padding: 14 },
-  // The spine costs no height, so the budget is all text: padding (14×2) +
-  // timestamp eyebrow (16 + 4 gap) + three recapTitle lines (3×20). Grow a
-  // line and this grows with it, or the eyebrow clips first.
+  // No band, so the budget is all text: padding (14×2) + timestamp eyebrow (16 +
+  // its 4pt gap) + THREE recapTitle lines (3×20) = 108. Three is also what the
+  // stored title is capped to fill — see deriveTitle in lib/agent/chat-store.ts;
+  // grow one and the other has to follow, or the card shows blank space.
   recapCard: { width: RECAP_W, height: 108 },
   // A poster, not a chip. The height is the worst case of the layout below —
   // three lines of headline over four of paragraph, plus the padding — because a
@@ -527,15 +556,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
   },
   // The Discover posters' title metrics (see title in components/chat/discover.tsx)
-  // so the two decks of big cards share one headline size — under the 34pt
-  // section headlines, so a card can't outshout the row it sits in.
-  cardTitle: { fontSize: 26, fontWeight: '700', lineHeight: 30, letterSpacing: -0.4 },
+  // so the two decks of big cards share one headline size — under the section
+  // headlines, so a card can't outshout the row it sits in.
+  cardTitle: { fontSize: 17, fontWeight: '700', lineHeight: 21, letterSpacing: -0.2 },
   // The recap's small title — body-sized, semibold so it still reads as the
   // card's name over the muted timestamp above it.
   recapTitle: { fontSize: 15, fontWeight: '600', lineHeight: 20 },
   // The paragraph under it. The leading on both texts is a budget, not taste: a
-  // three-line headline (90) plus its gap (8) plus five blurb lines (90) plus the
-  // body's padding (26) is 214, which is exactly what SUGGESTION_BODY reserves.
+  // three-line headline (63) plus its gap (8) plus five blurb lines (90) plus the
+  // body's padding (26) is 187, which is exactly what SUGGESTION_BODY reserves.
   // Grow either text and raise SUGGESTION_BODY with it, or the last line clips.
   cardBlurb: { marginTop: 8, fontSize: 14, lineHeight: 18 },
 });
