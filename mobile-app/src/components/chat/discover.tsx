@@ -106,9 +106,9 @@ export function DiscoverSection() {
   const cards = useDiscover();
   return (
     <View className="gap-3">
-      {/* Same half-size headline as the landing screen's lower sections (see
-          smallTitle in app/(tabs)/chat/index.tsx) — only the project name up
-          top wears the 34pt large title. */}
+      {/* The same headline every section on the landing screen wears (see
+          sectionTitle in app/(tabs)/chat/index.tsx), the project name at the top
+          of the page included — the decks are peers, so nothing outranks. */}
       <Text accessibilityRole="header" className="px-5 text-foreground" style={styles.headline}>
         Discover
       </Text>

@@ -3,8 +3,8 @@ import { ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-n
 import { Image } from 'expo-image';
 import { Link, Stack, router, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Button } from '@/components/ui/button';
 import { Empty } from '@/components/ui/empty';
+import { SemiPillButton } from '@/components/ui/semi-pill-button';
 import { useChatComposer } from '@/components/chat/composer-host';
 import { useConversations, useIsFreshChat } from '@/lib/agent/provider';
 import { setPendingDraft } from '@/lib/agent/pending-draft';
@@ -78,16 +78,20 @@ export default function DiscoverDetailScreen() {
   }
 
   return (
-    <View className="flex-1 bg-background">
+    // The page colour, not the app background — it's what the bounce at the top
+    // and the bottom of the scroll reveals, and the story block below is set on
+    // the same fill.
+    <View className="flex-1" style={{ backgroundColor: colors.pageBg }}>
       {/* No title in the bar — the masthead a few points below already carries
           the headline, and a second copy of it riding over the picture just
           doubles up. What's left is chrome: the back chevron and the menu. */}
       <Stack.Screen options={{ title: '' }} />
-      <ScrollView
-        contentInsetAdjustmentBehavior="never"
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ paddingBottom: insets.bottom + 32 }}
-      >
+      {/* NO paddingBottom on the content container: that would be empty space
+          BELOW the story block, and the app background would show through it as
+          a dark band under a light page. The home-indicator clearance is padding
+          INSIDE the block instead (see `body` below), so the page colour runs all
+          the way to the last pixel. */}
+      <ScrollView contentInsetAdjustmentBehavior="never" showsVerticalScrollIndicator={false}>
         <Link.AppleZoomTarget>
           <Image
             source={card.image ? { uri: card.image } : undefined}
@@ -125,7 +129,9 @@ export default function DiscoverDetailScreen() {
             nested <Text>, which inherits the parent's line box so the two
             weights share a single flowing paragraph. Then heading-over-paragraph
             the rest of the way down, all in the app's own text colours. */}
-        <View style={[styles.body, { backgroundColor: colors.pageBg }]}>
+        <View
+          style={[styles.body, { backgroundColor: colors.pageBg, paddingBottom: insets.bottom + 40 }]}
+        >
           <View className="px-5 pt-7">
             <Text style={[styles.lead, { color: colors.mutedForeground }]}>
               <Text style={[styles.leadOpener, { color: colors.foreground }]}>
@@ -143,7 +149,12 @@ export default function DiscoverDetailScreen() {
           </View>
 
           <View className="px-5 pt-9">
-            <Button title="Try this" onPress={start} size="lg" />
+            {/* The page's one action, so it gets the page's one button: the
+                semi-pill slab, inverted (the page's own foreground as the fill).
+                `variant` is the knob for how it feels under the thumb —
+                "bounce" for the springy flat fill, "glass" for the iOS 26
+                liquid-glass surface. Same shape and colour either way. */}
+            <SemiPillButton title="Try this" onPress={start} variant="bounce" />
             {/* Says what the button will actually do, because it doesn't open a
                 form — it opens a conversation that has already started. */}
             <Text style={[styles.note, { color: colors.mutedForeground }]}>
@@ -162,8 +173,9 @@ export default function DiscoverDetailScreen() {
 const styles = StyleSheet.create({
   hero: { width: '100%', backgroundColor: '#0b0b0c' },
   // Runs to the bottom of the scroll view, so the colour block ends with the
-  // page rather than stopping under the last line of text.
-  body: { flexGrow: 1, paddingBottom: 40 },
+  // page rather than stopping under the last line of text. Its paddingBottom is
+  // set inline — it carries the home-indicator inset.
+  body: { flexGrow: 1 },
   kicker: { fontSize: 12, fontWeight: '700', letterSpacing: 1.1 },
   title: { fontSize: 32, fontWeight: '700', lineHeight: 37, letterSpacing: -0.6 },
   standfirst: { fontSize: 17, lineHeight: 23 },
