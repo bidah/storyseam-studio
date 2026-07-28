@@ -1,19 +1,13 @@
 import { useMemo } from 'react';
 import { mediaUrl } from './api';
 import { useProjectResource } from './queries';
-import {
-  DISCOVER,
-  DISCOVER_HERO_BLURHASH,
-  DISCOVER_HERO_REL,
-  type DiscoverArt,
-  type DiscoverEntry,
-} from './discover';
+import { DISCOVER, type DiscoverArt, type DiscoverEntry } from './discover';
 
 // Hangs the project's own artwork on the Discover deck (see discover.ts).
 //
 // A Discover card is a picture first, and the picture should be THIS project's
-// work: the newest concept frame for "Find the look", a storyboard still for
-// "See it as boards". When a strand has produced nothing yet — and on a brand
+// work where it exists: a character sheet on the cast card, a location sheet on
+// the world card. When a strand has produced nothing yet — and on a brand
 // new project none of them have — the card falls back to the shipped hero
 // rather than dropping out of the row, because the deck is editorial: these
 // moves are worth showing before they've been made, not after.
@@ -23,7 +17,8 @@ import {
 // read, and the SSE firehose invalidation that repaints those tabs repaints
 // these cards too.
 
-type VisualDoc = { generations?: { status?: string; url?: string }[] };
+type VisualGen = { status?: string; url?: string; sheetType?: string };
+type VisualDoc = { generations?: VisualGen[] };
 type Take = { url?: string; selected?: boolean };
 type BoardDoc = { stills?: Record<string, Record<string, Take[]>> };
 
@@ -42,8 +37,13 @@ export type DiscoverCard = DiscoverEntry & {
 
 // The worker `unshift`es new generations, so index 0 is the newest — take the
 // first one that actually finished (a "processing" record has no bytes yet).
-function newestVisual(doc: VisualDoc | undefined): string | null {
-  const gen = doc?.generations?.find((g) => g.status === 'ready' && g.url);
+// `sheet` narrows to one kind of sheet, which is how the cast card shows a
+// character and the world card a place instead of both showing whatever was
+// generated most recently.
+function newestVisual(doc: VisualDoc | undefined, sheet?: string): string | null {
+  const gen = doc?.generations?.find(
+    (g) => g.status === 'ready' && g.url && (!sheet || g.sheetType === sheet),
+  );
   return gen?.url ?? null;
 }
 
@@ -74,7 +74,12 @@ export function useDiscover(): DiscoverCard[] {
   const board = useProjectResource<BoardDoc>('storyboard');
 
   const art = useMemo<Record<Exclude<DiscoverArt, null>, string | null>>(
-    () => ({ visual: newestVisual(visual.data), storyboard: anyStill(board.data) }),
+    () => ({
+      visual: newestVisual(visual.data),
+      character: newestVisual(visual.data, 'character'),
+      location: newestVisual(visual.data, 'location'),
+      storyboard: anyStill(board.data),
+    }),
     [visual.data, board.data],
   );
 
@@ -84,8 +89,8 @@ export function useDiscover(): DiscoverCard[] {
         const rel = entry.art ? art[entry.art] : null;
         return {
           ...entry,
-          image: mediaUrl(rel ?? DISCOVER_HERO_REL),
-          blurhash: rel ? undefined : DISCOVER_HERO_BLURHASH,
+          image: mediaUrl(rel ?? entry.hero.rel),
+          blurhash: rel ? undefined : entry.hero.blurhash,
           fromProject: !!rel,
         };
       }),

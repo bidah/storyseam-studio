@@ -28,7 +28,7 @@ import { useDiscoverEntry } from '@/lib/use-discover';
 // to refract on the way in. The flat trim pulls the ratio back so the text
 // block clears the fold — at the bare ratio the picture crowded the copy out.
 const HERO_RATIO = 0.62;
-const HERO_TRIM = 80;
+const HERO_TRIM = 170;
 
 export default function DiscoverDetailScreen() {
   const { slug } = useLocalSearchParams<{ slug: string }>();
@@ -79,7 +79,10 @@ export default function DiscoverDetailScreen() {
 
   return (
     <View className="flex-1 bg-background">
-      <Stack.Screen options={{ title: card.title }} />
+      {/* No title in the bar — the masthead a few points below already carries
+          the headline, and a second copy of it riding over the picture just
+          doubles up. What's left is chrome: the back chevron and the menu. */}
+      <Stack.Screen options={{ title: '' }} />
       <ScrollView
         contentInsetAdjustmentBehavior="never"
         showsVerticalScrollIndicator={false}

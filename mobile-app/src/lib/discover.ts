@@ -5,17 +5,27 @@
 // DERIVED (see suggestions.ts): small cards, composed from where the project
 // actually stands, and a card retires the moment its gap closes. Discover is
 // EDITORIAL: a fixed, hand-written set of the big moves the studio can make —
-// find the look, board it, put it in motion — which are true on day one and
+// cast it, build its places, put it in motion — which are true on day one and
 // still true on the day the episode is finished. That's why the slugs are
 // stable: each one is a route (`chat/discover/[slug]`), and the card zooms into
 // it (Link.AppleZoom, iOS 18+).
 //
-// A card is a PICTURE first. The art is the project's own work when there is
-// any — a concept frame, a storyboard still — and the shipped hero below when
-// there isn't, so the row reads the same on an empty project as on a finished
-// one. See use-discover.ts for the resolution.
+// A card is a PICTURE first, and every card ships with one of its own. The
+// project's matching work replaces it once there is any — your character on the
+// cast card, your location on the world card — so the row reads the same on an
+// empty project as on a finished one, but grows into the project as it fills up.
+// See use-discover.ts for the resolution.
 
-export type DiscoverArt = 'visual' | 'storyboard' | null;
+/**
+ * Which of the project's own pictures may stand in for a card's shipped hero.
+ * `character` / `location` are the visual world's SHEETS (a generation carries a
+ * `sheetType`), so the cast card can show one of your characters and the world
+ * card one of your places rather than both showing whatever was generated last.
+ */
+export type DiscoverArt = 'visual' | 'storyboard' | 'character' | 'location' | null;
+
+/** A shipped picture: where it lives, and the hash computed from it at build time. */
+export type DiscoverHero = { rel: string; blurhash: string };
 
 export type DiscoverEntry = {
   /** Stable — it is the detail route's path segment. Never renumber. */
@@ -36,27 +46,40 @@ export type DiscoverEntry = {
   sections: { heading: string; body: string }[];
   /** The composed brief "Try this" sends. Never just the title. */
   prompt: string;
-  /** Which project media illustrates it, or null for the shipped hero. */
+  /** Which project media may replace the hero, or null to always show it. */
   art: DiscoverArt;
+  /** The picture this card ships with — one per card, never shared. */
+  hero: DiscoverHero;
 };
 
-// The shipped hero, in R2 behind the Worker (`/files/…`) rather than bundled in
-// the app: art is content, and content that lives on the server can change
-// without a new binary or an OTA. Stored RELATIVE so `mediaUrl()` puts the
-// configured API origin in front of it — a hardcoded workers.dev URL would
-// break the moment the Worker moves.
-export const DISCOVER_HERO_REL =
-  '/files/chat-uploads/d29c9831-7a1b-4060-afbd-4a7fc5aabf96-discover-rider.jpg';
-
-// The hero's OWN blurhash, computed from the file at build time (ffmpeg → 64×47
-// RGBA → blurhash encode, 4×3 components). Shipped as a constant rather than
-// learned at runtime because a hash can only be generated from pixels you have
-// already downloaded: on a cold start that's exactly one download too late for
-// the blur-up to be worth anything. Project media has no such luxury and gets
-// its hash generated after first sight (see lib/image-tint.ts) — which is also
-// where this string turns into the card's tint colour, since a blurhash's first
+// The shipped pictures live in R2 behind the Worker (`/files/…`) rather than
+// bundled in the app: art is content, and content on the server can be swapped
+// without a new binary or even an OTA. Stored RELATIVE so `mediaUrl()` puts the
+// configured API origin in front — a hardcoded workers.dev URL would break the
+// moment the Worker moves.
+//
+// Each carries its own blurhash, computed from the file at build time (ffmpeg →
+// 64px RGBA → blurhash encode, 4×3 components). Shipped as a constant rather
+// than learned at runtime because a hash can only be generated from pixels you
+// have already downloaded: on a cold start that's exactly one download too late
+// for the blur-up to be worth anything. Project media has no such luxury and
+// gets hashed after first sight (see lib/image-tint.ts) — which is also where
+// these strings become each card's tint colour, since a blurhash's first
 // component IS the picture's average colour.
-export const DISCOVER_HERO_BLURHASH = 'L48}PxInS6n4k]D*IU?cS0Mys8o~';
+const HERO = {
+  rider: {
+    rel: '/files/chat-uploads/d29c9831-7a1b-4060-afbd-4a7fc5aabf96-discover-rider.jpg',
+    blurhash: 'L48}PxInS6n4k]D*IU?cS0Mys8o~',
+  },
+  cast: {
+    rel: '/files/chat-uploads/1620605a-242e-4ceb-a557-ba30b9739612-discover-cast.jpg',
+    blurhash: 'LCC6iR00?vrq?^DitSNH%NxWofkD',
+  },
+  world: {
+    rel: '/files/chat-uploads/6ca84d05-2933-4d37-a942-5a2281bf0476-discover-world.jpg',
+    blurhash: 'LdIF3qW=n%sDysogNGg2%#ocR.Rk',
+  },
+} satisfies Record<string, DiscoverHero>;
 
 // The neutral used while an unknown picture is still being hashed.
 export const DISCOVER_BLURHASH = 'L6C%b^~qRj00_3xu9F%L00IU-;M{';
@@ -92,67 +115,70 @@ export const DISCOVER: DiscoverEntry[] = [
     prompt:
       'Let’s put the episode in motion: build an animatic from what we already have — each shot’s storyboard still on the picture track for as long as its dialogue runs, the radio under it, and slates where a still doesn’t exist yet. Before you start, tell me which shots are missing artwork and how long the whole thing is going to run. Then cut it together and give me a cut I can play.',
     art: null,
+    hero: HERO.rider,
   },
   {
-    slug: 'look',
-    kicker: 'Visual world',
-    title: 'Find the look',
-    tagline: 'Concept frames before a single shot',
+    slug: 'cast',
+    kicker: 'Characters',
+    title: 'Give them a face',
+    tagline: 'A sheet and a voice for everyone in the story',
     lead: {
-      opener: 'Before the boards there is the look',
+      opener: 'A character sheet is a promise',
       rest:
-        ' — a spread of concept frames for the places and the people, all made the same way, so the series reads as one world instead of a folder of pretty images.',
+        ' — that this is the same person in every shot they appear in, from any angle, in any light. Without one, a character is whatever each generation decides they look like that afternoon.',
     },
     sections: [
       {
-        heading: 'One lens, one light',
+        heading: 'A sheet, not a portrait',
         body:
-          'What makes a set of images a world is not the subjects, it’s the constants: the same focal length, the same time of day, the same handful of colours doing the same jobs. Generated one at a time to individual taste, ten frames become ten different films. Generated against one visual brief, they become a place.',
+          'One beautiful image of somebody is a picture. A sheet is that person turned around: front, three-quarter, profile, the silhouette that reads at a distance, the details that survive being small — the coat, the scar, the way the hair sits. It exists so every later frame has something to be consistent WITH, which is the whole difference between a cast and a series of strangers.',
       },
       {
-        heading: 'It is a decision, not a gallery',
+        heading: 'Then give them a voice',
         body:
-          'The point isn’t the images — it’s what you settle by looking at them. Which of these is the series? Once that’s answered, the answer travels: character and location sheets are drawn to it, storyboard stills inherit it, and every render downstream has something specific to match instead of a prompt reinventing the world each time.',
+          'A character in this studio is a face and a voice, and the voice is doing at least half the work. Casting one is the same decision as casting the face — age, weight, where they’re from, what they sound like when they’re not performing — and once it’s cast, every line that character speaks in the radio and the animatic comes back in it.',
       },
       {
-        heading: 'Push it before you commit',
+        heading: 'The roster is the source',
         body:
-          'The first spread exists to be reacted to. Warmer, harder, further back, more weather — say which direction and the next round is generated against it. Cheap while it’s only frames; expensive once forty stills have inherited a look nobody chose.',
+          'Characters aren’t invented at the image stage; they come off the world bible’s roster, which is what makes it possible to say who is still missing a sheet or a voice. Start from the names the script actually leans on — the ones with lines, the ones in the most shots — rather than the ones that happen to be first alphabetically.',
       },
     ],
     prompt:
-      'Let’s find the look of the series: generate a spread of concept frames for the locations and characters we already have — the same lens, light and palette across all of them, so they read as one world. Ask me which direction to push before you spend a second round, and once we can see them side by side tell me what the through-line is.',
-    art: 'visual',
+      'Let’s give the cast faces and voices: go through the roster, tell me who is still missing a character sheet or a voice, and rank them by how much the script actually leans on them. Then generate sheets for the top of that list in the visual world’s established look — front, three-quarter and profile, consistent wardrobe and features — and show me each one before moving to the next. Ask me before casting a voice rather than picking one for me.',
+    art: 'character',
+    hero: HERO.cast,
   },
   {
-    slug: 'board',
-    kicker: 'Storyboard',
-    title: 'See it as boards',
-    tagline: 'Every shot as a frame you can read',
+    slug: 'world',
+    kicker: 'Locations',
+    title: 'Build the world',
+    tagline: 'Every place the story visits, drawn once',
     lead: {
-      opener: 'A board per shot',
+      opener: 'Somewhere the story keeps coming back to',
       rest:
-        ', in the visual language the world already established. Boarding is where a shot list stops being a spreadsheet and starts being a film you can read at a glance.',
+        ' deserves to be drawn once and then reused, the way a production builds a standing set. Otherwise the same room is a slightly different room in every scene that happens in it.',
     },
     sections: [
       {
-        heading: 'What boarding shakes loose',
+        heading: 'A place needs a sheet too',
         body:
-          'Beats with no image behind them. Two shots that turn out to be the same shot. A line of dialogue that has nowhere to be spoken from. None of these are visible in a list — they surface the moment somebody has to draw the frame, which is exactly why the drawing happens before anything expensive does.',
+          'The wide that establishes it. The angle you actually shoot most of the scenes from. What it looks like from the way in. Together they answer the question every later shot asks — where am I standing, and what is behind me — so a frame set in that place can be generated without re-describing it from scratch each time.',
       },
       {
-        heading: 'In batches, in story order',
+        heading: 'Hour, weather, season',
         body:
-          'Not the first shots in the list — the shots that carry the episode. A batch comes back, you say what’s wrong with it, and the correction applies to everything after it rather than being re-explained forty times. Every still is keyed to its shot id, so a re-generated frame lands on the same shot and the takes stack up beside it.',
+          'A location is not one image; it is a place under conditions. The same hillside at noon and at dusk are two different scenes with the same geography, and deciding up front which ones the episode needs saves discovering halfway through the boards that half your shots quietly happen at a time of day nothing was drawn for.',
       },
       {
-        heading: 'Then it moves',
+        heading: 'What the boards inherit',
         body:
-          'Boards aren’t a deliverable, they’re the picture track. Every still you approve here is what the animatic plays and what its shot’s video eventually replaces — so a boarded episode is already a watchable one.',
+          'Locations feed straight into the storyboard: a shot that names a place can be drawn against that place’s sheet instead of a sentence, which is what makes forty stills feel like one episode rather than forty prompts. Get the places right and the boarding stops being a negotiation.',
       },
     ],
     prompt:
-      'Let’s board the episode: go through the shot list and generate the storyboard still each shot is missing, matching the visual world we’ve already established. Start with the shots that carry the story rather than the first ones in the list, work in small batches, and show me each batch before moving on.',
-    art: 'storyboard',
+      'Let’s build the world’s places: list the locations the script and shot list actually use, tell me which ones have no sheet yet, and rank them by how many shots happen there. Then generate location sheets for the busiest ones in our established look — an establishing wide, the main shooting angle, and the approach — plus any time of day the episode needs them in. Show me each location before starting the next.',
+    art: 'location',
+    hero: HERO.world,
   },
 ];
