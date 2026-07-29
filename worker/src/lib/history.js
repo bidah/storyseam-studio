@@ -14,6 +14,7 @@
 // routes), so every doc store is covered — world, shotlist, sounds, cuts,
 // episode, visual-world, script.
 import { normalizeProjectId } from "./docs.js";
+import { requestContext } from "./request-context.js";
 
 // How many versions to keep per document. Small JSON, so this is cheap; the
 // oldest are pruned on write.
@@ -52,17 +53,35 @@ const withDate = (r) => ({
   size: r.size,
   source: r.source || null,
   generatedAt: r.generated_at || null,
+  // Attribution of the write that REPLACED this version — who was signed in,
+  // whether it came from the app or an agent tool, and which conversation.
+  // `source` is the replaced document's self-reported provenance and can be
+  // stale or absent; these three come from the authenticated request itself.
+  actor: r.actor || null,
+  caller: r.caller || null,
+  chatId: r.chat_id || null,
 });
 
 // Newest first. Deliberately does NOT select `json` — a history list is a
 // picker, and pulling every stored version's body to render it would be silly.
 export async function listSnapshots(env, projectId, name) {
-  const { results } = await env.DB.prepare(
-    "SELECT ts, size, source, generated_at FROM doc_history WHERE project_id = ? AND name = ? ORDER BY ts DESC",
-  )
-    .bind(normalizeProjectId(projectId), name)
-    .all();
-  return (results || []).map(withDate);
+  const pid = normalizeProjectId(projectId);
+  const query = (columns) =>
+    env.DB.prepare(
+      `SELECT ${columns} FROM doc_history WHERE project_id = ? AND name = ? ORDER BY ts DESC`,
+    )
+      .bind(pid, name)
+      .all();
+  try {
+    const { results } = await query("ts, size, source, generated_at, actor, caller, chat_id");
+    return (results || []).map(withDate);
+  } catch {
+    // Same reason as the insert below: on a database where the attribution
+    // migration hasn't run, selecting those columns throws — and a history list
+    // that 500s is strictly worse than one without an actor column.
+    const { results } = await query("ts, size, source, generated_at");
+    return (results || []).map(withDate);
+  }
 }
 
 export async function readSnapshot(env, projectId, name, ts) {
@@ -112,18 +131,47 @@ export async function snapshotPrevious(env, projectId, name, prevText, nextText,
       if (at && Date.now() - at.getTime() < MIN_INTERVAL_MS) return null;
     }
 
+    // Who is doing this. Read from the request's AsyncLocalStorage store rather
+    // than a parameter, so no call site can forget to pass it — see
+    // lib/request-context.js.
+    const { userId, caller, chatId } = requestContext();
+
     const ts = stamp();
-    await env.DB.batch([
-      env.DB.prepare(
-        "INSERT INTO doc_history (project_id, name, ts, json, source, generated_at, size) VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT (project_id, name, ts) DO NOTHING",
-      ).bind(pid, name, ts, prevText, source || null, generatedAt || null, prevText.length),
-      // Ring buffer: keep the newest MAX_SNAPSHOTS for this doc, drop the rest.
-      env.DB.prepare(
-        `DELETE FROM doc_history WHERE project_id = ? AND name = ? AND ts NOT IN (
-           SELECT ts FROM doc_history WHERE project_id = ? AND name = ? ORDER BY ts DESC LIMIT ?
-         )`,
-      ).bind(pid, name, pid, name, MAX_SNAPSHOTS),
-    ]);
+    // Ring buffer: keep the newest MAX_SNAPSHOTS for this doc, drop the rest.
+    const prune = env.DB.prepare(
+      `DELETE FROM doc_history WHERE project_id = ? AND name = ? AND ts NOT IN (
+         SELECT ts FROM doc_history WHERE project_id = ? AND name = ? ORDER BY ts DESC LIMIT ?
+       )`,
+    ).bind(pid, name, pid, name, MAX_SNAPSHOTS);
+
+    try {
+      await env.DB.batch([
+        env.DB.prepare(
+          "INSERT INTO doc_history (project_id, name, ts, json, source, generated_at, size, actor, caller, chat_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (project_id, name, ts) DO NOTHING",
+        ).bind(
+          pid, name, ts, prevText, source || null, generatedAt || null, prevText.length,
+          userId || null, caller || null, chatId || null,
+        ),
+        prune,
+      ]);
+    } catch (err) {
+      // The attribution columns are newer than this table. On a database where
+      // the migration hasn't been applied yet the insert above fails on the
+      // unknown column — and because this whole function swallows errors to
+      // protect the user's actual write, that would silently STOP recording
+      // history until someone noticed the dialog had gone empty. Losing the
+      // actor is acceptable; losing the version is the accident this file
+      // exists to prevent, so fall back to the pre-migration column set.
+      console.warn(
+        `[history] attribution columns unavailable (run the doc_history ALTERs in schema.sql): ${err?.message || err}`,
+      );
+      await env.DB.batch([
+        env.DB.prepare(
+          "INSERT INTO doc_history (project_id, name, ts, json, source, generated_at, size) VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT (project_id, name, ts) DO NOTHING",
+        ).bind(pid, name, ts, prevText, source || null, generatedAt || null, prevText.length),
+        prune,
+      ]);
+    }
     return ts;
   } catch {
     return null;

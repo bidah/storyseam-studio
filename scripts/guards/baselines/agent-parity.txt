@@ -1,0 +1,70 @@
+# Parity-gap ledger for scripts/guards/agent-parity.mjs.
+#
+# Each line is an /api path the web client calls that no flue tool reaches. The
+# guard fails on any gap NOT listed here, so this file is the boundary between
+# "known debt" and "new regression". It is a ledger, not an exemption list —
+# when a tool is written, delete its line (the guard reports stale entries).
+#
+# Two kinds of entry live here, marked accordingly:
+#   [gui-only]  legitimately not an agent capability — browser plumbing.
+#   [gap]       a real parity gap; the agent should be able to do this.
+
+# --- [gui-only] browser plumbing, transport, and session ---------------------
+/api/upload                       # multipart body from a file input; the agent attaches by URL
+/api/data/events                  # SSE subscription — a stream, not an operation
+/api/script/events                # SSE subscription
+/api/timeline/events              # SSE subscription
+/api/projects                     # project switching is a client concern; the agent is scoped to one
+/api/projects/*
+/api/projects/*/activate
+/api/nav/events                   # SSE subscription (agent → UI navigate commands)
+/api/appstate                     # the client REPORTS its screen here; the agent reads the
+                                  # hydrated view at /api/appstate/screen via view_screen,
+                                  # so this write endpoint is correctly one-directional
+/api/chat-title                   # derives a title for the chat rail from the first message
+/api/next-questions               # generates the follow-up chips under a finished turn
+/api/transcribe                   # microphone capture → text, for the composer's dictation button
+/api/history/*/*/restore          # the agent reaches this through restore_version, which posts a different literal
+
+# --- [gui-only] render plumbing the agent drives through provider tools ------
+/api/render                       # the GUI's own render kick-off; the agent uses the provider tools
+/api/pool                         # render-worker pool status, shown in the GUI status rail
+/api/final                        # final-render listing for the GUI picker
+/api/higgsfield/import            # browser-side import of a Higgsfield generation
+
+# --- [gap] real parity gaps, ordered by how much they matter -----------------
+/api/shotlist/shot/*              # edit ONE shot; the agent can only rewrite the whole list
+/api/shotlist/rebuild-from-episode
+/api/world/character/*            # edit/delete one character
+/api/world/location/*             # edit/delete one location
+/api/animatic                     # the whole Animatic tab is agent-invisible
+/api/animatic/to-editor
+/api/animatic/view
+/api/radio/to-editor
+/api/timeline/from-animatic
+/api/timeline/from-radio
+/api/episode/first-frame
+/api/episode/link
+/api/episode/ref-video
+/api/script/drafts/*
+/api/script/sign
+/api/script/proposal/reject       # the agent can propose but not reject on the author's behalf
+/api/storyboard                   # board read; the agent attaches stills but can't browse the board
+/api/storyboard/select
+/api/stills
+/api/sounds/*                     # per-sound read/delete
+/api/sounds/*/version
+/api/sounds/*/version/*
+/api/sounds/*/version/*/like
+/api/library/import
+/api/library/remove
+/api/library/rename
+/api/shots/*/*
+/api/visual-world/board           # the node-graph surface is entirely agent-invisible
+/api/visual-world/generate
+/api/visual-world/generation/*
+/api/visual-world/models
+/api/visual-world/node/run
+/api/visual-world/poll
+/api/visual-world/settings
+/api/visual-world/sheet-prompts

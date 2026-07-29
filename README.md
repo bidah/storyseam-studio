@@ -19,6 +19,12 @@ Each tab is a real **URL route** (`/script`, `/episode`, …) — React Router v
 data mode, with per-route lazy loading + loader-driven SWR caching. Architecture,
 the revalidation rule, and gotchas are in [`docs/routing.md`](docs/routing.md).
 
+The pipeline is also reachable from **outside** the app: the Worker serves an
+**MCP server** at `POST /api/mcp`, so Claude Desktop / Claude Code / Cursor can
+read the world, script, shot list, episode and cuts (and write the shot list)
+from an editor. Tools, the `MCP_TOKEN` bearer auth, and client setup are in
+[`docs/mcp.md`](docs/mcp.md).
+
 ## Architecture
 
 Three processes, no Express server (the old Express/Render backend was retired):

@@ -13,13 +13,29 @@ import { useAtlasKeyStore } from '@/lib/atlas-key';
 import { useProvidersStore } from '@/lib/providers';
 import { useProjectStore } from '@/lib/project';
 import { useProjects } from '@/lib/queries';
-import { useDataEvents } from '@/lib/sse';
+import { useDataEvents, useNavEvents } from '@/lib/sse';
+import { useReportScreen, useAgentNavigation } from '@/lib/screen-report';
 
 // Live-sync subscriber — mounted once the project is resolved. Deliberately
 // OUTSIDE <AgentProvider>, which renders null until the flue session publishes
 // an agent: live-sync must not wait on the chat session to come up.
 function LiveSync() {
   useDataEvents();
+  return null;
+}
+
+// The agent's two context channels, mounted alongside live-sync for the same
+// reason: neither should wait on the chat session to come up.
+//
+//   · outbound — report which screen the author is on, so `view_screen` resolves
+//     "this shot" instead of asking. This is not optional parity: the stored row
+//     is keyed per USER and shared with the web app, so a phone that never
+//     reported would leave the agent confidently answering with whatever tab the
+//     author's browser was last left on.
+//   · inbound — act on the agent's `navigate` commands.
+function AgentContext() {
+  useReportScreen();
+  useAgentNavigation(useNavEvents());
   return null;
 }
 
@@ -95,6 +111,7 @@ export default function TabsLayout() {
   return (
     <ProjectGate>
       <LiveSync />
+      <AgentContext />
       <AgentProvider>
         <View className="flex-1">
         <NativeTabs

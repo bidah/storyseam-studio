@@ -25,13 +25,57 @@ add a new `*.json` object to R2 for app state.
   read-then-write is last-writer-wins and silently drops concurrent edits (a
   burst of parallel roster adds used to lose about half of them). Reserve
   `writeDoc` for a genuine whole-document replace.
-- **Every write is versioned.** `docs.js` parks the value it replaced in
-  `doc_history` (`worker/src/lib/history.js`), surfaced by `/api/history/*`, the
-  `<DocHistory>` dialog, and the agent's `list_history` / `restore_version`.
-  Time Travel is whole-database and destructive, so it can't serve per-document
-  undo — that's what this is for.
+  A `writeDoc` call needs a `guard:allow-write-doc — <why>` comment above it or
+  the `doc-mutations` guard fails.
+- **Every write is versioned AND attributed.** `docs.js` parks the value it
+  replaced in `doc_history` (`worker/src/lib/history.js`), surfaced by
+  `/api/history/*`, the `<DocHistory>` dialog, and the agent's `list_history` /
+  `restore_version`. Time Travel is whole-database and destructive, so it can't
+  serve per-document undo — that's what this is for. Each entry also records
+  `actor` / `caller` / `chat_id`, read from the request's AsyncLocalStorage store
+  (`worker/src/lib/request-context.js`) so no call site has to pass them.
 - Schema lives in `worker/schema.sql`; apply with
   `npx wrangler d1 execute shot-studio-uploads --remote --file=schema.sql`.
+
+## Guards — `npm run guards`
+
+The rules in this file that fail SILENTLY are mechanised in `scripts/guards/`
+and run by `npm run guards`: a stale vendored copy, an `/api` route the agent
+can't reach, a read-then-write mutation, app state written back to R2. Run it
+before a commit that touches the worker, the agent, or anything vendored.
+
+Two of them keep a ledger under `scripts/guards/baselines/`. A baseline is debt,
+not an exemption: the guard reports entries that no longer fire so they get
+deleted. `baselines/agent-parity.txt` in particular is the live list of routes
+the GUI can reach and the agent can't — the parity backlog, in one file.
+
+## Auth — everything that reaches `/api` is authenticated
+
+The ownership middleware in `worker/src/index.js` **fails closed**: no identity
+means 401, and an identity that doesn't own the project means 403. Two
+credentials satisfy it — the Better Auth session cookie, and the flue agent's
+signed `x-flue-agent-user` assertion (`worker/src/lib/proxy-token.js` ⇄
+`flue-agent/src/lib/agent-identity.ts`), minted from the user id encoded in the
+conversation's instance id.
+
+**A new caller of `/api` must carry one of the two.** Agent tools get it for free
+by going through `flue-agent/src/lib/api.ts`; a call path that bypasses that
+client needs the header itself. The exempt prefixes (`/api/auth/`,
+`/api/projects`, `/api/extract`, `/api/agent/`, `/api/mcp`) each carry their own
+credential — the list is commented at the middleware.
+
+## Shared capability schemas
+
+`shared/schemas/*.json` describes a capability ONCE: the worker route validates
+incoming bodies against it (`worker/src/lib/validate.js`) and the flue tool
+builds its valibot input from it (`flue-agent/src/lib/schema-to-valibot.ts`),
+descriptions included. Edit the file in `shared/schemas/`, then
+**`npm run schemas:sync`** to vendor it into both packages (`npm run guards`
+fails if a copy drifts).
+
+Before this existed the only schema for a capability lived inside the tool, so
+the agent path was strictly typed and the GUI path was unchecked. When you add
+validation to a route, put the contract here rather than inline.
 
 ## Feature parity — GUI AND agent, always
 
@@ -49,8 +93,48 @@ three exist:
 
 When touching an existing feature, check the agent side didn't fall behind
 (e.g. a GUI button calling a route no tool exposes = a parity gap — close it).
-Skill descriptions carry the behavioral rules (the agent model leans on them),
-so put hard constraints in the SKILL.md `description:` too, not just the body.
+The `agent-parity` guard now catches this for you. Skill descriptions carry the
+behavioral rules (the agent model leans on them), so put hard constraints in the
+SKILL.md `description:` too, not just the body.
+
+### Context awareness — the agent can see the screen, and move it
+
+The client reports its current tab and selection to `PUT /api/appstate` on every
+route change (`src/lib/appState.js`, wired in `RootLayout`). The agent reads it
+back through the **`view_screen`** tool, which re-fetches the LIVE records those
+ids point at rather than trusting the stored copy — so "make this shot wider"
+resolves without a round-trip. What's stored is ids and short labels only; the
+route enforces that with a size cap.
+
+State is keyed **per user** (doc name `appstate:<userId>`), because two
+collaborators on one project are looking at different screens.
+
+The return leg is **`navigate`** → `POST /api/navigate` → the `nav` SSE channel
+→ `RootLayout` moves the tab. It's a one-shot command, deliberately not stored:
+replaying "go to Radio" on a reconnect would yank the author out of whatever
+they moved on to.
+
+### Destructive tools are gated
+
+`save_shotlist` (a shrinking `replace` only), `stitch_cuts`, `restore_version`
+and `delete_sound_version` don't execute on the first call. They register a
+pending op (`POST /api/approvals`) and return an `approvalToken`; the agent draws
+a `render_ui` confirm card, and only a second call carrying that token executes —
+replaying the STORED params, not what the model re-typed. See the
+`destructive-approval` skill. flue can't suspend a turn, so the transcript
+round-trip is the suspend mechanism.
+
+Keep this list short. A gate that fires often trains the author to tap through
+without reading, which is worse than no gate.
+
+### The pipeline is also an MCP server
+
+`POST /api/mcp` exposes the read tools plus `save_shotlist` / `restore_version`
+to Claude Desktop, Claude Code and Cursor. It authenticates with its own bearer
+(`MCP_TOKEN`) and requires an explicit `?projectId=` — it never falls back to a
+default project. Details in `docs/mcp.md`. The tools reuse the same route
+helpers the HTTP surface does (`buildStatus`, `buildShotlistView`, `saveShotlist`,
+…), so there is no second implementation to drift.
 
 ## Deploying — ship BOTH workers
 

@@ -165,7 +165,7 @@ export default defineAgent(async ({ id }) => {
   const projectId = decoded?.projectId ?? null;
   const userId = decoded?.userId ?? "";
 
-  const api = createApi(projectId);
+  const api = createApi(projectId, userId, decoded?.chatId ?? null);
   const tools = createTools(api);
   // All credentialed provider tools load regardless of the Settings selection
   // (see storedRenderPrefs above) — the selection only steers the default.

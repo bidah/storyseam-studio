@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { View } from 'react-native';
 import { Stack } from 'expo-router';
+import { useReportSegment } from '@/lib/screen-report';
 import { SegmentedNative } from '@/components/ui/segmented-native';
 import { ImportSection } from '@/components/assets/import-section';
 import { LibrarySection } from '@/components/assets/library-section';
@@ -17,6 +18,11 @@ type Seg = 'library' | 'import' | 'sounds';
 // merges with the menu/refresh native bar items the layout already installs.
 export default function AssetsTab() {
   const [seg, setSeg] = useState<Seg>('library');
+
+  // Which sub-surface is showing. The tabs layout only sees the route
+  // (`/assets`), and this switcher is component state — so without this the
+  // agent is told "library" while the author is in the Sound studio.
+  useReportSegment({ view: seg === 'sounds' ? 'sounds' : 'library', path: '/assets' });
 
   return (
     <View className="flex-1 bg-background">

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, Outlet, useLocation, useNavigate, useNavigation, useRevalidator } from "react-router";
 import { RefreshCw, ExternalLink, Clapperboard, Sun, Moon, LogOut, User, Settings } from "lucide-react";
 import { Glowing } from "glowing";
@@ -9,6 +9,7 @@ import LoginGate from "@/components/Login";
 import ProjectProvider from "@/components/ProjectProvider";
 import ProjectSwitcher from "@/components/ProjectSwitcher";
 import { onProjectChange } from "@/lib/projectFetch";
+import { useReportNavigation } from "@/lib/appState";
 import { clearTabCache, invalidateTabCache } from "@/lib/tabCache";
 import { signOut as authSignOut } from "@/lib/auth-client";
 import { AgentProvider } from "@/components/AgentProvider";
@@ -189,6 +190,11 @@ export default function RootLayout() {
   const activeTab = navPending ? pendingTab : view;
   const pendingView = useSettled(navPending) ? pendingTab : null;
 
+  // Tell the backend which tab is open, so the chat agent's `view_screen` can
+  // resolve "this shot" instead of asking. Pointer only — the id and the path;
+  // the agent re-reads the live records itself (src/lib/appState.js).
+  useReportNavigation({ view, path: location.pathname + location.hash });
+
   const revalidator = useRevalidator();
   const [loading, setLoading] = useState(true);
   // `reloadKey` is the media cache-bust nonce (?v=<n> on video/audio/img src) and
@@ -231,6 +237,25 @@ export default function RootLayout() {
     load(); // header shot count belongs to the new project too
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }), []);
+
+  // The agent asking the UI to move (POST /api/navigate → the `nav` channel).
+  // The return leg of context awareness: the agent can already see which tab is
+  // open, and this is how it takes you to the thing it just made.
+  //
+  // Deliberately NOT a stored piece of state. A navigate is a one-shot command,
+  // so a tab that was closed when it fired simply misses it — replaying "go to
+  // Radio" on reconnect would yank the author out of whatever they moved on to.
+  // `token` guards the only case that survives a reconnect: the same frame
+  // arriving twice.
+  const navEvents = useProjectEvents("/api/nav/events", { data: true });
+  const lastNavToken = useRef(null);
+  useEffect(() => {
+    const cmd = navEvents.last;
+    if (!cmd?.path || cmd.token === lastNavToken.current) return;
+    lastNavToken.current = cmd.token;
+    navigate(cmd.path);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [navEvents.last]);
 
   // Live agent edits on any other tab (shot list, episode, cuts, library, sound
   // studio) → refetch so every tab reflects the change with no manual Refresh.

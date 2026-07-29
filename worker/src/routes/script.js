@@ -15,7 +15,7 @@ import {
   draftMeta,
   metaList,
   readStore,
-  writeStore,
+  updateStore,
 } from "../lib/script-store.js";
 
 // The selections doc doubles as the de-facto DB (mirrors Express readDB/writeDB);
@@ -33,45 +33,53 @@ const editDB = (env, pid, mutate) => updateDoc(env, pid, "selections", DB_FALLBA
 // the request's executionCtx so a slow DO never delays the write's response.
 const broadcastScript = (c, pid, payload) => broadcast(c.env, pid, "script", payload, c.executionCtx);
 
+// The PINNED draft plus everything a reader needs in one round-trip (the drafts
+// index, sign-off, pending proposal, review state). Extracted from the route so
+// non-HTTP callers — the MCP server's `get_script` — get the SAME payload the
+// editor and the flue agent read, rather than a second, drifting projection.
+// Shape stays backward-compatible: { title, doc, updatedAt, clientId } is the
+// part every existing client depends on.
+export async function buildScriptView(env, pid) {
+  const store = await readStore(env, pid);
+  const d = pinnedDraft(store);
+  const db = await readDB(env, pid);
+  const sign = db.scriptSignoff?.[d.id] || null;
+  const shotlist = await readDoc(env, pid, "shotlist", null);
+  const reviews = reviewState(await readReviews(env, pid), {
+    pinnedId: d.id,
+    scriptUpdatedAt: d.updatedAt,
+  });
+  return {
+    title: d.title,
+    doc: d.doc,
+    updatedAt: d.updatedAt,
+    clientId: d.clientId,
+    draftId: d.id,
+    draftName: d.name,
+    pinnedId: store.pinnedId,
+    drafts: metaList(store),
+    // A staged agent edit awaiting review (before/after docs for the diff),
+    // or null. Present → the Script tab renders the accept/reject diff view.
+    proposal: d.proposal || null,
+    // Pipeline gate: the pinned draft's sign-off + whether a shot list already
+    // exists (so the Script tab can enable/disable "Generate shot list").
+    signed: !!sign,
+    signedAt: sign?.at || null,
+    shotlistExists: !!shotlist,
+    // Which script specialists have looked at THIS revision of the pinned
+    // draft ({ latest, pending, stale, fresh } — see lib/reviews.js). The
+    // agent reads it to know which doctor to offer next; the app renders it
+    // as the Script tab's review chips and the chat's suggestion cards.
+    reviews,
+  };
+}
+
 export function registerScript(app) {
   // Read the PINNED draft (plus the drafts index so the UI can render the
-  // version-control menu in one round-trip). Shape stays backward-compatible:
-  // { title, doc, updatedAt, clientId } is what the editor + agent tools read.
+  // version-control menu in one round-trip).
   app.get("/api/script", async (c) => {
-    const pid = c.get("projectId");
     try {
-      const store = await readStore(c.env, pid);
-      const d = pinnedDraft(store);
-      const db = await readDB(c.env, pid);
-      const sign = db.scriptSignoff?.[d.id] || null;
-      const shotlist = await readDoc(c.env, pid, "shotlist", null);
-      const reviews = reviewState(await readReviews(c.env, pid), {
-        pinnedId: d.id,
-        scriptUpdatedAt: d.updatedAt,
-      });
-      return c.json({
-        title: d.title,
-        doc: d.doc,
-        updatedAt: d.updatedAt,
-        clientId: d.clientId,
-        draftId: d.id,
-        draftName: d.name,
-        pinnedId: store.pinnedId,
-        drafts: metaList(store),
-        // A staged agent edit awaiting review (before/after docs for the diff),
-        // or null. Present → the Script tab renders the accept/reject diff view.
-        proposal: d.proposal || null,
-        // Pipeline gate: the pinned draft's sign-off + whether a shot list already
-        // exists (so the Script tab can enable/disable "Generate shot list").
-        signed: !!sign,
-        signedAt: sign?.at || null,
-        shotlistExists: !!shotlist,
-        // Which script specialists have looked at THIS revision of the pinned
-        // draft ({ latest, pending, stale, fresh } — see lib/reviews.js). The
-        // agent reads it to know which doctor to offer next; the app renders it
-        // as the Script tab's review chips and the chat's suggestion cards.
-        reviews,
-      });
+      return c.json(await buildScriptView(c.env, c.get("projectId")));
     } catch (e) {
       return c.json({ error: String(e.message || e) }, 500);
     }
@@ -106,22 +114,23 @@ export function registerScript(app) {
       let body;
       try { body = await c.req.json(); } catch { body = {}; }
       const { title, doc, clientId } = body || {};
-      const store = await readStore(c.env, pid);
-      const d = pinnedDraft(store);
-      d.title = typeof title === "string" ? title : "";
-      d.doc = doc ?? null;
-      d.updatedAt = nowIso();
-      d.clientId = clientId ?? null;
-      d.proposal = null; // a direct save supersedes any pending agent proposal
-      await writeStore(c.env, pid, store);
+      const { draftId, updatedAt, pinnedId } = await updateStore(c.env, pid, (store) => {
+        const d = pinnedDraft(store);
+        d.title = typeof title === "string" ? title : "";
+        d.doc = doc ?? null;
+        d.updatedAt = nowIso();
+        d.clientId = clientId ?? null;
+        d.proposal = null; // a direct save supersedes any pending agent proposal
+        return { draftId: d.id, updatedAt: d.updatedAt, pinnedId: store.pinnedId };
+      });
       // Editing the script invalidates its sign-off — it must be re-signed before
       // the shot list can be (re)generated from it.
       await editDB(c.env, pid, (db) => {
-        if (!db.scriptSignoff?.[d.id]) return { abort: true };
-        delete db.scriptSignoff[d.id];
+        if (!db.scriptSignoff?.[draftId]) return { abort: true };
+        delete db.scriptSignoff[draftId];
       });
-      await broadcastScript(c, pid, { updatedAt: d.updatedAt, clientId: clientId ?? null, pinnedId: store.pinnedId });
-      return c.json({ ok: true, updatedAt: d.updatedAt, draftId: d.id });
+      await broadcastScript(c, pid, { updatedAt, clientId: clientId ?? null, pinnedId });
+      return c.json({ ok: true, updatedAt, draftId });
     } catch (e) {
       return c.json({ error: String(e.message || e) }, 500);
     }
@@ -138,20 +147,21 @@ export function registerScript(app) {
       let body;
       try { body = await c.req.json(); } catch { body = {}; }
       const { proposedDoc, title, note, clientId } = body || {};
-      const store = await readStore(c.env, pid);
-      const d = pinnedDraft(store);
-      d.proposal = makeProposal({
-        baseDoc: d.doc ?? null,
-        proposedDoc: proposedDoc ?? null,
-        proposedTitle: typeof title === "string" ? title : d.title,
-        note,
-        source: "eve",
-        baseUpdatedAt: d.updatedAt,
+      const { draftId, updatedAt, pinnedId } = await updateStore(c.env, pid, (store) => {
+        const d = pinnedDraft(store);
+        d.proposal = makeProposal({
+          baseDoc: d.doc ?? null,
+          proposedDoc: proposedDoc ?? null,
+          proposedTitle: typeof title === "string" ? title : d.title,
+          note,
+          source: "eve",
+          baseUpdatedAt: d.updatedAt,
+        });
+        return { draftId: d.id, updatedAt: d.updatedAt, pinnedId: store.pinnedId };
       });
-      await writeStore(c.env, pid, store);
       // proposal:true tells open Script tabs to flip into the review/diff view.
-      await broadcastScript(c, pid, { updatedAt: d.updatedAt, clientId: clientId ?? null, pinnedId: store.pinnedId, proposal: true });
-      return c.json({ ok: true, draftId: d.id });
+      await broadcastScript(c, pid, { updatedAt, clientId: clientId ?? null, pinnedId, proposal: true });
+      return c.json({ ok: true, draftId });
     } catch (e) {
       return c.json({ error: String(e.message || e) }, 500);
     }
@@ -166,21 +176,23 @@ export function registerScript(app) {
       let body;
       try { body = await c.req.json(); } catch { body = {}; }
       const { doc, title, clientId } = body || {};
-      const store = await readStore(c.env, pid);
-      const d = pinnedDraft(store);
-      if (!d.proposal) return c.json({ error: "no pending proposal" }, 409);
-      d.doc = doc ?? d.proposal.proposedDoc ?? d.doc ?? null;
-      if (typeof title === "string") d.title = title;
-      d.proposal = null;
-      d.updatedAt = nowIso();
-      d.clientId = clientId ?? null;
-      await writeStore(c.env, pid, store);
-      await editDB(c.env, pid, (db) => {
-        if (!db.scriptSignoff?.[d.id]) return { abort: true };
-        delete db.scriptSignoff[d.id];
+      const res = await updateStore(c.env, pid, (store) => {
+        const d = pinnedDraft(store);
+        if (!d.proposal) return { abort: true, missing: true };
+        d.doc = doc ?? d.proposal.proposedDoc ?? d.doc ?? null;
+        if (typeof title === "string") d.title = title;
+        d.proposal = null;
+        d.updatedAt = nowIso();
+        d.clientId = clientId ?? null;
+        return { draftId: d.id, updatedAt: d.updatedAt, pinnedId: store.pinnedId };
       });
-      await broadcastScript(c, pid, { updatedAt: d.updatedAt, clientId: clientId ?? null, pinnedId: store.pinnedId });
-      return c.json({ ok: true, updatedAt: d.updatedAt, draftId: d.id });
+      if (res.missing) return c.json({ error: "no pending proposal" }, 409);
+      await editDB(c.env, pid, (db) => {
+        if (!db.scriptSignoff?.[res.draftId]) return { abort: true };
+        delete db.scriptSignoff[res.draftId];
+      });
+      await broadcastScript(c, pid, { updatedAt: res.updatedAt, clientId: clientId ?? null, pinnedId: res.pinnedId });
+      return c.json({ ok: true, updatedAt: res.updatedAt, draftId: res.draftId });
     } catch (e) {
       return c.json({ error: String(e.message || e) }, 500);
     }
@@ -193,13 +205,17 @@ export function registerScript(app) {
       let body;
       try { body = await c.req.json(); } catch { body = {}; }
       const clientId = body?.clientId ?? null;
-      const store = await readStore(c.env, pid);
-      const d = pinnedDraft(store);
-      if (!d.proposal) return c.json({ ok: true, draftId: d.id });
-      d.proposal = null;
-      await writeStore(c.env, pid, store);
-      await broadcastScript(c, pid, { updatedAt: d.updatedAt, clientId, pinnedId: store.pinnedId, proposal: false });
-      return c.json({ ok: true, draftId: d.id });
+      const res = await updateStore(c.env, pid, (store) => {
+        const d = pinnedDraft(store);
+        // Nothing staged — abort the write but still report the draft, so a
+        // double-reject is idempotent rather than an error.
+        if (!d.proposal) return { abort: true, draftId: d.id, noop: true };
+        d.proposal = null;
+        return { draftId: d.id, updatedAt: d.updatedAt, pinnedId: store.pinnedId };
+      });
+      if (res.noop) return c.json({ ok: true, draftId: res.draftId });
+      await broadcastScript(c, pid, { updatedAt: res.updatedAt, clientId, pinnedId: res.pinnedId, proposal: false });
+      return c.json({ ok: true, draftId: res.draftId });
     } catch (e) {
       return c.json({ error: String(e.message || e) }, 500);
     }
@@ -229,19 +245,25 @@ export function registerScript(app) {
       try { body = await c.req.json(); } catch { body = {}; }
       const { name, blank, clientId, doc, title } = body || {};
       const seeded = doc !== undefined; // explicit content seed (importer)
-      const store = await readStore(c.env, pid);
-      const cur = pinnedDraft(store);
-      const draft = makeDraft({
-        name: typeof name === "string" && name.trim() ? name.trim() : `Draft ${store.drafts.length + 1}`,
-        title: seeded ? (typeof title === "string" ? title : "") : (blank ? "" : cur.title),
-        doc: seeded ? (doc ?? null) : (blank ? null : cur.doc),
-        clientId: clientId ?? null,
+      const res = await updateStore(c.env, pid, (store) => {
+        const cur = pinnedDraft(store);
+        const draft = makeDraft({
+          name: typeof name === "string" && name.trim() ? name.trim() : `Draft ${store.drafts.length + 1}`,
+          title: seeded ? (typeof title === "string" ? title : "") : (blank ? "" : cur.title),
+          doc: seeded ? (doc ?? null) : (blank ? null : cur.doc),
+          clientId: clientId ?? null,
+        });
+        store.drafts.push(draft);
+        store.pinnedId = draft.id;
+        return {
+          updatedAt: draft.updatedAt,
+          pinnedId: store.pinnedId,
+          draft: draftMeta(draft, store.pinnedId),
+          drafts: metaList(store),
+        };
       });
-      store.drafts.push(draft);
-      store.pinnedId = draft.id;
-      await writeStore(c.env, pid, store);
-      await broadcastScript(c, pid, { updatedAt: draft.updatedAt, clientId: clientId ?? null, pinnedId: store.pinnedId });
-      return c.json({ ok: true, draft: draftMeta(draft, store.pinnedId), drafts: metaList(store), pinnedId: store.pinnedId });
+      await broadcastScript(c, pid, { updatedAt: res.updatedAt, clientId: clientId ?? null, pinnedId: res.pinnedId });
+      return c.json({ ok: true, draft: res.draft, drafts: res.drafts, pinnedId: res.pinnedId });
     } catch (e) {
       return c.json({ error: String(e.message || e) }, 500);
     }
@@ -254,15 +276,15 @@ export function registerScript(app) {
       let body;
       try { body = await c.req.json(); } catch { body = {}; }
       const { id, clientId } = body || {};
-      const store = await readStore(c.env, pid);
-      if (!store.drafts.some((d) => d.id === id)) {
-        return c.json({ error: `no draft ${id}` }, 404);
-      }
-      store.pinnedId = id;
-      await writeStore(c.env, pid, store);
-      const d = pinnedDraft(store);
-      await broadcastScript(c, pid, { updatedAt: d.updatedAt, clientId: clientId ?? null, pinnedId: store.pinnedId });
-      return c.json({ ok: true, pinnedId: store.pinnedId, drafts: metaList(store) });
+      const res = await updateStore(c.env, pid, (store) => {
+        if (!store.drafts.some((d) => d.id === id)) return { abort: true, missing: true };
+        store.pinnedId = id;
+        const d = pinnedDraft(store);
+        return { updatedAt: d.updatedAt, pinnedId: store.pinnedId, drafts: metaList(store) };
+      });
+      if (res.missing) return c.json({ error: `no draft ${id}` }, 404);
+      await broadcastScript(c, pid, { updatedAt: res.updatedAt, clientId: clientId ?? null, pinnedId: res.pinnedId });
+      return c.json({ ok: true, pinnedId: res.pinnedId, drafts: res.drafts });
     } catch (e) {
       return c.json({ error: String(e.message || e) }, 500);
     }
@@ -275,13 +297,15 @@ export function registerScript(app) {
       let body;
       try { body = await c.req.json(); } catch { body = {}; }
       const { name, clientId } = body || {};
-      const store = await readStore(c.env, pid);
-      const d = store.drafts.find((x) => x.id === c.req.param("id"));
-      if (!d) return c.json({ error: `no draft ${c.req.param("id")}` }, 404);
-      if (typeof name === "string" && name.trim()) d.name = name.trim();
-      await writeStore(c.env, pid, store);
-      await broadcastScript(c, pid, { updatedAt: nowIso(), clientId: clientId ?? null, pinnedId: store.pinnedId });
-      return c.json({ ok: true, drafts: metaList(store), pinnedId: store.pinnedId });
+      const res = await updateStore(c.env, pid, (store) => {
+        const d = store.drafts.find((x) => x.id === c.req.param("id"));
+        if (!d) return { abort: true, missing: true };
+        if (typeof name === "string" && name.trim()) d.name = name.trim();
+        return { pinnedId: store.pinnedId, drafts: metaList(store) };
+      });
+      if (res.missing) return c.json({ error: `no draft ${c.req.param("id")}` }, 404);
+      await broadcastScript(c, pid, { updatedAt: nowIso(), clientId: clientId ?? null, pinnedId: res.pinnedId });
+      return c.json({ ok: true, drafts: res.drafts, pinnedId: res.pinnedId });
     } catch (e) {
       return c.json({ error: String(e.message || e) }, 500);
     }
@@ -295,22 +319,23 @@ export function registerScript(app) {
       let body;
       try { body = await c.req.json(); } catch { body = {}; }
       const clientId = body?.clientId ?? null;
-      const store = await readStore(c.env, pid);
-      if (store.drafts.length <= 1) {
-        return c.json({ error: "cannot delete the only draft" }, 400);
-      }
-      const idx = store.drafts.findIndex((d) => d.id === c.req.param("id"));
-      if (idx < 0) return c.json({ error: `no draft ${c.req.param("id")}` }, 404);
-      const wasPinned = store.pinnedId === c.req.param("id");
-      store.drafts.splice(idx, 1);
-      if (wasPinned) {
-        store.pinnedId = [...store.drafts].sort((a, b) =>
-          (b.updatedAt || "").localeCompare(a.updatedAt || ""))[0].id;
-      }
-      await writeStore(c.env, pid, store);
-      const d = pinnedDraft(store);
-      await broadcastScript(c, pid, { updatedAt: d.updatedAt, clientId, pinnedId: store.pinnedId });
-      return c.json({ ok: true, drafts: metaList(store), pinnedId: store.pinnedId });
+      const res = await updateStore(c.env, pid, (store) => {
+        if (store.drafts.length <= 1) return { abort: true, last: true };
+        const idx = store.drafts.findIndex((d) => d.id === c.req.param("id"));
+        if (idx < 0) return { abort: true, missing: true };
+        const wasPinned = store.pinnedId === c.req.param("id");
+        store.drafts.splice(idx, 1);
+        if (wasPinned) {
+          store.pinnedId = [...store.drafts].sort((a, b) =>
+            (b.updatedAt || "").localeCompare(a.updatedAt || ""))[0].id;
+        }
+        const d = pinnedDraft(store);
+        return { updatedAt: d.updatedAt, pinnedId: store.pinnedId, drafts: metaList(store) };
+      });
+      if (res.last) return c.json({ error: "cannot delete the only draft" }, 400);
+      if (res.missing) return c.json({ error: `no draft ${c.req.param("id")}` }, 404);
+      await broadcastScript(c, pid, { updatedAt: res.updatedAt, clientId, pinnedId: res.pinnedId });
+      return c.json({ ok: true, drafts: res.drafts, pinnedId: res.pinnedId });
     } catch (e) {
       return c.json({ error: String(e.message || e) }, 500);
     }

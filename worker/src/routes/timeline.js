@@ -18,6 +18,8 @@
 // NOT ported here. The SSE stream (/api/timeline/events) is already wired in
 // index.js.
 import { readDoc, updateDoc } from "../lib/docs.js";
+import { validateBody } from "../lib/validate.js";
+import timelineSchema from "../schemas/timeline.json";
 import { listMedia, putMedia, mediaKey } from "../lib/media.js";
 import { broadcast } from "../lib/broadcast.js";
 
@@ -559,12 +561,18 @@ export function registerTimeline(app) {
   });
 
   // Apply granular edit ops to the working timeline (used by the chat agent).
+  //
+  // Validated against the SHARED contract in shared/schemas/timeline.json — the
+  // same file `edit_timeline` builds its tool schema from. The check used to be
+  // `Array.isArray(ops)`, so a `split` missing `at`, or a `resize` sending a
+  // string where frames were expected, reached `applyTimelineOps` and either did
+  // nothing or corrupted a clip's geometry with no error anywhere.
   app.post("/api/timeline/edit", async (c) => {
     const pid = c.get("projectId");
-    let body;
-    try { body = await c.req.json(); } catch { body = {}; }
-    const ops = body?.ops;
-    if (!Array.isArray(ops)) return c.json({ error: "Body must be { ops: [...] }" }, 400);
+    const parsed = await validateBody(c, timelineSchema);
+    if (!parsed.ok) return parsed.response;
+    const body = parsed.value;
+    const ops = body.ops;
     const res = await editSelections(c.env, pid, (db) => {
       if (!db.editorTimeline || !Array.isArray(db.editorTimeline.tracks)) {
         return { abort: true, noTimeline: true };

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { View } from 'react-native';
 import { Stack, useLocalSearchParams } from 'expo-router';
+import { useReportSegment } from '@/lib/screen-report';
 import { SegmentedNative } from '@/components/ui/segmented-native';
 import { WorldSurface } from '@/components/story/world';
 import { VisualWorldSurface } from '@/components/story/visual-world';
@@ -47,6 +48,16 @@ export default function StoryScreen() {
   const [seg, setSeg] = useState<Segment>(
     segment === 'script' || segment === 'shots' ? segment : 'world',
   );
+
+  // Tell the agent WHICH of the three surfaces is showing. The tabs layout can
+  // only see the route (`/story`), and the switcher below is component state, so
+  // without this the agent hydrates the world bible while the author is looking
+  // at the shot list.
+  useReportSegment({
+    view: seg === 'shots' ? 'shotlist' : seg === 'script' ? 'script' : 'world',
+    path: '/story',
+    ...(seg === 'world' && world === 'visual' ? { pane: 'visual' } : {}),
+  });
 
   return (
     <View className="flex-1 bg-background">

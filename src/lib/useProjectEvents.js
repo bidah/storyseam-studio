@@ -12,12 +12,17 @@
 //   3. Events fired while disconnected are gone (the DO keeps no replay
 //      buffer), so a reconnect alone isn't enough — callers must refetch.
 //
-// Returns { edits, resyncs }:
+// Returns { edits, resyncs, last }:
 //   - `edits` bumps on every change made ELSEWHERE (this tab's own writes are
 //     echo-suppressed via the x-client-id header the fetch shim adds).
 //   - `resyncs` bumps when the stream reconnects after an error — events may
 //     have been missed, so callers must revalidate on it too. It is a separate
 //     counter so purely cosmetic reactions (the Script tab glow) can ignore it.
+//   - `last` is the most recent frame's PARSED PAYLOAD, and only when the caller
+//     opts in with `{ data: true }`. Most channels are pure "something changed"
+//     signals where a counter is the whole point and holding the payload would
+//     just be state nobody reads. The `nav` channel is the exception: its frames
+//     ARE the message (where to go), so its subscriber needs the body.
 import { useEffect, useState } from "react";
 import { CLIENT_ID } from "@/lib/clientId";
 import { getProjectId, onProjectChange } from "@/lib/projectFetch";
@@ -30,9 +35,11 @@ const RETRY_MS = 3000;
 const WATCHDOG_MS = 60000;
 const WATCHDOG_TICK_MS = 15000;
 
-export function useProjectEvents(path) {
+export function useProjectEvents(path, options) {
+  const keepData = !!options?.data;
   const [edits, setEdits] = useState(0);
   const [resyncs, setResyncs] = useState(0);
+  const [last, setLast] = useState(null);
   const [projectId, setPid] = useState(getProjectId);
   useEffect(() => onProjectChange(setPid), []);
 
@@ -81,7 +88,10 @@ export function useProjectEvents(path) {
             lastSeq = data.seq;
           }
           // Own writes advance lastSeq above but suppress the reaction here.
-          if (data.clientId !== CLIENT_ID) setEdits((n) => n + 1);
+          if (data.clientId !== CLIENT_ID) {
+            setEdits((n) => n + 1);
+            if (keepData) setLast(data);
+          }
         } catch {
           /* ignore malformed frames */
         }
@@ -138,7 +148,7 @@ export function useProjectEvents(path) {
     };
     // projectId dep: recreate the stream on project switch so it follows the
     // active project (the new EventSource picks up the new ?projectId=).
-  }, [path, projectId]);
+  }, [path, projectId, keepData]);
 
-  return { edits, resyncs };
+  return { edits, resyncs, last };
 }

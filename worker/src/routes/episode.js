@@ -199,6 +199,60 @@ function normalizeVideoSelections(db) {
 
 export { rosterMaps, needsStateFor };
 
+// The full episode plan as `GET /api/episode` serves it: the packed <=15s
+// bundles, the rendered takes that still exist in R2, per-bundle prompt
+// overrides, sign-offs, first frames, style refs, and the scene-needs state.
+// Extracted from the route so a non-HTTP caller (the MCP server's `get_episode`)
+// gets the same joined view — reading the bare `episode-manifest` doc instead
+// would report bundles as unrendered whose media is sitting right there in R2.
+export async function buildEpisodeView(env, pid) {
+  const [manifest, world] = await Promise.all([readManifest(env, pid), readWorld(env, pid)]);
+  if (!manifest) return { episode: null };
+  const db = await readDB(env, pid);
+  // Heal stale multi-selection. Re-applied inside the CAS so the repair can't
+  // revert a concurrent edit made between the read and the write.
+  if (normalizeVideoSelections(db)) await editDB(env, pid, (d) => { normalizeVideoSelections(d); });
+  // Attach a list of rendered clips (newest last) for every bundle that has any
+  // in R2. db.video[id] is an array of generations; tolerate the old single
+  // object shape too. One R2 list (into a Set) replaces a per-take HEAD storm:
+  // this used to fire one serial `mediaExists` per generation (100+ round-trips
+  // for a full episode) — now it's a single list + in-memory membership checks.
+  const genSet = await listMediaSet(env, pid, "gen");
+  const video = {};
+  for (const [id, entry] of Object.entries(db.video || {})) {
+    const arr = Array.isArray(entry) ? entry : entry ? [entry] : [];
+    const list = [];
+    for (const v of arr) {
+      if (v && v.file && genSet.has(v.file)) {
+        // refUrl: ungated absolute /files URL an anonymous fetcher (the render
+        // agent / Higgsfield import) can pull — the /gen/ url needs the
+        // project header. Same trick as storyboard.js still refUrl.
+        list.push({
+          ...v,
+          name: v.name || `gen ${list.length + 1}`,
+          url: "/gen/" + v.file,
+          refUrl: filesUrl(env, mediaKey(pid, "gen", v.file)),
+        });
+      }
+    }
+    if (list.length) video[id] = list;
+  }
+  // Per-bundle scene-needs state (image needs, voice needs, completeness) —
+  // what the UI's needs checklist and the sign gate both read.
+  const maps = rosterMaps(world);
+  const needs = {};
+  for (const b of manifest.bundles || []) needs[b.id] = needsStateFor(b, maps, db);
+  return {
+    episode: manifest,
+    video,
+    prompts: db.prompt || {},
+    signoffs: db.signoffs || {},
+    firstFrames: db.episodeFirstFrame || {},
+    refVideos: db.episodeRefVideo || {},
+    needs,
+  };
+}
+
 export function registerEpisode(app) {
   // The final_selection pool (what shows on the episode tab as reference previews).
   app.get("/api/final", async (c) => {
@@ -543,46 +597,8 @@ export function registerEpisode(app) {
   });
 
   // Full-episode multishot plan: the packed <=15s bundles + per-bundle skill prompt.
-  app.get("/api/episode", async (c) => {
-    const pid = c.get("projectId");
-    const [manifest, world] = await Promise.all([readManifest(c.env, pid), readWorld(c.env, pid)]);
-    if (!manifest) return c.json({ episode: null });
-    const db = await readDB(c.env, pid);
-    // Heal stale multi-selection. Re-applied inside the CAS so the repair can't
-    // revert a concurrent edit made between the read and the write.
-    if (normalizeVideoSelections(db)) await editDB(c.env, pid, (d) => { normalizeVideoSelections(d); });
-    // Attach a list of rendered clips (newest last) for every bundle that has any
-    // in R2. db.video[id] is an array of generations; tolerate the old single
-    // object shape too. One R2 list (into a Set) replaces a per-take HEAD storm:
-    // this used to fire one serial `mediaExists` per generation (100+ round-trips
-    // for a full episode) — now it's a single list + in-memory membership checks.
-    const genSet = await listMediaSet(c.env, pid, "gen");
-    const video = {};
-    for (const [id, entry] of Object.entries(db.video || {})) {
-      const arr = Array.isArray(entry) ? entry : entry ? [entry] : [];
-      const list = [];
-      for (const v of arr) {
-        if (v && v.file && genSet.has(v.file)) {
-          // refUrl: ungated absolute /files URL an anonymous fetcher (the render
-          // agent / Higgsfield import) can pull — the /gen/ url needs the
-          // project header. Same trick as storyboard.js still refUrl.
-          list.push({
-            ...v,
-            name: v.name || `gen ${list.length + 1}`,
-            url: "/gen/" + v.file,
-            refUrl: filesUrl(c.env, mediaKey(pid, "gen", v.file)),
-          });
-        }
-      }
-      if (list.length) video[id] = list;
-    }
-    // Per-bundle scene-needs state (image needs, voice needs, completeness) —
-    // what the UI's needs checklist and the sign gate both read.
-    const maps = rosterMaps(world);
-    const needs = {};
-    for (const b of manifest.bundles || []) needs[b.id] = needsStateFor(b, maps, db);
-    return c.json({ episode: manifest, video, prompts: db.prompt || {}, signoffs: db.signoffs || {}, firstFrames: db.episodeFirstFrame || {}, refVideos: db.episodeRefVideo || {}, needs });
-  });
+  app.get("/api/episode", async (c) =>
+    c.json(await buildEpisodeView(c.env, c.get("projectId"))));
 
   // Choose (or clear) the FIRST FRAME for a bundle's video render — a storyboard
   // still the Seedance clip should open on (passed as start_image). Stored per

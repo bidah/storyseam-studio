@@ -95,6 +95,16 @@ CREATE TABLE IF NOT EXISTS docs (
 -- Per-document version history: the value each write REPLACED. Time Travel is
 -- whole-database and destructive, so it can't serve "undo just this document" —
 -- that's what this is for. Retention is a ring buffer per doc (see lib/history.js).
+--
+-- Attribution (actor / caller / chat_id) describes the write that REPLACED this
+-- version, and comes from the authenticated request rather than from the
+-- document. `source` is the document's own self-report and can be stale, absent,
+-- or simply wrong; it cannot answer "who did this" on a shared project. That
+-- question is the whole reason someone opens the history dialog.
+-- Existing databases:
+--   ALTER TABLE doc_history ADD COLUMN actor TEXT;
+--   ALTER TABLE doc_history ADD COLUMN caller TEXT;
+--   ALTER TABLE doc_history ADD COLUMN chat_id TEXT;
 CREATE TABLE IF NOT EXISTS doc_history (
   project_id   TEXT NOT NULL,
   name         TEXT NOT NULL,
@@ -103,6 +113,9 @@ CREATE TABLE IF NOT EXISTS doc_history (
   source       TEXT,            -- the replaced doc's own provenance ("agent", "app", …)
   generated_at TEXT,
   size         INTEGER NOT NULL,
+  actor        TEXT,            -- authenticated user id behind the replacing write
+  caller       TEXT,            -- "app" | "agent" — which credential answered
+  chat_id      TEXT,            -- the agent conversation, when a tool made the write
   PRIMARY KEY (project_id, name, ts)
 );
 

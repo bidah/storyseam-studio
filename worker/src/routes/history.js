@@ -34,6 +34,33 @@ async function knownDoc(env, projectId, name) {
   return !!row;
 }
 
+// --- the two operations every history caller needs ---------------------------
+// Extracted from the routes below so a non-HTTP caller (the MCP server's
+// `list_history` / `restore_version`) can't accidentally skip the `knownDoc`
+// guard or the forceSnapshot on restore. Both return `{ error }` instead of
+// throwing, so the caller picks its own status code / error envelope.
+
+// The stored versions of one doc, newest first.
+export async function listDocHistory(env, projectId, name) {
+  if (!(await knownDoc(env, projectId, name))) return { error: `no history for "${name}"` };
+  return { name, snapshots: await listSnapshots(env, projectId, name) };
+}
+
+// Put a stored version back. The current document is parked FIRST — that's what
+// `forceSnapshot` buys: without it the rapid-edit throttle can swallow the
+// snapshot and the restore becomes a one-way door, which is the opposite of
+// what "restore this version" should mean.
+export async function restoreDocVersion(env, projectId, name, ts) {
+  if (!(await knownDoc(env, projectId, name))) return { error: `no history for "${name}"` };
+  const value = await readSnapshot(env, projectId, name, ts);
+  if (value == null) return { error: "no such version" };
+  // guard:allow-write-doc — a restore IS a whole-document replace. Merging it
+  // with whatever else landed since would produce a document that never
+  // existed.
+  await writeDoc(env, projectId, name, value, { forceSnapshot: true });
+  return { ok: true, name, ts, value: await readDoc(env, projectId, name, null) };
+}
+
 export function registerHistory(app) {
   // Which documents this project has, and how many stored versions each carries.
   // Exists so no caller has to keep its own list of document names in sync.
@@ -51,11 +78,8 @@ export function registerHistory(app) {
 
   // List the stored versions of one doc, newest first.
   app.get("/api/history/:name", async (c) => {
-    const name = c.req.param("name");
-    const pid = c.get("projectId");
-    if (!(await knownDoc(c.env, pid, name))) return c.json({ error: `no history for "${name}"` }, 404);
-    const snapshots = await listSnapshots(c.env, pid, name);
-    return c.json({ name, snapshots });
+    const res = await listDocHistory(c.env, c.get("projectId"), c.req.param("name"));
+    return res.error ? c.json(res, 404) : c.json(res);
   });
 
   // Read one stored version (for a preview / diff before restoring).
@@ -71,16 +95,10 @@ export function registerHistory(app) {
   // Put a stored version back. The current document is parked first (writeDoc
   // snapshots what it replaces), so this is reversible in the same UI.
   app.post("/api/history/:name/:ts/restore", async (c) => {
-    const name = c.req.param("name");
-    const pid = c.get("projectId");
-    if (!(await knownDoc(c.env, pid, name))) return c.json({ error: `no history for "${name}"` }, 404);
-    const ts = c.req.param("ts");
-    const value = await readSnapshot(c.env, pid, name, ts);
-    if (value == null) return c.json({ error: "no such version" }, 404);
-    // forceSnapshot: park the CURRENT document even if it was written moments
-    // ago, so restoring is never a one-way door.
-    await writeDoc(c.env, pid, name, value, { forceSnapshot: true });
-    return c.json({ ok: true, name, ts, value: await readDoc(c.env, pid, name, null) });
+    const res = await restoreDocVersion(
+      c.env, c.get("projectId"), c.req.param("name"), c.req.param("ts"),
+    );
+    return res.error ? c.json(res, 404) : c.json(res);
   });
 
   // One-shot warm-up for the R2 → D1 doc cutover. `readDoc` already migrates a

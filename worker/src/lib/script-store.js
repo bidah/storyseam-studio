@@ -9,7 +9,7 @@
 // versioning. Everything runs through normalizeStore so partial/legacy blobs are
 // always coerced to a well-formed v2 store.
 
-import { readDoc, writeDoc } from "./docs.js";
+import { readDoc, writeDoc, updateDoc } from "./docs.js";
 
 // The doc-store name this lives under in D1.
 const SCRIPT_DOC = "script";
@@ -124,11 +124,51 @@ export async function readStore(env, projectId) {
   }
   const store = normalizeStore(legacy);
   try {
+    // guard:allow-write-doc — seating a pre-D1 R2 script into the docs table for
+    // the first time. There is nothing to merge with (the row does not exist),
+    // and it runs at most once per project.
     await writeDoc(env, projectId, SCRIPT_DOC, store);
   } catch { /* backfill is opportunistic — the read still succeeds */ }
   return store;
 }
 
+// Mutate the store under a compare-and-swap.
+//
+// Every draft operation — autosave, pin, rename, delete, stage/accept/reject a
+// proposal — used to be `readStore` → mutate → `writeStore`, which is
+// last-writer-wins over the WHOLE draft set. Two operations landing together
+// (the author's autosave while the agent stages a proposal, a rename racing a
+// pin) meant one of them silently vanished: no error, no failed request, just a
+// draft that reverted. `updateDoc` retries the mutation against a fresh read
+// whenever the row moved under it, so both land.
+//
+// `mutate(store)` receives the normalized store, edits it in place, and returns
+// a result for the caller (`{ abort: true, … }` skips the write — use it for the
+// 404 / conflict paths). It may run more than once, so keep it side-effect free.
+//
+// The `readStore` first is not redundant: it performs the one-time legacy-R2
+// backfill, so a project whose script still predates the D1 cutover doesn't get
+// a blank store created over the top of it by the update below.
+export async function updateStore(env, projectId, mutate) {
+  await readStore(env, projectId);
+  return updateDoc(env, projectId, SCRIPT_DOC, {}, async (value) => {
+    const store = normalizeStore(Object.keys(value).length ? value : null);
+    const result = (await mutate(store)) || {};
+    if (result.abort) return result;
+    // updateDoc serializes the object it handed us, so the normalized-and-mutated
+    // shape has to be written back onto it rather than returned.
+    for (const key of Object.keys(value)) delete value[key];
+    Object.assign(value, store);
+    return result;
+  });
+}
+
+// Whole-document replace. Only for callers that genuinely own the entire store
+// for the duration of the write; everything that edits part of it wants
+// `updateStore` above.
 export async function writeStore(env, projectId, store) {
+  // guard:allow-write-doc — explicit whole-document replace, kept for callers
+  // that already hold the complete store (imports and restores). Draft edits go
+  // through updateStore.
   await writeDoc(env, projectId, SCRIPT_DOC, store);
 }

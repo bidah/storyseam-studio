@@ -470,20 +470,29 @@ async function findScoreBase(env, pid, hist, genSet) {
   return null;
 }
 
+// The stitch plan as `GET /api/episode/cuts` serves it: the ordered segments
+// (each bundle's selected take, with real timecodes), the music layout, and the
+// version history with the newest generation as `output`. Extracted from the
+// route so a non-HTTP caller (the MCP server's `get_cuts`) gets the same joined
+// view — the cut plan is DERIVED from selections + what actually exists in R2,
+// so there is no document to read instead.
+export async function buildCutsView(env, pid) {
+  const db = await readDB(env, pid);
+  if (normalizeVideoSelections(db)) await editDB(env, pid, (d) => { normalizeVideoSelections(d); }); // heal stale multi-selection first
+  // One R2 list of the "gen" bucket, shared across every existence check in
+  // this request (segments, history, scored versions) — was ~100 serial HEADs.
+  const genSet = await listMediaSet(env, pid, "gen");
+  const segments = annotateSegmentsMusic(await buildCutSegments(env, pid, { genSet, db }));
+  const music = await buildScoreLayout(env, pid, segments);
+  const history = await getCutHistory(env, pid, db, genSet);
+  return { range: segRange(segments), segments, music, output: history[0] || null, history };
+}
+
 export function registerCuts(app) {
   // Read the current plan, the latest generation (`output`), and the full history.
   app.get("/api/episode/cuts", async (c) => {
     try {
-      const env = c.env, pid = c.get("projectId");
-      const db = await readDB(env, pid);
-      if (normalizeVideoSelections(db)) await editDB(env, pid, (d) => { normalizeVideoSelections(d); }); // heal stale multi-selection first
-      // One R2 list of the "gen" bucket, shared across every existence check in
-      // this request (segments, history, scored versions) — was ~100 serial HEADs.
-      const genSet = await listMediaSet(env, pid, "gen");
-      const segments = annotateSegmentsMusic(await buildCutSegments(env, pid, { genSet, db }));
-      const music = await buildScoreLayout(env, pid, segments);
-      const history = await getCutHistory(env, pid, db, genSet);
-      return c.json({ range: segRange(segments), segments, music, output: history[0] || null, history });
+      return c.json(await buildCutsView(c.env, c.get("projectId")));
     } catch (e) {
       return c.json({ error: String(e.message || e) }, 500);
     }

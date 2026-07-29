@@ -52,55 +52,28 @@ import { broadcast } from "./lib/broadcast.js";
 import { normalizeProjectId } from "./lib/docs.js";
 import { kindForPrefix, mediaKey, proxyKey, streamKey } from "./lib/media.js";
 import { ensureProxy, ensureImageThumb } from "./lib/proxy.js";
+import {
+  mintToken, verifyToken, proxySecret,
+  PROXY_HEADER, AGENT_HEADER, AGENT_CHAT_HEADER, PROXY_ISSUER,
+} from "./lib/proxy-token.js";
+import { runWithContext } from "./lib/request-context.js";
+import { registerAppState } from "./routes/appstate.js";
+import { registerNavigate } from "./routes/navigate.js";
+import { registerApprovals } from "./routes/approvals.js";
+import { registerMcp } from "./routes/mcp.js";
 
 // Durable Object for per-project SSE live-sync (script + timeline channels).
 export { ProjectEvents } from "./sse-do.js";
 
-// --- eve proxy user token --------------------------------------------------
-// The eve agent (on Vercel) is publicly reachable and can't see the Better Auth
-// session cookie (that lives on this Worker's origin). To let a signed-in user
-// reach the agent AS a user — required for the in-chat Higgsfield OAuth sign-in,
-// which needs `principalType: "user"` — the Worker mints a short-lived
-// HMAC-signed token carrying the session user id and hands it to the agent on
-// the `x-eve-proxy-user` header. The agent verifies it with the same shared
-// secret (EVE_PROXY_SECRET) and projects `sub` into a user principal. See
-// agent/channels/eve.ts (proxiedUser).
-// Shared HMAC identity handed to the flue agent worker on the proxy hop. Issuer
-// stays "shot-studio" (matches flue-agent/src/lib/proxy-auth.ts). Header renamed
-// eve → flue; the secret falls back to EVE_PROXY_SECRET so the already-provisioned
-// value keeps working until it's renamed to FLUE_PROXY_SECRET.
-const FLUE_PROXY_ISSUER = "shot-studio";
-const FLUE_PROXY_HEADER = "x-flue-proxy-user";
-const FLUE_PROXY_TTL_SECONDS = 300;
-
-function base64url(bytes) {
-  const arr = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
-  let bin = "";
-  for (const b of arr) bin += String.fromCharCode(b);
-  return btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
-}
-
-async function mintFlueUserToken(userId, secret) {
-  const enc = new TextEncoder();
-  const payload = base64url(
-    enc.encode(
-      JSON.stringify({
-        sub: String(userId),
-        iss: FLUE_PROXY_ISSUER,
-        exp: Math.floor(Date.now() / 1000) + FLUE_PROXY_TTL_SECONDS,
-      }),
-    ),
-  );
-  const key = await crypto.subtle.importKey(
-    "raw",
-    enc.encode(secret),
-    { name: "HMAC", hash: "SHA-256" },
-    false,
-    ["sign"],
-  );
-  const sig = await crypto.subtle.sign("HMAC", key, enc.encode(payload));
-  return `${payload}.${base64url(sig)}`;
-}
+// --- worker ⇄ flue identity ------------------------------------------------
+// The SPA is served from this Worker and holds the Better Auth session cookie;
+// the flue agent worker is a separate origin and can't see it. Both hops carry
+// the user id as a short-lived HMAC token instead — minted here on the way out
+// (so the in-chat Higgsfield OAuth sign-in can act as a real user principal),
+// verified here on the way back in (so an agent tool call is attributable and
+// the ownership check can fail closed). See lib/proxy-token.js for why the two
+// directions use different issuers.
+const FLUE_PROXY_HEADER = PROXY_HEADER;
 
 // "my file (1).PNG" → "my_file_1_.PNG", capped to 80 chars.
 function safeName(raw) {
@@ -151,18 +124,50 @@ app.use("*", async (c, next) => {
 });
 app.on(["GET", "POST"], "/api/auth/*", (c) => c.get("auth").handler(c.req.raw));
 
-// Load the session user for every request (the cookie rides along on media
-// streams too, so per-user resolution + ownership work everywhere). Skip the
-// auth routes themselves and the SPA assets.
+// Resolve WHO this request is, from one of two credentials.
+//
+//   1. The Better Auth session cookie — every browser, mobile and desktop
+//      request. It rides along on media streams too, so per-user resolution and
+//      ownership work everywhere.
+//   2. The flue agent's signed identity header. Agent tools call this API from
+//      another worker with no cookie; they sign with the user their conversation
+//      is already scoped to (lib/proxy-token.js). Before this existed they sent
+//      nothing at all, which is why the ownership check below had to let
+//      anonymous callers through — and that exemption was equally available to
+//      anyone on the internet who guessed a project id.
+//
+// The cookie is tried first so a real browser session always wins; the header is
+// only consulted when there isn't one. `caller` records which credential
+// answered, so writes can be attributed (see lib/docs.js) and a route can tell a
+// human click from an agent tool call.
 app.use("*", async (c, next) => {
   const p = new URL(c.req.url).pathname;
   if (!p.startsWith("/api/auth/")) {
     try {
       const session = await c.get("auth").api.getSession({ headers: c.req.raw.headers });
-      if (session?.user) c.set("userId", session.user.id);
-    } catch { /* unauthenticated */ }
+      if (session?.user) {
+        c.set("userId", session.user.id);
+        c.set("caller", "app");
+      }
+    } catch { /* fall through to the agent header */ }
+    if (!c.get("userId")) {
+      const sub = await verifyToken(c.req.header(AGENT_HEADER), proxySecret(c.env));
+      if (sub) {
+        c.set("userId", sub);
+        c.set("caller", "agent");
+        // Which conversation the tool call belongs to, so a history entry can be
+        // traced back to the exact chat that produced it.
+        c.set("chatId", c.req.header(AGENT_CHAT_HEADER) || null);
+      }
+    }
   }
-  await next();
+  // Everything downstream runs inside the request's identity store, so a doc
+  // write can be attributed without every call site passing an actor along.
+  // See lib/request-context.js.
+  return runWithContext(
+    { userId: c.get("userId"), caller: c.get("caller"), chatId: c.get("chatId") },
+    () => next(),
+  );
 });
 
 // Resolve the active project (x-project-id header, ?projectId=, else the user's
@@ -175,15 +180,29 @@ app.use("*", async (c, next) => {
   const pid = named || (await getActiveProject(c.env, userId));
   c.set("projectId", pid);
 
-  // /api/extract is exempt: it reads an uploaded chat attachment back as text
-  // and touches no project state, so it has no project to scope to — and the
-  // agent's `read_document` tool would otherwise trip the "no active project"
-  // guard below on every call. It gates itself on the chat-uploads/ prefix.
+  // Three prefixes are exempt, each because it carries its OWN credential and
+  // touches no project state — so scoping them to a project (or to the session
+  // cookie) would only break them:
+  //   /api/auth/     Better Auth's own handler; this is where a session comes
+  //                  from, so it cannot require one.
+  //   /api/projects  the project registry itself. Scoping the list of projects
+  //                  to a project is circular.
+  //   /api/extract   reads an uploaded chat attachment back as text. No project
+  //                  to scope to; it gates itself on the chat-uploads/ prefix,
+  //                  and the agent's `read_document` would otherwise trip the
+  //                  "no active project" guard on every call.
+  //   /api/agent/    the credential bridges the agent worker calls (the
+  //                  Higgsfield token exchange). They verify their own signed
+  //                  assertion on the Authorization header.
+  //   /api/mcp       the external MCP surface. It requires its own bearer token
+  //                  and resolves its project explicitly.
   const isData =
     p.startsWith("/api/") &&
     !p.startsWith("/api/auth/") &&
     !p.startsWith("/api/projects") &&
-    !p.startsWith("/api/extract");
+    !p.startsWith("/api/extract") &&
+    !p.startsWith("/api/agent/") &&
+    !p.startsWith("/api/mcp");
   // A WRITE we can't scope must never reach storage: `normalizeProjectId(null)`
   // resolves to `p_default`, and `p_default` is a REAL project (Whistlewood), so
   // an unscoped mutation silently lands in someone's actual world/shot list
@@ -192,8 +211,27 @@ app.use("*", async (c, next) => {
   if (isData && !pid && c.req.method !== "GET" && c.req.method !== "HEAD") {
     return c.json({ error: "No active project — send x-project-id or ?projectId=" }, 400);
   }
-  if (isData && userId && pid && !(await userCanAccessProject(c.env, userId, pid))) {
-    return c.json({ error: "Forbidden" }, 403);
+
+  // FAIL CLOSED. This check used to read `if (isData && userId && …)`, so a
+  // request with NO identity skipped ownership entirely and could read or write
+  // any project by naming its id. That wasn't an oversight so much as a
+  // load-bearing hack: the agent's tools were the anonymous caller, and gating
+  // them would have broken the whole chat surface. Now they sign
+  // (lib/proxy-token.js), so there is no legitimate anonymous caller left and
+  // the exemption can go.
+  //
+  // Deliberately AFTER the no-project check above, so an unscoped write still
+  // gets the specific 400 that tells the caller what to send.
+  if (isData) {
+    if (!userId) {
+      return c.json(
+        { error: "Sign in required (or, for agent tools, a valid x-flue-agent-user token)" },
+        401,
+      );
+    }
+    if (pid && !(await userCanAccessProject(c.env, userId, pid))) {
+      return c.json({ error: "Forbidden" }, 403);
+    }
   }
   await next();
 });
@@ -217,6 +255,13 @@ app.use("*", async (c, next) => {
   // open tabs.
   if (p.startsWith("/api/chat-title") || p.startsWith("/api/transcribe")) return;
   if (p.startsWith("/api/extract")) return;
+  // The UI reports its current tab/selection on every route change; fanning that
+  // out would make every navigation revalidate every open tab.
+  if (p.startsWith("/api/appstate")) return;
+  // Agent bookkeeping, not project state: a pending-approval record and the
+  // MCP envelope (every MCP message is a POST, reads included) would otherwise
+  // make every open tab refetch. The MCP write tools announce for themselves.
+  if (p.startsWith("/api/approvals") || p.startsWith("/api/mcp")) return;
   if (!c.res || c.res.status >= 400) return;
   broadcast(
     c.env,
@@ -394,6 +439,10 @@ app.get("/api/timeline/events", eventsRoute("timeline"));
 // moment the chat agent changes anything, no manual Refresh needed. See the
 // post-mutation broadcast middleware below.
 app.get("/api/data/events", eventsRoute("data"));
+// Agent → UI navigation commands (routes/navigate.js). A separate channel from
+// `data` on purpose: `data` means "refetch", this means "move", and a client
+// that only wants one shouldn't have to filter the other.
+app.get("/api/nav/events", eventsRoute("nav"));
 
 // --- media streaming from R2 (replaces the Express express.static mounts) ----
 // Each old static prefix maps to a per-project R2 key media/<pid>/<kind>/<file>,
@@ -508,6 +557,10 @@ registerTranscribe(app);
 registerExtract(app);
 registerChatTitle(app);
 registerStatus(app);
+registerAppState(app);
+registerNavigate(app);
+registerApprovals(app);
+registerMcp(app);
 registerNextQuestions(app);
 
 // --- flue chat agent proxy -------------------------------------------------
@@ -552,9 +605,9 @@ app.all("/eve/*", async (c) => {
   // freshly-signed one for the Better Auth session user (if any). Without the
   // secret configured we send nothing and the agent rejects (401).
   headers.delete(FLUE_PROXY_HEADER);
-  const secret = c.env.FLUE_PROXY_SECRET || c.env.EVE_PROXY_SECRET;
+  const secret = proxySecret(c.env);
   if (userId && secret) {
-    headers.set(FLUE_PROXY_HEADER, await mintFlueUserToken(userId, secret));
+    headers.set(FLUE_PROXY_HEADER, await mintToken(userId, secret, PROXY_ISSUER));
   }
   const method = c.req.raw.method;
   const hasBody = method !== "GET" && method !== "HEAD";

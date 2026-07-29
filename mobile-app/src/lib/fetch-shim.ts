@@ -26,8 +26,12 @@ import { getSandboxMode } from './sandbox-mode';
 import { getSearchProvider } from './search-provider';
 import { getExaKey, getFirecrawlKey } from './search-keys';
 
+// Stock RN fetch gives a Response with no `body.getReader()`, so anything we
+// read as a stream has to go through expo/fetch. Every SSE channel belongs here:
+// a channel missing from this list doesn't fail loudly, it just never delivers a
+// frame (lib/sse.ts throws "SSE <status>" once and then retries forever).
 function needsStreaming(path: string) {
-  return path.startsWith('/eve') || /\/api\/(data|script|timeline)\/events/.test(path);
+  return path.startsWith('/eve') || /\/api\/(data|nav|script|timeline)\/events/.test(path);
 }
 
 function getSessionCookie(): string {

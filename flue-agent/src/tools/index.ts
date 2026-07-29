@@ -7,6 +7,9 @@ import type { Api } from "../lib/api.js";
 import { renderUi } from "./render_ui.js";
 // Pipeline status (the whole-project digest)
 import { getStatus } from "./get_status.js";
+// Context awareness — what the author is looking at, and moving them
+import { viewScreen } from "./view_screen.js";
+import { navigate } from "./navigate.js";
 // World / Script / Drafts / Shotlist / Episode
 import { getWorld } from "./get_world.js";
 import { saveWorld } from "./save_world.js";
@@ -83,6 +86,9 @@ export function createTools(api: Api): ToolDefinition[] {
     readDocument(api),
     // Where the episode stands (counts + flags for the whole pipeline)
     getStatus(api),
+    // What the author is looking at RIGHT NOW, and how to move them
+    viewScreen(api),
+    navigate(api),
     // World / Script / Drafts
     getWorld(api),
     saveWorld(api),
@@ -164,6 +170,8 @@ export function createReadTools(api: Api): ToolDefinition[] {
     readDocument(api),
     // Where the episode stands
     getStatus(api),
+    // …and what the author is looking at
+    viewScreen(api),
     // World / Script / Drafts
     getWorld(api),
     listHistory(api),

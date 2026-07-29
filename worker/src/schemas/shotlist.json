@@ -1,0 +1,82 @@
+{
+  "capability": "shotlist.save",
+  "route": "POST /api/shotlist",
+  "tool": "save_shotlist",
+  "description": "Write the Shot list on the Shot list tab (the granular per-shot breakdown that auto-packs into <=15s multishot bundles). Two modes via `mode`: \"replace\" (default) OVERWRITES all shots; \"append\" adds `shots` to the END of the current list. For a full episode, DO NOT emit the whole list in one \"replace\" call — that single tool call can exceed the model output limit and fail the turn. Instead build it beat by beat: call once with mode \"replace\" carrying only the FIRST beat, then call again with mode \"append\" for each subsequent beat. Each call is bounded and the list is durably saved after every batch (a crash mid-generation leaves resumable partial progress). ALWAYS carry each existing shot's `id` through unchanged: shot ids key generated media that lives elsewhere (storyboard stills, the animatic's picture track), so inventing new ids for existing shots orphans that media. Only omit `id` for a genuinely NEW shot. Each shot's `beat`/`beatTitle` and `location` drive the packing (a bundle never crosses a beat or location and never exceeds 15s), so keep consecutive same-location shots grouped and give a realistic `dur`. `prompt` is the Seedance prompt (fold any 2D-directing intent directly into it). Returns the shot count (running total), the write mode, how many ids were preserved vs auto-numbered (replace only), any warnings, `newSpeakers` (speaking characters in the shot list with NO World roster record yet — each with its line count and the shots/beats it appears in, so you can offer to promote the recurring ones into the World with add_world_character and leave one-off bit-parts off), and the resulting <=15s pack preview.",
+  "input": {
+    "type": "object",
+    "fields": {
+      "mode": {
+        "type": "enum",
+        "values": ["replace", "append"],
+        "optional": true,
+        "description": "Write mode. \"replace\" (default) overwrites the whole list. \"append\" adds these shots to the end — use it to build a long shot list one beat at a time so no single call carries the whole episode. Regenerate by calling \"replace\" with the first beat, then \"append\" for each later beat."
+      },
+      "shots": {
+        "type": "array",
+        "description": "The full ordered shot list, top to bottom.",
+        "items": {
+          "type": "object",
+          "fields": {
+            "id": {
+              "type": "string",
+              "optional": true,
+              "description": "Shot id, e.g. \"MS-012\". REQUIRED for any shot that already exists — copy it verbatim from get_shotlist. It keys this shot's storyboard stills; changing it orphans them. Omit ONLY for a brand-new shot (it will be auto-numbered)."
+            },
+            "beat": {
+              "type": "string",
+              "description": "Beat code, e.g. \"B1\" — packing boundary."
+            },
+            "beatTitle": {
+              "type": "string",
+              "optional": true,
+              "description": "Human beat title, e.g. \"Beat 1 — School clearing\"."
+            },
+            "dur": {
+              "type": "number",
+              "description": "Estimated shot length in seconds (drives the <=15s packing)."
+            },
+            "location": {
+              "type": "string",
+              "description": "Location slug, e.g. \"school-clearing\" — a bundle never crosses locations."
+            },
+            "characters": {
+              "type": "array",
+              "optional": true,
+              "items": { "type": "string" },
+              "description": "Characters on screen, using the EXACT canonical name from the World roster (get_world) for each — e.g. [\"Kai Morales\",\"Darius Cole\"], never a short form like [\"Kai\",\"Darius\"]. Casting matches a character to a voice by this exact name, so a variant gets the same person cast twice. Only genuinely off-roster background roles get an ad-hoc label (\"Store Owner\"). The server also snaps an unambiguous short name back to its full roster name and warns."
+            },
+            "camera": {
+              "type": "string",
+              "optional": true,
+              "description": "Camera/framing + move."
+            },
+            "action": {
+              "type": "string",
+              "description": "What happens in the shot."
+            },
+            "dialogue": {
+              "type": "string",
+              "optional": true,
+              "description": "Spoken line(s), or \"(no dialogue)\"."
+            },
+            "audioSync": {
+              "type": "string",
+              "optional": true,
+              "description": "Audio-sync note (the line/SFX this shot lands on)."
+            },
+            "prompt": {
+              "type": "string",
+              "description": "The Seedance prompt for this shot."
+            }
+          }
+        }
+      },
+      "source": {
+        "type": "string",
+        "optional": true,
+        "description": "Provenance tag, e.g. \"agent\". Defaults to \"agent\"."
+      }
+    }
+  }
+}

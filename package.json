@@ -26,7 +26,9 @@
     "test:flue": "vitest run --project flue",
     "test:e2e": "playwright test",
     "test:evals": "vitest run --config evals/vitest.config.ts",
-    "genui:sync": "node scripts/sync-genui.mjs"
+    "genui:sync": "node scripts/sync-genui.mjs",
+    "schemas:sync": "node scripts/sync-schemas.mjs",
+    "guards": "node scripts/run-guards.mjs"
   },
   "dependencies": {
     "@daytona/sdk": "^0.195.0",

@@ -163,6 +163,21 @@ function normalizeWorld(raw) {
 
 export const readWorld = async (env, pid) => normalizeWorld(await readDoc(env, pid, "world", null));
 
+// The world exactly as `GET /api/world` serves it — the normalized bible with an
+// ungated absolute `refUrl` on every linked sheet. Extracted from the route so a
+// non-HTTP caller (the MCP server's `get_world`) reads the SAME shape the GUI
+// and the flue agent see, instead of re-deriving refUrls and drifting from them.
+export async function buildWorldView(env, pid) {
+  const world = await readWorld(env, pid);
+  for (const ch of world.characters) {
+    if (ch.sheetImage?.rel) ch.sheetImage.refUrl = assetRefUrl(env, pid, ch.sheetImage.rel);
+  }
+  for (const loc of world.locations) {
+    if (loc.sheetImage?.rel) loc.sheetImage.refUrl = assetRefUrl(env, pid, loc.sheetImage.rel);
+  }
+  return world;
+}
+
 // Every MUTATION goes through this, never a bare read-then-write. A plain
 // read-modify-write is last-writer-wins, and these routes are hammered
 // concurrently — the agent adds a cast in one burst, the Animatic creates a
@@ -205,17 +220,7 @@ export function registerWorld(app) {
   // character sheet gets an absolute `refUrl` (ungated `/files/...`) so the agent
   // can feed the sheet to Higgsfield `media_import_url` as an image reference —
   // the stored relative `url` (`/asset/...`) isn't fetchable by an anonymous MCP.
-  app.get("/api/world", async (c) => {
-    const pid = c.get("projectId");
-    const world = await readWorld(c.env, pid);
-    for (const ch of world.characters) {
-      if (ch.sheetImage?.rel) ch.sheetImage.refUrl = assetRefUrl(c.env, pid, ch.sheetImage.rel);
-    }
-    for (const loc of world.locations) {
-      if (loc.sheetImage?.rel) loc.sheetImage.refUrl = assetRefUrl(c.env, pid, loc.sheetImage.rel);
-    }
-    return c.json(world);
-  });
+  app.get("/api/world", async (c) => c.json(await buildWorldView(c.env, c.get("projectId"))));
 
   // Fill in the world bible (the agent's save_world). This is a MERGE, not a
   // replace: everything the caller sends with content wins, everything else —

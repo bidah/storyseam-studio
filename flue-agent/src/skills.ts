@@ -19,9 +19,11 @@ import visualWorld from "./skills/visual-world/SKILL.md" with { type: "skill" };
 import sheetGeneration from "./skills/sheet-generation/SKILL.md" with { type: "skill" };
 import assignRefs from "./skills/assign-refs/SKILL.md" with { type: "skill" };
 import generativeUi from "./skills/generative-ui/SKILL.md" with { type: "skill" };
+import destructiveApproval from "./skills/destructive-approval/SKILL.md" with { type: "skill" };
 
 export const skills = [
   generativeUi,
+  destructiveApproval,
   worldCreation,
   visualWorld,
   sheetGeneration,

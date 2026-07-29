@@ -1,10 +1,20 @@
-// Project-scoped client for the shot-studio-uploads Worker JSON API. Ported from
-// eve's agent/lib/api.ts, but the project id is injected via CLOSURE (from the
-// decoded instance id) instead of read from durable per-session state — because
-// a flue tool's `run({ input, signal })` gets no ambient context.
+// Project-scoped, USER-SCOPED client for the shot-studio-uploads Worker JSON
+// API. Ported from eve's agent/lib/api.ts, but the project id and user id are
+// injected via CLOSURE (from the decoded instance id) instead of read from
+// durable per-session state — because a flue tool's `run({ input, signal })`
+// gets no ambient context.
+//
+// Every request carries a signed identity header (lib/agent-identity.ts). It
+// used to carry only `x-project-id` and no credential at all, which forced the
+// worker to exempt anonymous callers from its ownership check — an exemption
+// anyone could use by naming a project id. The worker now fails closed, so an
+// unsigned request from here would 401: if you add a call path that bypasses
+// this client, it needs the same header.
 //
 // (Two-worker phase: tools still call the worker over HTTP. The later
 // single-worker consolidation can swap this for direct binding calls.)
+
+import { mintAgentAssertion, agentSecret, AGENT_HEADER, AGENT_CHAT_HEADER } from "./agent-identity.js";
 
 // JSON-serializable value — flue tools must return one. Structurally identical
 // to flue's JsonValue, so tool `run` returns are assignable.
@@ -18,8 +28,28 @@ export type Json =
 
 export type Api = ReturnType<typeof createApi>;
 
-export function createApi(projectId: string | null) {
+export function createApi(
+  projectId: string | null,
+  userId?: string | null,
+  chatId?: string | null,
+) {
   const base = process.env.SHOT_STUDIO_API ?? "http://localhost:3334";
+
+  // One assertion per turn rather than per call: it is valid for five minutes,
+  // and a tool that fans out over twenty shots shouldn't pay for twenty HMAC
+  // signings. Cached by expiry, not by count, so a long run re-mints.
+  let cached: { token: string; until: number } | null = null;
+  async function identity(): Promise<string | null> {
+    const secret = agentSecret();
+    if (!secret || !userId) return null;
+    const now = Date.now();
+    // Re-mint a minute before the real expiry so a request in flight when the
+    // token turns over doesn't land on the far side of it.
+    if (cached && cached.until > now) return cached.token;
+    const token = await mintAgentAssertion(userId, secret);
+    cached = { token, until: now + 4 * 60_000 };
+    return token;
+  }
 
   async function request<T = unknown>(
     path: string,
@@ -29,6 +59,11 @@ export function createApi(projectId: string | null) {
       init?.body ? { "content-type": "application/json" } : undefined,
     );
     if (projectId) headers.set("x-project-id", projectId);
+    const token = await identity();
+    if (token) headers.set(AGENT_HEADER, token);
+    // Correlation only — which conversation made this change, recorded in
+    // doc_history so a history entry leads back to the chat that caused it.
+    if (chatId) headers.set(AGENT_CHAT_HEADER, chatId);
 
     const res = await fetch(`${base}${path}`, {
       method: init?.method ?? "GET",
