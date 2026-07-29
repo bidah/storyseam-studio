@@ -1,0 +1,40 @@
+diff --git a/node_modules/@openuidev/react-lang/dist/index.cjs b/node_modules/@openuidev/react-lang/dist/index.cjs
+index c7269c2..4a10262 100644
+--- a/node_modules/@openuidev/react-lang/dist/index.cjs
++++ b/node_modules/@openuidev/react-lang/dist/index.cjs
+@@ -603,13 +603,8 @@ function Renderer({ response, library, isStreaming = false, onAction, onStateUpd
+ 	if (!result?.root) return null;
+ 	return /* @__PURE__ */ (0, react_jsx_runtime.jsx)(OpenUIContext.Provider, {
+ 		value: contextValue,
+-		children: /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
+-			style: { position: "relative" },
+-			children: [isQueryLoading && (queryLoader ?? /* @__PURE__ */ (0, react_jsx_runtime.jsx)(DefaultQueryLoader, {})), /* @__PURE__ */ (0, react_jsx_runtime.jsx)("div", {
+-				style: {
+-					opacity: isQueryLoading ? .7 : 1,
+-					transition: "opacity 0.2s ease"
+-				},
++		children: /* @__PURE__ */ (0, react_jsx_runtime.jsxs)(react.Fragment, {
++			children: [isQueryLoading && queryLoader, /* @__PURE__ */ (0, react_jsx_runtime.jsx)(react.Fragment, {
+ 				children: /* @__PURE__ */ (0, react_jsx_runtime.jsx)(RenderNode, { node: result.root })
+ 			})]
+ 		})
+diff --git a/node_modules/@openuidev/react-lang/dist/index.mjs b/node_modules/@openuidev/react-lang/dist/index.mjs
+index 79176a2..33a4a95 100644
+--- a/node_modules/@openuidev/react-lang/dist/index.mjs
++++ b/node_modules/@openuidev/react-lang/dist/index.mjs
+@@ -579,13 +579,8 @@ function Renderer({ response, library, isStreaming = false, onAction, onStateUpd
+ 	if (!result?.root) return null;
+ 	return /* @__PURE__ */ jsx(OpenUIContext.Provider, {
+ 		value: contextValue,
+-		children: /* @__PURE__ */ jsxs("div", {
+-			style: { position: "relative" },
+-			children: [isQueryLoading && (queryLoader ?? /* @__PURE__ */ jsx(DefaultQueryLoader, {})), /* @__PURE__ */ jsx("div", {
+-				style: {
+-					opacity: isQueryLoading ? .7 : 1,
+-					transition: "opacity 0.2s ease"
+-				},
++		children: /* @__PURE__ */ jsxs(Fragment, {
++			children: [isQueryLoading && queryLoader, /* @__PURE__ */ jsx(Fragment, {
+ 				children: /* @__PURE__ */ jsx(RenderNode, { node: result.root })
+ 			})]
+ 		})

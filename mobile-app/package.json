@@ -67,6 +67,8 @@
     "@types/react": "~19.2.2",
     "eslint": "^9.0.0",
     "eslint-config-expo": "~57.0.0",
+    "patch-package": "^8.0.1",
+    "postinstall-postinstall": "^2.1.0",
     "typescript": "~6.0.3"
   },
   "scripts": {
@@ -79,7 +81,8 @@
     "sync:suggestions": "node scripts/sync-suggestions.mjs",
     "update:dev": "eas update --channel development --platform ios",
     "update:preview": "eas update --channel preview --platform ios --environment preview --message \"$(git log -1 --pretty=%s)\"",
-    "update:production": "eas update --channel production --platform ios"
+    "update:production": "eas update --channel production --platform ios",
+    "postinstall": "patch-package"
   },
   "private": true
 }
