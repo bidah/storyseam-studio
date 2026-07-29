@@ -13,13 +13,31 @@
  * message. `deriveQA` in AgentChat.jsx then resolves which card is still
  * pending — only that one stays live.
  */
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { Renderer } from "@openuidev/react-lang";
 import { AlertTriangle } from "lucide-react";
 import { buildStudioLibrary } from "./contract";
 import { webRenderers } from "./renderers";
 
 export const studioLibrary = buildStudioLibrary(webRenderers);
+
+/** Stable identity for "no errors", so the success pass can't cause a render. */
+const EMPTY_ERRORS = [];
+
+/** One parser error, as a line the author (and we) can read. */
+export function errorText(e) {
+  if (!e) return "Unknown error";
+  if (typeof e === "string") return e;
+  const where = e.statementId ? ` (in \`${e.statementId} = …\`)` : "";
+  return `${e.message || e.code || "invalid"}${where}`;
+}
+
+/** Whether two error lists say the same thing — see `handleErrors` below. */
+function sameErrors(a, b) {
+  if (a === b) return true;
+  if (a.length !== b.length) return false;
+  return a.every((e, i) => errorText(e) === errorText(b[i]));
+}
 
 /**
  * Strip a ``` fence the model wrapped the program in. Models add one about a
@@ -65,20 +83,40 @@ export function isReferenceUpload(message) {
  * renders identically but inert, rather than vanishing.
  */
 export function StudioUI({ lang, answerable, onRespond }) {
-  const [failed, setFailed] = useState(false);
+  const [errors, setErrors] = useState(EMPTY_ERRORS);
   const program = cleanLang(lang);
+
+  // `onError` fires on EVERY parse pass, and — per its contract — is "called
+  // with [] when all errors are resolved". So the argument has to be inspected:
+  // a handler that ignores it and flips a `failed` flag treats the SUCCESS
+  // callback as a failure and every card dies. (It did. That was the bug.)
+  //
+  // It also fires during the renderer's own render pass, so this must be a
+  // no-op when nothing changed — an unconditional setState here is a render
+  // loop.
+  const handleErrors = useCallback((next) => {
+    const list = Array.isArray(next) ? next : next ? [next] : EMPTY_ERRORS;
+    setErrors((prev) => (sameErrors(prev, list) ? prev : list));
+  }, []);
 
   if (!program) return null;
 
-  // A malformed program is a model bug, not a user-facing crash: show the
-  // program as text so the author can still act on it, and keep the thread
-  // usable. (The agent gets the correction on its next turn from the user.)
-  if (failed) {
+  // A malformed program is a model bug, not a user-facing crash: show what was
+  // wrong plus the program itself, so the author can still act on it and the
+  // failure is diagnosable. (The agent gets the correction on its next turn.)
+  if (errors.length) {
     return (
       <div className="space-y-1.5 rounded-lg border border-warning/40 bg-warning/5 p-3">
         <p className="flex items-center gap-1.5 text-xs font-medium text-warning">
           <AlertTriangle size={13} /> This card didn't render
         </p>
+        <ul className="space-y-0.5">
+          {errors.map((e, i) => (
+            <li key={i} className="text-[11px] text-muted-foreground">
+              {errorText(e)}
+            </li>
+          ))}
+        </ul>
         <pre className="overflow-x-auto text-[11px] leading-snug whitespace-pre-wrap text-muted-foreground">
           {program}
         </pre>
@@ -95,7 +133,7 @@ export function StudioUI({ lang, answerable, onRespond }) {
         const message = event?.humanFriendlyMessage;
         if (message) onRespond?.(message);
       }}
-      onError={() => setFailed(true)}
+      onError={handleErrors}
     />
   );
 }
