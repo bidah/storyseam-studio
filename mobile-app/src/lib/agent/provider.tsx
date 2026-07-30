@@ -515,11 +515,33 @@ export function agentIsBusy(agent: any) {
 export function useIsFreshChat(): boolean {
   const agent = useAgent();
   const conv = useConversations();
-  const chat = (conv.list as { id: string; title?: string; attachments?: unknown[] }[]).find(
+  return isFresh(agent, conv);
+}
+
+function isFresh(agent: any, conv: any): boolean {
+  const chat = (conv?.list as { id: string; title?: string; attachments?: unknown[] }[])?.find(
     (c) => c.id === conv.activeId,
   );
   const untouched = !chat || (chat.title === 'New chat' && !chat.attachments?.length);
   return untouched && (agent?.messages?.length ?? 0) === 0;
+}
+
+/**
+ * The same reuse-or-mint decision behind a "New chat" BUTTON, and the id to open
+ * as a result — reusing a blank active chat, or minting one.
+ *
+ * Read IMPERATIVELY from the mirror store rather than through `useIsFreshChat`,
+ * because the callers are header configs (the chat modal's bar items, its history
+ * sheet): a component that subscribed to the agent would re-render — and re-apply
+ * its native bar button items — on every streamed token batch.
+ *
+ * Null only if no session has published yet, which the button's surface can't
+ * normally be reached without.
+ */
+export function startNewChat(): string | null {
+  const { agent, conv } = useAgentBus.getState();
+  if (!conv) return null;
+  return isFresh(agent, conv) && conv.activeId ? conv.activeId : conv.newChat();
 }
 
 // Drive the agent from anywhere in the UI and reveal the conversation so the user

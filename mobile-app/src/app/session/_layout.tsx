@@ -5,6 +5,8 @@ import { X } from 'lucide-react-native';
 import { useColors } from '@/lib/colors';
 import { useHeaderBase } from '@/components/header-buttons';
 import { ChatComposerScope } from '@/components/chat/composer-host';
+import { ChatHeaderRight, useChatHeaderItems } from '@/components/chat/chat-header';
+import { startNewChat } from '@/lib/agent/provider';
 
 // The CHAT MODAL — the studio agent presented over whatever the user was doing.
 //
@@ -23,18 +25,23 @@ import { ChatComposerScope } from '@/components/chat/composer-host';
 // reaches its session through the mirror store in lib/agent/provider.tsx rather
 // than through context.
 //
-// ONE screen, and one way out: the conversation, with CLOSE in the top right (plus
-// the sheet's own swipe-down). There is deliberately no chat list underneath it —
-// an earlier version anchored the Home hub below the conversation so the header
-// could carry a back chevron, which cost a second copy of the Home screen inside
-// the modal and a fragile anchor dance to get it there (see the `withAnchor` note
-// in lib/agent/chat-route.ts). Switching chats is the Home tab's and the history
-// sheet's job; this modal is for the conversation.
+// The header reads left-to-right as "leave / manage": CLOSE alone on the LEFT (plus
+// the sheet's own swipe-down), and on the right the same joined history + new-chat
+// pair the Chat tab carries, so the two chat surfaces have one set of controls in
+// one place rather than the modal being the odd one out.
+//
+// One CONVERSATION, still: switching chats goes through the history sheet (pushed
+// over this stack, see history/) and comes back as a chat id for this same screen —
+// there is deliberately no chat list sitting UNDER the conversation. An earlier
+// version anchored the Home hub below it so the header could carry a back chevron,
+// which cost a second copy of the Home screen inside the modal and a fragile anchor
+// dance to get it there (see the `withAnchor` note in lib/agent/chat-route.ts).
 
 export default function SessionLayout() {
   const headerBase = useHeaderBase();
   const colors = useColors();
   const navigation = useNavigation();
+
   // CLOSE = take the modal away. The modal is one screen of the ROOT stack, so the
   // dismissal belongs to that navigator — but which object `useNavigation()` hands
   // back here is not something to bet on: a layout component is rendered as the
@@ -51,6 +58,21 @@ export default function SessionLayout() {
     else router.back();
   };
 
+  // The modal's own Chats sheet — NOT the tab's, which would make the Chat tab
+  // current underneath us (see history/index.tsx).
+  const openHistory = () => router.push('/session/history');
+
+  // NEW CHAT inside the modal: reuse-or-mint (`startNewChat` — a blank, untouched
+  // chat is reused rather than piling up "New chat" rows in history), then re-point
+  // this stack's single conversation screen at that id. `replace` rather than
+  // `push` because the modal stays one screen deep — CLOSE remains the only way
+  // out. `focus=1` opens the keyboard on arrival: asking for a new chat is asking
+  // to type.
+  const goNewChat = () => {
+    const id = startNewChat();
+    if (id) router.replace({ pathname: '/session/[id]', params: { id, focus: '1' } });
+  };
+
   const closeItem: NativeStackHeaderItem = {
     type: 'button',
     label: '',
@@ -58,6 +80,8 @@ export default function SessionLayout() {
     accessibilityLabel: 'Close chat',
     onPress: close,
   };
+  const chatItems = useChatHeaderItems({ onHistoryPress: openHistory, onNewChat: goNewChat });
+
   // Android/web fallback — no native bar button items there.
   const CloseButton = () => (
     <Pressable
@@ -90,10 +114,35 @@ export default function SessionLayout() {
             headerStyle: { backgroundColor: 'transparent' },
             headerLargeStyle: { backgroundColor: 'transparent' },
             scrollEdgeEffects: { top: 'soft' },
-            unstable_headerRightItems: () => [closeItem],
-            headerRight: () => <CloseButton />,
+            unstable_headerLeftItems: () => [closeItem],
+            headerLeft: () => <CloseButton />,
+            unstable_headerRightItems: () => chatItems,
+            headerRight: () => (
+              <ChatHeaderRight onHistoryPress={openHistory} onNewChat={goNewChat} />
+            ),
           }}
-        />
+        >
+          {/* The conversation — the modal's only real screen. Everything above
+              is its header. */}
+          <Stack.Screen name="[id]" />
+
+          {/* The Chats sheet, this stack's copy — a full-size formSheet (single
+              detent: opens fully, swipe-down closes fully), matching the tab's.
+              Its header + rows live in the nested history/_layout stack, so the
+              header options above don't apply. A STATIC segment, so it wins the
+              match against the sibling `[id]` route rather than being read as a
+              chat called "history". */}
+          <Stack.Screen
+            name="history"
+            options={{
+              presentation: 'formSheet',
+              sheetAllowedDetents: [1],
+              sheetGrabberVisible: true,
+              sheetCornerRadius: 24,
+              headerShown: false,
+            }}
+          />
+        </Stack>
       </View>
     </ChatComposerScope>
   );

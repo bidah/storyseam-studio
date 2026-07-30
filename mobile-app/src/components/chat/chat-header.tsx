@@ -3,12 +3,18 @@ import type { NativeStackHeaderItem } from 'expo-router/build/react-navigation/n
 import { History, SquarePen } from 'lucide-react-native';
 import { useChatColors } from './theme';
 
-// Right-side controls for the Chat tab's native header. The set MORPHS with the
-// stack: the landing screen carries history alone, and pushing a conversation
-// adds new chat beside it. Both screens declare the shared history item, so
-// UIKit carries that bar button item across the push transition (its iOS 26
-// glass capsule interpolates) and only fades the new one in — which is the whole
-// reason the two screens declare items rather than one screen swapping them.
+// Right-side controls for every chat header — the Chat tab's stack and the chat
+// modal (src/app/session/) both draw this pair. The set MORPHS with the stack:
+// the landing screen carries history alone, and pushing a conversation adds new
+// chat beside it. Both screens declare the shared history item, so UIKit carries
+// that bar button item across the push transition (its iOS 26 glass capsule
+// interpolates) and only fades the new one in — which is the whole reason the two
+// screens declare items rather than one screen swapping them.
+//
+// The two read as ONE joined control, not two floating buttons: `sharesBackground`
+// is iOS 26's `UIBarButtonItem.sharesBackground`, which puts adjacent items inside
+// a single glass capsule with a hairline between them. The fallback below mirrors
+// that with a bordered pill, so the pair looks the same everywhere.
 //
 // The project switcher sits on the left (shared, see header-buttons.tsx); the
 // model selector lives in the composer, next to the attach button.
@@ -37,6 +43,7 @@ export function useChatHeaderItems({
       label: '',
       icon: { type: 'sfSymbol', name: 'clock.arrow.circlepath' },
       accessibilityLabel: 'Chat history',
+      sharesBackground: true,
       onPress: onHistoryPress,
     },
   ];
@@ -46,36 +53,45 @@ export function useChatHeaderItems({
       label: '',
       icon: { type: 'sfSymbol', name: 'square.and.pencil' },
       accessibilityLabel: 'New chat',
+      sharesBackground: true,
       onPress: onNewChat,
     });
   }
   return items;
 }
 
-// Android/web fallback for useChatHeaderItems.
+// Android/web fallback for useChatHeaderItems. One button stands alone as a round
+// tap target; two are JOINED into a single bordered pill split by a hairline —
+// the stand-in for the shared glass capsule iOS draws for `sharesBackground`.
 export function ChatHeaderRight({ onHistoryPress, onNewChat }: ChatHeaderProps) {
   const c = useChatColors();
+  const history = (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel="Chat history"
+      className="h-9 w-9 items-center justify-center active:opacity-60"
+      onPress={onHistoryPress}
+    >
+      <History size={18} color={c.mutedForeground} />
+    </Pressable>
+  );
+
+  if (!onNewChat) {
+    return <View className="flex-row items-center">{history}</View>;
+  }
+
   return (
-    <View className="flex-row items-center gap-1">
+    <View className="flex-row items-center overflow-hidden rounded-full border border-border">
+      {history}
+      <View className="h-5 w-px bg-border" />
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel="Chat history"
-        className="h-9 w-9 items-center justify-center rounded-full active:opacity-60"
-        onPress={onHistoryPress}
+        accessibilityLabel="New chat"
+        className="h-9 w-9 items-center justify-center active:opacity-60"
+        onPress={onNewChat}
       >
-        <History size={18} color={c.mutedForeground} />
+        <SquarePen size={18} color={c.mutedForeground} />
       </Pressable>
-
-      {onNewChat ? (
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="New chat"
-          className="h-9 w-9 items-center justify-center rounded-full active:opacity-60"
-          onPress={onNewChat}
-        >
-          <SquarePen size={18} color={c.mutedForeground} />
-        </Pressable>
-      ) : null}
     </View>
   );
 }
