@@ -281,6 +281,38 @@ function hasRunningTool(messages: any[]): boolean {
   );
 }
 
+// Is a turn observably in flight in the TRANSCRIPT, whoever started it?
+//
+// flue's own `status` only reports busy for sends THIS AgentSession made
+// (`activeSubmissionIds` is fed by local sends alone) or while a text/reasoning
+// delta is literally mid-stream. But this runner REMOUNTS its session mid-turn
+// on purpose — the resync paths below, plus every cold start into a turn that
+// is still running (including one started from the web app). A remounted
+// observer therefore read `idle` for the rest of the turn whenever no delta was
+// streaming — exactly the long tool runs — and every busy-driven surface (the
+// tab-bar pill's "Agent is working…", the transcript shimmer, the composer
+// gate) showed the agent as free while it worked. The transcript itself knows
+// better: the turn is still open while its last message shows unfinished work.
+const USER_TURN_GRACE_MS = 180000;
+function turnInFlight(messages: any[]): boolean {
+  const last = messages[messages.length - 1];
+  if (!last) return false;
+  if (last.role === 'user') {
+    // Admitted (it carries a submissionId) but the assistant hasn't emitted
+    // anything yet — the pre-first-token beat. Time-bounded because an observer
+    // can't see settlements: a turn that failed before producing any output
+    // must not pin the app on "working" forever.
+    if (typeof last.submissionId !== 'string') return false;
+    const ts = Date.parse(last.metadata?.timestamp ?? '');
+    return Number.isFinite(ts) && Date.now() - ts < USER_TURN_GRACE_MS;
+  }
+  return (last.parts || []).some(
+    (p: any) =>
+      ((p.type === 'text' || p.type === 'reasoning') && p.state === 'streaming') ||
+      (p.type === 'dynamic-tool' && p.state !== 'output-available' && p.state !== 'output-error'),
+  );
+}
+
 function AgentSessionRunner({
   activeId,
   projectId,
@@ -314,6 +346,15 @@ function AgentSessionRunner({
     if (pid) queryClient.invalidateQueries({ queryKey: [pid] });
   }, [queryClient]);
 
+  // The status the app actually consumes: flue's, lifted to `streaming` while
+  // the transcript shows a turn still running that flue lost track of (see
+  // `turnInFlight` — a remounted observer has no local record of the
+  // submission). Everything below — the settle edge, the resilience refs, the
+  // published agent — reads THIS, so the pill, the shimmer and the composer
+  // gate agree with the transcript instead of with flue's blinkered status.
+  const effectiveStatus =
+    flueAgent.status === 'idle' && turnInFlight(flueAgent.messages) ? 'streaming' : flueAgent.status;
+
   // eve gave us an `onFinish` callback; flue is state-driven, so we edge-trigger
   // on the status settling out of a busy phase (submitted/streaming → idle/error)
   // — the flue equivalent of "the turn just ended". This replaces eve's onFinish
@@ -326,23 +367,23 @@ function AgentSessionRunner({
   // the Error notification pattern when the turn settled by failing. Living in
   // the provider rather than the chat screen means the tap still fires when the
   // user has navigated to another tab while the agent worked.
-  const prevStatusRef = useRef(flueAgent.status);
+  const prevStatusRef = useRef(effectiveStatus);
   useEffect(() => {
     const prev = prevStatusRef.current;
-    prevStatusRef.current = flueAgent.status;
+    prevStatusRef.current = effectiveStatus;
     const wasBusy = prev === 'submitted' || prev === 'streaming';
-    const settled = flueAgent.status === 'idle' || flueAgent.status === 'error';
+    const settled = effectiveStatus === 'idle' || effectiveStatus === 'error';
     if (!wasBusy || !settled) return;
     invalidateProject();
-    if (flueAgent.status === 'error') {
+    if (effectiveStatus === 'error') {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {});
     } else {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
     }
-  }, [flueAgent.status, invalidateProject]);
+  }, [effectiveStatus, invalidateProject]);
 
   // --- Agent-stream resilience (see the block above the component) ---
-  const busy = flueAgent.status === 'submitted' || flueAgent.status === 'streaming';
+  const busy = effectiveStatus === 'submitted' || effectiveStatus === 'streaming';
   const busyRef = useRef(busy);
   busyRef.current = busy;
 
@@ -385,7 +426,7 @@ function AgentSessionRunner({
       // keyed on activeId) before rendering a transcript or sending a draft.
       chatId: activeId,
       messages: flueAgent.messages,
-      status: flueAgent.status === 'idle' ? 'ready' : flueAgent.status,
+      status: effectiveStatus === 'idle' ? 'ready' : effectiveStatus,
       error: flueAgent.error,
       historyReady: flueAgent.historyReady,
       // `send({ message, images })` — `message` is a plain string; `images` is
@@ -406,7 +447,7 @@ function AgentSessionRunner({
         flueClient.agents.abort(AGENT_NAME, idRef.current).catch(() => {});
       },
     }),
-    [flueAgent, activeId],
+    [flueAgent, effectiveStatus, activeId],
   );
 
   // Keep the chat list titled + floated from the live transcript (flue owns the
