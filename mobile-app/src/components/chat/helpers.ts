@@ -124,6 +124,64 @@ export function userText(message: AgentMessage): string {
     .join('');
 }
 
+// A run of assistant prose, split into the markdown around the images and the
+// images themselves. See `splitImages`.
+export type TextSegment = { md: string; image?: never } | { image: ImageRef; md?: never };
+export type ImageRef = { url: string; alt: string };
+
+// `![alt](url)` outside a fenced code block. Non-greedy so two images on one
+// line don't swallow the text between them; the alt text may be empty.
+const IMAGE_RE = /!\[([^\]]*)\]\(\s*(<[^>]*>|[^\s)]+)[^)]*\)/g;
+const FENCE_RE = /^\s*(```|~~~)/;
+
+/**
+ * Pull markdown images OUT of a text part so they can be rendered as real
+ * pictures instead of 20pt dots.
+ *
+ * react-native-enriched-markdown decides block-vs-inline by position: an image
+ * ALONE in its paragraph gets the 200pt block treatment, an image sharing a
+ * paragraph with any text becomes an `inlineImage` — `{ size: 20 }`, a thumbnail
+ * the size of a capital letter. The agent writes "**Fulton Street Station** — …
+ * warm grain over cold ceramic: ![](…)", which is one paragraph, so four
+ * freshly generated location plates rendered as four dots on the baseline.
+ *
+ * Rather than bet on the model putting every image on its own line, the images
+ * are lifted out here and drawn by `ChatImage` (full width, natural aspect,
+ * tappable into Galeria) with the markdown around them rendered as before.
+ *
+ * Fenced code blocks are left alone — an `![…](…)` inside one is sample text,
+ * not a picture.
+ */
+export function splitImages(text: string): TextSegment[] {
+  if (!text.includes('![')) return [{ md: text }];
+  const segments: TextSegment[] = [];
+  let buffer = '';
+  let fenced = false;
+  const flush = () => {
+    if (buffer.trim()) segments.push({ md: buffer.replace(/\n+$/, '') });
+    buffer = '';
+  };
+
+  for (const line of text.split('\n')) {
+    if (FENCE_RE.test(line)) fenced = !fenced;
+    if (fenced || !line.includes('![')) {
+      buffer += line + '\n';
+      continue;
+    }
+    let last = 0;
+    IMAGE_RE.lastIndex = 0;
+    for (let m = IMAGE_RE.exec(line); m; m = IMAGE_RE.exec(line)) {
+      buffer += line.slice(last, m.index);
+      flush();
+      segments.push({ image: { url: m[2].replace(/^<|>$/g, ''), alt: m[1] } });
+      last = m.index + m[0].length;
+    }
+    buffer += line.slice(last) + '\n';
+  }
+  flush();
+  return segments.length ? segments : [{ md: '' }];
+}
+
 // The tools whose parts render as an answerable card. `render_ui` is the live
 // one; `ask_question` only ever turns up replaying an older conversation.
 export const QUESTION_TOOLS = new Set(['render_ui', 'ask_question']);

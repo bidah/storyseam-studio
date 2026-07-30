@@ -7,6 +7,7 @@ import * as Haptics from 'expo-haptics';
 import * as WebBrowser from 'expo-web-browser';
 import { Check, ChevronRight, ExternalLink, FileText, Globe, Wrench } from 'lucide-react-native';
 import { cn } from '@/lib/utils';
+import { apiUrl } from '@/lib/api';
 import { useEffectiveScheme } from '@/lib/theme';
 import { StudioUI } from '@/genui/StudioUI';
 import { detectOptions } from '@/genui/detect-options';
@@ -23,11 +24,21 @@ import {
   hostOf,
   parseSourcesOutput,
   QUESTION_TOOLS,
+  splitImages,
   visibleParts,
   SOURCE_TOOLS,
   userText,
+  type ImageRef,
   type Source,
 } from './helpers';
+
+// The agent writes media URLs app-relative (`/storyboard-media/…`); the phone
+// needs them absolute against the worker. Same normalization the genui
+// renderers do — anything already absolute passes through.
+function mediaUri(src?: string | null): string | undefined {
+  if (!src) return undefined;
+  return /^(https?:|data:|file:)/.test(src) ? src : apiUrl(src);
+}
 
 // Renderers for each flue part type — a native port of the web AgentChat.jsx
 // message walk: every part of every message renders in order, by `type`
@@ -301,6 +312,45 @@ function ReasoningRow({ part }: { part: MessagePart }) {
   );
 }
 
+// An image the agent showed in its prose — lifted out of the markdown by
+// `splitImages` and drawn here at FULL WIDTH instead of as the 20pt inline dot
+// the native markdown renderer produces (see splitImages for why).
+//
+// The aspect ratio comes from the image itself via `onLoad`: a generated plate
+// is 16:9, a character sheet is portrait, and a fixed box would letterbox one to
+// serve the other. 16:9 is the placeholder until the first frame decodes, and
+// portrait is clamped so a tall sheet can't take over the whole screen.
+function ChatImage({ image, index }: { image: ImageRef; index?: number }) {
+  const c = useChatColors();
+  const [aspect, setAspect] = useState(16 / 9);
+  const uri = mediaUri(image.url);
+  if (!uri) return null;
+  const img = (
+    <Image
+      source={{ uri }}
+      accessibilityLabel={image.alt || 'image'}
+      contentFit="cover"
+      transition={150}
+      onLoad={(e) => {
+        const { width, height } = e.source ?? {};
+        if (width && height) setAspect(Math.max(0.7, width / height));
+      }}
+      style={{ width: '100%', height: '100%', backgroundColor: c.muted }}
+    />
+  );
+  return (
+    <View className="overflow-hidden self-stretch rounded-xl" style={{ aspectRatio: aspect }}>
+      {index === undefined ? (
+        img
+      ) : (
+        <Galeria.Image index={index} style={{ width: '100%', height: '100%' }}>
+          {img}
+        </Galeria.Image>
+      )}
+    </View>
+  );
+}
+
 // A flue `file` part — an attachment carried on a message. Historical bytes
 // aren't served, but a durably-recorded attachment (or an optimistic local echo)
 // carries a `url` we can render; images inline, everything else as a chip.
@@ -352,19 +402,40 @@ function PartView({
   canRespond,
   onRespond,
   offerOptions,
-  imageIndex,
+  galeriaIndex,
 }: {
   part: MessagePart;
   qa?: QuestionState;
   canRespond: boolean;
   onRespond?: (label: string) => void;
   offerOptions: boolean;
-  imageIndex?: number;
+  galeriaIndex: Map<string, number>;
 }) {
   switch (part.type) {
     case 'text': {
       if (!part.text) return null;
       const streaming = part.state === 'streaming';
+      // Images the agent wrote into its prose are rendered by us, not by the
+      // markdown renderer — see splitImages. A message showing pictures isn't a
+      // choice list, so the options rescue below doesn't apply to it.
+      const segments = splitImages(part.text);
+      if (segments.some((s) => s.image)) {
+        return (
+          <View className="gap-2">
+            {segments.map((s, i) =>
+              s.image ? (
+                <ChatImage
+                  key={`img:${s.image.url}:${i}`}
+                  image={s.image}
+                  index={galeriaIndex.get(s.image.url)}
+                />
+              ) : (
+                <ChatMarkdown key={`md:${i}`} text={s.md} streaming={streaming} />
+              ),
+            )}
+          </View>
+        );
+      }
       // Models keep writing choices as "A) … B) …" prose however firmly the
       // generative-ui skill says to draw them. `offerOptions` is set only on the
       // last assistant message of a settled turn that produced no card of its
@@ -412,7 +483,7 @@ function PartView({
       return <ToolChip part={part} />;
     }
     case 'file':
-      return <FilePart part={part} index={imageIndex} />;
+      return <FilePart part={part} index={part.url ? galeriaIndex.get(part.url) : undefined} />;
     default:
       return null;
   }
@@ -498,16 +569,25 @@ export const MessageRow = memo(function MessageRow({
   // Anything the model wrote AFTER its card is dropped — the card is the last
   // word of the turn. See visibleParts.
   const parts = visibleParts(message.parts);
-  // The row's image url list, in render order — the image `file` parts of this
-  // message. A url that repeats keeps its FIRST index, so the viewer doesn't
-  // show the same picture twice.
+  // The row's image url list, in render order — the images the agent wrote into
+  // its prose, plus any image `file` parts. Keyed by the url AS WRITTEN (the
+  // absolute form goes to Galeria) so a lookup from either renderer matches. A
+  // url that repeats keeps its FIRST index, so the viewer doesn't show the same
+  // picture twice.
   const galeriaIndex = new Map<string, number>();
   const urls: string[] = [];
+  const add = (raw: string | undefined) => {
+    const uri = mediaUri(raw);
+    if (!raw || !uri || galeriaIndex.has(raw)) return;
+    galeriaIndex.set(raw, urls.length);
+    urls.push(uri);
+  };
   for (const p of parts) {
-    if (p.type !== 'file' || !p.url || !p.mediaType?.startsWith('image/')) continue;
-    if (galeriaIndex.has(p.url)) continue;
-    galeriaIndex.set(p.url, urls.length);
-    urls.push(p.url);
+    if (p.type === 'text' && p.text) {
+      for (const s of splitImages(p.text)) if (s.image) add(s.image.url);
+    } else if (p.type === 'file' && p.mediaType?.startsWith('image/')) {
+      add(p.url);
+    }
   }
   return (
     <Galeria urls={urls} theme={scheme}>
@@ -520,7 +600,7 @@ export const MessageRow = memo(function MessageRow({
             canRespond={canRespond}
             onRespond={onRespond}
             offerOptions={isLast && !drewCard}
-            imageIndex={part.url ? galeriaIndex.get(part.url) : undefined}
+            galeriaIndex={galeriaIndex}
           />
         ))}
       </View>
