@@ -2,10 +2,12 @@ import { memo, useState } from 'react';
 import { ActivityIndicator, Pressable, Text, View } from 'react-native';
 import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { Image } from 'expo-image';
+import { Galeria } from '@nandorojo/galeria';
 import * as Haptics from 'expo-haptics';
 import * as WebBrowser from 'expo-web-browser';
 import { Check, ChevronRight, ExternalLink, FileText, Globe, Wrench } from 'lucide-react-native';
 import { cn } from '@/lib/utils';
+import { useEffectiveScheme } from '@/lib/theme';
 import { StudioUI } from '@/genui/StudioUI';
 import { detectOptions } from '@/genui/detect-options';
 import { ChatMarkdown } from './markdown';
@@ -302,18 +304,36 @@ function ReasoningRow({ part }: { part: MessagePart }) {
 // A flue `file` part — an attachment carried on a message. Historical bytes
 // aren't served, but a durably-recorded attachment (or an optimistic local echo)
 // carries a `url` we can render; images inline, everything else as a chip.
-function FilePart({ part }: { part: MessagePart }) {
+//
+// `index` is this image's position in the row's Galeria url list (see
+// `MessageRow`), so tapping it opens the full-screen swipeable preview — the
+// same shared-element viewer the Assets grid and the render_ui MediaGrid use. A
+// 180pt thumbnail is not enough to judge a generated image by. It is undefined
+// only if the part somehow isn't in that list, in which case the image renders
+// untappable rather than through a Galeria.Image with no provider above it.
+function FilePart({ part, index }: { part: MessagePart; index?: number }) {
   const c = useChatColors();
   const isImage = part.mediaType?.startsWith('image/');
   if (part.url && isImage) {
-    return (
+    const img = (
       <Image
         source={{ uri: part.url }}
         accessibilityLabel={part.filename || 'attachment'}
         contentFit="contain"
         transition={150}
-        style={{ width: 180, height: 180, borderRadius: 10, backgroundColor: c.muted }}
+        style={{ width: '100%', height: '100%', backgroundColor: c.muted }}
       />
+    );
+    return (
+      <View className="overflow-hidden self-start rounded-[10px]" style={{ width: 180, height: 180 }}>
+        {index === undefined ? (
+          img
+        ) : (
+          <Galeria.Image index={index} style={{ width: '100%', height: '100%' }}>
+            {img}
+          </Galeria.Image>
+        )}
+      </View>
     );
   }
   return (
@@ -332,12 +352,14 @@ function PartView({
   canRespond,
   onRespond,
   offerOptions,
+  imageIndex,
 }: {
   part: MessagePart;
   qa?: QuestionState;
   canRespond: boolean;
   onRespond?: (label: string) => void;
   offerOptions: boolean;
+  imageIndex?: number;
 }) {
   switch (part.type) {
     case 'text': {
@@ -390,7 +412,7 @@ function PartView({
       return <ToolChip part={part} />;
     }
     case 'file':
-      return <FilePart part={part} />;
+      return <FilePart part={part} index={imageIndex} />;
     default:
       return null;
   }
@@ -405,14 +427,24 @@ function SentAttachments({ atts }: { atts: SentAttachment[] | null }) {
   return (
     <View className="mt-1.5 flex-row flex-wrap justify-end gap-1.5">
       {atts.map((a, i) => (
-        <Image
+        // Tappable for the same full-screen look the agent's images get — the
+        // ordinal here IS the Galeria index, because a user row's url list is
+        // exactly its attachments (see MessageRow).
+        <View
           key={`${a.url}:${i}`}
-          source={{ uri: a.url }}
-          accessibilityLabel={a.name || 'attachment'}
-          contentFit="cover"
-          transition={150}
-          style={{ width: 76, height: 76, borderRadius: 10, backgroundColor: c.muted }}
-        />
+          className="overflow-hidden rounded-[10px]"
+          style={{ width: 76, height: 76 }}
+        >
+          <Galeria.Image index={i} style={{ width: '100%', height: '100%' }}>
+            <Image
+              source={{ uri: a.url }}
+              accessibilityLabel={a.name || 'attachment'}
+              contentFit="cover"
+              transition={150}
+              style={{ width: '100%', height: '100%', backgroundColor: c.muted }}
+            />
+          </Galeria.Image>
+        </View>
       ))}
     </View>
   );
@@ -433,19 +465,28 @@ export const MessageRow = memo(function MessageRow({
   onRespond?: (label: string) => void;
   isLast?: boolean;
 }) {
+  // Galeria previews a WHOLE set swipeably, so it needs every url of this row
+  // up front and each image needs its position in that list. The scope is one
+  // message row: swiping moves between the images of the same bubble (the takes
+  // of one generation, the references of one send), not across the transcript.
+  const scheme = useEffectiveScheme();
+
   if (message.role === 'user') {
     const text = userText(message);
+    const urls = (atts || []).map((a) => a.url).filter(Boolean);
     return (
-      <View className="items-end px-4">
-        {text ? (
-          <View className="max-w-[88%] rounded-2xl bg-secondary px-3.5 py-2.5">
-            <Text className="text-[16px] leading-[23px] text-foreground" selectable>
-              {text}
-            </Text>
-          </View>
-        ) : null}
-        <SentAttachments atts={atts} />
-      </View>
+      <Galeria urls={urls} theme={scheme}>
+        <View className="items-end px-4">
+          {text ? (
+            <View className="max-w-[88%] rounded-2xl bg-secondary px-3.5 py-2.5">
+              <Text className="text-[16px] leading-[23px] text-foreground" selectable>
+                {text}
+              </Text>
+            </View>
+          ) : null}
+          <SentAttachments atts={atts} />
+        </View>
+      </Galeria>
     );
   }
   // A prose choice list is only worth rescuing on the newest assistant turn,
@@ -457,18 +498,32 @@ export const MessageRow = memo(function MessageRow({
   // Anything the model wrote AFTER its card is dropped — the card is the last
   // word of the turn. See visibleParts.
   const parts = visibleParts(message.parts);
+  // The row's image url list, in render order — the image `file` parts of this
+  // message. A url that repeats keeps its FIRST index, so the viewer doesn't
+  // show the same picture twice.
+  const galeriaIndex = new Map<string, number>();
+  const urls: string[] = [];
+  for (const p of parts) {
+    if (p.type !== 'file' || !p.url || !p.mediaType?.startsWith('image/')) continue;
+    if (galeriaIndex.has(p.url)) continue;
+    galeriaIndex.set(p.url, urls.length);
+    urls.push(p.url);
+  }
   return (
-    <View className="gap-2 px-4">
-      {parts.map((part, i) => (
-        <PartView
-          key={part.toolCallId ?? `${part.type ?? 'part'}:${i}`}
-          part={part}
-          qa={qa}
-          canRespond={canRespond}
-          onRespond={onRespond}
-          offerOptions={isLast && !drewCard}
-        />
-      ))}
-    </View>
+    <Galeria urls={urls} theme={scheme}>
+      <View className="gap-2 px-4">
+        {parts.map((part, i) => (
+          <PartView
+            key={part.toolCallId ?? `${part.type ?? 'part'}:${i}`}
+            part={part}
+            qa={qa}
+            canRespond={canRespond}
+            onRespond={onRespond}
+            offerOptions={isLast && !drewCard}
+            imageIndex={part.url ? galeriaIndex.get(part.url) : undefined}
+          />
+        ))}
+      </View>
+    </Galeria>
   );
 });
