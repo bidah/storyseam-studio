@@ -37,7 +37,13 @@ import { uploadFile } from '@/lib/api';
 import type { LocalAttachment } from '@/components/chat/composer';
 import { useChatComposer, useComposerHeight } from '@/components/chat/composer-host';
 import { GlassSurface } from '@/components/chat/glass-surface';
-import { deriveQA, isReasoning, isThinking, workingTool } from '@/components/chat/helpers';
+import {
+  deriveQA,
+  isReasoning,
+  isStreamingText,
+  isThinking,
+  workingTool,
+} from '@/components/chat/helpers';
 import { NextQuestions } from '@/genui/NextQuestions';
 import { shouldOfferNext } from '@/genui/next-questions';
 import { MessageRow } from '@/components/chat/message';
@@ -290,6 +296,7 @@ export function Conversation({
   const waitingForHistory = !historyReady && !looksNew;
   const busy = live && agentIsBusy(agent);
   const thinking = useMemo(() => isThinking(messages, busy), [messages, busy]);
+  const streamingText = useMemo(() => isStreamingText(messages, busy), [messages, busy]);
   const working = useMemo(() => workingTool(messages, busy), [messages, busy]);
   const reasoning = useMemo(() => isReasoning(messages, busy), [messages, busy]);
   // Interactive `ask_question` cards: which one is pending vs already answered.
@@ -587,6 +594,10 @@ export function Conversation({
                   <ShimmerRow label="Agent is working…" />
                 ) : reasoning ? (
                   <ShimmerRow label="Reasoning…" />
+                ) : streamingText ? (
+                  // The agent is visibly WRITING — the words are the progress
+                  // indicator, so no shimmer under them (see isStreamingText).
+                  null
                 ) : busy ? (
                   // Catch-all: turn still in flight but its trailing content is
                   // settled (a finished narration line, a completed tool) — none

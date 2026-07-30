@@ -53,6 +53,30 @@ export function isReasoning(messages: AgentMessage[], busy: boolean): boolean {
   return trailing?.type === 'reasoning';
 }
 
+// The agent is actively WRITING: the trailing visible content is a text part
+// flue hasn't marked done yet.
+//
+// This exists to SUPPRESS the progress shimmer. Words appearing on screen are
+// already the progress signal, and a "Working…" row pinned under them reads as a
+// second, stalled turn running behind the answer — which is exactly how it
+// looked. The shimmer is for the gaps (nothing rendered yet, a tool in flight, a
+// long silent reasoning block), not for the one moment the agent is visibly
+// producing.
+//
+// A text part with no `state` at all is treated as still streaming: the only
+// cost is a missing shimmer for a beat, versus a spinner that contradicts the
+// text next to it.
+export function isStreamingText(messages: AgentMessage[], busy: boolean): boolean {
+  if (!busy) return false;
+  const last = messages[messages.length - 1];
+  if (!last || last.role === 'user') return false;
+  let trailing: MessagePart | null = null;
+  for (const p of last.parts || []) {
+    if (isVisible(p)) trailing = p;
+  }
+  return trailing?.type === 'text' && trailing.state !== 'done';
+}
+
 // Compact "2m" / "3h" / "5d" relative time for the conversations list.
 export function relTime(ts: number | undefined): string {
   if (!ts) return '';
