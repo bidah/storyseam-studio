@@ -17,6 +17,7 @@ import { useCallback, useState } from "react";
 import { Renderer } from "@openuidev/react-lang";
 import { AlertTriangle } from "lucide-react";
 import { buildStudioLibrary } from "./contract";
+import { AnsweredContext } from "./answered";
 import { webRenderers } from "./renderers";
 
 export const studioLibrary = buildStudioLibrary(webRenderers);
@@ -81,8 +82,12 @@ export function isReferenceUpload(message) {
  * renderer's `isStreaming` prop, which is what disables the library's
  * interactive elements (see `useSend` in renderers.jsx); a stale card therefore
  * renders identically but inert, rather than vanishing.
+ *
+ * `answer` is the reply that answered this card, if any — it marks the row the
+ * author actually chose (see answered.ts). Inert and answered look nothing
+ * alike: one is a card waiting its turn, the other is a decision already made.
  */
-export function StudioUI({ lang, answerable, onRespond }) {
+export function StudioUI({ lang, answerable, answer, onRespond }) {
   const [errors, setErrors] = useState(EMPTY_ERRORS);
   const program = cleanLang(lang);
 
@@ -125,15 +130,17 @@ export function StudioUI({ lang, answerable, onRespond }) {
   }
 
   return (
-    <Renderer
-      response={program}
-      library={studioLibrary}
-      isStreaming={!answerable}
-      onAction={(event) => {
-        const message = event?.humanFriendlyMessage;
-        if (message) onRespond?.(message);
-      }}
-      onError={handleErrors}
-    />
+    <AnsweredContext.Provider value={answer ?? null}>
+      <Renderer
+        response={program}
+        library={studioLibrary}
+        isStreaming={!answerable}
+        onAction={(event) => {
+          const message = event?.humanFriendlyMessage;
+          if (message) onRespond?.(message);
+        }}
+        onError={handleErrors}
+      />
+    </AnsweredContext.Provider>
   );
 }

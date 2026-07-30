@@ -553,6 +553,9 @@ function MessagePart({ part, qa, canRespond, onRespond, onRequestReference, offe
           <StudioUI
             lang={part.input?.lang}
             answerable={pending && canRespond}
+            // What the author replied, so the card can show WHICH option they
+            // took rather than just going inert. See genui/answered.ts.
+            answer={qa?.answered.get(part.toolCallId)}
             onRespond={(message) =>
               // The reference-upload choice opens the MediaPicker rather than
               // posting its text; everything else is an ordinary reply.
@@ -603,14 +606,31 @@ const QUESTION_TOOLS = new Set(["render_ui", "ask_question"]);
 // Only prose goes — `text` and `reasoning`. A tool part landing after a card
 // stays visible, because hiding real work the agent did would be a lie, not a
 // tidy-up. Twin of `visibleParts` in mobile-app/src/components/chat/helpers.ts.
-function visibleParts(parts) {
+//
+// `sealed` extends that across the MESSAGE boundary. A turn is not one message:
+// flue opens a new assistant message per step (`message-started`), so the
+// paragraph narrating the card usually lands in the NEXT message and a
+// per-message filter never sees it — which is why the trailing "The card is up
+// — tap whichever arc you want" survived the first fix. `deriveQA` marks every
+// assistant message that follows a card (until the user speaks again), and
+// those drop their prose whole.
+function visibleParts(parts, sealed = false) {
   const list = parts || [];
   let card = -1;
   for (let i = 0; i < list.length; i++) {
     if (list[i].type === "dynamic-tool" && QUESTION_TOOLS.has(list[i].toolName)) card = i;
   }
+  if (sealed) return list.filter((p) => !isNarration(p));
   if (card < 0) return list;
-  return list.filter((p, i) => i <= card || (p.type !== "text" && p.type !== "reasoning"));
+  return list.filter((p, i) => i <= card || !isNarration(p));
+}
+
+// Prose the card made redundant. A text part carrying a markdown IMAGE is not
+// narration whatever else it says — that's a picture the agent generated, and
+// dropping it would lose real output, the same way dropping a tool part would.
+function isNarration(p) {
+  if (p.type === "reasoning") return true;
+  return p.type === "text" && !(p.text || "").includes("![");
 }
 
 // Resolve the answer state of every question card in the thread. flue has
@@ -618,12 +638,23 @@ function visibleParts(parts) {
 // question is answered by the first user message after it (its text is the
 // answer); the one unanswered question — the last with no user message following
 // — is `pendingId` (the only card whose buttons stay live).
+//
+// It also collects `sealed`: the ids of the assistant messages drawn AFTER a
+// card and before the user's reply. A card is the last word of the turn, and
+// the model keeps writing past it into a fresh message — see `visibleParts`.
 function deriveQA(messages) {
   const answered = new Map();
+  const sealed = new Set();
   let pendingId = null;
+  let afterCard = false;
   for (let i = 0; i < messages.length; i++) {
     const m = messages[i];
+    if (m.role === "user") {
+      afterCard = false;
+      continue;
+    }
     if (m.role !== "assistant") continue;
+    if (afterCard && m.id) sealed.add(m.id);
     for (const p of m.parts || []) {
       if (p.type !== "dynamic-tool" || !QUESTION_TOOLS.has(p.toolName)) continue;
       let ans = null;
@@ -639,9 +670,10 @@ function deriveQA(messages) {
       }
       if (ans) answered.set(p.toolCallId, ans);
       else pendingId = p.toolCallId;
+      afterCard = true;
     }
   }
-  return { answered, pendingId };
+  return { answered, pendingId, sealed };
 }
 
 // The concatenated text of a (user) message's text parts — the join key that
@@ -750,9 +782,15 @@ function AgentMessage({
   const drewCard = (message.parts || []).some(
     (p) => p.type === "dynamic-tool" && QUESTION_TOOLS.has(p.toolName),
   );
+  // Anything the model wrote AFTER its card is dropped — the card is the last
+  // word of the turn — including a whole message written past it, which is the
+  // usual shape (one flue message per step). See visibleParts. A message that
+  // was nothing BUT that trailing prose renders nothing, not an empty gap.
+  const parts = visibleParts(message.parts, !!message.id && qa?.sealed?.has(message.id));
+  if (!parts.length) return null;
   return (
     <div className="flex flex-col gap-2">
-      {visibleParts(message.parts).map((part, i) => (
+      {parts.map((part, i) => (
         <MessagePart
           key={part.toolCallId ?? `${part.type}:${i}`}
           part={part}

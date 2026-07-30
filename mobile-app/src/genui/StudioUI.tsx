@@ -19,6 +19,7 @@ import { Renderer } from '@openuidev/react-lang';
 import { TriangleAlert } from 'lucide-react-native';
 import { useColors } from '@/lib/colors';
 import { buildStudioLibrary } from './contract';
+import { AnsweredContext } from './answered';
 import { nativeRenderers } from './renderers';
 
 export const studioLibrary = buildStudioLibrary(nativeRenderers);
@@ -68,14 +69,20 @@ export function cleanLang(text?: string | null): string {
  * renderer's `isStreaming` prop, which is what disables the library's
  * interactive elements (see `useSend` in renderers.tsx); a stale card therefore
  * renders identically but inert, rather than vanishing.
+ *
+ * `answer` is the reply that answered this card, if any — it marks the row the
+ * author actually chose (see answered.ts). Inert and answered look nothing
+ * alike: one is a card waiting its turn, the other is a decision already made.
  */
 export function StudioUI({
   lang,
   answerable,
+  answer,
   onRespond,
 }: {
   lang?: string | null;
   answerable: boolean;
+  answer?: string | null;
   onRespond?: (message: string) => void;
 }) {
   const colors = useColors();
@@ -123,17 +130,19 @@ export function StudioUI({
   }
 
   return (
-    <View className="self-stretch">
-      <Renderer
-        response={program}
-        library={studioLibrary}
-        isStreaming={!answerable}
-        onAction={(event) => {
-          const message = event?.humanFriendlyMessage;
-          if (message) onRespond?.(message);
-        }}
-        onError={handleErrors}
-      />
-    </View>
+    <AnsweredContext.Provider value={answer ?? null}>
+      <View className="self-stretch">
+        <Renderer
+          response={program}
+          library={studioLibrary}
+          isStreaming={!answerable}
+          onAction={(event) => {
+            const message = event?.humanFriendlyMessage;
+            if (message) onRespond?.(message);
+          }}
+          onError={handleErrors}
+        />
+      </View>
+    </AnsweredContext.Provider>
   );
 }

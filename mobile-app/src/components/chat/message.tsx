@@ -459,6 +459,9 @@ function PartView({
           <StudioUI
             lang={(part.input as { lang?: string } | undefined)?.lang}
             answerable={pending && canRespond}
+            // What the author replied, so the card can show WHICH option they
+            // took rather than just going inert. See genui/answered.ts.
+            answer={part.toolCallId ? qa?.answered.get(part.toolCallId) : undefined}
             onRespond={onRespond}
           />
         );
@@ -567,8 +570,11 @@ export const MessageRow = memo(function MessageRow({
     (p) => p.type === 'dynamic-tool' && QUESTION_TOOLS.has(p.toolName ?? ''),
   );
   // Anything the model wrote AFTER its card is dropped — the card is the last
-  // word of the turn. See visibleParts.
-  const parts = visibleParts(message.parts);
+  // word of the turn — including a whole message written past it, which is the
+  // usual shape (one flue message per step). See visibleParts. A message that
+  // was nothing BUT that trailing prose renders nothing, not an empty gap.
+  const parts = visibleParts(message.parts, !!message.id && !!qa?.sealed?.has(message.id));
+  if (!parts.length) return null;
   // The row's image url list, in render order — the images the agent wrote into
   // its prose, plus any image `file` parts. Keyed by the url AS WRITTEN (the
   // absolute form goes to Galeria) so a lookup from either renderer matches. A

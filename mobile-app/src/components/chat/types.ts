@@ -36,7 +36,13 @@ export type AskQuestionInput = { question?: string; options?: QuestionOption[] }
 // Resolved answer state of every `ask_question` card in a thread: which card is
 // still pending (its buttons stay live) and, for answered ones, the text the
 // user replied with (keyed by toolCallId). Derived by `deriveQA`.
-export type QuestionState = { pendingId: string | null; answered: Map<string, string> };
+export type QuestionState = {
+  pendingId: string | null;
+  answered: Map<string, string>;
+  // Assistant messages written after a card and before the user answered — the
+  // agent talking past the end of its own turn. See `visibleParts`.
+  sealed: Set<string>;
+};
 
 // One image the user sent with a turn (re-rendered from the persisted,
 // ordinal-aligned attachments record — flue's `file` parts don't serve

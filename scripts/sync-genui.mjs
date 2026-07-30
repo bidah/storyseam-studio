@@ -29,6 +29,7 @@ const MOBILE_CONTRACT = join(ROOT, "mobile-app/src/genui/contract.ts");
 // Pure-logic modules vendored alongside the contract: [source, destination].
 const VENDORED = [
   ["src/genui/detect-options.ts", "mobile-app/src/genui/detect-options.ts"],
+  ["src/genui/answered.ts", "mobile-app/src/genui/answered.ts"],
 ];
 const SKILL_DIR = join(ROOT, "flue-agent/src/skills/generative-ui");
 const TEMPLATE = join(SKILL_DIR, "SKILL.template.md");

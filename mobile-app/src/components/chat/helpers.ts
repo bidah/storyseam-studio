@@ -197,18 +197,33 @@ export const QUESTION_TOOLS = new Set(['render_ui', 'ask_question']);
 // Only prose goes — `text` and `reasoning`. A tool part that lands after a card
 // stays visible, because hiding real work the agent did would be a lie, not a
 // tidy-up.
-export function visibleParts<T extends { type?: string; toolName?: string }>(
-  parts: T[] | undefined,
-): T[] {
+//
+// `sealed` extends that across the MESSAGE boundary. A turn is not one message:
+// flue opens a new assistant message per step (`message-started`), so the
+// paragraph narrating the card usually lands in the NEXT message and a
+// per-message filter never sees it — which is why the trailing "The card is up
+// — tap whichever arc you want" survived the first fix. `deriveQA` marks every
+// assistant message that follows a card (until the user speaks again) and those
+// drop their prose whole.
+export function visibleParts<
+  T extends { type?: string; toolName?: string; text?: string },
+>(parts: T[] | undefined, sealed = false): T[] {
   const list = parts || [];
   let card = -1;
   for (let i = 0; i < list.length; i++) {
     if (list[i].type === 'dynamic-tool' && QUESTION_TOOLS.has(list[i].toolName ?? '')) card = i;
   }
+  if (sealed) return list.filter((p) => !isNarration(p));
   if (card < 0) return list;
-  return list.filter(
-    (p, i) => i <= card || (p.type !== 'text' && p.type !== 'reasoning'),
-  );
+  return list.filter((p, i) => i <= card || !isNarration(p));
+}
+
+// Prose the card made redundant. A text part carrying a markdown IMAGE is not
+// narration whatever else it says — that's a picture the agent generated, and
+// dropping it would lose real output, the same way dropping a tool part would.
+function isNarration(p: { type?: string; text?: string }): boolean {
+  if (p.type === 'reasoning') return true;
+  return p.type === 'text' && !(p.text || '').includes('![');
 }
 
 // Resolve the answer state of every question card. flue has no server-side
@@ -216,12 +231,23 @@ export function visibleParts<T extends { type?: string; toolName?: string }>(
 // answered by the first user message after it (its text is the answer); the one
 // unanswered question — the last with no user message following — is `pendingId`
 // (the only card whose buttons stay live). Port of the web `deriveQA`.
+//
+// It also collects `sealed`: the ids of the assistant messages drawn AFTER a
+// card and before the user's reply. A card is the last word of the turn, and
+// the model keeps writing past it into a fresh message — see `visibleParts`.
 export function deriveQA(messages: AgentMessage[]): QuestionState {
   const answered = new Map<string, string>();
+  const sealed = new Set<string>();
   let pendingId: string | null = null;
+  let afterCard = false;
   for (let i = 0; i < messages.length; i++) {
     const m = messages[i];
+    if (m.role === 'user') {
+      afterCard = false;
+      continue;
+    }
     if (m.role !== 'assistant') continue;
+    if (afterCard && m.id) sealed.add(m.id);
     for (const p of m.parts || []) {
       if (p.type !== 'dynamic-tool' || !QUESTION_TOOLS.has(p.toolName ?? '') || !p.toolCallId)
         continue;
@@ -234,9 +260,10 @@ export function deriveQA(messages: AgentMessage[]): QuestionState {
       }
       if (ans) answered.set(p.toolCallId, ans);
       else pendingId = p.toolCallId;
+      afterCard = true;
     }
   }
-  return { pendingId, answered };
+  return { pendingId, answered, sealed };
 }
 
 // --- Web-search sources -----------------------------------------------------

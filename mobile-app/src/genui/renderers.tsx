@@ -29,6 +29,7 @@ import { useColors } from '@/lib/colors';
 import { useEffectiveScheme } from '@/lib/theme';
 import { apiUrl } from '@/lib/api';
 import { cn } from '@/lib/utils';
+import { useAnswerState } from './answered';
 import type {
   ActionProps,
   ActionsProps,
@@ -281,6 +282,10 @@ export function Option({ props }: Render<OptionProps>) {
   // "this is already in force" flag) still drives the single-select check mark.
   const checked = selection ? selection.has(props.send) : false;
   const onPress = selection ? (send ? () => selection.toggle(props.send) : undefined) : send;
+  // Once the card is answered the row the author took is marked like any other
+  // current selection, and the rows they passed over recede. See answered.ts.
+  const { picked, dimmed } = useAnswerState(props.send);
+  const marked = props.selected || picked;
   return (
     <BouncyPressable
       onPress={onPress}
@@ -288,6 +293,10 @@ export function Option({ props }: Render<OptionProps>) {
       pressedScale={0.985}
       accessibilityLabel={props.title}
       className="flex-row items-center gap-3 px-4 py-4"
+      style={{
+        backgroundColor: picked ? `${colors.primary}14` : undefined,
+        opacity: dimmed ? 0.45 : 1,
+      }}
     >
       {selection ? <CheckSquare checked={checked} /> : null}
       {uri ? (
@@ -327,10 +336,11 @@ export function Option({ props }: Render<OptionProps>) {
         <RNText className="text-[13px] text-muted-foreground">{props.meta}</RNText>
       ) : null}
       {/* A multi-select row's affordance is its checkbox — no chevron, or the
-          row would advertise a navigation it doesn't do. */}
-      {selection ? null : props.selected ? (
+          row would advertise a navigation it doesn't do. A passed-over row on an
+          answered card gets neither: there is nothing left to navigate to. */}
+      {selection ? null : marked ? (
         <Check size={18} color={colors.primary} />
-      ) : (
+      ) : dimmed ? null : (
         <ChevronRight size={16} color={colors.subtleForeground} />
       )}
     </BouncyPressable>
@@ -381,15 +391,19 @@ export function MediaItem({ props }: Render<MediaItemProps>) {
   const uri = mediaUri(props.src);
   const checked = selection ? selection.has(props.send) : false;
   const pick = selection ? (send ? () => selection.toggle(props.send) : undefined) : send;
+  // The tile the author picked keeps its ring once the card is answered; the
+  // ones they passed over recede. See answered.ts.
+  const { picked, dimmed } = useAnswerState(props.send);
+  const marked = props.selected || picked;
   // -1 when the tile somehow isn't in its grid's url list (a MediaItem rendered
   // outside a MediaGrid); Galeria treats it as a single-image preview.
   const index = indices?.get(props.src) ?? 0;
 
   return (
-    <View className="gap-1.5">
+    <View className="gap-1.5" style={{ opacity: dimmed ? 0.45 : 1 }}>
       <View
         className="overflow-hidden rounded-2xl border-2"
-        style={{ borderColor: props.selected || checked ? colors.primary : 'transparent' }}
+        style={{ borderColor: marked || checked ? colors.primary : 'transparent' }}
       >
         <Galeria.Image index={index} style={{ width: '100%', aspectRatio: 1 }}>
           <Image
@@ -400,7 +414,7 @@ export function MediaItem({ props }: Render<MediaItemProps>) {
             style={{ width: '100%', height: '100%', backgroundColor: colors.muted }}
           />
         </Galeria.Image>
-        {props.selected && !selection ? (
+        {marked && !selection ? (
           <View
             className="absolute left-1.5 top-1.5 rounded-full p-1"
             style={{ backgroundColor: colors.primary }}
@@ -754,7 +768,10 @@ export function Action({ props }: Render<ActionProps>) {
   const colors = useColors();
   const onPress = useSend(props.send);
   const danger = props.tone === 'danger';
-  const primary = props.variant === 'primary' && !danger;
+  // The button the author pressed reads as pressed once the card is answered —
+  // it goes solid, and the ones they didn't press recede. See answered.ts.
+  const { picked, dimmed } = useAnswerState(props.send);
+  const primary = (props.variant === 'primary' || picked) && !danger;
   return (
     <BouncyPressable
       onPress={onPress}
@@ -768,6 +785,7 @@ export function Action({ props }: Render<ActionProps>) {
           : primary
             ? colors.primary
             : colors.surfaceAlt,
+        opacity: dimmed ? 0.45 : 1,
       }}
     >
       <RNText

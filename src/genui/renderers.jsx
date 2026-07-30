@@ -22,6 +22,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
+import { useAnswerState } from "./answered";
 
 // The tap handler for anything carrying a `send`. Returns undefined when there
 // is nothing to send, so callers can render a non-interactive element instead
@@ -213,15 +214,21 @@ export function Option({ props }) {
   // "this is already in force" flag) still drives the single-select check mark.
   const checked = selection ? selection.has(props.send) : false;
   const onClick = selection ? (send ? () => selection.toggle(props.send) : undefined) : send;
+  // Once the card is answered the row the author took is marked like any other
+  // current selection, and the rows they passed over recede. See answered.ts.
+  const { picked, dimmed } = useAnswerState(props.send);
+  const marked = props.selected || picked;
   return (
     <button
       type="button"
       disabled={!onClick}
       onClick={onClick}
-      aria-pressed={selection ? checked : undefined}
+      aria-pressed={selection ? checked : marked || undefined}
       className={cn(
         "flex w-full items-center gap-3 px-3 py-3 text-left transition-colors",
-        "hover:bg-accent/60 disabled:pointer-events-none disabled:opacity-60",
+        "hover:bg-accent/60 disabled:pointer-events-none",
+        picked && "bg-primary/10",
+        dimmed ? "opacity-45" : "disabled:opacity-60",
       )}
     >
       {selection ? (
@@ -245,7 +252,7 @@ export function Option({ props }) {
             {props.title}
           </span>
           {props.badge ? (
-            <Badge variant={props.selected ? "success" : "muted"} className="shrink-0">
+            <Badge variant={marked ? "success" : "muted"} className="shrink-0">
               {props.badge}
             </Badge>
           ) : null}
@@ -260,10 +267,11 @@ export function Option({ props }) {
         <span className="shrink-0 text-xs text-muted-foreground">{props.meta}</span>
       ) : null}
       {/* A multi-select row's affordance is its checkbox — no chevron, or the
-          row would advertise a navigation it doesn't do. */}
-      {selection ? null : props.selected ? (
+          row would advertise a navigation it doesn't do. A passed-over row on an
+          answered card gets neither: there is nothing left to navigate to. */}
+      {selection ? null : marked ? (
         <Check size={15} className="shrink-0 text-primary" />
-      ) : (
+      ) : dimmed ? null : (
         <ChevronRight size={15} className="shrink-0 text-muted-foreground" />
       )}
     </button>
@@ -310,18 +318,20 @@ export function MediaItem({ props }) {
   const send = useSend(props.send);
   const checked = selection ? selection.has(props.send) : false;
   const pick = selection ? (send ? () => selection.toggle(props.send) : undefined) : send;
+  // The tile the author picked keeps its ring once the card is answered; the
+  // ones they passed over recede. See answered.ts.
+  const { picked, dimmed } = useAnswerState(props.send);
+  const marked = props.selected || picked;
 
   return (
-    <div className="flex flex-col gap-1.5">
+    <div className={cn("flex flex-col gap-1.5", dimmed && "opacity-45")}>
       <button
         type="button"
         onClick={() => setPreview(true)}
         aria-label={props.label ? `Preview ${props.label}` : "Preview image"}
         className={cn(
           "group relative block overflow-hidden rounded-lg border-2 transition-colors",
-          props.selected || checked
-            ? "border-primary"
-            : "border-transparent hover:border-border",
+          marked || checked ? "border-primary" : "border-transparent hover:border-border",
         )}
       >
         <img
@@ -332,7 +342,7 @@ export function MediaItem({ props }) {
         <span className="absolute right-1 top-1 rounded-md bg-background/80 p-1 opacity-0 transition-opacity group-hover:opacity-100">
           <Expand size={11} />
         </span>
-        {props.selected && !selection ? (
+        {marked && !selection ? (
           <span className="absolute left-1 top-1 rounded-full bg-primary p-0.5 text-primary-foreground">
             <Check size={11} />
           </span>
@@ -600,8 +610,15 @@ export function Chips({ props }) {
 
 export function Action({ props }) {
   const onClick = useSend(props.send);
+  // The button the author pressed reads as pressed once the card is answered —
+  // it goes solid, and the ones they didn't press recede. See answered.ts.
+  const { picked, dimmed } = useAnswerState(props.send);
   const variant =
-    props.tone === "danger" ? "destructive" : props.variant === "primary" ? "default" : "secondary";
+    props.tone === "danger"
+      ? "destructive"
+      : props.variant === "primary" || picked
+        ? "default"
+        : "secondary";
   return (
     <Button
       type="button"
@@ -609,8 +626,12 @@ export function Action({ props }) {
       variant={variant}
       disabled={!onClick}
       onClick={onClick}
-      className="h-auto max-w-full min-w-0 justify-start py-1.5 text-left leading-snug whitespace-normal"
+      className={cn(
+        "h-auto max-w-full min-w-0 justify-start py-1.5 text-left leading-snug whitespace-normal",
+        dimmed && "opacity-45",
+      )}
     >
+      {picked ? <Check size={14} className="shrink-0" /> : null}
       {props.label}
     </Button>
   );
