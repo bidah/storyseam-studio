@@ -25,11 +25,27 @@ export const ALLOWED_MODELS = new Set<string>([
   "cloudflare/@cf/moonshotai/kimi-k2.6",
   "cloudflare/@cf/openai/gpt-oss-120b",
   "cloudflare/@cf/zai-org/glm-4.7-flash",
-  // Anthropic Claude — need ANTHROPIC_API_KEY on this worker (+ ANTHROPIC_GATEWAY_URL
-  // to route via CF AI Gateway). Selecting one without the key errors on that turn.
-  "anthropic/claude-sonnet-5",
-  "anthropic/claude-opus-4.6",
-  "anthropic/claude-fable-5",
+  // Anthropic Claude is REMOVED, and the reason matters more than the removal.
+  //
+  // The comment here used to say "selecting one without the key errors on that
+  // turn". It doesn't. `anthropic/claude-opus-4.6` isn't in the pi-ai catalog at
+  // all, so it fails during model RESOLUTION with "Unknown model specifier" —
+  // before any key check — and flue classifies that deterministic failure as a
+  // retryable interruption (`deferred_to_scheduled_wake`). The submission then
+  // retries forever: the conversation is wedged on "Thinking…" permanently, with
+  // no way out from the client, burning a Durable Object alarm each round.
+  //
+  // An allowlist entry is a loaded gun when the specifier is wrong, because
+  // `writeSelectedModel` persists it into the conversation's DO. The only reason
+  // removing them here UNWEDGES the conversations that already stored one is
+  // that `readSelectedModel` re-validates on the way out and falls back to
+  // DEFAULT_MODEL — keep that property if you touch this file.
+  //
+  // To re-add: set ANTHROPIC_API_KEY on this worker, verify each specifier
+  // actually resolves (a turn that completes, not just a name that looks right),
+  // and add it back to all three registries — here, src/lib/agentModel.js, and
+  // mobile-app/src/lib/agent-model.ts.
+  //
   // Cerebras — built-in pi-ai catalog provider (openai-completions). Needs
   // CEREBRAS_API_KEY on this worker (+ CEREBRAS_GATEWAY_URL to route via CF AI
   // Gateway — see app.ts). Opt-in on the client (Settings › Chat provider);

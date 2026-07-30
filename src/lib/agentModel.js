@@ -15,18 +15,18 @@ import { getChatProvider, onChatProviderChange, useChatProvider, DEFAULT_CHAT_PR
 // Settings › Chat provider this model belongs to (lib/chatProvider.js) — the
 // picker only shows the active group. The Cloudflare Workers AI models
 // (`cloudflare/@cf/…`) need no external key and auto-route through CF AI Gateway;
-// the Claude models (`anthropic/…`) need ANTHROPIC_API_KEY on the flue worker
-// (and ANTHROPIC_GATEWAY_URL to also route via CF AI Gateway); the Cerebras
-// models (`cerebras/…`) need CEREBRAS_API_KEY (+ CEREBRAS_GATEWAY_URL for the
-// gateway). Keep in lockstep with flue-agent/src/lib/models.ts + mobile
+// the Cerebras models (`cerebras/…`) need CEREBRAS_API_KEY (+ CEREBRAS_GATEWAY_URL
+// for the gateway). Keep in lockstep with flue-agent/src/lib/models.ts + mobile
 // agent-model.ts.
+//
+// The Claude (`anthropic/…`) entries were REMOVED: their specifiers don't resolve
+// in the agent's model catalog, and offering an unresolvable model wedges the
+// conversation that picks it — permanently, on "Thinking…". See the long note in
+// flue-agent/src/lib/models.ts before adding any of them back.
 export const AGENT_MODELS = [
   { id: "kimi-k2.6", spec: "cloudflare/@cf/moonshotai/kimi-k2.6", label: "Kimi K2.6", hint: "Default · economical", group: "cloudflare" },
   { id: "gpt-oss-120b", spec: "cloudflare/@cf/openai/gpt-oss-120b", label: "GPT-OSS 120B", hint: "Reasoning", group: "cloudflare" },
   { id: "glm-4.7-flash", spec: "cloudflare/@cf/zai-org/glm-4.7-flash", label: "GLM 4.7 Flash", hint: "Fast · 131k ctx", group: "cloudflare" },
-  { id: "claude-sonnet-5", spec: "anthropic/claude-sonnet-5", label: "Sonnet 5", hint: "Claude · needs key", group: "cloudflare" },
-  { id: "claude-opus-4.6", spec: "anthropic/claude-opus-4.6", label: "Opus 4.6", hint: "Claude · most capable", group: "cloudflare" },
-  { id: "claude-fable-5", spec: "anthropic/claude-fable-5", label: "Fable 5", hint: "Claude · creative", group: "cloudflare" },
   // Cerebras (Settings › Chat provider = Cerebras). Gemma is the default.
   { id: "cerebras-gemma-4-31b", spec: "cerebras/gemma-4-31b", label: "Gemma 4 31B", hint: "Default · 131k ctx · vision", group: "cerebras" },
   { id: "cerebras-glm-4.7", spec: "cerebras/zai-glm-4.7", label: "GLM 4.7", hint: "Z.AI · reasoning", group: "cerebras" },
