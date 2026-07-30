@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Pressable, ScrollView, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import { toast } from 'sonner-native';
 import { Bot, Check, GitPullRequestArrow, X } from 'lucide-react-native';
@@ -74,6 +75,12 @@ export function ScriptProposalReview({
 }) {
   const colors = useColors();
   const invalidate = useInvalidate();
+  // This surface takes over the whole Story tab body, which runs to the window
+  // edge UNDER the bar cluster — so the docked Accept/Reject row has to clear it
+  // itself. `insets.bottom` here is already tab bar + gap + accessory (expo-router
+  // wraps each tab in its own SafeAreaProvider), the same number the chat composer
+  // pads by; never measure the accessory by hand. See lib/use-tab-bar-inset.ts.
+  const insets = useSafeAreaInsets();
   const [busy, setBusy] = useState<'accept' | 'reject' | null>(null);
 
   const segments = useMemo(
@@ -176,8 +183,11 @@ export function ScriptProposalReview({
         )}
       </ScrollView>
 
-      {/* Actions */}
-      <View className="flex-row gap-2 border-t border-border bg-card px-4 py-3 pb-5">
+      {/* Actions — pinned above the tab bar + agent accessory. */}
+      <View
+        className="flex-row gap-2 border-t border-border bg-card px-4 pt-3"
+        style={{ paddingBottom: Math.max(insets.bottom, 8) + 5 }}
+      >
         {noChanges ? (
           <Button className="flex-1" title="Dismiss" loading={busy === 'reject'} onPress={reject}>
             <X size={15} color={colors.primaryForeground} />
