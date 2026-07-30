@@ -189,7 +189,7 @@ const stepSpec = z.object({
  * so every component's prompt signature says the same thing about it.
  */
 const SEND =
-  "the message sent AS THE USER when this is picked — write it as the user would ('Use the second reference'), never as an instruction to yourself";
+  "the message sent AS THE USER when this is picked — write it as the user would ('Use the second reference'), never as an instruction to yourself. It MUST OPEN WITH the words shown on the control itself (its title/label), because this message is the author's ONLY confirmation that the row they hit is the row they meant; put any extra brief AFTER that opening — title 'Punch up the dialogue' ⇒ send 'Punch up the dialogue — sharpen the voices in the audition scene', never send 'Let me tighten those lines'";
 
 /**
  * Multi-select, shared by OptionList and MediaGrid. In `select: "many"` mode a

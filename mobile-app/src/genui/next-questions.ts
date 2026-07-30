@@ -90,11 +90,36 @@ function esc(text: string): string {
 }
 
 /**
+ * Lead the posted message with the row's OWN label.
+ *
+ * A tap posts `send` as the author's next message, and that message is the only
+ * feedback they get that the row they hit is the row they meant. When the label
+ * ("Extend your world") and the brief ("Let's extend the world. Read the bible,
+ * then propose three or four more characters…") share no opening words, the
+ * transcript reads as though something else was tapped.
+ *
+ * The brief still rides along — it's what makes a tap start real work instead of
+ * the agent interviewing its way back to the request — it just FOLLOWS the label
+ * rather than replacing it. A brief that already opens with the label is left
+ * alone, so the common case never says it twice.
+ */
+export function leadWithLabel(label: string, prompt: string): string {
+  const shown = label.trim();
+  const brief = prompt.trim();
+  if (!shown) return brief;
+  const bare = shown.replace(/[.?!…]+$/u, "");
+  return brief.toLowerCase().startsWith(bare.toLowerCase()) ? brief : `${shown} — ${brief}`;
+}
+
+/**
  * Build the card. Each row's `send` is the suggestion's full `prompt` — the
  * composed brief — while the row shows the short `label`, so a tap starts real
  * work instead of making the agent interview its way back to the request. This
  * is the same two-texts-per-card trade `src/lib/suggestions.ts` makes for the
  * landing deck.
+ *
+ * The brief is LED BY the label (`leadWithLabel`) so the message that lands in
+ * the transcript still opens with the words the author actually tapped.
  */
 export function nextQuestionsProgram(questions: NextQuestion[]): string | null {
   const rows = questions
@@ -102,7 +127,7 @@ export function nextQuestionsProgram(questions: NextQuestion[]): string | null {
     .slice(0, 4)
     .map((q, i) => ({
       id: `q${i + 1}`,
-      line: `q${i + 1} = Option("${esc(q.label)}", "${esc(q.prompt)}")`,
+      line: `q${i + 1} = Option("${esc(q.label)}", "${esc(leadWithLabel(q.label, q.prompt))}")`,
     }));
   if (!rows.length) return null;
   return [

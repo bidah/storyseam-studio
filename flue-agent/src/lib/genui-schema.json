@@ -308,7 +308,7 @@
         "send"
       ],
       "additionalProperties": false,
-      "description": "One choice in an OptionList, rendered as a tappable row. title: the choice. send: the message sent AS THE USER when this is picked — write it as the user would ('Use the second reference'), never as an instruction to yourself. subtitle: one line of why-you'd-pick-this. meta: a short right-aligned qualifier (\"~40s\", \"12 credits\", \"shot03\"). image: a thumbnail URL for the row's leading badge. badge: a tiny pill (\"Recommended\", \"Current\"). selected: marks the option already in force. tone 'danger' for a destructive choice."
+      "description": "One choice in an OptionList, rendered as a tappable row. title: the choice. send: the message sent AS THE USER when this is picked — write it as the user would ('Use the second reference'), never as an instruction to yourself. It MUST OPEN WITH the words shown on the control itself (its title/label), because this message is the author's ONLY confirmation that the row they hit is the row they meant; put any extra brief AFTER that opening — title 'Punch up the dialogue' ⇒ send 'Punch up the dialogue — sharpen the voices in the audition scene', never send 'Let me tighten those lines'. subtitle: one line of why-you'd-pick-this. meta: a short right-aligned qualifier (\"~40s\", \"12 credits\", \"shot03\"). image: a thumbnail URL for the row's leading badge. badge: a tiny pill (\"Recommended\", \"Current\"). selected: marks the option already in force. tone 'danger' for a destructive choice."
     },
     "MediaGrid": {
       "type": "object",
@@ -404,7 +404,7 @@
         "send"
       ],
       "additionalProperties": false,
-      "description": "One pickable image in a MediaGrid. src: the image URL (a /storyboard-media, /library or generation URL from the tools — never invent one). send: the message sent AS THE USER when this is picked — write it as the user would ('Use the second reference'), never as an instruction to yourself; in a 'many' grid make it a NOUN PHRASE instead (\"the dawn clearing\"), because the picks are joined into one sentence. label: a short name under the thumbnail. caption: one extra line of context. selected: marks the current pick."
+      "description": "One pickable image in a MediaGrid. src: the image URL (a /storyboard-media, /library or generation URL from the tools — never invent one). send: the message sent AS THE USER when this is picked — write it as the user would ('Use the second reference'), never as an instruction to yourself. It MUST OPEN WITH the words shown on the control itself (its title/label), because this message is the author's ONLY confirmation that the row they hit is the row they meant; put any extra brief AFTER that opening — title 'Punch up the dialogue' ⇒ send 'Punch up the dialogue — sharpen the voices in the audition scene', never send 'Let me tighten those lines'; in a 'many' grid make it a NOUN PHRASE instead (\"the dawn clearing\"), because the picks are joined into one sentence. label: a short name under the thumbnail. caption: one extra line of context. selected: marks the current pick."
     },
     "Recommendation": {
       "type": "object",
@@ -471,7 +471,7 @@
         "send"
       ],
       "additionalProperties": false,
-      "description": "A single recommended course of action, presented as a hero card with one big call-to-action button. Use it when you have ONE thing to propose and want a clean yes — a render you're about to submit, a plan you'd run next, a draft you'd pin. title: the proposal. body: two sentences of why. send: the message sent AS THE USER when this is picked — write it as the user would ('Use the second reference'), never as an instruction to yourself (the go-ahead). cta: the button text (\"Render it\", \"Do it\") — default \"Continue\". bullets: up to 4 short supporting facts. image: a preview thumbnail. meta: cost/duration (\"~90s · 12 credits\")."
+      "description": "A single recommended course of action, presented as a hero card with one big call-to-action button. Use it when you have ONE thing to propose and want a clean yes — a render you're about to submit, a plan you'd run next, a draft you'd pin. title: the proposal. body: two sentences of why. send: the message sent AS THE USER when this is picked — write it as the user would ('Use the second reference'), never as an instruction to yourself. It MUST OPEN WITH the words shown on the control itself (its title/label), because this message is the author's ONLY confirmation that the row they hit is the row they meant; put any extra brief AFTER that opening — title 'Punch up the dialogue' ⇒ send 'Punch up the dialogue — sharpen the voices in the audition scene', never send 'Let me tighten those lines' (the go-ahead). cta: the button text (\"Render it\", \"Do it\") — default \"Continue\". bullets: up to 4 short supporting facts. image: a preview thumbnail. meta: cost/duration (\"~90s · 12 credits\")."
     },
     "Compare": {
       "type": "object",
@@ -550,7 +550,7 @@
         "rows"
       ],
       "additionalProperties": false,
-      "description": "One side of a Compare. label: what this column is (\"Seedance\", \"Veo 3.1\"). rows: the same {label, value} keys IN THE SAME ORDER as every other column, so they line up. badge: a tiny pill (\"Recommended\"). send: the message sent AS THE USER when this is picked — write it as the user would ('Use the second reference'), never as an instruction to yourself — supply it to make the whole column pickable."
+      "description": "One side of a Compare. label: what this column is (\"Seedance\", \"Veo 3.1\"). rows: the same {label, value} keys IN THE SAME ORDER as every other column, so they line up. badge: a tiny pill (\"Recommended\"). send: the message sent AS THE USER when this is picked — write it as the user would ('Use the second reference'), never as an instruction to yourself. It MUST OPEN WITH the words shown on the control itself (its title/label), because this message is the author's ONLY confirmation that the row they hit is the row they meant; put any extra brief AFTER that opening — title 'Punch up the dialogue' ⇒ send 'Punch up the dialogue — sharpen the voices in the audition scene', never send 'Let me tighten those lines' — supply it to make the whole column pickable."
     },
     "KeyValue": {
       "type": "object",
@@ -703,7 +703,7 @@
         "send"
       ],
       "additionalProperties": false,
-      "description": "One button. label: the button text. send: the message sent AS THE USER when this is picked — write it as the user would ('Use the second reference'), never as an instruction to yourself. Exactly ONE action in a group should be 'primary'. tone 'danger' for destructive or irreversible choices (overwrite, delete, regenerate over existing work)."
+      "description": "One button. label: the button text. send: the message sent AS THE USER when this is picked — write it as the user would ('Use the second reference'), never as an instruction to yourself. It MUST OPEN WITH the words shown on the control itself (its title/label), because this message is the author's ONLY confirmation that the row they hit is the row they meant; put any extra brief AFTER that opening — title 'Punch up the dialogue' ⇒ send 'Punch up the dialogue — sharpen the voices in the audition scene', never send 'Let me tighten those lines'. Exactly ONE action in a group should be 'primary'. tone 'danger' for destructive or irreversible choices (overwrite, delete, regenerate over existing work)."
     },
     "Section": {
       "type": "object",
