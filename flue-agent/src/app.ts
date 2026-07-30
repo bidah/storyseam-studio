@@ -8,6 +8,14 @@ import { isPlausibleFalKey } from "./lib/fal-key.js";
 import { isPlausibleAtlasKey } from "./lib/atlas-key.js";
 import { parseRenderPrefs, type RenderPrefs } from "./lib/render-prefs.js";
 import { isPlausibleSearchKey } from "./lib/search-prefs.js";
+import { installWorkersAiOutputCap } from "./lib/output-cap.js";
+
+// Give every Workers AI completion an explicit output-token budget — without
+// it the endpoint's tiny default cap silently clips long responses (a
+// subagent's outline, a long draft) with finish_reason "length". Must run
+// AFTER the generated entry registers flue's binding provider (its module
+// body runs after ours), hence the microtask. See lib/output-cap.ts.
+queueMicrotask(installWorkersAiOutputCap);
 
 // --- Observability -----------------------------------------------------------
 // Surface agent failures to Cloudflare Workers Logs (wrangler.jsonc enables
