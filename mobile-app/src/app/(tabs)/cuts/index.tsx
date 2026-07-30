@@ -51,8 +51,10 @@ export default function CutsScreen() {
   const barInset = useTabBarScrollProps();
   const { data, isLoading, error, refetch } = useProjectResource<CutsPayload>('cuts');
   const invalidate = useInvalidate();
-  const agent = useAgent();
-  const busy = agentIsBusy(agent);
+  // Selected down to the status string: this screen watches for the turn ENDING,
+  // and must not re-render on every streamed batch (see useAgent in the provider).
+  const status = useAgent((a) => a.status);
+  const busy = agentIsBusy({ status });
   const colors = useColors();
 
   const { refreshing, onRefresh } = useManualRefresh(refetch);
@@ -64,7 +66,6 @@ export default function CutsScreen() {
   // Re-read the cut when the agent finishes a turn (it may have just run
   // stitch_cuts / score_cut) — fire only on the transition INTO "ready",
   // parity with the web tab.
-  const status = agent?.status;
   const prevStatus = useRef(status);
   useEffect(() => {
     const enteredReady = status === 'ready' && prevStatus.current !== 'ready';

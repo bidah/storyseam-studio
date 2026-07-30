@@ -134,8 +134,9 @@ export function WorldSurface() {
   const { data, isPending, error, refetch } = useProjectResource<WorldDoc>('world');
   const { refreshing, onRefresh } = useManualRefresh(refetch);
   const invalidate = useInvalidate();
-  const agent = useAgent();
-  const agentBusy = agentIsBusy(agent);
+  // Selected: this screen only asks whether a turn is running, so it must not
+  // re-render on every streamed batch (see useAgent in lib/agent/provider).
+  const agentBusy = useAgent(agentIsBusy);
   const sendToAgent = useSendToAgent();
 
   const run = async (fn: () => Promise<unknown>) => {

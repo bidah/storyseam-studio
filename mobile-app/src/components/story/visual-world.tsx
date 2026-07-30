@@ -246,8 +246,9 @@ function Loaded({
   const { refreshing, onRefresh } = useManualRefresh(refetch);
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
-  const agent = useAgent();
-  const agentBusy = agentIsBusy(agent);
+  // Selected: this screen only asks whether a turn is running, so it must not
+  // re-render on every streamed batch (see useAgent in lib/agent/provider).
+  const agentBusy = useAgent(agentIsBusy);
   const sendToAgent = useSendToAgent();
 
   // 3-up grid (the library-picker cell math).

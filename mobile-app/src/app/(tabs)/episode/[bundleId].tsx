@@ -243,8 +243,9 @@ export default function BundleDetail() {
   const colors = useColors();
   const scheme = useEffectiveScheme();
   const invalidate = useInvalidate();
-  const agent = useAgent();
-  const agentBusy = agentIsBusy(agent);
+  // Selected: this screen only asks whether a turn is running, so it must not
+  // re-render on every streamed batch (see useAgent in lib/agent/provider).
+  const agentBusy = useAgent(agentIsBusy);
 
   const ep = useProjectResource<EpisodePayload>('episode');
   const fn = useProjectResource<FinalPayload>('final');

@@ -179,8 +179,10 @@ export default function RadioScreen() {
   // catch() for the same reason).
   const { data: animatic } = useProjectResource<AnimaticCoverage>('animatic');
   const invalidate = useInvalidate();
-  const agent = useAgent();
-  const busy = agentIsBusy(agent);
+  // Selected down to the status string: this screen watches for the turn ENDING,
+  // and must not re-render on every streamed batch (see useAgent in the provider).
+  const status = useAgent((a) => a.status);
+  const busy = agentIsBusy({ status });
   const send = useSendToAgent();
 
   const { refreshing, onRefresh } = useManualRefresh(refetch);
@@ -189,7 +191,6 @@ export default function RadioScreen() {
 
   // The agent just rendered/attached takes → re-read when its turn ends. Fire
   // only on the transition INTO "ready", parity with the web tab.
-  const status = agent?.status;
   const prevStatus = useRef(status);
   useEffect(() => {
     const enteredReady = status === 'ready' && prevStatus.current !== 'ready';

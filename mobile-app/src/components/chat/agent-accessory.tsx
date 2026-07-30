@@ -2,7 +2,7 @@ import { ActivityIndicator, Pressable, Text, View } from 'react-native';
 import { NativeTabs } from 'expo-router/unstable-native-tabs';
 import * as Haptics from 'expo-haptics';
 import { ArrowUp, CircleStop, MessageSquareText } from 'lucide-react-native';
-import { agentIsBusy, useAgent, useConversations } from '@/lib/agent/provider';
+import { agentIsBusy, getAgent, useAgent, useConversations } from '@/lib/agent/provider';
 import { useOpenChat } from '@/lib/agent/chat-route';
 import { useChatColors } from './theme';
 
@@ -40,10 +40,16 @@ export function AgentAccessory() {
   const placement = NativeTabs.BottomAccessory.usePlacement();
   const inline = placement === 'inline';
   const c = useChatColors();
-  const agent = useAgent();
   const conv = useConversations();
   const openChat = useOpenChat();
-  const busy = agentIsBusy(agent);
+  // SELECTED, both of them. This pill sits in the tab bar and is the only way
+  // back into a running turn, so it is the last thing that should be re-rendering
+  // several times a second while that turn streams — which is what a bare
+  // `useAgent()` here used to do (see the note above useAgentBus). `chatId` and
+  // the busy flag each change at most once per turn; `stop` is read imperatively
+  // in the handler below, where no subscription is needed at all.
+  const busy = useAgent(agentIsBusy);
+  const chatId = useAgent((a): string | null => a.chatId ?? null);
 
   // The accessory's own height is UIKit's to choose (it sizes the
   // UITabAccessory and pushes the frame back into the shadow tree), so nothing
@@ -65,13 +71,13 @@ export function AgentAccessory() {
   // see how the work is going, and a keyboard would cover the reply landing.
   const open = () => {
     Haptics.selectionAsync().catch(() => {});
-    const id: string | null = agent?.chatId ?? conv.activeId ?? null;
+    const id: string | null = chatId ?? conv.activeId ?? null;
     openChat(id, { focus: !busy });
   };
 
   const stop = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
-    agent?.stop?.();
+    getAgent()?.stop?.();
   };
 
   const label = busy

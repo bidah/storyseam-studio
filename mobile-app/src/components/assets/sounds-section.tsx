@@ -77,8 +77,9 @@ function VersionRow({
 }) {
   const colors = useColors();
   const invalidate = useInvalidate();
-  const agent = useAgent();
-  const agentBusy = agentIsBusy(agent);
+  // Selected: this screen only asks whether a turn is running, so it must not
+  // re-render on every streamed batch (see useAgent in lib/agent/provider).
+  const agentBusy = useAgent(agentIsBusy);
   const [busy, setBusy] = useState(false);
   const ready = ver.status === 'ready';
 
@@ -347,8 +348,9 @@ export function SoundsSection() {
   const { refreshing, onRefresh } = useManualRefresh(refetch);
   const colors = useColors();
   const invalidate = useInvalidate();
-  const agent = useAgent();
-  const agentBusy = agentIsBusy(agent);
+  // Selected: this screen only asks whether a turn is running, so it must not
+  // re-render on every streamed batch (see useAgent in lib/agent/provider).
+  const agentBusy = useAgent(agentIsBusy);
 
   const [kind, setKind] = useState<TrackKind>('music');
   const [createOpen, setCreateOpen] = useState(false);

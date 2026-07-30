@@ -64,11 +64,9 @@ const AGENT_NAME = 'whistlewood';
 // global fetch at construction and uses globalThis.fetch for stream reconnects.
 const flueClient = createFlueClient({ baseUrl: `${API_ORIGIN}/eve` });
 
-const AgentContext = createContext<any>(null);
 const ConversationsContext = createContext<any>(null);
 
-// The same two values, mirrored into a module store — the session's reach OUTSIDE
-// the provider's subtree.
+// The session, held in a module store — and THE only place it is held.
 //
 // <AgentProvider> is mounted inside the tab layout (it needs the resolved project,
 // and it renders nothing until flue publishes a session, which no sign-in screen
@@ -79,10 +77,22 @@ const ConversationsContext = createContext<any>(null);
 // context reach; this store is how the modal gets at the very same one (never a
 // second flue session).
 //
-// The hooks below read context FIRST and fall back to this, so nothing inside the
-// provider changes behaviour.
+// It is a STORE rather than a context because the agent object is rebuilt on
+// every streamed batch. Held in provider state behind a context, that rebuild
+// re-rendered AgentProvider — and with it every screen mounted under the tabs,
+// including the ones on tabs nobody was looking at. Profiled over 30s of one
+// streaming turn: 140 AgentProvider renders (avg 23.5ms, max 56.6ms), 280
+// renders each of the Chat tab's landing screen and WorldSurface, both
+// off-screen. That saturated the JS thread, and the visible symptom was the chat
+// header's close button and the tab-bar pill silently dropping taps mid-turn
+// (measured: ~40% of closes and ~50% of pill taps lost while streaming, versus
+// zero when idle). A store lets each caller subscribe to the FIELD it reads, so
+// a token batch only re-renders the transcript. See `useAgent`.
 type AgentBus = { agent: any; conv: any };
 const useAgentBus = create<AgentBus>(() => ({ agent: null, conv: null }));
+
+/** Distinguishes "no session yet" from a selector that legitimately returned undefined. */
+const NO_SESSION = Symbol('no-session');
 
 function useConversationManager() {
   const [store, setStore] = useState<ChatStore | null>(null);
@@ -426,7 +436,12 @@ function AgentSessionRunner({
 
 export function AgentProvider({ children }: { children: ReactNode }) {
   const conv = useConversationManager();
-  const [agent, setAgent] = useState<any>(null);
+
+  // The runner publishes STRAIGHT into the store — never into this component's
+  // state. Holding it here re-rendered the whole tab tree on every streamed
+  // batch; see the note above `useAgentBus`. Stable identity, so the runner's
+  // publish effect doesn't re-fire.
+  const publish = useCallback((next: any) => useAgentBus.setState({ agent: next }), []);
 
   // Per-project chat scoping (restore the last chat on project switch) is handled
   // inside the conversation manager — see `useConversationManager`.
@@ -449,12 +464,16 @@ export function AgentProvider({ children }: { children: ReactNode }) {
     setResyncNonce((n) => n + 1);
   }, []);
 
-  // Mirror the published session for consumers outside this subtree (the chat
-  // modal — see useAgentBus). Before paint, like the context publish, so the
-  // modal's first frame reads the same agent the tabs are rendering.
+  // Conversations reach outside this subtree the same way (the chat modal is a
+  // root route). Before paint, so the modal's first frame reads what the tabs do.
   useLayoutEffect(() => {
-    useAgentBus.setState({ agent, conv });
-  }, [agent, conv]);
+    useAgentBus.setState({ conv });
+  }, [conv]);
+
+  // The ONE thing this component still re-renders for. `children` mount once a
+  // session has been published — a boolean, so it flips exactly once per session
+  // instead of once per streamed batch.
+  const ready = useAgentBus((s) => !!s.agent);
 
   return (
     <FlueProvider client={flueClient}>
@@ -465,25 +484,49 @@ export function AgentProvider({ children }: { children: ReactNode }) {
             activeId={conv.activeId}
             projectId={conv.pid ?? null}
             conv={conv}
-            publish={setAgent}
+            publish={publish}
             requestResync={requestResync}
           />
         ) : null}
-        <AgentContext.Provider value={agent}>{agent ? children : null}</AgentContext.Provider>
+        {ready ? children : null}
       </ConversationsContext.Provider>
     </FlueProvider>
   );
 }
 
-export function useAgent() {
-  // Context inside the provider's subtree, the mirror store outside it (the chat
-  // modal is a root route — see useAgentBus). Both are read unconditionally
-  // because hooks can't be; context wins when it's there.
-  const ctx = useContext(AgentContext);
-  const bus = useAgentBus((s) => s.agent);
-  const agent = ctx ?? bus;
-  if (!agent) throw new Error('useAgent must be used within <AgentProvider> (or after it mounts)');
-  return agent;
+/**
+ * Read the live agent session.
+ *
+ * **Pass a selector.** The agent object is rebuilt on every streamed batch, so
+ * the unselected form re-renders its caller several times a second for the whole
+ * length of a turn. Doing that from screens that only wanted "is it busy?" is
+ * what saturated the JS thread and made the chat header's close button and the
+ * tab-bar pill drop taps mid-turn (see the note above `useAgentBus`). Selecting
+ * the field you actually read gives you a stable value, and no render:
+ *
+ *     const busy = useAgent(agentIsBusy);            // 2 renders per turn
+ *     const messages = useAgent((a) => a.messages);  // the transcript, and only it
+ *
+ * The unselected form is still correct — the transcript genuinely needs the
+ * whole object, and `send`/`stop` are rebuilt per batch anyway — so reach for it
+ * deliberately, from a component that is already re-rendering with the stream.
+ * From an event handler, prefer `getAgent()`: no subscription at all.
+ */
+export function useAgent<T = any>(selector: (agent: any) => T = (a) => a as T): T {
+  const picked = useAgentBus((s) => (s.agent ? selector(s.agent) : (NO_SESSION as unknown as T)));
+  if ((picked as unknown) === NO_SESSION) {
+    throw new Error('useAgent must be used within <AgentProvider> (or after it mounts)');
+  }
+  return picked;
+}
+
+/**
+ * The session, read IMPERATIVELY — for event handlers and callbacks, which run
+ * after the fact and therefore never need to re-render to stay current. Null
+ * only before the first publish.
+ */
+export function getAgent(): any {
+  return useAgentBus.getState().agent;
 }
 
 export function useConversations() {
@@ -513,9 +556,12 @@ export function agentIsBusy(agent: any) {
 // beat where flue hasn't re-streamed its durable history yet and `messages` is
 // still empty.
 export function useIsFreshChat(): boolean {
-  const agent = useAgent();
   const conv = useConversations();
-  return isFresh(agent, conv);
+  // Selected down to the BOOLEAN. This hook is called by the Chat tab's landing
+  // screen, which stays mounted underneath the chat modal — subscribing it to the
+  // whole agent re-rendered that screen, and its entire scroll view, on every
+  // streamed token batch (280 renders per 30s, measured).
+  return useAgent((agent) => isFresh(agent, conv));
 }
 
 function isFresh(agent: any, conv: any): boolean {
@@ -559,15 +605,18 @@ export function startNewChat(): string | null {
 // Returns the send promise (rejects if the agent is mid-turn; the button should
 // already be disabled via `agentIsBusy`).
 export function useSendToAgent() {
-  const agent = useAgent();
   const conv = useConversations();
   const openChat = useOpenChat();
   const activeId: string | null = conv.activeId;
   return useCallback(
     (message: string) => {
+      // Read the session at CALL time (`getAgent`) rather than subscribing to it.
+      // These buttons live on Story / Episode / Cuts / Assets — screens that have
+      // no other reason to re-render while a turn streams, and used to re-render
+      // on every batch just by holding this callback.
       openChat(activeId);
-      return agent?.send?.({ message });
+      return getAgent()?.send?.({ message });
     },
-    [agent, activeId, openChat],
+    [activeId, openChat],
   );
 }
