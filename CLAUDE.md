@@ -242,7 +242,7 @@ types, descriptions. Two renderer sets implement it: `src/genui/renderers.jsx`
 (shadcn) and `mobile-app/src/genui/renderers.tsx` (React Native, Galeria
 previews, `SemiPillButton` CTA). Same names, same props, different pixels.
 
-Two client-side companions render through the same `<StudioUI>`, so they are
+A client-side companion renders through the same `<StudioUI>`, so it is
 indistinguishable from a card the agent drew:
 
 - **`detect-options.ts`** rescues a trailing `A)`/`1.` choice list the model
@@ -250,14 +250,16 @@ indistinguishable from a card the agent drew:
   (trailing position, sequential markers, 2–6 short items, a cue word or `?`
   above, newest settled turn only, no card already drawn) — a false positive
   turns a recap into buttons that post nonsense.
-- **`next-questions.ts` + `POST /api/next-questions`** are the "where to go
-  next" follow-ups under a finished turn. The route grounds a small Workers AI
-  model on `buildStatus` (the real pipeline digest) plus an explicit capability
-  list, and **falls back to `buildSuggestions`** — the deterministic deck — when
-  generation fails or comes back short, so the floor is always real moves.
-  `worker/src/lib/suggestions.ts` is vendored by
-  `npm --prefix mobile-app run sync:suggestions`, which now writes both the
-  mobile and worker copies.
+
+There was a second one — "where to go next" follow-up chips under a finished
+turn (`next-questions.ts` + `POST /api/next-questions`, a small Workers AI model
+grounded on `buildStatus`). **Removed**, and don't rebuild it: the pattern comes
+from AI search engines, where every answer is a dead end. Here a turn usually
+ISN'T the end of anything — the agent is mid-pipeline and the author already
+knows the next move — so the chips offered detours from work in progress, and a
+turn that ended with a render still running got them at the worst moment.
+`buildSuggestions` survives on its own for the Home landing deck, where a cold
+start really does need somewhere to go.
 
 **After ANY contract edit, run `npm run genui:sync`** — it vendors the contract
 into `mobile-app/src/genui/`, regenerates the agent's `generative-ui` SKILL.md

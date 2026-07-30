@@ -45,8 +45,6 @@ import {
   isThinking,
   workingTool,
 } from '@/components/chat/helpers';
-import { NextQuestions } from '@/genui/NextQuestions';
-import { shouldOfferNext } from '@/genui/next-questions';
 import { MessageRow } from '@/components/chat/message';
 import { useChatColors } from '@/components/chat/theme';
 import type { AgentMessage, SentAttachment } from '@/components/chat/types';
@@ -581,21 +579,6 @@ export function Conversation({
             // Natural order → the newest edge is the FOOTER (visual bottom).
             ListFooterComponent={
               <>
-                {/* "Where to go next" — only when the agent finished and left
-                    nothing open. A pending question card already owns the next
-                    move. Sits at the newest edge, above the error row. */}
-                {shouldOfferNext({
-                  hasMessages: messages.length > 0,
-                  lastIsAssistant: messages[messages.length - 1]?.role === 'assistant',
-                  busy,
-                  pendingQuestion: !!qa.pendingId,
-                }) ? (
-                  <NextQuestions
-                    messages={messages}
-                    canRespond={canRespond}
-                    onRespond={onRespond}
-                  />
-                ) : null}
                 {thinking ? (
                   <ShimmerRow label="Thinking…" />
                 ) : working ? (

@@ -22,7 +22,6 @@
                                   # hydrated view at /api/appstate/screen via view_screen,
                                   # so this write endpoint is correctly one-directional
 /api/chat-title                   # derives a title for the chat rail from the first message
-/api/next-questions               # generates the follow-up chips under a finished turn
 /api/transcribe                   # microphone capture → text, for the composer's dictation button
 /api/history/*/*/restore          # the agent reaches this through restore_version, which posts a different literal
 

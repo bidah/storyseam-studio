@@ -87,8 +87,6 @@ import {
 import MediaPicker from "@/components/MediaPicker";
 import { StudioUI, isReferenceUpload } from "@/genui/StudioUI";
 import { detectOptions } from "@/genui/detect-options";
-import { NextQuestions } from "@/genui/NextQuestions";
-import { shouldOfferNext } from "@/genui/next-questions";
 import PromptEditor from "@/components/mention/PromptEditor";
 import { refTagLabel, splitRefTags } from "@/lib/refTags";
 import {
@@ -1834,17 +1832,6 @@ export default function AgentChat() {
               />
             ))
           )}
-
-          {/* "Where to go next" — only when the agent finished and left nothing
-              open. A pending question card already owns the next move. */}
-          {shouldOfferNext({
-            hasMessages: messages.length > 0,
-            lastIsAssistant: messages[messages.length - 1]?.role === "assistant",
-            busy: isBusy,
-            pendingQuestion: !!qa.pendingId,
-          }) ? (
-            <NextQuestions messages={messages} canRespond={!isBusy} onRespond={onRespond} />
-          ) : null}
 
           {thinking ? (
             <Marker>
