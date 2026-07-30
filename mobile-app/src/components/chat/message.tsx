@@ -21,6 +21,7 @@ import {
   hostOf,
   parseSourcesOutput,
   QUESTION_TOOLS,
+  visibleParts,
   SOURCE_TOOLS,
   userText,
   type Source,
@@ -453,9 +454,12 @@ export const MessageRow = memo(function MessageRow({
   const drewCard = (message.parts || []).some(
     (p) => p.type === 'dynamic-tool' && QUESTION_TOOLS.has(p.toolName ?? ''),
   );
+  // Anything the model wrote AFTER its card is dropped — the card is the last
+  // word of the turn. See visibleParts.
+  const parts = visibleParts(message.parts);
   return (
     <View className="gap-2 px-4">
-      {(message.parts || []).map((part, i) => (
+      {parts.map((part, i) => (
         <PartView
           key={part.toolCallId ?? `${part.type ?? 'part'}:${i}`}
           part={part}

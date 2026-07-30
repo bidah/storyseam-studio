@@ -166,6 +166,47 @@ async function callTool(
   }
 }
 
+// Terminal job states — anything else means the render is still running.
+const DONE = new Set([
+  "completed",
+  "complete",
+  "succeeded",
+  "success",
+  "done",
+  "ready",
+  "failed",
+  "error",
+  "canceled",
+  "cancelled",
+  "nsfw",
+]);
+
+// A Higgsfield render is an ASYNC JOB: `generate_image` / `generate_video` /
+// `generate_audio` return a queued job and the pixels land minutes later. The
+// model treated that return as "done", wrote a line, and ENDED THE TURN — so the
+// chat went idle (composer back to the mic, "What's next" offered) while the
+// render was still running, and the author had no way to tell work was in
+// flight. flue has no background-task channel: an agent turn is the only thing
+// the client can see running, so a render that outlives the turn is invisible.
+//
+// The tool RESULT is the strongest place to say so — it is re-read on every
+// step, unlike a system-prompt line the model has already scrolled past (the
+// same reason `render_ui` returns its "End your turn now" note). Detected from
+// the data rather than a hardcoded tool-name list, so a Higgsfield tool we
+// haven't seen yet is covered the day it appears.
+function withPendingJobNote(result: unknown): unknown {
+  if (!result || typeof result !== "object" || Array.isArray(result)) return result;
+  const r = result as Record<string, unknown>;
+  const id = r.id ?? r.job_id ?? r.jobId;
+  if (!id) return result;
+  const status = typeof r.status === "string" ? r.status.toLowerCase() : "";
+  if (status && DONE.has(status)) return result;
+  return {
+    ...r,
+    note: `This render is still RUNNING — what came back is a job, not the finished media. Do NOT end your turn here and do not tell the author it is done. Poll mcp__higgsfield__job_status with id "${String(id)}" until it reports a terminal state, then attach the result with the matching attach_* tool. If you stop now the chat goes idle while the render is still going and the author sees nothing happening.`,
+  };
+}
+
 // flue's defineTool takes a valibot schema, not raw JSON Schema, and @flue/runtime
 // doesn't export a JSON-Schema→valibot converter. So we accept a permissive record
 // (Higgsfield validates args server-side) and fold the real parameter docs into the
@@ -214,11 +255,12 @@ export async function createHiggsfieldTools(
       // keys straight through (Higgsfield validates the real shape server-side).
       input: v.looseObject({}),
       async run({ input }) {
-        return (await callTool(
+        const result = await callTool(
           userId,
           tool.name,
           (input ?? {}) as Record<string, unknown>,
-        )) as any;
+        );
+        return withPendingJobNote(result) as any;
       },
     }),
   );

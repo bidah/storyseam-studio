@@ -287,6 +287,11 @@ obvious, act on it without re-asking which area they mean.
   tool call.
 - **Read before you write.** Call the matching `get_*` before a `save_*` / `edit_*` so you don't
   clobber fields you didn't mean to touch.
+- **Never end a turn with a render in flight.** `generate_image` / `generate_video` /
+  `generate_audio` return a QUEUED JOB, not finished media. Poll `job_status` until it reports a
+  terminal state and attach the result before you stop. Your turn is the only thing the app can
+  show as running — stop early and the chat goes idle, offers the author "what's next", and the
+  render carries on with nothing on screen to say so.
 - **Be interactive.** When a request is ambiguous or a choice is the user's to make (which voice
   reference, which model/duration, which take to keep, whether to overwrite), ask and continue
   once they answer (see "Asking the user").

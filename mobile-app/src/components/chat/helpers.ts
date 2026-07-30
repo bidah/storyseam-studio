@@ -53,6 +53,33 @@ export function isReasoning(messages: AgentMessage[], busy: boolean): boolean {
   return trailing?.type === 'reasoning';
 }
 
+// The tail of the reasoning the agent is writing RIGHT NOW — the label for the
+// shimmer while `isReasoning` holds.
+//
+// The system prompt tells the agent to open every turn with a plain-text
+// acknowledgment before it touches a tool (whistlewood.md "Reply before you
+// work"), and the model ignores it: a tap on a card is followed by reasoning and
+// tool calls, so the author waits with no idea their answer landed. flue has no
+// way to force a text part first, and inventing an acknowledgment the agent
+// never wrote would be putting words in its mouth. Its reasoning, however, is
+// real and already streaming — so show THAT instead of a generic "Reasoning…".
+//
+// Last non-empty LINE, not the whole block: reasoning arrives as paragraphs and
+// the newest line is the part that reads as progress.
+export function reasoningTail(messages: AgentMessage[], busy: boolean): string | null {
+  if (!isReasoning(messages, busy)) return null;
+  const last = messages[messages.length - 1];
+  let trailing: MessagePart | null = null;
+  for (const p of last.parts || []) {
+    if (isVisible(p)) trailing = p;
+  }
+  const lines = (trailing?.text || '')
+    .split('\n')
+    .map((l) => l.trim())
+    .filter(Boolean);
+  return lines.length ? lines[lines.length - 1] : null;
+}
+
 // The agent is actively WRITING: the trailing visible content is a text part
 // flue hasn't marked done yet.
 //
@@ -100,6 +127,31 @@ export function userText(message: AgentMessage): string {
 // The tools whose parts render as an answerable card. `render_ui` is the live
 // one; `ask_question` only ever turns up replaying an older conversation.
 export const QUESTION_TOOLS = new Set(['render_ui', 'ask_question']);
+
+// A card ENDS the turn, visually. The agent is told so twice — the `render_ui`
+// description, the generative-ui skill, and whistlewood.md's "then STOP" — and
+// still trails a reasoning block and a paragraph narrating the card it just
+// drew ("I've presented the three options — tap one…"). flue exposes no way to
+// stop the loop from inside a tool (`AgentRuntimeConfig` has no step hook and a
+// tool's `run` can't end the turn), so the last word belongs to whoever renders
+// it: everything the model says AFTER the card is dropped here.
+//
+// Only prose goes — `text` and `reasoning`. A tool part that lands after a card
+// stays visible, because hiding real work the agent did would be a lie, not a
+// tidy-up.
+export function visibleParts<T extends { type?: string; toolName?: string }>(
+  parts: T[] | undefined,
+): T[] {
+  const list = parts || [];
+  let card = -1;
+  for (let i = 0; i < list.length; i++) {
+    if (list[i].type === 'dynamic-tool' && QUESTION_TOOLS.has(list[i].toolName ?? '')) card = i;
+  }
+  if (card < 0) return list;
+  return list.filter(
+    (p, i) => i <= card || (p.type !== 'text' && p.type !== 'reasoning'),
+  );
+}
 
 // Resolve the answer state of every question card. flue has no server-side
 // `inputResponse`, so "answered" is derived from the transcript: a question is

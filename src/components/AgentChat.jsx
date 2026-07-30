@@ -594,6 +594,27 @@ function MessagePart({ part, qa, canRespond, onRespond, onRequestReference, offe
 // one; `ask_question` only ever turns up replaying an older conversation.
 const QUESTION_TOOLS = new Set(["render_ui", "ask_question"]);
 
+// A card ENDS the turn, visually. The agent is told so in three places — the
+// `render_ui` description, the generative-ui skill, and whistlewood.md's "then
+// STOP" — and still trails a reasoning block and a paragraph narrating the card
+// it just drew ("I've presented the three options — tap one…"). flue exposes no
+// way to stop the loop from inside a tool (`AgentRuntimeConfig` has no step hook
+// and a tool's `run` can't end the turn), so the last word belongs to whoever
+// renders it: everything the model says AFTER the card is dropped here.
+//
+// Only prose goes — `text` and `reasoning`. A tool part landing after a card
+// stays visible, because hiding real work the agent did would be a lie, not a
+// tidy-up. Twin of `visibleParts` in mobile-app/src/components/chat/helpers.ts.
+function visibleParts(parts) {
+  const list = parts || [];
+  let card = -1;
+  for (let i = 0; i < list.length; i++) {
+    if (list[i].type === "dynamic-tool" && QUESTION_TOOLS.has(list[i].toolName)) card = i;
+  }
+  if (card < 0) return list;
+  return list.filter((p, i) => i <= card || (p.type !== "text" && p.type !== "reasoning"));
+}
+
 // Resolve the answer state of every question card in the thread. flue has
 // no `inputResponse` channel, so "answered" is derived from the transcript: a
 // question is answered by the first user message after it (its text is the
@@ -733,7 +754,7 @@ function AgentMessage({
   );
   return (
     <div className="flex flex-col gap-2">
-      {(message.parts || []).map((part, i) => (
+      {visibleParts(message.parts).map((part, i) => (
         <MessagePart
           key={part.toolCallId ?? `${part.type}:${i}`}
           part={part}
@@ -807,6 +828,39 @@ function isReasoning(messages, busy) {
     }
   }
   return trailing?.type === "reasoning";
+}
+
+// The tail of the reasoning the agent is writing RIGHT NOW — the label for the
+// shimmer while `isReasoning` holds.
+//
+// The system prompt tells the agent to open every turn with a plain-text
+// acknowledgment before it touches a tool (whistlewood.md "Reply before you
+// work"), and the model ignores it: a tap on a card is followed by reasoning and
+// tool calls, so the author waits with no idea their answer landed. flue has no
+// way to force a text part first, and inventing an acknowledgment the agent
+// never wrote would be putting words in its mouth. Its reasoning, however, is
+// real and already streaming — so show THAT instead of a generic "Reasoning…".
+//
+// Last non-empty LINE, not the whole block: reasoning arrives as paragraphs and
+// the newest line is the part that reads as progress.
+function reasoningTail(messages, busy) {
+  if (!isReasoning(messages, busy)) return null;
+  const last = messages[messages.length - 1];
+  let trailing = null;
+  for (const p of last.parts || []) {
+    if (
+      (p.type === "text" && p.text?.trim()) ||
+      (p.type === "reasoning" && p.text?.trim()) ||
+      p.type === "dynamic-tool"
+    ) {
+      trailing = p;
+    }
+  }
+  const lines = (trailing?.text || "")
+    .split("\n")
+    .map((l) => l.trim())
+    .filter(Boolean);
+  return lines.length ? lines[lines.length - 1] : null;
 }
 
 // Read a File's bytes as raw base64 (no `data:` URL prefix) for flue's
@@ -1282,6 +1336,7 @@ export default function AgentChat() {
   const thinking = useMemo(() => isThinking(messages, isBusy), [messages, isBusy]);
   const working = useMemo(() => workingTool(messages, isBusy), [messages, isBusy]);
   const reasoning = useMemo(() => isReasoning(messages, isBusy), [messages, isBusy]);
+  const reasonTail = useMemo(() => reasoningTail(messages, isBusy), [messages, isBusy]);
   // Interactive `ask_question` cards: which one is pending vs already answered.
   const qa = useMemo(() => deriveQA(messages), [messages]);
 
@@ -1810,7 +1865,12 @@ export default function AgentChat() {
               <MarkerIcon>
                 <Loader2 className="animate-spin" />
               </MarkerIcon>
-              <MarkerContent className="shimmer">Reasoning…</MarkerContent>
+              {/* The live reasoning tail, not a generic label — the agent won't
+                  write the acknowledgment the prompt asks for, so its thinking
+                  is the only real feedback the moment an answer lands. */}
+              <MarkerContent className="shimmer line-clamp-2">
+                {reasonTail || "Reasoning…"}
+              </MarkerContent>
             </Marker>
           ) : isBusy ? (
             // Catch-all: the turn is still in flight but its trailing content is
