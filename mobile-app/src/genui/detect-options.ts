@@ -59,6 +59,9 @@ const MAX_ITEMS = 6;
 const MAX_ITEM_CHARS = 160;
 /** How much of the lead-in to search for a cue word. */
 const CUE_WINDOW = 260;
+/** A closer is one or two short lines, not another paragraph of reasoning. */
+const MAX_CLOSER_LINES = 2;
+const MAX_CLOSER_CHARS = 140;
 
 /** Escape a string for an openui-lang double-quoted literal. */
 function esc(text: string): string {
@@ -90,7 +93,34 @@ export function detectOptions(text: string | null | undefined): DetectedOptions 
   // below can't tell a code comment from a list item, so don't try.
   if (text.includes("```")) return null;
 
-  const lines = text.replace(/\s+$/, "").split("\n");
+  const all = text.replace(/\s+$/, "").split("\n");
+
+  // 0. Peel off a trailing CLOSER — the question models like to put BELOW the
+  //    list ("Which direction, or shall I do all three?"). Without this the
+  //    backwards scan in 1 hits a non-item line straight away and skips the
+  //    whole message, which is how a real three-way choice shipped as prose.
+  //
+  //    A closer has to be short AND read as "so pick one": it must ask (`?`)
+  //    and carry a selection cue. Both, because either alone lets a plan recap
+  //    through — "…3. Ship it.\n\nSound good?" asks but offers no choice, and
+  //    "…3. Ship it.\n\nRunning it now, which takes a minute." says "which"
+  //    without asking anything.
+  let lastItem = -1;
+  for (let n = all.length - 1; n >= 0; n--) {
+    if (ITEM.test(all[n])) {
+      lastItem = n;
+      break;
+    }
+  }
+  if (lastItem < 0) return null;
+  const closer = all.slice(lastItem + 1).filter((l) => l.trim());
+  if (closer.length) {
+    if (closer.length > MAX_CLOSER_LINES) return null;
+    const joined = closer.join(" ");
+    if (joined.length > MAX_CLOSER_CHARS) return null;
+    if (!joined.includes("?") || !CUE.test(joined)) return null;
+  }
+  const lines = all.slice(0, lastItem + 1);
 
   // 1. Walk backwards over the trailing block of item lines. Blank lines
   //    between items are fine (models double-space lists); anything else ends
@@ -127,12 +157,19 @@ export function detectOptions(text: string | null | undefined): DetectedOptions 
   if (items.some((it) => it.text.length > MAX_ITEM_CHARS)) return null;
   if (items.some((it) => it.text.includes("!["))) return null;
 
-  // 4. The prose above must actually be asking. Without this every "here's what
-  //    I did: 1. … 2. …" recap would sprout buttons.
-  const body = lines.slice(0, i + 1).join("\n").replace(/\s+$/, "");
-  const leadIn = body.slice(-CUE_WINDOW);
-  if (!leadIn.trim()) return null;
-  if (!leadIn.includes("?") && !CUE.test(leadIn)) return null;
+  // 4. The prose must actually be asking. Without this every "here's what I
+  //    did: 1. … 2. …" recap would sprout buttons. A qualified closer IS that
+  //    question, so it stands in for the lead-in when there is one.
+  const above = lines.slice(0, i + 1).join("\n").replace(/\s+$/, "");
+  if (!closer.length) {
+    const leadIn = above.slice(-CUE_WINDOW);
+    if (!leadIn.trim()) return null;
+    if (!leadIn.includes("?") && !CUE.test(leadIn)) return null;
+  }
+  // The closer keeps rendering as markdown above the card — it's the question
+  // the rows answer, so dropping it would leave them with no context.
+  const body = [above, closer.join("\n")].filter((s) => s.trim()).join("\n\n");
+  if (!body.trim()) return null;
 
   // 5. Build the program. Each row's `send` is its title — the shortest thing
   //    that reads naturally as the author speaking ("Render it with Seedance").

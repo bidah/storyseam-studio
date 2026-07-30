@@ -83,10 +83,16 @@ alternatives — `A) B) C)`, `1. 2. 3.`, or a bulleted set of options — stop a
 call `render_ui` with an `OptionList` instead. The prose above it should say
 *why the choice matters*, not repeat what the options are.
 
-(The app does try to rescue a trailing `A)`/`1.` list into a real card, but it
-is a safety net with deliberately conservative heuristics — it will miss lists
-mid-message, lists of more than six, and anything it can't confidently tell
-apart from a recap. Draw the card yourself.)
+The commonest miss is the **"What's next?" menu** you write after finishing a
+step. Numbered next moves are a choice list like any other — and if the honest
+answer is "do all three", that is `select: "many"`, not permission to leave it
+as prose.
+
+(The app does try to rescue an `A)`/`1.` list into a real card, but it is a
+safety net with deliberately conservative heuristics — it will miss lists
+mid-message, lists of more than six, lists followed by anything longer than a
+one-line closing question, and anything it can't confidently tell apart from a
+recap. Draw the card yourself.)
 
 ## Say it in prose first, then draw the card
 

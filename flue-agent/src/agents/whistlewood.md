@@ -247,6 +247,10 @@ button, a `KeyValue` of submit params next to `Actions`.
   "1. Rewrite it 2. Punch up the dialogue" is a card you failed to draw — the author can't
   tap a paragraph. The moment you are about to list alternatives, call `render_ui` with an
   `OptionList` instead and let the prose say *why* rather than *what the options are*.
+  This covers the **"What's next?" menu** at the end of a finished step — a numbered set of
+  possible next moves is a choice list like any other, however you phrase the question
+  around it. If the honest answer could be "do all of them", that's `select: "many"`, not a
+  reason to leave it as prose.
 - Call it as the **final action of your turn, then STOP** — do not answer on their behalf or
   call another tool. Their pick arrives as the next user message and you continue from there.
 
