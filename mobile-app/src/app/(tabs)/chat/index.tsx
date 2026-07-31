@@ -17,8 +17,7 @@ import { useConversations, useIsFreshChat } from '@/lib/agent/provider';
 import { openChatModal } from '@/lib/agent/chat-route';
 import { setPendingDraft } from '@/lib/agent/pending-draft';
 import type { Chat } from '@/lib/agent/chat-store';
-import { useProjectResource, useProjects } from '@/lib/queries';
-import { useProjectStore } from '@/lib/project';
+import { useProjectResource } from '@/lib/queries';
 import {
   buildSuggestions,
   FALLBACK_SUGGESTIONS,
@@ -31,7 +30,7 @@ import { ProBanner } from '@/components/chat/pro-banner';
 import type { LocalAttachment } from '@/components/chat/composer';
 import { useChatComposer } from '@/components/chat/composer-host';
 import { useChatColors } from '@/components/chat/theme';
-import { relTime } from '@/components/chat/helpers';
+import { dayLabel } from '@/components/chat/helpers';
 
 // The Home tab's LANDING screen — the hub for starting a chat, and a LAUNCHER
 // rather than a place a conversation lives. Recaps (the chats you already have —
@@ -107,14 +106,6 @@ const MESH_SHAPES = [
   [[0, 0], [0.35, 0], [1, 0], [0, 0.6], [0.65, 0.35], [1, 0.65], [0, 1], [0.6, 1], [1, 1]],
   [[0, 0], [0.5, 0], [1, 0], [0, 0.3], [0.7, 0.7], [1, 0.6], [0, 1], [0.3, 1], [1, 1]],
 ];
-
-// The recap section's headline is the ACTIVE PROJECT'S NAME (it doubles as the
-// page title — see Section), worn in Title Case whatever casing the stored name
-// has. Only first letters are touched: the rest of each word keeps its casing,
-// so an all-caps acronym in a name survives.
-function titleCase(s: string): string {
-  return s.replace(/(^|\s)\S/g, (c) => c.toUpperCase());
-}
 
 // FNV-1a, so a chat id maps to a stable number without pulling in a hash lib.
 function meshSeed(id: string): number {
@@ -292,7 +283,13 @@ function PressCard({
                 points={points}
               />
             ) : (
-              <View style={[StyleSheet.absoluteFill, { backgroundColor: palette[4] }]} />
+              // The spine. INSET rather than bleeding to the card's edges: a bar
+              // that runs corner to corner fights the 22pt radius (the overflow
+              // clip shaves it into a crescent at both ends), while one held off
+              // the edges with its own rounded caps reads as a deliberate mark —
+              // and the inset is the body's padding, so the bar's top aligns with
+              // the first line of text beside it.
+              <View style={[styles.spine, { backgroundColor: palette[4] }]} />
             )}
             {art && bandSide === 'top' ? <CardArtVideo uri={art} height={bandHeight} /> : null}
           </View>
@@ -424,14 +421,6 @@ export default function ChatHomeScreen() {
   // minting a second one, or history fills up with identical "New chat" rows.
   const reusable = useIsFreshChat();
 
-  // The recap headline is the active project's name — the page title, really
-  // (see Section), which is why the section renders even with nothing to recap.
-  // "Last chats" only covers the beat before the account's project list has
-  // loaded.
-  const projectId = useProjectStore((s) => s.projectId);
-  const { data: projectsData } = useProjects();
-  const projectName = projectsData?.projects.find((p) => p.id === projectId)?.name;
-
   // The suggestion deck — the shared project-scoped query, so it's cached across
   // chat switches and invalidated by the SSE firehose (which is how a card
   // retires seconds after the agent closes its gap).
@@ -453,7 +442,7 @@ export default function ChatHomeScreen() {
       (conv.list as Chat[])
         .filter((ch) => ch.title && ch.title !== 'New chat')
         .slice(0, 10)
-        .map((ch) => ({ id: ch.id, title: ch.title as string, when: relTime(ch.updatedAt) })),
+        .map((ch) => ({ id: ch.id, title: ch.title as string, when: dayLabel(ch.updatedAt) })),
     [conv.list],
   );
 
@@ -518,49 +507,42 @@ export default function ChatHomeScreen() {
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="interactive"
       >
-        {/* The page's own headline, back above everything (it was dropped in
-            553e4d4, when the section headlines were asked to carry the screen).
-            The bar above is title-less and this Text wears UIKit's exact
-            large-title metrics, so it reads as the native headline — but it is
-            content, so it scrolls away under the glass with the rest of the
-            page. It sits ABOVE the Pro banner because it names the screen; the
-            banner is an insert on it, not its title. */}
-        <View className="gap-1 px-5 pb-1">
-          <Text accessibilityRole="header" className="text-foreground" style={styles.bigTitle}>
-            Home
-          </Text>
-          <Text className="text-base text-muted-foreground">
-            Ask me anything to create or talk about your story
-          </Text>
-        </View>
+        {/* No page headline here. The tab bar already says Home, and a large
+            title plus a strapline pushed the first real card most of the way off
+            the fold — so the screen opens on the decks themselves and the
+            section headlines carry it (this is the same call 553e4d4 made). */}
 
         {/* The upgrade pitch, above the project's own sections — the app
             talking about itself, so it's the one card that brings its own
             colour instead of taking the theme's. */}
         <ProBanner />
 
-        {/* ALWAYS rendered, empty or not: this section's headline is the project
-            name, which is also the page's title, so hiding the section on a
-            project with no chats yet left the screen with no title at all. With
-            nothing to recap the row carries a single Start chat card instead. */}
-        <Section title={projectName ? titleCase(projectName) : 'Last chats'} cardWidth={RECAP_W}>
+        {/* ALWAYS rendered, empty or not — with nothing to recap the row carries
+            a single Start chat card instead, because an empty deck that hides
+            itself takes the one thing to do here off the screen with it. */}
+        <Section title="Past chats" cardWidth={RECAP_W}>
           {recaps.length ? (
             recaps.map((r) => (
               <PressCard
                 key={r.id}
-                label={r.title}
+                label={`${r.title} — ${r.when}`}
                 seed={meshSeed(r.id)}
                 style={styles.recapCard}
-                bandSide="none"
+                bodyStyle={styles.recapBody}
+                bandSide="left"
                 onPress={() => openRecap(r.id)}
               >
-                <Text className="text-xs text-muted-foreground">{r.when}</Text>
-                {/* Small text on purpose — a recap is a row you recognize, not a
-                    poster you read; the big headline type stays on the
-                    suggestion cards. With the mesh as a spine the band costs no
-                    height, which is what buys the third line. */}
-                <Text className="mt-1 text-foreground" style={styles.recapTitle} numberOfLines={3}>
+                {/* Title first and time LAST, hung on the bottom-right corner:
+                    the title is what you're scanning for and the stamp is what
+                    you check once you've found it, so the reading order is the
+                    card's layout. Small text on purpose — a recap is a row you
+                    recognize, not a poster you read; the big headline type stays
+                    on the suggestion cards. */}
+                <Text className="text-foreground" style={styles.recapTitle} numberOfLines={3}>
                   {r.title}
+                </Text>
+                <Text className="text-xs text-muted-foreground" style={styles.recapWhen}>
+                  {r.when}
                 </Text>
               </PressCard>
             ))
@@ -632,10 +614,6 @@ export default function ChatHomeScreen() {
 
 const styles = StyleSheet.create({
   list: { flex: 1 },
-  // UIKit's large-title text style: SF Pro at 34pt bold, 41pt line height. The
-  // PAGE's headline — the only 34pt type on the screen, which is what keeps the
-  // section headlines below reading as subheads rather than rival titles.
-  bigTitle: { fontSize: 34, fontWeight: '700', lineHeight: 41 },
   // Every section headline on the screen — kept in lockstep with headline in
   // components/chat/discover.tsx so the four decks read as one list.
   sectionTitle: { fontSize: 20, fontWeight: '700', lineHeight: 25 },
@@ -668,14 +646,30 @@ const styles = StyleSheet.create({
   },
   // A left-spine card lays out as a row: mesh first, text beside it.
   cardRow: { flexDirection: 'row' },
+  // The spine itself: a 4pt bar with rounded caps, held off the card's top and
+  // bottom by the body's own padding so it starts and ends level with the text.
+  // `left: 14` insets it a body-padding's worth from the card's edge (past the
+  // 10pt band column it's anchored in) — the colour is the card's seeded one,
+  // applied at the call site.
+  spine: { position: 'absolute', top: 14, bottom: 14, left: 14, width: 4, borderRadius: 2 },
   // Text sits on the plain surface below the band, pinned to the bottom so
   // one-liners and four-liners both hang off the same edge.
   cardBody: { flex: 1, justifyContent: 'flex-end', padding: 14 },
-  // No band, so the budget is all text: padding (14×2) + timestamp eyebrow (16 +
-  // its 4pt gap) + THREE recapTitle lines (3×20) = 108. Three is also what the
+  // The spine costs no height, so the budget is all text: padding (14×2) + THREE
+  // recapTitle lines (3×20) + the timestamp (16) = 108. Three is also what the
   // stored title is capped to fill — see deriveTitle in lib/agent/chat-store.ts;
   // grow one and the other has to follow, or the card shows blank space.
   recapCard: { width: RECAP_W, height: 108 },
+  // Title at the top, stamp at the bottom, the slack between them — so a
+  // one-line title and a three-line one both hang their stamp off the same
+  // corner. Left padding puts the text 12pt clear of the spine's right edge
+  // (spine ends at 18 from the card's edge, the 10pt band column is already
+  // spent, so 20 lands the text at 30).
+  recapBody: { justifyContent: 'space-between', paddingLeft: 20 },
+  // Bottom RIGHT, per the card's reading order. `alignSelf` rather than
+  // textAlign: the box shrinks to the stamp, so nothing invisible sits over the
+  // title's last line.
+  recapWhen: { alignSelf: 'flex-end' },
   // A poster, not a chip. The height is the worst case of the layout below —
   // three lines of headline over four of paragraph, plus the padding — because a
   // card that clipped its own last line would hide the reason to tap it.

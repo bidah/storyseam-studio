@@ -104,6 +104,36 @@ export function isStreamingText(messages: AgentMessage[], busy: boolean): boolea
   return trailing?.type === 'text' && trailing.state !== 'done';
 }
 
+// "Today" / "Yesterday" / "3 days ago" for a timestamp, counted in CALENDAR
+// days rather than elapsed hours — which is the whole point of it. A chat
+// touched at 11pm and read back at 8am is 9 hours old but it happened
+// *yesterday*, and "9h" makes the reader do that subtraction themselves; at the
+// wrong hour it quietly lands on the wrong day. So both stamps are floored to
+// local midnight first and the difference is a day count.
+//
+// The ladder stops at a week: past that "13 days ago" is a number nobody
+// converts, so it becomes a date — with the year only when it isn't this one,
+// since "Jul 12" already reads as this year.
+export function dayLabel(ts: number | undefined): string {
+  if (!ts) return '';
+  const then = new Date(ts);
+  const now = new Date();
+  const midnight = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+  // Rounded, not floored: DST makes one day of the year 23 or 25 hours long, and
+  // a bare floor turns that day's "yesterday" into "today".
+  const days = Math.round((midnight(now) - midnight(then)) / 86_400_000);
+  // A clock skew (or a doc written by a device running fast) can date a chat in
+  // the future; "Today" is the honest read of that, not "-1 days ago".
+  if (days <= 0) return 'Today';
+  if (days === 1) return 'Yesterday';
+  if (days < 7) return `${days} days ago`;
+  return then.toLocaleDateString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    ...(then.getFullYear() === now.getFullYear() ? {} : { year: 'numeric' }),
+  });
+}
+
 // Compact "2m" / "3h" / "5d" relative time for the conversations list.
 export function relTime(ts: number | undefined): string {
   if (!ts) return '';
