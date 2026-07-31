@@ -415,6 +415,7 @@ function PartView({
   onRespond,
   offerOptions,
   galeriaIndex,
+  tail,
 }: {
   part: MessagePart;
   qa?: QuestionState;
@@ -422,6 +423,7 @@ function PartView({
   onRespond?: (label: string) => void;
   offerOptions: boolean;
   galeriaIndex: Map<string, number>;
+  tail?: boolean;
 }) {
   switch (part.type) {
     case 'text': {
@@ -495,7 +497,7 @@ function PartView({
         const sources = parseSourcesOutput(part);
         if (sources) return <SourcesCard data={sources} />;
       }
-      return <ToolChip part={part} />;
+      return <ToolChip part={part} tail={tail} />;
     }
     case 'file':
       return <FilePart part={part} index={part.url ? galeriaIndex.get(part.url) : undefined} />;
@@ -543,6 +545,7 @@ export const MessageRow = memo(function MessageRow({
   canRespond,
   onRespond,
   isLast = false,
+  tail = false,
 }: {
   message: AgentMessage;
   atts: SentAttachment[] | null;
@@ -550,6 +553,9 @@ export const MessageRow = memo(function MessageRow({
   canRespond: boolean;
   onRespond?: (label: string) => void;
   isLast?: boolean;
+  /** Raw tail position (no busy gate) — an unfinished tool part on a non-tail
+   * message is dead; see ToolChip. */
+  tail?: boolean;
 }) {
   // Galeria previews a WHOLE set swipeably, so it needs every url of this row
   // up front and each image needs its position in that list. The scope is one
@@ -619,6 +625,7 @@ export const MessageRow = memo(function MessageRow({
             onRespond={onRespond}
             offerOptions={isLast && !drewCard}
             galeriaIndex={galeriaIndex}
+            tail={tail}
           />
         ))}
       </View>

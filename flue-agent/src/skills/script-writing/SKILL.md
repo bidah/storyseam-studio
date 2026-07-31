@@ -5,18 +5,15 @@ description: >-
   when the user is on the Script screen (clientContext screen = "script") or asks
   to "write the script", "draft a scene", "add dialogue", "rewrite this line",
   "fix the screenplay", "continue the script", or anything about the screenplay /
-  teleplay for the episode. The Script tab is a screenplay editor whose elements
-  are scene headings, action, character cues, dialogue, parentheticals, and
-  transitions — this skill drives it through the get_script / save_script /
-  append_script tools. A full rewrite must be sent in CHUNKS — save_script with
-  the first ~40 lines, then append_script one ~40-line chunk per call — never
-  the whole script in a single tool call (a giant call overflows the model
-  turn's output limit and fails the whole turn). The script is version-controlled into drafts and every
-  edit applies ONLY to the pinned (active) draft; list_drafts / new_draft /
-  pin_draft manage the versions. To improve a script, delegate to the specialists
-  (story-architect / plot-doctor / motivation-doctor / dialogue-doctor) instead of
-  reviewing by hand, and pick one get_script's `reviews` block calls `pending`
-  over one it calls `fresh` — a fresh doctor already cleared this exact revision.
+  teleplay. Drives the editor's screenplay elements via get_script /
+  save_script / append_script. A full rewrite must be CHUNKED — save_script
+  with the first ~40 lines, then append_script per chunk; one giant call
+  overflows the turn's output limit and fails the whole turn. The script is
+  version-controlled into drafts; every edit applies ONLY to the pinned draft
+  (list_drafts / new_draft / pin_draft). To improve a script, delegate to the
+  specialists (story-architect / plot-doctor / motivation-doctor /
+  dialogue-doctor), preferring one get_script's `reviews` block calls `pending`
+  over one it calls `fresh` — a fresh doctor already cleared this revision.
 ---
 
 # Script writing (Shot Studio Script tab)

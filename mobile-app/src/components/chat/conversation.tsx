@@ -522,6 +522,9 @@ export function Conversation({
         // Only the settled newest turn may rescue a prose choice list — mid-turn
         // the text is still arriving, and older turns keep their markdown.
         isLast={item.isLast && !busy}
+        // Raw tail position (no busy gate): an unfinished tool part on a
+        // non-tail message is dead — see ToolChip.
+        tail={item.isLast}
       />
     ),
     [qa, canRespond, onRespond, busy],
