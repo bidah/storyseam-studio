@@ -1,6 +1,6 @@
 ---
 name: continue-video
-description: Continue a video with Higgsfield Seedance 2.0 via the Higgsfield MCP. Takes a reference video, extracts its LAST frame to use as the start frame, collects per-character sound files (with a confirm selector to match each sound to a character tag), character sheets, and a prompt that supports @ image references which are sent to Higgsfield as subject/reference images. Use when the user wants to extend/continue a clip, generate the "next shot" from where a video left off, or recreate a Seedance video starting from a video's final frame.
+description: Continue a video with Higgsfield Seedance 2.0 via the Higgsfield MCP. Takes a reference video, extracts its LAST frame to use as the start frame, collects per-character sound files (with a confirm selector to match each sound to a character tag), character sheets, and a prompt that supports @ image references which are sent to Higgsfield as subject/reference images. Use when the user wants to extend/continue a clip, generate the "next shot" from where a video left off, or recreate a Seedance video starting from a video's final frame. Model and resolution come from the project's Video defaults (get_visual_world → settings.videoModel / settings.videoResolution), NOT from a hardcoded value; when the render carries audio_references, mode "fast" is rejected, so a Seedance 2.0 Fast default is overridden to seedance_2_0 mode "std" and the override is stated to the user.
 ---
 
 # Continue Video (Higgsfield Seedance 2.0 — via the Higgsfield MCP)
@@ -34,6 +34,22 @@ the agent — call them directly, no loading step needed.
 | `audio_references` | voice / lipsync / dialogue track | 1 |
 
 Params: `duration` 4–15s (default 5; bump to 10–11 if dialogue gets cut), `resolution` `480p|720p|1080p|4k` (4k/1080p need `mode:"std"`), `aspect_ratio` default `16:9`, `generate_audio` (see Step 2).
+
+## Model + resolution come from the project defaults
+
+Before submitting, call **`get_visual_world`** and take the render params from
+`settings.videoModel` + `settings.videoResolution`, resolved through the
+`videoModels` catalog in the same response. Send that entry's `model` and `mode`
+(omit `mode` when null) — never the catalog `id`. Use them unless the user names
+something else in chat; if the resolved resolution isn't in the chosen model's
+`resolutions`, use `720p`.
+
+> ⚠️ **`mode: "fast"` rejects `audio_references`.** This skill usually attaches a
+> dialogue track, so when the project default is **Seedance 2.0 Fast**
+> (`audioRefs: false`) and the job carries audio, render with
+> `model: "seedance_2_0"`, `mode: "std"` instead and say so in one line. Only a
+> silent render (no `audio_references` at all) may stay on Fast.
+> Note **Mini and Fast cap at 720p** — 1080p needs `seedance_2_0` with `mode:"std"`.
 
 ## ⭐ ALWAYS set `generate_audio: true`
 
@@ -125,10 +141,11 @@ Preflight cost if useful (`get_cost:true`), then submit:
 ```jsonc
 mcp__higgsfield__generate_video {
   "params": {
-    "model": "seedance_2_0",
+    "model": "<from the project defaults — seedance_2_0 whenever audio rides along>",
+    "mode": "std",                      // required with audio_references; omit for Mini
     "prompt": "RESOLVED_PROMPT",
     "duration": 5,
-    "resolution": "1080p",
+    "resolution": "<from the project defaults, e.g. 720p>",
     "generate_audio": true,             // ⭐ ALWAYS true — embed audio; lip-syncs to audio_references
     "medias": [
       { "role": "start_image",      "value": "<last_frame media_id>" },
@@ -161,10 +178,11 @@ GEN_DIR="gen_$(date +%Y%m%d_%H%M%S)_<slug>"
 mkdir -p "$GEN_DIR"
 curl -fsSL -o "$GEN_DIR/video.mp4" "RESULT_URL"
 cat > "$GEN_DIR/prompt.txt" <<'EOF'
-Model: seedance_2_0
+Model: <the model actually sent>
+Mode: <std|fast, or omitted>
 Submitted via: Higgsfield MCP generate_video
 Job ID: <id>
-Resolution: 1080p
+Resolution: <the resolution actually sent>
 Duration: <n>
 Result URL: RESULT_URL
 

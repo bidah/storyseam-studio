@@ -8,7 +8,7 @@
 // "visual-world" swr cache key and the canonical invalidate+revalidate pair.
 import { useEffect, useState } from "react";
 import { useLoaderData, useRevalidator } from "react-router";
-import { Loader2, Save, Plus, Trash2, IdCard, MapPin, Package, Palette, Check, SlidersHorizontal, KeyRound, ExternalLink, Globe, TerminalSquare, Cpu } from "lucide-react";
+import { Loader2, Save, Plus, Trash2, IdCard, MapPin, Package, Palette, Check, SlidersHorizontal, KeyRound, ExternalLink, Globe, TerminalSquare, Cpu, Clapperboard } from "lucide-react";
 import { invalidateTabCache } from "@/lib/tabCache";
 import { useFalKey, setFalKey, clearFalKey } from "@/lib/falKey";
 import { useAtlasKey, setAtlasKey, clearAtlasKey } from "@/lib/atlasKey";
@@ -366,6 +366,25 @@ function SettingsPage() {
     model: world.settings?.model || "",
     aspectRatio: world.settings?.aspectRatio || "16:9",
   });
+  // Video defaults: which Seedance model + resolution the render skills use. The
+  // catalog rides on the same /api/visual-world payload and carries each model's
+  // OWN resolution list — Mini and Fast can't do 1080p — so the resolution
+  // options are derived from the picked model rather than being a fixed list.
+  const videoModels = world.videoModels || [];
+  const [video, setVideo] = useState({
+    videoModel: world.settings?.videoModel || "seedance_2_0",
+    videoResolution: world.settings?.videoResolution || "720p",
+  });
+  const videoEntry = videoModels.find((m) => m.id === video.videoModel) || videoModels[0] || null;
+  // Switching model snaps an unsupported resolution back to 720p (every model
+  // has it) so the pair on screen is always one the API would accept.
+  const pickVideoModel = (id) => setVideo((s) => {
+    const entry = videoModels.find((m) => m.id === id);
+    return {
+      videoModel: id,
+      videoResolution: entry?.resolutions?.includes(s.videoResolution) ? s.videoResolution : "720p",
+    };
+  });
   // Live image-model catalog (same source as the World › Visual composer).
   const [models, setModels] = useState([]);
   useEffect(() => {
@@ -402,6 +421,18 @@ function SettingsPage() {
     try {
       const j = await put("/api/visual-world/settings", gen);
       if (j.settings) setGen({ model: j.settings.model || "", aspectRatio: j.settings.aspectRatio || "16:9" });
+      refetch();
+    } catch (e) { setError(String(e.message || e)); throw e; }
+  };
+  const saveVideo = async () => {
+    setError(null);
+    try {
+      const j = await put("/api/visual-world/settings", video);
+      // The server clamps the pair too — show what it actually stored.
+      if (j.settings) setVideo({
+        videoModel: j.settings.videoModel || "seedance_2_0",
+        videoResolution: j.settings.videoResolution || "720p",
+      });
       refetch();
     } catch (e) { setError(String(e.message || e)); throw e; }
   };
@@ -455,6 +486,51 @@ function SettingsPage() {
           </div>
         </div>
       </Panel>
+
+      {/* Rendered only once the catalog is on the payload — an older worker
+          returns no `videoModels`, and a picker with no options is worse than
+          no picker. */}
+      {videoModels.length ? (
+        <Panel title={<span className="flex items-center gap-2"><Clapperboard size={15} className="text-primary" /> Video defaults</span>}>
+          <p className="mb-3 text-sm text-muted-foreground">
+            The Seedance model and resolution the <b>render skills</b> use by default — the
+            episode multishot renders, shot continuations, and the agent's video generations —
+            unless you name different ones for a specific render. Each model carries its own
+            resolution list, so picking one narrows what's on offer.
+          </p>
+          <div className="flex flex-wrap items-center gap-2">
+            <div>
+              <Eyebrow className="normal-case tracking-normal text-foreground/70">Video model</Eyebrow>
+              <Select value={video.videoModel} onValueChange={pickVideoModel}>
+                <SelectTrigger size="sm" className="w-[220px] text-xs"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {videoModels.map((m) => <SelectItem key={m.id} value={m.id}>{m.label}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Eyebrow className="normal-case tracking-normal text-foreground/70">Resolution</Eyebrow>
+              <Select
+                value={video.videoResolution}
+                onValueChange={(v) => setVideo((s) => ({ ...s, videoResolution: v }))}
+              >
+                <SelectTrigger size="sm" className="w-[110px] text-xs"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {(videoEntry?.resolutions || []).map((r) => <SelectItem key={r} value={r}>{r}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="ml-auto self-end">
+              <SaveButton onSave={saveVideo}>Save video defaults</SaveButton>
+            </div>
+          </div>
+          {videoEntry ? (
+            <p className="mt-2 text-xs text-muted-foreground">
+              {videoEntry.blurb} Offers {videoEntry.resolutions.join(" · ")}.
+            </p>
+          ) : null}
+        </Panel>
+      ) : null}
 
       <Panel title={<span className="flex items-center gap-2"><Palette size={15} className="text-primary" /> Style prompts</span>}>
         <p className="mb-3 text-sm text-muted-foreground">

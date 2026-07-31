@@ -19,6 +19,13 @@ import { readDoc, updateDoc, normalizeProjectId } from "../lib/docs.js";
 import { putMedia, mediaKey, filesUrl } from "../lib/media.js";
 import { ensureImageThumb } from "../lib/proxy.js";
 import {
+  VIDEO_MODELS,
+  DEFAULT_VIDEO_MODEL,
+  DEFAULT_VIDEO_RESOLUTION,
+  normalizeVideoDefaults,
+  videoGenerateParams,
+} from "../lib/video-defaults.js";
+import {
   getHiggsfieldToken,
   forceRefreshHiggsfieldToken,
   mcpToolCall,
@@ -152,7 +159,10 @@ function emptyVisualWorld() {
   return {
     generatedAt: null,
     source: null,
-    settings: { model: "", aspectRatio: "16:9", count: 1, cinematic: false, presetId: "preset-2d" },
+    settings: {
+      model: "", aspectRatio: "16:9", count: 1, cinematic: false, presetId: "preset-2d",
+      videoModel: DEFAULT_VIDEO_MODEL, videoResolution: DEFAULT_VIDEO_RESOLUTION,
+    },
     prompts: structuredClone(SEED_PROMPTS),
     sheetPrompts: { ...SEED_SHEET_PROMPTS },
     promptRevisions: [],
@@ -377,6 +387,9 @@ function normalizeVisualWorld(raw) {
       count: clampCount(w.settings.count),
       cinematic: !!w.settings.cinematic,
       presetId: str(w.settings.presetId) || "preset-2d",
+      // Clamps to a renderable (model, resolution) pair — a doc written before
+      // these existed reads back as Seedance 2.0 / 720p.
+      ...normalizeVideoDefaults(w.settings.videoModel, w.settings.videoResolution),
     };
   }
   base.prompts = Array.isArray(w.prompts) && w.prompts.length
@@ -816,6 +829,13 @@ async function fireNodeJob(env, userId, prov, pid, vw, node) {
         medias.push({ role, value: mediaId });
       }
     }
+    // Honour the project's Seedance resolution/mode default — but ONLY when this
+    // node actually resolved to that model. A node pointed at Veo or Kling takes
+    // neither param, and `mode` in particular is Seedance-specific.
+    const vd = videoGenerateParams(vw.settings);
+    const seedanceParams = model === vd.model
+      ? { resolution: vd.resolution, ...(vd.mode ? { mode: vd.mode } : {}) }
+      : {};
     const data = await mcp(env, userId, prov.token, "generate_video", {
       params: {
         model,
@@ -823,6 +843,7 @@ async function fireNodeJob(env, userId, prov, pid, vw, node) {
         aspect_ratio: aspectRatio,
         duration: clampDuration(settings.duration),
         generate_audio: !!settings.generateAudio,
+        ...seedanceParams,
         medias,
       },
     });
@@ -993,10 +1014,20 @@ async function advanceRun(env, userId, prov, pid) {
 export function registerVisualWorld(app) {
   // Read the whole visual world (seeds an empty skeleton on first use). Ready
   // generations carry a `/visual-media/<file>` url.
+  //
+  // `videoModels` rides along rather than living on a route of its own: it is a
+  // static Seedance catalog (which resolutions each model accepts), and folding
+  // it in here means the Settings page needs no second fetch AND the agent sees
+  // the options through the `get_visual_world` tool it already has — a separate
+  // GET would just open another agent-parity gap.
   app.get("/api/visual-world", async (c) => {
     const pid = c.get("projectId");
     const vw = await readVW(c.env, pid);
-    return c.json({ ...vw, generations: vw.generations.map((g) => withUrls(c.env, pid, g)) });
+    return c.json({
+      ...vw,
+      videoModels: VIDEO_MODELS,
+      generations: vw.generations.map((g) => withUrls(c.env, pid, g)),
+    });
   });
 
   // The model catalog for the composer / node model selectors: the live
@@ -1457,9 +1488,15 @@ export function registerVisualWorld(app) {
   });
 
   // Merge-patch the generation defaults (Settings page): the image model and
-  // aspect ratio the composer AND the agent skills use when the user doesn't
-  // override per-generation. `model: ""` means the server default (Nano Banana
-  // Pro); aspectRatio falls back to 16:9 on read (normalize).
+  // aspect ratio, plus the Seedance model + resolution, that the composer AND
+  // the agent skills use when the user doesn't override per-generation.
+  // `model: ""` means the server default (Nano Banana Pro); aspectRatio falls
+  // back to 16:9 on read (normalize).
+  //
+  // videoModel and videoResolution are clamped TOGETHER: picking a model whose
+  // resolution list excludes the stored one (Mini/Fast can't do 1080p) snaps the
+  // resolution back to 720p rather than storing a pair the API would reject. A
+  // patch that carries only one of the two is resolved against the stored other.
   app.put("/api/visual-world/settings", async (c) => {
     const pid = c.get("projectId");
     let patch;
@@ -1468,6 +1505,12 @@ export function registerVisualWorld(app) {
       const next = { ...v.settings };
       if (typeof patch.model === "string") next.model = patch.model;
       if (typeof patch.aspectRatio === "string" && patch.aspectRatio) next.aspectRatio = patch.aspectRatio;
+      if (typeof patch.videoModel === "string" || typeof patch.videoResolution === "string") {
+        Object.assign(next, normalizeVideoDefaults(
+          typeof patch.videoModel === "string" ? patch.videoModel : next.videoModel,
+          typeof patch.videoResolution === "string" ? patch.videoResolution : next.videoResolution,
+        ));
+      }
       v.settings = next;
     });
     const fresh = await readVW(c.env, pid);

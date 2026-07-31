@@ -4,6 +4,7 @@
 //
 // A bundle NEVER crosses a location: it breaks on beat change, packKey change, or
 // overflow past the 15s Seedance-2.0 single-clip cap.
+import { videoParamsText } from "./video-defaults.js";
 
 const MAX = 15; // Seedance 2.0 single-clip cap (seconds)
 
@@ -176,8 +177,12 @@ function packShots(shots) {
 // (location sheets by slug, character sheets by name). The hardcoded
 // Whistlewood REF/LOC/CHAR_REF maps survive ONLY as the fallback for projects
 // with an empty World roster (the original offline-built episode).
-function buildBundles(shots, world) {
+// `genSettings` is the `visual-world` doc's `settings` — only its Seedance
+// videoModel/videoResolution are read, to write the bundle's `Params:` line.
+// Omit it and the line falls back to the Seedance 2.0 / 720p defaults.
+function buildBundles(shots, world, genSettings) {
   const roster = rosterOf(world);
+  const videoParams = videoParamsText(genSettings);
   const hasRoster = roster.characters.size > 0 || roster.locations.size > 0;
   return packShots(shots).map((b, i) => {
     const id = "MS-" + String(i + 1).padStart(2, "0");
@@ -229,7 +234,7 @@ function buildBundles(shots, world) {
       `NO audio reference — set generate_audio: true so Seedance generates its own audio from the prompt.\n` +
       `Pass each image listed under IMAGE REFERENCES above as an image_references entry; apply it to the matching character/location wherever it appears in the shots.\n` +
       bibleNote +
-      `Params: model seedance_2_0, resolution 720p, duration ${dur}s (<=15), aspect 16:9.\n` +
+      `Params: ${videoParams}, duration ${dur}s (<=15), aspect 16:9.\n` +
       `Compose ONE continuous multishot clip from these ${b.shots.length} ordered shots, lip-syncing any dialogue:\n\n` +
       shotScript;
 

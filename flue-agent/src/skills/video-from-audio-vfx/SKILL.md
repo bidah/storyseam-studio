@@ -11,7 +11,8 @@ description: >-
   ambience, crashes, music) — because a single voice-locked Seed Audio pass renders
   mostly the speech and DROPS the SFX/ambience. Triggers: "lipsync video with sound
   effects", "separate speech and vfx", "add vfx on top of the video", "two-stem
-  audio for video", "video-from-audio-vfx".
+  audio for video", "video-from-audio-vfx". Model/resolution come from the
+  project Video defaults (get_visual_world); audio refs force mode "std".
 ---
 
 # video-from-audio-vfx
@@ -27,6 +28,21 @@ mechanics; this skill orchestrates them.
 > Only use the `generate_audio:false` + ffmpeg-mux path (Run D / Run E) when the
 > user explicitly needs the **exact** seed-audio take preserved byte-for-byte in
 > the file; otherwise keep audio baked in with `true`.
+
+## Model + resolution come from the project defaults
+
+Call **`get_visual_world`** and take the video params from `settings.videoModel` +
+`settings.videoResolution`, resolved through the `videoModels` catalog in the same
+response. Send that entry's `model` and `mode` (omit `mode` when null) — never the
+catalog `id`. Wherever this skill writes `seedance_2_0` below, it means "the model
+resolved this way". If the resolved resolution isn't in the chosen model's
+`resolutions`, use `720p`.
+
+> ⚠️ **`mode: "fast"` rejects `audio_references`.** Every run here attaches an audio
+> or black-MP4 voice reference, so when the project default is **Seedance 2.0 Fast**
+> (`audioRefs: false`), render with `model: "seedance_2_0"`, `mode: "std"` instead
+> and say so in one line. **Mini and Fast cap at 720p** — 1080p needs `seedance_2_0`
+> with `mode:"std"`.
 
 > 🏷 **Name the two scene stems `<base>-dialog.<ext>` and `<base>-vfx.<ext>`.**
 > The SPEECH stem (voices only, NO SFX/ambience) → `*-dialog.*`; the VFX stem

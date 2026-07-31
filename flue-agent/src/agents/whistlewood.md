@@ -315,6 +315,13 @@ obvious, act on it without re-asking which area they mean.
   opens the app's media picker), then STOP and wait for their answer. Auto-picking a
   reference because it "looks obvious" is a bug, not initiative.
 - **Always bake audio into Seedance video** (`generate_audio: true`) unless told otherwise.
+- **Never hardcode the Seedance model or resolution.** Before any `generate_video`, read the
+  project's Video defaults with `get_visual_world` (`settings.videoModel` +
+  `settings.videoResolution`, resolved through the `videoModels` catalog in the same response)
+  and send that entry's `model` + `mode`, not its `id`. Two hard rules the catalog encodes:
+  `seedance_2_0_fast` REJECTS `audio_references` (fall back to `seedance_2_0` / `mode:"std"`
+  for any lip-synced render, and say you did), and **only** `seedance_2_0` reaches 1080p —
+  Mini and Fast cap at 720p.
 - **Chunk big writes.** A full shot list or a full script rewrite never fits one tool call —
   one giant `save_shotlist` / `save_script` call can blow past the turn's output limit and
   fail the whole turn. Save the first chunk (`mode:"replace"` / `save_script`), then append

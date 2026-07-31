@@ -11,7 +11,10 @@ description: >-
   to the video. Higgsfield-ONLY — never substitute fal_generate_video or
   atlas_generate_video here; their Seedance endpoints take a single start image
   and no driving audio stem, so they cannot do the multi-reference, lip-synced
-  multishot flow (even when fal or Atlas is the active render provider).
+  multishot flow (even when fal or Atlas is the active render provider). Model
+  and resolution come from the project Video defaults (get_visual_world), never
+  hardcoded; audio_references force mode "std", so a Fast default falls back to
+  seedance_2_0.
 ---
 
 # generate-multishot (Higgsfield Seedance 2.0 — via the Higgsfield MCP)
@@ -19,6 +22,21 @@ description: >-
 Render a single **multi-shot** clip: several scripted shots (wide → MS → CU …) described as beats inside ONE `seedance_2_0` generation, under the 15s cap, lip-synced to a **dialogue-only** audio stem. Built on the **Higgsfield MCP** (`mcp__higgsfield__*`).
 
 > **Always use the Higgsfield MCP, never the `higgsfield` CLI.** Multiple reference images require the role `image_references`, which the CLI cannot send (its `--image` collapses to the single `start_image`). The MCP `generate_video` `medias[]` array is the only way to pass character + location references together.
+
+## Step 0 — read the project's video defaults
+
+Call **`get_visual_world`** and take the render params from `settings.videoModel` +
+`settings.videoResolution`, resolved through the `videoModels` catalog in the same
+response. Send that entry's `model` and `mode` (omit `mode` when it is null) — never
+the catalog `id`. These are the defaults the author set on the Settings page; use
+them unless the user names something else in chat.
+
+> ⚠️ **One override, always.** This skill ALWAYS attaches `audio_references` (the
+> dialogue stem), and `mode: "fast"` fails any job that carries them. So if the
+> project default is **Seedance 2.0 Fast** (`audioRefs: false`), render with
+> `model: "seedance_2_0"`, `mode: "std"` instead and **tell the user you did**,
+> in one line. Mini and standard 2.0 both take audio refs — leave those alone.
+> If the resolved resolution isn't in the chosen model's `resolutions`, use `720p`.
 
 ## Inputs
 
@@ -94,10 +112,11 @@ Preflight cost (`get_cost:true`) if useful, then:
 ```jsonc
 mcp__higgsfield__generate_video {
   "params": {
-    "model": "seedance_2_0",
+    "model": "<from Step 0 — seedance_2_0 whenever audio_references ride along>",
+    "mode": "std",                          // required with audio_references
     "prompt": "MULTISHOT_PROMPT",
     "duration": <ceil(dialogue length), 4–15>,
-    "resolution": "720p",
+    "resolution": "<from Step 0, default 720p>",
     "generate_audio": true,                 // ⭐ always true
     "medias": [
       { "role": "audio_references", "value": "<DIALOG stem media_id>" },   // the -dialog stem ONLY

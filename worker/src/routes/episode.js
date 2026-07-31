@@ -507,10 +507,18 @@ export function registerEpisode(app) {
   //     shot membership is UNCHANGED; a re-packed bundle correctly needs re-review.
   app.post("/api/episode/rebuild", async (c) => {
     const pid = c.get("projectId");
-    const [shots, world] = await Promise.all([readShots(c.env, pid), readWorld(c.env, pid)]);
+    // The visual-world doc rides along only for its generation defaults — the
+    // Seedance model/resolution that go into each bundle's `Params:` line, so a
+    // rebuild picks up whatever is currently set on Settings. Read raw: the
+    // params helper clamps whatever it finds.
+    const [shots, world, vw] = await Promise.all([
+      readShots(c.env, pid),
+      readWorld(c.env, pid),
+      readDoc(c.env, pid, "visual-world", null),
+    ]);
     if (!shots.length) return c.json({ error: "No shot list yet — write a shot list first." }, 400);
 
-    const bundles = buildBundles(shots, world);
+    const bundles = buildBundles(shots, world, vw?.settings);
     const prev = await readManifest(c.env, pid);
     const prevBundles = prev?.bundles || [];
 
