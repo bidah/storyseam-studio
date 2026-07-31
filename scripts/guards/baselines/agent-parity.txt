@@ -22,6 +22,8 @@
                                   # hydrated view at /api/appstate/screen via view_screen,
                                   # so this write endpoint is correctly one-directional
 /api/chat-title                   # derives a title for the chat rail from the first message
+/api/chats                        # the per-user chat REGISTRY the clients sync history through —
+                                  # the agent IS a chat; it has no business listing or deleting them
 /api/transcribe                   # microphone capture → text, for the composer's dictation button
 /api/history/*/*/restore          # the agent reaches this through restore_version, which posts a different literal
 

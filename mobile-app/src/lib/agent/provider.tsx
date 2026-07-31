@@ -18,16 +18,20 @@ import { createFlueClient } from '@flue/sdk';
 import { API_ORIGIN } from '../env';
 import { getProjectId, useProjectStore } from '../project';
 import { useOpenChat } from './chat-route';
+import { deleteJson, putJson, apiJson } from '../api';
 import {
   activeChatId,
   chatsForProject,
   deriveTitle,
   loadStore,
   makeChat,
+  mergeServerChats,
   persistStore,
   trimStore,
   withActiveForProject,
+  type Chat,
   type ChatStore,
+  type ServerChat,
 } from './chat-store';
 import {
   dropTranscript,
@@ -142,6 +146,91 @@ function useConversationManager() {
     update((prev) => withActiveForProject(prev, pid));
   }, [pid, store, update]);
 
+  // ---- Server sync (worker/src/routes/chats.js) — port of the web wiring ----
+  // The local store is a cache; the shared registry in D1 is what makes a chat
+  // started on another device (the web app, another phone) show up here.
+  //
+  // Pull: `refreshChats` fetches this user's chats for the current project and
+  // merges them in. Runs after hydration + on project switch; the history sheet
+  // re-runs it on open through react-query (keyed [pid, 'chats'], so the
+  // turn-settled invalidation refreshes it in the background too).
+  //
+  // Push: the effect below diffs the store against what was last pushed and
+  // PUTs any chat whose title/recency changed. Blank "New chat" placeholders
+  // never sync — `withActiveForProject` mints one per project, and syncing
+  // those would strew empty rows across every device.
+  const pushedRef = useRef(new Map<string, string>()); // chat id → last-pushed signature
+  const chatSig = (c: Chat) => `${c.title}|${c.titled ? 1 : 0}|${c.updatedAt}`;
+  // Pushes wait for the first successful pull (which seeds the pushed map) —
+  // without that gate, every launch would re-PUT the whole local history in one
+  // burst against a single compare-and-swapped D1 row. Bumped per pull so the
+  // push effect re-runs even when the merge changed nothing locally.
+  const [syncEpoch, setSyncEpoch] = useState(0);
+
+  const markSynced = useCallback(
+    (id: string) =>
+      update((prev) => {
+        const chat = prev.chats[id];
+        if (!chat || chat.synced) return prev;
+        return { ...prev, chats: { ...prev.chats, [id]: { ...chat, synced: true } } };
+      }),
+    [update],
+  );
+
+  const refreshChats = useCallback(async () => {
+    const want = getProjectId();
+    if (!want) return null;
+    try {
+      const { chats } = await apiJson<{ chats: ServerChat[] }>('/api/chats');
+      if (getProjectId() !== want) return null; // project switched mid-flight
+      // Adopted-from-server values must not bounce straight back as pushes —
+      // seed the pushed map with the merged signature first. A chat where the
+      // LOCAL side is newer keeps a different signature, so the push effect
+      // still sends it up.
+      update((prev) => {
+        const next = mergeServerChats(prev, want, chats);
+        for (const s of chats || []) {
+          if (next.chats[s.id]) pushedRef.current.set(s.id, chatSig(next.chats[s.id]));
+        }
+        return next;
+      });
+      setSyncEpoch((e) => e + 1);
+      return chats;
+    } catch {
+      return null; // offline — the local cache stands
+    }
+  }, [update]);
+
+  useEffect(() => {
+    if (!store) return;
+    refreshChats();
+    // Re-pull on project switch; `store` is deliberately read through a ref-ish
+    // guard (the boolean) so this doesn't refire on every store change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [!!store, pid, refreshChats]);
+
+  useEffect(() => {
+    if (!store || !syncEpoch) return; // no push before the first pull has seeded the map
+    for (const id of store.order) {
+      const c = store.chats[id];
+      // Only this project's chats: the fetch shim stamps x-project-id with the
+      // CURRENT project, so pushing another project's chat would file it under
+      // the wrong one. Its own turn comes when that project is active.
+      if (!c || c.projectId !== pid || c.title === 'New chat') continue;
+      const sig = chatSig(c);
+      if (pushedRef.current.get(id) === sig) continue;
+      pushedRef.current.set(id, sig);
+      putJson(`/api/chats/${encodeURIComponent(id)}`, {
+        title: c.title,
+        titled: !!c.titled,
+        createdAt: c.createdAt,
+        updatedAt: c.updatedAt,
+      })
+        .then(() => markSynced(id))
+        .catch(() => pushedRef.current.delete(id)); // retry on the next store change
+    }
+  }, [store, pid, syncEpoch, markSynced]);
+
   // Mint a chat, make it active, and RETURN its id — the caller needs it to
   // navigate to that chat's route (`/(tabs)/chat/<id>`). The chat is built
   // outside the updater so the id survives a double-invoked updater (StrictMode)
@@ -173,6 +262,10 @@ function useConversationManager() {
   const deleteChat = useCallback(
     (id: string) => {
       dropTranscript(id); // its local cover goes with it
+      // Forget it everywhere, not just this device. Fire-and-forget: deleting
+      // an id the registry never saw is a no-op on the server.
+      pushedRef.current.delete(id);
+      deleteJson(`/api/chats/${encodeURIComponent(id)}`).catch(() => {});
       update((prev) => {
         const chat = prev.chats[id];
         if (!chat) return prev;
@@ -199,7 +292,9 @@ function useConversationManager() {
       update((prev) => {
         const chat = prev.chats[id];
         if (!chat) return prev;
-        const nextTitle = title ?? chat.title;
+        // An AI-generated title (locked in on the web, arriving here via the
+        // server registry) beats the derived first-line fallback.
+        const nextTitle = chat.titled ? chat.title : (title ?? chat.title);
         const alreadyTop = prev.order[0] === id;
         if (nextTitle === chat.title && alreadyTop) return prev;
         const order = alreadyTop ? prev.order : [id, ...prev.order.filter((x) => x !== id)];
@@ -242,8 +337,9 @@ function useConversationManager() {
       noteActivity,
       saveAttachments,
       getInitial,
+      refreshChats,
     }),
-    [store, pid, activeId, list, newChat, switchChat, deleteChat, noteActivity, saveAttachments, getInitial],
+    [store, pid, activeId, list, newChat, switchChat, deleteChat, noteActivity, saveAttachments, getInitial, refreshChats],
   );
 }
 

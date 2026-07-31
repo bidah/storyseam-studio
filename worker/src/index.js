@@ -45,6 +45,7 @@ import { registerVisualWorld } from "./routes/visual-world.js";
 import { registerTranscribe } from "./routes/transcribe.js";
 import { registerExtract } from "./routes/extract.js";
 import { registerChatTitle } from "./routes/chat-title.js";
+import { registerChats } from "./routes/chats.js";
 import { registerStatus } from "./routes/status.js";
 import { createAuth } from "./auth.js";
 import { broadcast } from "./lib/broadcast.js";
@@ -257,6 +258,9 @@ app.use("*", async (c, next) => {
   // The UI reports its current tab/selection on every route change; fanning that
   // out would make every navigation revalidate every open tab.
   if (p.startsWith("/api/appstate")) return;
+  // The chat registry is per-user bookkeeping, not project state — a title bump
+  // shouldn't make every open tab refetch its data.
+  if (p.startsWith("/api/chats")) return;
   // Agent bookkeeping, not project state: a pending-approval record and the
   // MCP envelope (every MCP message is a POST, reads included) would otherwise
   // make every open tab refetch. The MCP write tools announce for themselves.
@@ -555,6 +559,7 @@ registerVisualWorld(app);
 registerTranscribe(app);
 registerExtract(app);
 registerChatTitle(app);
+registerChats(app);
 registerStatus(app);
 registerAppState(app);
 registerNavigate(app);

@@ -930,6 +930,12 @@ function relTime(ts) {
 // conversations; the trash button is a sibling, not a nested button.
 function ChatHistorySheet({ conv, triggerClassName }) {
   const [open, setOpen] = useState(false);
+  // Stale-while-revalidate: the cached list renders instantly; opening the
+  // sheet re-pulls the server registry so chats started on another device
+  // (the phone, another browser) fold in as the fetch lands.
+  useEffect(() => {
+    if (open) conv.refreshChats();
+  }, [open, conv]);
   const select = (id) => {
     conv.switchChat(id);
     setOpen(false);

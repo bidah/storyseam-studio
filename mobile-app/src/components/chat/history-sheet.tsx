@@ -3,6 +3,7 @@ import { Pressable } from 'react-native';
 import { Stack } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { SquarePen } from 'lucide-react-native';
+import { useQuery } from '@tanstack/react-query';
 import { useConversations } from '@/lib/agent/provider';
 import { relTime } from '@/components/chat/helpers';
 import { useChatColors } from '@/components/chat/theme';
@@ -26,6 +27,18 @@ import ChatHistoryForm from '@/components/chat-history-form';
 export function ChatHistorySheetBody({ leaveTo }: { leaveTo: (chatId?: string) => void }) {
   const chatC = useChatColors();
   const conv = useConversations();
+
+  // Stale-while-revalidate: the local list renders instantly; opening the sheet
+  // re-pulls the server registry (/api/chats) so chats started on another
+  // device fold in as the fetch lands — `refreshChats` merges into the conv
+  // store, which is what the rows below render from. Keyed under [pid] so the
+  // provider's turn-settled invalidation background-refreshes it too.
+  useQuery({
+    queryKey: [conv.pid, 'chats'],
+    queryFn: () => conv.refreshChats(),
+    refetchOnMount: 'always',
+    enabled: !!conv.pid,
+  });
 
   const onSelect = useCallback(
     (id: string) => {

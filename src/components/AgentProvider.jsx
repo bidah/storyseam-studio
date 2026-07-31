@@ -16,6 +16,7 @@ import {
   firstUserText,
   loadStore,
   makeChat,
+  mergeServerChats,
   persistStore,
   trimStore,
   withActiveForProject,
@@ -83,6 +84,96 @@ function useConversationManager() {
     update((prev) => withActiveForProject(prev, pid));
   }, [pid, update]);
 
+  // ---- Server sync (worker/src/routes/chats.js) ----------------------------
+  // The local store is a cache; the shared registry in D1 is what makes a chat
+  // started on another device (the phone, another browser) show up here.
+  //
+  // Pull: `refreshChats` fetches this user's chats for the current project and
+  // merges them in. Runs on mount + project switch, and the history sheet calls
+  // it again on open (show the cached list instantly, fold the fetch in as it
+  // lands).
+  //
+  // Push: the effect below diffs the store against what was last pushed and
+  // PUTs any chat whose title/recency changed. Blank "New chat" placeholders
+  // never sync — `withActiveForProject` mints one per project, and syncing
+  // those would strew empty rows across every device.
+  const pushedRef = useRef(new Map()); // chat id → last-pushed signature
+  const chatSig = (c) => `${c.title}|${c.titled ? 1 : 0}|${c.updatedAt}`;
+  // Pushes wait for the first successful pull (which seeds the pushed map) —
+  // without that gate, every page load would re-PUT the whole local history in
+  // one burst against a single compare-and-swapped D1 row. Bumped per pull so
+  // the push effect re-runs even when the merge changed nothing locally.
+  const [syncEpoch, setSyncEpoch] = useState(0);
+
+  const markSynced = useCallback(
+    (id) =>
+      update((prev) => {
+        const chat = prev.chats[id];
+        if (!chat || chat.synced) return prev;
+        return { ...prev, chats: { ...prev.chats, [id]: { ...chat, synced: true } } };
+      }),
+    [update],
+  );
+
+  const refreshChats = useCallback(async () => {
+    const want = getProjectId();
+    if (!want) return;
+    try {
+      const res = await fetch("/api/chats");
+      if (!res.ok) return;
+      const { chats } = await res.json();
+      if (getProjectId() !== want) return; // project switched mid-flight
+      // Adopted-from-server values must not bounce straight back as pushes —
+      // seed the pushed map with the server's signature first. A chat where the
+      // LOCAL side is newer keeps a different signature, so the push effect
+      // still sends it up. (The map seed must not resurrect a locally-deleted
+      // chat as "pushed", so only seed ids the merge will actually keep.)
+      update((prev) => {
+        const next = mergeServerChats(prev, want, chats);
+        for (const s of chats || []) {
+          if (next.chats[s.id]) pushedRef.current.set(s.id, chatSig(next.chats[s.id]));
+        }
+        return next;
+      });
+      setSyncEpoch((e) => e + 1);
+    } catch {
+      /* offline — the local cache stands */
+    }
+  }, [update]);
+
+  useEffect(() => {
+    refreshChats();
+  }, [pid, refreshChats]);
+
+  useEffect(() => {
+    if (!syncEpoch) return; // no push before the first pull has seeded the map
+    for (const id of store.order) {
+      const c = store.chats[id];
+      // Only this project's chats: the fetch shim stamps x-project-id with the
+      // CURRENT project, so pushing another project's chat would file it under
+      // the wrong one. Its own turn comes when that project is active.
+      if (!c || c.projectId !== pid || c.title === "New chat") continue;
+      const sig = chatSig(c);
+      if (pushedRef.current.get(id) === sig) continue;
+      pushedRef.current.set(id, sig);
+      fetch(`/api/chats/${encodeURIComponent(id)}`, {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          title: c.title,
+          titled: !!c.titled,
+          createdAt: c.createdAt,
+          updatedAt: c.updatedAt,
+        }),
+      })
+        .then((res) => {
+          if (res.ok) markSynced(id);
+          else pushedRef.current.delete(id); // retry on the next store change
+        })
+        .catch(() => pushedRef.current.delete(id));
+    }
+  }, [store, pid, syncEpoch, markSynced]);
+
   const newChat = useCallback(() => {
     update((prev) => {
       const c = makeChat(pid ?? null);
@@ -107,7 +198,11 @@ function useConversationManager() {
   );
 
   const deleteChat = useCallback(
-    (id) =>
+    (id) => {
+      // Forget it everywhere, not just this device. Fire-and-forget: deleting
+      // an id the registry never saw is a no-op on the server.
+      pushedRef.current.delete(id);
+      fetch(`/api/chats/${encodeURIComponent(id)}`, { method: "DELETE" }).catch(() => {});
       update((prev) => {
         const chat = prev.chats[id];
         if (!chat) return prev;
@@ -121,7 +216,8 @@ function useConversationManager() {
         // If that emptied the chat's project, hand it a fresh blank one so the
         // panel always has a live conversation to show.
         return withActiveForProject({ activeByProject, order, chats }, chat.projectId);
-      }),
+      });
+    },
     [update],
   );
 
@@ -199,8 +295,9 @@ function useConversationManager() {
       isTitled,
       saveAttachments,
       getInitial,
+      refreshChats,
     }),
-    [pid, activeId, list, newChat, switchChat, deleteChat, noteActivity, setAiTitle, isTitled, saveAttachments, getInitial],
+    [pid, activeId, list, newChat, switchChat, deleteChat, noteActivity, setAiTitle, isTitled, saveAttachments, getInitial, refreshChats],
   );
 }
 

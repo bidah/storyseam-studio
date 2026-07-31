@@ -25,12 +25,28 @@ export type Chat = {
   id: string;
   projectId: string | null;
   title: string;
+  // True once an AI-generated title has been locked in (web does the titling;
+  // it rides in via the server registry) — a derived first-line title must not
+  // overwrite it.
+  titled?: boolean;
+  // True once this chat is known to the server registry (/api/chats), which is
+  // what lets a merge distinguish "deleted on another device" from "never
+  // pushed".
+  synced?: boolean;
   createdAt: number;
   updatedAt: number;
   // Client-only, ordinal-aligned image attachments (flue's `file` parts don't
   // serve historical bytes, so the composer re-renders thumbnails from this
   // record).
   attachments: any[];
+};
+
+export type ServerChat = {
+  id: string;
+  title: string;
+  titled?: boolean;
+  createdAt: number | null;
+  updatedAt: number | null;
 };
 
 export type ChatStore = {
@@ -166,6 +182,93 @@ export async function loadStore(pid: string | null): Promise<ChatStore> {
     store = legacy && legacy.chats ? migrateV1(legacy, pid) : { activeByProject: {}, order: [], chats: {} };
   }
   return withActiveForProject(store, pid);
+}
+
+// Merge the server registry (GET /api/chats — this user's chats in `pid`, see
+// worker/src/routes/chats.js) into the local store — port of the web's
+// mergeServerChats (src/lib/chat-store.js). The server is how a chat started
+// on ANOTHER device (the web app, another phone) becomes visible here: the
+// transcript already lives in flue's Durable Object, so the id + title is all
+// it takes to reopen it.
+//
+// Rules:
+// - A server chat we don't have locally is adopted (attachments start empty —
+//   they're client-only by design).
+// - For a chat both sides know, newer `updatedAt` wins, except that an
+//   AI-locked title (`titled`) is never overwritten by a derived one.
+// - A LOCAL chat of this project that has synced before (`synced`) but is
+//   missing from the server was deleted on another device — drop it, unless it
+//   changed locally in the last minute (its push may still be in flight).
+// - Chats never pushed (blank "New chat" placeholders, offline-only history)
+//   are left alone.
+//
+// Returns the same store reference when nothing changed.
+export function mergeServerChats(
+  store: ChatStore,
+  pid: string | null,
+  serverChats: ServerChat[],
+): ChatStore {
+  const want = pid ?? null;
+  const now = Date.now();
+  let changed = false;
+  const chats = { ...store.chats };
+  const seen = new Set<string>();
+
+  for (const s of Array.isArray(serverChats) ? serverChats : []) {
+    if (!s?.id || !s.title) continue;
+    seen.add(s.id);
+    const local = chats[s.id];
+    if (!local) {
+      chats[s.id] = {
+        id: s.id,
+        projectId: want,
+        title: s.title,
+        titled: !!s.titled,
+        createdAt: s.createdAt || now,
+        updatedAt: s.updatedAt || now,
+        attachments: [],
+        synced: true,
+      };
+      changed = true;
+      continue;
+    }
+    const next: Chat = { ...local, synced: true };
+    const serverNewer = (s.updatedAt || 0) > (local.updatedAt || 0);
+    const keepLocalTitle = local.titled && !s.titled;
+    if (!keepLocalTitle && ((s.titled && !local.titled) || serverNewer)) {
+      next.title = s.title;
+      next.titled = !!s.titled || !!local.titled;
+    }
+    if (serverNewer) next.updatedAt = s.updatedAt!;
+    if (
+      next.title !== local.title ||
+      !!next.titled !== !!local.titled ||
+      next.updatedAt !== local.updatedAt ||
+      !local.synced
+    ) {
+      chats[s.id] = next;
+      changed = true;
+    }
+  }
+
+  for (const [id, c] of Object.entries(chats)) {
+    if (c.projectId !== want || seen.has(id) || !c.synced) continue;
+    if (now - (c.updatedAt || 0) < 60_000) continue;
+    delete chats[id];
+    changed = true;
+  }
+
+  if (!changed) return store;
+  // Recency IS the order everywhere this list renders, so rebuild it from
+  // `updatedAt` — this also slots adopted chats into their right place.
+  const order = Object.values(chats)
+    .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))
+    .map((c) => c.id);
+  const activeByProject = { ...store.activeByProject };
+  for (const k of Object.keys(activeByProject)) {
+    if (!chats[activeByProject[k]]) delete activeByProject[k];
+  }
+  return withActiveForProject(trimStore({ activeByProject, order, chats }), pid);
 }
 
 let persistTimer: ReturnType<typeof setTimeout> | undefined;
