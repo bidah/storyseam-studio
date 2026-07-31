@@ -54,4 +54,12 @@ export interface EditorBackend {
   /** NATIVE: resolve a model `src` into an expo-video source (require() / uri). */
   resolveSource(src: string): VideoSource;
   subscribeTimeline(onForeignEdit: () => void): () => void;
+  /**
+   * Write this timeline's realized pacing back to the Shot list's `dur` values,
+   * so the animatic and the episode video generation inherit it. Only
+   * meaningful on a radio/animatic timeline, and only offered by a backend that
+   * has a Shot list at all — the offline demo backend leaves it undefined, and
+   * the Editor hides the control when it's missing.
+   */
+  commitPacing?(): Promise<{ source: string; updated: number; untouched: number }>;
 }

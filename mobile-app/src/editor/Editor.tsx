@@ -5,7 +5,7 @@
 // stateless/props-driven. Only the UI shell + gesture wiring are native.
 // Web reference: /docs/architecture ↔ this: /docs/react-native/architecture
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Alert, Pressable, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { runOnJS, useAnimatedReaction, useSharedValue, type SharedValue } from "react-native-reanimated";
 import { SymbolView, type SymbolViewProps } from "expo-symbols";
@@ -102,6 +102,7 @@ export function Editor({ onClose }: { onClose?: () => void } = {}) {
   const [selectedGap, setSelectedGap] = useState<SelectedGap | null>(null);
   const [poolOpen, setPoolOpen] = useState(false);
   const [inspectorOpen, setInspectorOpen] = useState(false);
+  const [committingPacing, setCommittingPacing] = useState(false);
   const pxPerSecRef = useRef(48);
   const currentFrameRef = useRef(0);
 
@@ -316,6 +317,55 @@ export function Editor({ onClose }: { onClose?: () => void } = {}) {
     [mutate],
   );
 
+  // ---- commit pacing -------------------------------------------------------
+  // Write the realized timing of a radio/animatic timeline back into the Shot
+  // list's `dur` values, so the animatic and the episode video generation
+  // inherit the pacing you just reviewed. It lives HERE, not on the Radio
+  // screen, because this is where the pacing is seen (web parity).
+  //
+  // It rewrites every shot's duration, so unlike the web — which has a tooltip
+  // and a mouse — a thumb gets a confirm first.
+  const paceableKind =
+    timeline?.source?.kind === "radio" || timeline?.source?.kind === "animatic"
+      ? timeline.source.kind
+      : null;
+  const canCommitPacing = !!paceableKind && !!backend.commitPacing;
+
+  const runCommitPacing = useCallback(async () => {
+    if (!backend.commitPacing) return;
+    setCommittingPacing(true);
+    try {
+      // Flush first: the route reads the SAVED doc and autosave is debounced.
+      const tl = timelineRef.current;
+      if (tl) {
+        await backend.saveTimeline(tl);
+        dirtyRef.current = false;
+      }
+      const { source, updated, untouched } = await backend.commitPacing();
+      Alert.alert(
+        "Pacing committed",
+        `Committed the ${source} timing to the Shot list — ${updated} shot duration${
+          updated === 1 ? "" : "s"
+        } updated${untouched ? `, ${untouched} left untouched` : ""}.`,
+      );
+    } catch (e: any) {
+      Alert.alert("Commit failed", String(e?.message || e));
+    } finally {
+      setCommittingPacing(false);
+    }
+  }, [backend, dirtyRef, timelineRef]);
+
+  const commitPacing = useCallback(() => {
+    Alert.alert(
+      "Commit pacing",
+      "Write this timeline's pacing back to the Shot list durations? Every shot's planned duration is replaced by what you see here — the animatic and episode video generation will follow it.",
+      [
+        { text: "Cancel", style: "cancel" },
+        { text: "Commit", style: "destructive", onPress: () => void runCommitPacing() },
+      ],
+    );
+  }, [runCommitPacing]);
+
   const { durationInFrames } = timelineDuration(timeline);
   const selectedItem = findItem(timeline, selectedId);
   const selectedTrack = findTrack(timeline, selectedId);
@@ -335,8 +385,16 @@ export function Editor({ onClose }: { onClose?: () => void } = {}) {
             onPress={undo}
           />
         </View>
-        <Text style={styles.brand}>Editor</Text>
+        <Text style={styles.brand}>{paceableKind === "animatic" ? "Animatic" : paceableKind === "radio" ? "Radio version" : "Editor"}</Text>
         <View style={styles.topbarSide}>
+          {canCommitPacing ? (
+            <ToolButton
+              icon="timer"
+              label={committingPacing ? "Committing…" : "Pacing"}
+              disabled={committingPacing}
+              onPress={commitPacing}
+            />
+          ) : null}
           <ToolButton
             icon="square.and.arrow.up"
             label="Export"

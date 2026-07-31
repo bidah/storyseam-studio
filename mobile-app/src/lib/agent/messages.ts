@@ -214,6 +214,79 @@ export function renderRadioSceneMessage(scene: any, lines: any[]) {
   ].join('\n');
 }
 
+// Re-voice ONE radio line — the line's "Recreate take". The worker APPENDS the
+// new take as another version and auto-selects it, so the prior take stays
+// available behind the version pills. Same skill/flow as a full scene render,
+// scoped to a single line. Verbatim port of the web AgentProvider's
+// recreateRadioLineMessage.
+export function recreateRadioLineMessage(scene: any, line: any) {
+  const clip = line.voiceRef?.refUrl || line.voiceRef?.url;
+  const voice = clip
+    ? `voiced by ${line.voiceRef.name || 'their voice'} (reference clip: ${clip})`
+    : `NO VOICE CAST — ask me to cast a voice first`;
+  return [
+    `Re-render ONLY this one radio line (a fresh take) — everything else stays as is.`,
+    `Load the radio skill and follow it for this single line: voice it with Seed Audio` +
+      ` using the character's reference voice clip so it stays consistent, attach it, and` +
+      ` call attach_radio_take with the line id. The new take is added as another version` +
+      ` under the line and becomes the selected one automatically.`,
+    '',
+    `- line ${line.id} — ${line.character || '?'} ${voice}: "${line.text}"`,
+    '',
+    `The reference clip is an absolute public URL — download it directly (curl/web_fetch)` +
+      ` and upload it as the Seed Audio audio_references clip (@Audio1). Keep the take to just` +
+      ` the spoken line, clean (no music, no SFX).`,
+  ].join('\n');
+}
+
+// The editorial second pass behind "Agent pacing". The gapless first pass was
+// JUST sent to the Editor (POST /api/radio/to-editor); this asks the agent to
+// re-time the space between takes from the Shot list so the audio-only cut
+// plays like a story. Mirrors the radio-pacing skill (move ops only — never
+// resize or reorder). Verbatim port of the web builder.
+export function paceRadioTimelineMessage() {
+  return [
+    `I just sent the radio version to the Editor — the gapless first pass, every voiced` +
+      ` line back-to-back on the Dialogue track. Do the editorial pacing pass now.`,
+    ``,
+    `Load the radio-pacing skill and follow it: read the timeline (get_timeline) and the` +
+      ` Shot list (get_shotlist), then re-time the Dialogue track with edit_timeline move` +
+      ` ops. Keep every take and their order — only shape the SPACE between lines: quick` +
+      ` exchanges stay tight, beat changes get a breath, and silent shots between spoken` +
+      ` lines become real pauses sized from their planned durations. If two lines should` +
+      ` genuinely overlap (an interruption, a reaction over a line), put the overlapping` +
+      ` take on a second dialogue lane — never overlap items on one track.`,
+    ``,
+    `When you're done, tell me the runtime before → after and where the big pauses landed and why.`,
+  ].join('\n');
+}
+
+// Delegate CASTING to the agent — the "Voice with agent" buttons on the Radio
+// casting rail. One or many speaker names. The agent designs a fitting voice,
+// renders a short in-character sample, and casts it with the RIGHT tool per
+// name: a World-roster character → attach_character_voice (by id); a background
+// speaker with no World record → cast_radio_voice (by name). Verbatim port.
+export function castVoiceMessage(characters: string | string[]) {
+  const list = Array.isArray(characters) ? characters : [characters];
+  const names = list.map((c) => `"${c}"`).join(', ');
+  const many = list.length > 1;
+  return [
+    `Cast a voice for ${many ? 'each of these Radio speakers' : 'the Radio speaker'} ${names} on the Casting rail.`,
+    ``,
+    `First call get_world and get_radio. Then for EACH name, in order:`,
+    `- If the name is on the World roster, read their voice / traits / appearance and design a voice that fits.` +
+      ` Otherwise it's a background / one-off speaker with no World record — pick a voice that suits the role.`,
+    `- Load the seed-audio skill and generate a SHORT, clean in-character voice sample (use one of that character's` +
+      ` own dialogue lines if they have one, else a neutral line — no music, no SFX). Then create_sound(kind:"voice"),` +
+      ` attach_sound so it flips to "ready", and like_sound_version so the take is castable.`,
+    `- Cast it with the RIGHT tool: a World character → attach_character_voice with that character's id;` +
+      ` a background speaker with no World record → cast_radio_voice by name.`,
+    ``,
+    `Confirm the first Higgsfield submit with me, then proceed through the rest without re-confirming.` +
+      ` When done, tell me which voices are cast — they'll show on the Casting rail (and, for World characters, the World tab).`,
+  ].join('\n');
+}
+
 export function stitchCutMessage(range: any, count?: number) {
   const span = range?.from ? ` (${range.from} → ${range.to})` : '';
   return [

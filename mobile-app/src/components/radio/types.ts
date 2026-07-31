@@ -17,6 +17,9 @@ export type RadioTake = {
   url: string | null;
   duration: number;
   ready: boolean;
+  /** Only on entries of `line.takes` — the take that plays and flows downstream. */
+  selected?: boolean;
+  at?: string | null;
 };
 
 export type RadioLine = {
@@ -26,7 +29,10 @@ export type RadioLine = {
   character: string;
   text: string;
   voiceRef: VoiceRef | null;
+  /** The ACTIVE take: the selected entry of `takes`, else the newest. */
   take: RadioTake | null;
+  /** Every rendered take, oldest first — each "Recreate" appended one. */
+  takes?: RadioTake[];
 };
 
 export type RadioScene = {

@@ -79,6 +79,17 @@ export function createCutsBackend(opts: { fromCutV?: number } = {}): EditorBacke
       return { timeline: res.timeline || emptyTimeline() };
     },
 
+    // Web parity (src/components/Editor.jsx). The route reads the SAVED
+    // editorTimeline doc, so the caller must flush the in-memory timeline
+    // FIRST — the Editor's autosave is debounced 600ms and a just-dragged edit
+    // would otherwise commit stale.
+    async commitPacing() {
+      const res = await postJson<{ source: string; updated: number; untouched: number }>(
+        "/api/radio/commit-pacing",
+      );
+      return { source: res.source, updated: res.updated || 0, untouched: res.untouched || 0 };
+    },
+
     async loadPool() {
       const res = await apiJson<PoolResponse>("/api/pool");
       return {
