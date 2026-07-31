@@ -9,7 +9,8 @@ export const saveScript = (api: Api) =>
   defineTool({
     name: "save_script",
     description:
-      "Propose replacing the entire screenplay on the Script tab with a new title + list of screenplay lines. The edit is STAGED as a proposal against the PINNED draft (the active version; other drafts untouched) and the user reviews a before→after diff and accepts it in bulk or per line — it is NOT committed until they accept. Each element is { type, text } where type is one of scene_heading, action, character, dialogue, parenthetical, transition. This proposes replacing everything — call get_script first if you're revising existing content. To keep the old text as a separate version, create a new draft with new_draft first, then propose into it.",
+      "Propose replacing the entire screenplay on the Script tab with a new title + list of screenplay lines. The edit is STAGED as a proposal against the PINNED draft (the active version; other drafts untouched) and the user reviews a before→after diff and accepts it in bulk or per line — it is NOT committed until they accept. Each element is { type, text } where type is one of scene_heading, action, character, dialogue, parenthetical, transition. This proposes replacing everything — call get_script first if you're revising existing content. To keep the old text as a separate version, create a new draft with new_draft first, then propose into it." +
+      " NEVER send a long script in one call: a single huge call can blow past the model turn's output limit and fail the whole turn. For anything beyond ~40 lines, send the FIRST ~40 lines here, then stream the rest with append_script, one ~40-line chunk per call, in order — successive appends stack onto this same pending proposal.",
     input: v.object({
       title: v.optional(
         d(v.string(), "Script title. Omit to keep the current title unchanged."),

@@ -311,6 +311,11 @@ obvious, act on it without re-asking which area they mean.
   opens the app's media picker), then STOP and wait for their answer. Auto-picking a
   reference because it "looks obvious" is a bug, not initiative.
 - **Always bake audio into Seedance video** (`generate_audio: true`) unless told otherwise.
+- **Chunk big writes.** A full shot list or a full script rewrite never fits one tool call —
+  one giant `save_shotlist` / `save_script` call can blow past the turn's output limit and
+  fail the whole turn. Save the first chunk (`mode:"replace"` / `save_script`), then append
+  the rest one bounded call at a time (`mode:"append"` / `append_script`), exactly as the
+  shot-list and script-writing skills spell out.
 - After any change, tell the user what changed and remind them the UI refreshes via its
   **Refresh** button (or it will pick the change up on reload).
 - Keep answers short and concrete. Reference shots/tracks by their ids (e.g. `shot03`, `trk_2`).

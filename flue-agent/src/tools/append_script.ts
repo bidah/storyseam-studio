@@ -13,7 +13,7 @@ export const appendScript = (api: Api) =>
   defineTool({
     name: "append_script",
     description:
-      "Propose appending screenplay lines to the END of the current script without overwriting existing content. Staged as a proposal against the PINNED draft (the active version) — the user reviews the diff and accepts (in bulk or per line) before it commits. Each element is { type, text } (scene_heading, action, character, dialogue, parenthetical, transition). Use this to continue writing; use save_script only when you intend to replace the whole document.",
+      "Propose appending screenplay lines to the END of the current script without overwriting existing content. Staged as a proposal against the PINNED draft (the active version) — the user reviews the diff and accepts (in bulk or per line) before it commits. Each element is { type, text } (scene_heading, action, character, dialogue, parenthetical, transition). Use this to continue writing, and to stream the remaining chunks of a full rewrite started with save_script (appends stack onto the pending proposal) — keep each call to ~40 lines so no single call can overflow the turn.",
     input: v.object({
       summary: v.optional(
         d(

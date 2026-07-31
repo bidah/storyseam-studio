@@ -287,9 +287,18 @@ function prettySize(n) {
 // A compact chip for a flue `dynamic-tool` part. `state` is one of
 // input-available / output-available / output-error; the input is surfaced as a
 // hover title and an error surfaces its `errorText` inline.
-function ToolChip({ part }) {
+//
+// `tail` is whether the part's message is the transcript's LAST message. flue
+// only ever runs tools at the transcript tail, so an unfinished part (no output,
+// no error) on any EARLIER message is provably dead — the turn moved past it
+// without a result (e.g. the model's tool-call JSON got truncated at the output
+// cap and the run failed). Rendering that as still-pending is a lie that reads
+// as "saving…" forever; call it interrupted and say how to recover.
+function ToolChip({ part, tail }) {
   const name = part.toolName || "tool";
   const errored = part.state === "output-error";
+  const finished = part.state === "output-available";
+  const interrupted = !tail && !errored && !finished;
   let inputHint = "";
   try {
     if (part.input !== undefined) inputHint = JSON.stringify(part.input);
@@ -308,10 +317,14 @@ function ToolChip({ part }) {
         )}
       >
         <Wrench size={11} /> {name}
-        {errored ? " · failed" : null}
+        {errored ? " · failed" : interrupted ? " · interrupted" : null}
       </span>
       {errored && part.errorText ? (
         <span className="max-w-full break-words text-[11px] text-destructive">{part.errorText}</span>
+      ) : interrupted ? (
+        <span className="max-w-full text-[11px] text-muted-foreground">
+          The turn ended before this tool finished — nothing was saved. Ask again to retry.
+        </span>
       ) : null}
     </span>
   );
@@ -520,7 +533,7 @@ function FilePart({ part }) {
   );
 }
 
-function MessagePart({ part, qa, canRespond, onRespond, onRequestReference, offerOptions }) {
+function MessagePart({ part, qa, canRespond, onRespond, onRequestReference, offerOptions, tail }) {
   switch (part.type) {
     case "text": {
       if (!part.text) return null;
@@ -582,7 +595,7 @@ function MessagePart({ part, qa, canRespond, onRespond, onRequestReference, offe
         const sources = parseSourcesOutput(part);
         if (sources) return <SourcesCard data={sources} />;
       }
-      return <ToolChip part={part} />;
+      return <ToolChip part={part} tail={tail} />;
     }
     case "file":
       return <FilePart part={part} />;
@@ -756,6 +769,7 @@ function AgentMessage({
   onRespond,
   onRequestReference,
   isLast,
+  tail,
 }) {
   const isUser = message.role === "user";
   if (isUser) {
@@ -799,6 +813,7 @@ function AgentMessage({
           onRespond={onRespond}
           onRequestReference={onRequestReference}
           offerOptions={isLast && !drewCard}
+          tail={tail}
         />
       ))}
     </div>
@@ -1873,6 +1888,9 @@ export default function AgentChat() {
                 onRespond={onRespond}
                 onRequestReference={onRequestReference}
                 isLast={i === messages.length - 1 && !isBusy}
+                // Raw tail position (no busy gate): an unfinished tool part on a
+                // non-tail message is dead — see ToolChip.
+                tail={i === messages.length - 1}
               />
             ))
           )}

@@ -25,10 +25,20 @@
 import { registerApiProvider } from "@flue/runtime";
 import { getCloudflareAIBindingApiProvider } from "@flue/runtime/cloudflare/internal";
 
-// Generous for a full outline/draft (~12k words) yet ≤ every allowed model's
-// documented completion cap (smallest: @cf/openai/gpt-oss-120b at 16384).
+// Fallback when the catalog doesn't document the model's completion cap.
+// When it DOES (pi-ai's `model.maxTokens`), we use that instead — clamping
+// every model to this floor is what truncated a full-script `save_script`
+// mid-arguments on Kimi (documented cap 256k, clamped to 16384; the turn
+// died with "A canonical conversation record violates the conversation
+// stream contract" and the chat stuck on a spinning tool chip).
 // Explicit per-call `maxTokens` (e.g. flue's compaction summarizer) wins.
 export const DEFAULT_MAX_COMPLETION_TOKENS = 16384;
+
+// Upper bound even when the catalog allows more (Kimi K2.6: 256k). A runaway
+// generation burns tokens for minutes before anyone can stop it; ~4× the
+// biggest legitimate turn we've observed (reasoning + a chunked tool call)
+// is headroom, not an invitation.
+export const MAX_COMPLETION_TOKENS_CEILING = 65536;
 
 type AnyStreamFn = (
   model: { maxTokens?: number },
@@ -39,13 +49,14 @@ type AnyStreamFn = (
 function withOutputCap(stream: AnyStreamFn): AnyStreamFn {
   return (model, context, options) => {
     if (options?.maxTokens) return stream(model, context, options);
-    // Never exceed the model's own documented completion cap when the
-    // catalog knows it (0 = unknown).
+    // The model's own documented completion cap when the catalog knows it
+    // (0 = unknown), bounded by the ceiling. gpt-oss-120b stays at its 16384;
+    // Kimi / GLM get real headroom instead of the old global 16384 clamp.
     const modelCap =
       typeof model.maxTokens === "number" && model.maxTokens > 0
         ? model.maxTokens
         : DEFAULT_MAX_COMPLETION_TOKENS;
-    const maxTokens = Math.min(DEFAULT_MAX_COMPLETION_TOKENS, modelCap);
+    const maxTokens = Math.min(modelCap, MAX_COMPLETION_TOKENS_CEILING);
     return stream(model, context, { ...options, maxTokens });
   };
 }

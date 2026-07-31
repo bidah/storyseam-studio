@@ -8,7 +8,10 @@ description: >-
   teleplay for the episode. The Script tab is a screenplay editor whose elements
   are scene headings, action, character cues, dialogue, parentheticals, and
   transitions — this skill drives it through the get_script / save_script /
-  append_script tools. The script is version-controlled into drafts and every
+  append_script tools. A full rewrite must be sent in CHUNKS — save_script with
+  the first ~40 lines, then append_script one ~40-line chunk per call — never
+  the whole script in a single tool call (a giant call overflows the model
+  turn's output limit and fails the whole turn). The script is version-controlled into drafts and every
   edit applies ONLY to the pinned (active) draft; list_drafts / new_draft /
   pin_draft manage the versions. To improve a script, delegate to the specialists
   (story-architect / plot-doctor / motivation-doctor / dialogue-doctor) instead of
@@ -44,6 +47,7 @@ You never write ProseMirror/HTML — you work with a flat array of
 - **`save_script`** — propose replacing the WHOLE document (optional new `title` +
   full `elements`). Use only for a full rewrite or a restructure; when in doubt
   read first and re-send the complete, corrected list. Pass a short `summary`.
+  **Never send a long script in one call — chunk it** (see below).
 - **`apply_script_proposal`** — commit the pending proposal in full (the same as
   the user hitting **Accept all** on the diff). Call it ONLY after the user has
   explicitly confirmed in chat that they want the change applied.
@@ -97,6 +101,18 @@ non-pinned housekeeping, but pinned-draft edits live-update in the open editor.
    already styles it, but DO write sluglines and transitions in their standard
    form (`INT. SCHOOLHOUSE - DAY`, `CUT TO:`) since that's the text content.
 4. Prefer **`append_script`** to extend; use **`save_script`** for a rewrite.
+   **Rewrite in chunks — never one giant call.** A full script is far too many
+   lines to emit in a single `save_script` call: that one tool call can blow
+   past the model turn's output limit, truncate mid-arguments, and fail the
+   whole turn (nothing gets saved). Instead:
+   - First chunk (~40 lines): `save_script({ title, summary, elements: <lines 1–40> })`
+     — this stages the proposal and replaces everything.
+   - Each further chunk: `append_script({ elements: <next ~40 lines> })` — one
+     call per chunk, in order. Appends stack onto the same pending proposal, so
+     the diff the user reviews is still one coherent before→after.
+   Work sequentially until the last line is in, then report the proposal as one
+   change. If a call fails, retry THAT chunk — the earlier chunks are already
+   staged.
 5. Report what you PROPOSED in one or two lines and **ask if they want it applied**
    (e.g. "proposed scene 3: 6 lines, Sara + Helena on the bridge — want me to
    apply it, or review the diff on the Script tab first?"). If they confirm, call
