@@ -9,7 +9,10 @@ import Animated, {
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
+import { useFocusEffect } from 'expo-router';
+import { useVideoPlayer, VideoView } from 'expo-video';
 import { SquarePen } from 'lucide-react-native';
+import { cardArt } from '@/lib/card-art';
 import { useConversations, useIsFreshChat } from '@/lib/agent/provider';
 import { openChatModal } from '@/lib/agent/chat-route';
 import { setPendingDraft } from '@/lib/agent/pending-draft';
@@ -161,6 +164,68 @@ const MESHES = [
   ['#fecaca', '#f87171', '#dc2626', '#fee2e2', '#fb7185', '#b91c1c', '#fef2f2', '#fda4af', '#7f1d1d'],
 ] as const;
 
+// The artwork some suggestion cards wear in place of the mesh band: a short
+// silent loop, filling the picture slot (see lib/card-art.ts for what lives
+// where and why it's served rather than bundled).
+//
+// It is DECORATION, so it behaves like decoration: no controls, no sound, no
+// fullscreen, no PiP, and `pointerEvents="none"` so a tap on the picture is a
+// tap on the card — the whole card is one button and the video must not eat the
+// press. The mesh stays mounted UNDERNEATH rather than being swapped out, so the
+// band is the card's colour from the first frame the screen paints; the loop
+// fades up over it when the pixels arrive, and a device that's offline (or a
+// file that 404s) simply keeps the gradient it already had.
+//
+// Playback is gated on tab FOCUS, not just mount: the deck runs to six cards and
+// most of them have art now, so that's up to six AVPlayers decoding behind the
+// Story tab — battery spent on something nobody is looking at. `useCaching` makes that cheap
+// to resume — the file comes off disk on every launch after the first.
+function CardArtVideo({ uri, height }: { uri: string; height: number }) {
+  const player = useVideoPlayer({ uri, useCaching: true }, (p) => {
+    p.loop = true;
+    p.muted = true;
+    // Never take the audio session from whatever the author is listening to.
+    // Muted alone doesn't guarantee that on iOS; this does.
+    p.audioMixingMode = 'mixWithOthers';
+    p.play();
+  });
+
+  // Focus, not mount: useFocusEffect's cleanup runs when the tab goes away, so
+  // leaving the screen pauses every loop on it and coming back resumes them.
+  //
+  // The pause is guarded because this cleanup ALSO runs on unmount, and by then
+  // the player may not exist: useVideoPlayer's own release is registered first
+  // (it's the earlier hook), effect cleanups run in registration order, so the
+  // native object is gone a beat before this line — and expo-video throws a
+  // hard NotFoundException, i.e. a redbox, for a call on a released player
+  // (seen on-sim 2026-07-30). A pause we lose on the way out costs nothing:
+  // the player is being torn down anyway.
+  useFocusEffect(
+    useCallback(() => {
+      player.play();
+      return () => {
+        try {
+          player.pause();
+        } catch {
+          /* already released — see above */
+        }
+      };
+    }, [player]),
+  );
+
+  return (
+    <VideoView
+      player={player}
+      style={[StyleSheet.absoluteFill, { height }]}
+      contentFit="cover"
+      nativeControls={false}
+      fullscreenOptions={{ enable: false }}
+      allowsVideoFrameAnalysis={false}
+      pointerEvents="none"
+    />
+  );
+}
+
 // A landing card. No liquid glass — over a near-white page it has nothing to
 // refract and just muddies the card. Instead it's the app's standard card
 // surface (`border border-border bg-card`, same as <Card> and the episode /
@@ -179,6 +244,7 @@ function PressCard({
   bodyStyle,
   bandHeight = CARD_BAND,
   bandSide = 'top',
+  art,
 }: {
   children: React.ReactNode;
   onPress: () => void;
@@ -192,6 +258,8 @@ function PressCard({
   bandHeight?: number;
   /** Which edge the mesh sits on — 'left' is a spine, 'none' is no mesh at all. */
   bandSide?: 'top' | 'left' | 'none';
+  /** A looping video to fill the top band with, over the mesh — see cardArt. */
+  art?: string;
 }) {
   const palette = MESHES[seed % MESHES.length];
   // Shifted off the palette's own digit so two cards sharing a palette still
@@ -209,17 +277,25 @@ function PressCard({
       >
         {/* No band at all on a plain card. Otherwise: a mesh on the wide top
             bands, and a FLAT fill for a spine — at 10pt wide a gradient reads as
-            colour noise, not art, though the seed still picks the hue. */}
-        {bandSide === 'none' ? null : MeshGradientView && bandSide !== 'left' ? (
-          <MeshGradientView
-            style={band}
-            columns={3}
-            rows={3}
-            colors={palette as unknown as string[]}
-            points={points}
-          />
-        ) : (
-          <View style={[band, { backgroundColor: palette[4] }]} />
+            colour noise, not art, though the seed still picks the hue.
+            A card WITH artwork keeps its mesh and wears the loop on top: the
+            gradient is what the slot shows before the first video frame lands,
+            and what it falls back to if the file never does. */}
+        {bandSide === 'none' ? null : (
+          <View style={band}>
+            {MeshGradientView && bandSide !== 'left' ? (
+              <MeshGradientView
+                style={StyleSheet.absoluteFill as ViewStyle}
+                columns={3}
+                rows={3}
+                colors={palette as unknown as string[]}
+                points={points}
+              />
+            ) : (
+              <View style={[StyleSheet.absoluteFill, { backgroundColor: palette[4] }]} />
+            )}
+            {art && bandSide === 'top' ? <CardArtVideo uri={art} height={bandHeight} /> : null}
+          </View>
         )}
         <View style={[styles.cardBody, bodyStyle]}>{children}</View>
       </View>
@@ -526,6 +602,9 @@ export default function ChatHomeScreen() {
                 style={styles.suggestionCard}
                 bodyStyle={styles.suggestionBody}
                 bandHeight={SUGGESTION_BAND}
+                // The picture slot's real artwork where the card has one; the
+                // rest keep the mesh the band was always painted with.
+                art={cardArt(s.id)}
                 onPress={() => onSuggest(s.prompt)}
               >
                 {/* Poster order: the headline reads FIRST, hanging off the mesh
