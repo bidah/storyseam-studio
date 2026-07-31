@@ -40,7 +40,6 @@ import { GlassSurface } from '@/components/chat/glass-surface';
 import {
   deriveQA,
   isReasoning,
-  reasoningTail,
   isStreamingText,
   isThinking,
   workingTool,
@@ -112,10 +111,8 @@ const NO_MESSAGES: AgentMessage[] = [];
 // top edge to sit clear of the bar at rest.
 const COMPACT_HEADER = 44;
 
-// Pulsing "Thinking… / Agent is working…" row (shimmer stand-in). `lines`
-// widens it for the live reasoning tail, which is a sentence rather than a
-// two-word status.
-function ShimmerRow({ label, lines = 1 }: { label: string; lines?: number }) {
+// Pulsing "Thinking… / Agent is working…" row (shimmer stand-in).
+function ShimmerRow({ label }: { label: string }) {
   const c = useChatColors();
   const opacity = useSharedValue(0.45);
   useEffect(() => {
@@ -128,7 +125,7 @@ function ShimmerRow({ label, lines = 1 }: { label: string; lines?: number }) {
         <View className="pt-0.5">
           <ActivityIndicator size="small" color={c.mutedForeground} />
         </View>
-        <Text className="flex-1 text-sm text-muted-foreground" numberOfLines={lines}>
+        <Text className="flex-1 text-sm text-muted-foreground" numberOfLines={1}>
           {label}
         </Text>
       </View>
@@ -304,7 +301,6 @@ export function Conversation({
   const streamingText = useMemo(() => isStreamingText(messages, busy), [messages, busy]);
   const working = useMemo(() => workingTool(messages, busy), [messages, busy]);
   const reasoning = useMemo(() => isReasoning(messages, busy), [messages, busy]);
-  const reasonTail = useMemo(() => reasoningTail(messages, busy), [messages, busy]);
   // Interactive `ask_question` cards: which one is pending vs already answered.
   const qa = useMemo(() => deriveQA(messages), [messages]);
   // A question card on the cover is a picture of one — answering it would send
@@ -587,11 +583,7 @@ export function Conversation({
                 ) : working ? (
                   <ShimmerRow label="Agent is working…" />
                 ) : reasoning ? (
-                  // The live reasoning tail, not a generic label — the agent
-                  // won't write the acknowledgment the prompt asks for, so its
-                  // thinking is the only real feedback available the moment a
-                  // tap lands. See reasoningTail.
-                  <ShimmerRow label={reasonTail || 'Reasoning…'} lines={2} />
+                  <ShimmerRow label="Reasoning…" />
                 ) : streamingText ? (
                   // The agent is visibly WRITING — the words are the progress
                   // indicator, so no shimmer under them (see isStreamingText).

@@ -53,33 +53,6 @@ export function isReasoning(messages: AgentMessage[], busy: boolean): boolean {
   return trailing?.type === 'reasoning';
 }
 
-// The tail of the reasoning the agent is writing RIGHT NOW — the label for the
-// shimmer while `isReasoning` holds.
-//
-// The system prompt tells the agent to open every turn with a plain-text
-// acknowledgment before it touches a tool (whistlewood.md "Reply before you
-// work"), and the model ignores it: a tap on a card is followed by reasoning and
-// tool calls, so the author waits with no idea their answer landed. flue has no
-// way to force a text part first, and inventing an acknowledgment the agent
-// never wrote would be putting words in its mouth. Its reasoning, however, is
-// real and already streaming — so show THAT instead of a generic "Reasoning…".
-//
-// Last non-empty LINE, not the whole block: reasoning arrives as paragraphs and
-// the newest line is the part that reads as progress.
-export function reasoningTail(messages: AgentMessage[], busy: boolean): string | null {
-  if (!isReasoning(messages, busy)) return null;
-  const last = messages[messages.length - 1];
-  let trailing: MessagePart | null = null;
-  for (const p of last.parts || []) {
-    if (isVisible(p)) trailing = p;
-  }
-  const lines = (trailing?.text || '')
-    .split('\n')
-    .map((l) => l.trim())
-    .filter(Boolean);
-  return lines.length ? lines[lines.length - 1] : null;
-}
-
 // The agent is actively WRITING: the trailing visible content is a text part
 // flue hasn't marked done yet.
 //

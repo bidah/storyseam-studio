@@ -895,39 +895,6 @@ function isReasoning(messages, busy) {
   return trailing?.type === "reasoning";
 }
 
-// The tail of the reasoning the agent is writing RIGHT NOW — the label for the
-// shimmer while `isReasoning` holds.
-//
-// The system prompt tells the agent to open every turn with a plain-text
-// acknowledgment before it touches a tool (whistlewood.md "Reply before you
-// work"), and the model ignores it: a tap on a card is followed by reasoning and
-// tool calls, so the author waits with no idea their answer landed. flue has no
-// way to force a text part first, and inventing an acknowledgment the agent
-// never wrote would be putting words in its mouth. Its reasoning, however, is
-// real and already streaming — so show THAT instead of a generic "Reasoning…".
-//
-// Last non-empty LINE, not the whole block: reasoning arrives as paragraphs and
-// the newest line is the part that reads as progress.
-function reasoningTail(messages, busy) {
-  if (!isReasoning(messages, busy)) return null;
-  const last = messages[messages.length - 1];
-  let trailing = null;
-  for (const p of last.parts || []) {
-    if (
-      (p.type === "text" && p.text?.trim()) ||
-      (p.type === "reasoning" && p.text?.trim()) ||
-      p.type === "dynamic-tool"
-    ) {
-      trailing = p;
-    }
-  }
-  const lines = (trailing?.text || "")
-    .split("\n")
-    .map((l) => l.trim())
-    .filter(Boolean);
-  return lines.length ? lines[lines.length - 1] : null;
-}
-
 // Read a File's bytes as raw base64 (no `data:` URL prefix) for flue's
 // `sendMessage({ images: [{ data, mimeType }] })`.
 function fileToBase64(file) {
@@ -1407,7 +1374,6 @@ export default function AgentChat() {
   const thinking = useMemo(() => isThinking(messages, isBusy), [messages, isBusy]);
   const working = useMemo(() => workingTool(messages, isBusy), [messages, isBusy]);
   const reasoning = useMemo(() => isReasoning(messages, isBusy), [messages, isBusy]);
-  const reasonTail = useMemo(() => reasoningTail(messages, isBusy), [messages, isBusy]);
   // Interactive `ask_question` cards: which one is pending vs already answered.
   const qa = useMemo(() => deriveQA(messages), [messages]);
 
@@ -1928,12 +1894,7 @@ export default function AgentChat() {
               <MarkerIcon>
                 <Loader2 className="animate-spin" />
               </MarkerIcon>
-              {/* The live reasoning tail, not a generic label — the agent won't
-                  write the acknowledgment the prompt asks for, so its thinking
-                  is the only real feedback the moment an answer lands. */}
-              <MarkerContent className="shimmer line-clamp-2">
-                {reasonTail || "Reasoning…"}
-              </MarkerContent>
+              <MarkerContent className="shimmer">Reasoning…</MarkerContent>
             </Marker>
           ) : isBusy ? (
             // Catch-all: the turn is still in flight but its trailing content is
