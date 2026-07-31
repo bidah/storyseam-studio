@@ -467,6 +467,14 @@ function PartView({
     case 'reasoning':
       return <ReasoningRow part={part} />;
     case 'dynamic-tool': {
+      // A question card redrawn later in the same turn is a discarded draft of
+      // the same ask — only the turn's last card renders. See deriveQA.
+      if (
+        QUESTION_TOOLS.has(part.toolName ?? '') &&
+        part.toolCallId &&
+        qa?.superseded?.has(part.toolCallId)
+      )
+        return null;
       if (part.toolName === 'render_ui') {
         const pending = qa?.pendingId === part.toolCallId;
         return (

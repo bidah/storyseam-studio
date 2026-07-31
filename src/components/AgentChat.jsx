@@ -560,6 +560,9 @@ function MessagePart({ part, qa, canRespond, onRespond, onRequestReference, offe
         </details>
       ) : null;
     case "dynamic-tool": {
+      // A question card redrawn later in the same turn is a discarded draft of
+      // the same ask — only the turn's last card renders. See deriveQA.
+      if (QUESTION_TOOLS.has(part.toolName) && qa?.superseded?.has(part.toolCallId)) return null;
       if (part.toolName === "render_ui") {
         const pending = qa?.pendingId === part.toolCallId;
         return (
@@ -655,21 +658,32 @@ function isNarration(p) {
 // It also collects `sealed`: the ids of the assistant messages drawn AFTER a
 // card and before the user's reply. A card is the last word of the turn, and
 // the model keeps writing past it into a fresh message — see `visibleParts`.
+//
+// And `superseded`: cards REPLACED by a later card in the same turn. The model
+// sometimes redraws the same question (a card, more reasoning, then a refined
+// duplicate of that card in its next step) — two identical asks on screen. The
+// LAST card of a turn is the ask; every earlier card with no user message
+// between it and the next card is a discarded draft, dropped from rendering.
 function deriveQA(messages) {
   const answered = new Map();
   const sealed = new Set();
+  const superseded = new Set();
   let pendingId = null;
   let afterCard = false;
+  let lastCardId = null;
   for (let i = 0; i < messages.length; i++) {
     const m = messages[i];
     if (m.role === "user") {
       afterCard = false;
+      lastCardId = null;
       continue;
     }
     if (m.role !== "assistant") continue;
     if (afterCard && m.id) sealed.add(m.id);
     for (const p of m.parts || []) {
       if (p.type !== "dynamic-tool" || !QUESTION_TOOLS.has(p.toolName)) continue;
+      if (lastCardId) superseded.add(lastCardId);
+      lastCardId = p.toolCallId;
       let ans = null;
       for (let j = i + 1; j < messages.length; j++) {
         if (messages[j].role === "user") {
@@ -686,7 +700,7 @@ function deriveQA(messages) {
       afterCard = true;
     }
   }
-  return { answered, pendingId, sealed };
+  return { answered, pendingId, sealed, superseded };
 }
 
 // The concatenated text of a (user) message's text parts — the join key that

@@ -42,6 +42,9 @@ export type QuestionState = {
   // Assistant messages written after a card and before the user answered — the
   // agent talking past the end of its own turn. See `visibleParts`.
   sealed: Set<string>;
+  // Question cards replaced by a later card in the same turn (the model redrew
+  // the same ask) — dropped from rendering entirely. See `deriveQA`.
+  superseded: Set<string>;
 };
 
 // One image the user sent with a turn (re-rendered from the persisted,

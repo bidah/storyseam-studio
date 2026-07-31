@@ -235,15 +235,24 @@ function isNarration(p: { type?: string; text?: string }): boolean {
 // It also collects `sealed`: the ids of the assistant messages drawn AFTER a
 // card and before the user's reply. A card is the last word of the turn, and
 // the model keeps writing past it into a fresh message — see `visibleParts`.
+//
+// And `superseded`: cards REPLACED by a later card in the same turn. The model
+// sometimes redraws the same question (a card, more reasoning, then a refined
+// duplicate of that card in its next step) — two identical asks on screen. The
+// LAST card of a turn is the ask; every earlier card with no user message
+// between it and the next card is a discarded draft, dropped from rendering.
 export function deriveQA(messages: AgentMessage[]): QuestionState {
   const answered = new Map<string, string>();
   const sealed = new Set<string>();
+  const superseded = new Set<string>();
   let pendingId: string | null = null;
   let afterCard = false;
+  let lastCardId: string | null = null;
   for (let i = 0; i < messages.length; i++) {
     const m = messages[i];
     if (m.role === 'user') {
       afterCard = false;
+      lastCardId = null;
       continue;
     }
     if (m.role !== 'assistant') continue;
@@ -251,6 +260,8 @@ export function deriveQA(messages: AgentMessage[]): QuestionState {
     for (const p of m.parts || []) {
       if (p.type !== 'dynamic-tool' || !QUESTION_TOOLS.has(p.toolName ?? '') || !p.toolCallId)
         continue;
+      if (lastCardId) superseded.add(lastCardId);
+      lastCardId = p.toolCallId;
       let ans: string | null = null;
       for (let j = i + 1; j < messages.length; j++) {
         if (messages[j].role === 'user') {
@@ -263,7 +274,7 @@ export function deriveQA(messages: AgentMessage[]): QuestionState {
       afterCard = true;
     }
   }
-  return { pendingId, answered, sealed };
+  return { pendingId, answered, sealed, superseded };
 }
 
 // --- Web-search sources -----------------------------------------------------
