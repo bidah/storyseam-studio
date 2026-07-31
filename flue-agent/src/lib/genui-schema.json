@@ -26,6 +26,12 @@
     "MediaGrid": {
       "$ref": "#/$defs/MediaGrid"
     },
+    "AudioItem": {
+      "$ref": "#/$defs/AudioItem"
+    },
+    "AudioList": {
+      "$ref": "#/$defs/AudioList"
+    },
     "Recommendation": {
       "$ref": "#/$defs/Recommendation"
     },
@@ -60,6 +66,8 @@
     "OptionList",
     "MediaItem",
     "MediaGrid",
+    "AudioItem",
+    "AudioList",
     "Recommendation",
     "Column",
     "Compare",
@@ -91,6 +99,9 @@
                   },
                   {
                     "$ref": "#/$defs/MediaGrid"
+                  },
+                  {
+                    "$ref": "#/$defs/AudioList"
                   },
                   {
                     "$ref": "#/$defs/Recommendation"
@@ -405,6 +416,129 @@
       ],
       "additionalProperties": false,
       "description": "One pickable image in a MediaGrid. src: the image URL (a /storyboard-media, /library or generation URL from the tools — never invent one). send: the message sent AS THE USER when this is picked — write it as the user would ('Use the second reference'), never as an instruction to yourself. It MUST OPEN WITH the words shown on the control itself (its title/label), because this message is the author's ONLY confirmation that the row they hit is the row they meant; put any extra brief AFTER that opening — title 'Punch up the dialogue' ⇒ send 'Punch up the dialogue — sharpen the voices in the audition scene', never send 'Let me tighten those lines'; in a 'many' grid make it a NOUN PHRASE instead (\"the dawn clearing\"), because the picks are joined into one sentence. label: a short name under the thumbnail. caption: one extra line of context. selected: marks the current pick."
+    },
+    "AudioList": {
+      "type": "object",
+      "properties": {
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/AudioItem"
+          }
+        },
+        "header": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "footnote": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "select": {
+          "type": "string",
+          "enum": [
+            "one",
+            "many"
+          ]
+        },
+        "send": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "confirm": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "items"
+      ],
+      "additionalProperties": false,
+      "description": "A stack of playable audio rows — THE way to hand finished audio back to the author: a Seed Audio scene, radio takes, new sound versions. The author plays each clip right in the chat; NEVER paste an audio URL as a markdown link instead. Playing never sends anything — picking is a separate control that appears only on rows given a `send`, so a listen-only card is simply rows without one. select: 'one' (default) — a tap picks that item and sends immediately. 'many' — taps toggle, and nothing is sent until the confirm button — use 'many' when several takes can be kept. send: REQUIRED when select is 'many': the lead of the composed message, to which the picked items' `send` values are appended after a colon — e.g. send \"Add these characters to the World\" + picks \"Miles\", \"Vera\" posts \"Add these characters to the World: Miles, Vera\". Ignored when select is 'one'. confirm: the confirm button's label when select is 'many' (default \"Continue\"). Ignored when select is 'one'."
+    },
+    "AudioItem": {
+      "type": "object",
+      "properties": {
+        "src": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "send": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "subtitle": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "meta": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "badge": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "selected": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "src",
+        "title"
+      ],
+      "additionalProperties": false,
+      "description": "One playable clip in an AudioList, rendered as a row with an inline play button. src: the audio URL (a /sound-media or generation URL a tool returned — never invent one). title: what the clip is (\"Take 2 — heavier rain\"). send: OPTIONAL — give it only when picking this clip is a real decision; then it follows the usual rules (the message sent AS THE USER when this is picked — write it as the user would ('Use the second reference'), never as an instruction to yourself. It MUST OPEN WITH the words shown on the control itself (its title/label), because this message is the author's ONLY confirmation that the row they hit is the row they meant; put any extra brief AFTER that opening — title 'Punch up the dialogue' ⇒ send 'Punch up the dialogue — sharpen the voices in the audition scene', never send 'Let me tighten those lines'; in a 'many' list a NOUN PHRASE instead). Omit send entirely when the card is just for listening. subtitle: one line of context (what changed in this take). meta: a short right-aligned qualifier (\"12s\", \"v3\"). badge: a tiny pill (\"Liked\", \"New\"). selected: marks the take already in force."
     },
     "Recommendation": {
       "type": "object",
@@ -726,6 +860,9 @@
               },
               {
                 "$ref": "#/$defs/MediaGrid"
+              },
+              {
+                "$ref": "#/$defs/AudioList"
               },
               {
                 "$ref": "#/$defs/Recommendation"

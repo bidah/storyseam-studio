@@ -71,6 +71,12 @@ This skill only produces audio. It does NOT stitch a timeline or render video.
 
 ## Notes
 
+- **Finish with a playable card.** After the takes are attached, end the turn
+  with a `render_ui` **AudioList** card of the rendered lines (each take's
+  `/sound-media/...` url from `get_radio` / the attach results) so the author
+  can listen right in the chat — never a bare list of audio links. For a big
+  batch, card the takes most worth checking (new voices, retakes) rather than
+  every line.
 - Each line can hold several takes. `attach_radio_take` **appends** a take as a
   new version under the line and auto-selects it — it does not overwrite the
   previous one. So voicing a line again (e.g. the user's per-line "Recreate")

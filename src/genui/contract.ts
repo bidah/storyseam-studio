@@ -99,6 +99,23 @@ export interface MediaGridProps {
   send?: string | null;
   confirm?: string | null;
 }
+export interface AudioItemProps {
+  src: string;
+  title: string;
+  send?: string | null;
+  subtitle?: string | null;
+  meta?: string | null;
+  badge?: string | null;
+  selected?: boolean;
+}
+export interface AudioListProps {
+  items?: unknown[];
+  header?: string | null;
+  footnote?: string | null;
+  select?: "one" | "many";
+  send?: string | null;
+  confirm?: string | null;
+}
 export interface RecommendationProps {
   title: string;
   body: string;
@@ -162,6 +179,8 @@ export interface StudioRenderers {
   OptionList: Renderer<OptionListProps>;
   MediaItem: Renderer<MediaItemProps>;
   MediaGrid: Renderer<MediaGridProps>;
+  AudioItem: Renderer<AudioItemProps>;
+  AudioList: Renderer<AudioListProps>;
   Recommendation: Renderer<RecommendationProps>;
   Column: Renderer<ColumnProps>;
   Compare: Renderer<CompareProps>;
@@ -298,6 +317,37 @@ export function buildStudioLibrary(renderers: StudioRenderers): Library {
     component: r(renderers.MediaGrid),
   });
 
+  // --- Audio ---------------------------------------------------------------
+
+  const AudioItem = defineComponent({
+    name: "AudioItem",
+    props: z.object({
+      src: z.string(),
+      title: z.string(),
+      send: z.string().optional().nullable(),
+      subtitle: z.string().optional().nullable(),
+      meta: z.string().optional().nullable(),
+      badge: z.string().optional().nullable(),
+      selected: z.boolean().optional(),
+    }),
+    description: `One playable clip in an AudioList, rendered as a row with an inline play button. src: the audio URL (a /sound-media or generation URL a tool returned — never invent one). title: what the clip is ("Take 2 — heavier rain"). send: OPTIONAL — give it only when picking this clip is a real decision; then it follows the usual rules (${SEND}; in a 'many' list a NOUN PHRASE instead). Omit send entirely when the card is just for listening. subtitle: one line of context (what changed in this take). meta: a short right-aligned qualifier ("12s", "v3"). badge: a tiny pill ("Liked", "New"). selected: marks the take already in force.`,
+    component: r(renderers.AudioItem),
+  });
+
+  const AudioList = defineComponent({
+    name: "AudioList",
+    props: z.object({
+      items: z.array(AudioItem.ref),
+      header: z.string().optional().nullable(),
+      footnote: z.string().optional().nullable(),
+      select: z.enum(["one", "many"]).optional(),
+      send: z.string().optional().nullable(),
+      confirm: z.string().optional().nullable(),
+    }),
+    description: `A stack of playable audio rows — THE way to hand finished audio back to the author: a Seed Audio scene, radio takes, new sound versions. The author plays each clip right in the chat; NEVER paste an audio URL as a markdown link instead. Playing never sends anything — picking is a separate control that appears only on rows given a \`send\`, so a listen-only card is simply rows without one. select: ${SELECT} — use 'many' when several takes can be kept. send: ${LIST_SEND}. confirm: ${CONFIRM}.`,
+    component: r(renderers.AudioList),
+  });
+
   // --- Recommendation ------------------------------------------------------
 
   const Recommendation = defineComponent({
@@ -407,6 +457,7 @@ export function buildStudioLibrary(renderers: StudioRenderers): Library {
     Callout.ref,
     OptionList.ref,
     MediaGrid.ref,
+    AudioList.ref,
     Recommendation.ref,
     Compare.ref,
     KeyValue.ref,
@@ -447,6 +498,8 @@ export function buildStudioLibrary(renderers: StudioRenderers): Library {
       OptionList,
       MediaItem,
       MediaGrid,
+      AudioItem,
+      AudioList,
       Recommendation,
       Column,
       Compare,
@@ -472,6 +525,15 @@ export function buildStudioLibrary(renderers: StudioRenderers): Library {
         notes: [
           "Reference-image, still, take and character-sheet picks ALWAYS go through MediaGrid — never as markdown image links in your message text.",
           "Only use URLs the tools gave you (list_library, get_visual_world, get_episode, …). Never invent or guess an image URL.",
+        ],
+      },
+      {
+        name: "Playing audio",
+        components: ["AudioList", "AudioItem"],
+        notes: [
+          "Audio that just finished rendering (a Seed Audio scene, radio takes, sound versions) is handed back as an AudioList so the author can LISTEN in place — never as a markdown link to a /sound-media URL.",
+          "A row is pickable only if you give it a `send` ('Keep take 2'); leave `send` off every row when there is nothing to decide.",
+          "Only use audio URLs a tool actually returned (list_sounds, get_radio, attach_sound, …). A version whose status is still 'pending' has no URL yet — don't card it.",
         ],
       },
       {

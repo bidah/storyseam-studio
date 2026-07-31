@@ -17,22 +17,25 @@
  * are no ActionExpressions here.
  */
 import type { ReactNode } from 'react';
-import { createContext, Fragment, useContext, useMemo, useState } from 'react';
+import { createContext, Fragment, useContext, useEffect, useMemo, useState } from 'react';
 import { Text as RNText, View } from 'react-native';
 import { Image } from 'expo-image';
 import { Galeria } from '@nandorojo/galeria';
-import { Check, ChevronRight } from 'lucide-react-native';
+import { setAudioModeAsync, useAudioPlayer, useAudioPlayerStatus } from 'expo-audio';
+import { Check, ChevronRight, Pause, Play } from 'lucide-react-native';
 import { useIsStreaming, useTriggerAction } from '@openuidev/react-lang';
 import { BouncyPressable } from '@/components/ui/bouncy-pressable';
 import { SemiPillButton } from '@/components/ui/semi-pill-button';
 import { useColors } from '@/lib/colors';
 import { useEffectiveScheme } from '@/lib/theme';
-import { apiUrl } from '@/lib/api';
+import { apiUrl, mediaUrl } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { useAnswerState } from './answered';
 import type {
   ActionProps,
   ActionsProps,
+  AudioItemProps,
+  AudioListProps,
   CalloutProps,
   CardProps,
   ColumnProps,
@@ -508,6 +511,177 @@ export function MediaGrid({ props, renderNode }: Render<MediaGridProps>) {
 }
 
 // ---------------------------------------------------------------------------
+// Audio
+// ---------------------------------------------------------------------------
+
+/**
+ * One clip at a time per card. The list owns which row is playing (keyed by
+ * src) and rows toggle into it — same one-player rule as the Sounds tab. A
+ * stray AudioItem outside an AudioList falls back to its own local state.
+ */
+type AudioPlayback = { activeKey: string | null; toggle: (key: string) => void };
+
+const AudioPlaybackContext = createContext<AudioPlayback | null>(null);
+
+/**
+ * The single mounted expo-audio player — keyed by URL so switching rows
+ * remounts it (useAudioPlayer doesn't chase source changes); unmount releases
+ * it. Same pattern as the Sounds tab's AudioHost.
+ */
+function AudioHost({ url, onDone }: { url: string; onDone: () => void }) {
+  const player = useAudioPlayer(url);
+  const status = useAudioPlayerStatus(player);
+  useEffect(() => {
+    player.play();
+  }, [player]);
+  useEffect(() => {
+    if (status.didJustFinish) onDone();
+  }, [status.didJustFinish, onDone]);
+  return null;
+}
+
+/**
+ * One playable clip. Mirrors MediaItem's split gestures: TAPPING THE ROW
+ * plays/pauses the clip, while picking is the explicit trailing control — and
+ * only rows given a `send` have one, so a listen-only card is just rows.
+ */
+export function AudioItem({ props }: Render<AudioItemProps>) {
+  const colors = useColors();
+  const selection = useSelection();
+  const playback = useContext(AudioPlaybackContext);
+  const [localKey, setLocalKey] = useState<string | null>(null);
+  const send = useSend(props.send);
+  // Native players send no headers, so the project id must ride the URL —
+  // mediaUrl, not apiUrl (the same reason the Sounds tab uses it).
+  const url = mediaUrl(props.src);
+  const playing = playback ? playback.activeKey === props.src : localKey === props.src;
+  const togglePlay = () => {
+    if (!url) return;
+    if (playback) playback.toggle(props.src);
+    else setLocalKey((cur) => (cur === props.src ? null : props.src));
+  };
+  const stop = () => {
+    if (playback) {
+      if (playback.activeKey === props.src) playback.toggle(props.src);
+    } else setLocalKey(null);
+  };
+  const checked = selection && props.send ? selection.has(props.send) : false;
+  const pick = selection ? (send && props.send ? () => selection.toggle(props.send!) : undefined) : send;
+  const { picked, dimmed } = useAnswerState(props.send);
+  const marked = props.selected || picked;
+
+  return (
+    <BouncyPressable
+      onPress={togglePlay}
+      disabled={!url}
+      pressedScale={0.985}
+      accessibilityLabel={`${playing ? 'Pause' : 'Play'} ${props.title}`}
+      className="flex-row items-center gap-3 px-4 py-4"
+      style={{
+        backgroundColor: picked ? `${colors.primary}14` : undefined,
+        opacity: dimmed ? 0.45 : 1,
+      }}
+    >
+      {playing && url ? <AudioHost url={url} onDone={stop} /> : null}
+      <View
+        className="h-10 w-10 items-center justify-center rounded-full border"
+        style={{
+          borderColor: playing ? colors.primary : colors.border,
+          backgroundColor: playing ? colors.primary : 'transparent',
+        }}
+      >
+        {playing ? (
+          <Pause size={16} color={colors.primaryForeground} />
+        ) : (
+          <Play size={16} color={colors.foreground} style={{ marginLeft: 2 }} />
+        )}
+      </View>
+      <View className="flex-1">
+        <View className="flex-row items-center gap-1.5">
+          <RNText className="flex-1 text-[16px] font-medium text-foreground" numberOfLines={1}>
+            {props.title}
+          </RNText>
+          {props.badge ? (
+            <View className="rounded-full bg-secondary px-2 py-0.5">
+              <RNText className="text-[11px] font-medium text-muted-foreground">
+                {props.badge}
+              </RNText>
+            </View>
+          ) : null}
+        </View>
+        {props.subtitle ? (
+          <RNText className="mt-0.5 text-[13px] leading-[18px] text-muted-foreground">
+            {props.subtitle}
+          </RNText>
+        ) : null}
+      </View>
+      {props.meta ? (
+        <RNText className="text-[13px] text-muted-foreground">{props.meta}</RNText>
+      ) : null}
+      {selection && props.send ? (
+        <BouncyPressable
+          onPress={pick}
+          disabled={!pick}
+          pressedScale={0.9}
+          accessibilityLabel={`${checked ? 'Unpick' : 'Pick'} ${props.title}`}
+          className="py-1 pl-1"
+        >
+          <CheckSquare checked={checked} />
+        </BouncyPressable>
+      ) : props.send ? (
+        marked ? (
+          <Check size={18} color={colors.primary} />
+        ) : (
+          <BouncyPressable
+            onPress={pick}
+            disabled={!pick}
+            pressedScale={0.95}
+            accessibilityLabel={`Use ${props.title}`}
+            className="rounded-full border border-border bg-secondary px-3 py-1.5"
+          >
+            <RNText className="text-[13px] font-medium text-foreground">Use</RNText>
+          </BouncyPressable>
+        )
+      ) : null}
+    </BouncyPressable>
+  );
+}
+
+export function AudioList({ props, renderNode }: Render<AudioListProps>) {
+  const items = Array.isArray(props.items) ? props.items : [];
+  const { Provider, Footer } = useMultiSelect(props);
+  const [activeKey, setActiveKey] = useState<string | null>(null);
+  const playback = useMemo<AudioPlayback>(
+    () => ({ activeKey, toggle: (key) => setActiveKey((cur) => (cur === key ? null : key)) }),
+    [activeKey],
+  );
+  useEffect(() => {
+    setAudioModeAsync({ playsInSilentMode: true }).catch(() => {});
+  }, []);
+  return (
+    <View>
+      <Header>{props.header}</Header>
+      <Provider>
+        <AudioPlaybackContext.Provider value={playback}>
+          <InsetCard>
+            {items.map((item, i) => (
+              <Fragment key={i}>
+                {i > 0 ? <RowSeparator /> : null}
+                {renderNode(item)}
+              </Fragment>
+            ))}
+          </InsetCard>
+        </AudioPlaybackContext.Provider>
+        <Footer />
+      </Provider>
+      {props.footnote ? (
+        <RNText className="px-1 pt-1.5 text-[13px] text-muted-foreground">{props.footnote}</RNText>
+      ) : null}
+    </View>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Recommendation
 // ---------------------------------------------------------------------------
 
@@ -826,6 +1000,8 @@ export const nativeRenderers: StudioRenderers = {
   OptionList,
   MediaItem,
   MediaGrid,
+  AudioItem,
+  AudioList,
   Recommendation,
   Column,
   Compare,

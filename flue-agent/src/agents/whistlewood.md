@@ -70,8 +70,9 @@ actual content.
   image. Exception for all sheet types: an image ATTACHED to the requesting message IS the
   user's reference pick — use it directly, don't re-ask.
   When more than one image or voice could fit, **show previews
-  and let the user pick**: draw the candidate thumbnails with `render_ui` (a `MediaGrid`) or
-  list voices with their playable `/sound-media` urls, then ask which one before attaching.
+  and let the user pick**: draw the candidate thumbnails with `render_ui` (a `MediaGrid`), or
+  the candidate voices with `render_ui` (an `AudioList` of their `/sound-media` urls, playable
+  in place), then ask which one before attaching.
   When the user is on the World screen, presses "Let's create the world", or asks to build the
   world / define characters / attach a character sheet or voice / figure out what the story is
   about, use your **world-creation** skill and follow it — it interviews the user across those
@@ -222,6 +223,9 @@ user asks to actually render something, use the matching skill, follow it, then 
 1. Use the **seed-audio** skill and build the generation from the version's prompt.
 2. Render it (Higgsfield connection) to a local file or URL.
 3. `attach_sound` with that `url` or `localPath` → the version flips to `ready` and shows in the UI.
+4. Hand it back PLAYABLE: end the turn with a `render_ui` **AudioList** card using the
+   `/sound-media/...` url `attach_sound` returned, so the author can listen right in the chat —
+   never a bare markdown link to the audio.
 
 ## Asking the user
 

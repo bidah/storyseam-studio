@@ -7,7 +7,7 @@ export const attachSound = (api: Api) =>
   defineTool({
     name: "attach_sound",
     description:
-      "Attach a rendered audio file to a pending sound version — from a remote URL (downloaded) or a local file path (copied). Flips the version to 'ready', probes its duration, and makes it play in the UI. This is the final step of the render→attach loop after generating with the seed-audio skill.",
+      "Attach a rendered audio file to a pending sound version — from a remote URL (downloaded) or a local file path (copied). Flips the version to 'ready', probes its duration, and makes it play in the UI. This is the final step of the render→attach loop after generating with the seed-audio skill. Returns the playable `/sound-media/...` url — after attaching, end the turn with a render_ui AudioList card built from that url so the author can listen right in the chat.",
     input: v.object({
       id: d(v.pipe(v.string(), v.minLength(1)), "Track id, e.g. trk_2."),
       v: d(v.pipe(v.number(), v.integer(), v.minValue(1)), "Version number to attach to."),

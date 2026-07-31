@@ -11,9 +11,9 @@ description: >-
   gunshots, rooms, music beds, and spoken lines together in one mixed clip. NOT
   for plain narration of long text (use a text2speech_v2_* model for that).
   Higgsfield-ONLY for scenes: neither fal nor Atlas Cloud has a Seed Audio
-  equivalent (even when one of them is the active render provider) — fal's
-  fal_generate_audio makes single ElevenLabs sound effects, so only use it for
-  a simple standalone SFX when the user explicitly asks for fal.
+  equivalent even as the active provider — fal's fal_generate_audio makes single
+  ElevenLabs SFX, so use it only when the user explicitly asks for fal. Attached
+  audio is handed back PLAYABLE — a render_ui AudioList card, never a bare link.
 ---
 
 # Seed Audio 1.0 (Higgsfield)
@@ -153,7 +153,15 @@ and transcode: `ffmpeg -y -i in.wav -c:a libmp3lame -b:a 192k out.mp3`.
 3. generate_audio            -> { model:"seed_audio", prompt, ...params }  → job id
 4. job_status (sync:true)    -> poll until status:"completed"
 5. curl rawUrl + file        -> save, verify container, rename
+6. attach_sound              -> version flips ready, returns /sound-media url
+7. render_ui AudioList       -> hand the audio back PLAYABLE in the chat (root
+                                agent only — a subagent returns the url instead)
 ```
+
+> 🔊 **The author hears the result in chat.** Once the render is attached
+> (`attach_sound` → `/sound-media/...` url), the ROOT agent's closing move is a
+> `render_ui` **AudioList** card with that url — see the `generative-ui` skill.
+> Never deliver finished audio as a bare markdown link; the card is the player.
 
 ---
 

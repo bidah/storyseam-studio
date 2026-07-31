@@ -6,9 +6,12 @@ description: >-
   approve a plan. Load this WHENEVER you are about to call `render_ui` and are
   not certain of the syntax. Hard rules that hold even without reading the body:
   every interactive element's `send` string is posted VERBATIM as the author's
-  next chat message, so write it in their voice; image URLs must come from a
-  tool result and are never invented; reference/still/take picks go through
-  MediaGrid, never markdown image links; `render_ui` is the FINAL action of the
+  next chat message, so write it in their voice; image and audio URLs must come
+  from a tool result and are never invented; reference/still/take picks go
+  through MediaGrid, never markdown image links; finished AUDIO (a Seed Audio
+  scene, radio takes, a sound version going ready) is handed back as an
+  AudioList card so the author can play it in the chat, never as a bare
+  /sound-media link; `render_ui` is the FINAL action of the
   turn and you STOP after it; and it is root-agent only — a subagent cannot
   pause, so it must hand its question back to you instead.
 ---
@@ -108,6 +111,7 @@ A card that repeats your paragraph reads as a stutter.
 | choose ONE of 2–6 things | `OptionList`, `select: "one"` |
 | choose SEVERAL of a list | `OptionList`, `select: "many"` |
 | pick an image (reference, still, take, sheet) | `MediaGrid` of `MediaItem` |
+| hear audio that just rendered (and maybe keep a take) | `AudioList` of `AudioItem` |
 | say yes or no to one proposal | `Recommendation` (hero + one CTA) |
 | weigh 2–3 options on the same attributes | `Compare` of `Column` |
 | approve a submit before it costs credits | `KeyValue` (the params) + `Actions` |
@@ -130,6 +134,29 @@ here.** A plausible-looking `/library/clearing-dawn.png` that doesn't exist
 renders as a broken thumbnail and sends the author chasing a file that was never
 there. If you don't have the value, omit the prop; if you don't have the
 thumbnails, call `list_library` / `get_visual_world` / `get_episode` first.
+
+## Sound comes back playable
+
+When audio finishes rendering — a Seed Audio scene you just attached, radio
+takes, a sound version flipping `ready` — show it as an `AudioList` so the
+author can listen right there in the chat. A `/sound-media/...` URL pasted as a
+markdown link is a dead end; the card is the player. Tapping a row plays or
+pauses it inline and never sends anything.
+
+Give a row a `send` only when there is a real decision riding on it ("Keep take
+2", "Attach this to shot 12"); a card that just delivers the render is rows
+with no `send` at all:
+
+```
+root = Card([intro, takes])
+intro = Text("Both takes are in — the second leans harder into the rain.", "body")
+takes = AudioList([t1, t2], "Rain on the stone bridge")
+t1 = AudioItem("<url from attach_sound/list_sounds>", "Take 1 — steady drizzle", "Keep take 1", "v1 of the ambience bed", "12s")
+t2 = AudioItem("<url from attach_sound/list_sounds>", "Take 2 — heavier rain", "Keep take 2", "v2, more low end", "12s")
+```
+
+Only use audio URLs a tool returned (`attach_sound`'s response, `list_sounds`,
+`get_radio`, …). A version still `pending` has no URL — don't card it.
 
 ## Reference picks
 

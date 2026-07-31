@@ -13,8 +13,8 @@
  * `useTriggerAction`. See the contract header for why there are no
  * ActionExpressions here.
  */
-import { createContext, useContext, useMemo, useState } from "react";
-import { Check, ChevronRight, Expand } from "lucide-react";
+import { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { Check, ChevronRight, Expand, Pause, Play } from "lucide-react";
 import { useTriggerAction, useIsStreaming } from "@openuidev/react-lang";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -403,6 +403,177 @@ export function MediaGrid({ props, renderNode }) {
 }
 
 // ---------------------------------------------------------------------------
+// Audio
+// ---------------------------------------------------------------------------
+
+// The one clip playing anywhere in the chat — starting a row pauses whichever
+// other row was playing, like the Sounds tab's one-player-at-a-time rule.
+let activeClip = null;
+
+/**
+ * A lazily created HTMLAudioElement behind a play/pause toggle. The element is
+ * only constructed on the first tap, so a card full of takes doesn't open a
+ * connection per row on mount.
+ */
+function useAudioClip(src) {
+  const ref = useRef(null);
+  const [playing, setPlaying] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const [duration, setDuration] = useState(0);
+
+  useEffect(
+    () => () => {
+      const el = ref.current;
+      if (!el) return;
+      el.pause();
+      if (activeClip === el) activeClip = null;
+    },
+    [],
+  );
+
+  const toggle = () => {
+    let el = ref.current;
+    if (!el) {
+      el = new Audio(src);
+      el.preload = "auto";
+      el.addEventListener("timeupdate", () => {
+        if (el.duration) setProgress(el.currentTime / el.duration);
+      });
+      el.addEventListener("durationchange", () => {
+        if (Number.isFinite(el.duration)) setDuration(el.duration);
+      });
+      el.addEventListener("play", () => {
+        if (activeClip && activeClip !== el) activeClip.pause();
+        activeClip = el;
+        setPlaying(true);
+      });
+      el.addEventListener("pause", () => setPlaying(false));
+      el.addEventListener("ended", () => {
+        el.currentTime = 0;
+        setProgress(0);
+      });
+      ref.current = el;
+    }
+    if (el.paused) el.play().catch(() => setPlaying(false));
+    else el.pause();
+  };
+
+  return { playing, progress, duration, toggle };
+}
+
+function formatSeconds(s) {
+  if (!Number.isFinite(s) || s <= 0) return null;
+  const whole = Math.round(s);
+  return `${Math.floor(whole / 60)}:${String(whole % 60).padStart(2, "0")}`;
+}
+
+/**
+ * One playable clip. The two gestures mirror MediaItem's: TAPPING THE ROW
+ * plays/pauses (you should be able to actually hear a take before committing
+ * to it), while picking is the explicit control at the trailing edge — and only
+ * rows given a `send` have one, so a listen-only card is just rows.
+ */
+export function AudioItem({ props }) {
+  const selection = useSelection();
+  const send = useSend(props.send);
+  const { playing, progress, duration, toggle } = useAudioClip(props.src);
+  const checked = selection && props.send ? selection.has(props.send) : false;
+  const pick = selection ? (send ? () => selection.toggle(props.send) : undefined) : send;
+  const { picked, dimmed } = useAnswerState(props.send);
+  const marked = props.selected || picked;
+  const time = formatSeconds(duration);
+
+  return (
+    <div
+      className={cn(
+        "flex w-full items-center gap-3 px-3 py-3",
+        picked && "bg-primary/10",
+        dimmed && "opacity-45",
+      )}
+    >
+      <button
+        type="button"
+        onClick={toggle}
+        aria-label={`${playing ? "Pause" : "Play"} ${props.title}`}
+        className={cn(
+          "flex size-9 shrink-0 items-center justify-center rounded-full border transition-colors",
+          playing
+            ? "border-primary bg-primary text-primary-foreground"
+            : "bg-card hover:bg-accent/60",
+        )}
+      >
+        {playing ? <Pause size={14} /> : <Play size={14} className="translate-x-px" />}
+      </button>
+      <span className="min-w-0 flex-1">
+        <span className="flex items-center gap-1.5">
+          <span className="truncate text-sm font-medium">{props.title}</span>
+          {props.badge ? (
+            <Badge variant={marked ? "success" : "muted"} className="shrink-0">
+              {props.badge}
+            </Badge>
+          ) : null}
+        </span>
+        {props.subtitle ? (
+          <span className="mt-0.5 block text-xs leading-snug text-muted-foreground">
+            {props.subtitle}
+          </span>
+        ) : null}
+        <span className="mt-1.5 block h-1 overflow-hidden rounded-full bg-muted">
+          <span
+            className="block h-full rounded-full bg-primary transition-[width] duration-200"
+            style={{ width: `${Math.round(progress * 100)}%` }}
+          />
+        </span>
+      </span>
+      <span className="shrink-0 text-xs text-muted-foreground">{time || props.meta}</span>
+      {selection && props.send ? (
+        <button
+          type="button"
+          disabled={!pick}
+          onClick={pick}
+          aria-label={`${checked ? "Unpick" : "Pick"} ${props.title}`}
+          className="shrink-0 disabled:pointer-events-none disabled:opacity-60"
+        >
+          <Checkbox checked={checked} tabIndex={-1} className="pointer-events-none" />
+        </button>
+      ) : props.send ? (
+        marked ? (
+          <Check size={15} className="shrink-0 text-primary" />
+        ) : (
+          <Button type="button" size="xs" variant="outline" disabled={!pick} onClick={pick}>
+            Use this
+          </Button>
+        )
+      ) : null}
+    </div>
+  );
+}
+
+export function AudioList({ props, renderNode }) {
+  const items = Array.isArray(props.items) ? props.items : [];
+  const { Provider, Footer } = useMultiSelect(props);
+  return (
+    <div>
+      <Header>{props.header}</Header>
+      <Provider>
+        <InsetCard>
+          {items.map((item, i) => (
+            <div key={i}>
+              {i > 0 ? <Separator className="ml-3 w-auto" /> : null}
+              {renderNode(item)}
+            </div>
+          ))}
+        </InsetCard>
+        <Footer />
+      </Provider>
+      {props.footnote ? (
+        <p className="px-0.5 pt-1.5 text-xs text-muted-foreground">{props.footnote}</p>
+      ) : null}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Recommendation
 // ---------------------------------------------------------------------------
 
@@ -665,6 +836,8 @@ export const webRenderers = {
   OptionList,
   MediaItem,
   MediaGrid,
+  AudioItem,
+  AudioList,
   Recommendation,
   Column,
   Compare,

@@ -132,11 +132,19 @@ function QuestionCard({
 
 // A compact chip for a flue `dynamic-tool` part. `state` is one of
 // input-available / output-available / output-error.
-function ToolChip({ part }: { part: MessagePart }) {
+//
+// `tail` is whether the part's message is the transcript's LAST message. flue
+// only ever runs tools at the transcript tail, so an unfinished part (no
+// output, no error) on any EARLIER message is provably dead — the turn moved
+// past it without a result (e.g. the model's tool-call JSON got truncated at
+// the output cap and the run failed). Without this, that chip spins forever.
+function ToolChip({ part, tail }: { part: MessagePart; tail?: boolean }) {
   const c = useChatColors();
   const name = part.toolName || 'tool';
   const errored = part.state === 'output-error';
-  const running = !errored && part.state !== 'output-available';
+  const finished = part.state === 'output-available';
+  const interrupted = !tail && !errored && !finished;
+  const running = !errored && !finished && !interrupted;
   return (
     <View className="max-w-full flex-col gap-0.5 self-start">
       <View
@@ -151,16 +159,20 @@ function ToolChip({ part }: { part: MessagePart }) {
           numberOfLines={1}
         >
           {name}
-          {errored ? ' · failed' : ''}
+          {errored ? ' · failed' : interrupted ? ' · interrupted' : ''}
         </Text>
         {running ? (
           <ActivityIndicator size="small" color={c.mutedForeground} style={{ transform: [{ scale: 0.7 }] }} />
-        ) : !errored ? (
+        ) : finished ? (
           <Check size={12} color={c.mutedForeground} />
         ) : null}
       </View>
       {errored && part.errorText ? (
         <Text className="max-w-full text-[11px] text-destructive">{part.errorText}</Text>
+      ) : interrupted ? (
+        <Text className="max-w-full text-[11px] text-muted-foreground">
+          The turn ended before this tool finished — nothing was saved. Ask again to retry.
+        </Text>
       ) : null}
     </View>
   );

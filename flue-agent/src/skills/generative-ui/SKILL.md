@@ -6,9 +6,12 @@ description: >-
   approve a plan. Load this WHENEVER you are about to call `render_ui` and are
   not certain of the syntax. Hard rules that hold even without reading the body:
   every interactive element's `send` string is posted VERBATIM as the author's
-  next chat message, so write it in their voice; image URLs must come from a
-  tool result and are never invented; reference/still/take picks go through
-  MediaGrid, never markdown image links; `render_ui` is the FINAL action of the
+  next chat message, so write it in their voice; image and audio URLs must come
+  from a tool result and are never invented; reference/still/take picks go
+  through MediaGrid, never markdown image links; finished AUDIO (a Seed Audio
+  scene, radio takes, a sound version going ready) is handed back as an
+  AudioList card so the author can play it in the chat, never as a bare
+  /sound-media link; `render_ui` is the FINAL action of the
   turn and you STOP after it; and it is root-agent only — a subagent cannot
   pause, so it must hand its question back to you instead.
 ---
@@ -108,6 +111,7 @@ A card that repeats your paragraph reads as a stutter.
 | choose ONE of 2–6 things | `OptionList`, `select: "one"` |
 | choose SEVERAL of a list | `OptionList`, `select: "many"` |
 | pick an image (reference, still, take, sheet) | `MediaGrid` of `MediaItem` |
+| hear audio that just rendered (and maybe keep a take) | `AudioList` of `AudioItem` |
 | say yes or no to one proposal | `Recommendation` (hero + one CTA) |
 | weigh 2–3 options on the same attributes | `Compare` of `Column` |
 | approve a submit before it costs credits | `KeyValue` (the params) + `Actions` |
@@ -130,6 +134,29 @@ here.** A plausible-looking `/library/clearing-dawn.png` that doesn't exist
 renders as a broken thumbnail and sends the author chasing a file that was never
 there. If you don't have the value, omit the prop; if you don't have the
 thumbnails, call `list_library` / `get_visual_world` / `get_episode` first.
+
+## Sound comes back playable
+
+When audio finishes rendering — a Seed Audio scene you just attached, radio
+takes, a sound version flipping `ready` — show it as an `AudioList` so the
+author can listen right there in the chat. A `/sound-media/...` URL pasted as a
+markdown link is a dead end; the card is the player. Tapping a row plays or
+pauses it inline and never sends anything.
+
+Give a row a `send` only when there is a real decision riding on it ("Keep take
+2", "Attach this to shot 12"); a card that just delivers the render is rows
+with no `send` at all:
+
+```
+root = Card([intro, takes])
+intro = Text("Both takes are in — the second leans harder into the rain.", "body")
+takes = AudioList([t1, t2], "Rain on the stone bridge")
+t1 = AudioItem("<url from attach_sound/list_sounds>", "Take 1 — steady drizzle", "Keep take 1", "v1 of the ambience bed", "12s")
+t2 = AudioItem("<url from attach_sound/list_sounds>", "Take 2 — heavier rain", "Keep take 2", "v2, more low end", "12s")
+```
+
+Only use audio URLs a tool returned (`attach_sound`'s response, `list_sounds`,
+`get_radio`, …). A version still `pending` has no URL — don't card it.
 
 ## Reference picks
 
@@ -195,6 +222,13 @@ MediaItem(src: string, send: string, label?: string, caption?: string, selected?
 Reference-image, still, take and character-sheet picks ALWAYS go through MediaGrid — never as markdown image links in your message text.
 Only use URLs the tools gave you (list_library, get_visual_world, get_episode, …). Never invent or guess an image URL.
 
+### Playing audio
+AudioList(items: AudioItem[], header?: string, footnote?: string, select?: "one" | "many", send?: string, confirm?: string) — A stack of playable audio rows — THE way to hand finished audio back to the author: a Seed Audio scene, radio takes, new sound versions. The author plays each clip right in the chat; NEVER paste an audio URL as a markdown link instead. Playing never sends anything — picking is a separate control that appears only on rows given a `send`, so a listen-only card is simply rows without one. select: 'one' (default) — a tap picks that item and sends immediately. 'many' — taps toggle, and nothing is sent until the confirm button — use 'many' when several takes can be kept. send: REQUIRED when select is 'many': the lead of the composed message, to which the picked items' `send` values are appended after a colon — e.g. send "Add these characters to the World" + picks "Miles", "Vera" posts "Add these characters to the World: Miles, Vera". Ignored when select is 'one'. confirm: the confirm button's label when select is 'many' (default "Continue"). Ignored when select is 'one'.
+AudioItem(src: string, title: string, send?: string, subtitle?: string, meta?: string, badge?: string, selected?: boolean) — One playable clip in an AudioList, rendered as a row with an inline play button. src: the audio URL (a /sound-media or generation URL a tool returned — never invent one). title: what the clip is ("Take 2 — heavier rain"). send: OPTIONAL — give it only when picking this clip is a real decision; then it follows the usual rules (the message sent AS THE USER when this is picked — write it as the user would ('Use the second reference'), never as an instruction to yourself. It MUST OPEN WITH the words shown on the control itself (its title/label), because this message is the author's ONLY confirmation that the row they hit is the row they meant; put any extra brief AFTER that opening — title 'Punch up the dialogue' ⇒ send 'Punch up the dialogue — sharpen the voices in the audition scene', never send 'Let me tighten those lines'; in a 'many' list a NOUN PHRASE instead). Omit send entirely when the card is just for listening. subtitle: one line of context (what changed in this take). meta: a short right-aligned qualifier ("12s", "v3"). badge: a tiny pill ("Liked", "New"). selected: marks the take already in force.
+Audio that just finished rendering (a Seed Audio scene, radio takes, sound versions) is handed back as an AudioList so the author can LISTEN in place — never as a markdown link to a /sound-media URL.
+A row is pickable only if you give it a `send` ('Keep take 2'); leave `send` off every row when there is nothing to decide.
+Only use audio URLs a tool actually returned (list_sounds, get_radio, attach_sound, …). A version whose status is still 'pending' has no URL yet — don't card it.
+
 ### Proposing
 Recommendation(title: string, body: string, send: string, cta?: string, image?: string, badge?: string, meta?: string, bullets?: string[]) — A single recommended course of action, presented as a hero card with one big call-to-action button. Use it when you have ONE thing to propose and want a clean yes — a render you're about to submit, a plan you'd run next, a draft you'd pin. title: the proposal. body: two sentences of why. send: the message sent AS THE USER when this is picked — write it as the user would ('Use the second reference'), never as an instruction to yourself. It MUST OPEN WITH the words shown on the control itself (its title/label), because this message is the author's ONLY confirmation that the row they hit is the row they meant; put any extra brief AFTER that opening — title 'Punch up the dialogue' ⇒ send 'Punch up the dialogue — sharpen the voices in the audition scene', never send 'Let me tighten those lines' (the go-ahead). cta: the button text ("Render it", "Do it") — default "Continue". bullets: up to 4 short supporting facts. image: a preview thumbnail. meta: cost/duration ("~90s · 12 credits").
 Compare(columns: Column[], header?: string) — Two or three options weighed side by side on identical rows — models, providers, takes, drafts. Use it only when the choice genuinely turns on comparing the SAME attributes; a plain OptionList reads better for everything else. Never more than 3 columns: the chat rail is narrow.
@@ -206,8 +240,8 @@ A Higgsfield/fal/Atlas submit confirmation reads best as KeyValue (the params) +
 Show Steps before a long pipeline so the author sees the shape of what you're about to run.
 
 ### Framing
-Card(children: (Text | Callout | OptionList | MediaGrid | Recommendation | Compare | KeyValue | Steps | Chips | Actions | Section)[]) — Root of every rendered UI — children stack vertically inside one card in the chat. Keep it to two or three blocks: this sits in a narrow chat rail, under a message that has already done the explaining.
-Section(title: string, children: (Text | Callout | OptionList | MediaGrid | Recommendation | Compare | KeyValue | Steps | Chips | Actions)[], subtitle?: string) — A titled group of blocks, separated from its neighbours by a rule. Only reach for it when one card genuinely carries two distinct groups (e.g. 'The references' and 'What I'd do'); a single-section card should skip it and put the blocks straight in the Card.
+Card(children: (Text | Callout | OptionList | MediaGrid | AudioList | Recommendation | Compare | KeyValue | Steps | Chips | Actions | Section)[]) — Root of every rendered UI — children stack vertically inside one card in the chat. Keep it to two or three blocks: this sits in a narrow chat rail, under a message that has already done the explaining.
+Section(title: string, children: (Text | Callout | OptionList | MediaGrid | AudioList | Recommendation | Compare | KeyValue | Steps | Chips | Actions)[], subtitle?: string) — A titled group of blocks, separated from its neighbours by a rule. Only reach for it when one card genuinely carries two distinct groups (e.g. 'The references' and 'What I'd do'); a single-section card should skip it and put the blocks straight in the Card.
 Text(text: string, style?: "body" | "muted" | "strong" | "title") — A line or paragraph of prose. style: 'title' a small section heading · 'strong' emphasis · 'muted' a quiet aside · 'body' (default). Use ONE short Text to frame a decision — the chat message above already carries your explanation, so do not repeat it here.
 Callout(variant: "info" | "success" | "warning" | "danger", title: string, description?: string) — A tinted banner for something the user must notice before choosing: a cost, an overwrite warning, a blocked prerequisite, a render that will take minutes. Use 'danger' only for destructive or irreversible consequences.
 Card is the root and holds two or three blocks at most.
@@ -239,6 +273,12 @@ root = Card([models])
 models = OptionList([fast, best], "Render model", "Or tell me a different model.")
 fast = Option("Seedance 1.0", "Render it with Seedance", "Fast, good motion, bakes audio", "~40s")
 best = Option("Veo 3.1", "Render it with Veo 3.1", "Slower, best for dialogue coverage", "~3m")
+
+root = Card([intro, takes])
+intro = Text("Both takes are rendered — the second leans harder into the rain.", "body")
+takes = AudioList([t1, t2], "Rain on the stone bridge")
+t1 = AudioItem("/sound-media/trk_2-v1.mp3", "Take 1 — steady drizzle", "Keep take 1", "v1 of the ambience bed", "12s")
+t2 = AudioItem("/sound-media/trk_2-v2.mp3", "Take 2 — heavier rain", "Keep take 2", "v2, more low end", "12s")
 
 root = Card([params, go])
 params = KeyValue([{label: "Model", value: "nano_banana_pro"}, {label: "Aspect", value: "16:9"}, {label: "References", value: "Sara sheet, clearing dawn"}], "About to submit")
