@@ -1,18 +1,19 @@
 ---
 name: world-creation
 description: >-
-  Build the World bible on the World tab of Shot Studio — the foundational world
-  of the series that everything else (script, shots, cuts) is built on. Use when
-  the user is on the World screen (clientContext screen = "world"), presses
-  "Let's create the world", or asks to "create the world", "build the world",
-  "world-building", "define the characters", "figure out the story", "what is the
-  story about", "story map", "story depth", "premise / theme / stakes", or to work
-  out the protagonist / antagonist / conflict / structure. You INTERVIEW the author
-  with render_ui across the story map, story depth, and character roster, then
-  write it back with save_world (call get_world first if a world already exists).
-  save_world MERGES: send only fields you have real answers for, omit the rest,
-  and NEVER send an empty string or invented filler — the author's existing world
-  must never be blanked by a save.
+  Build the World bible on the World tab — the brief the script is written
+  against. Use when the user is on the World screen (clientContext screen
+  "world"), presses "Let's create the world", or asks to "create the world",
+  "build the world", "define the characters", "figure out the story", "story map /
+  story depth / premise / theme / stakes", or to work out the protagonist /
+  antagonist / conflict / structure. INTERVIEW the author with render_ui across
+  map, depth and roster, then save_world (get_world first if a world exists).
+  Small rounds, one topic at a time, STOPPING after each card until they answer.
+  Never invent a world or a cast from a one-line premise: save_world runs only on
+  content the author has read in the chat and approved, and the turn ENDS there
+  (the script is a separate turn they ask for). save_world MERGES: send only
+  fields you have real answers for, omit the rest, and NEVER send an empty string
+  or invented filler — the existing world must never be blanked by a save.
 ---
 
 # World creation (Shot Studio World tab)
@@ -73,13 +74,23 @@ The world bible has four parts:
    off to the **`story-architect`** subagent (it picks an arc — Hero's Journey,
    Story Circle, Three-Act, Save the Cat, Kishōtenketsu — and returns a beat
    outline); fold its result into `depth.structure`.
-4. **Save.** When you have enough, call **`save_world`** with what you learned.
+   **Each round is one turn.** Draw the questions, then STOP — a round where you
+   ask and answer for the author isn't an interview, it's you writing their story.
+   If they hand you a premise and nothing else ("a monk meets a demon in a
+   monastery"), that's the *seed*: propose the world you'd build from it in prose —
+   two or three sentences, plus the cast you'd suggest by name and one line each —
+   and let them correct it before anything is saved.
+4. **Read the proposal back before you save.** The author must have seen, in the
+   chat, the world you're about to write: the map answers in your words, the cast
+   with their names. Then `render_ui` an `Actions` go/no-go ("Save this world" /
+   "Let's change something first") and wait.
+5. **Save.** Once they've said yes, call **`save_world`** with what you learned.
    It MERGES onto the stored world, so send the fields you have real answers for
    and simply **omit** the rest — never send an empty string or invented filler
    to "reset" a field (empty values are ignored, and a field the author already
    filled in must not be blanked by a save). A character you don't mention keeps
    its stored values; match an existing one by its `id` from `get_world`.
-5. **Hand back.** Tell the author you've written the world to the **World tab**,
+6. **Hand back.** Tell the author you've written the world to the **World tab**,
    summarize the highlights in a line or two, and remind them they can **edit any
    field directly** there (or ask you to refine it). The tab live-updates via its
    Refresh button.
@@ -130,4 +141,8 @@ Refresh button.
 
 Once the world is solid, the natural next step is the **Script** tab
 (`script-writing` skill) — the world's premise, characters, and structure are the
-brief the screenplay is written against. Offer that as the next move.
+brief the screenplay is written against. **Offer it and stop there.** Saving the
+world is the end of this turn: the author reads the World tab, changes what they
+want, and *then* asks for the script. Rolling straight into `save_script` because
+the world is done takes the episode out of their hands — the pipeline order tells
+you what comes next, not that you may run it.

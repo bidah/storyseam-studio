@@ -1,19 +1,19 @@
 ---
 name: script-writing
 description: >-
-  Read, write, and revise the screenplay on the Script tab of Shot Studio. Use
-  when the user is on the Script screen (clientContext screen = "script") or asks
-  to "write the script", "draft a scene", "add dialogue", "rewrite this line",
-  "fix the screenplay", "continue the script", or anything about the screenplay /
-  teleplay. Drives the editor's screenplay elements via get_script /
-  save_script / append_script. A full rewrite must be CHUNKED — save_script
-  with the first ~40 lines, then append_script per chunk; one giant call
-  overflows the turn's output limit and fails the whole turn. The script is
-  version-controlled into drafts; every edit applies ONLY to the pinned draft
-  (list_drafts / new_draft / pin_draft). To improve a script, delegate to the
-  specialists (story-architect / plot-doctor / motivation-doctor /
-  dialogue-doctor), preferring one get_script's `reviews` block calls `pending`
-  over one it calls `fresh` — a fresh doctor already cleared this revision.
+  Write and revise the screenplay on the Script tab. Use when the user is on the
+  Script screen (clientContext screen "script") or asks to "write the script",
+  "draft a scene", "add dialogue", "rewrite this line", "fix the screenplay",
+  "continue the script". Drives the screenplay elements via get_script /
+  save_script / append_script; a rewrite must be CHUNKED — save_script with the
+  first ~40 lines, then append_script per chunk, or the output limit fails the
+  turn. Edits apply ONLY to the pinned draft (list_drafts / new_draft /
+  pin_draft). New material starts as a BEAT OUTLINE the author approves in chat
+  before any line is written, and apply_script_proposal runs ONLY after they
+  explicitly say to apply it — never in the same turn as the proposal, never
+  rolling on into shots after. To improve a script, delegate to the specialists
+  (story-architect / plot-doctor / motivation-doctor / dialogue-doctor),
+  preferring one get_script's `reviews` calls `pending` over one it calls `fresh`.
 ---
 
 # Script writing (Shot Studio Script tab)
@@ -59,6 +59,11 @@ it's accepted. There are two ways it gets accepted, and you drive both:
    `render_ui` with two `Action`s for a clear yes/no). If they say yes ("ok apply", "do it",
    "go ahead"), call **`apply_script_proposal`** to commit it for them — then
    confirm it's live. Don't tell the user you *can't* apply it; you can.
+   **The confirmation is a real round-trip**, not a formality: propose, ask, END THE
+   TURN. `save_script` followed by `apply_script_proposal` in the same turn defeats
+   the entire diff mechanism — the author never got to see the before→after, which is
+   the only reason proposals exist. If you catch yourself reasoning "the script is
+   ready, let me apply it and move on", that is the bug.
 2. **They accept it themselves** on the Script tab — in bulk or cherry-picking
    individual lines. If they want only *some* of the changes, point them there,
    because `apply_script_proposal` accepts the whole proposal.
@@ -87,6 +92,23 @@ write **only the pinned draft** — they never touch the others. Keep this in mi
 Remind the user the editor shows the change on its next load / **Refresh** for
 non-pinned housekeeping, but pinned-draft edits live-update in the open editor.
 
+## Outline first — the author approves the story before you write it
+
+For **new material** (a fresh script, a new scene, a rewrite of any size), the first
+turn is not a script. It's a **beat outline in the chat**: three to eight one-line
+beats in order, naming who's in each and what turns. Then `render_ui` — `Actions`
+("Write it" / "Change the beats first"), or an `OptionList` when there's a real fork
+in how the scene could go — and **STOP**.
+
+Write the lines only once they've approved the beats. This is the single most
+important rule in this skill: a script written from a one-line premise is *your*
+story, and the author gets to react to it only after it exists, which is backwards.
+Beats are cheap to change; forty screenplay lines are not.
+
+A **bounded edit** the author asked for by name ("add a line where Helena says she's
+cold", "make Sara's last line shorter", "add a CUT TO: at the end of scene 2") skips
+the outline — the request already is the plan. Propose it and ask to apply, as below.
+
 ## How to write
 
 1. If the user is revising or continuing, **`get_script`** first and reason from
@@ -114,6 +136,10 @@ non-pinned housekeeping, but pinned-draft edits live-update in the open editor.
    (e.g. "proposed scene 3: 6 lines, Sara + Helena on the bridge — want me to
    apply it, or review the diff on the Script tab first?"). If they confirm, call
    `apply_script_proposal` and confirm it's committed.
+6. **Stop there.** An applied script is the end of the turn. The shot list is the
+   author's next call, not yours — say it's available and let them ask. Signing the
+   draft is theirs to do on the Script tab, and `save_shotlist` in the same turn as
+   a script write is never right.
 
 ### Example — appending a beat
 

@@ -1,6 +1,16 @@
 ---
 name: shot-list
-description: Turn the signed screenplay into the granular Shot list — the flat, ordered list of every ~2-3s shot with its camera, action, dialogue and a Seedance prompt. This is the middle stage of the pipeline (Script → SHOT LIST → auto-packed <=15s multishots → Episode render). Use when the user asks to "generate the shot list", "break the script into shots", "make the shots from the script", or "turn the script into shots". Do NOT render video here (that's generate-multishot) — this only writes text shots via save_shotlist.
+description: >-
+  Turn the signed screenplay into the granular Shot list — the flat, ordered list
+  of every ~2-3s shot with its camera, action, dialogue and a Seedance prompt.
+  This is the middle stage of the pipeline (Script → SHOT LIST → auto-packed <=15s
+  multishots → Episode render). Use ONLY when the user explicitly asks for it —
+  "generate the shot list", "break the script into shots", "make the shots from
+  the script", "turn the script into shots". Never run it off the back of writing
+  the script in the same turn — a finished script authorizes nothing here, the
+  author asks for shots once they are happy with the screenplay. Do NOT render
+  video here (that's generate-multishot) — this only writes text shots via
+  save_shotlist.
 ---
 
 # shot-list (script → granular shot list)
@@ -12,6 +22,10 @@ Episode tab from those packs. No media is generated in this skill.
 
 ## Preconditions
 
+- **The author asked for the shot list, in their own words, in this conversation.** Not
+  "the script is done so shots are next" — that's the pipeline order, not permission.
+  When you've just written or applied a script, the turn ends by *offering* the shot list;
+  they run it when they're happy with the screenplay.
 - The script draft must be **signed** (the Script tab gates this). If the user asks to
   generate before signing, tell them to Sign the script first.
 - Read the current shot list with `get_shotlist` first. If it already has shots, do NOT
