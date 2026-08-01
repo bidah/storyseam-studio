@@ -4,13 +4,15 @@ import { toast } from 'sonner-native';
 import { create } from 'zustand';
 import { transcribeAudio } from '@/lib/api';
 import { useAudioRecording } from '@/lib/use-audio-recording';
-import { openChatModal } from './chat-route';
+import { getAgentMode, openForMode } from './pill-mode';
 import { getActiveChatId } from './provider';
 
 // DICTATION FROM THE TAB BAR. The accessory pill's round button is a mic: tap it
 // and the pill itself becomes the recording bar (see agent-accessory.tsx), tap
-// stop and the transcript is carried into the chat modal's composer as a DRAFT —
-// never sent. The pill can't send (it has no attachments, no model chip, and a
+// stop and the transcript is carried into the composer of whichever surface the
+// pill is pointed at — the chat modal, or visual world's image modal when its
+// toggle is on Image — as a DRAFT, never sent (lib/agent/pill-mode.ts).
+// The pill can't send (it has no attachments, no model chip, and a
 // message you never saw before it went out is the wrong kind of magic), so what
 // it hands over is text in a field with the caret in it.
 //
@@ -94,9 +96,11 @@ export function AccessoryVoiceHost() {
     await rec.stop();
   }, [rec]);
 
-  // Stop, transcribe, and OPEN THE CHAT with the words in the composer. The pill
-  // stays on screen showing "Transcribing…" until the navigation happens, so the
-  // wait has a place to live: the modal arriving IS the completion signal.
+  // Stop, transcribe, and OPEN THE PILL'S CURRENT SURFACE with the words in its
+  // composer — the conversation in text mode, visual world's image composer in
+  // image mode (lib/agent/pill-mode.ts). The pill stays on screen showing
+  // "Transcribing…" until the navigation happens, so the wait has a place to live:
+  // the modal arriving IS the completion signal.
   const confirm = useCallback(async () => {
     if (useVoiceStore.getState().phase !== 'recording') return;
     useVoiceStore.setState({ phase: 'transcribing' });
@@ -110,17 +114,18 @@ export function AccessoryVoiceHost() {
         toast.error("Didn't catch that — try again.");
         return;
       }
-      // Same destination the pill's body has: the CURRENT session, opened whole.
-      // `focus` puts the caret after the dictated text so the next move — edit,
-      // add an image, send — is one tap away.
-      const chatId = getActiveChatId();
-      if (!chatId) {
+      // Same destination the pill's body has, whichever mode it's in. `focus`
+      // puts the caret after the dictated text so the next move — edit, add a
+      // reference, send or generate — is one tap away.
+      const mode = getAgentMode();
+      if (mode === 'text' && !getActiveChatId()) {
         // No session to carry it to (the pill lives inside <AgentProvider>, so in
         // practice unreachable). Say so rather than dropping the words silently.
+        // Image mode has no such prerequisite — the generator needs no chat.
         toast.error('No chat to put that in yet — try again in a moment.');
         return;
       }
-      openChatModal(chatId, { focus: true, draft: trimmed });
+      openForMode(mode, { focus: true, draft: trimmed });
     } catch (e) {
       toast.error(`Transcription failed: ${e instanceof Error ? e.message : String(e)}`);
     } finally {

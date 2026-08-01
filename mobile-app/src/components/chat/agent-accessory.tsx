@@ -1,11 +1,12 @@
 import { ActivityIndicator, Pressable, Text, View } from 'react-native';
 import { NativeTabs } from 'expo-router/unstable-native-tabs';
 import * as Haptics from 'expo-haptics';
-import { CircleStop, MessageSquareText, Mic, Square, X } from 'lucide-react-native';
-import { agentIsBusy, getAgent, useAgent, useConversations } from '@/lib/agent/provider';
-import { useOpenChat } from '@/lib/agent/chat-route';
+import { CircleStop, Mic, Square, X } from 'lucide-react-native';
+import { agentIsBusy, getAgent, useAgent } from '@/lib/agent/provider';
+import { openForMode, useAgentMode } from '@/lib/agent/pill-mode';
 import { useVoiceDuration, useVoicePhase, voiceCapture } from '@/lib/agent/voice-capture';
 import { formatDuration } from '@/lib/use-audio-recording';
+import { AgentModeToggle, PILL_CONTROL } from './agent-mode-toggle';
 import { PulsingDot } from './pulsing-dot';
 import { useChatColors } from './theme';
 
@@ -38,6 +39,13 @@ import { useChatColors } from './theme';
 // which is also why the button was never a real send. The recorder itself lives
 // in lib/agent/voice-capture.tsx, for the two-copies reason above.
 //
+// TWO DESTINATIONS, one pill. The leading slot is a write/image toggle
+// (agent-mode-toggle.tsx) that points everything here — the body tap, the mic's
+// hand-off — at either the studio agent's conversation or visual world's image
+// generator, each presented as its own modal. Visual world used to be a segment
+// inside the Story tab; making it a modal is what let this become the one place
+// you reach for whether the next thing you want is words or a picture.
+//
 // The `inline` variant below is the SHRUNKEN form UIKit lays out once the tab
 // bar minimizes on scroll. It is written and ready but currently unreachable —
 // react-native-screens can't get UIKit to track a scroll view nested in a
@@ -50,16 +58,16 @@ export function AgentAccessory() {
   const placement = NativeTabs.BottomAccessory.usePlacement();
   const inline = placement === 'inline';
   const c = useChatColors();
-  const conv = useConversations();
-  const openChat = useOpenChat();
+  // Words or pictures — which surface this pill opens, shared by both copies
+  // (lib/agent/pill-mode.ts).
+  const mode = useAgentMode();
   // SELECTED, both of them. This pill sits in the tab bar and is the only way
   // back into a running turn, so it is the last thing that should be re-rendering
   // several times a second while that turn streams — which is what a bare
-  // `useAgent()` here used to do (see the note above useAgentBus). `chatId` and
-  // the busy flag each change at most once per turn; `stop` is read imperatively
-  // in the handler below, where no subscription is needed at all.
+  // `useAgent()` here used to do (see the note above useAgentBus). The busy flag
+  // changes at most once per turn; the chat id and `stop` are read imperatively in
+  // the handlers below, where no subscription is needed at all.
   const busy = useAgent(agentIsBusy);
-  const chatId = useAgent((a): string | null => a.chatId ?? null);
   // Dictation state, shared by BOTH copies of this component (the recorder itself
   // is owned by <AccessoryVoiceHost /> — see lib/agent/voice-capture.tsx, which is
   // also why none of this is useState).
@@ -72,23 +80,23 @@ export function AgentAccessory() {
   // here measures it. Screens that need to clear it read the tab's safe-area
   // bottom instead — see lib/use-tab-bar-inset.ts.
 
-  // One destination in every state — the CURRENT session, opened whole. Like a
-  // mini player: mid-turn it takes you to the conversation that's streaming, and
-  // idle it takes you to the same one with the caret up, ready for the next
-  // message. Nothing is minted on a tap; the project's active chat already exists
-  // (`withActiveForProject`), blank if it has never been used.
+  // One destination per MODE, and in text mode it's the CURRENT session, opened
+  // whole. Like a mini player: mid-turn it takes you to the conversation that's
+  // streaming, and idle it takes you to the same one with the caret up, ready for
+  // the next message. Nothing is minted on a tap; the project's active chat already
+  // exists (`withActiveForProject`), blank if it has never been used. In image mode
+  // it's visual world's generator — its gallery and its composer, over whichever tab
+  // you're standing on.
   //
-  // WHERE it opens is `useOpenChat`'s call, and it turns on which tab you're on:
-  // pushed inside the Home tab's stack when Home is what you're looking at, and
-  // the chat modal from anywhere else — so reaching the agent from Episode or Cuts
-  // doesn't cost you the tab you were working in (lib/agent/chat-route.ts).
+  // Both are MODALS, and that's the point: reaching either from Episode or Cuts
+  // doesn't cost you the tab you were working in (lib/agent/pill-mode.ts).
   //
-  // The keyboard only comes up when the agent is idle: mid-turn you tapped this to
-  // see how the work is going, and a keyboard would cover the reply landing.
+  // The keyboard comes up unless the agent is mid-turn: there you tapped this to
+  // see how the work is going, and a keyboard would cover the reply landing. Image
+  // mode has no turn to wait on, so it always opens ready to type.
   const open = () => {
     Haptics.selectionAsync().catch(() => {});
-    const id: string | null = chatId ?? conv.activeId ?? null;
-    openChat(id, { focus: !busy });
+    openForMode(mode, { focus: mode === 'image' || !busy });
   };
 
   const stop = () => {
@@ -103,15 +111,30 @@ export function AgentAccessory() {
   // composer, for the author to send. Every verb is guarded on phase inside the
   // host, so the invisible placement's copy of these buttons is harmless.
 
-  const label = busy
-    ? inline
-      ? 'Working…'
-      : 'Agent is working…'
-    : inline
-      ? 'Message the agent'
-      : 'Message the studio agent…';
+  // The label answers "what does tapping this do", so it follows the MODE — not
+  // the agent's turn state, except in text mode where a running turn is what the
+  // tap is about. Shorter in both modes than it used to be: the toggle now takes
+  // the leading slot, so the label has a control beside it rather than a glyph.
+  const label =
+    mode === 'image'
+      ? inline
+        ? 'Image'
+        : 'Describe an image…'
+      : busy
+        ? inline
+          ? 'Working…'
+          : 'Agent is working…'
+        : inline
+          ? 'Message'
+          : 'Message the agent…';
   const glyph = inline ? 16 : 18;
-  const button = inline ? 30 : 34;
+  // Shared with the toggle at the other end of the row, which renders at exactly
+  // this height — see PILL_CONTROL.
+  const button = inline ? PILL_CONTROL.small : PILL_CONTROL.regular;
+  // Stop belongs to a turn, and only text mode has one. In image mode the round
+  // button stays the mic — but the spinner still rides beside the label, so
+  // flipping to pictures never hides the fact that a turn is streaming.
+  const showStop = busy && mode === 'text';
 
   return (
     // No glass of our own: UIKit already renders the accessory on a liquid-glass
@@ -125,9 +148,11 @@ export function AgentAccessory() {
       accessibilityLabel={
         capturing
           ? undefined
-          : busy
-            ? 'Open the conversation the agent is working in'
-            : 'Message the studio agent'
+          : mode === 'image'
+            ? 'Open visual world and generate an image'
+            : busy
+              ? 'Open the conversation the agent is working in'
+              : 'Message the studio agent'
       }
       onPress={capturing ? undefined : open}
       style={{
@@ -135,7 +160,17 @@ export function AgentAccessory() {
         flexDirection: 'row',
         alignItems: 'center',
         gap: inline ? 8 : 10,
-        paddingHorizontal: inline ? 12 : 16,
+        // Tight to the platter's edge on purpose. The toggle and the round mic
+        // bookend this row, and every point of padding outside them is taken off
+        // the label between them — which is the part that has something to say.
+        // UIKit's glass platter already reads as the boundary, so the controls
+        // don't need a margin to sit inside one.
+        // Asymmetric by 2: the toggle is a segmented capsule whose own chrome
+        // starts right at its edge, where the trailing button is a circle that
+        // brings its own optical inset — so an equal padding leaves the left side
+        // looking tighter than the right. This evens them up by eye.
+        paddingLeft: inline ? 8 : 10,
+        paddingRight: inline ? 6 : 8,
       }}
     >
       {capturing ? (
@@ -197,11 +232,13 @@ export function AgentAccessory() {
         </>
       ) : (
         <>
-          {busy ? (
-            <ActivityIndicator size="small" color={c.mutedForeground} />
-          ) : (
-            <MessageSquareText size={glyph} color={c.mutedForeground} />
-          )}
+          {/* Write | Image — what this pill is pointed at, and the only way into
+              visual world now that it's a modal rather than a Story segment. Its
+              own tap targets, so it sits INSIDE the pill's press area without
+              being swallowed by it. */}
+          <AgentModeToggle variant="pill" compact={inline} />
+
+          {busy ? <ActivityIndicator size="small" color={c.mutedForeground} /> : null}
 
           <Text
             className="flex-1 text-[15px] text-muted-foreground"
@@ -215,7 +252,7 @@ export function AgentAccessory() {
           {/* Same slot in every state so the two placements' controls line up:
               stop while a turn is in flight, otherwise the mic that starts a
               take right here (the pill can't send — see the note above). */}
-          {busy ? (
+          {showStop ? (
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="Stop"
@@ -234,7 +271,11 @@ export function AgentAccessory() {
           ) : (
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel="Record a message for the studio agent"
+              accessibilityLabel={
+                mode === 'image'
+                  ? 'Dictate an image prompt'
+                  : 'Record a message for the studio agent'
+              }
               onPress={() => voiceCapture.start()}
               style={{
                 width: button,

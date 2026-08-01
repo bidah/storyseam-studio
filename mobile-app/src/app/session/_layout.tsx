@@ -6,6 +6,7 @@ import { useColors } from '@/lib/colors';
 import { useHeaderBase } from '@/components/header-buttons';
 import { ChatComposerScope } from '@/components/chat/composer-host';
 import { ChatHeaderRight, useChatHeaderItems } from '@/components/chat/chat-header';
+import { AgentModeToggle } from '@/components/chat/agent-mode-toggle';
 import { startNewChat } from '@/lib/agent/provider';
 
 // The CHAT MODAL — the studio agent presented over whatever the user was doing.
@@ -105,6 +106,12 @@ export default function SessionLayout() {
             ...headerBase,
             title: 'Chat',
             headerLargeTitle: false,
+            // The same write/image toggle the tab bar pill carries, in the title
+            // slot. The pill is UNDER this modal and can't be reached, so without
+            // a copy here "actually, let me generate an image instead" would mean
+            // close → find the pill → tap. From a modal header it SWAPS the modal
+            // rather than presenting a second one (agent-mode-toggle.tsx).
+            headerTitle: () => <AgentModeToggle variant="modal" />,
             // Liquid-glass header, same three ingredients as the chat tab's stack
             // (see (tabs)/chat/_layout.tsx for why each one is required): content
             // laid out UNDER a transparent bar, both appearances' backgrounds

@@ -123,6 +123,18 @@ export default function RootLayout() {
                   name="session"
                   options={{ presentation: 'modal', headerShown: false }}
                 />
+                {/* Visual world's image generator, the picture-making twin of the
+                    chat modal above — same presentation, same reason for being a
+                    ROOT route, opened by the same tab-bar pill with its toggle
+                    flipped to Image (see lib/agent/pill-mode.ts). Being siblings
+                    HERE is also what lets the toggle swap one for the other: the
+                    two hrefs diverge at this stack, so a `replace` from inside
+                    either modal lands on it. Its own nested stack owns the
+                    header, so no header here. */}
+                <Stack.Screen
+                  name="image"
+                  options={{ presentation: 'modal', headerShown: false }}
+                />
                 <Stack.Screen
                   name="projects"
                   options={{

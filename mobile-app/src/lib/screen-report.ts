@@ -51,7 +51,13 @@ export function navForRoute(
     // One screen, three segments — the segment IS the view here.
     const segment = str(params.segment) || 'world';
     nav.view = segment === 'shots' ? 'shotlist' : segment === 'script' ? 'script' : 'world';
-    if (nav.view === 'world' && str(params.world) === 'visual') nav.pane = 'visual';
+  } else if (p.startsWith('/image')) {
+    // Visual world, as a ROOT modal presented over whatever tab is underneath
+    // (src/app/image/). The agent's vocabulary has no separate view for it — on
+    // the web it's World's visual pane — so it reports as that, which is also
+    // what `navigate` back to it resolves through (routeForView below).
+    nav.view = 'world';
+    nav.pane = 'visual';
   } else if (p.startsWith('/episode')) {
     nav.view = 'episode';
     const bundleId = str(params.bundleId);
@@ -132,7 +138,10 @@ const ROUTES: Record<string, string> = {
 };
 
 export function routeForView(view: string, sub?: string | null): string | null {
-  if (view === 'world' && sub === 'visual') return '/(tabs)/story?segment=world&world=visual';
+  // World's visual pane is a modal here, not a segment — "go to visual world"
+  // presents it over whichever tab the author is standing on rather than moving
+  // them to Story first (src/app/image/).
+  if (view === 'world' && sub === 'visual') return '/image';
   return ROUTES[view] ?? null;
 }
 

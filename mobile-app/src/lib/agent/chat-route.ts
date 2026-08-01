@@ -45,10 +45,16 @@ import { router } from 'expo-router';
  * `draft` seeds the composer without sending — the tab bar's dictation hand-off
  * (lib/agent/voice-capture.tsx): the pill records, this opens the conversation,
  * and the transcribed words are sitting in the field for the author to send.
+ *
+ * `replace` SWAPS a modal that's already presented for this one — the write half
+ * of the pill's image/write toggle, drawn inside the image modal's header. It
+ * resolves against the navigator where the two hrefs diverge (the root stack, for
+ * `/image` vs `/session`), so with no modal up it would replace `(tabs)` and tear
+ * the tab tree down. Only pass it from inside a modal; see lib/agent/pill-mode.ts.
  */
 export function openChatModal(
   chatId: string | null,
-  opts?: { focus?: boolean; draft?: string },
+  opts?: { focus?: boolean; draft?: string; replace?: boolean },
 ) {
   // Nothing to open. Can't normally happen — <AgentProvider> renders its children
   // only once a session is published, and every project carries an active chat
@@ -63,7 +69,8 @@ export function openChatModal(
     // the same sentence twice has to look like two hand-offs, not a no-op.
     params.dk = String(++draftSeq);
   }
-  router.navigate({ pathname: '/session/[id]', params });
+  if (opts?.replace) router.replace({ pathname: '/session/[id]', params });
+  else router.navigate({ pathname: '/session/[id]', params });
 }
 
 let draftSeq = 0;
@@ -75,7 +82,7 @@ let draftSeq = 0;
  */
 export function useOpenChat() {
   return useCallback(
-    (chatId: string | null, opts?: { focus?: boolean; draft?: string }) =>
+    (chatId: string | null, opts?: { focus?: boolean; draft?: string; replace?: boolean }) =>
       openChatModal(chatId, opts),
     [],
   );
