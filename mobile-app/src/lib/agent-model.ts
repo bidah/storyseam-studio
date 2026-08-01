@@ -84,8 +84,8 @@ export function getAgentModelSpecifier(): string {
   return eff.spec;
 }
 
-export function hydrateAgentModel() {
-  AsyncStorage.getItem(STORAGE_KEY)
+export function hydrateAgentModel(): Promise<void> {
+  return AsyncStorage.getItem(STORAGE_KEY)
     .then((v) => {
       if (isKnown(v)) useAgentModelStore.setState({ model: v });
     })

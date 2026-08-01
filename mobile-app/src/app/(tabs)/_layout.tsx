@@ -4,6 +4,8 @@ import { Redirect } from 'expo-router';
 import { NativeTabs } from 'expo-router/unstable-native-tabs';
 import { isLiquidGlassAvailable } from 'expo-glass-effect';
 import { useSession } from '@/lib/auth-client';
+import { useBootStore } from '@/lib/boot';
+import { splashReady } from '@/lib/splash';
 import { useColors } from '@/lib/colors';
 import { AgentProvider } from '@/lib/agent/provider';
 import { useAgentAccessorySuppressed } from '@/lib/agent/accessory-suppress';
@@ -93,7 +95,14 @@ export default function TabsLayout() {
   const suppressed = useAgentAccessorySuppressed();
   const showAccessory = accessorySupported && !suppressed;
 
-  if (isPending || !falHydrated || !atlasHydrated || !providersHydrated) {
+  // Boot already asked who's signed in (lib/boot.ts) — a settled answer of "no
+  // one" is a redirect, not a wait. Without this the signed-out cold start still
+  // spun: seeding the atom can only settle a session that EXISTS, so better-auth's
+  // own on-mount refetch puts `isPending` back up on the way to /sign-in.
+  const sessionSettled = useBootStore((s) => s.sessionSettled);
+  const askingWho = isPending && !sessionSettled;
+
+  if (askingWho || !falHydrated || !atlasHydrated || !providersHydrated) {
     return (
       <View className="flex-1 items-center justify-center bg-background">
         <ActivityIndicator />
@@ -113,7 +122,10 @@ export default function TabsLayout() {
       <LiveSync />
       <AgentContext />
       <AgentProvider>
-        <View className="flex-1">
+        {/* The cold start lands here, and THIS is the frame worth uncovering:
+            everything above resolved behind the splash (lib/boot.ts), so its
+            first layout is the finished Home screen. */}
+        <View className="flex-1" onLayout={splashReady}>
         <NativeTabs
           // Selected tab = the high-contrast foreground (near-white on dark,
           // near-black on light), unselected stays the native muted gray. The

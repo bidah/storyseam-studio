@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { authClient, confirmSignedIn } from '@/lib/auth-client';
 import { useColors } from '@/lib/colors';
+import { splashReady } from '@/lib/splash';
 
 export default function SignIn() {
   const [email, setEmail] = useState('');
@@ -61,6 +62,9 @@ export default function SignIn() {
     <KeyboardAvoidingView
       className="flex-1 bg-background"
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      // The other cold-start landing: signed out, this is the finished screen,
+      // so it lifts the splash itself (lib/splash.ts).
+      onLayout={splashReady}
     >
       <ScrollView
         contentContainerClassName="flex-1 justify-center gap-4 px-6"

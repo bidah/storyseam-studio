@@ -37,11 +37,20 @@ export const RESOURCES = {
 
 export type ResourceKey = keyof typeof RESOURCES;
 
+// The key + fetcher for one project-scoped resource, in one place: the cold-start
+// path (lib/boot.ts) prefetches some of these into the same cache the hooks read,
+// and a key spelled twice is a prefetch that silently warms nothing.
+export function projectResourceQuery<T = any>(projectId: string, resource: ResourceKey) {
+  return {
+    queryKey: [projectId, resource],
+    queryFn: () => apiJson<T>(RESOURCES[resource]),
+  };
+}
+
 export function useProjectResource<T = any>(resource: ResourceKey, enabled = true) {
   const projectId = useProjectStore((s) => s.projectId);
   return useQuery<T>({
-    queryKey: [projectId, resource],
-    queryFn: () => apiJson<T>(RESOURCES[resource]),
+    ...projectResourceQuery<T>(projectId as string, resource),
     enabled: enabled && !!projectId,
   });
 }
@@ -67,11 +76,18 @@ export function useInvalidate() {
 
 export type Project = { id: string; name: string; created_at?: string; updated_at?: string };
 
-export function useProjects() {
-  return useQuery<{ projects: Project[]; activeId: string | null }>({
+export type ProjectList = { projects: Project[]; activeId: string | null };
+
+// Shared with the boot prefetch (lib/boot.ts), same reason as above.
+export function projectsQuery() {
+  return {
     queryKey: ['account', 'projects'],
-    queryFn: () => apiJson('/api/projects'),
-  });
+    queryFn: () => apiJson<ProjectList>('/api/projects'),
+  };
+}
+
+export function useProjects() {
+  return useQuery<ProjectList>(projectsQuery());
 }
 
 // --- Higgsfield gallery (infinite) ------------------------------------------

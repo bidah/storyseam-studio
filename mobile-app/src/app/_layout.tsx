@@ -10,19 +10,16 @@ import * as SplashScreen from 'expo-splash-screen';
 import { colorScheme } from 'nativewind';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Toaster } from 'sonner-native';
-import { hydrateAgentModel } from '@/lib/agent-model';
-import { hydrateChatProvider } from '@/lib/chat-provider';
-import { hydrateFalKey } from '@/lib/fal-key';
-import { hydrateAtlasKey } from '@/lib/atlas-key';
-import { hydrateProviders } from '@/lib/providers';
-import { hydrateSandboxMode } from '@/lib/sandbox-mode';
-import { hydrateSearchProvider } from '@/lib/search-provider';
-import { hydrateSearchKeys } from '@/lib/search-keys';
-import { hydrateProjectId } from '@/lib/project';
-import { applyNativeScheme, hydrateTheme, useEffectiveScheme, useThemeStore } from '@/lib/theme';
+import { bootstrap } from '@/lib/boot';
+import { splashReady } from '@/lib/splash';
+import { applyNativeScheme, useEffectiveScheme, useThemeStore } from '@/lib/theme';
 import { getColors } from '@/lib/colors';
 
 SplashScreen.preventAutoHideAsync();
+
+// How long after the tree is ready to wait for a landing screen to announce
+// itself before lifting the splash regardless — see the effect that uses it.
+const SPLASH_FALLBACK_MS = 1200;
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -54,21 +51,30 @@ export default function RootLayout() {
   const colors = getColors(scheme);
   const isDark = scheme === 'dark';
 
+  // Stored preferences, the session, the active project, its status digest and
+  // the local chat store — all of it resolved behind the splash, so this tree
+  // mounts on something finished. Capped by a deadline, so a dead network delays
+  // the app rather than holding it hostage (lib/boot.ts).
   useEffect(() => {
-    hydrateAgentModel();
-    hydrateChatProvider();
-    hydrateFalKey();
-    hydrateAtlasKey();
-    hydrateProviders();
-    hydrateSandboxMode();
-    hydrateSearchProvider();
-    hydrateSearchKeys();
-    hydrateTheme();
-    hydrateProjectId().finally(() => {
-      setBooted(true);
-      SplashScreen.hideAsync().catch(() => {});
-    });
+    bootstrap(queryClient).finally(() => setBooted(true));
   }, []);
+
+  // The splash is lifted by whichever LANDING screen the root redirect picks —
+  // (tabs) or /sign-in, each on its own first layout (lib/splash.ts). Not from
+  // here: this tree's first layout happens while `app/index.tsx` is still the
+  // active route, and that route renders null on purpose, so hiding on it
+  // uncovered a blank screen and left the real one to arrive afterwards.
+  //
+  // Lift it anyway, shortly after, if neither ever announces itself. A landing
+  // that doesn't mount (a failed screen, an onLayout a host component swallows)
+  // would otherwise strand the app on the splash forever — a far worse failure
+  // than the frame of background this trades against. Seen for real on an iOS
+  // dev client, which is why the fallback is here at all.
+  useEffect(() => {
+    if (!booted) return;
+    const timer = setTimeout(splashReady, SPLASH_FALLBACK_MS);
+    return () => clearTimeout(timer);
+  }, [booted]);
 
   // Keep NativeWind's active scheme in lockstep with the resolved preference so
   // the `.dark:root` CSS variables (global.css) flip for className-based surfaces.
@@ -93,9 +99,17 @@ export default function RootLayout() {
             <View className={isDark ? 'dark flex-1 bg-background' : 'flex-1 bg-background'}>
               <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.pageBg } }}>
                 <Stack.Screen name="index" />
-                <Stack.Screen name="(auth)/sign-in" />
+                {/* The two COLD-START landings, and neither is a push the author
+                    made — `index` is a pure redirect (it exists to choose between
+                    them), so animating either one plays a screen transition on
+                    top of the splash lift: a blank frame that slides. They're a
+                    swap of what the app opens on, so they cut.
+
+                    `sign-up` deliberately keeps its animation: it's reached by a
+                    tap on sign-in, which IS a push. */}
+                <Stack.Screen name="(auth)/sign-in" options={{ animation: 'none' }} />
                 <Stack.Screen name="(auth)/sign-up" />
-                <Stack.Screen name="(tabs)" />
+                <Stack.Screen name="(tabs)" options={{ animation: 'none' }} />
                 {/* The chat modal — the studio agent over whatever tab you were
                     on, opened by the tab bar's accessory pill from everywhere but
                     Home (see lib/agent/chat-route.ts). A ROOT route on purpose:

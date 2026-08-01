@@ -184,6 +184,31 @@ export async function loadStore(pid: string | null): Promise<ChatStore> {
   return withActiveForProject(store, pid);
 }
 
+// Boot handoff. `loadStore` is a disk read, and <AgentProvider> renders NOTHING
+// until it lands — so on a cold start the tab bar came up over an empty body
+// while AsyncStorage was still being parsed. The cold-start path (lib/boot.ts)
+// does that read behind the splash instead and parks the result here; the
+// provider takes it on its first render and publishes without waiting.
+//
+// Taken exactly ONCE, only for the project it was read for, and never after a
+// write: this is a hand-off, not a cache. The write rule is the one that matters
+// — boot's read can lose the race with its own deadline, leaving a parked store
+// nobody collected, and handing THAT to a later mount would resurrect the chat
+// list from before whatever has been persisted since. `persistStore` drops it.
+let handoff: { pid: string | null; store: ChatStore } | null = null;
+
+export async function preloadStore(pid: string | null): Promise<ChatStore> {
+  const store = await loadStore(pid);
+  handoff = { pid, store };
+  return store;
+}
+
+export function takePreloadedStore(pid: string | null): ChatStore | null {
+  const hit = handoff && handoff.pid === pid ? handoff.store : null;
+  handoff = null;
+  return hit;
+}
+
 // Merge the server registry (GET /api/chats — this user's chats in `pid`, see
 // worker/src/routes/chats.js) into the local store — port of the web's
 // mergeServerChats (src/lib/chat-store.js). The server is how a chat started
@@ -273,6 +298,8 @@ export function mergeServerChats(
 
 let persistTimer: ReturnType<typeof setTimeout> | undefined;
 export function persistStore(store: ChatStore) {
+  // Whatever boot parked is now behind the live store — see the hand-off above.
+  handoff = null;
   // Debounced — turns can finish in bursts and AsyncStorage writes are async.
   clearTimeout(persistTimer);
   persistTimer = setTimeout(() => {

@@ -27,6 +27,7 @@ import {
   makeChat,
   mergeServerChats,
   persistStore,
+  takePreloadedStore,
   trimStore,
   withActiveForProject,
   type Chat,
@@ -109,14 +110,24 @@ function useConversationManager() {
   const pid = useProjectStore((s) => s.projectId);
 
   // Hydrate once from AsyncStorage, scoped to the project active at load time.
+  // On a cold start the boot gate has usually done this read already (behind the
+  // splash, cover warmed and all — lib/boot.ts); taking its hand-off publishes on
+  // this first render instead of a disk round trip later, with the tab body empty
+  // in between. Everything else — a project switch, a remount — reads from disk.
   useEffect(() => {
     let alive = true;
-    loadStore(getProjectId()).then(async (s) => {
+    const pid = getProjectId();
+    // The hand-off, when there is one, is the same store `loadStore` would have
+    // returned — already read, and with its cover already in memory, so the two
+    // awaits below cost nothing and this publishes on the next tick instead of
+    // after a disk round trip.
+    const handed = takePreloadedStore(pid);
+    (handed ? Promise.resolve(handed) : loadStore(pid)).then(async (s) => {
       // Warm the last chat's local transcript cover BEFORE publishing the store:
       // nothing renders until we do, so the chat screen's very first frame can
       // read it synchronously (peekTranscript) and open already-drawn instead of
       // flashing the empty state while flue re-streams durable history.
-      const id = activeChatId(s, getProjectId());
+      const id = activeChatId(s, pid);
       if (id) await preloadTranscript(id);
       if (!alive) return;
       setStore(s);

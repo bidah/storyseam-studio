@@ -21,6 +21,32 @@ export const authClient = createAuthClient({
 
 export const { signIn, signUp, signOut, useSession } = authClient;
 
+// Write a session we fetched ourselves into the atom `useSession` reads, so the
+// next component to mount reads it settled instead of pending.
+//
+// Two callers, same need: `confirmSignedIn` below (post-OAuth, see the note
+// there) and the cold-start path (lib/boot.ts), which resolves the session
+// behind the splash screen. Better Auth's own on-mount refetch then keeps
+// `isPending` false — it computes it as `data === null`, so a seeded atom
+// refetches in the background instead of blanking the screen.
+//
+// Only a REAL session is worth seeding: writing null back would clear
+// `isPending` for one render and set it again the moment the refetch starts,
+// which is a redirect to /sign-in and back.
+export function seedSession(data: unknown): boolean {
+  if (!data) return false;
+  const sessionAtom = (authClient as any).$store?.atoms?.session;
+  if (!sessionAtom) return false;
+  sessionAtom.set({
+    ...sessionAtom.get(),
+    data,
+    error: null,
+    isPending: false,
+    isRefetching: false,
+  });
+  return true;
+}
+
 // Confirms a sign-in/sign-up actually produced a session, and seeds the
 // session *atom* with it before the caller navigates into (tabs).
 //
@@ -37,15 +63,6 @@ export const { signIn, signUp, signOut, useSession } = authClient;
 export async function confirmSignedIn(): Promise<boolean> {
   const { data } = await authClient.getSession({ query: { disableCookieCache: true } });
   if (!data) return false;
-  const sessionAtom = (authClient as any).$store?.atoms?.session;
-  if (sessionAtom) {
-    sessionAtom.set({
-      ...sessionAtom.get(),
-      data,
-      error: null,
-      isPending: false,
-      isRefetching: false,
-    });
-  }
+  seedSession(data);
   return true;
 }

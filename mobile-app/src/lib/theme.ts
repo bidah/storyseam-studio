@@ -77,8 +77,8 @@ export function applyNativeScheme(pref: ThemePref) {
   Appearance.setColorScheme(pref === 'system' ? 'unspecified' : pref);
 }
 
-export function hydrateTheme() {
-  AsyncStorage.getItem(STORAGE_KEY)
+export function hydrateTheme(): Promise<void> {
+  return AsyncStorage.getItem(STORAGE_KEY)
     .then((v) => {
       if (isPref(v)) useThemeStore.setState({ pref: v });
     })
