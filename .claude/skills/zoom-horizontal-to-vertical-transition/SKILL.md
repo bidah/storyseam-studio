@@ -80,6 +80,56 @@ Corollary: derive `contentOffset` from the **same** row height as `getItemLayout
 and `snapToInterval`. If they disagree by Δ, the opening offset is wrong by
 `index * Δ` — which again looks fine on card 0 and worsens down the list.
 
+## Why the vertical list has to be READY BEFORE MOUNT
+
+This is the mental model the whole setup is built around, and it explains why so
+many of the choices below look over-careful in isolation.
+
+**A UIKit zoom is not a JS animation you drive — it is a measurement UIKit takes
+once, at the start of the push, and then interpolates.** The sequence is:
+
+```
+tap
+ └─ expo-router rewrites the href with a zoom source id
+     └─ the destination screen MOUNTS and lays out
+         └─ UIKit reads Link.AppleZoomTarget's rect          ← the only measurement
+             └─ UIKit animates source rect → that rect       ← nothing here is re-read
+```
+
+There is **no second look**. Whatever the target's frame is at that one moment is
+where the card flies, for the whole transition. Anything the screen does
+afterwards — a deferred scroll, a layout pass that corrects a height, data
+arriving — happens *behind* an animation that has already committed to the wrong
+destination. That is why the failure mode isn't a janky zoom; it's a zoom to
+somewhere off-screen, which the eye reads as no transition at all.
+
+So the destination has one job: **be in its final state on the first render**,
+synchronously, with no round-trips. Four things have to be true at that instant,
+and each is a separate mechanism:
+
+| What must be true | How | Why not the obvious thing |
+|---|---|---|
+| Row heights are known | `getItemLayout` | Measuring rows costs a layout pass; the rect would be read before it finished |
+| The arrival row is mounted | `initialScrollIndex` (render window) | Virtualisation would otherwise cull an off-screen row — no view, no rect |
+| The list is scrolled to it | `contentOffset` | `initialScrollIndex` scrolls a frame LATER (see above) |
+| It paints at full size | `useSharedValue(initialIndex)` | Seeding `progress` at 0 paints the card at 0.92 and pops it to 1 as the zoom lands |
+| The geometry is right | seed `viewport` with the window height | Seeding 0 means the first frame has no card, so there is no rect to read |
+
+Read as a whole: **every input to the arrival card's frame is either a constant
+or derivable synchronously from the route param.** Nothing waits on `onLayout`,
+nothing waits on a fetch, nothing waits on a scroll event. `from` → `initialIndex`
+→ `contentOffset` is a pure computation available on render #1, and the card's
+size falls out of `metricsFor(...)` with a seeded viewport.
+
+The `onLayout` correction still exists, but it is a *refinement* of an already
+correct-enough first frame, not the thing that makes the frame exist. That is the
+distinction to preserve if you refactor this: it is fine for the measured pass to
+adjust the geometry, and fatal for it to be the first pass that establishes it.
+
+The same logic is why the shared-deck rule matters (both surfaces must resolve
+`from` to the same index on the same render) and why the cold-cache caveat is
+real (with no deck loaded, `initialIndex` falls back to 0 and the zoom misses).
+
 ## The three parts
 
 ### 1. The horizontal row (source)
