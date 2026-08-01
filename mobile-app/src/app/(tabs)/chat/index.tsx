@@ -1,4 +1,4 @@
-import { Children, use, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Children, use, useCallback, useEffect, useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View, type ViewStyle } from 'react-native';
 import Animated, {
   Easing,
@@ -284,19 +284,23 @@ function PressCard({
 function Section({
   title,
   cardWidth,
-  scrollRef,
+  contentOffset,
   children,
 }: {
   title: string;
   /** Card width for this row — snap offsets are that plus the row's gap apart. */
   cardWidth: number;
   /**
-   * The row itself, for the one caller that has to move it from outside: the
+   * Where the row should be, for the one caller that moves it from outside: the
    * suggestion deck lines up behind the showcase on the way back (see
-   * lib/deck-return.ts). Snap offsets are `index * (cardWidth + ROW_GAP)`, so a
-   * scrollTo of the same number lands on a rest position rather than between two.
+   * lib/deck-return.ts). A PROP, not a `scrollTo` on a ref — refs in this
+   * subtree never attach (the note at the call site has the details), and iOS
+   * applies a changed `contentOffset` to the scroll view directly.
+   *
+   * Snap offsets are `index * (cardWidth + ROW_GAP)`, so an offset built from
+   * the same number lands on a rest position rather than between two cards.
    */
-  scrollRef?: React.Ref<ScrollView>;
+  contentOffset?: { x: number; y: number };
   children: React.ReactNode;
 }) {
   const count = Children.count(children);
@@ -316,7 +320,7 @@ function Section({
         {title}
       </Text>
       <ScrollView
-        ref={scrollRef}
+        contentOffset={contentOffset}
         horizontal
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.row}
@@ -448,27 +452,33 @@ export default function ChatHomeScreen() {
   // Unanimated for the same reason: this is the row taking its position, not an
   // animation anybody is meant to watch.
   //
-  // KNOWN BROKEN, and this is where it breaks: `rowRef.current` is null. Not
-  // stale, not detached while the showcase covers it — NEVER SET. Instrumented
-  // on the simulator (iPhone 17 Pro Max, iOS 26.4): <Section> renders, its
-  // `scrollRef` prop arrives, the listener below fires with the right index —
-  // and the ScrollView's ref callback is never invoked. A callback ref on the
-  // plain <View> wrapping it isn't invoked either, so it isn't a ScrollView
-  // quirk: no ref in this subtree attaches at all.
+  // Moved by PROP, not by a `scrollTo` on a ref, and that's not a style choice.
+  // A ref here is never set — instrumented on the simulator (iPhone 17 Pro Max,
+  // iOS 26.4): <Section> renders, its ref prop arrives, this listener fires with
+  // the right index, and the ScrollView's ref callback is never invoked. Nor is
+  // a callback ref on the plain <View> around it, so it isn't a ScrollView
+  // quirk — nothing in that subtree attaches a ref at all. It belongs with the
+  // other New Architecture casualties this app has catalogued (Reanimated's
+  // scrollTo, its animated scroll handler, worklet gesture callbacks: all
+  // silently never called), and it has the same escape hatch — stop driving the
+  // scroll view imperatively and hand it a `contentOffset`, which iOS applies to
+  // the scroll view on the spot (RCTScrollViewComponentView diffs the prop and
+  // assigns it). The showcase already opens on the right card this way.
   //
-  // Which lands it next to the other New Architecture casualties this app has
-  // catalogued (Reanimated's scrollTo, its animated scroll handler, worklet
-  // gesture callbacks — all silently never called). The escape hatch there was
-  // to stop driving the scroll view imperatively and drive it by PROP instead,
-  // which is also what the showcase does to open on the right card: pass
-  // `contentOffset` and let iOS apply it. That's the next thing to try here.
-  const rowRef = useRef<ScrollView>(null);
+  // The nudge is the cost of driving by prop: iOS only applies an offset that
+  // CHANGED. Send the author back to a card they've already been to — or let
+  // them drag the row by hand in between — and the same number would be a no-op,
+  // leaving the row wherever they left it. A hundredth of a point alternating on
+  // and off makes every arrival a change; at 3x it is a third of a pixel, and
+  // the next drag snaps it away.
+  const [rowOffset, setRowOffset] = useState<{ x: number; y: number } | undefined>(undefined);
   useEffect(
     () =>
       onShowcaseMove((cardId) => {
         const index = suggestions.findIndex((s) => s.id === cardId);
         if (index < 0) return;
-        rowRef.current?.scrollTo({ x: index * (SUGGESTION_W + ROW_GAP), y: 0, animated: false });
+        const x = index * (SUGGESTION_W + ROW_GAP);
+        setRowOffset((prev) => ({ x: prev && prev.x === x ? x + 0.01 : x, y: 0 }));
       }),
     [suggestions],
   );
@@ -611,7 +621,11 @@ export default function ChatHomeScreen() {
           )}
         </Section>
 
-        <Section title="Continue building your story" cardWidth={SUGGESTION_W} scrollRef={rowRef}>
+        <Section
+          title="Continue building your story"
+          cardWidth={SUGGESTION_W}
+          contentOffset={rowOffset}
+        >
           {isLoading ? (
             <SuggestionSkeletons />
           ) : (

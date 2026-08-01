@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import {
   Dimensions,
   StyleSheet,
@@ -383,43 +383,43 @@ export default function StoryShowcaseScreen() {
   // deliver, and the whole point is to be ready before the author taps back
   // rather than a beat after.
   //
-  // Two things follow the deck, and they follow it at different rhythms:
+  // Two things follow the deck, and they follow it TOGETHER, on the frame the
+  // current card changes:
   //
-  //   1. The landing row snaps to the same card — IMMEDIATELY, on the frame the
-  //      current card changes. It's a `scrollTo` on a screen nobody is looking
-  //      at (lib/deck-return.ts, and the effect in chat/index.tsx): no React
-  //      render, nothing to schedule, and by the time the author's thumb reaches
-  //      the back chevron the row has long since arrived.
-  //   2. The transition is re-pointed at THAT card's poster — once the deck
-  //      STOPS. The source view is whichever <Link> was tapped, an identity
-  //      minted at push time and four swipes later the wrong one; rewriting the
-  //      router's own source-id param swaps it, because the native side reads
-  //      the identifier when the transition runs rather than when it was set up.
-  //      That one is a navigation dispatch, so it waits for the flick to end
-  //      instead of firing once per card flown past.
+  //   1. The landing row lines up on the same card (lib/deck-return.ts, and the
+  //      contentOffset in chat/index.tsx).
+  //   2. The transition is re-pointed at that card's poster. The source view is
+  //      whichever <Link> was tapped, an identity minted at push time and four
+  //      swipes later the wrong one; rewriting the router's own source-id param
+  //      swaps it, because the native side looks the identifier up when the
+  //      transition RUNS rather than when it was set up. (Verified: aim at a
+  //      deliberately bogus id and the pop reports that id, not the pushed one.)
+  //
+  // Together is the load-bearing word, and it cost a debounce to learn. Waiting
+  // for the deck to stop before re-aiming — on the theory that a navigation
+  // dispatch per card flown past is wasteful — puts the two out of step for as
+  // long as the wait, and the author's thumb is faster than that: flick, tap
+  // back, and the row has already moved while the transition is still aimed at
+  // the card it was aimed at before. It reads as the zoom sticking to a card
+  // nobody is looking at. A few extra param writes during a flick is the cheaper
+  // mistake.
   const shown = useRef(initialIndex);
-  const restTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const navigation = useNavigation();
 
-  const aimZoomAtCurrentCard = useCallback(() => {
-    // Not if we're already on the way out: `setParams` writes to whatever route
-    // is focused, and after the pop that isn't this one.
-    if (!navigation.isFocused()) return;
-    const card = suggestions[shown.current];
-    if (!card) return;
-    const source = zoomSourceId(card.id);
-    // No identity means the row never rendered a poster for this card, so there
-    // is nothing to aim at. The row still lines up — a transition pointed at the
-    // card the author left from is the status quo, not a regression.
-    if (!source || source === zoomSource) return;
-    router.setParams({ [ZOOM_SOURCE_PARAM]: source });
-  }, [navigation, suggestions, zoomSource]);
-
-  useEffect(
-    () => () => {
-      if (restTimer.current) clearTimeout(restTimer.current);
+  const aimZoomAt = useCallback(
+    (card: Suggestion | undefined) => {
+      // Not if we're already on the way out: `setParams` writes to whatever
+      // route is focused, and after the pop that isn't this one.
+      if (!card || !navigation.isFocused()) return;
+      const source = zoomSourceId(card.id);
+      // No identity means the row never rendered a poster for this card, so
+      // there is nothing to aim at. The row still lines up — a transition
+      // pointed at the card the author left from is the status quo, not a
+      // regression.
+      if (!source || source === zoomSource) return;
+      router.setParams({ [ZOOM_SOURCE_PARAM]: source });
     },
-    [],
+    [navigation, zoomSource],
   );
 
   const onScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
@@ -427,17 +427,12 @@ export default function StoryShowcaseScreen() {
     progress.value = y / metrics.fullH;
 
     const index = Math.round(y / metrics.fullH);
-    if (index !== shown.current) {
-      shown.current = index;
-      const card = suggestions[index];
-      if (card) showcaseMovedTo(card.id);
-    }
-    // "Stopped" as its own little timer rather than a momentum event: a slow
-    // drag ends with no momentum at all, and on this stack the momentum
-    // callbacks are exactly the kind of native event plumbing that has already
-    // proved unreliable here. A scroll that has sent nothing for 150ms is over.
-    if (restTimer.current) clearTimeout(restTimer.current);
-    restTimer.current = setTimeout(aimZoomAtCurrentCard, 150);
+    if (index === shown.current) return;
+    shown.current = index;
+    const card = suggestions[index];
+    if (!card) return;
+    showcaseMovedTo(card.id);
+    aimZoomAt(card);
   };
 
   // Tapping a card here does what tapping it on the landing screen did before
