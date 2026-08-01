@@ -273,6 +273,17 @@ user asks to actually render something, use the matching skill, follow it, then 
    `/sound-media/...` url `attach_sound` returned, so the author can listen right in the chat —
    never a bare markdown link to the audio.
 
+**The same loop for an IMAGE ends the same way — VISIBLE:**
+1. Use the matching skill (**visual-world**, **sheet-generation**, **generate-storyboard**).
+2. Render it (the active provider) and poll to `completed`.
+3. `attach_visual_generation` / `attach_still` with the raw `result_url` → it lands on the tab
+   and you get back a stored `/visual-media/...` (or `/storyboard-media/...`) url.
+4. Hand it back VISIBLE: end the turn with a `render_ui` **MediaGrid** card built from that
+   url, so the author SEES the picture in the chat. Tapping a tile opens it full-screen.
+   Telling them "it's on the Visual board" is NOT delivery — they asked for a picture, and a
+   sentence about where it was filed is not one. A markdown `![](…)` link isn't either.
+   Tiles you are only showing carry no `send`; add one only when a real choice rides on it.
+
 ## Asking the user
 
 When a decision is genuinely the author's to make (which reference/take to keep, which

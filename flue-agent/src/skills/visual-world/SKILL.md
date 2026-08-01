@@ -14,6 +14,9 @@ description: >-
   Higgsfield when unset) — on fal use fal_generate_image + fal_job_status, on
   Atlas use atlas_generate_image + atlas_job_status, same prompts, refs as
   absolute refUrl URLs in image_urls, attach the result URL the same way.
+  Every finished image is handed back IN THE CHAT — a render_ui MediaGrid card
+  carrying the attached url, never a bare markdown link and never prose telling
+  the author to go look at the Visual tab.
 ---
 
 # Visual world exploration (World › Visual tab)
@@ -25,8 +28,10 @@ they like (passing a chosen image back as a reference), and build up a board the
 can arrange on the **Visual nodes** canvas. Built on the **Higgsfield MCP**
 (`mcp__higgsfield__*`), using **Nano Banana Pro** by default.
 
-> **The images do the talking.** Keep chat short. Generate, attach, and let the
-> author react on the tab — don't narrate long descriptions of what you'll draw.
+> **The images do the talking.** Keep chat short. Generate, attach, then SHOW
+> the result in the chat as a `render_ui` **MediaGrid** card — don't narrate long
+> descriptions of what you'll draw, and don't send the author to the tab to find
+> out what you made.
 
 ## How it fits together
 
@@ -162,12 +167,33 @@ attach_visual_generation {
 The image appears on the **World › Visual** tab immediately (and can be dropped
 onto the **Visual nodes** canvas, where the author draws reference-lineage links).
 
-## Step 7 — Iterate
+The response carries the stored image back: `generation.url` (a `/visual-media/…`
+path). That url is what the next step puts on screen.
 
-Show the author what landed (briefly), ask which direction they like, then either
-refine the prompt or **pass their pick back as a reference** and generate the next
-round. When a look is locked, they can **Save to library** on the tab and link it
-as a character sheet on the written World tab — or you can offer to.
+## Step 7 — Show it in the chat
+
+> 🖼️ **The author sees the result in chat.** The ROOT agent's closing move after
+> a batch of attaches is a `render_ui` **MediaGrid** card holding every
+> `generation.url` you just created — see the `generative-ui` skill. The tab is
+> where the images LIVE; the card is how the author SEES them without leaving the
+> conversation. "It's on the Visual board" is not delivery, and neither is a
+> markdown link.
+
+Tiles you are only showing carry **no `send`** — the author taps one to open it
+full-screen and that's it. Give the tiles a `send` only when you are genuinely
+asking them to choose (which direction to iterate on, which take to keep); then
+the card doubles as Step 8's question.
+
+```jsonc
+render_ui { "program": "MediaGrid(header: \"Noah Chen — first pass\", columns: 2) { MediaItem(src: \"/visual-media/abc123.png\", label: \"Frayed, hollow-eyed\") }" }
+```
+
+## Step 8 — Iterate
+
+Ask which direction they like, then either refine the prompt or **pass their pick
+back as a reference** and generate the next round. When a look is locked, they can
+**Save to library** on the tab and link it as a character sheet on the written
+World tab — or you can offer to.
 
 ## Saving a style (optional)
 

@@ -13,7 +13,9 @@ description: >-
   of candidate thumbnails and STOP before generating — never auto-pick. Layer the
   sheet prompt (get_visual_world sheetPrompts) between style preset and
   subject, attach with attach_visual_generation (sheetType set), and offer to
-  link it as the roster's sheetImage.
+  link it as the roster's sheetImage. The finished sheet is handed back IN THE
+  CHAT — a render_ui MediaGrid card carrying the attached url, never a bare link
+  and never prose pointing the author at a tab.
 ---
 
 # Character, location & prop sheet generation

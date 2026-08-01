@@ -307,16 +307,20 @@ export function OptionList({ props, renderNode }) {
 // ---------------------------------------------------------------------------
 
 /**
- * A pickable thumbnail. The two gestures are deliberately separate: TAPPING THE
- * IMAGE opens it full-size (you should be able to actually look at a reference
- * before committing to it), while picking is the explicit control underneath —
- * a "Use this" button in a single-select grid, a checkbox in a multi-select one.
+ * A thumbnail. The two gestures are deliberately separate: TAPPING THE IMAGE
+ * opens it full-size (you should be able to actually look at a reference before
+ * committing to it), while picking is the explicit control underneath — a "Use
+ * this" button in a single-select grid, a checkbox in a multi-select one.
+ *
+ * Only tiles given a `send` get that control, so a card that merely SHOWS the
+ * author a picture the agent just generated is just thumbnails they can open.
+ * Same rule as AudioItem's listen-only rows.
  */
 export function MediaItem({ props }) {
   const selection = useSelection();
   const [preview, setPreview] = useState(false);
   const send = useSend(props.send);
-  const checked = selection ? selection.has(props.send) : false;
+  const checked = selection && props.send ? selection.has(props.send) : false;
   const pick = selection ? (send ? () => selection.toggle(props.send) : undefined) : send;
   // The tile the author picked keeps its ring once the card is answered; the
   // ones they passed over recede. See answered.ts.
@@ -356,7 +360,7 @@ export function MediaItem({ props }) {
           {props.caption}
         </span>
       ) : null}
-      {selection ? (
+      {selection && props.send ? (
         <button
           type="button"
           disabled={!pick}
@@ -368,11 +372,11 @@ export function MediaItem({ props }) {
             {checked ? "Picked" : "Pick"}
           </span>
         </button>
-      ) : (
+      ) : props.send ? (
         <Button type="button" size="xs" variant="outline" disabled={!pick} onClick={pick}>
           Use this
         </Button>
-      )}
+      ) : null}
       <Lightbox
         src={props.src}
         alt={props.label}

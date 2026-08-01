@@ -8,7 +8,10 @@ description: >-
   every interactive element's `send` string is posted VERBATIM as the author's
   next chat message, so write it in their voice; image and audio URLs must come
   from a tool result and are never invented; reference/still/take picks go
-  through MediaGrid, never markdown image links; finished AUDIO (a Seed Audio
+  through MediaGrid, never markdown image links; a finished IMAGE (a concept
+  generation, a character/location sheet, a storyboard still) is handed back as
+  a MediaGrid card the moment it is attached, so the author sees the picture in
+  the chat instead of being told it is on some tab; finished AUDIO (a Seed Audio
   scene, radio takes, a sound version going ready) is handed back as an
   AudioList card so the author can play it in the chat, never as a bare
   /sound-media link; `render_ui` is the FINAL action of the
@@ -110,6 +113,7 @@ A card that repeats your paragraph reads as a stutter.
 | --- | --- |
 | choose ONE of 2–6 things | `OptionList`, `select: "one"` |
 | choose SEVERAL of a list | `OptionList`, `select: "many"` |
+| SEE an image that just rendered | `MediaGrid` of `MediaItem`, no `send` |
 | pick an image (reference, still, take, sheet) | `MediaGrid` of `MediaItem` |
 | hear audio that just rendered (and maybe keep a take) | `AudioList` of `AudioItem` |
 | say yes or no to one proposal | `Recommendation` (hero + one CTA) |
@@ -134,6 +138,44 @@ here.** A plausible-looking `/library/clearing-dawn.png` that doesn't exist
 renders as a broken thumbnail and sends the author chasing a file that was never
 there. If you don't have the value, omit the prop; if you don't have the
 thumbnails, call `list_library` / `get_visual_world` / `get_episode` first.
+
+## Pictures come back visible
+
+When an image finishes generating — a concept image you just attached with
+`attach_visual_generation`, a character or location sheet, a storyboard still —
+show it as a `MediaGrid` in your closing message. The author asked you to make a
+picture; the picture is the answer, and it belongs next to the words.
+
+Three ways of ending an image turn are wrong, and all three are easy to fall
+into:
+
+- **"It's on the Visual board now."** The author is in the chat, often on a
+  phone. Naming the tab where the result lives is not delivery — it's homework.
+- **A markdown `![](…)` link.** Renders as a bare thumbnail with none of the
+  full-screen behavior, and the mobile client has to rescue it.
+- **Nothing at all**, because the attach tool returned `ok:true` and that felt
+  like completion. It isn't; the author still hasn't seen anything.
+
+A card that just delivers the render is tiles with **no `send`** — tapping one
+opens it full-screen (a native swipeable gallery on the phone, a lightbox on the
+web) and nothing is posted. Add a `send` only when a real decision rides on the
+picture ("Use this as Noah's sheet", "Iterate on this one"):
+
+```
+root = Card([intro, shots])
+intro = Text("Noah Chen — first pass, Analog Glitch.", "body")
+shots = MediaGrid([g1, g2], "Noah Chen")
+g1 = MediaItem("<url from attach_visual_generation>", label: "Frayed, hollow-eyed")
+g2 = MediaItem("<url from attach_visual_generation>", label: "Tighter on the scar")
+```
+
+One image is still a card — a single tile in a `MediaGrid` is the normal way to
+hand back one generation, not an over-reaction.
+
+Only use image URLs a tool returned (`attach_visual_generation`'s
+`generation.url`, `list_library`, `get_visual_world`, `get_episode`, …). A job
+that hasn't reached `completed` has no URL — don't card it, and don't card the
+raw provider `result_url` when the attached `/visual-media/…` path exists.
 
 ## Sound comes back playable
 

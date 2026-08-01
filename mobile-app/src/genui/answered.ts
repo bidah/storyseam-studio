@@ -51,9 +51,15 @@ export function matchesAnswer(answer: string | null | undefined, send?: string |
  * `picked` is the choice that was taken, `dimmed` is every sibling it was taken
  * over. Both are false while the card is live, so a renderer can apply them
  * unconditionally.
+ *
+ * An element with NO `send` never dims. It was never a choice, so "passed over"
+ * says nothing true about it — and the elements that lack one are exactly the
+ * display-only media a card exists to show: the picture the agent just
+ * generated, a listen-only take. Greying those out the moment the author types
+ * again would fade the output itself into history.
  */
 export function useAnswerState(send?: string | null): { picked: boolean; dimmed: boolean } {
   const answer = useContext(AnsweredContext);
   const picked = matchesAnswer(answer, send);
-  return { picked, dimmed: !!answer && !picked };
+  return { picked, dimmed: !!answer && !!send && !picked };
 }

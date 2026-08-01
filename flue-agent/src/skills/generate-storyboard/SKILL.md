@@ -12,7 +12,10 @@ description: >-
   Higgsfield when none is set) — on fal use fal_generate_image + fal_job_status,
   on Atlas Cloud use atlas_generate_image + atlas_job_status, with the same
   assembled prompt, character/location references as absolute URLs in
-  image_urls, then attach the result URL with attach_still as usual.
+  image_urls, then attach the result URL with attach_still as usual. The
+  finished still is handed back IN THE CHAT — a render_ui MediaGrid card
+  carrying the attached url, never a bare link and never prose pointing the
+  author at the Episode tab.
 ---
 
 # generate-storyboard (Nano Banana Pro — via the Higgsfield MCP)

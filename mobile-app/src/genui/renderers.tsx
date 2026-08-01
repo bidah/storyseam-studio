@@ -379,12 +379,16 @@ export function OptionList({ props, renderNode }: Render<OptionListProps>) {
 // ---------------------------------------------------------------------------
 
 /**
- * A pickable thumbnail. The two gestures are deliberately separate: TAPPING THE
- * IMAGE opens Galeria's full-screen swipeable preview (the same shared-element
+ * A thumbnail. The two gestures are deliberately separate: TAPPING THE IMAGE
+ * opens Galeria's full-screen swipeable preview (the same shared-element
  * transition the Assets and Visual World grids use — you should be able to
  * actually look at a reference before committing to it), while picking is the
  * explicit control underneath: a "Use this" button in a single-select grid, a
  * checkbox row in a multi-select one.
+ *
+ * Only tiles given a `send` get that control, so a card that merely SHOWS the
+ * author a picture the agent just generated is just thumbnails they can open.
+ * Same rule as AudioItem's listen-only rows.
  */
 export function MediaItem({ props }: Render<MediaItemProps>) {
   const colors = useColors();
@@ -392,8 +396,8 @@ export function MediaItem({ props }: Render<MediaItemProps>) {
   const indices = useContext(GaleriaIndexContext);
   const send = useSend(props.send);
   const uri = mediaUri(props.src);
-  const checked = selection ? selection.has(props.send) : false;
-  const pick = selection ? (send ? () => selection.toggle(props.send) : undefined) : send;
+  const checked = selection && props.send ? selection.has(props.send) : false;
+  const pick = selection ? (send && props.send ? () => selection.toggle(props.send!) : undefined) : send;
   // The tile the author picked keeps its ring once the card is answered; the
   // ones they passed over recede. See answered.ts.
   const { picked, dimmed } = useAnswerState(props.send);
@@ -436,7 +440,7 @@ export function MediaItem({ props }: Render<MediaItemProps>) {
           {props.caption}
         </RNText>
       ) : null}
-      {selection ? (
+      {selection && props.send ? (
         <BouncyPressable
           onPress={pick}
           disabled={!pick}
@@ -449,7 +453,7 @@ export function MediaItem({ props }: Render<MediaItemProps>) {
             {checked ? 'Picked' : 'Pick'}
           </RNText>
         </BouncyPressable>
-      ) : (
+      ) : props.send ? (
         <BouncyPressable
           onPress={pick}
           disabled={!pick}
@@ -459,7 +463,7 @@ export function MediaItem({ props }: Render<MediaItemProps>) {
         >
           <RNText className="text-[13px] font-medium text-foreground">Use this</RNText>
         </BouncyPressable>
-      )}
+      ) : null}
     </View>
   );
 }

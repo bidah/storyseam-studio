@@ -375,7 +375,7 @@
         "items"
       ],
       "additionalProperties": false,
-      "description": "A grid of image thumbnails — the RIGHT way to ask which reference, still, take or character sheet to use. ALWAYS prefer this over listing image URLs as markdown. Tapping a thumbnail opens it FULL-SCREEN for a proper look; picking is a separate explicit control, so the author can inspect before committing. columns: 2 (default) or 3; use 3 only for six or more small thumbnails. select: 'one' (default) — a tap picks that item and sends immediately. 'many' — taps toggle, and nothing is sent until the confirm button — use 'many' when several images are legitimately wanted (a multi-reference generation). send: REQUIRED when select is 'many': the lead of the composed message, to which the picked items' `send` values are appended after a colon — e.g. send \"Add these characters to the World\" + picks \"Miles\", \"Vera\" posts \"Add these characters to the World: Miles, Vera\". Ignored when select is 'one'. confirm: the confirm button's label when select is 'many' (default \"Continue\"). Ignored when select is 'one'."
+      "description": "A grid of image thumbnails. It does TWO jobs. (1) SHOWING finished pictures: the moment an image generation you started completes, draw this card with the result — that is how the author SEES it. Never answer an image job with prose alone (\"it's on the Visual board\", \"saved to the library\") and never paste the URL as markdown; the picture belongs in the chat, next to the words. Rows you are only showing get NO `send`, so there is no pick control under them. (2) ASKING which reference, still, take or character sheet to use — then each tile carries a `send`. Tapping a thumbnail always opens it FULL-SCREEN for a proper look; picking, when offered, is a separate explicit control so the author can inspect before committing. columns: 2 (default) or 3; use 3 only for six or more small thumbnails. A single image is fine — one tile, columns 2. select: 'one' (default) — a tap picks that item and sends immediately. 'many' — taps toggle, and nothing is sent until the confirm button — use 'many' when several images are legitimately wanted (a multi-reference generation). send: REQUIRED when select is 'many': the lead of the composed message, to which the picked items' `send` values are appended after a colon — e.g. send \"Add these characters to the World\" + picks \"Miles\", \"Vera\" posts \"Add these characters to the World: Miles, Vera\". Ignored when select is 'one'. confirm: the confirm button's label when select is 'many' (default \"Continue\"). Ignored when select is 'one'."
     },
     "MediaItem": {
       "type": "object",
@@ -384,7 +384,14 @@
           "type": "string"
         },
         "send": {
-          "type": "string"
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "label": {
           "anyOf": [
@@ -411,11 +418,10 @@
         }
       },
       "required": [
-        "src",
-        "send"
+        "src"
       ],
       "additionalProperties": false,
-      "description": "One pickable image in a MediaGrid. src: the image URL (a /storyboard-media, /library or generation URL from the tools — never invent one). send: the message sent AS THE USER when this is picked — write it as the user would ('Use the second reference'), never as an instruction to yourself. It MUST OPEN WITH the words shown on the control itself (its title/label), because this message is the author's ONLY confirmation that the row they hit is the row they meant; put any extra brief AFTER that opening — title 'Punch up the dialogue' ⇒ send 'Punch up the dialogue — sharpen the voices in the audition scene', never send 'Let me tighten those lines'; in a 'many' grid make it a NOUN PHRASE instead (\"the dawn clearing\"), because the picks are joined into one sentence. label: a short name under the thumbnail. caption: one extra line of context. selected: marks the current pick."
+      "description": "One image in a MediaGrid. src: the image URL (a /storyboard-media, /library or generation URL from the tools — never invent one). send: OPTIONAL — give it only when picking this image is a real decision; then it follows the usual rules (the message sent AS THE USER when this is picked — write it as the user would ('Use the second reference'), never as an instruction to yourself. It MUST OPEN WITH the words shown on the control itself (its title/label), because this message is the author's ONLY confirmation that the row they hit is the row they meant; put any extra brief AFTER that opening — title 'Punch up the dialogue' ⇒ send 'Punch up the dialogue — sharpen the voices in the audition scene', never send 'Let me tighten those lines'; in a 'many' grid a NOUN PHRASE instead, because the picks are joined into one sentence). OMIT send entirely when the card is just showing the author a picture you made — the tile is then look-only, with no \"Use this\" button under it. label: a short name under the thumbnail. caption: one extra line of context. selected: marks the current pick."
     },
     "AudioList": {
       "type": "object",

@@ -90,7 +90,7 @@ export interface OptionListProps {
 }
 export interface MediaItemProps {
   src: string;
-  send: string;
+  send?: string | null;
   label?: string | null;
   caption?: string | null;
   selected?: boolean;
@@ -298,12 +298,12 @@ export function buildStudioLibrary(renderers: StudioRenderers): Library {
     name: "MediaItem",
     props: z.object({
       src: z.string(),
-      send: z.string(),
+      send: z.string().optional().nullable(),
       label: z.string().optional().nullable(),
       caption: z.string().optional().nullable(),
       selected: z.boolean().optional(),
     }),
-    description: `One pickable image in a MediaGrid. src: the image URL (a /storyboard-media, /library or generation URL from the tools — never invent one). send: ${SEND}; in a 'many' grid make it a NOUN PHRASE instead ("the dawn clearing"), because the picks are joined into one sentence. label: a short name under the thumbnail. caption: one extra line of context. selected: marks the current pick.`,
+    description: `One image in a MediaGrid. src: the image URL (a /storyboard-media, /library or generation URL from the tools — never invent one). send: OPTIONAL — give it only when picking this image is a real decision; then it follows the usual rules (${SEND}; in a 'many' grid a NOUN PHRASE instead, because the picks are joined into one sentence). OMIT send entirely when the card is just showing the author a picture you made — the tile is then look-only, with no "Use this" button under it. label: a short name under the thumbnail. caption: one extra line of context. selected: marks the current pick.`,
     component: r(renderers.MediaItem),
   });
 
@@ -317,7 +317,7 @@ export function buildStudioLibrary(renderers: StudioRenderers): Library {
       send: z.string().optional().nullable(),
       confirm: z.string().optional().nullable(),
     }),
-    description: `A grid of image thumbnails — the RIGHT way to ask which reference, still, take or character sheet to use. ALWAYS prefer this over listing image URLs as markdown. Tapping a thumbnail opens it FULL-SCREEN for a proper look; picking is a separate explicit control, so the author can inspect before committing. columns: 2 (default) or 3; use 3 only for six or more small thumbnails. select: ${SELECT} — use 'many' when several images are legitimately wanted (a multi-reference generation). send: ${LIST_SEND}. confirm: ${CONFIRM}.`,
+    description: `A grid of image thumbnails. It does TWO jobs. (1) SHOWING finished pictures: the moment an image generation you started completes, draw this card with the result — that is how the author SEES it. Never answer an image job with prose alone ("it's on the Visual board", "saved to the library") and never paste the URL as markdown; the picture belongs in the chat, next to the words. Rows you are only showing get NO \`send\`, so there is no pick control under them. (2) ASKING which reference, still, take or character sheet to use — then each tile carries a \`send\`. Tapping a thumbnail always opens it FULL-SCREEN for a proper look; picking, when offered, is a separate explicit control so the author can inspect before committing. columns: 2 (default) or 3; use 3 only for six or more small thumbnails. A single image is fine — one tile, columns 2. select: ${SELECT} — use 'many' when several images are legitimately wanted (a multi-reference generation). send: ${LIST_SEND}. confirm: ${CONFIRM}.`,
     component: r(renderers.MediaGrid),
   });
 
