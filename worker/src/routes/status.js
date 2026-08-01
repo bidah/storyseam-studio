@@ -16,6 +16,7 @@
 // no media probing, and none of the heavier derived views (buildRadioView /
 // buildAnimaticView / buildCutSegments), which re-join the whole episode.
 import { readDoc } from "../lib/docs.js";
+import { readCompletedSuggestions } from "../lib/suggestion-ledger.js";
 import { readWorld, MAP_FIELDS, DEPTH_FIELDS } from "./world.js";
 import { readStore, pinnedDraft, countLines } from "../lib/script-store.js";
 import { readReviews, reviewState } from "../lib/reviews.js";
@@ -53,7 +54,7 @@ function pipelineStage(s) {
 // (POST /api/next-questions does exactly that). Pure read: no writes, no
 // broadcast, safe to call from anywhere.
 export async function buildStatus(env, pid) {
-  const [world, store, reviewDoc, db, shotlistDoc, vw, radio, sounds, manifest] =
+  const [world, store, reviewDoc, db, shotlistDoc, vw, radio, sounds, manifest, completedCards] =
     await Promise.all([
       readWorld(env, pid),
       readStore(env, pid),
@@ -64,6 +65,11 @@ export async function buildStatus(env, pid) {
       readDoc(env, pid, "radio", {}),
       readDoc(env, pid, "sounds", { tracks: [] }),
       readDoc(env, pid, "episode-manifest", null),
+      // The one part of the digest that is STORED rather than derived — see
+      // routes/suggestions.js for why "done" can't be recomputed from the gap
+      // that closed. It rides along here so the landing screen gets the live
+      // deck and its finished tail from the single fetch it already makes.
+      readCompletedSuggestions(env, pid),
     ]);
 
   // --- World ------------------------------------------------------------
@@ -192,6 +198,7 @@ export async function buildStatus(env, pid) {
     sounds: soundsState,
     episode: episodeState,
     cuts: cutsState,
+    suggestions: { completed: completedCards },
   };
   out.stage = pipelineStage(out);
   return out;

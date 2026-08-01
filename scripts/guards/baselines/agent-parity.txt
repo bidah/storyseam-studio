@@ -69,3 +69,4 @@
 /api/visual-world/poll
 /api/visual-world/settings
 /api/visual-world/sheet-prompts
+/api/suggestions/start            # "the author tapped this card" — there is no card for the agent to tap

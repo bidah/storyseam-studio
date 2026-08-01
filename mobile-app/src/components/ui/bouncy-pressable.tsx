@@ -35,6 +35,17 @@ export type BouncyPressableProps = {
   /** Light impact haptic on press. */
   haptic?: boolean;
   disabled?: boolean;
+  /**
+   * Whether `disabled` also fades the card to half opacity. On by default —
+   * that fade IS the affordance for most disabled buttons.
+   *
+   * Off for a card that draws its own finished state. The suggestion deck's
+   * completed cards keep their artwork at full strength under a dark scrim and
+   * a Completed badge (see PressCard in app/(tabs)/chat/index.tsx); stacking a
+   * 50% fade under that scrim doesn't read as "more disabled", it reads as a
+   * washed-out picture behind a grey film.
+   */
+  dimWhenDisabled?: boolean;
   accessibilityLabel?: string;
   hitSlop?: number;
 };
@@ -47,6 +58,7 @@ export function BouncyPressable({
   pressedScale = 0.96,
   haptic = true,
   disabled,
+  dimWhenDisabled = true,
   accessibilityLabel,
   hitSlop = 8,
 }: BouncyPressableProps) {
@@ -72,7 +84,7 @@ export function BouncyPressable({
         onPress?.();
       }}
     >
-      <View className={cn(disabled && 'opacity-50', className)} style={style}>
+      <View className={cn(disabled && dimWhenDisabled && 'opacity-50', className)} style={style}>
         {children}
       </View>
     </AnimatedPressable>

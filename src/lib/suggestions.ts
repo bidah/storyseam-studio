@@ -45,6 +45,21 @@ export type SuggestionKind =
 export type Suggestion = {
   id: string;
   kind: SuggestionKind;
+  /**
+   * A card whose work is FINISHED. It renders as itself — same artwork, same
+   * headline — under a scrim, badged Completed, and it doesn't tap.
+   *
+   * A card used to leave the deck the moment its gap closed, which threw away
+   * the only evidence the author had that the thing they started actually
+   * landed: they tapped "Write your script", came back an hour later, and the
+   * card was simply gone, indistinguishable from one that had never applied to
+   * this project at all. So a card the author STARTED retires visibly.
+   *
+   * Absent (not `false`) on a live card, so `s.done` reads as the question.
+   */
+  done?: boolean;
+  /** When it was marked done — ISO, set with `done` and only then. */
+  completedAt?: string;
   /** What the card says. Short — two lines at the card's width. */
   title: string;
   /** One line of context under the title, or null. */
@@ -83,8 +98,29 @@ export type Reviews = {
   fresh?: string[];
 };
 
+/**
+ * A card the author started and the pipeline then confirmed done — a SNAPSHOT,
+ * stored by the worker (`docs` row `suggestions`) rather than re-derived.
+ *
+ * It has to be a snapshot because a card's copy is composed FROM ITS GAP: "3 of
+ * 148 shots have no still" is a sentence that only exists while the gap does.
+ * Re-deriving a finished card would either crash on the missing numbers or
+ * print a zero — so the title and blurb the author actually read are kept as
+ * they were at the moment the work landed.
+ */
+export type CompletedSuggestion = {
+  id: string;
+  kind?: SuggestionKind;
+  title?: string;
+  blurb?: string;
+  /** ISO, when the gap was observed closed. */
+  at?: string;
+};
+
 export type Status = {
   stage?: string;
+  /** The completed-card ledger, newest first (worker/src/routes/suggestions.js). */
+  suggestions?: { completed?: CompletedSuggestion[] };
   world?: {
     exists?: boolean;
     title?: string;
@@ -236,6 +272,19 @@ export const MAX_SUGGESTIONS = 6;
 const MAX_PENDING_REVIEWS = 2;
 const MAX_STALE_REVIEWS = 1;
 
+// How many finished cards trail the live deck. Three is a record of recent
+// wins, not an archive: the deck's job is still the next move, and a project
+// near the end would otherwise open on a wall of things already done.
+export const MAX_COMPLETED = 3;
+
+// Cards that can never be "completed" because they never had a gap — they're
+// the evergreen tail, offered at every stage including the last one. Marking
+// one done would retire the only card a finished episode still has.
+const EVERGREEN = new Set(['status', 'next-move']);
+
+/** Whether a card id is one the completion ledger is allowed to track. */
+export const isCompletable = (id: string) => !EVERGREEN.has(id);
+
 // The one card that fits every stage, so it can serve as both the deck's tail and
 // the floor when nothing else can be derived.
 const STATUS_CARD: Suggestion = {
@@ -268,22 +317,17 @@ export const FALLBACK_SUGGESTIONS: Suggestion[] = [
 ];
 
 /**
- * The ordered deck for this project state. Rules are listed in pipeline order
- * and each yields a card only when its own gap is real, so the head of the list
- * is always the most upstream unfinished thing — the move most likely to be what
- * the user opened the chat to do. Callers take the first MAX_SUGGESTIONS.
- *
- * `max` caps the deck (default MAX_SUGGESTIONS); the status card always takes the
- * last slot, so a cap of 4 means three derived cards plus it.
- *
- * `null` or `{}` (a project with nothing in it) yields the day-one deck. That is
- * NOT the same as "the digest couldn't be read" — telling someone with a finished
- * episode to build a story world is worse than saying nothing, so a FAILED read
- * must render FALLBACK_SUGGESTIONS instead of calling this.
+ * Every card whose gap is OPEN right now, in pipeline order. The rules live
+ * here rather than in `buildSuggestions` because two callers need them at
+ * different widths: the deck takes the head of this list, while the worker's
+ * completion sweep needs it UNCAPPED (`capReviews: false`) to answer "is this
+ * card's work still outstanding?" — a review card that fell out of the deck
+ * only because two other doctors were queued ahead of it has not been done, and
+ * marking it Completed on that basis would be a lie the ledger then persists.
  */
-export function buildSuggestions(
+function deriveCards(
   status: Status | null,
-  { max = MAX_SUGGESTIONS }: { max?: number } = {},
+  { capReviews = true }: { capReviews?: boolean } = {},
 ): Suggestion[] {
   const cards: Suggestion[] = [];
   const w = status?.world ?? {};
@@ -390,7 +434,7 @@ export function buildSuggestions(
     // `pending`/`stale` arrive in the canonical specialist order (the worker
     // iterates SPECIALISTS), so taking the head takes the ones a script wants
     // first — structure before dialogue polish.
-    for (const id of pending.slice(0, MAX_PENDING_REVIEWS)) {
+    for (const id of capReviews ? pending.slice(0, MAX_PENDING_REVIEWS) : pending) {
       const d = DOCTOR_BY_ID.get(id);
       if (!d) continue;
       cards.push({
@@ -403,7 +447,7 @@ export function buildSuggestions(
       });
     }
     // Re-runs come after every never-run doctor: a stale pass is still a pass.
-    for (const id of stale.slice(0, MAX_STALE_REVIEWS)) {
+    for (const id of capReviews ? stale.slice(0, MAX_STALE_REVIEWS) : stale) {
       const d = DOCTOR_BY_ID.get(id);
       if (!d) continue;
       const last = reviews.latest?.[id];
@@ -546,10 +590,79 @@ export function buildSuggestions(
     });
   }
 
-  // --- Always available -----------------------------------------------------
+  return cards;
+}
+
+/**
+ * The ids of every card with work still outstanding — the input to the worker's
+ * completion sweep. A card the author started that is NOT in this set has had
+ * its gap closed by somebody: the agent, the GUI, or a hand edit. Uncapped on
+ * purpose (see deriveCards).
+ */
+export function openGapIds(status: Status | null): string[] {
+  return deriveCards(status, { capReviews: false }).map((c) => c.id);
+}
+
+/**
+ * The ordered deck for this project state: the live moves first (rules run in
+ * pipeline order, so the head is always the most upstream unfinished thing),
+ * then the evergreen status card, then up to `maxCompleted` finished cards.
+ *
+ * `max` caps the LIVE half (default MAX_SUGGESTIONS); the status card always
+ * takes its last slot, so a cap of 4 means three derived cards plus it. The
+ * completed tail is counted separately — a finished card must never cost a live
+ * one its place, since the live one is the thing there is still to do.
+ *
+ * `null` or `{}` (a project with nothing in it) yields the day-one deck. That is
+ * NOT the same as "the digest couldn't be read" — telling someone with a finished
+ * episode to build a story world is worse than saying nothing, so a FAILED read
+ * must render FALLBACK_SUGGESTIONS instead of calling this.
+ */
+export function buildSuggestions(
+  status: Status | null,
+  { max = MAX_SUGGESTIONS, maxCompleted = MAX_COMPLETED }: { max?: number; maxCompleted?: number } = {},
+): Suggestion[] {
+  const cards = deriveCards(status);
+
   // The tail card, and the reason the row is never empty — for a finished
   // episode, or a status shape this build doesn't understand, it's the whole
-  // deck. It's appended AFTER the cut rather than competing for a slot, so a
-  // busy project can't push "where does it stand" off the end.
-  return [...cards.slice(0, Math.max(1, max) - 1), STATUS_CARD];
+  // live deck. It's appended AFTER the cut rather than competing for a slot, so
+  // a busy project can't push "where does it stand" off the end.
+  const live = [...cards.slice(0, Math.max(1, max) - 1), STATUS_CARD];
+
+  // A card can come BACK: pin a new draft and the doctor that already read the
+  // old one returns to `pending`, so its gap is open again while the ledger
+  // still remembers the finished pass. Open wins — the work is outstanding
+  // again, and a card badged Completed with work waiting inside it is a lie.
+  //
+  // Checked against the UNCAPPED gap list, not against `live`. The capped deck
+  // drops a re-opened doctor whenever two others are queued ahead of it, and
+  // testing membership of `live` would then read that omission as "finished"
+  // and badge it — which is exactly the case that shipped this comment.
+  const open = new Set(deriveCards(status, { capReviews: false }).map((c) => c.id));
+
+  // The ledger is stored newest-first, so the most recent win sits closest to
+  // the live cards — you swipe past the thing you just finished before the
+  // thing you finished last week.
+  const completed = (status?.suggestions?.completed ?? [])
+    .filter((c) => c && c.id && isCompletable(c.id) && !open.has(c.id))
+    .slice(0, Math.max(0, maxCompleted))
+    .map(
+      (c): Suggestion => ({
+        id: `done-${c.id}`,
+        kind: (c.kind ?? 'status') as SuggestionKind,
+        title: c.title || 'Done',
+        subtitle: null,
+        blurb: c.blurb || '',
+        // A finished card doesn't tap, so this is never sent. It's kept
+        // non-empty anyway: `prompt` is the type's contract, and a surface that
+        // ignored `done` would at worst re-offer the work rather than post an
+        // empty turn.
+        prompt: c.blurb || c.title || '',
+        done: true,
+        completedAt: c.at,
+      }),
+    );
+
+  return [...live, ...completed];
 }

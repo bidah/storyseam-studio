@@ -3,6 +3,7 @@ import { flue } from "@flue/runtime/routing";
 import { Hono, type MiddlewareHandler } from "hono";
 import { verifyProxyUser, proxySecret, PROXY_HEADER } from "./lib/proxy-auth.js";
 import { decodeInstanceId } from "./lib/instance-id.js";
+import { createApi } from "./lib/api.js";
 import { isAllowedModel } from "./lib/models.js";
 import { isPlausibleFalKey } from "./lib/fal-key.js";
 import { isPlausibleAtlasKey } from "./lib/atlas-key.js";
@@ -38,6 +39,39 @@ function errText(error: unknown): string {
   }
 }
 
+// --- Suggestion cards: retire the ones whose work just landed -----------------
+// The Home deck's cards ("Continue building your story") are derived from the
+// pipeline, so one disappears the moment its gap closes — and the author, who
+// tapped it twenty minutes ago and came back to look, is shown nothing at all
+// where the thing they started used to be. The worker keeps a ledger so a
+// started card retires VISIBLY instead, badged Completed
+// (worker/src/routes/suggestions.js).
+//
+// This is the trigger: the END OF EVERY RUN, off the runtime's own lifecycle
+// event rather than a tool the model has to remember to call. The sweep itself
+// makes no judgement — the worker re-derives the digest and flips the started
+// cards whose gaps are now closed — so a run that CLAIMS to have boarded the
+// episode can't mark that card done, and a run that quietly finished something
+// gets the credit anyway.
+//
+// Fire-and-forget: observe() callbacks are not awaited (flue's own guidance is
+// to keep them light), and this is a DO isolate that may be cut off before an
+// unawaited fetch lands. That's tolerable BECAUSE it isn't the only caller —
+// the landing screen sweeps too, on the same route, when it loads the deck. The
+// hook is what makes the flip land within a second of the run, over SSE, while
+// the author is still looking; the client call is what guarantees it eventually.
+async function sweepSuggestions(instanceId: string | undefined): Promise<void> {
+  const decoded = decodeInstanceId(instanceId);
+  if (!decoded?.projectId) return;
+  const api = createApi(decoded.projectId, decoded.userId, decoded.chatId);
+  const { completed } = await api.post<{ completed?: string[] }>(
+    "/api/suggestions/reconcile",
+  );
+  if (completed?.length) {
+    console.log("[flue] suggestions completed", { instanceId, cards: completed });
+  }
+}
+
 observe((event) => {
   // Correlation fields ride on every decoded event (optional per variant).
   const scope = {
@@ -53,7 +87,18 @@ observe((event) => {
           durationMs: event.durationMs,
           error: errText(event.error),
         });
+        // A failed run finished nothing, and the sweep would only re-read the
+        // same open gaps. Skip it.
+        break;
       }
+      // Errors are swallowed rather than thrown: a sweep that fails must not
+      // turn a run that SUCCEEDED into a rejected observer promise in the logs.
+      void sweepSuggestions(event.instanceId).catch((err) => {
+        console.warn("[flue] suggestion sweep failed", {
+          ...scope,
+          error: errText(err),
+        });
+      });
       break;
     case "submission_settled":
       if (event.outcome !== "completed") {

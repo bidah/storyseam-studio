@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAgent, useConversations } from "@/components/AgentProvider";
 import {
   Send,
@@ -6,7 +6,6 @@ import {
   Wrench,
   AlertCircle,
   FileText,
-  Sparkles,
   Paperclip,
   Loader2,
   X,
@@ -24,17 +23,6 @@ import {
   Upload,
   Globe,
   ExternalLink,
-  Globe2,
-  PenLine,
-  Stethoscope,
-  Palette,
-  UserSquare2,
-  ListChecks,
-  LayoutGrid,
-  AudioLines,
-  Clapperboard,
-  Film,
-  Compass,
 } from "lucide-react";
 import { useDropzone } from "react-dropzone";
 import { toast } from "sonner";
@@ -42,6 +30,8 @@ import { Streamdown, defaultRemarkPlugins } from "streamdown";
 import remarkBreaks from "remark-breaks";
 import { cn } from "@/lib/utils";
 import { buildSuggestions, FALLBACK_SUGGESTIONS } from "@/lib/suggestions";
+import { cardArtPath, meshPalette, meshSeed, meshShape } from "@/lib/card-art";
+import { startSuggestion, sweepSuggestions } from "@/lib/suggestionProgress";
 import { Eyebrow } from "@/components/shared";
 import { useShell } from "@/lib/shellContext";
 import { Button } from "@/components/ui/button";
@@ -1005,35 +995,210 @@ function ChatHistorySheet({ conv, triggerClassName }) {
  * The landing screen of an empty chat: Recaps + Continue building your story *
  * ------------------------------------------------------------------------ */
 
-// A card's icon, by what the card is ABOUT (`kind` from lib/suggestions.ts). The
-// deck stays import-free so it can be vendored into the mobile app, so it names
-// the subject and each platform maps that to its own icon set — this is the web
-// half of that map.
-const KIND_ICONS = {
-  world: Globe2,
-  script: PenLine,
-  review: Stethoscope,
-  visual: Palette,
-  sheets: UserSquare2,
-  shots: ListChecks,
-  board: LayoutGrid,
-  voice: AudioLines,
-  render: Clapperboard,
-  cut: Film,
-  status: Compass,
-};
-
-// One card. Deliberately NOT the mobile card: over this panel's near-flat surface
-// a mesh-gradient header has nothing to refract and just adds noise at 495px, so
-// the identity comes from a tinted icon tile instead. Same anatomy otherwise —
-// an icon, a headline, and a line of context — and the same two-texts contract:
-// what's rendered is the short version, what's SENT is the composed brief.
-//
 // CARD_H is fixed rather than content-sized, and the text block is pushed to the
 // bottom edge, so every card in the grid is the same rectangle no matter whether
 // its title runs to one line or two. It's the worst case of both clamps (a
 // two-line title over a two-line subtitle) plus the icon tile, so nothing clips.
 const CARD_H = "h-[8.25rem]";
+
+/* --- The suggestion poster ------------------------------------------------ *
+ *
+ * The suggestion deck used to be a wrapped 2×2 of small icon tiles here while
+ * the phone showed posters — same cards, same composed prompts, two entirely
+ * different objects. They're one object now: a picture slot with a looping
+ * video in it, a headline under that, and the paragraph the phone shows. The
+ * artwork map is shared (src/lib/card-art.ts, vendored to the app), so a card
+ * wears the same loop on both surfaces and a card with no loop falls back to
+ * the same seeded band.
+ *
+ * A SNAPPING ROW, not a grid — also matching the phone. That looks like the
+ * wrong instinct for a mouse, and the reason it isn't is the poster itself:
+ * at 240px a card can hold real art and four lines of copy, and three of those
+ * across a 416px column is not a layout. The row rests with a card's left edge
+ * exactly at the column's margin (scroll-snap-align: start on every card), so a
+ * flick can't stop halfway through one; the last card gets scroll-padding so it
+ * can reach the same margin instead of jamming against the right edge.
+ */
+
+// Card geometry. The band is 16:9 of the width, and the height is the band plus
+// the text budget — a two-line headline over four lines of paragraph plus the
+// padding — so the copy is never what gets squeezed when the art grows.
+const POSTER_W = 240;
+const POSTER_BAND = 135;
+const POSTER_H = 272;
+const POSTER_GAP = 10;
+
+// The seeded band under the artwork: nine colours (meshPalette) laid out as a
+// stack of radial gradients. The phone renders the same nine as a real 3×3 mesh
+// with expo-mesh-gradient; CSS has no mesh, and overlapping soft radials at the
+// same nine vertex positions is what gets closest — the colours bleed into each
+// other rather than banding, which is the whole point of the treatment.
+function meshBackground(seed) {
+  const palette = meshPalette(seed);
+  const points = meshShape(seed);
+  const stops = points
+    .map(([x, y], i) => {
+      const c = palette[i % palette.length];
+      // Generous radius so neighbouring vertices overlap heavily; without the
+      // overlap this reads as nine dots, not a gradient.
+      return `radial-gradient(circle at ${(x * 100).toFixed(0)}% ${(y * 100).toFixed(0)}%, ${c} 0%, transparent 62%)`;
+    })
+    .reverse()
+    .join(", ");
+  // The flat base is what shows through where the radials have faded out, so a
+  // corner is never the page's background peeking through the picture slot.
+  return { backgroundImage: stops, backgroundColor: palette[4] };
+}
+
+// The looping artwork, over the band. DECORATION, so it behaves like it: muted,
+// looping, no controls, and `pointer-events-none` so a click on the picture is
+// a click on the card — the whole card is one button and the video must not eat
+// the press.
+//
+// Playback is gated on VISIBILITY rather than left running: the deck runs to
+// six or seven cards and most have art, and the row shows two at a time, so
+// autoplaying the lot means decoding five videos nobody has scrolled to yet.
+// The band stays painted underneath rather than being swapped out, so the slot
+// is the card's colour from the first frame; the loop fades up over it when the
+// pixels arrive, and a card whose file 404s simply keeps the band it had.
+function PosterArt({ src }) {
+  const ref = useRef(null);
+  const [ready, setReady] = useState(false);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    // No IntersectionObserver (old browser, jsdom in a test): just play. The
+    // fallback must be a working card, not a blank slot.
+    if (typeof IntersectionObserver === "undefined") {
+      el.play?.().catch(() => {});
+      return;
+    }
+    const io = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) el.play?.().catch(() => {});
+        else el.pause?.();
+      },
+      { threshold: 0.25 },
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, []);
+
+  return (
+    <video
+      ref={ref}
+      src={src}
+      muted
+      loop
+      playsInline
+      // `preload="metadata"` rather than auto: the observer starts playback
+      // (which fetches the rest) only for a card actually on screen.
+      preload="metadata"
+      aria-hidden="true"
+      tabIndex={-1}
+      onCanPlay={() => setReady(true)}
+      className={cn(
+        "pointer-events-none absolute inset-0 size-full object-cover transition-opacity duration-500",
+        ready ? "opacity-100" : "opacity-0",
+      )}
+    />
+  );
+}
+
+// One poster. `done` renders the finished state: the artwork stays at full
+// strength under a dark scrim with a Completed badge, and the button is
+// genuinely disabled rather than merely styled that way.
+function LandingPoster({ suggestion: s, onClick }) {
+  const seed = meshSeed(s.id);
+  const art = cardArtPath(s.id);
+  const done = !!s.done;
+  return (
+    <button
+      type="button"
+      onClick={done ? undefined : onClick}
+      disabled={done}
+      aria-label={done ? `${s.title} — completed` : s.subtitle ? `${s.title} — ${s.subtitle}` : s.title}
+      style={{ width: POSTER_W, height: POSTER_H }}
+      className={cn(
+        "group relative flex shrink-0 snap-start flex-col overflow-hidden rounded-xl border bg-card text-left shadow-sm transition-colors",
+        done
+          ? "cursor-default"
+          : "hover:border-primary/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+      )}
+    >
+      <div
+        className="relative shrink-0 overflow-hidden"
+        style={{ height: POSTER_BAND, ...meshBackground(seed) }}
+      >
+        {art ? <PosterArt src={art} /> : null}
+      </div>
+      <div className="flex flex-1 flex-col p-3">
+        <span className="line-clamp-2 text-[0.9375rem] font-semibold leading-snug text-foreground">
+          {s.title}
+        </span>
+        <span className="mt-1.5 line-clamp-4 text-xs leading-[1.35rem] text-muted-foreground">
+          {s.blurb || s.subtitle}
+        </span>
+      </div>
+
+      {/* FINISHED. Over the whole card, artwork and text alike, so it reads as
+          one settled object rather than a live picture with a dead caption. It
+          keeps its picture at full strength underneath — that's what makes it
+          recognisable as the thing you did, where a greyed-out rectangle would
+          not be. */}
+      {done ? (
+        <span className="absolute inset-0 flex items-center justify-center bg-black/55">
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-white/35 bg-white/15 px-3 py-1.5 text-[0.8125rem] font-semibold text-white">
+            {/* Its own colours, not the theme's: this sits on a black wash in
+                both light and dark mode, so a token that flips with the theme
+                would vanish in one of them. */}
+            <Check size={12} strokeWidth={3} />
+            Completed
+          </span>
+        </span>
+      ) : null}
+    </button>
+  );
+}
+
+// The row the posters sit in. `scroll-padding-inline` is what lets the LAST
+// card snap to the same left margin as the first instead of stopping short.
+function PosterRow({ children }) {
+  return (
+    <div
+      className="-mx-1 flex snap-x snap-mandatory gap-2.5 overflow-x-auto px-1 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+      style={{ scrollPaddingInline: "0.25rem", gap: POSTER_GAP }}
+    >
+      {children}
+    </div>
+  );
+}
+
+function PosterSkeleton() {
+  return (
+    <PosterRow>
+      {[0, 1, 2].map((i) => (
+        <div
+          key={i}
+          style={{ width: POSTER_W, height: POSTER_H }}
+          className="flex shrink-0 animate-pulse flex-col overflow-hidden rounded-xl border bg-card"
+        >
+          <div className="shrink-0 bg-muted" style={{ height: POSTER_BAND }} />
+          {/* Two bars for the headline, three for the paragraph — the real
+              card's proportions, so nothing shifts when the deck lands. */}
+          <div className="flex flex-1 flex-col p-3">
+            <div className="h-4 w-4/5 rounded bg-muted" />
+            <div className="mt-1.5 h-4 w-1/2 rounded bg-muted" />
+            <div className="mt-3 h-3 w-full rounded bg-muted" />
+            <div className="mt-2 h-3 w-11/12 rounded bg-muted" />
+            <div className="mt-2 h-3 w-2/3 rounded bg-muted" />
+          </div>
+        </div>
+      ))}
+    </PosterRow>
+  );
+}
 
 function LandingCard({ icon: Icon, eyebrow, title, onClick, label }) {
   return (
@@ -1078,11 +1243,10 @@ function LandingSkeleton() {
   );
 }
 
-// A landing section: an eyebrow heading over a wrapped two-up grid. A grid rather
-// than the mobile row's sideways swipe — there's no thumb here, and a horizontal
-// scroller in a 495px panel would hide half its content behind a gesture a mouse
-// doesn't really have. Both sections are capped (see the caller) so the block
-// stays a calm couple of rows instead of a wall.
+// A landing section: an eyebrow heading over a wrapped two-up grid. Recaps only
+// now — the suggestion deck outgrew this and moved to PosterRow above. Two
+// small tiles side by side is still right here: a recap is a chat title and a
+// timestamp, and there is no artwork for "the conversation you had on Tuesday".
 function LandingSection({ title, loading, children }) {
   return (
     <section className="space-y-2">
@@ -1156,11 +1320,36 @@ function ChatLanding({ conv, onSuggest, reloadKey }) {
       .catch(() => apply(null));
   }, [reloadKey]);
 
-  // Four cards: a wrapped 2×2, which is as much as this panel can show without
-  // becoming a wall. The deck's own default (six) is the mobile row's budget.
+  // Five live cards. The row scrolls, so this isn't the "what fits" number the
+  // old 2×2 grid needed — it's how far into the pipeline it's worth offering
+  // before the tail stops being the next move and starts being a list. The
+  // finished cards trail behind them and are counted separately.
   const suggestions = useMemo(
-    () => (status ? buildSuggestions(status, { max: 4 }) : FALLBACK_SUGGESTIONS),
+    () => (status ? buildSuggestions(status, { max: 5 }) : FALLBACK_SUGGESTIONS),
     [status],
+  );
+
+  // Retire any started card whose gap has closed since we last looked. This is
+  // what catches work done in the GUI — the agent sweeps at the end of each run
+  // (flue-agent/src/app.ts), which covers everything it did itself. Keyed on
+  // `reloadKey` so switching projects re-sweeps for the one now open. Costs a
+  // single row read when nothing is outstanding, and only writes — and so only
+  // invalidates anything — when a card actually flipped, so this can't loop.
+  useEffect(() => {
+    void sweepSuggestions();
+  }, [reloadKey]);
+
+  // Sending a card: tell the worker it was STARTED (carrying the copy it is
+  // wearing right now — that sentence is composed from a gap about to close and
+  // can't be reconstructed afterwards), then send its composed brief.
+  // Fire-and-forget: a failed write costs a Completed badge later, and holding
+  // the turn up for it would be a far worse trade.
+  const pickSuggestion = useCallback(
+    (s) => {
+      void startSuggestion(s);
+      onSuggest(s.prompt);
+    },
+    [onSuggest],
   );
 
   // This empty chat isn't a recap of itself, and neither is an untouched one.
@@ -1199,18 +1388,18 @@ function ChatLanding({ conv, onSuggest, reloadKey }) {
           </LandingSection>
         ) : null}
 
-        <LandingSection title="Continue building your story" loading={status === undefined}>
-          {suggestions.map((s) => (
-            <LandingCard
-              key={s.id}
-              icon={KIND_ICONS[s.kind] || Sparkles}
-              title={s.title}
-              eyebrow={s.subtitle}
-              label={s.subtitle ? `${s.title} — ${s.subtitle}` : s.title}
-              onClick={() => onSuggest(s.prompt)}
-            />
-          ))}
-        </LandingSection>
+        <section className="space-y-2">
+          <Eyebrow>Continue building your story</Eyebrow>
+          {status === undefined ? (
+            <PosterSkeleton />
+          ) : (
+            <PosterRow>
+              {suggestions.map((s) => (
+                <LandingPoster key={s.id} suggestion={s} onClick={() => pickSuggestion(s)} />
+              ))}
+            </PosterRow>
+          )}
+        </section>
       </div>
     </div>
   );

@@ -1,26 +1,34 @@
-import { API_ORIGIN } from './env';
+// VENDORED from shot-studio/src/lib/card-art.ts — DO NOT EDIT HERE.
+// Edit the web copy, then run `npm --prefix mobile-app run sync:suggestions`
+// (scripts/sync-suggestions.mjs).
 
-// Motion artwork for the Home tab's derived deck ("Continue building your
-// story" — see app/(tabs)/chat/index.tsx).
+// Motion artwork for the derived deck ("Continue building your story") — THE
+// source of truth for both surfaces: the web AgentChat landing and, vendored,
+// the mobile Chat tab (mobile-app/src/lib/card-art.ts, refreshed by
+// `npm --prefix mobile-app run sync:suggestions`). Edit this file, not the copy.
 //
 // The suggestion card was always designed as a POSTER whose top band is a
-// picture slot, with the mesh gradient standing in until real art existed. This
-// is that art, for the cards that have it: a short silent loop instead of a
-// still, because these cards are about a MOVE the studio can make and a loop
-// says "this does something" in a way a frozen frame doesn't.
+// picture slot, with a placeholder standing in until real art existed. This is
+// that art, for the cards that have it: a short silent loop instead of a still,
+// because these cards are about a MOVE the studio can make and a loop says
+// "this does something" in a way a frozen frame doesn't.
 //
-// Like the Discover heroes (lib/discover.ts) the files live in R2 behind the
-// Worker rather than in the binary. Three reasons, in order of how much they
-// cost to get wrong:
+// Like the Discover heroes the files live in R2 behind the Worker rather than in
+// any bundle. Three reasons, in order of how much they cost to get wrong:
 //   1. Art is content. A better loop swaps in with an `r2 object put` — no new
 //      build, not even an OTA.
-//   2. The bundle stays small. Four loops is ~4MB of video that most sessions
-//      never scroll to.
-//   3. `/files/*` answers Range requests, which is what expo-video's disk cache
-//      needs (see useCaching at the call site) — so it downloads once per
-//      device and every later launch plays off disk.
-// Stored RELATIVE so the configured API origin goes in front at read time; a
-// hardcoded workers.dev URL would break the moment the Worker moves.
+//   2. The bundle stays small. The loops are ~1MB each, and most sessions never
+//      scroll to half of them.
+//   3. `/files/*` answers Range requests, which is what a video element's
+//      caching needs — so it downloads once per device and every later launch
+//      plays off disk.
+//
+// Paths are stored RELATIVE, which is also what makes this file vendorable: the
+// web app is same-origin with the Worker and uses them as they are, while the
+// phone joins its configured API origin on the front (see
+// mobile-app/src/lib/card-art-url.ts). A hardcoded workers.dev URL would break
+// the moment the Worker moves, and an `API_ORIGIN` import here would make the
+// file un-copyable to a platform that spells that differently.
 //
 // Keyed by the card's own identity, NOT its position — the deck reorders every
 // time a stage completes, so a positional key would shuffle the artwork around
@@ -31,10 +39,10 @@ import { API_ORIGIN } from './env';
 // how "Re-check with the story architect" gets its own art instead of "Shape
 // the arc"'s: an exact key always wins over the fallback.
 //
-// A card with no entry here keeps the mesh band. That's the intended fallback,
+// A card with no entry here keeps its plain band. That's the intended fallback,
 // not a gap to be filled with a stand-in: a generic loop under a specific
 // headline reads as a mistake, an abstract gradient reads as a design.
-const ART: Record<string, string> = {
+export const CARD_ART: Record<string, string> = {
   // "Shape the arc" — the story architect, when it has never read the draft.
   story_architect:
     '/files/chat-uploads/0f4b3d21-6c8a-4d1e-9a77-1b2c5e8f3a90-card-shape-the-arc.mp4',
@@ -69,19 +77,87 @@ const ART: Record<string, string> = {
   status: '/files/chat-uploads/e1b83f56-4d70-4a29-b60e-27f9c8e5d413-card-where-does-it-stand.mp4',
 };
 
+// --- The band under the artwork ---------------------------------------------
+// What the picture slot shows before the first video frame lands, what it falls
+// back to when a card has no loop of its own, and what it keeps showing if the
+// file never arrives. Every card gets its own look, and that look is DERIVED,
+// never rolled: the palette comes from a seed, so the same card wears the same
+// header on every launch. The seed is always an IDENTITY (the card id) hashed
+// through `meshSeed`, never a list position — the deck reorders every time a
+// stage completes, and a position-seeded header would repaint the whole screen
+// each time. A random pick would do the same on every launch.
+//
+// Nine colours because the phone renders them as a 3×3 SwiftUI/Compose mesh
+// (expo-mesh-gradient), where the vertices bleed into each other so every card
+// reads as its own little piece of art. The web builds a stack of radial
+// gradients from the same nine, which is as close as CSS gets.
+
+export const MESH_PALETTES: readonly (readonly string[])[] = [
+  // emerald — the app's own accent
+  ['#6ee7b7', '#34d399', '#059669', '#a7f3d0', '#10b981', '#047857', '#d1fae5', '#6ee7b7', '#065f46'],
+  // violet / indigo
+  ['#c4b5fd', '#a78bfa', '#6366f1', '#ddd6fe', '#818cf8', '#4f46e5', '#ede9fe', '#a5b4fc', '#4338ca'],
+  // amber / orange
+  ['#fde68a', '#fbbf24', '#f97316', '#fef3c7', '#fb923c', '#ea580c', '#fef9c3', '#fdba74', '#c2410c'],
+  // sky / cyan
+  ['#bae6fd', '#38bdf8', '#06b6d4', '#e0f2fe', '#22d3ee', '#0891b2', '#f0f9ff', '#67e8f9', '#0e7490'],
+  // rose / fuchsia
+  ['#fbcfe8', '#f472b6', '#db2777', '#fce7f3', '#e879f9', '#be185d', '#fdf2f8', '#f0abfc', '#9d174d'],
+  // lime / teal
+  ['#d9f99d', '#a3e635', '#14b8a6', '#ecfccb', '#65a30d', '#0d9488', '#f7fee7', '#bef264', '#115e59'],
+  // slate / steel blue
+  ['#cbd5e1', '#94a3b8', '#475569', '#e2e8f0', '#64748b', '#334155', '#f1f5f9', '#a5b4fc', '#1e293b'],
+  // coral / red
+  ['#fecaca', '#f87171', '#dc2626', '#fee2e2', '#fb7185', '#b91c1c', '#fef2f2', '#fda4af', '#7f1d1d'],
+];
+
+// Where the mesh's nine vertices sit (the phone's renderer only). Just the
+// inner ones move between shapes — the corners stay pinned or the gradient
+// detaches from the card's edges.
+export const MESH_SHAPES: readonly (readonly (readonly number[])[])[] = [
+  [[0, 0], [0.5, 0], [1, 0], [0, 0.5], [0.5, 0.5], [1, 0.5], [0, 1], [0.5, 1], [1, 1]],
+  [[0, 0], [0.6, 0], [1, 0], [0, 0.4], [0.35, 0.6], [1, 0.35], [0, 1], [0.45, 1], [1, 1]],
+  [[0, 0], [0.35, 0], [1, 0], [0, 0.6], [0.65, 0.35], [1, 0.65], [0, 1], [0.6, 1], [1, 1]],
+  [[0, 0], [0.5, 0], [1, 0], [0, 0.3], [0.7, 0.7], [1, 0.6], [0, 1], [0.3, 1], [1, 1]],
+];
+
+/** FNV-1a, so a card id maps to a stable number without pulling in a hash lib. */
+export function meshSeed(id: string): number {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < id.length; i++) {
+    h ^= id.charCodeAt(i);
+    h = Math.imul(h, 0x01000193);
+  }
+  return h >>> 0;
+}
+
+/** The nine colours this card's band is painted from. */
+export function meshPalette(seed: number): readonly string[] {
+  return MESH_PALETTES[seed % MESH_PALETTES.length];
+}
+
 /**
- * The looping artwork for a suggestion card, or undefined if it has none (which
- * leaves it wearing its mesh band). `id` is the card id from buildSuggestions.
+ * Which vertex layout this card's mesh uses. Shifted off the palette's own
+ * digit so two cards sharing a palette still differ in shape, and so small
+ * seeds don't all land on shape 0.
  */
-export function cardArt(id: string): string | undefined {
+export function meshShape(seed: number): readonly (readonly number[])[] {
+  return MESH_SHAPES[(Math.floor(seed / MESH_PALETTES.length) + seed * 3) % MESH_SHAPES.length];
+}
+
+/**
+ * The looping artwork for a suggestion card as a WORKER-RELATIVE path, or
+ * undefined if it has none (which leaves the card wearing its plain band).
+ * `id` is the card id from buildSuggestions.
+ */
+export function cardArtPath(id: string): string | undefined {
+  // A finished card keeps the picture it had — that's most of what makes it
+  // recognisable as the thing you did, rather than a grey rectangle with a
+  // badge on it — so the ledger's `done-` prefix is stripped before lookup, the
+  // same way a re-check falls back to its doctor.
+  const base = id.replace(/^done-/, '');
   // Exact id first, so a review card can claim its own loop; failing that,
   // review-plot_doctor / rereview-plot_doctor → plot_doctor, because a re-check
   // with no art of its own is the same doctor asking again.
-  const rel = ART[id] ?? ART[id.replace(/^(?:re)?review-/, '')];
-  // Joined to the origin here rather than through mediaUrl(), which appends
-  // ?projectId= — these files are the APP's own art, identical for everyone, and
-  // /files/* serves them without it. A per-project query string would give the
-  // same four videos a different cache key in every project, i.e. re-download
-  // them on every project switch for no reason at all.
-  return rel ? API_ORIGIN + rel : undefined;
+  return CARD_ART[base] ?? CARD_ART[base.replace(/^(?:re)?review-/, '')];
 }

@@ -11,8 +11,9 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import { useFocusEffect } from 'expo-router';
 import { useVideoPlayer, VideoView } from 'expo-video';
-import { SquarePen } from 'lucide-react-native';
-import { cardArt } from '@/lib/card-art';
+import { Check, SquarePen } from 'lucide-react-native';
+import { MESH_PALETTES, meshPalette, meshSeed, meshShape } from '@/lib/card-art';
+import { cardArt } from '@/lib/card-art-url';
 import { useConversations, useIsFreshChat } from '@/lib/agent/provider';
 import { openChatModal } from '@/lib/agent/chat-route';
 import { setPendingDraft } from '@/lib/agent/pending-draft';
@@ -24,6 +25,7 @@ import {
   type Status,
   type Suggestion,
 } from '@/lib/suggestions';
+import { startSuggestion, sweepSuggestions } from '@/lib/suggestion-progress';
 import { BouncyPressable } from '@/components/ui/bouncy-pressable';
 import { DiscoverSection } from '@/components/chat/discover';
 import { ProBanner } from '@/components/chat/pro-banner';
@@ -86,36 +88,15 @@ const SUGGESTION_H = SUGGESTION_BAND + SUGGESTION_BODY;
 const CARD_BAND = 10;
 
 // The colored header on each card, in place of the artwork these cards would
-// carry if the studio had a thumbnail for a prompt. A 3×3 SwiftUI/Compose mesh
-// (expo-mesh-gradient) rather than a flat fill or a linear ramp: the vertices
-// bleed into each other, so every card reads as its own little piece of art.
+// carry if the studio had a thumbnail for a prompt. The palettes, the vertex
+// layouts and the seeding all live in lib/card-art.ts now (VENDORED from the
+// web app), because the web landing draws the same bands under the same cards —
+// as a stack of CSS radial gradients rather than a native mesh, but from the
+// same nine colours, so a card looks like itself on both surfaces. The prose
+// about why the seed is an identity and never a list position is over there.
 //
-// Every card gets its own look, and that look is DERIVED, never rolled: the
-// palette and the vertex layout both come from a seed, so the same card wears
-// the same header on every launch. The seed is always an IDENTITY hashed through
-// `meshSeed` — a recap's chat id, a suggestion's card kind — never a list
-// position, because both decks reorder (a recap on every reply, a suggestion
-// every time a stage completes) and a position-seeded header would repaint the
-// whole screen each time. A random pick would do the same on every launch.
-
-// Where the mesh's nine vertices sit. Only the inner ones move between shapes —
-// the corners stay pinned or the gradient detaches from the card's edges.
-const MESH_SHAPES = [
-  [[0, 0], [0.5, 0], [1, 0], [0, 0.5], [0.5, 0.5], [1, 0.5], [0, 1], [0.5, 1], [1, 1]],
-  [[0, 0], [0.6, 0], [1, 0], [0, 0.4], [0.35, 0.6], [1, 0.35], [0, 1], [0.45, 1], [1, 1]],
-  [[0, 0], [0.35, 0], [1, 0], [0, 0.6], [0.65, 0.35], [1, 0.65], [0, 1], [0.6, 1], [1, 1]],
-  [[0, 0], [0.5, 0], [1, 0], [0, 0.3], [0.7, 0.7], [1, 0.6], [0, 1], [0.3, 1], [1, 1]],
-];
-
-// FNV-1a, so a chat id maps to a stable number without pulling in a hash lib.
-function meshSeed(id: string): number {
-  let h = 0x811c9dc5;
-  for (let i = 0; i < id.length; i++) {
-    h ^= id.charCodeAt(i);
-    h = Math.imul(h, 0x01000193);
-  }
-  return h >>> 0;
-}
+// A recap's chat id and a suggestion's card id are both fed to the same
+// `meshSeed`.
 
 // expo-mesh-gradient is a NATIVE module (SwiftUI on iOS, Compose on Android) and
 // `requireNativeView` resolves at import, so a binary built before it was added
@@ -135,25 +116,6 @@ try {
 } catch {
   MeshGradientView = null;
 }
-
-const MESHES = [
-  // emerald — the app's own accent
-  ['#6ee7b7', '#34d399', '#059669', '#a7f3d0', '#10b981', '#047857', '#d1fae5', '#6ee7b7', '#065f46'],
-  // violet / indigo
-  ['#c4b5fd', '#a78bfa', '#6366f1', '#ddd6fe', '#818cf8', '#4f46e5', '#ede9fe', '#a5b4fc', '#4338ca'],
-  // amber / orange
-  ['#fde68a', '#fbbf24', '#f97316', '#fef3c7', '#fb923c', '#ea580c', '#fef9c3', '#fdba74', '#c2410c'],
-  // sky / cyan
-  ['#bae6fd', '#38bdf8', '#06b6d4', '#e0f2fe', '#22d3ee', '#0891b2', '#f0f9ff', '#67e8f9', '#0e7490'],
-  // rose / fuchsia
-  ['#fbcfe8', '#f472b6', '#db2777', '#fce7f3', '#e879f9', '#be185d', '#fdf2f8', '#f0abfc', '#9d174d'],
-  // lime / teal
-  ['#d9f99d', '#a3e635', '#14b8a6', '#ecfccb', '#65a30d', '#0d9488', '#f7fee7', '#bef264', '#115e59'],
-  // slate / steel blue
-  ['#cbd5e1', '#94a3b8', '#475569', '#e2e8f0', '#64748b', '#334155', '#f1f5f9', '#a5b4fc', '#1e293b'],
-  // coral / red
-  ['#fecaca', '#f87171', '#dc2626', '#fee2e2', '#fb7185', '#b91c1c', '#fef2f2', '#fda4af', '#7f1d1d'],
-] as const;
 
 // The artwork some suggestion cards wear in place of the mesh band: a short
 // silent loop, filling the picture slot (see lib/card-art.ts for what lives
@@ -236,6 +198,7 @@ function PressCard({
   bandHeight = CARD_BAND,
   bandSide = 'top',
   art,
+  done = false,
 }: {
   children: React.ReactNode;
   onPress: () => void;
@@ -251,17 +214,27 @@ function PressCard({
   bandSide?: 'top' | 'left' | 'none';
   /** A looping video to fill the top band with, over the mesh — see cardArt. */
   art?: string;
+  /** Finished work: the card is scrimmed, badged, and doesn't tap. */
+  done?: boolean;
 }) {
-  const palette = MESHES[seed % MESHES.length];
-  // Shifted off the palette's own digit so two cards sharing a palette still
-  // differ in shape, and so small seeds (a suggestion's index) don't all land
-  // on shape 0.
-  const points = MESH_SHAPES[(Math.floor(seed / MESHES.length) + seed * 3) % MESH_SHAPES.length];
+  const palette = meshPalette(seed);
+  const points = meshShape(seed);
   // As a spine the band takes the cross axis from the row: width is its own,
   // height stretches to the card's.
   const band: ViewStyle = bandSide === 'left' ? { width: bandHeight } : { height: bandHeight };
   return (
-    <BouncyPressable accessibilityLabel={label} onPress={onPress} style={styles.cardShadow}>
+    <BouncyPressable
+      accessibilityLabel={done ? `${label} — completed` : label}
+      onPress={onPress}
+      // BouncyPressable short-circuits its own onPress and drops the press
+      // scale, so a finished card is inert rather than merely ignored — no
+      // bounce, no haptic, nothing that reads as "that did something".
+      disabled={done}
+      // The scrim below IS the disabled affordance, so the default half-opacity
+      // fade would only wash the artwork out behind it.
+      dimWhenDisabled={false}
+      style={styles.cardShadow}
+    >
       <View
         className="border border-border bg-card"
         style={[styles.card, bandSide === 'left' && styles.cardRow, style]}
@@ -279,8 +252,8 @@ function PressCard({
                 style={StyleSheet.absoluteFill as ViewStyle}
                 columns={3}
                 rows={3}
-                colors={palette as unknown as string[]}
-                points={points}
+                colors={palette as string[]}
+                points={points as number[][]}
               />
             ) : (
               // The spine. INSET rather than bleeding to the card's edges: a bar
@@ -295,6 +268,22 @@ function PressCard({
           </View>
         )}
         <View style={[styles.cardBody, bodyStyle]}>{children}</View>
+        {/* FINISHED. Over the whole card, artwork and text alike, so the card
+            reads as one settled object rather than a live picture with a dead
+            caption. It keeps its picture at full strength underneath — that's
+            what makes it recognisable as the thing you did, and a grey
+            rectangle with a badge on it would not be.
+            `pointerEvents="none"` because the press is already dead at the
+            Pressable; the scrim must not be the reason, or a future refactor
+            that moves it would silently make the card tappable again. */}
+        {done ? (
+          <View style={styles.doneScrim} pointerEvents="none">
+            <View style={styles.doneBadge}>
+              <Check size={12} color="#fff" strokeWidth={3} />
+              <Text style={styles.doneBadgeText}>Completed</Text>
+            </View>
+          </View>
+        ) : null}
       </View>
     </BouncyPressable>
   );
@@ -369,7 +358,7 @@ function SuggestionSkeletons() {
       {[0, 1, 2].map((i) => (
         <Animated.View key={i} style={[style, styles.cardShadow]} pointerEvents="none">
           <View className="border border-border bg-card" style={[styles.card, styles.suggestionCard]}>
-            <View style={{ height: SUGGESTION_BAND, backgroundColor: MESHES[i][4] }} />
+            <View style={{ height: SUGGESTION_BAND, backgroundColor: MESH_PALETTES[i][4] }} />
             {/* Two bars for the headline, three for the paragraph — the real
                 card's proportions, so nothing shifts when the deck lands. */}
             <View style={[styles.cardBody, styles.suggestionBody]}>
@@ -433,6 +422,18 @@ export default function ChatHomeScreen() {
     [status, isError],
   );
 
+  // Retire any started card whose gap has closed since we last looked. On FOCUS
+  // rather than mount: this tab stays mounted while the author goes off to the
+  // Shot list and boards the episode by hand, and coming back is exactly the
+  // moment that card should be wearing its badge. Costs one row read when
+  // nothing is outstanding, and only writes (and so only invalidates the deck)
+  // when something actually flipped — so there's no refetch loop here.
+  useFocusEffect(
+    useCallback(() => {
+      void sweepSuggestions();
+    }, []),
+  );
+
   // Recaps — the chats you already have, newest first, minus any untouched
   // "New chat" (which is what this screen already is). Tapping one opens its
   // conversation, so the landing screen is a shortcut into history rather than a
@@ -475,9 +476,16 @@ export default function ChatHomeScreen() {
   }, [conv, reusable]);
 
   const onSuggest = useCallback(
-    (prompt: string) => {
+    (s: Suggestion) => {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
-      openWithDraft(prompt, []);
+      // Tell the worker the card was STARTED, carrying the copy it is wearing
+      // right now — that sentence is composed from a gap that is about to close
+      // and can't be reconstructed afterwards (see
+      // worker/src/routes/suggestions.js). Fire-and-forget: a failed write
+      // costs the author a Completed badge later, and blocking the chat from
+      // opening on it would be a far worse trade.
+      void startSuggestion(s);
+      openWithDraft(s.prompt, []);
     },
     [openWithDraft],
   );
@@ -587,7 +595,8 @@ export default function ChatHomeScreen() {
                 // The picture slot's real artwork where the card has one; the
                 // rest keep the mesh the band was always painted with.
                 art={cardArt(s.id)}
-                onPress={() => onSuggest(s.prompt)}
+                done={s.done}
+                onPress={() => onSuggest(s)}
               >
                 {/* Poster order: the headline reads FIRST, hanging off the mesh
                     band, and the paragraph explains it underneath. (A recap is
@@ -690,6 +699,40 @@ const styles = StyleSheet.create({
   // The recap's small title — body-sized, semibold so it still reads as the
   // card's name over the muted timestamp above it.
   recapTitle: { fontSize: 15, fontWeight: '600', lineHeight: 20 },
+  // The finished-card treatment. A flat black wash at 55% rather than a
+  // gradient: the scrim covers artwork AND text, and a ramp would leave one end
+  // of the card legible and the other not — which reads as a rendering bug, not
+  // as "this is done". 55% is where the picture stays recognisable while the
+  // headline under it clearly stops competing with the live cards beside it.
+  // Absolutely positioned over the whole card, INSIDE the clipping view, so it
+  // takes the 22pt corner radius for free.
+  doneScrim: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  // Centered, not tucked in a corner: it's the card's entire message now, and
+  // the copy underneath is a record rather than something to read.
+  doneBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 999,
+    // Its own colours, not the theme's: it sits on a black wash in both light
+    // and dark mode, so a token that flips with the theme would vanish in one
+    // of them.
+    backgroundColor: 'rgba(255,255,255,0.16)',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(255,255,255,0.34)',
+  },
+  doneBadgeText: { color: '#fff', fontSize: 13, fontWeight: '600', letterSpacing: 0.2 },
   // The paragraph under it. The leading on both texts is a budget, not taste: a
   // three-line headline (63) plus its gap (8) plus five blurb lines (90) plus the
   // body's padding (26) is 187, which is exactly what SUGGESTION_BODY reserves.
