@@ -50,8 +50,10 @@ import {
 // on the poster below, iOS 18+), the same transition the Discover row already
 // uses. So the two surfaces are one object at two magnifications rather than
 // two lists that happen to agree — which is also why the list opens ALREADY on
-// the card you came from (`initialScrollIndex`): landing anywhere else would
-// make the zoom a lie.
+// the card you came from: landing anywhere else would make the zoom a lie.
+//
+// "Opens already on it" has to mean BEFORE THE FIRST PAINT, not a frame later,
+// and that distinction is load-bearing — see the contentOffset note below.
 //
 // The zoom is threaded through the HREF, so this screen is an ordinary pushed
 // screen: the native back chevron and the swipe-back run it in reverse, and
@@ -378,10 +380,10 @@ export default function StoryShowcaseScreen() {
     [conv, reusable],
   );
 
-  // getItemLayout, not measurement: `initialScrollIndex` can only jump straight
-  // to a row whose offset is known up front, and every row here is exactly
-  // `metrics.fullH` tall by construction. Without it the list would mount at the
-  // top and scroll down afterwards, which the zoom would arrive in the middle of.
+  // getItemLayout, not measurement: a row's offset has to be known up front,
+  // and every row here is exactly `metrics.fullH` tall by construction. Without
+  // it the list would mount at the top and scroll down afterwards, which the
+  // zoom would arrive in the middle of.
   const getItemLayout = useCallback(
     (_: unknown, index: number) => ({
       length: metrics.fullH,
@@ -389,6 +391,36 @@ export default function StoryShowcaseScreen() {
       index,
     }),
     [metrics.fullH],
+  );
+
+  // The opening position, applied NATIVELY at mount — and this is the whole
+  // reason the zoom used to work on the first card and no other.
+  //
+  // `initialScrollIndex` does NOT seed the scroll view's offset. VirtualizedList
+  // only uses it to pick the initial render window; the actual scroll is an
+  // imperative `scrollToIndex` fired from `onContentSizeChange`, i.e. a frame or
+  // more AFTER mount (`_maybeScrollToInitialScrollIndex`, VirtualizedList.js).
+  // And that path is guarded on `initialScrollIndex > 0`, so index 0 skips it
+  // altogether.
+  //
+  // That asymmetry was the bug exactly. Card 0 needed no scroll and so was in
+  // place on the first frame; every other card was still sitting `index *
+  // fullH` points below the fold at the moment UIKit sampled
+  // `Link.AppleZoomTarget`'s rect for the push. The zoom dutifully flew to a
+  // rect somewhere off the bottom of the screen, which reads as no zoom at all.
+  //
+  // `contentOffset` fixes both halves at once: iOS applies it to the underlying
+  // scroll view before the first paint, so the arrival card is already under the
+  // header when the rect is read — and VirtualizedList explicitly stands down
+  // when it sees one (`if (this.props.contentOffset == null)`), so there is no
+  // second, later scroll left to race the transition.
+  //
+  // Derived from the same `metrics.fullH` as getItemLayout and snapToInterval,
+  // so a corrected viewport moves the opening offset with the row heights rather
+  // than leaving the two disagreeing by `index * Δ`.
+  const contentOffset = useMemo(
+    () => ({ x: 0, y: initialIndex * metrics.fullH }),
+    [initialIndex, metrics.fullH],
   );
 
   return (
@@ -411,7 +443,13 @@ export default function StoryShowcaseScreen() {
           />
         )}
         getItemLayout={getItemLayout}
+        // Both, and they do different jobs: `initialScrollIndex` picks the
+        // initial RENDER WINDOW (so the arrival card is actually mounted, and is
+        // the first cell rendered rather than one virtualised away), while
+        // `contentOffset` puts the scroll view AT it before the first paint.
+        // Neither alone is enough — see the contentOffset note above.
         initialScrollIndex={initialIndex}
+        contentOffset={contentOffset}
         // The chrome, as padding: a card snaps to the top of the readable band
         // (snapToAlignment "start"), so the pad above is exactly what the header
         // covers and the pad below what the tab bar does. Cards are a screenful
@@ -445,7 +483,8 @@ const styles = StyleSheet.create({
   // taller than the snap interval would walk down the list.
   boundary: {
     flex: 1,
-    marginBottom: 7,
+    marginTop: 10,
+    marginBottom: 2,
     borderRadius: 28,
     shadowColor: '#000',
     shadowOpacity: 0.18,

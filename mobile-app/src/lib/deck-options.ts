@@ -10,9 +10,10 @@
  * tail, which is the only place the app says "you did this".
  *
  * Shared by both surfaces on purpose. The showcase opens on the card the
- * landing row was tapped (`initialScrollIndex`), so the two decks have to BE
- * the same list — a different cap on either side would land the zoom on a
- * different card than the one it flew out of.
+ * landing row was tapped, so the two decks have to BE the same list — a
+ * different cap on either side would land the zoom on a different card than
+ * the one it flew out of. (How that opening position is applied is its own
+ * trap: see the contentOffset note in chat/showcase.tsx.)
  *
  * This does NOT uncap the script doctors: `deriveCards` still admits at most
  * two unread reviews and one stale one, so six near-identical "run the X
