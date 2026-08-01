@@ -70,6 +70,9 @@ export interface CalloutProps {
   title: string;
   description?: string | null;
 }
+/** How a list resolves taps: see the SELECT note below. */
+export type SelectMode = "one" | "many" | "one-per-group";
+
 export interface OptionProps {
   title: string;
   send: string;
@@ -79,12 +82,13 @@ export interface OptionProps {
   badge?: string | null;
   selected?: boolean;
   tone?: "normal" | "danger";
+  group?: string | null;
 }
 export interface OptionListProps {
   options?: unknown[];
   header?: string | null;
   footnote?: string | null;
-  select?: "one" | "many";
+  select?: SelectMode;
   send?: string | null;
   confirm?: string | null;
 }
@@ -94,12 +98,13 @@ export interface MediaItemProps {
   label?: string | null;
   caption?: string | null;
   selected?: boolean;
+  group?: string | null;
 }
 export interface MediaGridProps {
   items?: unknown[];
   header?: string | null;
   columns?: number;
-  select?: "one" | "many";
+  select?: SelectMode;
   send?: string | null;
   confirm?: string | null;
 }
@@ -111,12 +116,13 @@ export interface AudioItemProps {
   meta?: string | null;
   badge?: string | null;
   selected?: boolean;
+  group?: string | null;
 }
 export interface AudioListProps {
   items?: unknown[];
   header?: string | null;
   footnote?: string | null;
-  select?: "one" | "many";
+  select?: SelectMode;
   send?: string | null;
   confirm?: string | null;
 }
@@ -215,19 +221,29 @@ const SEND =
   "the message sent AS THE USER when this is picked — write it as the user would ('Use the second reference'), never as an instruction to yourself. It MUST OPEN WITH the words shown on the control itself (its title/label), because this message is the author's ONLY confirmation that the row they hit is the row they meant; put any extra brief AFTER that opening — title 'Punch up the dialogue' ⇒ send 'Punch up the dialogue — sharpen the voices in the audition scene', never send 'Let me tighten those lines'";
 
 /**
- * Multi-select, shared by OptionList and MediaGrid. In `select: "many"` mode a
- * tap only TOGGLES a row/tile; nothing is sent until the confirm button, and
- * the message posted is the list's own `send` followed by the picked items'
- * `send` strings joined with commas. That's why a multi-select item's `send` is
- * a NOUN PHRASE ("Shopkeeper Miles") while a single-select one is a whole
- * sentence ("Use the dawn reference") — the two compose differently.
+ * Deferred selection, shared by OptionList, MediaGrid and AudioList. In both
+ * `"many"` and `"one-per-group"` modes a tap only TOGGLES a row/tile; nothing is
+ * sent until the confirm button, and the message posted is the list's own `send`
+ * followed by the picked items' `send` strings joined with commas. That's why a
+ * deferred item's `send` is a NOUN PHRASE ("Shopkeeper Miles", "Miles 2") while
+ * a single-select one is a whole sentence ("Use the dawn reference") — the two
+ * compose differently.
+ *
+ * `"one-per-group"` is the ANSWER-SEVERAL-QUESTIONS-AT-ONCE mode: items carrying
+ * the same `group` form one sub-question, exactly one item in each can be
+ * picked, and the confirm button stays disabled until EVERY group has an answer.
+ * It exists because the alternative — one single-select card per sub-question —
+ * cannot work: the first tap posts a message and ends the turn, stranding every
+ * other question on a card that is now inert.
  */
 const SELECT =
-  "'one' (default) — a tap picks that item and sends immediately. 'many' — taps toggle, and nothing is sent until the confirm button";
+  "'one' (default) — a tap picks that item and sends immediately. 'many' — taps toggle and nothing is sent until the confirm button. 'one-per-group' — the items are split into sub-questions by their `group` prop, each group takes exactly ONE pick, and the confirm button unlocks only once every group is answered";
 const LIST_SEND =
-  "REQUIRED when select is 'many': the lead of the composed message, to which the picked items' `send` values are appended after a colon — e.g. send \"Add these characters to the World\" + picks \"Miles\", \"Vera\" posts \"Add these characters to the World: Miles, Vera\". Ignored when select is 'one'";
+  "REQUIRED when select is 'many' or 'one-per-group': the lead of the composed message, to which the picked items' `send` values are appended after a colon — e.g. send \"Add these characters to the World\" + picks \"Miles\", \"Vera\" posts \"Add these characters to the World: Miles, Vera\". Ignored when select is 'one'";
 const CONFIRM =
-  "the confirm button's label when select is 'many' (default \"Continue\"). Ignored when select is 'one'";
+  "the confirm button's label when select is 'many' or 'one-per-group' (default \"Continue\"). Ignored when select is 'one'";
+const GROUP =
+  "ONLY for a list whose select is 'one-per-group': which sub-question this item answers, e.g. the character whose portrait this is (\"Miles Okonkwo\"). Items sharing a group are drawn together under it as a heading and are mutually exclusive. Groups appear in the order their first item does. Omit it in every other mode";
 
 /** Compose the full Studio library from one design system's renderers. */
 export function buildStudioLibrary(renderers: StudioRenderers): Library {
@@ -273,8 +289,9 @@ export function buildStudioLibrary(renderers: StudioRenderers): Library {
       badge: z.string().optional().nullable(),
       selected: z.boolean().optional(),
       tone: z.enum(["normal", "danger"]).optional(),
+      group: z.string().optional().nullable(),
     }),
-    description: `One choice in an OptionList, rendered as a tappable row. title: the choice. send: ${SEND}. subtitle: one line of why-you'd-pick-this. meta: a short right-aligned qualifier ("~40s", "12 credits", "shot03"). image: a thumbnail URL for the row's leading badge. badge: a tiny pill ("Recommended", "Current"). selected: marks the option already in force. tone 'danger' for a destructive choice.`,
+    description: `One choice in an OptionList, rendered as a tappable row. title: the choice. send: ${SEND}. subtitle: one line of why-you'd-pick-this. meta: a short right-aligned qualifier ("~40s", "12 credits", "shot03"). image: a thumbnail URL for the row's leading badge. badge: a tiny pill ("Recommended", "Current"). selected: marks the option already in force. tone 'danger' for a destructive choice. group: ${GROUP}.`,
     component: r(renderers.Option),
   });
 
@@ -284,11 +301,11 @@ export function buildStudioLibrary(renderers: StudioRenderers): Library {
       options: z.array(Option.ref),
       header: z.string().optional().nullable(),
       footnote: z.string().optional().nullable(),
-      select: z.enum(["one", "many"]).optional(),
+      select: z.enum(["one", "many", "one-per-group"]).optional(),
       send: z.string().optional().nullable(),
       confirm: z.string().optional().nullable(),
     }),
-    description: `THE default way to ask the author to choose — an inset card of Option rows separated by hairlines. Use it for 2–6 choices that need more than a bare label: models, durations, takes, drafts, characters to add, next steps. header: a small uppercase label above the card. footnote: one quiet line beneath it (e.g. 'Or just tell me what you want instead.'). select: ${SELECT} — use 'many' whenever the author may legitimately want SEVERAL of the listed things (which speakers to add to the World, which takes to keep). send: ${LIST_SEND}. confirm: ${CONFIRM}.`,
+    description: `THE default way to ask the author to choose — an inset card of Option rows separated by hairlines. Use it for 2–6 choices that need more than a bare label: models, durations, takes, drafts, characters to add, next steps. header: a small uppercase label above the card. footnote: one quiet line beneath it (e.g. 'Or just tell me what you want instead.'). select: ${SELECT}. Reach for 'many' whenever the author may legitimately want SEVERAL of the listed things (which speakers to add to the World, which takes to keep), and 'one-per-group' when you are asking the SAME question about several subjects at once (a voice per character, a length per scene). send: ${LIST_SEND}. confirm: ${CONFIRM}.`,
     component: r(renderers.OptionList),
   });
 
@@ -302,8 +319,9 @@ export function buildStudioLibrary(renderers: StudioRenderers): Library {
       label: z.string().optional().nullable(),
       caption: z.string().optional().nullable(),
       selected: z.boolean().optional(),
+      group: z.string().optional().nullable(),
     }),
-    description: `One image in a MediaGrid. src: the image URL (a /storyboard-media, /library or generation URL from the tools — never invent one). send: OPTIONAL — give it only when picking this image is a real decision; then it follows the usual rules (${SEND}; in a 'many' grid a NOUN PHRASE instead, because the picks are joined into one sentence). OMIT send entirely when the card is just showing the author a picture you made — the tile is then look-only, with no "Use this" button under it. label: a short name under the thumbnail. caption: one extra line of context. selected: marks the current pick.`,
+    description: `One image in a MediaGrid. src: the image URL (a /storyboard-media, /library or generation URL from the tools — never invent one). send: OPTIONAL — give it only when picking this image is a real decision; then it follows the usual rules (${SEND}; in a 'many' or 'one-per-group' grid a NOUN PHRASE instead, because the picks are joined into one sentence). OMIT send entirely when the card is just showing the author a picture you made — the tile is then look-only, with no "Use this" button under it. label: a short name under the thumbnail. caption: one extra line of context. selected: marks the current pick. group: ${GROUP}.`,
     component: r(renderers.MediaItem),
   });
 
@@ -313,11 +331,11 @@ export function buildStudioLibrary(renderers: StudioRenderers): Library {
       items: z.array(MediaItem.ref),
       header: z.string().optional().nullable(),
       columns: z.number().optional(),
-      select: z.enum(["one", "many"]).optional(),
+      select: z.enum(["one", "many", "one-per-group"]).optional(),
       send: z.string().optional().nullable(),
       confirm: z.string().optional().nullable(),
     }),
-    description: `A grid of image thumbnails. It does TWO jobs. (1) SHOWING finished pictures: the moment an image generation you started completes, draw this card with the result — that is how the author SEES it. Never answer an image job with prose alone ("it's on the Visual board", "saved to the library") and never paste the URL as markdown; the picture belongs in the chat, next to the words. Rows you are only showing get NO \`send\`, so there is no pick control under them. (2) ASKING which reference, still, take or character sheet to use — then each tile carries a \`send\`. Tapping a thumbnail always opens it FULL-SCREEN for a proper look; picking, when offered, is a separate explicit control so the author can inspect before committing. columns: 2 (default) or 3; use 3 only for six or more small thumbnails. A single image is fine — one tile, columns 2. select: ${SELECT} — use 'many' when several images are legitimately wanted (a multi-reference generation). send: ${LIST_SEND}. confirm: ${CONFIRM}.`,
+    description: `A grid of image thumbnails. It does TWO jobs. (1) SHOWING finished pictures: the moment an image generation you started completes, draw this card with the result — that is how the author SEES it. Never answer an image job with prose alone ("it's on the Visual board", "saved to the library") and never paste the URL as markdown; the picture belongs in the chat, next to the words. Rows you are only showing get NO \`send\`, so there is no pick control under them. (2) ASKING which reference, still, take or character sheet to use — then each tile carries a \`send\`. Tapping a thumbnail always opens it FULL-SCREEN for a proper look; picking, when offered, is a separate explicit control so the author can inspect before committing. columns: 2 (default) or 3; use 3 only for six or more small thumbnails. A single image is fine — one tile, columns 2. select: ${SELECT}. Reach for 'many' when several images are legitimately wanted (a multi-reference generation), and 'one-per-group' for the very common CANDIDATES-PER-SUBJECT card: several portraits for each of several characters, several looks for each of several locations. One grid, one \`group\` per subject, one confirm. send: ${LIST_SEND}. confirm: ${CONFIRM}.`,
     component: r(renderers.MediaGrid),
   });
 
@@ -333,8 +351,9 @@ export function buildStudioLibrary(renderers: StudioRenderers): Library {
       meta: z.string().optional().nullable(),
       badge: z.string().optional().nullable(),
       selected: z.boolean().optional(),
+      group: z.string().optional().nullable(),
     }),
-    description: `One playable clip in an AudioList, rendered as a row with an inline play button. src: the audio URL (a /sound-media or generation URL a tool returned — never invent one). title: what the clip is ("Take 2 — heavier rain"). send: OPTIONAL — give it only when picking this clip is a real decision; then it follows the usual rules (${SEND}; in a 'many' list a NOUN PHRASE instead). Omit send entirely when the card is just for listening. subtitle: one line of context (what changed in this take). meta: a short right-aligned qualifier ("12s", "v3"). badge: a tiny pill ("Liked", "New"). selected: marks the take already in force.`,
+    description: `One playable clip in an AudioList, rendered as a row with an inline play button. src: the audio URL (a /sound-media or generation URL a tool returned — never invent one). title: what the clip is ("Take 2 — heavier rain"). send: OPTIONAL — give it only when picking this clip is a real decision; then it follows the usual rules (${SEND}; in a 'many' or 'one-per-group' list a NOUN PHRASE instead). Omit send entirely when the card is just for listening. subtitle: one line of context (what changed in this take). meta: a short right-aligned qualifier ("12s", "v3"). badge: a tiny pill ("Liked", "New"). selected: marks the take already in force. group: ${GROUP}.`,
     component: r(renderers.AudioItem),
   });
 
@@ -344,11 +363,11 @@ export function buildStudioLibrary(renderers: StudioRenderers): Library {
       items: z.array(AudioItem.ref),
       header: z.string().optional().nullable(),
       footnote: z.string().optional().nullable(),
-      select: z.enum(["one", "many"]).optional(),
+      select: z.enum(["one", "many", "one-per-group"]).optional(),
       send: z.string().optional().nullable(),
       confirm: z.string().optional().nullable(),
     }),
-    description: `A stack of playable audio rows — THE way to hand finished audio back to the author: a Seed Audio scene, radio takes, new sound versions. The author plays each clip right in the chat; NEVER paste an audio URL as a markdown link instead. Playing never sends anything — picking is a separate control that appears only on rows given a \`send\`, so a listen-only card is simply rows without one. select: ${SELECT} — use 'many' when several takes can be kept. send: ${LIST_SEND}. confirm: ${CONFIRM}.`,
+    description: `A stack of playable audio rows — THE way to hand finished audio back to the author: a Seed Audio scene, radio takes, new sound versions. The author plays each clip right in the chat; NEVER paste an audio URL as a markdown link instead. Playing never sends anything — picking is a separate control that appears only on rows given a \`send\`, so a listen-only card is simply rows without one. select: ${SELECT}. Reach for 'many' when several takes can be kept, and 'one-per-group' to audition takes for several lines or characters in one card (group by the character or the line). send: ${LIST_SEND}. confirm: ${CONFIRM}.`,
     component: r(renderers.AudioList),
   });
 
@@ -521,6 +540,7 @@ export function buildStudioLibrary(renderers: StudioRenderers): Library {
           "OptionList is the DEFAULT decision surface — reach for it first whenever the author has to pick between things.",
           "Actions is for a plain go/no-go; Chips is for optional side-quests, never for the main decision.",
           "Every option's `send` is written in the AUTHOR's voice, because it is posted as their next message.",
+          "NEVER put two single-select lists on one card. The first tap sends and ends the turn, so the second question dies unanswered — if the card asks more than one thing, it is ONE list with select 'one-per-group'.",
         ],
       },
       {
@@ -528,6 +548,7 @@ export function buildStudioLibrary(renderers: StudioRenderers): Library {
         components: ["MediaGrid", "MediaItem"],
         notes: [
           "Reference-image, still, take and character-sheet picks ALWAYS go through MediaGrid — never as markdown image links in your message text.",
+          "Candidates for SEVERAL subjects (two portraits each for three characters) are ONE MediaGrid with select 'one-per-group' and a `group` per subject — never a grid per character, which would let only the first pick through.",
           "Only use URLs the tools gave you (list_library, get_visual_world, get_episode, …). Never invent or guess an image URL.",
         ],
       },

@@ -14,7 +14,7 @@
  * ActionExpressions here.
  */
 import { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
-import { Check, ChevronRight, Expand, Pause, Play } from "lucide-react";
+import { Check, ChevronRight, Circle, CircleCheck, Expand, Pause, Play } from "lucide-react";
 import { useTriggerAction, useIsStreaming } from "@openuidev/react-lang";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -35,13 +35,13 @@ function useSend(send) {
 }
 
 /**
- * Multi-select plumbing, shared by OptionList and MediaGrid.
+ * Deferred-selection plumbing, shared by OptionList, MediaGrid and AudioList.
  *
- * A list in `select: "many"` mode owns the selection and its children only
- * toggle into it — so `Option` / `MediaItem` render a checkbox instead of
- * firing immediately. The composed message is the list's `send` plus the picked
- * children's `send` values, joined; see the contract's SELECT note for why a
- * multi-select item's `send` is a noun phrase.
+ * A list in `select: "many"` or `"one-per-group"` owns the selection and its
+ * children only toggle into it — so `Option` / `MediaItem` / `AudioItem` render
+ * a pick control instead of firing immediately. The composed message is the
+ * list's `send` plus the picked children's `send` values, joined; see the
+ * contract's SELECT note for why a deferred item's `send` is a noun phrase.
  *
  * `null` context = single-select, the default: children send on tap.
  */
@@ -52,47 +52,106 @@ function useSelection() {
 }
 
 /**
- * State + the confirm button for a `select: "many"` list. Returns the provider
- * to wrap the children in and the footer to render under them; in "one" mode
- * both are pass-throughs, so callers have a single code path.
+ * Split a list's children into the sub-questions they answer.
+ *
+ * Only `select: "one-per-group"` buckets; every other mode returns the single
+ * unnamed bucket that IS the whole list, so grouped and ungrouped lists render
+ * through one code path and an ordinary card looks exactly as it always did.
+ * Groups come out in first-appearance order — the order the model wrote them,
+ * which is the order the composed message has to follow.
  */
-function useMultiSelect({ select, send, confirm }) {
-  const [picked, setPicked] = useState(() => new Set());
+function groupItems(items, select) {
+  if (select !== "one-per-group") return [{ name: "", items }];
+  const buckets = [];
+  const byName = new Map();
+  for (const item of items) {
+    const name = item?.props?.group || "";
+    let bucket = byName.get(name);
+    if (!bucket) {
+      bucket = { name, items: [] };
+      byName.set(name, bucket);
+      buckets.push(bucket);
+    }
+    bucket.items.push(item);
+  }
+  return buckets;
+}
+
+/**
+ * State + the confirm button for a list that defers its send. Returns the
+ * provider to wrap the children in and the footer to render under them; in
+ * "one" mode both are pass-throughs, so callers have a single code path.
+ *
+ * `groups` is the bucket order from `groupItems` — it decides both the order the
+ * picks are joined in and, in "one-per-group", when the card is COMPLETE. That
+ * completeness gate is the point of the mode: a card asking three questions must
+ * not be answerable with one, because the send that answers it ends the turn.
+ */
+function useMultiSelect({ select, send, confirm }, groups) {
+  // group name → the picked `send` strings for that group. "many" keeps
+  // everything under the one unnamed group, in tap order.
+  const [picks, setPicks] = useState(() => ({}));
   const trigger = useSend(send || " ");
   const many = select === "many";
+  const perGroup = select === "one-per-group";
+  const active = many || perGroup;
 
   const value = useMemo(
     () =>
-      many
+      active
         ? {
-            has: (key) => picked.has(key),
-            toggle: (key) =>
-              setPicked((prev) => {
-                const next = new Set(prev);
-                if (next.has(key)) next.delete(key);
-                else next.add(key);
-                return next;
+            mode: perGroup ? "group" : "many",
+            has: (key) => Object.values(picks).some((list) => list.includes(key)),
+            toggle: (key, group = "") =>
+              setPicks((prev) => {
+                const current = prev[group] || [];
+                // One-per-group is a radio: a second pick REPLACES the first,
+                // and re-tapping the picked one clears it (so a misfire is
+                // undoable without having to pick something you don't want).
+                if (perGroup) {
+                  return { ...prev, [group]: current[0] === key ? [] : [key] };
+                }
+                return {
+                  ...prev,
+                  [group]: current.includes(key)
+                    ? current.filter((k) => k !== key)
+                    : [...current, key],
+                };
               }),
           }
         : null,
-    [many, picked],
+    [active, perGroup, picks],
   );
 
   const Provider = ({ children }) =>
-    many ? (
+    active ? (
       <SelectionContext.Provider value={value}>{children}</SelectionContext.Provider>
     ) : (
       children
     );
 
+  const names = perGroup ? groups.map((g) => g.name) : [""];
+  const chosen = names.flatMap((name) => picks[name] || []);
+  const complete = perGroup ? names.every((name) => (picks[name] || []).length > 0) : chosen.length > 0;
+
   const submit = useSend(
-    // The message is only well-formed once something is picked, so an empty
-    // selection yields no handler and the button stays disabled.
-    many && picked.size && send ? `${send}: ${[...picked].join(", ")}` : null,
+    // The message is only well-formed once the card is fully answered, so an
+    // incomplete selection yields no handler and the button stays disabled.
+    active && complete && send ? `${send}: ${chosen.join(", ")}` : null,
   );
 
+  // "2 of 3" while the card is still asking; a plain count once it's a bag of
+  // picks with no target number.
+  const count = perGroup
+    ? chosen.length < names.length
+      ? ` (${chosen.length}/${names.length})`
+      : ""
+    : chosen.length
+      ? ` (${chosen.length})`
+      : "";
+
   const Footer = () =>
-    many ? (
+    active ? (
       <Button
         type="button"
         size="sm"
@@ -101,11 +160,27 @@ function useMultiSelect({ select, send, confirm }) {
         onClick={submit}
       >
         {confirm || "Continue"}
-        {picked.size ? ` (${picked.size})` : ""}
+        {count}
       </Button>
     ) : null;
 
   return { Provider, Footer };
+}
+
+/**
+ * The pick indicator for a deferred-select row: a checkbox when several answers
+ * are allowed, a radio when the group takes exactly one. The shape is the only
+ * honest hint about how many picks a group will accept.
+ */
+function PickMark({ mode, checked }) {
+  if (mode === "group") {
+    return checked ? (
+      <CircleCheck size={18} className="shrink-0 text-primary" />
+    ) : (
+      <Circle size={18} className="shrink-0 text-muted-foreground" />
+    );
+  }
+  return <Checkbox checked={checked} tabIndex={-1} className="pointer-events-none shrink-0" />;
 }
 
 /** A full-size look at a thumbnail — the web stand-in for the native lightbox. */
@@ -213,7 +288,11 @@ export function Option({ props }) {
   // sending; `checked` then drives the checkbox, while `selected` (the model's
   // "this is already in force" flag) still drives the single-select check mark.
   const checked = selection ? selection.has(props.send) : false;
-  const onClick = selection ? (send ? () => selection.toggle(props.send) : undefined) : send;
+  const onClick = selection
+    ? send
+      ? () => selection.toggle(props.send, props.group || "")
+      : undefined
+    : send;
   // Once the card is answered the row the author took is marked like any other
   // current selection, and the rows they passed over recede. See answered.ts.
   const { picked, dimmed } = useAnswerState(props.send);
@@ -231,9 +310,7 @@ export function Option({ props }) {
         dimmed ? "opacity-45" : "disabled:opacity-60",
       )}
     >
-      {selection ? (
-        <Checkbox checked={checked} tabIndex={-1} className="pointer-events-none shrink-0" />
-      ) : null}
+      {selection ? <PickMark mode={selection.mode} checked={checked} /> : null}
       {props.image ? (
         <img
           src={props.image}
@@ -280,19 +357,27 @@ export function Option({ props }) {
 
 export function OptionList({ props, renderNode }) {
   const options = Array.isArray(props.options) ? props.options : [];
-  const { Provider, Footer } = useMultiSelect(props);
+  const buckets = useMemo(() => groupItems(options, props.select), [options, props.select]);
+  const { Provider, Footer } = useMultiSelect(props, buckets);
   return (
     <div>
       <Header>{props.header}</Header>
       <Provider>
-        <InsetCard>
-          {options.map((opt, i) => (
-            <div key={i}>
-              {i > 0 ? <Separator className="ml-3 w-auto" /> : null}
-              {renderNode(opt)}
+        <div className="flex flex-col gap-3">
+          {buckets.map((bucket, b) => (
+            <div key={b}>
+              <Header>{bucket.name}</Header>
+              <InsetCard>
+                {bucket.items.map((opt, i) => (
+                  <div key={i}>
+                    {i > 0 ? <Separator className="ml-3 w-auto" /> : null}
+                    {renderNode(opt)}
+                  </div>
+                ))}
+              </InsetCard>
             </div>
           ))}
-        </InsetCard>
+        </div>
         <Footer />
       </Provider>
       {props.footnote ? (
@@ -321,7 +406,11 @@ export function MediaItem({ props }) {
   const [preview, setPreview] = useState(false);
   const send = useSend(props.send);
   const checked = selection && props.send ? selection.has(props.send) : false;
-  const pick = selection ? (send ? () => selection.toggle(props.send) : undefined) : send;
+  const pick = selection
+    ? send
+      ? () => selection.toggle(props.send, props.group || "")
+      : undefined
+    : send;
   // The tile the author picked keeps its ring once the card is answered; the
   // ones they passed over recede. See answered.ts.
   const { picked, dimmed } = useAnswerState(props.send);
@@ -360,7 +449,22 @@ export function MediaItem({ props }) {
           {props.caption}
         </span>
       ) : null}
-      {selection && props.send ? (
+      {/* One-per-group keeps the "Use this" button of a single-select grid —
+          the gesture is the same, it just doesn't send yet — and goes solid
+          once it's this group's answer. A "many" grid gets the checkbox row
+          instead, because there the question is how many, not which one. */}
+      {selection?.mode === "group" && props.send ? (
+        <Button
+          type="button"
+          size="xs"
+          variant={checked ? "default" : "outline"}
+          disabled={!pick}
+          onClick={pick}
+        >
+          {checked ? <Check size={12} /> : null}
+          {checked ? "Picked" : "Use this"}
+        </Button>
+      ) : selection && props.send ? (
         <button
           type="button"
           disabled={!pick}
@@ -390,22 +494,36 @@ export function MediaItem({ props }) {
 export function MediaGrid({ props, renderNode }) {
   const items = Array.isArray(props.items) ? props.items : [];
   const columns = props.columns === 3 ? 3 : 2;
-  const { Provider, Footer } = useMultiSelect(props);
+  const buckets = useMemo(() => groupItems(items, props.select), [items, props.select]);
+  const { Provider, Footer } = useMultiSelect(props, buckets);
   return (
     <div>
       <Header>{props.header}</Header>
       <Provider>
-        <div
-          className={cn(
-            "grid gap-2",
-            // ONE tile takes the whole rail — a lone image in a 2-up grid sat in
-            // the left half with dead space beside it, reading as a column that
-            // failed to fill rather than as the picture the card is about.
-            items.length === 1 ? "grid-cols-1" : columns === 3 ? "grid-cols-3" : "grid-cols-2",
-          )}
-        >
-          {items.map((item, i) => (
-            <div key={i}>{renderNode(item)}</div>
+        <div className="flex flex-col gap-3">
+          {buckets.map((bucket, b) => (
+            <div key={b}>
+              <Header>{bucket.name}</Header>
+              <div
+                className={cn(
+                  "grid gap-2",
+                  // ONE tile takes the whole rail — a lone image in a 2-up grid
+                  // sat in the left half with dead space beside it, reading as a
+                  // column that failed to fill rather than as the picture the
+                  // card is about. Judged per group, so a subject with a single
+                  // candidate still fills its row.
+                  bucket.items.length === 1
+                    ? "grid-cols-1"
+                    : columns === 3
+                      ? "grid-cols-3"
+                      : "grid-cols-2",
+                )}
+              >
+                {bucket.items.map((item, i) => (
+                  <div key={i}>{renderNode(item)}</div>
+                ))}
+              </div>
+            </div>
           ))}
         </div>
         <Footer />
@@ -490,7 +608,11 @@ export function AudioItem({ props }) {
   const send = useSend(props.send);
   const { playing, progress, duration, toggle } = useAudioClip(props.src);
   const checked = selection && props.send ? selection.has(props.send) : false;
-  const pick = selection ? (send ? () => selection.toggle(props.send) : undefined) : send;
+  const pick = selection
+    ? send
+      ? () => selection.toggle(props.send, props.group || "")
+      : undefined
+    : send;
   const { picked, dimmed } = useAnswerState(props.send);
   const marked = props.selected || picked;
   const time = formatSeconds(duration);
@@ -546,7 +668,7 @@ export function AudioItem({ props }) {
           aria-label={`${checked ? "Unpick" : "Pick"} ${props.title}`}
           className="shrink-0 disabled:pointer-events-none disabled:opacity-60"
         >
-          <Checkbox checked={checked} tabIndex={-1} className="pointer-events-none" />
+          <PickMark mode={selection.mode} checked={checked} />
         </button>
       ) : props.send ? (
         marked ? (
@@ -563,19 +685,27 @@ export function AudioItem({ props }) {
 
 export function AudioList({ props, renderNode }) {
   const items = Array.isArray(props.items) ? props.items : [];
-  const { Provider, Footer } = useMultiSelect(props);
+  const buckets = useMemo(() => groupItems(items, props.select), [items, props.select]);
+  const { Provider, Footer } = useMultiSelect(props, buckets);
   return (
     <div>
       <Header>{props.header}</Header>
       <Provider>
-        <InsetCard>
-          {items.map((item, i) => (
-            <div key={i}>
-              {i > 0 ? <Separator className="ml-3 w-auto" /> : null}
-              {renderNode(item)}
+        <div className="flex flex-col gap-3">
+          {buckets.map((bucket, b) => (
+            <div key={b}>
+              <Header>{bucket.name}</Header>
+              <InsetCard>
+                {bucket.items.map((item, i) => (
+                  <div key={i}>
+                    {i > 0 ? <Separator className="ml-3 w-auto" /> : null}
+                    {renderNode(item)}
+                  </div>
+                ))}
+              </InsetCard>
             </div>
           ))}
-        </InsetCard>
+        </div>
         <Footer />
       </Provider>
       {props.footnote ? (

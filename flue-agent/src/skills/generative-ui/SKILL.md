@@ -2,18 +2,18 @@
 name: generative-ui
 description: >-
   Write the openui-lang program for a `render_ui` call — the interactive card
-  that asks the author to choose, pick a reference image, confirm a submit, or
-  approve a plan. Load this WHENEVER you are about to call `render_ui` and are
-  not certain of the syntax. Hard rules that hold even without reading the body:
-  every interactive element's `send` string is posted VERBATIM as the author's
-  next chat message, so write it in their voice; image and audio URLs must come
-  from a tool result and are never invented; a finished IMAGE (concept
-  generation, sheet, storyboard still) is handed back as a MediaGrid card as
-  soon as it is attached, so the author SEES it in the chat instead of being
-  told which tab it is on; finished AUDIO is handed back as an AudioList card
-  so they can PLAY it there, never as a bare /sound-media link; `render_ui` is
-  the FINAL action of the turn and you STOP after it; and it is root-agent
-  only — a subagent cannot pause, so it must hand its question back to you.
+  that asks the author to choose, pick an image, confirm a submit, or approve a
+  plan. Load this WHENEVER you are about to call `render_ui`. Hard rules, true
+  without reading the body: every `send` string is posted VERBATIM as the
+  author's next chat message, so write it in their voice; media URLs come from a
+  tool result and are never invented; a card that asks about SEVERAL subjects is
+  ONE list with select 'one-per-group', never a single-select list per subject
+  (the first tap ends the turn and strands the rest); a finished IMAGE is handed
+  back as a MediaGrid card as soon as it is attached, so the author SEES it in
+  the chat rather than being told which tab it is on; finished AUDIO comes back
+  as an AudioList so they can PLAY it there, never as a bare /sound-media link;
+  `render_ui` is the FINAL action of the turn and you STOP after it; and it is
+  root-agent only — a subagent cannot pause, so it hands its question to you.
 ---
 
 # Drawing an interactive card
@@ -38,8 +38,9 @@ they'll probably pick. Their tap arrives as the next user message.
 
 ## One of these, or several?
 
-`OptionList` and `MediaGrid` both take a `select` argument, and getting it right
-is the difference between a card that works and one the author has to fight.
+`OptionList`, `MediaGrid` and `AudioList` all take a `select` argument, and
+getting it right is the difference between a card that works and one the author
+has to fight.
 
 - **`"one"` (default)** — the choices are mutually exclusive. A tap picks that
   one and sends immediately. Each item's `send` is a whole sentence:
@@ -61,6 +62,49 @@ c3 = Option("Radio voice", "Radio voice", "One line, off-screen — probably a b
 Picking Miles and Vera posts *"Add these characters to the World: Shopkeeper
 Miles, Vera"*. Ask yourself before every list: **could the honest answer be "those
 two"?** If yes, it's `"many"`.
+
+- **`"one-per-group"`** — you are asking the SAME question about several
+  subjects at once: a portrait per character, a take per line, a look per
+  location. Give every item a `group` (the subject it belongs to); items sharing
+  a group are drawn together under it and take exactly ONE pick between them, and
+  the confirm button stays locked until every group has an answer. The message
+  composes exactly like `"many"`, in group order, so item `send`s are noun
+  phrases here too.
+
+## Never ask two questions with two cards
+
+This is the mistake `"one-per-group"` exists to prevent, and it is easy to walk
+into: you render six portraits as **three separate `select: "one"` grids**, one
+per character. The author picks Miles' portrait — that tap posts a message, your
+turn resumes, and every other grid on that card is now inert. They answered one
+third of the question and the card died.
+
+**Two single-select lists must never appear on the same card.** One list, one
+`group` per subject, one confirm:
+
+```
+root = Card([intro, casting])
+intro = Text("Six portraits up — pick your favorite for each and I'll lock them in.", "body")
+casting = MediaGrid([m1, m2, s1, s2, r1, r2], null, 2, "one-per-group", "Lock these portraits", "Lock them in")
+m1 = MediaItem("<url>", "Miles 1", "Miles 1", null, false, "Miles Okonkwo")
+m2 = MediaItem("<url>", "Miles 2", "Miles 2", null, false, "Miles Okonkwo")
+s1 = MediaItem("<url>", "Saskia 1", "Saskia 1", null, false, "Saskia Voss")
+s2 = MediaItem("<url>", "Saskia 2", "Saskia 2", null, false, "Saskia Voss")
+r1 = MediaItem("<url>", "Rudy 1", "Rudy 1", null, false, "Rudy Tanaka")
+r2 = MediaItem("<url>", "Rudy 2", "Rudy 2", null, false, "Rudy Tanaka")
+```
+
+Picking Miles 2, Saskia 1 and Rudy 2 posts *"Lock these portraits: Miles 2,
+Saskia 1, Rudy 2"* — one message, the whole answer, and you act on all three.
+
+The same shape covers a voice per character (`AudioList`) and a duration or
+model per shot (`OptionList`). If the honest answer to your card is a LIST of
+answers rather than one, it's `"one-per-group"`.
+
+`group` is the LAST argument of `MediaItem` / `Option` / `AudioItem`, and
+arguments are positional — so count the `null`s carefully (`MediaItem` is `src,
+send, label, caption, selected, group`). `group: "Miles Okonkwo"` is not syntax
+this parser has; a colon silently slides every prop one slot over.
 
 ## Images open full-screen
 
@@ -110,8 +154,10 @@ A card that repeats your paragraph reads as a stutter.
 | --- | --- |
 | choose ONE of 2–6 things | `OptionList`, `select: "one"` |
 | choose SEVERAL of a list | `OptionList`, `select: "many"` |
+| choose one FOR EACH of several subjects | one list, `select: "one-per-group"` |
 | SEE an image that just rendered | `MediaGrid` of `MediaItem`, no `send` |
 | pick an image (reference, still, take, sheet) | `MediaGrid` of `MediaItem` |
+| pick a portrait/look for EACH of several characters | `MediaGrid`, `select: "one-per-group"` |
 | hear audio that just rendered (and maybe keep a take) | `AudioList` of `AudioItem` |
 | say yes or no to one proposal | `Recommendation` (hero + one CTA) |
 | weigh 2–3 options on the same attributes | `Compare` of `Column` |
@@ -162,8 +208,8 @@ picture ("Use this as Noah's sheet", "Iterate on this one"):
 root = Card([intro, shots])
 intro = Text("Noah Chen — first pass, Analog Glitch.", "body")
 shots = MediaGrid([g1, g2], "Noah Chen")
-g1 = MediaItem("<url from attach_visual_generation>", label: "Frayed, hollow-eyed")
-g2 = MediaItem("<url from attach_visual_generation>", label: "Tighter on the scar")
+g1 = MediaItem("<url from attach_visual_generation>", null, "Frayed, hollow-eyed")
+g2 = MediaItem("<url from attach_visual_generation>", null, "Tighter on the scar")
 ```
 
 One image is still a card — a single tile in a `MediaGrid` is the normal way to
@@ -246,24 +292,26 @@ You are drawing one small interactive card inside the Shot Studio chat, directly
 Arguments marked with ? are optional. Sub-components can be inline or referenced; prefer references for better streaming.
 
 ### Choosing
-OptionList(options: Option[], header?: string, footnote?: string, select?: "one" | "many", send?: string, confirm?: string) — THE default way to ask the author to choose — an inset card of Option rows separated by hairlines. Use it for 2–6 choices that need more than a bare label: models, durations, takes, drafts, characters to add, next steps. header: a small uppercase label above the card. footnote: one quiet line beneath it (e.g. 'Or just tell me what you want instead.'). select: 'one' (default) — a tap picks that item and sends immediately. 'many' — taps toggle, and nothing is sent until the confirm button — use 'many' whenever the author may legitimately want SEVERAL of the listed things (which speakers to add to the World, which takes to keep). send: REQUIRED when select is 'many': the lead of the composed message, to which the picked items' `send` values are appended after a colon — e.g. send "Add these characters to the World" + picks "Miles", "Vera" posts "Add these characters to the World: Miles, Vera". Ignored when select is 'one'. confirm: the confirm button's label when select is 'many' (default "Continue"). Ignored when select is 'one'.
-Option(title: string, send: string, subtitle?: string, meta?: string, image?: string, badge?: string, selected?: boolean, tone?: "normal" | "danger") — One choice in an OptionList, rendered as a tappable row. title: the choice. send: the message sent AS THE USER when this is picked — write it as the user would ('Use the second reference'), never as an instruction to yourself. It MUST OPEN WITH the words shown on the control itself (its title/label), because this message is the author's ONLY confirmation that the row they hit is the row they meant; put any extra brief AFTER that opening — title 'Punch up the dialogue' ⇒ send 'Punch up the dialogue — sharpen the voices in the audition scene', never send 'Let me tighten those lines'. subtitle: one line of why-you'd-pick-this. meta: a short right-aligned qualifier ("~40s", "12 credits", "shot03"). image: a thumbnail URL for the row's leading badge. badge: a tiny pill ("Recommended", "Current"). selected: marks the option already in force. tone 'danger' for a destructive choice.
+OptionList(options: Option[], header?: string, footnote?: string, select?: "one" | "many" | "one-per-group", send?: string, confirm?: string) — THE default way to ask the author to choose — an inset card of Option rows separated by hairlines. Use it for 2–6 choices that need more than a bare label: models, durations, takes, drafts, characters to add, next steps. header: a small uppercase label above the card. footnote: one quiet line beneath it (e.g. 'Or just tell me what you want instead.'). select: 'one' (default) — a tap picks that item and sends immediately. 'many' — taps toggle and nothing is sent until the confirm button. 'one-per-group' — the items are split into sub-questions by their `group` prop, each group takes exactly ONE pick, and the confirm button unlocks only once every group is answered. Reach for 'many' whenever the author may legitimately want SEVERAL of the listed things (which speakers to add to the World, which takes to keep), and 'one-per-group' when you are asking the SAME question about several subjects at once (a voice per character, a length per scene). send: REQUIRED when select is 'many' or 'one-per-group': the lead of the composed message, to which the picked items' `send` values are appended after a colon — e.g. send "Add these characters to the World" + picks "Miles", "Vera" posts "Add these characters to the World: Miles, Vera". Ignored when select is 'one'. confirm: the confirm button's label when select is 'many' or 'one-per-group' (default "Continue"). Ignored when select is 'one'.
+Option(title: string, send: string, subtitle?: string, meta?: string, image?: string, badge?: string, selected?: boolean, tone?: "normal" | "danger", group?: string) — One choice in an OptionList, rendered as a tappable row. title: the choice. send: the message sent AS THE USER when this is picked — write it as the user would ('Use the second reference'), never as an instruction to yourself. It MUST OPEN WITH the words shown on the control itself (its title/label), because this message is the author's ONLY confirmation that the row they hit is the row they meant; put any extra brief AFTER that opening — title 'Punch up the dialogue' ⇒ send 'Punch up the dialogue — sharpen the voices in the audition scene', never send 'Let me tighten those lines'. subtitle: one line of why-you'd-pick-this. meta: a short right-aligned qualifier ("~40s", "12 credits", "shot03"). image: a thumbnail URL for the row's leading badge. badge: a tiny pill ("Recommended", "Current"). selected: marks the option already in force. tone 'danger' for a destructive choice. group: ONLY for a list whose select is 'one-per-group': which sub-question this item answers, e.g. the character whose portrait this is ("Miles Okonkwo"). Items sharing a group are drawn together under it as a heading and are mutually exclusive. Groups appear in the order their first item does. Omit it in every other mode.
 Actions(actions: Action[], direction?: "row" | "column") — A group of buttons — the plain yes/no/other choice. direction: 'row' (default) for two or three short labels, 'column' when the labels are sentences.
 Action(label: string, send: string, variant?: "primary" | "secondary", tone?: "normal" | "danger") — One button. label: the button text. send: the message sent AS THE USER when this is picked — write it as the user would ('Use the second reference'), never as an instruction to yourself. It MUST OPEN WITH the words shown on the control itself (its title/label), because this message is the author's ONLY confirmation that the row they hit is the row they meant; put any extra brief AFTER that opening — title 'Punch up the dialogue' ⇒ send 'Punch up the dialogue — sharpen the voices in the audition scene', never send 'Let me tighten those lines'. Exactly ONE action in a group should be 'primary'. tone 'danger' for destructive or irreversible choices (overwrite, delete, regenerate over existing work).
 Chips(labels: string[]) — A row of small follow-up pills. Tapping one sends its label verbatim as the user's next message, so write each as something the AUTHOR would say ('Show me the other takes'). Use for cheap side-quests offered alongside the main choice — never as the main choice itself.
 OptionList is the DEFAULT decision surface — reach for it first whenever the author has to pick between things.
 Actions is for a plain go/no-go; Chips is for optional side-quests, never for the main decision.
 Every option's `send` is written in the AUTHOR's voice, because it is posted as their next message.
+NEVER put two single-select lists on one card. The first tap sends and ends the turn, so the second question dies unanswered — if the card asks more than one thing, it is ONE list with select 'one-per-group'.
 
 ### Picking media
-MediaGrid(items: MediaItem[], header?: string, columns?: number, select?: "one" | "many", send?: string, confirm?: string) — A grid of image thumbnails. It does TWO jobs. (1) SHOWING finished pictures: the moment an image generation you started completes, draw this card with the result — that is how the author SEES it. Never answer an image job with prose alone ("it's on the Visual board", "saved to the library") and never paste the URL as markdown; the picture belongs in the chat, next to the words. Rows you are only showing get NO `send`, so there is no pick control under them. (2) ASKING which reference, still, take or character sheet to use — then each tile carries a `send`. Tapping a thumbnail always opens it FULL-SCREEN for a proper look; picking, when offered, is a separate explicit control so the author can inspect before committing. columns: 2 (default) or 3; use 3 only for six or more small thumbnails. A single image is fine — one tile, columns 2. select: 'one' (default) — a tap picks that item and sends immediately. 'many' — taps toggle, and nothing is sent until the confirm button — use 'many' when several images are legitimately wanted (a multi-reference generation). send: REQUIRED when select is 'many': the lead of the composed message, to which the picked items' `send` values are appended after a colon — e.g. send "Add these characters to the World" + picks "Miles", "Vera" posts "Add these characters to the World: Miles, Vera". Ignored when select is 'one'. confirm: the confirm button's label when select is 'many' (default "Continue"). Ignored when select is 'one'.
-MediaItem(src: string, send?: string, label?: string, caption?: string, selected?: boolean) — One image in a MediaGrid. src: the image URL (a /storyboard-media, /library or generation URL from the tools — never invent one). send: OPTIONAL — give it only when picking this image is a real decision; then it follows the usual rules (the message sent AS THE USER when this is picked — write it as the user would ('Use the second reference'), never as an instruction to yourself. It MUST OPEN WITH the words shown on the control itself (its title/label), because this message is the author's ONLY confirmation that the row they hit is the row they meant; put any extra brief AFTER that opening — title 'Punch up the dialogue' ⇒ send 'Punch up the dialogue — sharpen the voices in the audition scene', never send 'Let me tighten those lines'; in a 'many' grid a NOUN PHRASE instead, because the picks are joined into one sentence). OMIT send entirely when the card is just showing the author a picture you made — the tile is then look-only, with no "Use this" button under it. label: a short name under the thumbnail. caption: one extra line of context. selected: marks the current pick.
+MediaGrid(items: MediaItem[], header?: string, columns?: number, select?: "one" | "many" | "one-per-group", send?: string, confirm?: string) — A grid of image thumbnails. It does TWO jobs. (1) SHOWING finished pictures: the moment an image generation you started completes, draw this card with the result — that is how the author SEES it. Never answer an image job with prose alone ("it's on the Visual board", "saved to the library") and never paste the URL as markdown; the picture belongs in the chat, next to the words. Rows you are only showing get NO `send`, so there is no pick control under them. (2) ASKING which reference, still, take or character sheet to use — then each tile carries a `send`. Tapping a thumbnail always opens it FULL-SCREEN for a proper look; picking, when offered, is a separate explicit control so the author can inspect before committing. columns: 2 (default) or 3; use 3 only for six or more small thumbnails. A single image is fine — one tile, columns 2. select: 'one' (default) — a tap picks that item and sends immediately. 'many' — taps toggle and nothing is sent until the confirm button. 'one-per-group' — the items are split into sub-questions by their `group` prop, each group takes exactly ONE pick, and the confirm button unlocks only once every group is answered. Reach for 'many' when several images are legitimately wanted (a multi-reference generation), and 'one-per-group' for the very common CANDIDATES-PER-SUBJECT card: several portraits for each of several characters, several looks for each of several locations. One grid, one `group` per subject, one confirm. send: REQUIRED when select is 'many' or 'one-per-group': the lead of the composed message, to which the picked items' `send` values are appended after a colon — e.g. send "Add these characters to the World" + picks "Miles", "Vera" posts "Add these characters to the World: Miles, Vera". Ignored when select is 'one'. confirm: the confirm button's label when select is 'many' or 'one-per-group' (default "Continue"). Ignored when select is 'one'.
+MediaItem(src: string, send?: string, label?: string, caption?: string, selected?: boolean, group?: string) — One image in a MediaGrid. src: the image URL (a /storyboard-media, /library or generation URL from the tools — never invent one). send: OPTIONAL — give it only when picking this image is a real decision; then it follows the usual rules (the message sent AS THE USER when this is picked — write it as the user would ('Use the second reference'), never as an instruction to yourself. It MUST OPEN WITH the words shown on the control itself (its title/label), because this message is the author's ONLY confirmation that the row they hit is the row they meant; put any extra brief AFTER that opening — title 'Punch up the dialogue' ⇒ send 'Punch up the dialogue — sharpen the voices in the audition scene', never send 'Let me tighten those lines'; in a 'many' or 'one-per-group' grid a NOUN PHRASE instead, because the picks are joined into one sentence). OMIT send entirely when the card is just showing the author a picture you made — the tile is then look-only, with no "Use this" button under it. label: a short name under the thumbnail. caption: one extra line of context. selected: marks the current pick. group: ONLY for a list whose select is 'one-per-group': which sub-question this item answers, e.g. the character whose portrait this is ("Miles Okonkwo"). Items sharing a group are drawn together under it as a heading and are mutually exclusive. Groups appear in the order their first item does. Omit it in every other mode.
 Reference-image, still, take and character-sheet picks ALWAYS go through MediaGrid — never as markdown image links in your message text.
+Candidates for SEVERAL subjects (two portraits each for three characters) are ONE MediaGrid with select 'one-per-group' and a `group` per subject — never a grid per character, which would let only the first pick through.
 Only use URLs the tools gave you (list_library, get_visual_world, get_episode, …). Never invent or guess an image URL.
 
 ### Playing audio
-AudioList(items: AudioItem[], header?: string, footnote?: string, select?: "one" | "many", send?: string, confirm?: string) — A stack of playable audio rows — THE way to hand finished audio back to the author: a Seed Audio scene, radio takes, new sound versions. The author plays each clip right in the chat; NEVER paste an audio URL as a markdown link instead. Playing never sends anything — picking is a separate control that appears only on rows given a `send`, so a listen-only card is simply rows without one. select: 'one' (default) — a tap picks that item and sends immediately. 'many' — taps toggle, and nothing is sent until the confirm button — use 'many' when several takes can be kept. send: REQUIRED when select is 'many': the lead of the composed message, to which the picked items' `send` values are appended after a colon — e.g. send "Add these characters to the World" + picks "Miles", "Vera" posts "Add these characters to the World: Miles, Vera". Ignored when select is 'one'. confirm: the confirm button's label when select is 'many' (default "Continue"). Ignored when select is 'one'.
-AudioItem(src: string, title: string, send?: string, subtitle?: string, meta?: string, badge?: string, selected?: boolean) — One playable clip in an AudioList, rendered as a row with an inline play button. src: the audio URL (a /sound-media or generation URL a tool returned — never invent one). title: what the clip is ("Take 2 — heavier rain"). send: OPTIONAL — give it only when picking this clip is a real decision; then it follows the usual rules (the message sent AS THE USER when this is picked — write it as the user would ('Use the second reference'), never as an instruction to yourself. It MUST OPEN WITH the words shown on the control itself (its title/label), because this message is the author's ONLY confirmation that the row they hit is the row they meant; put any extra brief AFTER that opening — title 'Punch up the dialogue' ⇒ send 'Punch up the dialogue — sharpen the voices in the audition scene', never send 'Let me tighten those lines'; in a 'many' list a NOUN PHRASE instead). Omit send entirely when the card is just for listening. subtitle: one line of context (what changed in this take). meta: a short right-aligned qualifier ("12s", "v3"). badge: a tiny pill ("Liked", "New"). selected: marks the take already in force.
+AudioList(items: AudioItem[], header?: string, footnote?: string, select?: "one" | "many" | "one-per-group", send?: string, confirm?: string) — A stack of playable audio rows — THE way to hand finished audio back to the author: a Seed Audio scene, radio takes, new sound versions. The author plays each clip right in the chat; NEVER paste an audio URL as a markdown link instead. Playing never sends anything — picking is a separate control that appears only on rows given a `send`, so a listen-only card is simply rows without one. select: 'one' (default) — a tap picks that item and sends immediately. 'many' — taps toggle and nothing is sent until the confirm button. 'one-per-group' — the items are split into sub-questions by their `group` prop, each group takes exactly ONE pick, and the confirm button unlocks only once every group is answered. Reach for 'many' when several takes can be kept, and 'one-per-group' to audition takes for several lines or characters in one card (group by the character or the line). send: REQUIRED when select is 'many' or 'one-per-group': the lead of the composed message, to which the picked items' `send` values are appended after a colon — e.g. send "Add these characters to the World" + picks "Miles", "Vera" posts "Add these characters to the World: Miles, Vera". Ignored when select is 'one'. confirm: the confirm button's label when select is 'many' or 'one-per-group' (default "Continue"). Ignored when select is 'one'.
+AudioItem(src: string, title: string, send?: string, subtitle?: string, meta?: string, badge?: string, selected?: boolean, group?: string) — One playable clip in an AudioList, rendered as a row with an inline play button. src: the audio URL (a /sound-media or generation URL a tool returned — never invent one). title: what the clip is ("Take 2 — heavier rain"). send: OPTIONAL — give it only when picking this clip is a real decision; then it follows the usual rules (the message sent AS THE USER when this is picked — write it as the user would ('Use the second reference'), never as an instruction to yourself. It MUST OPEN WITH the words shown on the control itself (its title/label), because this message is the author's ONLY confirmation that the row they hit is the row they meant; put any extra brief AFTER that opening — title 'Punch up the dialogue' ⇒ send 'Punch up the dialogue — sharpen the voices in the audition scene', never send 'Let me tighten those lines'; in a 'many' or 'one-per-group' list a NOUN PHRASE instead). Omit send entirely when the card is just for listening. subtitle: one line of context (what changed in this take). meta: a short right-aligned qualifier ("12s", "v3"). badge: a tiny pill ("Liked", "New"). selected: marks the take already in force. group: ONLY for a list whose select is 'one-per-group': which sub-question this item answers, e.g. the character whose portrait this is ("Miles Okonkwo"). Items sharing a group are drawn together under it as a heading and are mutually exclusive. Groups appear in the order their first item does. Omit it in every other mode.
 Audio that just finished rendering (a Seed Audio scene, radio takes, sound versions) is handed back as an AudioList so the author can LISTEN in place — never as a markdown link to a /sound-media URL.
 A row is pickable only if you give it a `send` ('Keep take 2'); leave `send` off every row when there is nothing to decide.
 Only use audio URLs a tool actually returned (list_sounds, get_radio, attach_sound, …). A version whose status is still 'pending' has no URL yet — don't card it.
@@ -318,6 +366,14 @@ intro = Text("Both takes are rendered — the second leans harder into the rain.
 takes = AudioList([t1, t2], "Rain on the stone bridge")
 t1 = AudioItem("/sound-media/trk_2-v1.mp3", "Take 1 — steady drizzle", "Keep take 1", "v1 of the ambience bed", "12s")
 t2 = AudioItem("/sound-media/trk_2-v2.mp3", "Take 2 — heavier rain", "Keep take 2", "v2, more low end", "12s")
+
+root = Card([intro, casting])
+intro = Text("Six portraits up — pick your favorite for each and I'll lock them in.", "body")
+casting = MediaGrid([m1, m2, s1, s2], null, 2, "one-per-group", "Lock these portraits", "Lock them in")
+m1 = MediaItem("/storyboard-media/miles-1.png", "Miles 1", "Miles 1", null, false, "Miles Okonkwo")
+m2 = MediaItem("/storyboard-media/miles-2.png", "Miles 2", "Miles 2", null, false, "Miles Okonkwo")
+s1 = MediaItem("/storyboard-media/saskia-1.png", "Saskia 1", "Saskia 1", null, false, "Saskia Voss")
+s2 = MediaItem("/storyboard-media/saskia-2.png", "Saskia 2", "Saskia 2", null, false, "Saskia Voss")
 
 root = Card([params, go])
 params = KeyValue([{label: "Model", value: "nano_banana_pro"}, {label: "Aspect", value: "16:9"}, {label: "References", value: "Sara sheet, clearing dawn"}], "About to submit")

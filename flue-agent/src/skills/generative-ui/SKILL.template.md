@@ -2,18 +2,18 @@
 name: generative-ui
 description: >-
   Write the openui-lang program for a `render_ui` call — the interactive card
-  that asks the author to choose, pick a reference image, confirm a submit, or
-  approve a plan. Load this WHENEVER you are about to call `render_ui` and are
-  not certain of the syntax. Hard rules that hold even without reading the body:
-  every interactive element's `send` string is posted VERBATIM as the author's
-  next chat message, so write it in their voice; image and audio URLs must come
-  from a tool result and are never invented; a finished IMAGE (concept
-  generation, sheet, storyboard still) is handed back as a MediaGrid card as
-  soon as it is attached, so the author SEES it in the chat instead of being
-  told which tab it is on; finished AUDIO is handed back as an AudioList card
-  so they can PLAY it there, never as a bare /sound-media link; `render_ui` is
-  the FINAL action of the turn and you STOP after it; and it is root-agent
-  only — a subagent cannot pause, so it must hand its question back to you.
+  that asks the author to choose, pick an image, confirm a submit, or approve a
+  plan. Load this WHENEVER you are about to call `render_ui`. Hard rules, true
+  without reading the body: every `send` string is posted VERBATIM as the
+  author's next chat message, so write it in their voice; media URLs come from a
+  tool result and are never invented; a card that asks about SEVERAL subjects is
+  ONE list with select 'one-per-group', never a single-select list per subject
+  (the first tap ends the turn and strands the rest); a finished IMAGE is handed
+  back as a MediaGrid card as soon as it is attached, so the author SEES it in
+  the chat rather than being told which tab it is on; finished AUDIO comes back
+  as an AudioList so they can PLAY it there, never as a bare /sound-media link;
+  `render_ui` is the FINAL action of the turn and you STOP after it; and it is
+  root-agent only — a subagent cannot pause, so it hands its question to you.
 ---
 
 # Drawing an interactive card
@@ -38,8 +38,9 @@ they'll probably pick. Their tap arrives as the next user message.
 
 ## One of these, or several?
 
-`OptionList` and `MediaGrid` both take a `select` argument, and getting it right
-is the difference between a card that works and one the author has to fight.
+`OptionList`, `MediaGrid` and `AudioList` all take a `select` argument, and
+getting it right is the difference between a card that works and one the author
+has to fight.
 
 - **`"one"` (default)** — the choices are mutually exclusive. A tap picks that
   one and sends immediately. Each item's `send` is a whole sentence:
@@ -61,6 +62,49 @@ c3 = Option("Radio voice", "Radio voice", "One line, off-screen — probably a b
 Picking Miles and Vera posts *"Add these characters to the World: Shopkeeper
 Miles, Vera"*. Ask yourself before every list: **could the honest answer be "those
 two"?** If yes, it's `"many"`.
+
+- **`"one-per-group"`** — you are asking the SAME question about several
+  subjects at once: a portrait per character, a take per line, a look per
+  location. Give every item a `group` (the subject it belongs to); items sharing
+  a group are drawn together under it and take exactly ONE pick between them, and
+  the confirm button stays locked until every group has an answer. The message
+  composes exactly like `"many"`, in group order, so item `send`s are noun
+  phrases here too.
+
+## Never ask two questions with two cards
+
+This is the mistake `"one-per-group"` exists to prevent, and it is easy to walk
+into: you render six portraits as **three separate `select: "one"` grids**, one
+per character. The author picks Miles' portrait — that tap posts a message, your
+turn resumes, and every other grid on that card is now inert. They answered one
+third of the question and the card died.
+
+**Two single-select lists must never appear on the same card.** One list, one
+`group` per subject, one confirm:
+
+```
+root = Card([intro, casting])
+intro = Text("Six portraits up — pick your favorite for each and I'll lock them in.", "body")
+casting = MediaGrid([m1, m2, s1, s2, r1, r2], null, 2, "one-per-group", "Lock these portraits", "Lock them in")
+m1 = MediaItem("<url>", "Miles 1", "Miles 1", null, false, "Miles Okonkwo")
+m2 = MediaItem("<url>", "Miles 2", "Miles 2", null, false, "Miles Okonkwo")
+s1 = MediaItem("<url>", "Saskia 1", "Saskia 1", null, false, "Saskia Voss")
+s2 = MediaItem("<url>", "Saskia 2", "Saskia 2", null, false, "Saskia Voss")
+r1 = MediaItem("<url>", "Rudy 1", "Rudy 1", null, false, "Rudy Tanaka")
+r2 = MediaItem("<url>", "Rudy 2", "Rudy 2", null, false, "Rudy Tanaka")
+```
+
+Picking Miles 2, Saskia 1 and Rudy 2 posts *"Lock these portraits: Miles 2,
+Saskia 1, Rudy 2"* — one message, the whole answer, and you act on all three.
+
+The same shape covers a voice per character (`AudioList`) and a duration or
+model per shot (`OptionList`). If the honest answer to your card is a LIST of
+answers rather than one, it's `"one-per-group"`.
+
+`group` is the LAST argument of `MediaItem` / `Option` / `AudioItem`, and
+arguments are positional — so count the `null`s carefully (`MediaItem` is `src,
+send, label, caption, selected, group`). `group: "Miles Okonkwo"` is not syntax
+this parser has; a colon silently slides every prop one slot over.
 
 ## Images open full-screen
 
@@ -110,8 +154,10 @@ A card that repeats your paragraph reads as a stutter.
 | --- | --- |
 | choose ONE of 2–6 things | `OptionList`, `select: "one"` |
 | choose SEVERAL of a list | `OptionList`, `select: "many"` |
+| choose one FOR EACH of several subjects | one list, `select: "one-per-group"` |
 | SEE an image that just rendered | `MediaGrid` of `MediaItem`, no `send` |
 | pick an image (reference, still, take, sheet) | `MediaGrid` of `MediaItem` |
+| pick a portrait/look for EACH of several characters | `MediaGrid`, `select: "one-per-group"` |
 | hear audio that just rendered (and maybe keep a take) | `AudioList` of `AudioItem` |
 | say yes or no to one proposal | `Recommendation` (hero + one CTA) |
 | weigh 2–3 options on the same attributes | `Compare` of `Column` |
@@ -162,8 +208,8 @@ picture ("Use this as Noah's sheet", "Iterate on this one"):
 root = Card([intro, shots])
 intro = Text("Noah Chen — first pass, Analog Glitch.", "body")
 shots = MediaGrid([g1, g2], "Noah Chen")
-g1 = MediaItem("<url from attach_visual_generation>", label: "Frayed, hollow-eyed")
-g2 = MediaItem("<url from attach_visual_generation>", label: "Tighter on the scar")
+g1 = MediaItem("<url from attach_visual_generation>", null, "Frayed, hollow-eyed")
+g2 = MediaItem("<url from attach_visual_generation>", null, "Tighter on the scar")
 ```
 
 One image is still a card — a single tile in a `MediaGrid` is the normal way to
