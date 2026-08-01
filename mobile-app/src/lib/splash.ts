@@ -14,14 +14,18 @@ import * as SplashScreen from 'expo-splash-screen';
 // the redirect picks — and the root layout arms a fallback in case neither ever
 // does. First caller wins; the rest are no-ops.
 
-// Cross-fade rather than a hard cut, now that what's underneath is a finished
-// screen.
-SplashScreen.setOptions({ duration: 350, fade: true });
-
 let hidden = false;
 
 export function splashReady() {
   if (hidden) return;
   hidden = true;
+  // Cross-fade rather than a hard cut — worth it now that what's underneath is a
+  // finished screen. Set HERE, immediately before the hide, not once at module
+  // scope: the native side reads these options at hide() time
+  // (SplashScreenManager.swift), and a dev client re-shows the splash on every
+  // bundle reload, so a single early call doesn't reliably survive to the frame
+  // that matters. Measured — set at module scope only, the transition was a
+  // one-frame cut; set here, it ramps across ~10 frames.
+  SplashScreen.setOptions({ duration: 350, fade: true });
   SplashScreen.hideAsync().catch(() => {});
 }
