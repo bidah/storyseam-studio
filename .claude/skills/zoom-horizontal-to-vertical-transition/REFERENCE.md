@@ -5,6 +5,7 @@ Trimmed from the working implementation. Paths are repo-relative.
 - Source row — `mobile-app/src/app/(tabs)/chat/index.tsx`
 - Destination — `mobile-app/src/app/(tabs)/chat/showcase.tsx`
 - Shared deck options — `mobile-app/src/lib/deck-options.ts`
+- The way back — `mobile-app/src/lib/deck-return.ts`
 - Stack registration — `mobile-app/src/app/(tabs)/chat/_layout.tsx`
 
 ---
@@ -250,41 +251,60 @@ const onScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
 
 ---
 
-## <a id="target"></a>5. The landing rect — one target only
+## <a id="target"></a>5. The landing rect — one target, on the slot
+
+The target does **not** ride the arrival card. It is an empty overlay on the rect
+a snapped card always fills, laid out from the same numbers as the rows, so it is
+correct for the card the deck opened on *and* every card scrolled to afterwards:
 
 ```tsx
-// Every OTHER card renders plain. A second target would be a second answer to
-// "where does this land", and the rest of the deck is off-screen anyway.
-function ZoomTarget({ isArrival, style, children }: {
-  isArrival: boolean;
-  style?: StyleProp<ViewStyle>;
-  children?: React.ReactNode;
-}) {
-  if (!isArrival) return <View style={style}>{children}</View>;
+function ZoomSlot({ metrics }: { metrics: Metrics }) {
   return (
-    <Link.AppleZoomTarget>
-      <View style={style}>{children}</View>
-    </Link.AppleZoomTarget>
+    <View
+      pointerEvents="none"
+      style={[StyleSheet.absoluteFill, { paddingTop: metrics.padTop, paddingHorizontal: 20 }]}
+    >
+      {/* one row's worth of height — the CARD, not the snap unit: the gap under
+          it belongs to the list, not to the box the poster flies into */}
+      <View style={{ height: metrics.cardH }}>
+        <Link.AppleZoomTarget>
+          <View style={styles.zoomSlot} />
+        </Link.AppleZoomTarget>
+      </View>
+    </View>
   );
 }
 ```
 
-Wrap the **whole card**, button included — the small poster flies into one rect
-with one radius, not into a picture with a button hanging off it. The shadow
-lives on the boundary because the card itself clips to hold its radius, and on
-iOS a clipping view drops its own shadow:
+`Link.AppleZoomTarget` renders its detector with `display: contents`, so it adds
+no box of its own and the child keeps the parent's layout context.
+
+The slot and the card have to describe the SAME rectangle, so they take their
+margins from one object. The shadow stays on the card's boundary because the card
+clips to hold its radius, and on iOS a clipping view drops its own shadow:
 
 ```ts
+// flex, not a height: it IS the row, and a box a point taller than the snap
+// interval would walk down the list.
+const CARD_BOX = { flex: 1, marginTop: 10, marginBottom: 2, borderRadius: 28 } as const;
+
 boundary: {
-  flex: 1,               // it IS the row; a fixed height that missed by a point would walk down the list
-  marginBottom: 7,
-  borderRadius: 28,
+  ...CARD_BOX,
   shadowColor: '#000',
   shadowOpacity: 0.18,
   shadowRadius: 18,
   shadowOffset: { width: 0, height: 10 },
 },
+zoomSlot: CARD_BOX,     // the same box, empty and untouchable: it exists to be measured
 card: { flex: 1, borderRadius: 28, overflow: 'hidden' },
+```
+
+Mount it ONCE, keyed on the identity the transition is currently aimed at (see
+§8) — the native side registers alignment views first-come and drops them on
+unmount, so a target that hops between rows can leave none registered at all.
+
+```tsx
+<ZoomSlot key={zoomSource ?? 'zoom'} metrics={metrics} />
 ```
 
 Each row scales and fades by distance from centre — the input range is the same
@@ -340,4 +360,148 @@ const suggestions = useMemo<Suggestion[]>(
   () => (isError || !status ? FALLBACK_SUGGESTIONS : buildSuggestions(status, FULL_DECK)),
   [status, isError],
 );
+```
+
+---
+
+## <a id="return"></a>8. The return leg
+
+Two facts have to cross screens while both are mounted: which card the deck is
+showing, and which `<Link>` owns which zoom identity. Neither screen owns the
+pair, so they live in a module.
+
+```ts
+type Listener = (cardId: string) => void;
+
+/** Card id → the zoom source identifier of the <Link> wrapping that card. */
+const sourceIds = new Map<string, string>();
+const listeners = new Set<Listener>();
+
+export function registerZoomSource(cardId: string, identifier: string): () => void {
+  sourceIds.set(cardId, identifier);
+  return () => {
+    // Only if it's still ours: a remount registers the new one first.
+    if (sourceIds.get(cardId) === identifier) sourceIds.delete(cardId);
+  };
+}
+
+export function zoomSourceId(cardId: string): string | undefined {
+  return sourceIds.get(cardId);
+}
+
+/** The showcase settled on a card — line the row up behind it. */
+export function showcaseMovedTo(cardId: string): void {
+  for (const listener of listeners) listener(cardId);
+}
+
+export function onShowcaseMove(listener: Listener): () => void {
+  listeners.add(listener);
+  return () => {
+    listeners.delete(listener);
+  };
+}
+```
+
+### The beacon — reading a link's zoom identity
+
+`useId()` inside the link's own context; nothing above the link can see it, so
+the card reports it from the inside. Null-rendering, and a SIBLING of
+`Link.AppleZoom` (which takes exactly one child):
+
+```tsx
+import { ZoomTransitionSourceContext } from 'expo-router/build/link/zoom/zoom-transition-context';
+
+function ZoomSourceBeacon({ cardId }: { cardId: string }) {
+  const source = use(ZoomTransitionSourceContext);
+  const identifier = source?.identifier;
+  useEffect(() => {
+    if (!identifier) return;
+    return registerZoomSource(cardId, identifier);
+  }, [cardId, identifier]);
+  return null;
+}
+```
+
+```tsx
+<Pressable /* …the Link's child… */>
+  <Link.AppleZoom>
+    <Card … />
+  </Link.AppleZoom>
+  <ZoomSourceBeacon cardId={s.id} />
+</Pressable>
+```
+
+### The row, moved by prop
+
+A ref is no use — on this stack nothing in that subtree attaches one. Hand the
+`ScrollView` a `contentOffset` instead, and alternate a hundredth of a point so a
+repeat arrival is still a *change* (iOS applies only changed offsets):
+
+```tsx
+const [rowOffset, setRowOffset] = useState<{ x: number; y: number } | undefined>(undefined);
+
+useEffect(
+  () =>
+    onShowcaseMove((cardId) => {
+      const index = suggestions.findIndex((s) => s.id === cardId);
+      if (index < 0) return;
+      const x = index * (SUGGESTION_W + ROW_GAP);   // the same number as snapToOffsets
+      setRowOffset((prev) => ({ x: prev && prev.x === x ? x + 0.01 : x, y: 0 }));
+    }),
+  [suggestions],
+);
+
+// …passed straight through <Section> to its horizontal ScrollView:
+<ScrollView contentOffset={contentOffset} horizontal snapToOffsets={offsets} … />
+```
+
+### The aim, moved on the same frame
+
+```tsx
+import { INTERNAL_EXPO_ROUTER_ZOOM_TRANSITION_SOURCE_ID_PARAM_NAME as ZOOM_SOURCE_PARAM }
+  from 'expo-router/build/navigationParams';
+
+const params = useLocalSearchParams<{ from?: string }>();
+const zoomSource = (params as Record<string, string | undefined>)[ZOOM_SOURCE_PARAM];
+
+const aimZoomAt = useCallback(
+  (card: Suggestion | undefined) => {
+    // `setParams` writes to the FOCUSED route — after the pop that isn't this one.
+    if (!card || !navigation.isFocused()) return;
+    const source = zoomSourceId(card.id);
+    if (!source || source === zoomSource) return;
+    router.setParams({ [ZOOM_SOURCE_PARAM]: source });
+  },
+  [navigation, zoomSource],
+);
+
+// The SAME handler that drives the scale/fade. Both effects on the one frame the
+// current card changes — debouncing the aim behind the row is the bug that reads
+// as "the zoom sticks to a card nobody is looking at".
+const shown = useRef(initialIndex);
+const onScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+  const y = e.nativeEvent.contentOffset.y;
+  progress.value = y / metrics.fullH;
+
+  const index = Math.round(y / metrics.fullH);
+  if (index === shown.current) return;
+  shown.current = index;
+  const card = suggestions[index];
+  if (!card) return;
+  showcaseMovedTo(card.id);
+  aimZoomAt(card);
+};
+```
+
+Why writing that param is enough — the native enabler resolves the identifier
+**when the transition runs**, inside the provider closures, not when
+`preferredTransition` was assigned:
+
+```swift
+// expo-router/ios/LinkPreview/LinkZoomTransition.swift
+controller.preferredTransition = .zoom(options: options) { _ in
+  let sourceInfo = self.sourceRepository?.getSource(
+    identifier: self.zoomTransitionSourceIdentifier)   // ← read at transition time
+  …
+}
 ```

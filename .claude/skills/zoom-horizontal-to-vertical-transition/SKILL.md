@@ -1,6 +1,6 @@
 ---
 name: zoom-horizontal-to-vertical-transition
-description: Build a horizontally-scrolling card deck whose cards zoom into a full-screen VERTICAL carousel of the same deck, landing on the card that was tapped. Covers the two magnifications (a sideways row of small posters, a vertical one-card-per-screenful list), expo-router Link.AppleZoom/AppleZoomTarget wiring, and the index matching that makes the zoom land — including why initialScrollIndex alone silently breaks it for every card except the first. Use when adding a card-row-to-fullscreen-deck zoom, a paged vertical showcase, "open this list already scrolled to the tapped item", or debugging a zoom transition that only animates on the first card.
+description: Build a horizontally-scrolling card deck whose cards zoom into a full-screen VERTICAL carousel of the same deck, landing on the card that was tapped — and zoom BACK into whichever card the author scrolled to. Covers the two magnifications (a sideways row of small posters, a vertical one-card-per-screenful list), expo-router Link.AppleZoom/AppleZoomTarget wiring, the index matching that makes the zoom land (including why initialScrollIndex alone silently breaks it for every card except the first), and the return leg: lining the row up by contentOffset prop and re-aiming the transition's source at the card the deck ended on. Use when adding a card-row-to-fullscreen-deck zoom, a paged vertical showcase, "open this list already scrolled to the tapped item", "go back to the card I scrolled to", or debugging a zoom that only animates on the first card or flies back at the wrong one.
 ---
 
 # Horizontal deck → vertical showcase zoom (expo-router)
@@ -13,9 +13,15 @@ The whole trick is that both surfaces are the *same list at the same indices*,
 and the destination is **already scrolled to the tapped index before the first
 paint**. Get that wrong and the zoom is a lie (or, more usually, invisible).
 
+It is not one-way. The author arrives on the card they tapped and then flicks
+through four more, so **leaving** is a zoom between two cards neither surface was
+set up with. That half is its own problem with its own traps — see
+[The return leg](#the-return-leg).
+
 Working reference: `mobile-app/src/app/(tabs)/chat/index.tsx` (the row),
 `mobile-app/src/app/(tabs)/chat/showcase.tsx` (the vertical deck),
-`mobile-app/src/lib/deck-options.ts` (the shared list). Full code:
+`mobile-app/src/lib/deck-options.ts` (the shared list),
+`mobile-app/src/lib/deck-return.ts` (the way back). Full code:
 [REFERENCE.md](REFERENCE.md).
 
 ## Requirements
@@ -167,19 +173,82 @@ wrong either way: it snaps to viewport widths, not card widths.
 One card per screenful, snapped, with every row scaled/faded by its distance from
 centre. Two details that are easy to get wrong:
 
-- **Exactly ONE `Link.AppleZoomTarget`**, on the arrival card only
-  (`isArrival={item.id === from}`). It answers *"where does this land"* — a list
-  of them is a list of answers to a question with one. Wrap the **whole card**
-  (button and all): the small poster flies into one rect with one radius.
+- **Exactly ONE `Link.AppleZoomTarget`, and put it on the SLOT, not on a card.**
+  It answers *"which part of this screen does the transition align with"* — a
+  list of them is a list of answers to a question with one. The obvious
+  implementation puts it on the arrival card (`isArrival={item.id === from}`),
+  which is right for the push and wrong from the first swipe onward: the rect the
+  pop flies out of is then a card that has scrolled off the top. Because the deck
+  is one card per screenful, a snapped card always occupies the *same* rect, so
+  an empty `pointerEvents="none"` overlay laid out from the same numbers as the
+  rows is correct for every card and never moves. Cover the whole card, button
+  and all: the small poster flies into one rect with one radius.
 - **Track scroll progress in CARDS, not points** (`offsetY / rowHeight`). A
   card's own index is then its centred position and the interpolation input range
   is the same three numbers for every row.
+
+## <a id="the-return-leg"></a>The return leg
+
+Everything above gets the author *in*. Coming back is a second problem, and the
+symptom that it hasn't been solved is: the deck is on card 5, you swipe back, and
+the row behind is still parked on card 1 — or the zoom flies off the side of the
+screen at a poster nobody can see.
+
+The push's mental model holds, mirrored: **UIKit measures once, as the pop
+begins.** So both of the following have to be true *before* the back tap, not a
+beat after — and, crucially, they have to be true **together**.
+
+### 1. The row lines up on the card the deck is showing
+
+The source screen is still mounted underneath, so this is just a scroll — but
+`scrollTo` on a ref may not be available to you. On this stack **no ref in that
+subtree ever attaches**: the section renders, the ref prop arrives, and the
+callback ref is never invoked (nor on a plain `<View>` in the same subtree). It
+belongs with the other New Architecture casualties — Reanimated's `scrollTo`, its
+animated scroll handler, worklet gesture callbacks: all silently never called.
+
+Same escape hatch as everywhere else here — **drive it by prop.** iOS assigns a
+changed `contentOffset` to the scroll view directly
+(`RCTScrollViewComponentView` diffs the prop and applies it), which is the same
+mechanism that opens the destination on the right card.
+
+> **Nudge the offset.** iOS applies only an offset that *changed*. Return to a
+> card the author has already visited — or one they dragged the row away from in
+> between — and the identical number is a no-op, leaving the row where they left
+> it. A hundredth of a point, alternating on and off, makes every arrival a
+> change; at 3x it is a third of a pixel and the next drag snaps it away.
+
+### 2. The transition is re-aimed at that card
+
+Lining the row up is not enough on its own: `Link.AppleZoom`'s source is
+whichever `<Link>` was tapped, an identity minted at push time. Scroll the row
+and you have merely moved the poster the pop is *not* flying at.
+
+The native side looks that identifier up **when the transition runs**, not when
+it was set up — so rewriting the router's own source-id route param swaps the
+source view for the next pop. (Confirm it on your version the way this one was
+confirmed: aim at a deliberately bogus identifier and watch the pop report *that*
+id, not the pushed one.)
+
+Reading the identity is the fiddly part — it is a `useId()` inside each link's
+own context, invisible from above — so each card reports its own from the inside
+with a null-rendering beacon beside its `Link.AppleZoom`.
+
+### Move them on the SAME frame
+
+The tempting optimisation is to debounce the re-aim until the deck stops, since
+each one is a navigation dispatch while the row scroll is free. Don't: the
+author's thumb is faster than the debounce. Flick, tap back, and the row has
+moved while the transition is still aimed where it was — which reads as the zoom
+sticking to a card nobody is looking at, the exact bug the row scroll was added
+to fix. A few extra param writes during a flick is the cheaper mistake.
 
 ## Gotchas
 
 - **Both decks must be the same list.** Share one builder + one options object
   (`FULL_DECK` here) — a different cap on either side lands the zoom on a
-  different card than it flew out of.
+  different card than it flew out of. This binds harder once the way back
+  re-aims by card id: the row and the deck must agree on what index 3 *is*.
 - **Plain JS `onScroll`, not `useAnimatedScrollHandler`.** On this stack
   (Expo 57 / RN 0.86 / New Arch / React Compiler) Reanimated's native event
   pipeline is dead and the animated handler is simply never called, so every card
@@ -196,3 +265,11 @@ centre. Two details that are easy to get wrong:
 - **Cold cache caveat:** `from`→index resolution needs the deck loaded. Both
   surfaces should read one cached, shared query so opening the destination costs
   no request; on a genuine cache miss the list opens at 0 and the zoom misses.
+- **Don't trust a Fast-Refreshed session for any of this.** Half of it is commit
+  and mount behaviour — refs attaching, native views registering, initial offsets
+  applying — and a hot-reloaded tree can pass while a cold launch fails. Both the
+  "works on the first card only" bug and the null ref above looked fine under
+  Fast Refresh. Reload the app (or relaunch it) before believing a result.
+- **`setParams` writes to the FOCUSED route**, so guard the re-aim with
+  `navigation.isFocused()` — a late timer firing after the pop would otherwise
+  scribble the source id onto the screen you just came back to.
