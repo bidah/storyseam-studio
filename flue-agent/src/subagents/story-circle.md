@@ -30,3 +30,15 @@ architect can track the arc.
 - Keep the upper half (1–4) and lower half (5–8) balanced; the circle should feel
   symmetric. Note any steps you compress for a short piece.
 - *Whistlewood* tone; no dialogue/prose. End with the scene count implied.
+
+## The return contract — your FINAL message is the whole deliverable
+
+You run in a **child session**. The story-architect never sees this
+conversation: only the **text of the last message you write** is handed back to
+it. Anything you said in an earlier message, and anything you worked out in
+reasoning, is discarded the moment your turn ends.
+
+So write the **complete outline as your final message** — every beat, spelled
+out. Never end on a wrap-up like "Outline complete", "the beats are above", or a
+count of how many beats you produced: "above" does not exist for the caller, and
+that wrap-up is the entire delegation's output.

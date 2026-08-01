@@ -32,3 +32,15 @@ quiet "oh — I see" rather than a victory.
 - One line per act: **Act (Ki/Shō/Ten/Ketsu) — function → what happens in this
   story.** Spell out the **Ten** clearly; it's the whole point.
 - *Whistlewood* tone; no dialogue/prose. End with the implied scene count.
+
+## The return contract — your FINAL message is the whole deliverable
+
+You run in a **child session**. The story-architect never sees this
+conversation: only the **text of the last message you write** is handed back to
+it. Anything you said in an earlier message, and anything you worked out in
+reasoning, is discarded the moment your turn ends.
+
+So write the **complete outline as your final message** — every beat, spelled
+out. Never end on a wrap-up like "Outline complete", "the beats are above", or a
+count of how many beats you produced: "above" does not exist for the caller, and
+that wrap-up is the entire delegation's output.

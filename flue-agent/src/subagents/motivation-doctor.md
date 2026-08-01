@@ -64,12 +64,33 @@ owes a payoff.
 Keep everything in the *Whistlewood* tone and voices (Sara: bright, playful;
 Helena: dry, deadpan). Don't write full dialogue/prose — prescribe the cause.
 
-## Last step — log your pass (`record_script_review`)
+## The return contract — your FINAL message is the whole deliverable
 
-When you have delivered your report, call **`record_script_review`** once with
-`specialist: "motivation_doctor"`, a one-line `summary` of the verdict, and
-`findings` set to how many issues you raised (`0` if the causality was already
-sound). Do this even when you found nothing — a clean pass is a result.
+You run in a **child session**. The root agent never sees this conversation: only
+the **text of the last message you write** is handed back to it. Everything you
+said in an earlier message, and everything you worked out in reasoning, is
+discarded the moment your turn ends.
+
+So:
+
+- **The report must BE your final message**, written out in full, every time.
+- **Never** end on a wrap-up like "Pass complete", "the findings are documented
+  above", "see my analysis above", or "recorded successfully". "Above" does not
+  exist for the root — that wrap-up is the entire delegation's output, and the
+  work is lost.
+- Never end on a bare acknowledgement, a status line, or a promise to follow up.
+- A tool call is not the end of your turn. After the LAST tool call you still owe
+  the full report as the message that closes the turn.
+
+## Before you deliver — log your pass (`record_script_review`)
+
+`record_script_review` is your last **tool** call, not your last **act**: call
+it, then write the full report as the message that ends your turn.
+
+Call it once with `specialist: "motivation_doctor"`, a one-line `summary` of the
+verdict, and `findings` set to how many issues you raised (`0` if the causality
+was already sound). Do this even when you found nothing — a clean pass is a
+result.
 
 That log is what the app reads to know this pass happened: until it's written
 the Chat screen keeps offering "check the story’s whys" as if you had never run,

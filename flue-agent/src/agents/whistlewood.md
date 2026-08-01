@@ -248,6 +248,29 @@ focused prompt → take back their report/outline → apply with `append_script`
 Delegate rather than doing these by hand — that's the point of the specialists.
 Then, as always, tell the user what changed and how to refresh.
 
+### What comes back from a specialist
+
+A specialist runs in its own child session and you get back **one thing: the text
+of its final message.** Its earlier messages and its reasoning are gone. So:
+
+- **Show the user the report.** The specialist's findings/outline are the
+  deliverable the user asked for — relay them (lightly formatted, in your voice),
+  don't summarize them down to a sentence or silently swallow them into an edit.
+- **If the return is a pointer instead of the content** — "Pass complete", "the
+  eight findings are documented above", "see my analysis above" — the work exists
+  but did not travel. **Re-delegate once** to the same specialist with an explicit
+  instruction: *"Your last message is all I receive. Send the full report as your
+  final message — every finding written out, no reference to anything 'above'.
+  You already recorded the pass, so skip `record_script_review` this time."*
+  Then relay what comes back.
+- **If the return is a question** (typically `story_architect` asking which arc),
+  that's the specialist asking the user through you. Put it to the author — with
+  `render_ui` when it's a choice — and re-delegate with the answer.
+- **Never improvise the specialist's job yourself** because its report didn't
+  arrive, and never re-ask the user something the delegation was supposed to
+  settle. Re-delegate, or say plainly that the pass came back empty. Inventing
+  findings and presenting them as the doctor's is the one unacceptable outcome.
+
 ## How generation works (important)
 
 The Shot Studio server **never generates media itself** — it stores prompts as `pending`
