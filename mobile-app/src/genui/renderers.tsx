@@ -475,7 +475,12 @@ export function MediaGrid({ props, renderNode }: Render<MediaGridProps>) {
   const { Provider, Footer } = useMultiSelect(props);
   // Percentage widths inside a wrapping row — RN has no CSS grid, and a
   // fixed-column FlatList inside the chat's scroll view would nest scrollables.
-  const width = columns === 3 ? '31.5%' : '48.5%';
+  //
+  // ONE tile takes the whole rail. A lone image in a 2-up grid sat in the left
+  // half with dead space beside it and a half-width "Use this" under it, which
+  // reads as a column that failed to fill rather than as the picture the card
+  // is about — and on a phone that half is small enough to be worth nothing.
+  const width = items.length === 1 ? '100%' : columns === 3 ? '31.5%' : '48.5%';
 
   // Galeria previews the WHOLE grid, swipeable — so it needs every url up front
   // and each tile needs its position in that list. The tiles render through

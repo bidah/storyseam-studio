@@ -395,7 +395,15 @@ export function MediaGrid({ props, renderNode }) {
     <div>
       <Header>{props.header}</Header>
       <Provider>
-        <div className={cn("grid gap-2", columns === 3 ? "grid-cols-3" : "grid-cols-2")}>
+        <div
+          className={cn(
+            "grid gap-2",
+            // ONE tile takes the whole rail — a lone image in a 2-up grid sat in
+            // the left half with dead space beside it, reading as a column that
+            // failed to fill rather than as the picture the card is about.
+            items.length === 1 ? "grid-cols-1" : columns === 3 ? "grid-cols-3" : "grid-cols-2",
+          )}
+        >
           {items.map((item, i) => (
             <div key={i}>{renderNode(item)}</div>
           ))}

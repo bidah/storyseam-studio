@@ -7,16 +7,13 @@ description: >-
   not certain of the syntax. Hard rules that hold even without reading the body:
   every interactive element's `send` string is posted VERBATIM as the author's
   next chat message, so write it in their voice; image and audio URLs must come
-  from a tool result and are never invented; reference/still/take picks go
-  through MediaGrid, never markdown image links; a finished IMAGE (a concept
-  generation, a character/location sheet, a storyboard still) is handed back as
-  a MediaGrid card the moment it is attached, so the author sees the picture in
-  the chat instead of being told it is on some tab; finished AUDIO (a Seed Audio
-  scene, radio takes, a sound version going ready) is handed back as an
-  AudioList card so the author can play it in the chat, never as a bare
-  /sound-media link; `render_ui` is the FINAL action of the
-  turn and you STOP after it; and it is root-agent only — a subagent cannot
-  pause, so it must hand its question back to you instead.
+  from a tool result and are never invented; a finished IMAGE (concept
+  generation, sheet, storyboard still) is handed back as a MediaGrid card as
+  soon as it is attached, so the author SEES it in the chat instead of being
+  told which tab it is on; finished AUDIO is handed back as an AudioList card
+  so they can PLAY it there, never as a bare /sound-media link; `render_ui` is
+  the FINAL action of the turn and you STOP after it; and it is root-agent
+  only — a subagent cannot pause, so it must hand its question back to you.
 ---
 
 # Drawing an interactive card

@@ -2,21 +2,19 @@
 name: visual-world
 description: >-
   Explore the VISUAL world of the series on the World › Visual tab — generate
-  concept images to discover how the characters and places look, with Nano Banana
+  concept images to discover how characters and places look, with Nano Banana
   Pro via the Higgsfield MCP. Use when the user is on the World › Visual screen
   (clientContext screen = "world/visual" or "visual"), presses "Let the agent
-  explore", or asks to "explore the look", "how do the characters look", "visualize
-  the world", "generate character concepts / designs", "concept art", "find the
-  look", "mood / style exploration", or to iterate an image "with this one as a
-  reference". You generate images with generate_image, then attach each with
-  attach_visual_generation so it lands live on the Visual tab. Default to the
-  user's ACTIVE render provider ("Render provider" instructions section;
-  Higgsfield when unset) — on fal use fal_generate_image + fal_job_status, on
-  Atlas use atlas_generate_image + atlas_job_status, same prompts, refs as
-  absolute refUrl URLs in image_urls, attach the result URL the same way.
-  Every finished image is handed back IN THE CHAT — a render_ui MediaGrid card
-  carrying the attached url, never a bare markdown link and never prose telling
-  the author to go look at the Visual tab.
+  explore", or asks to "explore the look", "how do the characters look",
+  "visualize the world", "generate character concepts", "concept art", "find the
+  look", "mood / style exploration", or to iterate "with this as a reference".
+  Generate with generate_image, then attach each with attach_visual_generation
+  so it lands live on the tab. Default to the user's ACTIVE render provider
+  ("Render provider" section; Higgsfield when unset) — on fal use
+  fal_generate_image + fal_job_status, on Atlas atlas_generate_image +
+  atlas_job_status, same prompts, refs as absolute refUrl URLs in image_urls.
+  Every image comes back IN THE CHAT as a render_ui MediaGrid card — never
+  prose pointing at the tab.
 ---
 
 # Visual world exploration (World › Visual tab)
