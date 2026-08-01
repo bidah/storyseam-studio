@@ -46,6 +46,11 @@ import { useChatColors } from './theme';
 // inside the Story tab; making it a modal is what let this become the one place
 // you reach for whether the next thing you want is words or a picture.
 //
+// The toggle AIMS; it doesn't travel. Flipping it re-writes the label below and
+// leaves you on the tab you were reading — going is this pill's body tap, or the
+// mic. So the pill reads the way an input does: what it says is what typing into
+// it would do.
+//
 // The `inline` variant below is the SHRUNKEN form UIKit lays out once the tab
 // bar minimizes on scroll. It is written and ready but currently unreachable —
 // react-native-screens can't get UIKit to track a scroll view nested in a
@@ -139,22 +144,19 @@ export function AgentAccessory() {
   return (
     // No glass of our own: UIKit already renders the accessory on a liquid-glass
     // platter, and a <GlassSurface> inside it would stack a second one.
-    <Pressable
-      // Mid-take the body is inert — the pill is a recorder right now, and opening
-      // the chat under a running mic would leave the take orphaned behind a modal.
-      // It stops being a button to VoiceOver too, so the cancel/stop pair inside
-      // is what gets read instead of a target that no longer does anything.
-      accessibilityRole={capturing ? undefined : 'button'}
-      accessibilityLabel={
-        capturing
-          ? undefined
-          : mode === 'image'
-            ? 'Open visual world and generate an image'
-            : busy
-              ? 'Open the conversation the agent is working in'
-              : 'Message the studio agent'
-      }
-      onPress={capturing ? undefined : open}
+    //
+    // A ROW, not a button. The press target is the label between the two controls
+    // (below) — the row itself handles nothing. It used to be one big <Pressable>
+    // with the toggle and the mic as children, which works for the mic (an RN view
+    // that wins the responder the ordinary way) and NOT for the toggle: that's a
+    // native SwiftUI control in a Host, and UIKit hit-tests it directly. It ate the
+    // tap for itself while RN's touch handler, which knows nothing about a native
+    // subview consuming a touch, ran the parent's onPress as well. One tap, two
+    // handlers — and the parent's read the mode from BEFORE the toggle changed it,
+    // so picking Image opened the write modal. (Back when the toggle navigated too,
+    // the same double-fire sent two navigations in one tap, which is where the
+    // modal that wouldn't dismiss came from.) Verified on an iOS 26 simulator.
+    <View
       style={{
         flex: 1,
         flexDirection: 'row',
@@ -176,7 +178,12 @@ export function AgentAccessory() {
       {capturing ? (
         <>
           {/* Same three slots as the idle pill — leading glyph, label, round
-              button — so the take starting doesn't resize or reflow anything. */}
+              button — so the take starting doesn't resize or reflow anything.
+              Note what ISN'T here: the body's Pressable. Mid-take the middle of
+              the pill does nothing, because opening the chat under a running mic
+              would leave the take orphaned behind a modal — and to VoiceOver the
+              cancel/stop pair is what gets read, rather than a target that no
+              longer does anything. */}
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Cancel recording"
@@ -233,21 +240,44 @@ export function AgentAccessory() {
       ) : (
         <>
           {/* Write | Image — what this pill is pointed at, and the only way into
-              visual world now that it's a modal rather than a Story segment. Its
-              own tap targets, so it sits INSIDE the pill's press area without
-              being swallowed by it. */}
+              visual world now that it's a modal rather than a Story segment. It
+              owns its own area of the row and nothing else claims it (see the row
+              note above): a tap here re-aims, and travelling is the label's job. */}
           <AgentModeToggle variant="pill" compact={inline} />
 
-          {busy ? <ActivityIndicator size="small" color={c.mutedForeground} /> : null}
-
-          <Text
-            className="flex-1 text-[15px] text-muted-foreground"
-            numberOfLines={1}
-            // The pill is one target; the label must not eat the press.
-            pointerEvents="none"
+          {/* THE BODY: the label, and the press that opens what the toggle is
+              pointed at. It takes the whole middle of the row — `flex:1` wide and
+              stretched to the full height — so the target stays pill-sized even
+              though it no longer reaches under the two controls. */}
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={
+              mode === 'image'
+                ? 'Open visual world and generate an image'
+                : busy
+                  ? 'Open the conversation the agent is working in'
+                  : 'Message the studio agent'
+            }
+            onPress={open}
+            style={{
+              flex: 1,
+              alignSelf: 'stretch',
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: inline ? 8 : 10,
+            }}
           >
-            {label}
-          </Text>
+            {busy ? <ActivityIndicator size="small" color={c.mutedForeground} /> : null}
+
+            <Text
+              className="flex-1 text-[15px] text-muted-foreground"
+              numberOfLines={1}
+              // The body is one target; the label must not eat the press.
+              pointerEvents="none"
+            >
+              {label}
+            </Text>
+          </Pressable>
 
           {/* Same slot in every state so the two placements' controls line up:
               stop while a turn is in flight, otherwise the mic that starts a
@@ -291,7 +321,7 @@ export function AgentAccessory() {
           )}
         </>
       )}
-    </Pressable>
+    </View>
   );
 }
 

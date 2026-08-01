@@ -44,11 +44,17 @@ export function getAgentMode(): AgentMode {
 }
 
 /**
- * Point the pill WITHOUT navigating — for a surface that's already on screen
- * saying so. The image modal does it on mount, because it can also be reached
- * without going through `openForMode`: the agent's own `navigate` command
- * (lib/screen-report.ts) and a deep link both land on the route directly, and a
- * toggle showing Write over the image composer would be lying.
+ * Point the pill WITHOUT navigating. Two callers:
+ *
+ *   · the pill's own toggle, whose whole job is aiming — the body tap next to it
+ *     is what travels (components/chat/agent-mode-toggle.tsx);
+ *   · a surface already on screen saying so. BOTH modals do it on mount, because
+ *     most ways into either one don't come through `openForMode`: the agent's
+ *     `navigate` command (lib/screen-report.ts) and deep links land on the routes
+ *     directly, and every "open this chat" in the app — Home's recap cards, the
+ *     history sheet, the Render/Stitch buttons — goes straight to `openChatModal`.
+ *     A toggle showing Write over the image composer, or Image over a transcript,
+ *     would be lying.
  */
 export function setAgentMode(mode: AgentMode) {
   useModeStore.setState({ mode });
@@ -79,10 +85,10 @@ export type OpenModeOptions = {
 };
 
 /**
- * Point the pill at `mode` and open that mode's surface. The single entry point:
- * the pill's body, its two-icon toggle, both modal headers and the dictation
- * hand-off all come through here, so the two destinations can never disagree
- * about which one is showing.
+ * Point the pill at `mode` and open that mode's surface. The single entry point
+ * for everything that TRAVELS — the pill's body, both modal headers' toggles and
+ * the dictation hand-off — so the two destinations can never disagree about which
+ * one is showing. (The pill's own toggle only aims: `setAgentMode`.)
  */
 export function openForMode(mode: AgentMode, opts: OpenModeOptions = {}) {
   useModeStore.setState({ mode });

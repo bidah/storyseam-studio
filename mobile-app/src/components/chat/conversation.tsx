@@ -30,6 +30,7 @@ import { File } from 'expo-file-system';
 import { agentIsBusy, useAgent, useConversations } from '@/lib/agent/provider';
 import { useSuppressAgentAccessory } from '@/lib/agent/accessory-suppress';
 import { takePendingDraft } from '@/lib/agent/pending-draft';
+import { setAgentMode } from '@/lib/agent/pill-mode';
 import { peekTranscript, preloadTranscript } from '@/lib/agent/transcript-cache';
 import type { Chat } from '@/lib/agent/chat-store';
 import { cn } from '@/lib/utils';
@@ -224,6 +225,18 @@ export function Conversation({
   // down while it's up (one message bar at the bottom is enough) — except in the
   // modal, which covers the pill anyway.
   useSuppressAgentAccessory(suppressAccessory);
+
+  // A conversation is on screen, so the write/image toggle says Write — in this
+  // modal's own header, and on the pill for when the modal goes away. The mirror
+  // of the stamp the image modal makes on mount (src/app/image/index.tsx), and
+  // needed for the same reason: most ways into a chat don't go through
+  // `openForMode`. A Home recap card, the history sheet and useSendToAgent's
+  // Render/Stitch buttons all call `openChatModal` directly, so after an image
+  // pass the toggle would come up over a transcript still showing Image.
+  //
+  // Keyed on `id`: `navigate` re-points a modal that's already in the stack by
+  // updating its params rather than remounting it.
+  useEffect(() => setAgentMode('text'), [id]);
 
   const getInitial = conv.getInitial as (id: string) => { attachments?: unknown };
 
