@@ -43,6 +43,11 @@ export type ComposerConfig = {
   onSubmit: (text: string, atts: LocalAttachment[]) => Promise<void>;
   /** Bump to open the keyboard (the tab-bar accessory hand-off — see Composer). */
   focusTick?: number;
+  /**
+   * Dictated text to seed the field with, unsent — the other half of that
+   * hand-off (the pill records; this is what it carries). Applied once per `key`.
+   */
+  draft?: { key: string; text: string };
 };
 
 const noop = () => {};
@@ -65,7 +70,8 @@ export function ChatComposerScope({ children }: { children: React.ReactNode }) {
       prev.hidden === next.hidden &&
       prev.onStop === next.onStop &&
       prev.onSubmit === next.onSubmit &&
-      prev.focusTick === next.focusTick
+      prev.focusTick === next.focusTick &&
+      prev.draft === next.draft
         ? prev
         : next,
     );
@@ -98,6 +104,7 @@ export function ChatComposerScope({ children }: { children: React.ReactNode }) {
                 onStop={cfg.onStop}
                 onSubmit={cfg.onSubmit}
                 focusTick={cfg.focusTick}
+                draft={cfg.draft}
                 onHeightChange={setHeight}
               />
             </Animated.View>

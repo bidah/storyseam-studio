@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
-  Animated,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -24,6 +23,7 @@ import { AGENT_MODELS, useAgentModelStore } from '@/lib/agent-model';
 import { transcribeAudio } from '@/lib/api';
 import { formatDuration, useAudioRecording } from '@/lib/use-audio-recording';
 import { GlassGroup, GlassSurface } from './glass-surface';
+import { PulsingDot } from './pulsing-dot';
 import { useChatColors } from './theme';
 
 // Image picked from the library, not yet uploaded (upload happens on send).
@@ -47,6 +47,7 @@ export function Composer({
   onSubmit,
   onHeightChange,
   focusTick,
+  draft,
 }: {
   /** A HITL input request is awaiting an answer (typed text becomes its response). */
   pending: boolean;
@@ -56,6 +57,12 @@ export function Composer({
   onSubmit: (text: string, atts: LocalAttachment[]) => Promise<void>;
   /** Measured height of the docked bar, so the screen can inset the transcript. */
   onHeightChange?: (height: number) => void;
+  /**
+   * Text to drop into the field, unsent — the tab bar pill's dictation hand-off
+   * (lib/agent/voice-capture.tsx). Applied once per `key`, and APPENDED to
+   * whatever is already typed, exactly like the mic button below.
+   */
+  draft?: { key: string; text: string };
   /**
    * Non-zero to open the keyboard here. A number rather than a ref so a host can
    * ask for the caret without holding an imperative handle (the focus happens by
@@ -76,6 +83,16 @@ export function Composer({
   const [recording, setRecording] = useState(false);
   const [transcribing, setTranscribing] = useState(false);
   const inputRef = useRef<TextInput>(null);
+
+  // A dictated draft handed over from the tab bar's pill. Keyed rather than
+  // value-compared: the same words twice are two hand-offs, and a re-render (or a
+  // remount of this bar) must not paste them a third time.
+  const appliedDraft = useRef<string | null>(null);
+  useEffect(() => {
+    if (!draft || appliedDraft.current === draft.key) return;
+    appliedDraft.current = draft.key;
+    setText((prev) => (prev.trim() ? `${prev.trim()} ${draft.text}` : draft.text));
+  }, [draft]);
 
   // Report the bar's height up so the transcript can reserve room under it.
   const measure = (e: LayoutChangeEvent) => onHeightChange?.(e.nativeEvent.layout.height);
@@ -380,26 +397,6 @@ export function Composer({
         </GlassGroup>
       </View>
     </KeyboardStickyView>
-  );
-}
-
-// A red dot that pulses while recording — the only motion in the recording bar.
-function PulsingDot() {
-  const opacity = useRef(new Animated.Value(1)).current;
-  useEffect(() => {
-    const loop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(opacity, { toValue: 0.3, duration: 500, useNativeDriver: true }),
-        Animated.timing(opacity, { toValue: 1, duration: 500, useNativeDriver: true }),
-      ]),
-    );
-    loop.start();
-    return () => loop.stop();
-  }, [opacity]);
-  return (
-    <Animated.View
-      style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: '#ef4444', opacity }}
-    />
   );
 }
 

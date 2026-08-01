@@ -677,6 +677,17 @@ export function getAgent(): any {
   return useAgentBus.getState().agent;
 }
 
+/**
+ * WHICH chat an "open the agent" action should land in, read imperatively — the
+ * twin of the accessory pill's `chatId ?? conv.activeId`, for callers that run
+ * after the fact and must not subscribe (the tab bar's voice capture, which
+ * navigates once a transcription comes back). Null only before the first publish.
+ */
+export function getActiveChatId(): string | null {
+  const { agent, conv } = useAgentBus.getState();
+  return agent?.chatId ?? conv?.activeId ?? null;
+}
+
 export function useConversations() {
   const ctx = useContext(ConversationsContext);
   const bus = useAgentBus((s) => s.conv);

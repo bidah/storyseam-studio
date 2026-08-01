@@ -10,6 +10,7 @@ import { useColors } from '@/lib/colors';
 import { AgentProvider } from '@/lib/agent/provider';
 import { useAgentAccessorySuppressed } from '@/lib/agent/accessory-suppress';
 import { AgentAccessory } from '@/components/chat/agent-accessory';
+import { AccessoryVoiceHost } from '@/lib/agent/voice-capture';
 import { useFalKeyStore } from '@/lib/fal-key';
 import { useAtlasKeyStore } from '@/lib/atlas-key';
 import { useProvidersStore } from '@/lib/providers';
@@ -121,6 +122,11 @@ export default function TabsLayout() {
     <ProjectGate>
       <LiveSync />
       <AgentContext />
+      {/* The one recorder behind the accessory pill's mic. A leaf, mounted here
+          rather than inside the pill because react-native-screens renders that
+          component TWICE (both placements) — and because the take's 1s tick must
+          re-render a null component, not this layout. */}
+      <AccessoryVoiceHost />
       <AgentProvider>
         {/* The cold start lands here, and THIS is the frame worth uncovering:
             everything above resolved behind the splash (lib/boot.ts), so its

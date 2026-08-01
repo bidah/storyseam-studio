@@ -173,6 +173,8 @@ export function Conversation({
   id,
   hubHref,
   focus = false,
+  draft,
+  draftKey,
   suppressAccessory = true,
 }: {
   id: string;
@@ -184,6 +186,14 @@ export function Conversation({
    * belongs to one navigation and can't refocus a later, unrelated open.
    */
   focus?: boolean;
+  /**
+   * Words dictated into the tab bar's pill, to land in the composer UNSENT
+   * (lib/agent/voice-capture.tsx). A route param for the same reason `focus` is:
+   * it belongs to the one navigation that carried it.
+   */
+  draft?: string;
+  /** Nonce for `draft` — the same sentence dictated twice is two hand-offs. */
+  draftKey?: string;
   /** False inside the modal — see useSuppressAgentAccessory. */
   suppressAccessory?: boolean;
 }) {
@@ -537,10 +547,23 @@ export function Conversation({
   // has put it away.
   const onStop = useCallback(() => agent?.stop?.(), [agent]);
   const focusTick = focus ? 1 : 0;
+  // The dictated hand-off, if this navigation carried one. Keyed by the nonce the
+  // route param brought, so the composer pastes it exactly once (see Composer).
+  const draftHandoff = useMemo(
+    () => (draft && draftKey ? { key: draftKey, text: draft } : undefined),
+    [draft, draftKey],
+  );
   useChatComposer(
     useMemo(
-      () => ({ pending: !!qa.pendingId && !busy, busy, onStop, onSubmit, focusTick }),
-      [qa.pendingId, busy, onStop, onSubmit, focusTick],
+      () => ({
+        pending: !!qa.pendingId && !busy,
+        busy,
+        onStop,
+        onSubmit,
+        focusTick,
+        draft: draftHandoff,
+      }),
+      [qa.pendingId, busy, onStop, onSubmit, focusTick, draftHandoff],
     ),
   );
 

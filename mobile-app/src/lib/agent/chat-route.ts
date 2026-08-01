@@ -41,15 +41,32 @@ import { router } from 'expo-router';
  * `focus` opens the keyboard on arrival (the pill's "I tapped the input" hand-off);
  * leave it off when the agent is mid-turn, where the transcript matters more than
  * the caret.
+ *
+ * `draft` seeds the composer without sending — the tab bar's dictation hand-off
+ * (lib/agent/voice-capture.tsx): the pill records, this opens the conversation,
+ * and the transcribed words are sitting in the field for the author to send.
  */
-export function openChatModal(chatId: string | null, opts?: { focus?: boolean }) {
+export function openChatModal(
+  chatId: string | null,
+  opts?: { focus?: boolean; draft?: string },
+) {
   // Nothing to open. Can't normally happen — <AgentProvider> renders its children
   // only once a session is published, and every project carries an active chat
   // (`withActiveForProject`), blank if it has never been used.
   if (!chatId) return;
-  const params = opts?.focus ? { id: chatId, focus: '1' } : { id: chatId };
+  const params: { id: string; focus?: string; draft?: string; dk?: string } = { id: chatId };
+  if (opts?.focus) params.focus = '1';
+  if (opts?.draft) {
+    params.draft = opts.draft;
+    // The draft's NONCE. `navigate` updates the params of a screen that's already
+    // in the stack, and the composer applies a draft once per key — so dictating
+    // the same sentence twice has to look like two hand-offs, not a no-op.
+    params.dk = String(++draftSeq);
+  }
   router.navigate({ pathname: '/session/[id]', params });
 }
+
+let draftSeq = 0;
 
 /**
  * The hook form, for callers that want a stable callback in a dependency list.
@@ -58,7 +75,8 @@ export function openChatModal(chatId: string | null, opts?: { focus?: boolean })
  */
 export function useOpenChat() {
   return useCallback(
-    (chatId: string | null, opts?: { focus?: boolean }) => openChatModal(chatId, opts),
+    (chatId: string | null, opts?: { focus?: boolean; draft?: string }) =>
+      openChatModal(chatId, opts),
     [],
   );
 }
