@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Dimensions,
   StyleSheet,
@@ -6,7 +6,6 @@ import {
   View,
   type NativeScrollEvent,
   type NativeSyntheticEvent,
-  type StyleProp,
   type ViewStyle,
 } from 'react-native';
 import Animated, {
@@ -17,7 +16,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
-import { Link, router, useLocalSearchParams } from 'expo-router';
+import { Link, router, useLocalSearchParams, useNavigation } from 'expo-router';
 import { Check, Send } from 'lucide-react-native';
 import { SEMI_PILL, SemiPillButton } from '@/components/ui/semi-pill-button';
 import { meshPalette, meshSeed, meshShape } from '@/lib/card-art';
@@ -29,6 +28,12 @@ import { setPendingDraft } from '@/lib/agent/pending-draft';
 import { useProjectResource } from '@/lib/queries';
 import { startSuggestion } from '@/lib/suggestion-progress';
 import { FULL_DECK } from '@/lib/deck-options';
+import { showcaseMovedTo, zoomSourceId } from '@/lib/deck-return';
+// Internal, and knowingly so: this is the route param expo-router hands the
+// native transition to name its source view, and re-pointing it is what makes
+// the way back fly into the card the deck is actually on. See the return-leg
+// note below and lib/deck-return.ts.
+import { INTERNAL_EXPO_ROUTER_ZOOM_TRANSITION_SOURCE_ID_PARAM_NAME as ZOOM_SOURCE_PARAM } from 'expo-router/build/navigationParams';
 import {
   buildSuggestions,
   FALLBACK_SUGGESTIONS,
@@ -58,6 +63,14 @@ import {
 // The zoom is threaded through the HREF, so this screen is an ordinary pushed
 // screen: the native back chevron and the swipe-back run it in reverse, and
 // there is no close button to get in the picture's way.
+//
+// "In reverse" is where the deck stops being one-way. The author arrived on the
+// card they tapped and then flicked through four more, so leaving is a zoom
+// between two cards NEITHER of which is the one the transition was set up with:
+// the row behind has to snap to where the deck ended up, and the transition has
+// to be re-aimed at that card's poster. Both happen the moment the deck comes to
+// rest, while this screen is still covering the row — see onSettle below and
+// lib/deck-return.ts.
 //
 // The card is still the button it was on the landing screen: tapping one here
 // sends its brief, exactly as tapping it there used to. This screen inserted
@@ -126,29 +139,39 @@ function metricsFor(viewport: number, top: number, bottom: number): Metrics {
   };
 }
 
-// The zoom's destination rect, on the ONE card the deck opened on.
+// The zoom's rect on this side — the SLOT a snapped card fills, not a card.
 //
 // `Link.AppleZoomTarget` is the other half of the `Link.AppleZoom` the landing
-// card wears: it tells UIKit which rect the small poster should fly into, so
-// the picture lands in place instead of the whole screen expanding. Expo Router
-// threads the pairing through the href, so nothing here needs an id.
+// card wears: it tells UIKit which part of this screen the small poster should
+// fly into (and, on the way back, fly out of), so the picture lands in place
+// instead of the whole screen expanding. Expo Router threads the pairing through
+// the href, so nothing here needs an id.
 //
-// Every OTHER card renders plain. A second target would be a second answer to
-// "where does this land", and the rest of the deck is off-screen anyway.
-function ZoomTarget({
-  isArrival,
-  style,
-  children,
-}: {
-  isArrival: boolean;
-  style?: StyleProp<ViewStyle>;
-  children?: React.ReactNode;
-}) {
-  if (!isArrival) return <View style={style}>{children}</View>;
+// It used to ride the arrival card, which was right for the push and wrong for
+// everything after it: scroll two cards down and the rect the pop flies out of
+// is a card that's now off the top of the screen. The slot is the fix, because
+// the deck is one card per screenful — a snapped card ALWAYS occupies exactly
+// this rect, so a target pinned to it is correct for every card without ever
+// moving between rows. (Moving it between rows is also a trap: the native side
+// registers alignment views first-come and drops them on unmount, so a swap
+// whose mount runs before the old row's unmount silently leaves no target at all.)
+//
+// Laid out from the same numbers as the rows themselves — the list's top pad,
+// one card's height, the card's own margins — so it tracks a corrected viewport
+// instead of drifting from it. `display: contents` on the detector means it adds
+// no box of its own.
+function ZoomSlot({ metrics }: { metrics: Metrics }) {
   return (
-    <Link.AppleZoomTarget>
-      <View style={style}>{children}</View>
-    </Link.AppleZoomTarget>
+    <View
+      pointerEvents="none"
+      style={[StyleSheet.absoluteFill, { paddingTop: metrics.padTop, paddingHorizontal: 20 }]}
+    >
+      <View style={{ height: metrics.cardH }}>
+        <Link.AppleZoomTarget>
+          <View style={styles.zoomSlot} />
+        </Link.AppleZoomTarget>
+      </View>
+    </View>
   );
 }
 
@@ -165,15 +188,12 @@ function ShowcaseCard({
   index,
   progress,
   onPress,
-  isArrival,
   metrics,
 }: {
   item: Suggestion;
   index: number;
   progress: SharedValue<number>;
   onPress: (s: Suggestion) => void;
-  /** The card the deck opened on — the only one the zoom lands in. */
-  isArrival: boolean;
   /** Heights derived from the measured list — see metricsFor. */
   metrics: Metrics;
 }) {
@@ -197,16 +217,11 @@ function ShowcaseCard({
 
   return (
     <Animated.View style={[{ height: metrics.cardH }, stylez]}>
-      {/* The other end of the zoom — but ONLY for the card the deck opened on.
-
-          It wraps the whole card, button included, because that IS the poster
-          now: the small card flies into one rect with one radius, not into a
-          picture with a button hanging off it.
-
-          Every other card renders plain. `Link.AppleZoomTarget` answers "where
-          does this land", and a list of them would be a list of answers to a
-          question with one correct one. */}
-      <ZoomTarget isArrival={isArrival} style={styles.boundary}>
+      {/* No zoom target on the card itself: the rect the transition uses is the
+          SLOT a snapped card fills, drawn once over the list — see <ZoomSlot>.
+          The box below still has to match it exactly, so both take their margins
+          from the same style. */}
+      <View style={styles.boundary}>
         <View className="border border-border bg-card" style={styles.card}>
           <View style={{ height: metrics.artH }}>
             <MeshBand palette={palette} points={points} />
@@ -261,7 +276,7 @@ function ShowcaseCard({
             </View>
           ) : null}
         </View>
-      </ZoomTarget>
+      </View>
     </Animated.View>
   );
 }
@@ -311,7 +326,13 @@ export default function StoryShowcaseScreen() {
   const reusable = useIsFreshChat();
   // `from` is the card that was tapped — it decides where the list opens, so
   // the zoom lands on the card it flew out of.
-  const { from } = useLocalSearchParams<{ from?: string }>();
+  const params = useLocalSearchParams<{ from?: string }>();
+  const from = params.from;
+  // Which poster the transition is currently aimed at. It starts as the tapped
+  // card's and is rewritten as the deck moves (see onSettle). The zoom target
+  // is KEYED on it: the native detector registers under this identifier and
+  // refuses to change it in place, so it has to be a fresh view each time.
+  const zoomSource = (params as Record<string, string | undefined>)[ZOOM_SOURCE_PARAM];
 
   // The card is sized off the LIST, not off the window: the header is
   // transparent and the tab bar overlays the bottom, so the screenful a card has
@@ -356,8 +377,67 @@ export default function StoryShowcaseScreen() {
   // was handed to a hook, which a shared value in a dependency array is. A
   // plain function sidesteps that, and `onScroll` changing identity costs
   // nothing — it's a prop on the list, not a memo key for the rows.
+  //
+  // THE RETURN LEG rides on it too, for the same reason it can't ride on
+  // `onMomentumScrollEnd`: this is the ONE scroll signal this stack is known to
+  // deliver, and the whole point is to be ready before the author taps back
+  // rather than a beat after.
+  //
+  // Two things follow the deck, and they follow it at different rhythms:
+  //
+  //   1. The landing row snaps to the same card — IMMEDIATELY, on the frame the
+  //      current card changes. It's a `scrollTo` on a screen nobody is looking
+  //      at (lib/deck-return.ts, and the effect in chat/index.tsx): no React
+  //      render, nothing to schedule, and by the time the author's thumb reaches
+  //      the back chevron the row has long since arrived.
+  //   2. The transition is re-pointed at THAT card's poster — once the deck
+  //      STOPS. The source view is whichever <Link> was tapped, an identity
+  //      minted at push time and four swipes later the wrong one; rewriting the
+  //      router's own source-id param swaps it, because the native side reads
+  //      the identifier when the transition runs rather than when it was set up.
+  //      That one is a navigation dispatch, so it waits for the flick to end
+  //      instead of firing once per card flown past.
+  const shown = useRef(initialIndex);
+  const restTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const navigation = useNavigation();
+
+  const aimZoomAtCurrentCard = useCallback(() => {
+    // Not if we're already on the way out: `setParams` writes to whatever route
+    // is focused, and after the pop that isn't this one.
+    if (!navigation.isFocused()) return;
+    const card = suggestions[shown.current];
+    if (!card) return;
+    const source = zoomSourceId(card.id);
+    // No identity means the row never rendered a poster for this card, so there
+    // is nothing to aim at. The row still lines up — a transition pointed at the
+    // card the author left from is the status quo, not a regression.
+    if (!source || source === zoomSource) return;
+    router.setParams({ [ZOOM_SOURCE_PARAM]: source });
+  }, [navigation, suggestions, zoomSource]);
+
+  useEffect(
+    () => () => {
+      if (restTimer.current) clearTimeout(restTimer.current);
+    },
+    [],
+  );
+
   const onScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
-    progress.value = e.nativeEvent.contentOffset.y / metrics.fullH;
+    const y = e.nativeEvent.contentOffset.y;
+    progress.value = y / metrics.fullH;
+
+    const index = Math.round(y / metrics.fullH);
+    if (index !== shown.current) {
+      shown.current = index;
+      const card = suggestions[index];
+      if (card) showcaseMovedTo(card.id);
+    }
+    // "Stopped" as its own little timer rather than a momentum event: a slow
+    // drag ends with no momentum at all, and on this stack the momentum
+    // callbacks are exactly the kind of native event plumbing that has already
+    // proved unreliable here. A scroll that has sent nothing for 150ms is over.
+    if (restTimer.current) clearTimeout(restTimer.current);
+    restTimer.current = setTimeout(aimZoomAtCurrentCard, 150);
   };
 
   // Tapping a card here does what tapping it on the landing screen did before
@@ -438,7 +518,6 @@ export default function StoryShowcaseScreen() {
             index={index}
             progress={progress}
             onPress={onPick}
-            isArrival={item.id === from}
             metrics={metrics}
           />
         )}
@@ -470,27 +549,35 @@ export default function StoryShowcaseScreen() {
         scrollEventThrottle={16}
       />
 
+      {/* The rect the zoom flies into, and later out of. Drawn over the list
+          rather than inside a row — see <ZoomSlot>. Keyed on the poster it is
+          currently aimed at so a re-pointed transition gets a freshly registered
+          target instead of a stale one. */}
+      <ZoomSlot key={zoomSource ?? 'zoom'} metrics={metrics} />
     </View>
   );
 }
 
+// The card's box inside its row, as margins rather than a height: a card that
+// measured even a point taller than the snap interval would walk down the list.
+// Shared by the card and by the zoom slot drawn over it, because the two have to
+// describe the SAME rectangle — the slot is where the transition thinks the card
+// is, and a margin changed on one side only would aim it a few points off.
+const CARD_BOX = { flex: 1, marginTop: 10, marginBottom: 2, borderRadius: 28 } as const;
+
 const styles = StyleSheet.create({
   screen: { flex: 1 },
-  // The zoom's destination rect, and where the shadow lives: the card itself
-  // clips to hold its radius, and on iOS a clipping view drops its own shadow.
-  // Height comes from the row (it IS the row — see metricsFor), which is why
-  // this one is flex rather than a number: a card that measured even a point
-  // taller than the snap interval would walk down the list.
+  // Where the shadow lives: the card itself clips to hold its radius, and on iOS
+  // a clipping view drops its own shadow.
   boundary: {
-    flex: 1,
-    marginTop: 10,
-    marginBottom: 2,
-    borderRadius: 28,
+    ...CARD_BOX,
     shadowColor: '#000',
     shadowOpacity: 0.18,
     shadowRadius: 18,
     shadowOffset: { width: 0, height: 10 },
   },
+  // The same box, empty and untouchable: it exists only to be measured.
+  zoomSlot: CARD_BOX,
   card: { flex: 1, borderRadius: 28, overflow: 'hidden' },
   body: { flex: 1, paddingHorizontal: 20, paddingTop: 16, paddingBottom: 18 },
   // The button's own row. `marginTop: auto` puts it on the card's bottom edge

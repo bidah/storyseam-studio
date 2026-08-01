@@ -1,4 +1,4 @@
-import { Children, useCallback, useEffect, useMemo, useState } from 'react';
+import { Children, use, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View, type ViewStyle } from 'react-native';
 import Animated, {
   Easing,
@@ -26,6 +26,13 @@ import {
 } from '@/lib/suggestions';
 import { sweepSuggestions } from '@/lib/suggestion-progress';
 import { FULL_DECK } from '@/lib/deck-options';
+import { onShowcaseMove, registerZoomSource } from '@/lib/deck-return';
+// Internal, and knowingly so: the zoom identity of a <Link> is a `useId()` kept
+// in the link's own context, and the return leg has to know which card carries
+// which one. Reading the context is the only way to learn it — see
+// lib/deck-return.ts for what it's for, and <ZoomSourceBeacon> below for the
+// (null-rendering, layout-free) way it's read.
+import { ZoomTransitionSourceContext } from 'expo-router/build/link/zoom/zoom-transition-context';
 import { BouncyPressable } from '@/components/ui/bouncy-pressable';
 import { DiscoverSection } from '@/components/chat/discover';
 import { ProBanner } from '@/components/chat/pro-banner';
@@ -277,11 +284,19 @@ function PressCard({
 function Section({
   title,
   cardWidth,
+  scrollRef,
   children,
 }: {
   title: string;
   /** Card width for this row — snap offsets are that plus the row's gap apart. */
   cardWidth: number;
+  /**
+   * The row itself, for the one caller that has to move it from outside: the
+   * suggestion deck lines up behind the showcase on the way back (see
+   * lib/deck-return.ts). Snap offsets are `index * (cardWidth + ROW_GAP)`, so a
+   * scrollTo of the same number lands on a rest position rather than between two.
+   */
+  scrollRef?: React.Ref<ScrollView>;
   children: React.ReactNode;
 }) {
   const count = Children.count(children);
@@ -301,6 +316,7 @@ function Section({
         {title}
       </Text>
       <ScrollView
+        ref={scrollRef}
         horizontal
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.row}
@@ -314,6 +330,28 @@ function Section({
       </ScrollView>
     </View>
   );
+}
+
+// Each suggestion card, whispering which zoom identity it was handed.
+//
+// The forward zoom needs nothing of the sort — expo-router threads the identity
+// through the href, so the tapped card and the showcase find each other by
+// themselves. The RETURN leg does: the showcase may be on a different card by
+// then, and re-pointing the transition means naming that card's <Link>. That
+// name is a `useId()` inside the link's own context, which nothing above the
+// link can see — so the card reports it from the inside.
+//
+// Renders null and sits BESIDE <Link.AppleZoom> rather than inside it (which
+// takes exactly one child, and would warn), so it costs no layout and can't come
+// between the zoom source and the poster it measures.
+function ZoomSourceBeacon({ cardId }: { cardId: string }) {
+  const source = use(ZoomTransitionSourceContext);
+  const identifier = source?.identifier;
+  useEffect(() => {
+    if (!identifier) return;
+    return registerZoomSource(cardId, identifier);
+  }, [cardId, identifier]);
+  return null;
 }
 
 // Placeholders that hold the row's exact shape while the digest lands, so the
@@ -395,6 +433,44 @@ export default function ChatHomeScreen() {
   const suggestions = useMemo<Suggestion[]>(
     () => (isError || !status ? FALLBACK_SUGGESTIONS : buildSuggestions(status, FULL_DECK)),
     [status, isError],
+  );
+
+  // The row lines up behind the showcase while the showcase is still on top of
+  // it — the mirror of the showcase opening already scrolled to the tapped card.
+  //
+  // WHILE it is still on top is the whole point, and the reason this isn't a
+  // `useFocusEffect`: a pop is the same UIKit zoom run backwards, and UIKit takes
+  // its measurement ONCE as the pop begins. Focus arrives after that, i.e. after
+  // the transition has already committed to flying at wherever the row happened
+  // to be. Moving now means the rect is right before anyone asks for it, and the
+  // author never sees the jump because they are looking at the showcase.
+  //
+  // Unanimated for the same reason: this is the row taking its position, not an
+  // animation anybody is meant to watch.
+  //
+  // KNOWN BROKEN, and this is where it breaks: `rowRef.current` is null. Not
+  // stale, not detached while the showcase covers it — NEVER SET. Instrumented
+  // on the simulator (iPhone 17 Pro Max, iOS 26.4): <Section> renders, its
+  // `scrollRef` prop arrives, the listener below fires with the right index —
+  // and the ScrollView's ref callback is never invoked. A callback ref on the
+  // plain <View> wrapping it isn't invoked either, so it isn't a ScrollView
+  // quirk: no ref in this subtree attaches at all.
+  //
+  // Which lands it next to the other New Architecture casualties this app has
+  // catalogued (Reanimated's scrollTo, its animated scroll handler, worklet
+  // gesture callbacks — all silently never called). The escape hatch there was
+  // to stop driving the scroll view imperatively and drive it by PROP instead,
+  // which is also what the showcase does to open on the right card: pass
+  // `contentOffset` and let iOS apply it. That's the next thing to try here.
+  const rowRef = useRef<ScrollView>(null);
+  useEffect(
+    () =>
+      onShowcaseMove((cardId) => {
+        const index = suggestions.findIndex((s) => s.id === cardId);
+        if (index < 0) return;
+        rowRef.current?.scrollTo({ x: index * (SUGGESTION_W + ROW_GAP), y: 0, animated: false });
+      }),
+    [suggestions],
   );
 
   // Retire any started card whose gap has closed since we last looked. On FOCUS
@@ -535,7 +611,7 @@ export default function ChatHomeScreen() {
           )}
         </Section>
 
-        <Section title="Continue building your story" cardWidth={SUGGESTION_W}>
+        <Section title="Continue building your story" cardWidth={SUGGESTION_W} scrollRef={rowRef}>
           {isLoading ? (
             <SuggestionSkeletons />
           ) : (
@@ -597,6 +673,9 @@ export default function ChatHomeScreen() {
                     </Text>
                   </PressCard>
                   </Link.AppleZoom>
+                  {/* Reports this card's zoom identity so the way back can be
+                      aimed at it. Renders null — see ZoomSourceBeacon. */}
+                  <ZoomSourceBeacon cardId={s.id} />
                 </Pressable>
               </Link>
             ))
