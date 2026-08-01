@@ -124,6 +124,29 @@ export default function ChatLayout() {
         }}
       />
 
+      {/* The Story showcase — the "Continue building your story" deck at one
+          card per screen, flown out of the card that was tapped.
+
+          An ordinary pushed screen, deliberately: the zoom is Expo Router's own
+          (`Link.AppleZoom` on the card, `Link.AppleZoomTarget` on the poster
+          over there), and it rides the HREF rather than this registration. So
+          there is nothing to configure here beyond the chrome — and the native
+          back chevron and swipe-back run the zoom in reverse for free.
+
+          Title-less like the Discover poster it borrows the treatment from: the
+          card that flies in carries its own headline, and a bar title would be
+          a second one arriving over the top of it. */}
+      <Stack.Screen
+        name="showcase"
+        options={{
+          title: '',
+          headerLargeTitle: false,
+          headerBackVisible: true,
+          headerBackButtonDisplayMode: 'minimal',
+          unstable_headerLeftItems: () => [menuItem],
+        }}
+      />
+
       {/* Chat history — a full-size formSheet (single detent: opens fully,
           swipe-down closes fully). Its header + rows live in the nested
           history/_layout stack, so headerShown is off here — same pattern as

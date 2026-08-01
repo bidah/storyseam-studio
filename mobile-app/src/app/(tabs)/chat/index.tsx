@@ -1,5 +1,5 @@
 import { Children, useCallback, useEffect, useMemo, useState } from 'react';
-import { ScrollView, StyleSheet, Text, View, type ViewStyle } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View, type ViewStyle } from 'react-native';
 import Animated, {
   Easing,
   useAnimatedStyle,
@@ -9,14 +9,13 @@ import Animated, {
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
-import { useFocusEffect } from 'expo-router';
-import { useVideoPlayer, VideoView } from 'expo-video';
+import { Link, useFocusEffect } from 'expo-router';
 import { Check, SquarePen } from 'lucide-react-native';
 import { MESH_PALETTES, meshPalette, meshSeed, meshShape } from '@/lib/card-art';
 import { cardArt } from '@/lib/card-art-url';
+import { CardArtVideo } from '@/components/chat/card-art-video';
 import { useConversations, useIsFreshChat } from '@/lib/agent/provider';
 import { openChatModal } from '@/lib/agent/chat-route';
-import { setPendingDraft } from '@/lib/agent/pending-draft';
 import type { Chat } from '@/lib/agent/chat-store';
 import { useProjectResource } from '@/lib/queries';
 import {
@@ -25,11 +24,10 @@ import {
   type Status,
   type Suggestion,
 } from '@/lib/suggestions';
-import { startSuggestion, sweepSuggestions } from '@/lib/suggestion-progress';
+import { sweepSuggestions } from '@/lib/suggestion-progress';
 import { BouncyPressable } from '@/components/ui/bouncy-pressable';
 import { DiscoverSection } from '@/components/chat/discover';
 import { ProBanner } from '@/components/chat/pro-banner';
-import type { LocalAttachment } from '@/components/chat/composer';
 import { useChatComposer } from '@/components/chat/composer-host';
 import { useChatColors } from '@/components/chat/theme';
 import { dayLabel } from '@/components/chat/helpers';
@@ -125,59 +123,6 @@ try {
 // fullscreen, no PiP, and `pointerEvents="none"` so a tap on the picture is a
 // tap on the card — the whole card is one button and the video must not eat the
 // press. The mesh stays mounted UNDERNEATH rather than being swapped out, so the
-// band is the card's colour from the first frame the screen paints; the loop
-// fades up over it when the pixels arrive, and a device that's offline (or a
-// file that 404s) simply keeps the gradient it already had.
-//
-// Playback is gated on tab FOCUS, not just mount: the deck runs to six cards and
-// most of them have art now, so that's up to six AVPlayers decoding behind the
-// Story tab — battery spent on something nobody is looking at. `useCaching` makes that cheap
-// to resume — the file comes off disk on every launch after the first.
-function CardArtVideo({ uri, height }: { uri: string; height: number }) {
-  const player = useVideoPlayer({ uri, useCaching: true }, (p) => {
-    p.loop = true;
-    p.muted = true;
-    // Never take the audio session from whatever the author is listening to.
-    // Muted alone doesn't guarantee that on iOS; this does.
-    p.audioMixingMode = 'mixWithOthers';
-    p.play();
-  });
-
-  // Focus, not mount: useFocusEffect's cleanup runs when the tab goes away, so
-  // leaving the screen pauses every loop on it and coming back resumes them.
-  //
-  // The pause is guarded because this cleanup ALSO runs on unmount, and by then
-  // the player may not exist: useVideoPlayer's own release is registered first
-  // (it's the earlier hook), effect cleanups run in registration order, so the
-  // native object is gone a beat before this line — and expo-video throws a
-  // hard NotFoundException, i.e. a redbox, for a call on a released player
-  // (seen on-sim 2026-07-30). A pause we lose on the way out costs nothing:
-  // the player is being torn down anyway.
-  useFocusEffect(
-    useCallback(() => {
-      player.play();
-      return () => {
-        try {
-          player.pause();
-        } catch {
-          /* already released — see above */
-        }
-      };
-    }, [player]),
-  );
-
-  return (
-    <VideoView
-      player={player}
-      style={[StyleSheet.absoluteFill, { height }]}
-      contentFit="cover"
-      nativeControls={false}
-      fullscreenOptions={{ enable: false }}
-      allowsVideoFrameAnalysis={false}
-      pointerEvents="none"
-    />
-  );
-}
 
 // A landing card. No liquid glass — over a near-white page it has nothing to
 // refract and just muddies the card. Instead it's the app's standard card
@@ -188,6 +133,23 @@ function CardArtVideo({ uri, height }: { uri: string; height: number }) {
 // the card plain white, which is what the recaps wear — at a spine's width the
 // colour was decoration competing with the titles, and a row of white cards reads
 // as one list.
+// PressCard's frame when something above owns the press: same box, same shadow,
+// no gesture of its own. Takes (and ignores) BouncyPressable's props so the two
+// are interchangeable at the call site.
+function CardFrame({
+  children,
+  style,
+}: {
+  children?: React.ReactNode;
+  onPress?: () => void;
+  disabled?: boolean;
+  dimWhenDisabled?: boolean;
+  accessibilityLabel?: string;
+  style?: ViewStyle;
+}) {
+  return <View style={style}>{children}</View>;
+}
+
 function PressCard({
   children,
   onPress,
@@ -199,6 +161,7 @@ function PressCard({
   bandSide = 'top',
   art,
   done = false,
+  ownPress = true,
 }: {
   children: React.ReactNode;
   onPress: () => void;
@@ -216,14 +179,22 @@ function PressCard({
   art?: string;
   /** Finished work: the card is scrimmed, badged, and doesn't tap. */
   done?: boolean;
+  /**
+   * Whether the card presses itself. Off for the suggestion deck, where a
+   * <Link.AppleZoom> above owns the press: the bouncy press-shrink and the zoom
+   * would be animating the same frame in opposite directions, and the zoom IS
+   * the feedback (the Discover posters drop the bounce for the same reason).
+   */
+  ownPress?: boolean;
 }) {
   const palette = meshPalette(seed);
   const points = meshShape(seed);
   // As a spine the band takes the cross axis from the row: width is its own,
   // height stretches to the card's.
   const band: ViewStyle = bandSide === 'left' ? { width: bandHeight } : { height: bandHeight };
+  const Frame = ownPress ? BouncyPressable : CardFrame;
   return (
-    <BouncyPressable
+    <Frame
       accessibilityLabel={done ? `${label} — completed` : label}
       onPress={onPress}
       // BouncyPressable short-circuits its own onPress and drops the press
@@ -285,7 +256,7 @@ function PressCard({
           </View>
         ) : null}
       </View>
-    </BouncyPressable>
+    </Frame>
   );
 }
 
@@ -452,19 +423,6 @@ export default function ChatHomeScreen() {
     openChatModal(id);
   }, []);
 
-  // Start a conversation: park the first message where the conversation will pick
-  // it up, then open the modal on it. The send itself HAS to happen there — the
-  // shared flue session only repoints at the new chat a render later (see
-  // lib/agent/pending-draft.ts).
-  const openWithDraft = useCallback(
-    (text: string, attachments: LocalAttachment[]) => {
-      const id: string = reusable && conv.activeId ? conv.activeId : conv.newChat();
-      setPendingDraft(id, { text, attachments });
-      openChatModal(id);
-    },
-    [conv, reusable],
-  );
-
   // The empty-state card: no draft to park, just the chat itself with the
   // keyboard up — the same hand-off the tab bar's pill makes when it's tapped on
   // its input, and the same blank-chat reuse, so tapping it twice can't leave two
@@ -475,20 +433,18 @@ export default function ChatHomeScreen() {
     openChatModal(id, { focus: true });
   }, [conv, reusable]);
 
-  const onSuggest = useCallback(
-    (s: Suggestion) => {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
-      // Tell the worker the card was STARTED, carrying the copy it is wearing
-      // right now — that sentence is composed from a gap that is about to close
-      // and can't be reconstructed afterwards (see
-      // worker/src/routes/suggestions.js). Fire-and-forget: a failed write
-      // costs the author a Completed badge later, and blocking the chat from
-      // opening on it would be a far worse trade.
-      void startSuggestion(s);
-      openWithDraft(s.prompt, []);
-    },
-    [openWithDraft],
-  );
+  // A suggestion card no longer SENDS its brief. It opens the Story showcase —
+  // the same deck at one card per screen (chat/showcase.tsx) — and the send
+  // moved with it, onto an explicit "Send to chat" button under the big poster.
+  // Reporting the card as STARTED moved too, for the same reason: it belongs to
+  // the tap that commits, not to the tap that looks.
+  //
+  // Navigation itself is the <Link> around the card, not this handler: Expo
+  // Router threads the zoom through the HREF, so a `router.push` here would
+  // push the screen with no zoom at all. All this adds is the haptic.
+  const onSuggest = useCallback(() => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+  }, []);
 
   // This screen docks NO composer — the tab bar's agent pill (the accessory) is
   // the way to start typing here, and it can't share the bottom edge with a second
@@ -580,34 +536,65 @@ export default function ChatHomeScreen() {
             <SuggestionSkeletons />
           ) : (
             suggestions.map((s) => (
-              <PressCard
+              // The card ZOOMS into the showcase, and three things make that
+              // work (the Discover row documents the same three):
+              //   - `asChild` is required, not stylistic — the zoom rides the
+              //     href, and `Link.AppleZoom` throws without it.
+              //   - `Link.AppleZoom` takes exactly ONE child.
+              //   - iOS 18+; elsewhere it's a passthrough and this just pushes.
+              // `from` is the card, so the list opens already on it.
+              <Link
                 key={s.id}
-                // The composed brief is the prompt but a screen reader wants the
-                // headline, not a paragraph.
-                label={s.subtitle ? `${s.title} — ${s.subtitle}` : s.title}
-                // Seeded off the card KIND, so "Board the episode" wears the same
-                // artwork every time it comes back — the deck reorders constantly
-                // as work lands, and position-seeded headers would reshuffle with it.
-                seed={meshSeed(s.id)}
-                style={styles.suggestionCard}
-                bodyStyle={styles.suggestionBody}
-                bandHeight={SUGGESTION_BAND}
-                // The picture slot's real artwork where the card has one; the
-                // rest keep the mesh the band was always painted with.
-                art={cardArt(s.id)}
-                done={s.done}
-                onPress={() => onSuggest(s)}
+                href={{ pathname: '/(tabs)/chat/showcase', params: { from: s.id } }}
+                asChild
               >
-                {/* Poster order: the headline reads FIRST, hanging off the mesh
-                    band, and the paragraph explains it underneath. (A recap is
-                    the other way round — its timestamp is an eyebrow.) */}
-                <Text className="text-foreground" style={styles.cardTitle} numberOfLines={3}>
-                  {s.title}
-                </Text>
-                <Text className="text-muted-foreground" style={styles.cardBlurb} numberOfLines={5}>
-                  {s.blurb}
-                </Text>
-              </PressCard>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={
+                    s.done ? `${s.title} — completed` : `${s.title} — ${s.subtitle ?? ''}`
+                  }
+                  // A finished card doesn't travel. Slot composes the Link's
+                  // press onto this one, so disabling here disables the
+                  // navigation too — and the showcase would have nothing to
+                  // offer it but a disabled button.
+                  disabled={s.done}
+                  // Slot composes handlers, so this runs alongside the Link's
+                  // own navigation press rather than replacing it.
+                  onPress={onSuggest}
+                >
+                  <Link.AppleZoom>
+                  <PressCard
+                    // The composed brief is the prompt but a screen reader wants the
+                    // headline, not a paragraph.
+                    label={s.subtitle ? `${s.title} — ${s.subtitle}` : s.title}
+                    // Seeded off the card KIND, so "Board the episode" wears the same
+                    // artwork every time it comes back — the deck reorders constantly
+                    // as work lands, and position-seeded headers would reshuffle with it.
+                    seed={meshSeed(s.id)}
+                    style={styles.suggestionCard}
+                    bodyStyle={styles.suggestionBody}
+                    bandHeight={SUGGESTION_BAND}
+                    // The picture slot's real artwork where the card has one; the
+                    // rest keep the mesh the band was always painted with.
+                    art={cardArt(s.id)}
+                    done={s.done}
+                    // The <Link> above owns the press — see its note.
+                    ownPress={false}
+                    onPress={onSuggest}
+                  >
+                    {/* Poster order: the headline reads FIRST, hanging off the mesh
+                        band, and the paragraph explains it underneath. (A recap is
+                        the other way round — its timestamp is an eyebrow.) */}
+                    <Text className="text-foreground" style={styles.cardTitle} numberOfLines={3}>
+                      {s.title}
+                    </Text>
+                    <Text className="text-muted-foreground" style={styles.cardBlurb} numberOfLines={5}>
+                      {s.blurb}
+                    </Text>
+                  </PressCard>
+                  </Link.AppleZoom>
+                </Pressable>
+              </Link>
             ))
           )}
         </Section>
