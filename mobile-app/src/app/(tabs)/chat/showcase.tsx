@@ -19,6 +19,7 @@ import * as Haptics from 'expo-haptics';
 import { Link, router, useLocalSearchParams, useNavigation } from 'expo-router';
 import { Check, Send } from 'lucide-react-native';
 import { SEMI_PILL, SemiPillButton } from '@/components/ui/semi-pill-button';
+import { useColors } from '@/lib/colors';
 import { meshPalette, meshSeed, meshShape } from '@/lib/card-art';
 import { cardArt } from '@/lib/card-art-url';
 import { CardArtVideo } from '@/components/chat/card-art-video';
@@ -201,6 +202,7 @@ function ShowcaseCard({
   const palette = meshPalette(seed);
   const points = meshShape(seed);
   const art = cardArt(item.id);
+  const colors = useColors();
 
   const stylez = useAnimatedStyle(() => ({
     // The neighbours stay legible rather than dimming to near-black: this is a
@@ -261,7 +263,13 @@ function ShowcaseCard({
                   item.done ? `${item.title} — completed` : `Send "${item.title}" to chat`
                 }
               >
-                {item.done ? null : <Send size={17} color="#fff" />}
+                {/* The page BACKGROUND, not white. The slab is filled with the
+                    page's foreground — near-black on light, white on dark — so
+                    everything on it takes the background colour; that inversion
+                    is the whole look, and it's what the label already does. A
+                    hardcoded white icon reads as correct in light mode and
+                    vanishes into the slab in dark. */}
+                {item.done ? null : <Send size={17} color={colors.pageBg} />}
               </SemiPillButton>
             </View>
           </View>
