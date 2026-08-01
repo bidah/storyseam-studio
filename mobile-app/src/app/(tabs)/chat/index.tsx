@@ -25,6 +25,7 @@ import {
   type Suggestion,
 } from '@/lib/suggestions';
 import { sweepSuggestions } from '@/lib/suggestion-progress';
+import { FULL_DECK } from '@/lib/deck-options';
 import { BouncyPressable } from '@/components/ui/bouncy-pressable';
 import { DiscoverSection } from '@/components/chat/discover';
 import { ProBanner } from '@/components/chat/pro-banner';
@@ -388,8 +389,11 @@ export default function ChatHomeScreen() {
   // isLoading, not isPending: a query with no project yet is disabled and would
   // report "pending" forever (skeletons that never resolve), and a background
   // refetch must leave the deck we're already showing alone.
+  // FULL_DECK, not the built-in caps: the row scrolls sideways for as long as
+  // there is work, and the showcase behind it has to be the SAME list (see
+  // lib/deck-options.ts) or the zoom lands on a different card than it left.
   const suggestions = useMemo<Suggestion[]>(
-    () => (isError || !status ? FALLBACK_SUGGESTIONS : buildSuggestions(status)),
+    () => (isError || !status ? FALLBACK_SUGGESTIONS : buildSuggestions(status, FULL_DECK)),
     [status, isError],
   );
 

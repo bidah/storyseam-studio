@@ -63,6 +63,9 @@ export const CARD_ART: Record<string, string> = {
   // "Extend your world" — more cast and places for a bible that's already full.
   'world-extend':
     '/files/chat-uploads/8a91c7de-2b04-4f5a-9c63-7d1e04b6a2f5-card-extend-your-world.mp4',
+  // "Write your script" — the bible that's ready to become an episode.
+  'script-start':
+    '/files/chat-uploads/48eb5299-896a-47c3-87a5-76ee86da3139-card-write-your-script.mp4',
   // "Break it into shots" — the script that's ready to become a shot list.
   'shotlist-create':
     '/files/chat-uploads/6626871f-3455-43aa-87cd-6354cc6b47cb-card-break-it-into-shots.mp4',

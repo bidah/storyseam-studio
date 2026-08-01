@@ -1,4 +1,4 @@
-import { useCallback, useMemo } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import {
   Dimensions,
   StyleSheet,
@@ -15,6 +15,7 @@ import Animated, {
   useSharedValue,
   type SharedValue,
 } from 'react-native-reanimated';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import { Link, router, useLocalSearchParams } from 'expo-router';
 import { Check, Send } from 'lucide-react-native';
@@ -27,6 +28,7 @@ import { openChatModal } from '@/lib/agent/chat-route';
 import { setPendingDraft } from '@/lib/agent/pending-draft';
 import { useProjectResource } from '@/lib/queries';
 import { startSuggestion } from '@/lib/suggestion-progress';
+import { FULL_DECK } from '@/lib/deck-options';
 import {
   buildSuggestions,
   FALLBACK_SUGGESTIONS,
@@ -61,23 +63,66 @@ import {
 
 const { height: SCREEN_H } = Dimensions.get('window');
 
-// Card geometry. ITEM_H is the whole snap unit — poster, button and the air
-// under it — because the snap interval, the centering pad and the
-// interpolation input range are all derived from it, and a card that snapped on
-// a different number than it was laid out with would drift a few points further
-// off-centre with every swipe.
+// The compact iOS bar under the status bar — the same 44pt the landing screen
+// subtracts. The header here is transparent and the list runs UNDER it, so the
+// frame the scroll view reports is taller than the band you can actually read
+// in; the chrome comes off by hand.
+const HEADER_BAR = 44;
+
+// Card geometry. ITEM_H is the whole snap unit — the card and the air under it
+// — because the snap interval, the top pad and the interpolation input range
+// are all derived from it, and a card that snapped on a different number than
+// it was laid out with would drift a few points further off-centre with every
+// swipe.
 const GAP = 16;
-const ITEM_H = Math.round(SCREEN_H * 0.72);
-const ITEM_FULL_H = ITEM_H + GAP;
-// The CTA sits under the poster, inside the same snap unit and inside the same
-// scale/fade — button and card are one object, so the button belonging to the
-// card above must never be readable as belonging to this one.
+// How much shorter than the visible band a card is. Five points: the card is
+// meant to FILL the screenful it snapped to, and this is just enough slack that
+// its bottom edge reads as an edge rather than as something cut off by the
+// chrome below it.
+const BAND_SLACK = 5;
+// The CTA sits INSIDE the card, at the bottom of the copy — so the card is one
+// object with one edge, and there is no floating button between two posters for
+// the eye to assign to the wrong one. The card therefore owns the whole snap
+// unit.
 const CTA_H = SEMI_PILL.height;
 const CTA_GAP = 14;
-const CARD_H = ITEM_H - CTA_H - CTA_GAP;
-// The picture takes the top ~58% of the poster and the copy lives under it, the
-// same order the small poster uses (artwork, headline, paragraph).
-const ART_H = Math.round(CARD_H * 0.58);
+// The picture takes the top ~52% of the card and the copy lives under it, the
+// same order the small poster uses (artwork, headline, paragraph). Lower than
+// the 58% it was when the button lived outside: the button now eats into the
+// copy's half, so the picture gives that space back.
+const ART_SHARE = 0.52;
+
+type Metrics = {
+  /** The snap unit: the card plus the gap under it. */
+  fullH: number;
+  /** The card, which is the whole snap unit minus that gap. */
+  cardH: number;
+  /** The picture band at the top of the card. */
+  artH: number;
+  /** The chrome above and below the readable band, as content padding. */
+  padTop: number;
+  padBottom: number;
+};
+
+// The deck's geometry for a measured scroll view. One card per screenful, five
+// points shy of the band between the header and the tab bar — everything else
+// (the snap interval, the pad that puts a snapped card in that band, the art
+// height) falls out of it, which is what keeps them agreeing.
+function metricsFor(viewport: number, top: number, bottom: number): Metrics {
+  const padTop = top + HEADER_BAR;
+  // Inside a tab, the bottom inset already includes the tab bar and the agent
+  // pill riding on it, so this is the whole lower chrome.
+  const padBottom = bottom;
+  const band = Math.max(320, viewport - padTop - padBottom);
+  const cardH = band - BAND_SLACK;
+  return {
+    fullH: cardH + GAP,
+    cardH,
+    artH: Math.round(cardH * ART_SHARE),
+    padTop,
+    padBottom,
+  };
+}
 
 // The zoom's destination rect, on the ONE card the deck opened on.
 //
@@ -119,6 +164,7 @@ function ShowcaseCard({
   progress,
   onPress,
   isArrival,
+  metrics,
 }: {
   item: Suggestion;
   index: number;
@@ -126,6 +172,8 @@ function ShowcaseCard({
   onPress: (s: Suggestion) => void;
   /** The card the deck opened on — the only one the zoom lands in. */
   isArrival: boolean;
+  /** Heights derived from the measured list — see metricsFor. */
+  metrics: Metrics;
 }) {
   const seed = meshSeed(item.id);
   const palette = meshPalette(seed);
@@ -146,21 +194,21 @@ function ShowcaseCard({
   }));
 
   return (
-    <Animated.View style={[styles.item, stylez]}>
+    <Animated.View style={[{ height: metrics.cardH }, stylez]}>
       {/* The other end of the zoom — but ONLY for the card the deck opened on.
 
-          It wraps the POSTER, not the button: the small card that was tapped is
-          a poster, so taking the CTA in too would make the destination taller
-          than the source and squash the picture on the way in.
+          It wraps the whole card, button included, because that IS the poster
+          now: the small card flies into one rect with one radius, not into a
+          picture with a button hanging off it.
 
           Every other card renders plain. `Link.AppleZoomTarget` answers "where
           does this land", and a list of them would be a list of answers to a
           question with one correct one. */}
       <ZoomTarget isArrival={isArrival} style={styles.boundary}>
         <View className="border border-border bg-card" style={styles.card}>
-          <View style={{ height: ART_H }}>
+          <View style={{ height: metrics.artH }}>
             <MeshBand palette={palette} points={points} />
-            {art ? <CardArtVideo uri={art} height={ART_H} /> : null}
+            {art ? <CardArtVideo uri={art} height={metrics.artH} /> : null}
           </View>
           <View style={styles.body}>
             <Text className="text-foreground" style={styles.title} numberOfLines={2}>
@@ -174,6 +222,31 @@ function ShowcaseCard({
             <Text className="text-muted-foreground" style={styles.blurb} numberOfLines={4}>
               {item.blurb}
             </Text>
+
+            {/* The action, spelled out, at the foot of the copy it belongs to.
+                On the landing screen the card WAS the button — a tap sent the
+                brief — but that tap now opens this screen instead, so the send
+                has to become a thing you can see and choose. `marginTop: auto`
+                pins it to the bottom edge whatever the paragraph does, so every
+                card in the deck puts its button on the same line.
+
+                `bounce`, not the default glass: inside a card the slab is
+                sitting on an opaque surface, where liquid glass has nothing to
+                refract, and the shrink-and-spring is the same press feel the
+                card itself has. */}
+            <View style={styles.ctaSlot}>
+              <SemiPillButton
+                title={item.done ? 'Completed' : 'Send to chat'}
+                onPress={() => onPress(item)}
+                disabled={item.done}
+                variant="bounce"
+                accessibilityLabel={
+                  item.done ? `${item.title} — completed` : `Send "${item.title}" to chat`
+                }
+              >
+                {item.done ? null : <Send size={17} color="#fff" />}
+              </SemiPillButton>
+            </View>
           </View>
           {/* Same treatment the small card wears, for the same reason: a
               finished card stays recognisable as the thing you did. */}
@@ -187,23 +260,6 @@ function ShowcaseCard({
           ) : null}
         </View>
       </ZoomTarget>
-
-      {/* The action, spelled out. On the landing screen the card WAS the
-          button — a tap sent the brief — but that tap now opens this screen
-          instead, so the send has to become a thing you can see and choose.
-          A finished card keeps its button in place and disabled rather than
-          dropping it, so the row below doesn't shift up into the gap. */}
-      <SemiPillButton
-        title={item.done ? 'Completed' : 'Send to chat'}
-        onPress={() => onPress(item)}
-        disabled={item.done}
-        className="mt-3.5 self-stretch"
-        accessibilityLabel={
-          item.done ? `${item.title} — completed` : `Send "${item.title}" to chat`
-        }
-      >
-        {item.done ? null : <Send size={17} color="#fff" />}
-      </SemiPillButton>
     </Animated.View>
   );
 }
@@ -255,12 +311,25 @@ export default function StoryShowcaseScreen() {
   // the zoom lands on the card it flew out of.
   const { from } = useLocalSearchParams<{ from?: string }>();
 
+  // The card is sized off the LIST, not off the window: the header is
+  // transparent and the tab bar overlays the bottom, so the screenful a card has
+  // to fit into is the frame minus that chrome. Seeded with the window height
+  // (which is what the frame measures to here) rather than 0, so the list — and
+  // with it the zoom's landing rect — exists on the very first frame instead of
+  // one layout pass after the transition has already started.
+  const insets = useSafeAreaInsets();
+  const [viewport, setViewport] = useState(SCREEN_H);
+  const metrics = useMemo(
+    () => metricsFor(viewport, insets.top, insets.bottom),
+    [viewport, insets.top, insets.bottom],
+  );
+
   // The same query the landing deck reads, so this is the SAME deck rather than
   // a second fetch that could disagree with the row behind it. Cached and
   // SSE-invalidated already, so opening this screen costs no request.
   const { data: status, isError } = useProjectResource<Status>('status');
   const suggestions = useMemo<Suggestion[]>(
-    () => (isError || !status ? FALLBACK_SUGGESTIONS : buildSuggestions(status)),
+    () => (isError || !status ? FALLBACK_SUGGESTIONS : buildSuggestions(status, FULL_DECK)),
     [status, isError],
   );
 
@@ -286,7 +355,7 @@ export default function StoryShowcaseScreen() {
   // plain function sidesteps that, and `onScroll` changing identity costs
   // nothing — it's a prop on the list, not a memo key for the rows.
   const onScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
-    progress.value = e.nativeEvent.contentOffset.y / ITEM_FULL_H;
+    progress.value = e.nativeEvent.contentOffset.y / metrics.fullH;
   };
 
   // Tapping a card here does what tapping it on the landing screen did before
@@ -311,19 +380,23 @@ export default function StoryShowcaseScreen() {
 
   // getItemLayout, not measurement: `initialScrollIndex` can only jump straight
   // to a row whose offset is known up front, and every row here is exactly
-  // ITEM_FULL_H tall by construction. Without it the list would mount at the
+  // `metrics.fullH` tall by construction. Without it the list would mount at the
   // top and scroll down afterwards, which the zoom would arrive in the middle of.
   const getItemLayout = useCallback(
     (_: unknown, index: number) => ({
-      length: ITEM_FULL_H,
-      offset: ITEM_FULL_H * index,
+      length: metrics.fullH,
+      offset: metrics.fullH * index,
       index,
     }),
-    [],
+    [metrics.fullH],
   );
 
   return (
-    <View className="flex-1 bg-background" style={styles.screen}>
+    <View
+      className="flex-1 bg-background"
+      style={styles.screen}
+      onLayout={(e) => setViewport(e.nativeEvent.layout.height)}
+    >
       <Animated.FlatList
         data={suggestions}
         keyExtractor={(s) => s.id}
@@ -334,19 +407,23 @@ export default function StoryShowcaseScreen() {
             progress={progress}
             onPress={onPick}
             isArrival={item.id === from}
+            metrics={metrics}
           />
         )}
         getItemLayout={getItemLayout}
         initialScrollIndex={initialIndex}
-        // Half a screen of air top and bottom, so the FIRST and LAST cards can
-        // reach the middle too — without it they'd rest against the edges and
-        // never hit the scale-1 point the interpolation gives everything else.
+        // The chrome, as padding: a card snaps to the top of the readable band
+        // (snapToAlignment "start"), so the pad above is exactly what the header
+        // covers and the pad below what the tab bar does. Cards are a screenful
+        // each now, so there is no half-screen of air to centre them in — every
+        // card IS the centre when it's the one you're on.
         contentContainerStyle={{
-          paddingVertical: (SCREEN_H - ITEM_FULL_H) / 2,
+          paddingTop: metrics.padTop,
+          paddingBottom: metrics.padBottom,
           paddingHorizontal: 20,
           gap: GAP,
         }}
-        snapToInterval={ITEM_FULL_H}
+        snapToInterval={metrics.fullH}
         snapToAlignment="start"
         decelerationRate="fast"
         disableIntervalMomentum
@@ -361,14 +438,14 @@ export default function StoryShowcaseScreen() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1 },
-  // The snap unit: poster + CTA. Pinned to ITEM_H rather than left to hug its
-  // content, because ITEM_FULL_H is what the list snaps and pads on — a row
-  // that measured even a point taller would walk off-centre down the list.
-  item: { height: ITEM_H },
   // The zoom's destination rect, and where the shadow lives: the card itself
   // clips to hold its radius, and on iOS a clipping view drops its own shadow.
+  // Height comes from the row (it IS the row — see metricsFor), which is why
+  // this one is flex rather than a number: a card that measured even a point
+  // taller than the snap interval would walk down the list.
   boundary: {
-    height: CARD_H,
+    flex: 1,
+    marginBottom: 7,
     borderRadius: 28,
     shadowColor: '#000',
     shadowOpacity: 0.18,
@@ -377,6 +454,10 @@ const styles = StyleSheet.create({
   },
   card: { flex: 1, borderRadius: 28, overflow: 'hidden' },
   body: { flex: 1, paddingHorizontal: 20, paddingTop: 16, paddingBottom: 18 },
+  // The button's own row. `marginTop: auto` puts it on the card's bottom edge
+  // no matter how short the blurb ran; the padding is the minimum air it keeps
+  // from the paragraph when the blurb runs to all four lines.
+  ctaSlot: { marginTop: 'auto', paddingTop: CTA_GAP, minHeight: CTA_H + CTA_GAP },
   // A size up from the landing poster's 17pt — this card has a whole screen, so
   // the headline can read as a headline instead of a caption.
   title: { fontSize: 24, fontWeight: '700', lineHeight: 29, letterSpacing: -0.4 },
