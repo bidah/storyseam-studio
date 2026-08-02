@@ -111,6 +111,14 @@ const CTA_GAP = 14;
 // copy's half, so the picture gives that space back.
 const ART_SHARE = 0.52;
 
+// The neighbour fade, as one switch. It reads as a card being disabled rather
+// than merely off-centre, so it's off — but it's a taste call that has been made
+// both ways on this screen, so it stays reachable instead of deleted: flip this
+// and the whole list gets it back. INACTIVE_OPACITY is where it was tuned to
+// when it was last on — the shallowest dip that still said "not this one".
+const FADE_NEIGHBOURS = false;
+const INACTIVE_OPACITY = 0.8;
+
 type Metrics = {
   /** The snap unit: the card plus the gap under it. */
   fullH: number;
@@ -193,6 +201,7 @@ function ShowcaseCard({
   progress,
   onPress,
   metrics,
+  fadeInactive = false,
 }: {
   item: Suggestion;
   index: number;
@@ -200,6 +209,12 @@ function ShowcaseCard({
   onPress: (s: Suggestion) => void;
   /** Heights derived from the measured list — see metricsFor. */
   metrics: Metrics;
+  /**
+   * Dim the cards either side of the snapped one to {@link INACTIVE_OPACITY}.
+   * Off by default — see the note in the animated style for why, and flip
+   * {@link FADE_NEIGHBOURS} at the call site to get it back.
+   */
+  fadeInactive?: boolean;
 }) {
   const seed = meshSeed(item.id);
   const palette = meshPalette(seed);
@@ -208,14 +223,21 @@ function ShowcaseCard({
   const colors = useColors();
 
   const stylez = useAnimatedStyle(() => ({
-    // The neighbours stay legible rather than dimming to near-black: this is a
-    // list you scan as much as read, and at 0.3 the card above and below were
-    // dark enough to look disabled — like the Completed scrim, which means
-    // something else entirely here. 0.8 is the smallest fade that still reads as
-    // "this one is not the one you're on" — the artwork above and below stays a
-    // picture you can actually make out, and the scale below carries the rest of
-    // the focus.
-    opacity: interpolate(progress.value, [index - 1, index, index + 1], [0.8, 1, 0.8], 'clamp'),
+    // Opt-in, and currently off: scale alone marks which card you're on. The
+    // cards above and below are already softened by the card border and by the
+    // list's own edges, and dimming on top of that read as disabled — like the
+    // Completed scrim, which means something else entirely here. This is a list
+    // you scan as much as read, so the artwork off-centre stays a picture at
+    // full strength. The key is always present rather than conditionally
+    // spread, so the style object keeps one shape across re-renders.
+    opacity: fadeInactive
+      ? interpolate(
+          progress.value,
+          [index - 1, index, index + 1],
+          [INACTIVE_OPACITY, 1, INACTIVE_OPACITY],
+          'clamp',
+        )
+      : 1,
     transform: [
       {
         scale: interpolate(progress.value, [index - 1, index, index + 1], [0.92, 1, 0.92], 'clamp'),
@@ -528,6 +550,7 @@ export default function StoryShowcaseScreen() {
             progress={progress}
             onPress={onPick}
             metrics={metrics}
+            fadeInactive={FADE_NEIGHBOURS}
           />
         )}
         getItemLayout={getItemLayout}
