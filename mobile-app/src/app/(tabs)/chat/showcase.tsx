@@ -105,11 +105,33 @@ const BAND_SLACK = 5;
 // unit.
 const CTA_H = SEMI_PILL.height;
 const CTA_GAP = 14;
-// The picture takes the top ~52% of the card and the copy lives under it, the
-// same order the small poster uses (artwork, headline, paragraph). Lower than
-// the 58% it was when the button lived outside: the button now eats into the
-// copy's half, so the picture gives that space back.
-const ART_SHARE = 0.52;
+// How much of the card the picture gets. Two named fractions rather than a
+// free number, because these are the only two that hold up: `half` reads as a
+// poster with a caption under it, `third` as a page with a picture at the foot.
+// Anything between them looks like neither, and a raw 0.58 in a prop invites the
+// endless nudging that produced it.
+type ArtShare = 'half' | 'third';
+const ART_FRACTION: Record<ArtShare, number> = { half: 1 / 2, third: 1 / 3 };
+// Which one this deck uses, next to the layout switch it usually moves with.
+// They're independent props: `art-bottom` on `half` is the pairing in use — the
+// picture reads as half the card with the copy above it — and switching this to
+// `third` gives the three paragraphs more room without touching the layout.
+const CARD_ART_SHARE: ArtShare = 'half';
+
+// Which way up a card is built.
+//
+//   art-top    — picture, then headline, then paragraph, then the CTA on the
+//                card's bottom edge. The order the landing poster uses.
+//   art-bottom — the copy on top and the picture under it, with the CTA drawn
+//                OVER the picture in translucent glass so the loop keeps
+//                playing through the button.
+//
+// Both are live designs, not a migration: the deck reads as a page of text with
+// a picture in one and as a poster with a caption in the other, and which is
+// right is a taste call. One constant switches the whole list, and the geometry
+// follows it — see metricsFor.
+type CardLayout = 'art-top' | 'art-bottom';
+const CARD_LAYOUT: CardLayout = 'art-bottom';
 
 // The neighbour fade, as one switch. It reads as a card being disabled rather
 // than merely off-centre, so it's off — but it's a taste call that has been made
@@ -124,7 +146,7 @@ type Metrics = {
   fullH: number;
   /** The card, which is the whole snap unit minus that gap. */
   cardH: number;
-  /** The picture band at the top of the card. */
+  /** The picture band — at the top of the card, or at the foot of it. */
   artH: number;
   /** The chrome above and below the readable band, as content padding. */
   padTop: number;
@@ -135,7 +157,7 @@ type Metrics = {
 // points shy of the band between the header and the tab bar — everything else
 // (the snap interval, the pad that puts a snapped card in that band, the art
 // height) falls out of it, which is what keeps them agreeing.
-function metricsFor(viewport: number, top: number, bottom: number): Metrics {
+function metricsFor(viewport: number, top: number, bottom: number, artShare: ArtShare): Metrics {
   const padTop = top + HEADER_BAR;
   // Inside a tab, the bottom inset already includes the tab bar and the agent
   // pill riding on it, so this is the whole lower chrome.
@@ -145,7 +167,9 @@ function metricsFor(viewport: number, top: number, bottom: number): Metrics {
   return {
     fullH: cardH + GAP,
     cardH,
-    artH: Math.round(cardH * ART_SHARE),
+    // The share reaches this far, and the layout doesn't: which way up the card
+    // is built changes the ORDER of the two bands, not their heights.
+    artH: Math.round(cardH * ART_FRACTION[artShare]),
     padTop,
     padBottom,
   };
@@ -202,6 +226,7 @@ function ShowcaseCard({
   onPress,
   metrics,
   fadeInactive = false,
+  layout = 'art-top',
 }: {
   item: Suggestion;
   index: number;
@@ -209,6 +234,12 @@ function ShowcaseCard({
   onPress: (s: Suggestion) => void;
   /** Heights derived from the measured list — see metricsFor. */
   metrics: Metrics;
+  /**
+   * Which way up the card is built — see {@link CardLayout}. Orthogonal to how
+   * TALL the picture is, which is {@link ArtShare}, baked into `metrics.artH`
+   * before it gets here.
+   */
+  layout?: CardLayout;
   /**
    * Dim the cards either side of the snapped one to {@link INACTIVE_OPACITY}.
    * Off by default — see the note in the animated style for why, and flip
@@ -245,6 +276,56 @@ function ShowcaseCard({
     ],
   }));
 
+  const artBottom = layout === 'art-bottom';
+
+  // The copy, as paragraphs. `art-top` shows the one `blurb` every surface
+  // shows; `art-bottom` was built for more text, so it reads `blurb` + the two
+  // paragraphs of `detail` as a three-paragraph brief — how the work proceeds,
+  // and what you have at the end. A completed card is a stored snapshot with no
+  // `detail` (see CompletedSuggestion), so this degrades to the blurb alone.
+  const paragraphs =
+    artBottom && item.detail ? [item.blurb, ...item.detail.split('\n\n')] : [item.blurb];
+
+  // The action, spelled out. On the landing screen the card WAS the button — a
+  // tap sent the brief — but that tap now opens this screen instead, so the send
+  // has to become a thing you can see and choose.
+  //
+  // The surface follows the layout, because the surface is a claim about what's
+  // behind it. `art-top` puts the slab on the card's opaque body, where liquid
+  // glass has nothing to refract, so it's `bounce`: a flat foreground fill with
+  // the same shrink-and-spring the card itself has. `art-bottom` puts it on the
+  // loop, where an opaque slab would punch a hole in the picture — so it's
+  // `clear`, and the video runs on underneath it.
+  const cta = (
+    <SemiPillButton
+      title={item.done ? 'Completed' : 'Send to chat'}
+      onPress={() => onPress(item)}
+      disabled={item.done}
+      variant={artBottom ? 'clear' : 'bounce'}
+      accessibilityLabel={item.done ? `${item.title} — completed` : `Send "${item.title}" to chat`}
+    >
+      {/* Follows the label, which is the point: on `bounce` the slab is filled
+          with the page's FOREGROUND — near-black on light, white on dark — so
+          everything on it takes the page background, and a hardcoded white icon
+          would read as correct in light mode and vanish in dark. On `clear`
+          there is no fill to invert against, only the artwork, so it's white in
+          both themes. */}
+      {item.done ? null : <Send size={17} color={artBottom ? '#fff' : colors.pageBg} />}
+    </SemiPillButton>
+  );
+
+  // The picture, and — in `art-bottom` — the button standing on it. The CTA is
+  // last in the band so it draws over the video rather than under it, and it's
+  // inset by the same 20pt the copy is, so button and paragraph share one
+  // left edge down the whole card.
+  const artBand = (
+    <View style={{ height: metrics.artH }}>
+      <MeshBand palette={palette} points={points} />
+      {art ? <CardArtVideo uri={art} height={metrics.artH} /> : null}
+      {artBottom ? <View style={styles.ctaOverArt}>{cta}</View> : null}
+    </View>
+  );
+
   return (
     <Animated.View style={[{ height: metrics.cardH }, stylez]}>
       {/* No zoom target on the card itself: the rect the transition uses is the
@@ -253,54 +334,38 @@ function ShowcaseCard({
           from the same style. */}
       <View style={styles.boundary}>
         <View className="border border-border bg-card" style={styles.card}>
-          <View style={{ height: metrics.artH }}>
-            <MeshBand palette={palette} points={points} />
-            {art ? <CardArtVideo uri={art} height={metrics.artH} /> : null}
-          </View>
-          <View style={styles.body}>
+          {artBottom ? null : artBand}
+          <View style={[styles.body, artBottom && styles.bodyTopmost]}>
             <Text className="text-foreground" style={styles.title} numberOfLines={2}>
               {item.title}
             </Text>
-            {item.subtitle ? (
+            {/* Dropped in `art-bottom`: the subtitle IS the blurb's first
+                clause in shorter form (see the Suggestion type), and printing
+                both directly above three paragraphs reads as a stutter. It
+                earns its line on the surfaces that only have room for it. */}
+            {item.subtitle && !artBottom ? (
               <Text className="text-muted-foreground" style={styles.subtitle} numberOfLines={1}>
                 {item.subtitle}
               </Text>
             ) : null}
-            <Text className="text-muted-foreground" style={styles.blurb} numberOfLines={4}>
-              {item.blurb}
-            </Text>
-
-            {/* The action, spelled out, at the foot of the copy it belongs to.
-                On the landing screen the card WAS the button — a tap sent the
-                brief — but that tap now opens this screen instead, so the send
-                has to become a thing you can see and choose. `marginTop: auto`
-                pins it to the bottom edge whatever the paragraph does, so every
-                card in the deck puts its button on the same line.
-
-                `bounce`, not the default glass: inside a card the slab is
-                sitting on an opaque surface, where liquid glass has nothing to
-                refract, and the shrink-and-spring is the same press feel the
-                card itself has. */}
-            <View style={styles.ctaSlot}>
-              <SemiPillButton
-                title={item.done ? 'Completed' : 'Send to chat'}
-                onPress={() => onPress(item)}
-                disabled={item.done}
-                variant="bounce"
-                accessibilityLabel={
-                  item.done ? `${item.title} — completed` : `Send "${item.title}" to chat`
-                }
+            {paragraphs.map((p, i) => (
+              <Text
+                key={i}
+                className="text-muted-foreground"
+                style={[styles.blurb, artBottom && styles.blurbTight]}
+                numberOfLines={4}
               >
-                {/* The page BACKGROUND, not white. The slab is filled with the
-                    page's foreground — near-black on light, white on dark — so
-                    everything on it takes the background colour; that inversion
-                    is the whole look, and it's what the label already does. A
-                    hardcoded white icon reads as correct in light mode and
-                    vanishes into the slab in dark. */}
-                {item.done ? null : <Send size={17} color={colors.pageBg} />}
-              </SemiPillButton>
-            </View>
+                {p}
+              </Text>
+            ))}
+
+            {/* `marginTop: auto` pins the button to the card's bottom edge
+                whatever the paragraph does, so every card in the deck puts its
+                button on the same line. In `art-bottom` that edge belongs to the
+                picture instead, and the button went with it. */}
+            {artBottom ? null : <View style={styles.ctaSlot}>{cta}</View>}
           </View>
+          {artBottom ? artBand : null}
           {/* Same treatment the small card wears, for the same reason: a
               finished card stays recognisable as the thing you did. */}
           {item.done ? (
@@ -379,7 +444,7 @@ export default function StoryShowcaseScreen() {
   const insets = useSafeAreaInsets();
   const [viewport, setViewport] = useState(SCREEN_H);
   const metrics = useMemo(
-    () => metricsFor(viewport, insets.top, insets.bottom),
+    () => metricsFor(viewport, insets.top, insets.bottom, CARD_ART_SHARE),
     [viewport, insets.top, insets.bottom],
   );
 
@@ -551,6 +616,7 @@ export default function StoryShowcaseScreen() {
             onPress={onPick}
             metrics={metrics}
             fadeInactive={FADE_NEIGHBOURS}
+            layout={CARD_LAYOUT}
           />
         )}
         getItemLayout={getItemLayout}
@@ -614,15 +680,32 @@ const styles = StyleSheet.create({
   zoomSlot: CARD_BOX,
   card: { flex: 1, borderRadius: 28, overflow: 'hidden' },
   body: { flex: 1, paddingHorizontal: 20, paddingTop: 16, paddingBottom: 18 },
+  // `art-bottom` starts with the headline instead of arriving at it, so the top
+  // of the card is the top of the TYPE — and type set 16pt off an edge reads as
+  // cramped where a picture doesn't. The picture in `art-top` needs no such air:
+  // it's meant to run right up to the edge.
+  bodyTopmost: { paddingTop: 34 },
   // The button's own row. `marginTop: auto` puts it on the card's bottom edge
   // no matter how short the blurb ran; the padding is the minimum air it keeps
   // from the paragraph when the blurb runs to all four lines.
   ctaSlot: { marginTop: 'auto', paddingTop: CTA_GAP, minHeight: CTA_H + CTA_GAP },
+  // `art-bottom`'s button, standing on the picture. Absolute rather than a row
+  // at the foot of the band, so the video keeps the band's full height and the
+  // button costs the picture nothing. Left and right match the body's 20pt
+  // padding; the bottom matches its 18, so the button sits the same distance
+  // off the card's edge in either layout.
+  ctaOverArt: { position: 'absolute', left: 20, right: 20, bottom: 18 },
   // A size up from the landing poster's 17pt — this card has a whole screen, so
   // the headline can read as a headline instead of a caption.
   title: { fontSize: 24, fontWeight: '700', lineHeight: 29, letterSpacing: -0.4 },
   subtitle: { fontSize: 14, lineHeight: 18, marginTop: 4 },
+  // The marginTop doubles as the gap BETWEEN paragraphs, since every one of
+  // them wears this.
   blurb: { fontSize: 15, lineHeight: 21, marginTop: 10 },
+  // Three paragraphs where `art-top` has one, in a body that is only ~50pt
+  // taller. A point off the size and two off the leading is what makes twelve
+  // lines fit where nine did — at 15/21 the third paragraph ran off the card.
+  blurbTight: { fontSize: 14, lineHeight: 19 },
   doneScrim: {
     position: 'absolute',
     top: 0,

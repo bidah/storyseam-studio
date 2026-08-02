@@ -74,6 +74,27 @@ export type Suggestion = {
    * card never says one thing on the phone and another on the desktop.
    */
   blurb: string;
+  /**
+   * Two FURTHER paragraphs, for the surface that has a whole screen for one
+   * card — the mobile Story showcase, which reads `blurb` + `detail` as a
+   * three-paragraph brief.
+   *
+   * A fourth text rather than a longer `blurb` because the three shorter
+   * surfaces would all have to clamp it, and a paragraph that gets cut at "I'll
+   * read what's already there and…" is worse than one that ends. So the length
+   * is the CALLER's choice: the web panel takes `subtitle`, the mobile row takes
+   * `blurb`, the showcase takes both plus this.
+   *
+   * The two paragraphs have jobs, which is what keeps them from being padding:
+   * the first says how the work actually proceeds — what gets read, what you get
+   * asked, where it stops for you — and the second says what you'll have at the
+   * end and why it's the thing to do now. Split on a blank line by the renderer.
+   *
+   * Optional: a completed card is a stored SNAPSHOT (see CompletedSuggestion)
+   * and carries only what was saved, so the showcase falls back to `blurb`
+   * alone. Never write the third paragraph as the load-bearing one.
+   */
+  detail?: string;
   /** The composed brief the click sends to the agent. Never just the title. */
   prompt: string;
 };
@@ -294,6 +315,8 @@ const STATUS_CARD: Suggestion = {
   subtitle: 'A read on the whole episode',
   blurb:
     'A read on the whole episode — what’s finished, what’s half-done, and what’s actually blocking progress. Then the single next thing worth doing, and why that one before the others.',
+  detail:
+    'I read the pipeline itself — bible, pinned draft, reviews, shot list, stills, voices, renders, cut — rather than asking you to remember where each one stopped.\n\nThen one recommendation, not ten. Ten open threads is the normal state of an episode; the useful part is which one unblocks the most.',
   prompt:
     'Give me a status read on this episode: what’s finished, what’s half-done, and what’s blocking progress. Then recommend the single next thing to do and why that one before the others.',
 };
@@ -311,6 +334,8 @@ export const FALLBACK_SUGGESTIONS: Suggestion[] = [
     subtitle: 'Pick up where we left off',
     blurb:
       'Pick up where we left off. I’ll look at where the project actually stands, choose the one move most worth making now, tell you why it comes before the alternatives, and start on it with you.',
+    detail:
+      'The pipeline has an order — the bible feeds the script, the script feeds the shots, the shots feed the renders — so I work backwards from whatever the later stages are waiting on.\n\nAnd we start it in the same turn. Not a plan to act on later: the first move made, shown to you, then stopped for your note.',
     prompt:
       'Look at where this project actually is and pick the one thing most worth doing next. Tell me why it comes before the alternatives, then start on it with me.',
   },
@@ -358,6 +383,8 @@ function deriveCards(
       subtitle: 'The bible everything else is made from',
       blurb:
         'Everything downstream is made from the bible — the world and its rules, who wants what, and what it costs them. We’ll build it one question at a time, with options whenever you’re stuck.',
+      detail:
+        'One question at a time, and never a blank page. Whenever a question stalls you I put two or three concrete options on the table — picking one is faster than inventing one.\n\nWhat you answer is written into the bible and the roster, not just said in chat. Every later stage reads its voices, looks and places from there.',
       prompt:
         'Let’s create the story world and bible for this project. Interview me one question at a time — the world and its rules, the protagonist and what they want, the antagonist or opposing force, what’s at stake, and the theme — and offer me two or three concrete options whenever I’m stuck instead of leaving the question open. Then write it into the world bible, and add the cast and the places we named to the roster.',
     });
@@ -370,6 +397,7 @@ function deriveCards(
       title: 'Finish the world bible',
       subtitle: `${joinList(mapMissing.map(label))} still empty`,
       blurb: `The bible is started, but ${joinList(mapMissing.map(label))} ${mapMissing.length === 1 ? 'is' : 'are'} still blank. I’ll read what’s already there and ask you about each hole one at a time, with options that fit the world you have.`,
+      detail: `Reading first is the point: the options I offer are built from what you’ve already established, so they belong in this world instead of reading like a form.\n\nA half-filled bible is what stalls a script later — the draft reaches a beat that needs a rule nobody set, and invents one.`,
       prompt: `The world bible is started but ${joinList(mapMissing.map(label))} ${mapMissing.length === 1 ? 'is' : 'are'} still empty. Read the world first so you build on what’s there, then ask me about each missing piece one at a time — with two or three options that fit the world we already have — and save the answers into the bible.`,
     });
   }
@@ -381,6 +409,7 @@ function deriveCards(
       title: 'Deepen the story',
       subtitle: `${joinList(depthMissing.map(label))} still empty`,
       blurb: `The map is filled in, so the layer under it is what’s left: ${joinList(depthMissing.map(label))}. I’ll propose a version of each that follows from what’s already established, say why it makes the story stronger, and save what you approve.`,
+      detail: `Depth isn’t more world — it’s the reasons under the world you have. So I propose here rather than interview, and you reject what doesn’t fit.\n\nEach comes with why it makes the story stronger, so you’re judging an argument rather than a vibe. Nothing saves until you approve it.`,
       prompt: `The story map is filled in, so let’s do the story depth: ${joinList(depthMissing.map(label))}. Read the world bible, propose a version of each that follows from what’s already established, tell me why each choice makes the story stronger, and save what I approve.`,
     });
   }
@@ -404,6 +433,7 @@ function deriveCards(
           ? `${plural(charCount, 'character')} and ${plural(locCount, 'place')} so far`
           : 'and there are none on the roster yet'
       }. I’ll propose a few more that belong in this world and would earn a scene.`,
+      detail: `I read the bible, then propose three or four characters — archetype, want, need, arc, how they speak — plus a couple of places, as a list you pick from.\n\n“Would earn a scene” is the bar, not a headcount: names nobody writes for make the shot list worse, not richer.`,
       prompt: `Let’s extend the world. Read the bible, then propose three or four more characters — each with an archetype, what they want, what they need, their arc and how they speak — plus two or three locations that belong in this world and would earn a scene. Show them to me as a list I can pick from, and add the ones I approve to the roster.`,
     });
   }
@@ -418,6 +448,8 @@ function deriveCards(
       subtitle: 'The bible is ready to become an episode',
       blurb:
         'The bible is ready to become an episode. We’ll pick the arc to build on and map the premise onto it first — then, once the beats feel right, I’ll draft the opening scenes for you to react to.',
+      detail:
+        'Beats before prose: you choose the arc, I map your premise onto it and show the outline. Fixing structure there costs a conversation — after forty pages it costs the forty pages.\n\nThen the opening scenes as a proposal: sluglines, action, dialogue in the bible’s voices, stopping after two or three for your reaction.',
       prompt:
         'The world bible is filled in, so let’s write the script. Start with the story-architect: ask me which arc to build on, map the premise onto it, and show me the beat outline. Once I’m happy with the beats, write the opening scenes into the script as a proposal I can review — proper sluglines, action and dialogue in the voices from the bible — and stop after the first two or three scenes so I can react before you keep going.',
     });
@@ -443,6 +475,7 @@ function deriveCards(
         title: d.title,
         subtitle: `${d.label[0].toUpperCase()}${d.label.slice(1)} hasn’t read it yet`,
         blurb: `${d.label[0].toUpperCase()}${d.label.slice(1)} ${d.does}, and hasn’t read this draft yet. It reads the pinned draft itself and comes back with findings first — nothing in the script changes until you say which fixes to apply.`,
+        detail: `It reads the draft itself, with one job — ${d.does} — which is what keeps the notes specific: this scene, this beat, this line.\n\nFindings come back first, as a list. You say which to apply, and only then does the script change — so disagreeing costs a sentence, not an undo.`,
         prompt: reviewMessage(id, { lines }),
       });
     }
@@ -457,6 +490,7 @@ function deriveCards(
         title: `Re-check with ${d.label}`,
         subtitle: last?.summary ? `Last pass: ${last.summary}` : 'The script changed since its last pass',
         blurb: `The script has changed since ${d.label} last read it${last?.summary ? ` — last pass: ${last.summary}` : ''}. A fresh pass reads the current draft and says which of its earlier notes the rewrite already resolved.`,
+        detail: `A re-check can compare, which a first pass can’t: it sorts its own earlier notes into resolved, still standing, and newly introduced.\n\nRewrites fix things and break things in one edit, and re-reading old findings by hand is how you miss the second half.`,
         prompt: reviewMessage(id, { stale: true }),
       });
     }
@@ -472,6 +506,8 @@ function deriveCards(
       subtitle: 'Decide what this story looks like',
       blurb:
         'Decide what this story looks like — palette, light, lens, texture, how stylized it goes. I’ll offer a couple of directions, then generate concept frames of the key locations so you can see one before locking it.',
+      detail:
+        'A couple of directions proposed in words first — palette, light, lens, texture — then concept frames of your own key locations, not a mood board of someone else’s film.\n\nLocking it is what makes the rest consistent: every sheet, still and render is generated against this style.',
       prompt: `Let’s create the visual world for this story. Read the world bible, then propose a look — palette, light, lens, texture, the level of stylization — in a couple of options I can choose between, and say which one fits the tone. Once I pick, generate concept frames for the key locations so we can see the style and lock it in.`,
     });
   }
@@ -485,6 +521,7 @@ function deriveCards(
       title: 'Design the cast',
       subtitle: `No sheet for ${joinList(missingSheets)}`,
       blurb: `${joinList(missingSheets)} ${missingSheets.length === 1 ? 'has' : 'have'} no character sheet yet. I’ll design them from their descriptions in the bible, in the visual style you locked, and keep every sheet consistent with the rest of the cast.`,
+      detail: `Built from what’s already written — the bible’s description, the style you locked — and checked against the existing sheets so the cast looks like one cast.\n\nApproved sheets attach to their roster cards, and every still and render references them. That’s what stops a face drifting between shot 12 and shot 90.`,
       prompt: `Generate character sheets for ${joinList(missingSheets)}. Use their appearance and voice from the world bible plus the visual style we locked, keep every sheet consistent with the others, show them to me before saving, and attach the ones I approve to their roster cards.`,
     });
   }
@@ -497,6 +534,7 @@ function deriveCards(
       title: 'Build the places',
       subtitle: `No reference art for ${joinList(missingLocSheets)}`,
       blurb: `${joinList(missingLocSheets)} ${missingLocSheets.length === 1 ? 'has' : 'have'} no reference art yet. I’ll build a locked background for each from its description in the bible, so every shot set there matches the one before it.`,
+      detail: `One locked background per place, built from its description in the bible in the style you locked. You see them first; approved ones attach to their roster cards.\n\nPlaces drift more than people, and less visibly — the same room comes back wider, warmer, window on the other wall.`,
       prompt: `Generate location sheets for ${joinList(missingLocSheets)} — a locked background per place, in the visual style we established, from each location's description in the world bible. Show them to me first, then attach the ones I approve to their roster cards.`,
     });
   }
@@ -510,6 +548,7 @@ function deriveCards(
       title: 'Break it into shots',
       subtitle: s.signed ? 'The script is signed off' : 'Turn the script into a shot list',
       blurb: `${s.signed ? 'The script is signed off, so it can become a shot list' : 'The script is ready to become a shot list'} — the beat each shot serves, its location, who’s in it, the camera, the action and its dialogue. You’ll see the count and the rough running time before anything is saved.`,
+      detail: `Each shot carries what the later stages need — beat, location, cast, camera, action, dialogue, duration — so a thin list makes the board, the voices and the renders all worse.\n\nYou get the count and the rough running time first. It’s the first honest look at length, and cutting is cheapest here.`,
       prompt: `Let’s turn the script into a shot list. Read the pinned draft, then break it into shots — for each one the beat it serves, the location slug, who’s in it, the camera, the action, its dialogue and a rough duration. Keep the scene order, tell me how many shots and roughly how long the episode comes out, and save it once I’ve looked.`,
     });
   }
@@ -535,6 +574,7 @@ function deriveCards(
           ? `Nothing is boarded yet — ${plural(shots, 'shot')} waiting for a still.`
           : `${gap} of ${shots} shots still have no storyboard still.`
       } I’ll generate them in shot order in the locked style, using the character and location sheets so the cast stays consistent, and stop after a first batch for your note.`,
+      detail: `Shot order, not parallel — consecutive stills are the ones that have to match, so each answers to the one before it.\n\nThe first batch stops for your note: a wrong light or a not-quite-right face is cheap to fix at eight stills and expensive at ${plural(gap, 'still')}.`,
       prompt: `${plural(gap, 'shot')} still ${gap === 1 ? 'has' : 'have'} no storyboard still${which.length ? ` (starting with ${joinList(which.map((n) => `shot ${n}`))})` : ''}. Generate them in shot order using the locked visual style, each shot's own prompt, and the character and location sheets as references so the cast stays consistent. Do a first batch, show me the results, and wait for my note before continuing.`,
     });
   }
@@ -557,6 +597,9 @@ function deriveCards(
       blurb: cast
         ? `${plural(lines - voiced, 'dialogue line')} ${lines - voiced === 1 ? 'is' : 'are'} still unvoiced. I’ll render them in script order with each character’s cast voice and tell you which takes I’d keep, so you can hear the episode before you look at it.`
         : `Nobody is cast yet, so nothing can be voiced. I’ll propose a voice for each speaking character from their description in the bible, and once you approve the casting, render all ${plural(lines, 'line')} in script order.`,
+      detail: cast
+        ? `Script order, in each character’s cast voice, with a note on which takes I’d keep — a line that reads fine on the page can land wrong the moment it’s spoken.\n\nYou get the episode as a radio play: pacing and performance, before a single picture is rendered.`
+        : `Casting first, and it comes from the bible: a voice proposed for each speaking character, which you approve or swap before a line is rendered.\n\nThen all ${plural(lines, 'line')} in script order — the episode as a radio play, before any picture exists.`,
       prompt: cast
         ? `${plural(lines - voiced, 'dialogue line')} ${lines - voiced === 1 ? 'is' : 'are'} still unvoiced. Render them with each character's cast voice, in script order, and tell me which takes you'd keep. Play them back to me as a radio version so I can hear the episode before we look at it.`
         : `Let's make the radio version. Read the dialogue, propose a voice for each speaking character from the world bible's descriptions, and once I approve the casting render the lines in script order so I can hear the whole episode.`,
@@ -574,6 +617,7 @@ function deriveCards(
       title: 'Render the shots',
       subtitle: `${bundles - rendered} of ${bundles} bundles unrendered`,
       blurb: `${plural(bundles - rendered, 'bundle')} of ${bundles} still ${bundles - rendered === 1 ? 'has' : 'have'} no video. I’ll render them in order from each bundle’s first frame and reference video, then report which came back clean and which want another take.`,
+      detail: `Each bundle renders from its own first frame, and its reference video where one is set, so the motion starts from the still you already approved.\n\nThen which came back clean and which want another take — generation misses often enough that reviewing ${plural(bundles - rendered, 'clip')} by hand is its own job.`,
       prompt: `${plural(bundles - rendered, 'bundle')} still ${bundles - rendered === 1 ? 'has' : 'have'} no video. Render them in order, using each bundle's first frame and reference video where one is set, and report which came back clean and which need another take.`,
     });
   }
@@ -586,6 +630,8 @@ function deriveCards(
       subtitle: 'Every bundle is rendered',
       blurb:
         'Every bundle is rendered, so the episode can be assembled end to end — the selected take of each in order, with the dialogue and sound in place. Then I’ll give you the running time and score where it drags.',
+      detail:
+        'The selected take of each bundle, in order, with dialogue and sound laid in — the first time it exists as one piece rather than a folder of individually fine clips.\n\nThen the running time and where it drags. Everything from here is subtraction, and knowing which minute to cut is the hard part.',
       prompt: `Every bundle is rendered, so stitch the complete cut: the selected take of each bundle in order, with the dialogue and sound in place. Then tell me the running time and score the cut — where it drags, where a beat lands early, what I should look at first.`,
     });
   }

@@ -8,6 +8,9 @@
  * background colour. That's the same fill the `bounce` variant paints flat — so
  * switching `variant` changes the press feel and the surface, not the design.
  *
+ * `variant="clear"` is the same surface UNTINTED, for a button that sits on
+ * artwork instead of on the page — see the note at the branch below.
+ *
  * `variant="bounce"`, and any iOS below 26 where `isLiquidGlassAvailable()` is
  * false, fall through to the base implementation.
  */
@@ -49,6 +52,15 @@ export function SemiPillButton(props: SemiPillButtonProps) {
 
   if (variant === 'bounce' || !glassAvailable) return <BounceSemiPillButton {...props} />;
 
+  // `clear` is the variant for a button drawn ON something — the showcase card's
+  // artwork, where the point is that the picture carries on underneath. So: no
+  // tint (a foreground tint would make it the opaque slab we're avoiding), and
+  // `colorScheme="dark"` pinned rather than 'auto' so the system's own dimming
+  // layer is there to hold a white label up against whatever frame the video is
+  // on. Light-scheme clear glass over a bright frame leaves nothing to read.
+  const clear = variant === 'clear';
+  const content = clear ? '#fff' : colors.pageBg;
+
   return (
     <Pressable
       accessibilityRole="button"
@@ -62,14 +74,15 @@ export function SemiPillButton(props: SemiPillButtonProps) {
       }}
     >
       <GlassView
-        glassEffectStyle="regular"
-        tintColor={colors.foreground}
+        glassEffectStyle={clear ? 'clear' : 'regular'}
+        tintColor={clear ? undefined : colors.foreground}
+        colorScheme={clear ? 'dark' : 'auto'}
         isInteractive
         style={semiPillStyles.face}
       >
-        {loading ? <ActivityIndicator size="small" color={colors.pageBg} /> : null}
+        {loading ? <ActivityIndicator size="small" color={content} /> : null}
         {children}
-        <Text style={[semiPillStyles.label, { color: colors.pageBg }]}>{title}</Text>
+        <Text style={[semiPillStyles.label, { color: content }]}>{title}</Text>
       </GlassView>
     </Pressable>
   );
