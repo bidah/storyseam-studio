@@ -90,7 +90,10 @@ const HEADER_BAR = 44;
 // are all derived from it, and a card that snapped on a different number than
 // it was laid out with would drift a few points further off-centre with every
 // swipe.
-const GAP = 16;
+// The air BETWEEN two cards is not just this — it's this plus the card box's
+// own margins (see CARD_BOX), so the three numbers were halved together. Halving
+// the gap alone would only have taken a quarter off the visible distance.
+const GAP = 8;
 // How much shorter than the visible band a card is. Five points: the card is
 // meant to FILL the screenful it snapped to, and this is just enough slack that
 // its bottom edge reads as an edge rather than as something cut off by the
@@ -208,8 +211,11 @@ function ShowcaseCard({
     // The neighbours stay legible rather than dimming to near-black: this is a
     // list you scan as much as read, and at 0.3 the card above and below were
     // dark enough to look disabled — like the Completed scrim, which means
-    // something else entirely here.
-    opacity: interpolate(progress.value, [index - 1, index, index + 1], [0.45, 1, 0.45], 'clamp'),
+    // something else entirely here. 0.8 is the smallest fade that still reads as
+    // "this one is not the one you're on" — the artwork above and below stays a
+    // picture you can actually make out, and the scale below carries the rest of
+    // the focus.
+    opacity: interpolate(progress.value, [index - 1, index, index + 1], [0.8, 1, 0.8], 'clamp'),
     transform: [
       {
         scale: interpolate(progress.value, [index - 1, index, index + 1], [0.92, 1, 0.92], 'clamp'),
@@ -566,7 +572,9 @@ export default function StoryShowcaseScreen() {
 // Shared by the card and by the zoom slot drawn over it, because the two have to
 // describe the SAME rectangle — the slot is where the transition thinks the card
 // is, and a margin changed on one side only would aim it a few points off.
-const CARD_BOX = { flex: 1, marginTop: 10, marginBottom: 2, borderRadius: 28 } as const;
+// Halved along with GAP: the distance the eye reads between two posters is
+// marginBottom + GAP + marginTop, and it moves as one number or not at all.
+const CARD_BOX = { flex: 1, marginTop: 5, marginBottom: 1, borderRadius: 28 } as const;
 
 const styles = StyleSheet.create({
   screen: { flex: 1 },
