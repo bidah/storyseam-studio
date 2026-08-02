@@ -158,6 +158,13 @@ touches only one, deploy only that one — but check.
   run a local one with `WORKER=http://localhost:8787 npm run dev` + `cd worker &&
   npx wrangler dev`.
 
+### Mobile — verify on the simulator
+
+A mobile UI change is checked by LOOKING at it: drive the booted simulator with
+**`agent-device`** (press by accessibility label, screenshot), falling back to
+`axe` for gestures that have to reach React Native. Full recipe, including the
+deep link that points a dev client at Metro: `mobile-app/AGENTS.md`.
+
 ### Mobile OTA after a commit
 
 After **any commit that touches `mobile-app/`**, **ask** whether to publish an EAS

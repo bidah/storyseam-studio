@@ -49,3 +49,32 @@ Three traps:
 
 An OTA also only applies on the SECOND launch (fetched on one, run on the next),
 so a single relaunch showing old code is not evidence the update failed.
+
+# Testing and debugging — drive the simulator with `agent-device`
+
+A UI change is not verified until it has been LOOKED AT. `tsc` and the linter
+say the code compiles, not that the button is legible on the artwork behind it —
+so run it on the booted simulator and screenshot it.
+
+**`agent-device` is the tool** (there's a skill of the same name; load it for the
+full command set). It opens the app, reads the accessibility tree, presses
+elements BY LABEL rather than by pixel, and screenshots — so a test reads
+`press "Send to chat"` instead of a coordinate that the next layout change
+invalidates. Prefer it over the computer-use MCP: no Simulator window is needed,
+which is also the only thing that works in a headless session.
+
+Two things it cannot do, and what to use instead:
+
+- **Gestures that must reach React Native.** `agent-device gesture pan/swipe/
+  pinch` does not drive RN ScrollViews or react-native-gesture-handler — taps and
+  presses are fine, drags are not. Use `axe` (`brew install
+  cameroncooke/axe/axe`): `axe swipe --start-x … --end-y … --duration 0.5 --udid
+  <UDID>`, plus `--pre-delay 0.6` for a hold-then-drag.
+- **Raw frames.** `xcrun simctl io booted screenshot <path>` is faster when all
+  you want is the picture, and it's what to loop when capturing a cold start.
+
+Getting a dev client onto Metro is a deep link, not a flag: start the bundler on
+a port you have checked is free (other projects on this machine hold 8081/8082),
+then
+`xcrun simctl openurl <UDID> "mobileapp://expo-development-client/?url=http%3A%2F%2Flocalhost%3A<port>"`.
+`agent-device open --metro-port` does NOT rebind an already-installed client.
