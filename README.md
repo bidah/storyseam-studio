@@ -40,7 +40,7 @@ Three processes, no Express server (the old Express/Render backend was retired):
   tabs. It also serves the built `dist/` as static `ASSETS` in production.
   Deployed at `https://shot-studio-uploads.rodrigofigueroa-name.workers.dev`.
 - **Studio agent** (`flue-agent/`) — a [flue](https://flueframework.com) chat
-  agent running as its **own Cloudflare Worker** (`shot-studio-flue`; agents are
+  agent running as its **own Cloudflare Worker** (`shot-studio-flue-v2`; agents are
   Durable Objects), model `anthropic/claude-sonnet-5` (Opus 4.6 / Fable 5 via the
   in-chat picker) routed through Cloudflare AI Gateway. It drives the pipeline
   through typed tools (`flue-agent/src/tools/*.ts`) and render skills
@@ -67,9 +67,9 @@ the full local chain is Vite → main Worker → flue Worker:
 npm run stack   # flue agent + Worker (:8787) + Vite (:3333) together
 ```
 
-`flue dev` prints its local URL — set `FLUE_ORIGIN` to it in `worker/.dev.vars` so
-the Worker's `/eve/*` proxy reaches the local flue agent. Or start pieces
-individually:
+`npm run flue:dev` is a Vite dev server (flue 2 has no `flue dev`); it prints its
+local URL — set `FLUE_V2_ORIGIN` to it in `worker/.dev.vars` so the Worker's
+`/eve/*` proxy reaches the local flue agent. Or start pieces individually:
 
 ```bash
 npm run dev            # UI on :3333
@@ -133,8 +133,9 @@ live in `worker/wrangler.jsonc` vars and `wrangler secret`.
   (no proxy buffering) backed by the `ProjectEvents` Durable Object.
 - `/media`, `/multishot-media`, `/sound-media`, `/refs`, `/asset`, `/final`,
   `/gen`, `/files` — media served from R2.
-- `/eve` — the flue Studio agent (proxied by the Worker to the `shot-studio-flue`
-  Worker, injecting the session user id + HMAC identity).
+- `/eve` — the flue Studio agent (proxied by the Worker to `shot-studio-flue-v2`,
+  or to the frozen flue-1 `shot-studio-flue` for a chat created before the
+  migration, injecting the session user id + HMAC identity).
 
 ## UI stack
 

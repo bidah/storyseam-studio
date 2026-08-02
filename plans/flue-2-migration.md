@@ -1,6 +1,9 @@
 # Migration: flue `1.0.0-beta.9` → flue `2.0.1`
 
-**Status:** proposed
+**Status:** IMPLEMENTED on branch `flue-2-migration` — phases 1–13 landed, cutover
+(§16) not yet run. What the implementation learned that this plan got wrong is in
+[§20](#20-what-changed-against-this-plan); read it before following any section
+verbatim.
 **Owner:** —
 **Scope:** `flue-agent/` (the `shot-studio-flue` Worker) — full rewrite of the agent
 definition; `worker/src/index.js` (`/eve` proxy routing); `src/` and `mobile-app/`
@@ -974,5 +977,98 @@ into it. Detail and rationale in the [report][report].
    coverage instead of prose.
 6. **`useDataWriter`** for live render/stage progress parts on both clients.
 7. **Workers Traces** (`createCloudflareTracing()`) replacing most of the
-   `observe()` logging, plus per-conversation token cost.
+   `observe()` logging, plus per-conversation token cost. *(Partly free already:
+   flue 2 installs `createCloudflareTracing()` by default — enabling traces in
+   `wrangler.jsonc` is the whole opt-in. The follow-up is only the content policy
+   and retiring the `observe()` lines it duplicates.)*
 8. **`flue run` in CI** for skill-regression evals.
+
+---
+
+## 20. What changed against this plan
+
+Written during implementation, against the real `@flue/runtime@2.0.1` (its docs
+ship in `node_modules/@flue/runtime/docs/`). Everything here is a place the plan
+was wrong or incomplete, not a change of intent.
+
+**Verified as hoped**
+
+- **§11 — MCP works on workerd.** `@modelcontextprotocol/client@2.0.0` resolves
+  its validator through the **`workerd` export condition** to
+  `CfWorkerJsonSchemaValidator` (`@cfworker/json-schema`, an interpreter — no
+  `new Function`). Confirmed in the built bundle AND live: a `vite dev` turn
+  connected to `https://mcp.higgsfield.ai/mcp` and came back with the server's
+  own 401 for a test user, not an Ajv crash. `lib/higgsfield.ts` (~330 lines) is
+  deleted. Ajv still appears in the bundle, but only from the OLD
+  `@modelcontextprotocol/sdk` that `@openuidev/lang-core` pulls — a pre-existing,
+  working path.
+
+**Wrong in the plan**
+
+- **§3.2 — `vite.config.ts` needs `flueWorkerConfig()`.** `cloudflare()` bare
+  fails the build outright: `plugins: [flue(...), cloudflare({ config:
+  flueWorkerConfig() })]`. Two more things the plan didn't know: `vite dev` needs
+  the flue subpaths in `optimizeDeps.include` or the dep optimizer invalidates
+  its own chunks mid-boot and the server never serves a request; and that config
+  lives under `environments.<worker_name>`, because the Cloudflare plugin gives
+  the Worker its own Vite environment.
+- **§4.2 — a Pi provider carries `stream`/`streamSimple` at the TOP level.** The
+  `api` field is only `createProvider`'s *input*. So the cap wraps
+  `base.stream` / `base.streamSimple`, not `base.api.*`.
+- **§9.2 — the POST body is the BARE message object.** `{"kind":"user","body":
+  "…"}`, not `{"message":{…}}` (the migration guide's phrasing is looser than the
+  routing reference; the router rejects the wrapped form). Only affects
+  hand-rolled curl/evals — the SDK builds it.
+- **§10.3 — only sandbox *presence* is re-read at turn boundaries.** Swapping one
+  attached factory for another takes effect at the next SUBMISSION, and emits no
+  `environment` signal. Since both tiers stay attached, `upgrade_sandbox` lands
+  on the author's next message and says so in its result.
+- **§12 — `agent_end` carries no `isError`/`durationMs`.** The suggestion sweep
+  and the failure log both moved onto `submission_settled`, which is the
+  documented replacement for polling an outcome.
+- **§15 — `test/flue/` had three broken files before this migration**, not one:
+  `tools-behavior.test.ts` imported a deleted `ask_question`, `sandbox.test.ts`
+  couldn't resolve `@flue/runtime/cloudflare` (the stub alias didn't cover
+  subpaths), and `models.test.ts` asserted on an `anthropic/*` model removed from
+  the allowlist. All three are fixed; `npm run test:flue` is green at 71 tests
+  (was 55 passing of 56 collected, with 12 tests never collected at all).
+
+**Decided differently, deliberately**
+
+- **§1 — the engine pin is the CHAT ID's `f2-` prefix, not an `engine` column.**
+  A registry lookup would have put a D1 read on every `/eve` hop including the
+  SSE stream, and — worse — the registry only learns about a chat once it has a
+  title, so a NEW chat's first message and every never-synced chat would have had
+  no row to read. Guessing wrong there means opening a real conversation against
+  a worker that has never seen it: the exact "sidebar lists it, opens empty"
+  failure §0.1 exists to prevent. A prefix has nothing to guess. Rollback keeps
+  the plan's semantics — `FLUE_V2_NEW_CHATS` (published on `/eve/health`, read by
+  both clients) gates MINTING, so a chat already on v2 stays on v2.
+- **§7.1 — `run({ data: input })`, not `run({ data })`.** A destructuring rename
+  at 58 sites instead of a rename of ~80 body references, and `input` still
+  matches the tool's own `input:` schema field. It also avoids a real collision:
+  `get_episode`'s body already has a local `data`.
+- **§10.1 — the escalation writes `sandboxMode`, not a new `usePersistentState`
+  key.** The plan seeded persistent state from `storedSandboxMode()` as a
+  *default value* — which only applies before the first write, so the first
+  escalation would have permanently deafened the Settings › Sandbox toggle for
+  that chat. Writing the same key both surfaces already use keeps one source of
+  truth and keeps the plan's own stated rule: the toggle stays the manual
+  override.
+
+**Lost, and worth knowing**
+
+- **The Higgsfield "this render is still RUNNING" tool-result note.** The
+  hand-rolled client appended it to every queued-job result; flue owns tool
+  results now, so it went with the client. The hard rule survives in
+  `whistlewood.md` ("Never end a turn with a render in flight"), but the
+  belt-and-braces is down to braces. `useAgentFinish` — already listed at §19.4 —
+  is the way to re-arm it, and strictly better than the note was, because it can
+  send the model back to work instead of hoping it reads.
+- **The forced token refresh on a 401.** `callTool` used to retry with
+  `?force=1`; `useMcpConnection`'s `auth` resolver just fetches the current
+  token. The worker refreshes on its own, so this only matters for a bearer that
+  goes stale mid-connection.
+- **`AgentRun.model` in the evals.** Flue 2 stamps no model on the client
+  surface (message metadata is entirely agent-authored), so that eval now asserts
+  the submission settled `completed`. The model is in Workers Logs.

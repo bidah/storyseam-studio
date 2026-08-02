@@ -25,13 +25,19 @@
 // ---------------------------------------------------------------------------
 
 import { getProjectId } from "@/lib/projectFetch";
+import { newChatPrefix } from "@/lib/chatEngine";
 
 const KEY = "shotStudio.chats.v2";
 const LEGACY_KEY = "shotStudio.chats.v1";
 const MAX_CHATS = 50;
 
+// The id carries which agent engine this conversation lives on, for life — the
+// /eve proxy routes on the prefix and never looks anything up. See chatEngine.js.
 function uid() {
-  return globalThis.crypto?.randomUUID?.() ?? `chat_${Date.now()}_${Math.floor(Math.random() * 1e9)}`;
+  const id =
+    globalThis.crypto?.randomUUID?.() ??
+    `chat_${Date.now()}_${Math.floor(Math.random() * 1e9)}`;
+  return `${newChatPrefix()}${id}`;
 }
 
 function safeParse(raw) {

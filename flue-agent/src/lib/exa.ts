@@ -55,7 +55,7 @@ export function createExaTools(userKey?: string): ToolDefinition[] {
     name: "web_search",
     description: WEB_SEARCH_DESCRIPTION,
     input: WEB_SEARCH_INPUT,
-    async run({ input, signal }) {
+    async run({ data: input, signal }) {
       const data = await exaPost(
         key,
         "/search",
@@ -77,21 +77,23 @@ export function createExaTools(userKey?: string): ToolDefinition[] {
       );
       const rows = Array.isArray(data?.results) ? data.results : [];
       return {
-        provider: "exa",
-        query: input.query,
-        count: rows.length,
-        results: rows.map((r: any) =>
-          result({
-            title: r?.title,
-            url: r?.url,
-            publishedDate: r?.publishedDate,
-            author: r?.author,
-            excerpts: r?.highlights,
-            summary: r?.summary,
-            text: r?.text,
-            textCap: SEARCH_TEXT_CHARS,
-          }),
-        ),
+        output: {
+          provider: "exa",
+          query: input.query,
+          count: rows.length,
+          results: rows.map((r: any) =>
+            result({
+              title: r?.title,
+              url: r?.url,
+              publishedDate: r?.publishedDate,
+              author: r?.author,
+              excerpts: r?.highlights,
+              summary: r?.summary,
+              text: r?.text,
+              textCap: SEARCH_TEXT_CHARS,
+            }),
+          ),
+        },
       };
     },
   });
@@ -100,7 +102,7 @@ export function createExaTools(userKey?: string): ToolDefinition[] {
     name: "fetch_url",
     description: FETCH_URL_DESCRIPTION,
     input: FETCH_URL_INPUT,
-    async run({ input, signal }) {
+    async run({ data: input, signal }) {
       const max = input.max_characters ?? FETCH_TEXT_CHARS;
       // Exa's /contents takes the whole batch in one call (cached, with live
       // crawl fallback for uncached pages).
@@ -116,19 +118,21 @@ export function createExaTools(userKey?: string): ToolDefinition[] {
       );
       const rows = Array.isArray(data?.results) ? data.results : [];
       return {
-        provider: "exa",
-        count: rows.length,
-        results: rows.map((r: any) =>
-          result({
-            title: r?.title,
-            url: r?.url,
-            publishedDate: r?.publishedDate,
-            author: r?.author,
-            summary: r?.summary,
-            text: r?.text,
-            textCap: max,
-          }),
-        ),
+        output: {
+          provider: "exa",
+          count: rows.length,
+          results: rows.map((r: any) =>
+            result({
+              title: r?.title,
+              url: r?.url,
+              publishedDate: r?.publishedDate,
+              author: r?.author,
+              summary: r?.summary,
+              text: r?.text,
+              textCap: max,
+            }),
+          ),
+        },
       };
     },
   });

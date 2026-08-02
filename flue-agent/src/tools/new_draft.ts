@@ -28,7 +28,7 @@ export const newDraft = (api: Api) =>
         ),
       ),
     }),
-    async run({ input, signal }) {
+    async run({ data: input, signal }) {
       const { name, blank } = input as { name?: string; blank?: boolean };
       const data = (await api.post(
         "/api/script/drafts",
@@ -36,10 +36,12 @@ export const newDraft = (api: Api) =>
         signal,
       )) as unknown as { draft?: DraftMeta; pinnedId?: string };
       return {
-        ok: true,
-        created: data.draft?.name ?? name ?? null,
-        pinned: data.draft?.name ?? null,
-        note: "The new draft is now pinned — edits from here go to it.",
+        output: {
+          ok: true,
+          created: data.draft?.name ?? name ?? null,
+          pinned: data.draft?.name ?? null,
+          note: "The new draft is now pinned — edits from here go to it.",
+        },
       };
     },
   });

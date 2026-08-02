@@ -14,13 +14,15 @@ export const editSoundVersion = (api: Api) =>
       prompt: v.optional(v.string()),
       name: v.optional(v.string()),
     }),
-    async run({ input, signal }) {
+    async run({ data: input, signal }) {
       const { id, v, prompt, name } = input;
-      return await api.req(
-        `/api/sounds/${encodeURIComponent(String(id))}/version/${v}`,
-        "PATCH",
-        { prompt, name },
-        signal,
-      );
+      return {
+        output: await api.req(
+          `/api/sounds/${encodeURIComponent(String(id))}/version/${v}`,
+          "PATCH",
+          { prompt, name },
+          signal,
+        ),
+      };
     },
   });

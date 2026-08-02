@@ -20,7 +20,7 @@ export const saveGenerationToLibrary = (api: Api) =>
         d(v.string(), "Base filename (no extension). Defaults to the generation's filename."),
       ),
     }),
-    async run({ input, signal }) {
-      return await api.post("/api/visual-world/save-to-library", input, signal);
+    async run({ data: input, signal }) {
+      return { output: await api.post("/api/visual-world/save-to-library", input, signal) };
     },
   });

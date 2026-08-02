@@ -16,8 +16,8 @@ export const loadCutIntoEditor = (api: Api) =>
         ),
       ),
     }),
-    async run({ input, signal }) {
+    async run({ data: input, signal }) {
       const { v } = input;
-      return await api.post("/api/timeline/from-cut", { v }, signal);
+      return { output: await api.post("/api/timeline/from-cut", { v }, signal) };
     },
   });

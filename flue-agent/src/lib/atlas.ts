@@ -105,13 +105,15 @@ export function createAtlasTools(userKey?: string): ToolDefinition[] {
         d(v.array(v.pipe(v.string(), v.url())), "Reference image URLs (absolute, publicly fetchable — e.g. /files/... URLs from refUrl fields). Max ~14."),
       ),
     }),
-    async run({ input }) {
+    async run({ data: input }) {
       const refs = input.image_urls?.filter(Boolean) ?? [];
-      return await submit(key, "image", refs.length ? IMAGE_EDIT_MODEL : IMAGE_MODEL, {
-        prompt: input.prompt,
-        aspect_ratio: input.aspect_ratio || "16:9",
-        ...(refs.length ? { images: refs } : {}),
-      });
+      return {
+        output: await submit(key, "image", refs.length ? IMAGE_EDIT_MODEL : IMAGE_MODEL, {
+          prompt: input.prompt,
+          aspect_ratio: input.aspect_ratio || "16:9",
+          ...(refs.length ? { images: refs } : {}),
+        }),
+      };
     },
   });
 
@@ -127,15 +129,17 @@ export function createAtlasTools(userKey?: string): ToolDefinition[] {
       generate_audio: v.optional(d(v.boolean(), "Generate synchronized audio. Default false (dialogue/SFX usually come from the Radio track).")),
       resolution: v.optional(d(v.picklist(["480p", "720p", "1080p-SR"]), "Video resolution. Default 720p.")),
     }),
-    async run({ input }) {
-      return await submit(key, "video", input.image_url ? VIDEO_I2V_MODEL : VIDEO_T2V_MODEL, {
-        prompt: input.prompt,
-        ratio: input.aspect_ratio || (input.image_url ? "adaptive" : "16:9"),
-        duration: input.duration ?? 5,
-        generate_audio: input.generate_audio ?? false,
-        resolution: input.resolution || "720p",
-        ...(input.image_url ? { image: input.image_url } : {}),
-      });
+    async run({ data: input }) {
+      return {
+        output: await submit(key, "video", input.image_url ? VIDEO_I2V_MODEL : VIDEO_T2V_MODEL, {
+          prompt: input.prompt,
+          ratio: input.aspect_ratio || (input.image_url ? "adaptive" : "16:9"),
+          duration: input.duration ?? 5,
+          generate_audio: input.generate_audio ?? false,
+          resolution: input.resolution || "720p",
+          ...(input.image_url ? { image: input.image_url } : {}),
+        }),
+      };
     },
   });
 
@@ -146,7 +150,7 @@ export function createAtlasTools(userKey?: string): ToolDefinition[] {
     input: v.object({
       prediction_id: d(v.string(), "The prediction_id returned by the atlas_generate_* tool."),
     }),
-    async run({ input }): Promise<any> {
+    async run({ data: input }): Promise<any> {
       const res = await atlasFetch(key, `/model/prediction/${encodeURIComponent(input.prediction_id.trim())}`);
       if (!res.ok) {
         const detail = await atlasErrorText(res);
@@ -155,12 +159,12 @@ export function createAtlasTools(userKey?: string): ToolDefinition[] {
       const p = unwrap(await res.json());
       const status = String(p?.status || "processing").toLowerCase();
       if (status === "completed") {
-        return { status, outputs: Array.isArray(p.outputs) ? p.outputs : [] };
+        return { output: { status, outputs: Array.isArray(p.outputs) ? p.outputs : [] } };
       }
       if (status === "failed" || status === "timeout") {
-        return { status, error: String(p?.error || `Atlas prediction ${status}`) };
+        return { output: { status, error: String(p?.error || `Atlas prediction ${status}`) } };
       }
-      return { status };
+      return { output: { status } };
     },
   });
 

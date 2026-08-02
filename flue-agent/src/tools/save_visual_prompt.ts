@@ -23,7 +23,7 @@ export const saveVisualPrompt = (api: Api) =>
         "The FULL prompt library to save (keep the presets you're not changing).",
       ),
     }),
-    async run({ input, signal }) {
-      return await api.req("/api/visual-world/prompts", "PUT", input, signal);
+    async run({ data: input, signal }) {
+      return { output: await api.req("/api/visual-world/prompts", "PUT", input, signal) };
     },
   });

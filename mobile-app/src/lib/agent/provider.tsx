@@ -13,7 +13,7 @@ import { AppState } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { create } from 'zustand';
 import { useQueryClient } from '@tanstack/react-query';
-import { FlueProvider, useFlueAgent } from '@flue/react';
+import { useFlueAgent } from '@flue/react';
 import { createFlueClient } from '@flue/sdk';
 import { API_ORIGIN } from '../env';
 import { getProjectId, useProjectStore } from '../project';
@@ -61,13 +61,12 @@ import {
 // through expo/fetch and inject cookie/project/model headers.
 // ---------------------------------------------------------------------------
 
-// The flue agent registered in flue-agent/src/agents/whistlewood.ts.
-const AGENT_NAME = 'whistlewood';
-
-// Outside a browser the flue baseUrl MUST be absolute — point it at the
-// Worker's /eve proxy. No custom fetch: the SDK captures the (already-patched)
-// global fetch at construction and uses globalThis.fetch for stream reconnects.
-const flueClient = createFlueClient({ baseUrl: `${API_ORIGIN}/eve` });
+// Where the flue worker mounts the agent (flue-agent/src/app.ts), reached
+// through the Worker's /eve proxy — which also picks WHICH flue worker from the
+// chat id's prefix (see chat-engine.ts). Outside a browser the URL MUST be
+// absolute. No custom fetch: the SDK captures the (already-patched) global fetch
+// at construction and uses globalThis.fetch for stream reconnects.
+const AGENT_MOUNT = `${API_ORIGIN}/eve/agents/whistlewood`;
 
 const ConversationsContext = createContext<any>(null);
 
@@ -435,12 +434,11 @@ function AgentSessionRunner({
 }) {
   // flue's durable key. The Worker prepends `${userId}~`; we own the rest.
   const id = `${projectId ?? ''}~${activeId}`;
-  const flueAgent = useFlueAgent({ name: AGENT_NAME, id });
-
-  // `stop` closes over `id`; reach it through a ref so it stays out of the
-  // `agent` memo deps (which key on `flueAgent` only).
-  const idRef = useRef(id);
-  idRef.current = id;
+  // A flue 2 client addresses exactly ONE conversation — there is no
+  // deployment-wide client and no agent-name addressing left, just this URL.
+  // Memoized on the URL because a new client instance replaces the session.
+  const client = useMemo(() => createFlueClient({ url: `${AGENT_MOUNT}/${id}` }), [id]);
+  const flueAgent = useFlueAgent({ client });
 
   // The turn that just settled may have written any project resource (save_shotlist,
   // save_world, a render…). The SSE firehose covers this too, but it is a single
@@ -541,20 +539,22 @@ function AgentSessionRunner({
       send: ({ message = '', images }: { message?: string; images?: any[] } = {}) =>
         flueAgent.sendMessage(message, images?.length ? { images } : undefined),
       // Cancel the in-flight turn. `useFlueAgent` surfaces no stop, but the
-      // underlying client does: `agents.abort` POSTs `/agents/:name/:id/abort`,
-      // which the flue worker threads as an AbortSignal through the running turn
-      // (and its in-flight tool calls) and settles the submission to `aborted`.
-      // The `/eve` proxy prepends `${userId}~`, so `id` matches the one
-      // `useFlueAgent` observes. Swallow errors — the SSE observation settles the
-      // turn regardless. This is also the ONLY recovery path when a turn orphans
-      // (DO evicted / hung tool mid-turn): without it `status` stays "streaming"
-      // forever, the composer stays disabled, and the chat is unrecoverably stuck
-      // on "Thinking…". Mirrors the web adapter (src/components/AgentProvider.jsx).
+      // conversation client does: `abort()` POSTs `<mount>/:id/abort`, which the
+      // flue worker threads as an AbortSignal through the running turn (and its
+      // in-flight tool calls) and settles the submission to `aborted`. It is the
+      // SAME client the hook observes, so there is no id to keep in sync any
+      // more. Swallow errors — the SSE observation settles the turn regardless.
+      // This is also the ONLY recovery path when a turn orphans (DO evicted /
+      // hung tool mid-turn): without it `status` stays "streaming" forever, the
+      // composer stays disabled, and the chat is unrecoverably stuck on
+      // "Thinking…". Mirrors the web adapter (src/components/AgentProvider.jsx).
+      // Note the scope: abort cancels this conversation's in-flight AND queued
+      // work, not one submission.
       stop: () => {
-        flueClient.agents.abort(AGENT_NAME, idRef.current).catch(() => {});
+        client.abort().catch(() => {});
       },
     }),
-    [flueAgent, effectiveStatus, activeId],
+    [flueAgent, effectiveStatus, activeId, client],
   );
 
   // Keep the chat list titled + floated from the live transcript (flue owns the
@@ -623,22 +623,22 @@ export function AgentProvider({ children }: { children: ReactNode }) {
   // instead of once per streamed batch.
   const ready = useAgentBus((s) => !!s.agent);
 
+  // No FlueProvider: flue 2 clients are conversation-scoped, so the runner
+  // builds its own from the active chat's URL.
   return (
-    <FlueProvider client={flueClient}>
-      <ConversationsContext.Provider value={conv}>
-        {conv.hydrated && conv.activeId ? (
-          <AgentSessionRunner
-            key={`${conv.activeId}:${resyncNonce}`}
-            activeId={conv.activeId}
-            projectId={conv.pid ?? null}
-            conv={conv}
-            publish={publish}
-            requestResync={requestResync}
-          />
-        ) : null}
-        {ready ? children : null}
-      </ConversationsContext.Provider>
-    </FlueProvider>
+    <ConversationsContext.Provider value={conv}>
+      {conv.hydrated && conv.activeId ? (
+        <AgentSessionRunner
+          key={`${conv.activeId}:${resyncNonce}`}
+          activeId={conv.activeId}
+          projectId={conv.pid ?? null}
+          conv={conv}
+          publish={publish}
+          requestResync={requestResync}
+        />
+      ) : null}
+      {ready ? children : null}
+    </ConversationsContext.Provider>
   );
 }
 

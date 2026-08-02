@@ -33,7 +33,7 @@ export const recordScriptReview = (api: Api) =>
         "How many distinct issues you raised (0 for a clean pass).",
       ),
     }),
-    async run({ input, signal }) {
+    async run({ data: input, signal }) {
       const { specialist, summary, findings } = input as {
         specialist: string;
         summary: string;
@@ -45,9 +45,11 @@ export const recordScriptReview = (api: Api) =>
         signal,
       )) as unknown as { entry?: { draftName?: string } };
       return {
-        ok: true,
-        recorded: specialist,
-        draft: res?.entry?.draftName ?? null,
-      } as Json;
+        output: {
+          ok: true,
+          recorded: specialist,
+          draft: res?.entry?.draftName ?? null,
+        } as Json,
+      };
     },
   });

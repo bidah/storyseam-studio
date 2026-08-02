@@ -4,13 +4,17 @@
 // terminal result, then reads the conversation history back to see which tools
 // the agent actually called. Scoring in the .eval.ts files asserts on the
 // returned text + the set of tool names.
-import { createFlueClient, type AgentPromptImage } from "@flue/sdk";
+import { createFlueClient, type DeliveredAttachment } from "@flue/sdk";
 
+// The agent's MOUNT, not a deployment base: a flue 2 client addresses exactly
+// one conversation URL, so the base and the agent name are one value now.
+// e.g. FLUE_BASE_URL=https://…/eve  →  https://…/eve/agents/whistlewood
 export const FLUE_BASE_URL = process.env.FLUE_BASE_URL ?? "";
 export const HAS_AGENT = FLUE_BASE_URL.length > 0;
 
 // The agent to prompt (matches flue-agent/src/agents/whistlewood.ts).
 const AGENT_NAME = process.env.FLUE_AGENT_NAME ?? "whistlewood";
+const AGENT_MOUNT = `${FLUE_BASE_URL.replace(/\/$/, "")}/agents/${AGENT_NAME}`;
 
 // The instance id the worker builds is `${userId}~${projectId}~${chatId}`
 // (flue-agent/src/lib/instance-id.ts). For evals we hold userId + projectId
@@ -26,12 +30,9 @@ function authHeaders(): Record<string, string> {
   return i > 0 ? { [raw.slice(0, i).trim()]: raw.slice(i + 1).trim() } : {};
 }
 
-let _client: ReturnType<typeof createFlueClient> | null = null;
-function client() {
-  if (!_client) {
-    _client = createFlueClient({ baseUrl: FLUE_BASE_URL, headers: authHeaders() });
-  }
-  return _client;
+// One client per conversation, so it is built per case rather than cached.
+function client(id: string) {
+  return createFlueClient({ url: `${AGENT_MOUNT}/${id}`, headers: authHeaders() });
 }
 
 // Recursively collect every `toolName` string in a history snapshot — tolerant
@@ -55,30 +56,63 @@ let chatSeq = 0;
 export interface AgentRun {
   text: string;
   tools: string[];
-  model: { provider: string; id: string };
+  /**
+   * Terminal outcome of this run's submission. Flue 2 no longer reports the
+   * model it ran on to clients (message metadata is entirely agent-authored;
+   * the runtime stamps nothing), so this is what "the turn really ran" asserts
+   * against now — read it from Workers Logs if you need the model itself.
+   */
+  outcome: string | undefined;
   /** True if the agent called `toolName` at any point in the turn. */
   usedTool(toolName: string): boolean;
   /** True if any called tool name matches `re`. */
   usedToolMatching(re: RegExp): boolean;
 }
 
+// Every text part of the last assistant message, joined.
+function lastAssistantText(snapshot: unknown): string {
+  const messages = (snapshot as { messages?: Array<Record<string, unknown>> })?.messages ?? [];
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const m = messages[i];
+    if (m?.role !== "assistant") continue;
+    const parts = (m.parts as Array<Record<string, unknown>>) ?? [];
+    return parts
+      .filter((p) => p?.type === "text" && typeof p.text === "string")
+      .map((p) => p.text as string)
+      .join("");
+  }
+  return "";
+}
+
 // Prompt the agent once on a fresh instance and return its text + tools.
+//
+// Sends are fire-and-forget in flue 2 — `send()` returns at durable admission,
+// so the reply is read from the conversation afterwards rather than off the
+// send's own result. `wait()` is what blocks until the submission settles, and
+// it REJECTS on a failed or aborted turn, which is the behaviour an eval wants.
 export async function runAgent(
   message: string,
-  images?: AgentPromptImage[],
+  images?: DeliveredAttachment[],
 ): Promise<AgentRun> {
   const chatId = `eval-${Date.now()}-${chatSeq++}`;
   const id = `${EVAL_USER}~${EVAL_PROJECT}~${chatId}`;
-  const c = client();
+  const c = client(id);
 
-  const res = await c.agents.prompt(AGENT_NAME, id, { message, images });
-  const snapshot = await c.agents.history(AGENT_NAME, id).catch(() => null);
+  const admission = await c.send({
+    message: { kind: "user", body: message, ...(images?.length ? { attachments: images } : {}) },
+  });
+  await c.wait(admission);
+  const snapshot = await c.history().catch(() => null);
   const tools = [...collectToolNames(snapshot)];
 
+  const settlement = (
+    snapshot as { settlements?: Array<{ submissionId?: string; outcome?: string }> } | null
+  )?.settlements?.find((s) => s.submissionId === admission.submissionId);
+
   return {
-    text: res.result.text ?? "",
+    text: lastAssistantText(snapshot),
     tools,
-    model: res.result.model,
+    outcome: settlement?.outcome,
     usedTool: (name) => tools.includes(name),
     usedToolMatching: (re) => tools.some((t) => re.test(t)),
   };

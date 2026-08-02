@@ -28,11 +28,13 @@ export const readDocument = (api: Api) =>
         ),
       ),
     }),
-    async run({ input, signal }) {
-      return await api.post(
-        "/api/extract",
-        { url: input.url, offset: input.offset, limit: input.limit },
-        signal,
-      );
+    async run({ data: input, signal }) {
+      return {
+        output: await api.post(
+          "/api/extract",
+          { url: input.url, offset: input.offset, limit: input.limit },
+          signal,
+        ),
+      };
     },
   });

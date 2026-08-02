@@ -18,11 +18,13 @@ export const addWorldLocation = (api: Api) =>
         d(v.string(), "What the place looks like — keep it consistent across scenes."),
       ),
     }),
-    async run({ input, signal }) {
-      return await api.post(
-        "/api/world/location",
-        { ...input, name: input.name || input.slug },
-        signal,
-      );
+    async run({ data: input, signal }) {
+      return {
+        output: await api.post(
+          "/api/world/location",
+          { ...input, name: input.name || input.slug },
+          signal,
+        ),
+      };
     },
   });

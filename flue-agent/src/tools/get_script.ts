@@ -19,16 +19,18 @@ export const getScript = (api: Api) =>
         proposal?: unknown;
       };
       return {
-        title: data.title ?? "",
-        doc: data.doc ?? null,
-        updatedAt: data.updatedAt ?? null,
-        pendingProposal: !!data.proposal,
-        pinnedDraft: data.draftName ?? null,
-        drafts: (data.drafts ?? []).map((d) => ({
-          name: d.name ?? "",
-          pinned: !!d.pinned,
-          lineCount: d.lineCount ?? 0,
-        })),
+        output: {
+          title: data.title ?? "",
+          doc: data.doc ?? null,
+          updatedAt: data.updatedAt ?? null,
+          pendingProposal: !!data.proposal,
+          pinnedDraft: data.draftName ?? null,
+          drafts: (data.drafts ?? []).map((d) => ({
+            name: d.name ?? "",
+            pinned: !!d.pinned,
+            lineCount: d.lineCount ?? 0,
+          })),
+        },
       };
     },
   });

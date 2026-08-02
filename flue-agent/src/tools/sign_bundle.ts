@@ -16,12 +16,14 @@ export const signBundle = (api: Api) =>
         d(v.string(), "Name of the signer (required when signed=true)."),
       ),
     }),
-    async run({ input, signal }) {
+    async run({ data: input, signal }) {
       const { bundle, section, signed, signedBy } = input;
-      return await api.post(
-        "/api/episode/sign",
-        { bundle, section, signed, signedBy },
-        signal,
-      );
+      return {
+        output: await api.post(
+          "/api/episode/sign",
+          { bundle, section, signed, signedBy },
+          signal,
+        ),
+      };
     },
   });

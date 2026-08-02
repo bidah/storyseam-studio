@@ -53,8 +53,13 @@ describe("writeSelectedModel / readSelectedModel", () => {
 
   it("persists and reads back a whitelisted selection", () => {
     const sql = makeSql();
-    writeSelectedModel(sql, "anthropic/claude-sonnet-5");
-    expect(readSelectedModel(sql)).toBe("anthropic/claude-sonnet-5");
+    // Any allowed specifier that ISN'T the default, so a pass can't be the
+    // fallback in disguise. (This used to name an `anthropic/*` model; those
+    // were removed from ALLOWED_MODELS — see the comment block in
+    // flue-agent/src/lib/models.ts — and the test has been red since.)
+    const pick = [...ALLOWED_MODELS].find((m) => m !== DEFAULT_MODEL) as string;
+    writeSelectedModel(sql, pick);
+    expect(readSelectedModel(sql)).toBe(pick);
   });
 
   it("coerces an un-whitelisted write down to the default (never pushes arbitrary models)", () => {

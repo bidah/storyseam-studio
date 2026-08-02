@@ -23,11 +23,11 @@ export const attachCharacterSheet = (api: Api) =>
         d(v.boolean(), "Set true to unlink the character's current sheet image."),
       ),
     }),
-    async run({ input, signal }) {
+    async run({ data: input, signal }) {
       const { characterId, rel, clear } = input;
       const path = `/api/world/character/${encodeURIComponent(String(characterId))}`;
       if (clear || !rel) {
-        return await api.req(path, "PUT", { sheetImage: null }, signal);
+        return { output: await api.req(path, "PUT", { sheetImage: null }, signal) };
       }
       // Resolve the rel against the asset library so the World tab gets a full
       // { rel, url, thumb, name } (rendered without a second lookup) — and so we
@@ -43,13 +43,15 @@ export const attachCharacterSheet = (api: Api) =>
           `No library image with rel "${rel}". Call list_library to see valid rel paths.`,
         );
       }
-      return await api.req(
-        path,
-        "PUT",
-        {
-          sheetImage: { rel: im.rel, url: im.url, thumb: im.thumb, name: im.name },
-        },
-        signal,
-      );
+      return {
+        output: await api.req(
+          path,
+          "PUT",
+          {
+            sheetImage: { rel: im.rel, url: im.url, thumb: im.thumb, name: im.name },
+          },
+          signal,
+        ),
+      };
     },
   });

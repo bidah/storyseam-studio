@@ -8,7 +8,8 @@ import {
   useRef,
   useState,
 } from "react";
-import { useFlueAgent, useFlueClient } from "@flue/react";
+import { useFlueAgent } from "@flue/react";
+import { createFlueClient } from "@flue/sdk";
 import {
   activeChatId,
   chatsForProject,
@@ -47,8 +48,10 @@ import { getProjectId, onProjectChange } from "@/lib/projectFetch";
 // new conversation. `ConversationsContext` (the history manager) never remounts.
 // ---------------------------------------------------------------------------
 
-// The flue agent registered in flue-agent/src/agents/whistlewood.ts.
-const AGENT_NAME = "whistlewood";
+// Where the flue worker mounts the agent (flue-agent/src/app.ts). The
+// shot-studio-uploads worker proxies `/eve/*` through to it and picks WHICH flue
+// worker from the chat id's prefix — see src/lib/chatEngine.js.
+const AGENT_MOUNT = "/eve/agents/whistlewood";
 
 const AgentContext = createContext(null);
 const ConversationsContext = createContext(null);
@@ -308,13 +311,14 @@ function useConversationManager() {
 function AgentSessionRunner({ activeId, projectId, conv, publish }) {
   // flue's durable key. The worker prepends `${userId}~`; we own the rest.
   const id = `${projectId ?? ""}~${activeId}`;
-  const flueAgent = useFlueAgent({ name: AGENT_NAME, id });
-  const client = useFlueClient();
-
-  // `stop` closes over `id`; reach it through a ref so it can stay out of the
-  // `agent` memo deps (which key on the stable snapshot fields only, per below).
-  const idRef = useRef(id);
-  idRef.current = id;
+  // A flue 2 client addresses exactly ONE conversation — there is no
+  // deployment-wide client and no agent-name addressing left, just this URL.
+  // Memoized on the URL because a new client instance replaces the session.
+  const client = useMemo(
+    () => createFlueClient({ url: `${AGENT_MOUNT}/${id}` }),
+    [id],
+  );
+  const flueAgent = useFlueAgent({ client });
 
   // `useFlueAgent()` returns a FRESH wrapper object every render — it spreads the
   // useSyncExternalStore snapshot and rebinds `sendMessage` (`.bind()`) each time.
@@ -342,13 +346,14 @@ function AgentSessionRunner({ activeId, projectId, conv, publish }) {
       send: ({ message = "", images } = {}) =>
         sendRef.current(message, images?.length ? { images } : undefined),
       // Cancel the in-flight turn. `useFlueAgent` doesn't surface a stop, but the
-      // underlying client does: `agents.abort` POSTs `/agents/:name/:id/abort`,
-      // which the flue worker threads as an AbortSignal through the running turn
-      // (and its in-flight tool calls). The `/eve` proxy prepends `${userId}~`,
-      // so `id` matches the one `useFlueAgent` observes. Swallow errors — the
-      // SSE observation will settle the turn regardless.
+      // conversation client does: `abort()` POSTs `<mount>/:id/abort`, which the
+      // flue worker threads as an AbortSignal through the running turn (and its
+      // in-flight tool calls). It is the SAME client the hook observes, so there
+      // is no id to keep in sync any more. Swallow errors — the SSE observation
+      // will settle the turn regardless. Note the scope: abort cancels this
+      // conversation's in-flight AND queued work, not one submission.
       stop: () => {
-        client.agents.abort(AGENT_NAME, idRef.current).catch(() => {});
+        client.abort().catch(() => {});
       },
     }),
     [client, flueAgent.messages, flueAgent.status, flueAgent.error, flueAgent.historyReady],

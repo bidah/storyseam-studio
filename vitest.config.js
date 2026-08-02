@@ -46,14 +46,22 @@ export default defineConfig({
       },
       {
         resolve: {
-          alias: {
-            // @flue/runtime isn't a normal install (the flue CLI provides it at
-            // build time), so stub the two thin factories the tools use. See
-            // test/flue/_stubs/flue-runtime.ts.
-            "@flue/runtime": fileURLToPath(
-              new URL("./test/flue/_stubs/flue-runtime.ts", import.meta.url),
-            ),
-          },
+          alias: [
+            // @flue/runtime is a Worker-target package (it imports
+            // `cloudflare:workers` and is bundled by the flue Vite plugin), so
+            // it doesn't load under Vitest — stub the thin factories and hooks
+            // the tools use. See test/flue/_stubs/flue-runtime.ts.
+            //
+            // Matched as a REGEX so the subpaths land on the stub too:
+            // lib/sandbox.ts imports `@flue/runtime/cloudflare`, which a bare
+            // string alias left unresolved (sandbox.test.ts never loaded).
+            {
+              find: /^@flue\/runtime(\/.*)?$/,
+              replacement: fileURLToPath(
+                new URL("./test/flue/_stubs/flue-runtime.ts", import.meta.url),
+              ),
+            },
+          ],
         },
         test: {
           name: "flue",
@@ -89,8 +97,6 @@ export default defineConfig({
         "worker/src/lib/proxy.js",
         "worker/src/lib/broadcast.js",
         "worker/src/lib/upload-snippet.js",
-        // The flue MCP client — needs a live Higgsfield MCP; covered via evals.
-        "flue-agent/src/lib/higgsfield.ts",
       ],
       thresholds: {
         // Lock in the coverage floor for the logic layer so a regression fails

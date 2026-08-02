@@ -23,12 +23,14 @@ export const trimVideo = (api: Api) =>
         "Trim end in seconds; must be at least 0.1s after `from`",
       ),
     }),
-    async run({ input, signal }) {
+    async run({ data: input, signal }) {
       const { bundle, sourceFile, from, to } = input;
-      return await api.post(
-        "/api/episode/trim",
-        { bundle, sourceFile, from, to },
-        signal,
-      );
+      return {
+        output: await api.post(
+          "/api/episode/trim",
+          { bundle, sourceFile, from, to },
+          signal,
+        ),
+      };
     },
   });

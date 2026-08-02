@@ -75,12 +75,14 @@ export const saveWorld = (api: Api) =>
       ),
       source: v.optional(d(v.string(), 'Provenance tag. Defaults to "agent".')),
     }),
-    async run({ input, signal }) {
+    async run({ data: input, signal }) {
       const { title, logline, map, depth, characters, source } = input;
-      return await api.post(
-        "/api/world",
-        { title, logline, map, depth, characters, source: source || "agent" },
-        signal,
-      );
+      return {
+        output: await api.post(
+          "/api/world",
+          { title, logline, map, depth, characters, source: source || "agent" },
+          signal,
+        ),
+      };
     },
   });

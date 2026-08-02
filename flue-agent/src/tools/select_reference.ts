@@ -16,12 +16,14 @@ export const selectReference = (api: Api) =>
       ),
       selected: d(v.boolean(), "true to add, false to remove."),
     }),
-    async run({ input, signal }) {
+    async run({ data: input, signal }) {
       const { bundle, rel, selected } = input;
-      return await api.post(
-        "/api/episode/select",
-        { bundle, rel, selected },
-        signal,
-      );
+      return {
+        output: await api.post(
+          "/api/episode/select",
+          { bundle, rel, selected },
+          signal,
+        ),
+      };
     },
   });

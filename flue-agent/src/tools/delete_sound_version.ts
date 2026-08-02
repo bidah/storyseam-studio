@@ -34,7 +34,7 @@ export const deleteSoundVersion = (api: Api) =>
         ),
       ),
     }),
-    async run({ input, signal }) {
+    async run({ data: input, signal }) {
       const { id, v: version, approval_token } = input;
       const del = (trackId: unknown, n: unknown) =>
         api.req(
@@ -51,7 +51,7 @@ export const deleteSoundVersion = (api: Api) =>
           OP,
           signal,
         );
-        return await del(params?.id, params?.v);
+        return { output: await del(params?.id, params?.v) };
       }
 
       // Read the track so the card carries its real name and version count. A
@@ -73,23 +73,25 @@ export const deleteSoundVersion = (api: Api) =>
       }
       const last = versions.length <= 1;
 
-      return await gateAction(
-        api,
-        {
-          op: OP,
-          summary: last
-            ? `Delete version ${version} of "${track.name ?? id}" — it is the track's ONLY version, so the whole track goes with it. The audio file is deleted and cannot be restored.`
-            : `Delete version ${version} of "${track.name ?? id}", leaving ${versions.length - 1} version(s). The audio file is deleted and cannot be restored.`,
-          params: { id: String(id), v: Number(version) },
-          facts: {
-            Track: String(track.name ?? id),
-            ...(track.kind ? { Kind: String(track.kind) } : {}),
-            "Version to delete": String(version),
-            "Versions after": String(versions.length - 1),
-            Reversible: "No — the audio file is removed from storage",
+      return {
+        output: await gateAction(
+          api,
+          {
+            op: OP,
+            summary: last
+              ? `Delete version ${version} of "${track.name ?? id}" — it is the track's ONLY version, so the whole track goes with it. The audio file is deleted and cannot be restored.`
+              : `Delete version ${version} of "${track.name ?? id}", leaving ${versions.length - 1} version(s). The audio file is deleted and cannot be restored.`,
+            params: { id: String(id), v: Number(version) },
+            facts: {
+              Track: String(track.name ?? id),
+              ...(track.kind ? { Kind: String(track.kind) } : {}),
+              "Version to delete": String(version),
+              "Versions after": String(versions.length - 1),
+              Reversible: "No — the audio file is removed from storage",
+            },
           },
-        },
-        signal,
-      );
+          signal,
+        ),
+      };
     },
   });

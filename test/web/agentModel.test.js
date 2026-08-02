@@ -69,10 +69,15 @@ describe("get/set selection", () => {
   });
 
   it("switching updates the id, the specifier, and localStorage", () => {
-    setAgentModel("claude-sonnet-5");
-    expect(getAgentModel()).toBe("claude-sonnet-5");
-    expect(getAgentModelSpecifier()).toBe("anthropic/claude-sonnet-5");
-    expect(localStorage.getItem("shot-studio:agentModel")).toBe("claude-sonnet-5");
+    // Any registered model that ISN'T the default, so a pass can't be the
+    // fallback in disguise. (This used to name `claude-sonnet-5`; the
+    // `anthropic/*` models were removed from the registry — see the comment
+    // block in flue-agent/src/lib/models.ts — and the test has been red since.)
+    const pick = AGENT_MODELS.find((m) => m.id !== DEFAULT_AGENT_MODEL);
+    setAgentModel(pick.id);
+    expect(getAgentModel()).toBe(pick.id);
+    expect(getAgentModelSpecifier()).toBe(pick.spec);
+    expect(localStorage.getItem("shot-studio:agentModel")).toBe(pick.id);
   });
 
   it("ignores an unknown id (never pushes an arbitrary model)", () => {

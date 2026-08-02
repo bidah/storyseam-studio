@@ -24,7 +24,7 @@ export const addWorldCharacter = (api: Api) =>
       voice: v.optional(d(v.string(), "Optional voice description (tone/accent) to guide casting.")),
       appearance: v.optional(d(v.string(), "Optional appearance note.")),
     }),
-    async run({ input, signal }) {
-      return await api.post("/api/world/character", input, signal);
+    async run({ data: input, signal }) {
+      return { output: await api.post("/api/world/character", input, signal) };
     },
   });

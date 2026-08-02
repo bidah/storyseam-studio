@@ -12,7 +12,7 @@ export const editTimeline = (api: Api) =>
     // and the op list the route accepts cannot drift apart.
     description: timelineSchema.description,
     input: inputSchema(timelineSchema),
-    async run({ input, signal }) {
-      return await api.post("/api/timeline/edit", { ops: input.ops }, signal);
+    async run({ data: input, signal }) {
+      return { output: await api.post("/api/timeline/edit", { ops: input.ops }, signal) };
     },
   });

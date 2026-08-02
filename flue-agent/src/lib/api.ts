@@ -1,7 +1,7 @@
 // Project-scoped, USER-SCOPED client for the shot-studio-uploads Worker JSON
 // API. Ported from eve's agent/lib/api.ts, but the project id and user id are
 // injected via CLOSURE (from the decoded instance id) instead of read from
-// durable per-session state — because a flue tool's `run({ input, signal })`
+// durable per-session state — because a flue tool's `run({ data, signal })`
 // gets no ambient context.
 //
 // Every request carries a signed identity header (lib/agent-identity.ts). It
@@ -16,8 +16,10 @@
 
 import { mintAgentAssertion, agentSecret, AGENT_HEADER, AGENT_CHAT_HEADER } from "./agent-identity.js";
 
-// JSON-serializable value — flue tools must return one. Structurally identical
-// to flue's JsonValue, so tool `run` returns are assignable.
+// JSON-serializable value — what a flue tool puts in its `{ output }` envelope.
+// Structurally identical to flue's JsonValue, so tool `run` returns are
+// assignable. A top-level array is legal here BECAUSE of the envelope: a bare
+// array return throws in flue 2, a `{ output: [...] }` one does not.
 export type Json =
   | string
   | number

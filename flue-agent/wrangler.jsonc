@@ -1,16 +1,26 @@
 {
   "$schema": "./node_modules/wrangler/config-schema.json",
-  "name": "shot-studio-flue",
+  // A SECOND worker, deployed alongside the flue-1 `shot-studio-flue`, which
+  // stays live and untouched. flue 2 stores persisted schema version 8 and the
+  // runtime REJECTS a version-5 (beta) database before any application code
+  // runs — there is no in-place upgrade, so upgrading the old worker would
+  // destroy every existing chat transcript. Instead the /eve proxy routes each
+  // chat to its own engine (worker/src/routes/chats.js `engine` column), old
+  // chats keep working on v1, and rollback is a flag flip rather than a
+  // migration. See plans/flue-2-migration.md §1 option C.
+  "name": "shot-studio-flue-v2",
+  // Flue 2 validates this at build time: minimum 2026-04-01.
   "compatibility_date": "2026-07-21",
   "compatibility_flags": ["nodejs_compat"],
   // Flue generates the Durable Object classes + FLUE_* bindings; we only declare
-  // migrations for them. `whistlewood.ts` -> class FlueWhistlewoodAgent.
-  // `FlueRegistry` is Flue-internal and must be in the first migration.
+  // migrations for them. `Whistlewood.agentName = "whistlewood"` -> class
+  // FlueWhistlewoodAgent. `FlueRegistry` is GONE in flue 2 (it indexed workflow
+  // runs) — a fresh worker must not declare it at all.
   // Never reorder/rewrite deployed entries; append a new tag when adding agents.
   "migrations": [
     {
       "tag": "v1",
-      "new_sqlite_classes": ["FlueRegistry", "FlueWhistlewoodAgent"]
+      "new_sqlite_classes": ["FlueWhistlewoodAgent"]
     }
   ],
   // Workers AI binding — powers the `cloudflare/@cf/…` chat models (Kimi K2.6 et

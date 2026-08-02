@@ -17,7 +17,7 @@ export const pinDraft = (api: Api) =>
     input: v.object({
       name: d(v.string(), "The exact draft name to pin (see list_drafts)."),
     }),
-    async run({ input, signal }) {
+    async run({ data: input, signal }) {
       const { name } = input as { name: string };
       const { drafts = [] } = (await api.get(
         "/api/script/drafts",
@@ -29,13 +29,15 @@ export const pinDraft = (api: Api) =>
         drafts.find((dr) => dr.name.toLowerCase() === name.toLowerCase());
       if (!target) {
         return {
-          ok: false,
-          error: `No draft named "${name}". Available: ${
-            drafts.map((dr) => dr.name).join(", ") || "(none)"
-          }.`,
-        } as Json;
+          output: {
+            ok: false,
+            error: `No draft named "${name}". Available: ${
+              drafts.map((dr) => dr.name).join(", ") || "(none)"
+            }.`,
+          } as Json,
+        };
       }
       await api.post("/api/script/pin", { id: target.id }, signal);
-      return { ok: true, pinned: target.name } as Json;
+      return { output: { ok: true, pinned: target.name } as Json };
     },
   });

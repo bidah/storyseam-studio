@@ -34,7 +34,7 @@ export const appendScript = (api: Api) =>
         "Ordered screenplay lines to add after the current last line.",
       ),
     }),
-    async run({ input, signal }) {
+    async run({ data: input, signal }) {
       const { summary, elements } = input as {
         summary?: string;
         elements: ScriptElement[];
@@ -62,11 +62,13 @@ export const appendScript = (api: Api) =>
         signal,
       );
       return {
-        ok: true,
-        proposed: true,
-        added: elements.length,
-        lineCount: combined.length,
-        hint: "Staged as a proposal — tell the user what you added and ask if they want it applied. If they confirm, call apply_script_proposal; otherwise they can Accept/Reject (per line) on the Script tab.",
+        output: {
+          ok: true,
+          proposed: true,
+          added: elements.length,
+          lineCount: combined.length,
+          hint: "Staged as a proposal — tell the user what you added and ask if they want it applied. If they confirm, call apply_script_proposal; otherwise they can Accept/Reject (per line) on the Script tab.",
+        },
       };
     },
   });

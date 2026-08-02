@@ -30,11 +30,11 @@ export const attachCharacterVoice = (api: Api) =>
         d(v.boolean(), "Set true to unlink the character's current voice."),
       ),
     }),
-    async run({ input, signal }) {
+    async run({ data: input, signal }) {
       const { characterId, trackId, v: version_, clear } = input;
       const path = `/api/world/character/${encodeURIComponent(String(characterId))}`;
       if (clear || !trackId) {
-        return await api.req(path, "PUT", { voiceRef: null }, signal);
+        return { output: await api.req(path, "PUT", { voiceRef: null }, signal) };
       }
       // Resolve + validate the take against the Sound Studio so we snapshot the
       // real playable url and never attach an unrendered or non-voice track.
@@ -72,18 +72,20 @@ export const attachCharacterVoice = (api: Api) =>
           `Voice take ${trackId} v${version.v} isn't liked — like it first (like_sound_version) or pick a liked take.`,
         );
       }
-      return await api.req(
-        path,
-        "PUT",
-        {
-          voiceRef: {
-            trackId: track.id,
-            v: version.v,
-            name: track.name || version.name || "Voice",
-            url: version.url,
+      return {
+        output: await api.req(
+          path,
+          "PUT",
+          {
+            voiceRef: {
+              trackId: track.id,
+              v: version.v,
+              name: track.name || version.name || "Voice",
+              url: version.url,
+            },
           },
-        },
-        signal,
-      );
+          signal,
+        ),
+      };
     },
   });

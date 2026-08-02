@@ -7,6 +7,6 @@ export const getMultishot = (api: Api) =>
     description:
       "Get the multishot experiment manifest (shots 1–4 combined clip experiment) with any generated media URLs.",
     async run({ signal }) {
-      return await api.get("/api/multishot", signal);
+      return { output: await api.get("/api/multishot", signal) };
     },
   });

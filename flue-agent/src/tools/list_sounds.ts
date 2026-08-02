@@ -7,6 +7,6 @@ export const listSounds = (api: Api) =>
     description:
       "List every Sound Studio track (newest first) with its versions, each version's prompt, status (pending|ready), like flag, and media URL. Use to see what audio exists before creating or rendering.",
     async run({ signal }) {
-      return await api.get("/api/sounds", signal);
+      return { output: await api.get("/api/sounds", signal) };
     },
   });

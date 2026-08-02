@@ -38,7 +38,7 @@ export const saveShotlist = (api: Api) =>
         ),
       },
     }),
-    async run({ input, signal }) {
+    async run({ data: input, signal }) {
       const { shots, source, mode, approval_token } = input;
       const writeMode = mode === "append" ? "append" : "replace";
 
@@ -49,7 +49,7 @@ export const saveShotlist = (api: Api) =>
       // giant payload never has to survive a second trip through the model.)
       if (approval_token) {
         const params = await consumeApproval(api, approval_token, OP, signal);
-        return await api.post("/api/shotlist", params, signal);
+        return { output: await api.post("/api/shotlist", params, signal) };
       }
 
       // `shots` is optional in the schema only so the CONFIRMING call can omit
@@ -86,23 +86,25 @@ export const saveShotlist = (api: Api) =>
         );
         const had = current?.shots?.length ?? 0;
         if (had > 0 && incoming.length < had) {
-          return await gateAction(
-            api,
-            {
-              op: OP,
-              summary: `Replace the whole shot list: ${had} shots become ${incoming.length}, so ${had - incoming.length} are deleted along with any storyboard stills keyed to them.`,
-              params: body,
-              facts: {
-                "Shots now": String(had),
-                "Shots after": String(incoming.length),
-                "Shots deleted": String(had - incoming.length),
+          return {
+            output: await gateAction(
+              api,
+              {
+                op: OP,
+                summary: `Replace the whole shot list: ${had} shots become ${incoming.length}, so ${had - incoming.length} are deleted along with any storyboard stills keyed to them.`,
+                params: body,
+                facts: {
+                  "Shots now": String(had),
+                  "Shots after": String(incoming.length),
+                  "Shots deleted": String(had - incoming.length),
+                },
               },
-            },
-            signal,
-          );
+              signal,
+            ),
+          };
         }
       }
 
-      return await api.post("/api/shotlist", body, signal);
+      return { output: await api.post("/api/shotlist", body, signal) };
     },
   });

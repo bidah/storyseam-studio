@@ -1,15 +1,21 @@
 // Per-conversation sandbox selection: what the agent's bash/skill execution runs
 // on (Settings › Sandbox).
 //
-//   "memory"  — flue's built-in `just-bash` virtual filesystem. DEFAULT. Rebuilt
-//               EMPTY on every harness init, i.e. every turn (and every durability
-//               retry within a turn), so a file written in one message is gone by
-//               the next. Free, instant, and enough for the vast majority of the
+//   "memory"  — a `just-bash` virtual filesystem. DEFAULT. Rebuilt EMPTY on
+//               every harness init, i.e. every turn (and every durability retry
+//               within a turn), so a file written in one message is gone by the
+//               next. Free, instant, and enough for the vast majority of the
 //               pipeline, which moves state through the typed tools (D1) and R2
 //               rather than through files.
 //   "daytona" — a real Linux container that PERSISTS across turns (lib/sandbox.ts).
 //               Opt-in because it costs money per conversation and adds a
 //               cold-start on the first message.
+//
+// Neither is implicit any more: flue 2 gives an agent with no `useSandbox()` no
+// filesystem AND no read/write/edit/bash/grep/glob tools at all, so "memory" is
+// a factory we declare like any other (see lib/sandbox.ts). This is also the
+// escalation ledger — the `upgrade_sandbox` tool writes "daytona" here, and the
+// Settings toggle overwrites it on the next send, so the author stays in charge.
 //
 // Default is deliberately "memory": the app works well without Daytona, so a
 // container is only spun up for conversations the user has explicitly switched

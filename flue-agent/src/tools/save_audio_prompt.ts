@@ -12,13 +12,15 @@ export const saveAudioPrompt = (api: Api) =>
       id: d(v.pipe(v.string(), v.minLength(1)), "Shot id, e.g. shot03."),
       text: d(v.string(), "The full replacement seed-audio prompt text for this shot."),
     }),
-    async run({ input, signal }) {
+    async run({ data: input, signal }) {
       const { id, text } = input;
-      return await api.req(
-        `/api/shots/${encodeURIComponent(String(id))}/audio`,
-        "PUT",
-        { text },
-        signal,
-      );
+      return {
+        output: await api.req(
+          `/api/shots/${encodeURIComponent(String(id))}/audio`,
+          "PUT",
+          { text },
+          signal,
+        ),
+      };
     },
   });

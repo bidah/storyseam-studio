@@ -1,5 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Crypto from 'expo-crypto';
+import { newChatPrefix } from './chat-engine';
 
 // Persistent chat history for the studio agent (port of web src/lib/chat-store.js).
 //
@@ -63,7 +64,10 @@ function pidKey(pid: string | null): string {
 export function makeChat(projectId: string | null = null, title = 'New chat'): Chat {
   const now = Date.now();
   return {
-    id: Crypto.randomUUID(),
+    // The id carries which agent engine this conversation lives on, for life —
+    // the /eve proxy routes on the prefix and never looks anything up. See
+    // chat-engine.ts.
+    id: `${newChatPrefix()}${Crypto.randomUUID()}`,
     projectId: projectId ?? null,
     title,
     createdAt: now,

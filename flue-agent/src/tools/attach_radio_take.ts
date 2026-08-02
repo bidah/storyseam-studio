@@ -13,13 +13,15 @@ export const attachRadioTake = (api: Api) =>
       trackId: d(v.pipe(v.string(), v.minLength(1)), "The Sound Studio track id of the rendered voice take, e.g. 'trk_7'."),
       v: d(v.pipe(v.number(), v.integer(), v.minValue(1)), "The version number of that track that was rendered + attached."),
     }),
-    async run({ input, signal }) {
+    async run({ data: input, signal }) {
       const { lineId, trackId, v } = input;
-      return await api.req(
-        `/api/radio/take/${encodeURIComponent(String(lineId))}`,
-        "PUT",
-        { trackId, v },
-        signal,
-      );
+      return {
+        output: await api.req(
+          `/api/radio/take/${encodeURIComponent(String(lineId))}`,
+          "PUT",
+          { trackId, v },
+          signal,
+        ),
+      };
     },
   });

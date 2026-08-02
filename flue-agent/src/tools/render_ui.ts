@@ -2,7 +2,7 @@ import { defineTool } from "@flue/runtime";
 import { createParser } from "@openuidev/lang-core";
 import * as v from "valibot";
 import { d } from "./_util.js";
-import schema from "../lib/genui-schema.json" with { type: "json" };
+import schema from "../lib/genui-schema.json";
 
 // Draw an interactive card in the chat — the agent's ONE way of asking the
 // author anything, and the successor to eve's `ask_question`.
@@ -51,7 +51,7 @@ export const renderUi = () =>
         "The openui-lang program. One `identifier = Expression` statement per line, `root = Card([...])` FIRST, positional arguments only. Emit it bare — no markdown code fence, no commentary around it.",
       ),
     }),
-    async run({ input }) {
+    async run({ data: input }) {
       // Models fence the program about a third of the time however firmly the
       // prompt says not to. The clients strip it too (cleanLang), but stripping
       // here as well means the parse below sees what they will see.
@@ -72,32 +72,36 @@ export const renderUi = () =>
       // shipping a card that shows the author an error box.
       if (errors.length || unresolved.length) {
         return {
-          presented: false,
-          errors: errors.slice(0, MAX_ERRORS).map(describe),
-          ...(unresolved.length
-            ? {
-                unresolved,
-                unresolvedNote:
-                  "These names are referenced but never defined. Add a `name = …` statement for each.",
-              }
-            : {}),
-          note: "This program did NOT render — nothing was shown to the author. Fix the problems above and call render_ui once more with the corrected program. Do not apologise in chat for this; just call the tool again.",
+          output: {
+            presented: false,
+            errors: errors.slice(0, MAX_ERRORS).map(describe),
+            ...(unresolved.length
+              ? {
+                  unresolved,
+                  unresolvedNote:
+                    "These names are referenced but never defined. Add a `name = …` statement for each.",
+                }
+              : {}),
+            note: "This program did NOT render — nothing was shown to the author. Fix the problems above and call render_ui once more with the corrected program. Do not apologise in chat for this; just call the tool again.",
+          },
         };
       }
 
       return {
-        presented: true,
-        // Silently-dropped statements aren't fatal (the card rendered), but
-        // they usually mean the model built a component and forgot to put it in
-        // its parent's array — worth saying once so the next card is right.
-        ...(orphaned.length
-          ? {
-              droppedStatements: orphaned,
-              droppedNote:
-                "These statements were defined but never referenced from root, so they did NOT appear on the card. Include them in their parent's children/items array next time.",
-            }
-          : {}),
-        note: "The card is now shown to the author. End your turn now — do NOT answer on their behalf or call another tool. Their pick arrives as the next user message.",
+        output: {
+          presented: true,
+          // Silently-dropped statements aren't fatal (the card rendered), but
+          // they usually mean the model built a component and forgot to put it in
+          // its parent's array — worth saying once so the next card is right.
+          ...(orphaned.length
+            ? {
+                droppedStatements: orphaned,
+                droppedNote:
+                  "These statements were defined but never referenced from root, so they did NOT appear on the card. Include them in their parent's children/items array next time.",
+              }
+            : {}),
+          note: "The card is now shown to the author. End your turn now — do NOT answer on their behalf or call another tool. Their pick arrives as the next user message.",
+        },
       };
     },
   });

@@ -16,12 +16,14 @@ export const autoAssignRefs = (api: Api) =>
         ),
       ),
     }),
-    async run({ input, signal }) {
+    async run({ data: input, signal }) {
       const beat = input.beat ? String(input.beat).trim() : undefined;
-      return await api.post(
-        "/api/episode/auto-assign",
-        beat ? { beat } : undefined,
-        signal,
-      );
+      return {
+        output: await api.post(
+          "/api/episode/auto-assign",
+          beat ? { beat } : undefined,
+          signal,
+        ),
+      };
     },
   });

@@ -14,8 +14,8 @@ export const toggleLibrary = (api: Api) =>
         "The image's `rel` field EXACTLY as returned by list_library (e.g. \"characters/helena_v2.png\") — NOT its `url`, `thumb`, or `refUrl`, and not URL-encoded. If you don't have the rel, call list_library first.",
       ),
     }),
-    async run({ input, signal }) {
+    async run({ data: input, signal }) {
       const { rel } = input;
-      return await api.post("/api/library/toggle", { rel }, signal);
+      return { output: await api.post("/api/library/toggle", { rel }, signal) };
     },
   });

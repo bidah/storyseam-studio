@@ -579,23 +579,63 @@ registerMcp(app);
 // header/functions are flue-named. Renaming the path + moving to a CF service
 // binding is a later consolidation step.)
 const DEFAULT_FLUE_ORIGIN = "https://shot-studio-flue.rodrigofigueroa-name.workers.dev";
+const DEFAULT_FLUE_V2_ORIGIN =
+  "https://shot-studio-flue-v2.rodrigofigueroa-name.workers.dev";
+
+// --- which engine a conversation runs on ------------------------------------
+// TWO agent workers are deployed at once: `shot-studio-flue` (flue 1) and
+// `shot-studio-flue-v2` (flue 2). They are not interchangeable — flue 2 stores
+// persisted schema version 8 and REJECTS a version-5 database before any
+// application code runs, so an in-place upgrade would have destroyed every
+// existing transcript. Instead each conversation is pinned to the engine that
+// holds it, forever.
+//
+// The pin is the CHAT ID's own prefix, not a registry lookup. Two reasons:
+//
+//   1. No hot-path read. Every /eve hop — including the long-lived SSE stream —
+//      would otherwise need a D1 read just to choose an origin.
+//   2. No ambiguity for a chat the registry has never heard of. `/api/chats`
+//      only learns about a conversation once it has a title, so the FIRST
+//      message of a new chat, and every chat that never synced, would have no
+//      row to read — and guessing wrong means opening a real conversation
+//      against a worker that has never seen it, i.e. an empty transcript.
+//      An id either carries the marker or it doesn't; there is nothing to guess.
+//
+// Rollback is therefore "stop MINTING the marker", not "stop routing it":
+// clients ask /eve/health whether new chats should be v2 (below), and a chat
+// already created on v2 keeps working on v2 whatever that flag says.
+const V2_CHAT_PREFIX = "f2-";
+
+// `<projectId>~<chatId>` as the client addresses it (the `<userId>~` prefix is
+// added below, after this runs).
+function isV2Instance(instanceId) {
+  const chatId = String(instanceId).split("~").pop() ?? "";
+  return chatId.startsWith(V2_CHAT_PREFIX);
+}
+
 app.all("/eve/*", async (c) => {
   const url = new URL(c.req.url);
-  const origin = c.env.FLUE_ORIGIN || c.env.EVE_ORIGIN || DEFAULT_FLUE_ORIGIN;
   let path = url.pathname.replace(/^\/eve/, "") || "/";
   const userId = c.get("userId");
+
+  // Route by engine. A non-agent path (/health) has no conversation, so it goes
+  // to v1 — the deployment-wide capability probe, which both engines answer
+  // identically, and which is where the "mint v2 ids" flag is published.
+  const agentMatch = path.match(/^\/agents\/([^/]+)\/([^/]+)(\/.*)?$/);
+  const v2 = agentMatch ? isV2Instance(agentMatch[2]) : false;
+  const origin = v2
+    ? c.env.FLUE_V2_ORIGIN || DEFAULT_FLUE_V2_ORIGIN
+    : c.env.FLUE_ORIGIN || c.env.EVE_ORIGIN || DEFAULT_FLUE_ORIGIN;
+  const binding = v2 ? c.env.FLUE_V2 : c.env.FLUE;
   // Inject the authenticated user id into the agent instance id. The client
   // addresses `/agents/<name>/<projectId>~<chatId>`; we prepend `<userId>~` so
   // the flue worker scopes the conversation (and its per-user Higgsfield token)
   // to this user. Because the id prefix and the HMAC `sub` below both come from
   // the session user, flue's ownership check always passes and a client can
   // never address another user's conversation.
-  if (userId) {
-    const m = path.match(/^\/agents\/([^/]+)\/([^/]+)(\/.*)?$/);
-    if (m) {
-      const [, name, id, rest = ""] = m;
-      path = `/agents/${name}/${userId}~${id}${rest}`;
-    }
+  if (userId && agentMatch) {
+    const [, name, id, rest = ""] = agentMatch;
+    path = `/agents/${name}/${userId}~${id}${rest}`;
   }
   const target = new URL(path + url.search, origin);
   // Canonical Workers reverse-proxy: rebuilding the Request against the flue
@@ -626,11 +666,33 @@ app.all("/eve/*", async (c) => {
   });
   // In prod, dispatch through the Cloudflare service binding (in-process
   // worker→worker, no DNS/Host routing — the public-URL fetch 404'd there). In
-  // local dev flue runs as its own `flue dev` process reached over FLUE_ORIGIN
-  // (a localhost URL), so fall back to fetch() then — the `wrangler dev` service
-  // binding would otherwise try (and fail) to resolve a local shot-studio-flue.
+  // local dev flue runs as its own `vite dev` process reached over FLUE_ORIGIN /
+  // FLUE_V2_ORIGIN (a localhost URL), so fall back to fetch() then — the
+  // `wrangler dev` service binding would otherwise try (and fail) to resolve a
+  // local shot-studio-flue.
   const localOrigin = /^https?:\/\/(127\.0\.0\.1|localhost|0\.0\.0\.0)(:|\/|$)/.test(origin);
-  return c.env.FLUE && !localOrigin ? c.env.FLUE.fetch(proxied) : fetch(proxied);
+  const upstream =
+    binding && !localOrigin ? binding.fetch(proxied) : fetch(proxied);
+
+  // The capability probe doubles as the engine switch. Both clients read
+  // /eve/health at startup (src/lib/agentModel.js, mobile's equivalent) and mint
+  // v2-prefixed ids for NEW chats only while `newChats` says "flue2" — so
+  // turning FLUE_V2_NEW_CHATS off returns new conversations to v1 within one
+  // page load, with no redeploy and without moving any existing chat.
+  if (path === "/health") {
+    const res = await upstream;
+    if (!res.ok) return res;
+    const body = await res.json().catch(() => null);
+    if (!body) return res;
+    return c.json({
+      ...body,
+      engine: {
+        newChats: c.env.FLUE_V2_NEW_CHATS === "1" ? "flue2" : "flue1",
+        v2Prefix: V2_CHAT_PREFIX,
+      },
+    });
+  }
+  return upstream;
 });
 
 // --- SPA fallback (Worker Assets) ------------------------------------------

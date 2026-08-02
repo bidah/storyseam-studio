@@ -7,18 +7,22 @@ live agent endpoint and burn model credits, so they run behind `FLUE_BASE_URL`.
 ## Run
 
 ```sh
-# 1. start the agent locally (its own Cloudflare Worker)
-npm run flue:dev            # → http://localhost:8788 (wrangler dev)
+# 1. start the agent locally (its own Cloudflare Worker, served by Vite)
+npm run flue:dev            # → http://localhost:5173
 
 # 2. in another terminal, point the evals at it
-FLUE_BASE_URL=http://localhost:8788 npm run test:evals
+FLUE_BASE_URL=http://localhost:5173 npm run test:evals
 ```
 
 Against a deployed preview instead:
 
 ```sh
-FLUE_BASE_URL=https://shot-studio-flue.<account>.workers.dev npm run test:evals
+FLUE_BASE_URL=https://shot-studio-flue-v2.<account>.workers.dev npm run test:evals
 ```
+
+`FLUE_BASE_URL` is the app root, not a conversation: the harness appends
+`/agents/<FLUE_AGENT_NAME>/<instanceId>`, which is the one URL a flue 2 client
+addresses.
 
 With no `FLUE_BASE_URL`, the suite **skips** (visible in the report) so it never
 breaks a normal `npm test`.
