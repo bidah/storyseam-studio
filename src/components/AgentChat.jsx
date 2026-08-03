@@ -191,6 +191,26 @@ function wordEnd(s, to, target) {
   return i;
 }
 
+// A transient stream drop (the tab sleeping, a network blip flue's durability
+// rides out) surfaces as `agent.error` for the moment it takes the stream to
+// recover — flashing "Agent error" at the author for a failure that heals
+// itself. The card renders only for an error that OUTLIVES the recovery: never
+// while the turn is visibly still running, and only after the error has held
+// continuously for this long. A terminal error persists and still surfaces.
+const ERROR_GRACE_MS = 5000;
+function useSettledError(error, busy) {
+  const [settled, setSettled] = useState(false);
+  useEffect(() => {
+    if (!error || busy) {
+      setSettled(false);
+      return;
+    }
+    const timer = setTimeout(() => setSettled(true), ERROR_GRACE_MS);
+    return () => clearTimeout(timer);
+  }, [error, busy]);
+  return settled && error ? error : null;
+}
+
 function useSmoothText(text, streaming) {
   const full = text ?? "";
   const [count, setCount] = useState(
@@ -1547,6 +1567,7 @@ export default function AgentChat() {
     }
   }, [messages, conv]);
   const isBusy = agent.status === "submitted" || agent.status === "streaming";
+  const settledError = useSettledError(agent.error, isBusy);
 
   // On reload the flue conversation reloads its durable transcript, so `messages`
   // is briefly empty before history settles (`agent.historyReady`). Showing the
@@ -2104,13 +2125,13 @@ export default function AgentChat() {
             </Marker>
           ) : null}
 
-          {agent.error ? (
+          {settledError ? (
             <div className="flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/5 p-2.5 text-sm">
               <AlertCircle size={15} className="mt-0.5 shrink-0 text-destructive" />
               <div className="min-w-0">
                 <div className="font-medium">Agent error</div>
                 <div className="break-words text-xs text-muted-foreground">
-                  {agent.error.message}
+                  {settledError.message}
                 </div>
               </div>
             </div>

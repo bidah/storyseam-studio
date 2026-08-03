@@ -170,6 +170,29 @@ function TranscriptSkeleton() {
   );
 }
 
+// A transient stream drop (Wi-Fi ↔ cellular handoff, a backgrounded socket,
+// "The network connection was lost") surfaces as `agent.error` for the second
+// or two it takes the provider's resync to rebuild the session — see the
+// resilience block in lib/agent/provider.tsx. Flashing an error card for a
+// failure that heals itself reads as "something is broken" when nothing is, so
+// the card renders only for an error that OUTLIVES the self-heal: never while
+// the turn is visibly still running, and only after the error has held
+// continuously for this long. A terminal error (auth expiry, resync budget
+// exhausted) persists and still surfaces.
+const ERROR_GRACE_MS = 5000;
+function useSettledError(error: unknown, busy: boolean): string | null {
+  const [settled, setSettled] = useState(false);
+  useEffect(() => {
+    if (!error || busy) {
+      setSettled(false);
+      return;
+    }
+    const timer = setTimeout(() => setSettled(true), ERROR_GRACE_MS);
+    return () => clearTimeout(timer);
+  }, [error, busy]);
+  return settled && error ? String((error as any)?.message ?? error) : null;
+}
+
 export function Conversation({
   id,
   hubHref,
@@ -569,7 +592,7 @@ export function Conversation({
     [qa, canRespond, onRespond, busy],
   );
 
-  const errorMessage = live && agent?.error ? String(agent.error?.message ?? agent.error) : null;
+  const errorMessage = useSettledError(live ? agent?.error : null, busy);
 
   // Point the stack's shared composer at this conversation while it's focused
   // (a recap tap, the history sheet, a fresh push — the bar itself never moved).
