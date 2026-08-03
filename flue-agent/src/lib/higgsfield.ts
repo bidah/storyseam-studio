@@ -12,8 +12,10 @@
 // Auth: the signed-in user's live Higgsfield bearer, bridged from the worker
 // (which refreshes it). The rich interactive-OAuth fallback eve had (an in-chat
 // sign-in card) has no flue equivalent yet; the token bridge is the primary path
-// (app login already IS Higgsfield OAuth) so nearly every user has a token. If
-// none is available we return [] and the generation tools are simply absent.
+// (web login is Google, but a Higgsfield account linked via Settings ›
+// Connectors — or the mobile Higgsfield sign-in — puts the token on the same
+// account row the bridge reads). If none is available we return [] and the
+// generation tools are simply absent.
 //
 // Tool names stay `mcp__higgsfield__<tool>` so nothing else needs to change.
 

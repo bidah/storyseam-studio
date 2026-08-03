@@ -8,8 +8,11 @@
 // "visual-world" swr cache key and the canonical invalidate+revalidate pair.
 import { useEffect, useState } from "react";
 import { useLoaderData, useRevalidator } from "react-router";
-import { Loader2, Save, Plus, Trash2, IdCard, MapPin, Package, Palette, Check, SlidersHorizontal, KeyRound, ExternalLink, Globe, TerminalSquare, Cpu, Clapperboard } from "lucide-react";
+import { Loader2, Save, Plus, Trash2, IdCard, MapPin, Package, Palette, Check, SlidersHorizontal, KeyRound, ExternalLink, Globe, TerminalSquare, Cpu, Clapperboard, Cable } from "lucide-react";
 import { invalidateTabCache } from "@/lib/tabCache";
+import {
+  useHiggsfieldLinked, connectHiggsfield, disconnectHiggsfield,
+} from "@/lib/higgsfieldAccount";
 import { useFalKey, setFalKey, clearFalKey } from "@/lib/falKey";
 import { useAtlasKey, setAtlasKey, clearAtlasKey } from "@/lib/atlasKey";
 import { PROVIDERS, useProviderPrefs, setActiveProvider } from "@/lib/providers";
@@ -150,15 +153,80 @@ function ChatProviderPanel() {
   );
 }
 
+// Connectors: external accounts LINKED to the signed-in (Google) user. Only
+// Higgsfield today — the link runs the same OAuth server the render skills
+// use, so connecting stores the per-user Higgsfield token server-side and
+// unlocks rendering + the library's "Import from Higgsfield".
+function ConnectorsPanel() {
+  const linked = useHiggsfieldLinked(); // null loading | "error" | boolean
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState(null);
+
+  const run = async (fn) => {
+    setBusy(true);
+    setErr(null);
+    try { await fn(); } catch (e) { setErr(String(e?.message || e)); }
+    finally { setBusy(false); }
+  };
+
+  return (
+    <Panel title={<span className="flex items-center gap-2"><Cable size={15} className="text-primary" /> Connectors</span>}>
+      <p className="mb-3 text-sm text-muted-foreground">
+        External accounts linked to your sign-in. Connecting <b>Higgsfield</b> runs a
+        one-tap OAuth flow and lets Shot Studio render images, video &amp; audio on your
+        Higgsfield account — and browse your past generations in the library.
+      </p>
+      <div className="rounded-lg border p-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-sm font-medium">Higgsfield</span>
+          {linked === true ? <Badge variant="success">Connected</Badge> : null}
+          {linked === false ? <Badge variant="warning">Not connected</Badge> : null}
+          {linked === null ? <Badge variant="muted">Checking…</Badge> : null}
+          {linked === "error" ? <Badge variant="warning">Status unknown</Badge> : null}
+          <div className="ml-auto flex items-center gap-2">
+            {linked === true ? (
+              <Button
+                size="sm" variant="ghost" disabled={busy}
+                className="text-destructive hover:text-destructive"
+                onClick={() => run(disconnectHiggsfield)}
+              >
+                Disconnect
+              </Button>
+            ) : (
+              <Button size="sm" disabled={busy || linked === null} onClick={() => run(() => connectHiggsfield("/settings"))}>
+                {busy ? <Loader2 size={14} className="animate-spin" /> : null}
+                Connect
+              </Button>
+            )}
+          </div>
+        </div>
+        <p className="mt-1 text-xs text-muted-foreground">
+          {linked === true
+            ? "Renders and imports use this account's credits. Disconnecting stops Higgsfield renders until you reconnect."
+            : "You'll be sent to Higgsfield to approve access, then straight back here."}
+        </p>
+        {err ? <p className="mt-2 text-xs text-destructive">{err}</p> : null}
+      </div>
+    </Panel>
+  );
+}
+
 function ProvidersPanel() {
   const prefs = useProviderPrefs();
   const falKey = useFalKey();
   const atlasKey = useAtlasKey();
+  const hfLinked = useHiggsfieldLinked();
 
   const rows = {
     higgsfield: {
-      status: <span className="text-xs text-muted-foreground">Connected through your Higgsfield sign-in — no key needed.</span>,
-      hasCred: true,
+      status: (
+        <span className="text-xs text-muted-foreground">
+          {hfLinked === true
+            ? "Connected through your linked Higgsfield account — no key needed."
+            : "Not connected — link your Higgsfield account in the Connectors panel above."}
+        </span>
+      ),
+      hasCred: hfLinked === true,
     },
     fal: {
       status: (
@@ -450,6 +518,8 @@ function SettingsPage() {
       {error && <ErrorNote>{error}</ErrorNote>}
 
       <ChatProviderPanel />
+
+      <ConnectorsPanel />
 
       <ProvidersPanel />
 

@@ -12,6 +12,10 @@
   //     Daytona ffmpeg sandbox — see src/lib/ffmpeg.js)
   //   DAYTONA_API_KEY                (ffmpeg orchestration)
   //   HIGGSFIELD_MCP_TOKEN           (optional; static-login shortcut)
+  //   GOOGLE_CLIENT_SECRET           ("Sign in with Google" — the OAuth client
+  //     secret pairing GOOGLE_CLIENT_ID below. Create a Web application OAuth
+  //     client in Google Cloud Console with redirect URI
+  //     <WORKER_PUBLIC_URL>/api/auth/callback/google.)
   //   FAL_KEY                        (OPTIONAL fal.ai fallback key. The primary
   //     path is BYOK: each user's own key rides per-request as x-fal-key from
   //     their browser's localStorage and is never stored server-side. This env
@@ -31,6 +35,9 @@
     "R2_ACCOUNT_ID": "cda687c8b568323a9b535ca44a192131",
     "WORKER_PUBLIC_URL": "https://shot-studio-uploads.rodrigofigueroa-name.workers.dev",
     "HIGGSFIELD_CLIENT_ID": "LgvtzrTQ0pgrGOzD",
+    // Google OAuth web client for "Sign in with Google" (secret is the
+    // GOOGLE_CLIENT_SECRET wrangler secret). Empty = Google sign-in disabled.
+    "GOOGLE_CLIENT_ID": "129695414931-4246hslp031dt7b60hfqkshjictku359.apps.googleusercontent.com",
     // Higgsfield MCP endpoint — the Worker calls its show_generations tool with
     // the user's OAuth bearer for the library's "Import from Higgsfield" tab.
     "HIGGSFIELD_MCP_URL": "https://mcp.higgsfield.ai/mcp",

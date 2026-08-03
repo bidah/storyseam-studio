@@ -1,6 +1,7 @@
-// Better Auth on Cloudflare (D1 + KV) — email/password login + sessions, used to
-// gate the app and scope projects per user. A fresh auth instance is created per
-// request (Workers are stateless) with the request's cf context + origin.
+// Better Auth on Cloudflare (D1 + KV) — Google sign-in (+ legacy email/password
+// and mobile's Higgsfield OAuth) + sessions, used to gate the app and scope
+// projects per user. A fresh auth instance is created per request (Workers are
+// stateless) with the request's cf context + origin.
 import { betterAuth } from "better-auth";
 import { genericOAuth } from "better-auth/plugins";
 import { withCloudflare } from "better-auth-cloudflare";
@@ -36,6 +37,26 @@ export function createAuth(env, cf, baseURL) {
           // No email provider wired yet — let users in immediately after sign-up.
           requireEmailVerification: false,
         },
+        // "Sign in with Google" — the app login. Web + desktop authenticate
+        // here; Higgsfield is no longer the front door, it's a CONNECTOR
+        // linked from Settings (oauth2.link below) after the session exists.
+        socialProviders: {
+          google: {
+            clientId: env?.GOOGLE_CLIENT_ID || "",
+            clientSecret: env?.GOOGLE_CLIENT_SECRET || "",
+            prompt: "select_account",
+          },
+        },
+        account: {
+          accountLinking: {
+            enabled: true,
+            trustedProviders: ["google"],
+            // The Higgsfield connector links to whatever session is signed in;
+            // its account email rarely matches the Google one, so don't require
+            // it to. (Linking still requires the live session — Settings-only.)
+            allowDifferentEmails: true,
+          },
+        },
         trustedOrigins: [
           baseURL,
           "http://localhost:3333",
@@ -45,9 +66,11 @@ export function createAuth(env, cf, baseURL) {
           "exp://",
         ].filter(Boolean),
         rateLimit: { enabled: true, window: 60, max: 100 },
-        // "Sign in with Higgsfield" — the same OAuth server the render skills
-        // use, so one login yields both the app account AND the per-user
-        // Higgsfield token (stored on the account row's accessToken).
+        // Higgsfield OAuth — the same OAuth server the render skills use, so
+        // one link yields the per-user Higgsfield token (stored on the account
+        // row's accessToken). On web this is a Settings connector (linked to
+        // the Google-signed-in user via /api/auth/oauth2/link); the mobile app
+        // still signs in with it directly.
         plugins: [
           // Lets the Expo app authenticate: accepts the mobile scheme origin,
           // returns the session cookie in a way the RN client can persist.

@@ -1,21 +1,22 @@
 // App login gate — the branded Shot Studio homepage with "Sign in with
-// Higgsfield". One Higgsfield OAuth flow (Better Auth genericOAuth) creates an
-// internal user + links the Higgsfield account/token. Gated on the Better Auth
-// session; the signed-in user owns their own projects.
+// Google" (Better Auth social provider). Gated on the Better Auth session; the
+// signed-in user owns their own projects. Higgsfield is no longer the front
+// door: it's a CONNECTOR linked to the session afterwards (Settings ›
+// Connectors, lib/higgsfieldAccount.js).
 //
-// After the session exists a SECOND gate may ask for a render API key (BYOK) —
-// the user's own fal.ai OR Atlas Cloud key: it lives only in this browser's
-// localStorage (lib/falKey.js / lib/atlasKey.js) and rides per-request to the
-// workers — never stored server-side. The Higgsfield sign-in itself is a full
-// render credential, so this gate only blocks when Higgsfield is toggled OFF
-// in the provider prefs AND no BYOK key exists; keys and provider toggles stay
-// editable on the Settings page (Providers panel).
+// After the session exists a SECOND gate may block on the selected render
+// provider's credential: Higgsfield selected but not yet linked shows the
+// connect screen; a BYOK provider (fal.ai / Atlas Cloud) without its key asks
+// for one. BYOK keys live only in this browser's localStorage (lib/falKey.js /
+// lib/atlasKey.js) and ride per-request to the workers — never stored
+// server-side. Keys, connectors and provider toggles stay editable in Settings.
 import { useState } from "react";
 import {
   Clapperboard, Bot, PenLine, Workflow, Film, ListVideo, AudioLines, Loader2, ArrowRight,
-  KeyRound, ExternalLink, LogOut,
+  KeyRound, ExternalLink, LogOut, Cable,
 } from "lucide-react";
 import { useSession, authClient, signOut } from "@/lib/auth-client";
+import { useHiggsfieldLinked, connectHiggsfield } from "@/lib/higgsfieldAccount";
 import { desktop, isDesktop } from "@/lib/desktop";
 import { useFalKey, setFalKey } from "@/lib/falKey";
 import { useAtlasKey, setAtlasKey } from "@/lib/atlasKey";
@@ -46,8 +47,8 @@ function Homepage() {
         // child window sharing the app's session — the callback lands on the
         // Worker's existing redirect URI and the session cookie is set into
         // the Electron cookie jar. Then reload to pick the session up.
-        const { data, error } = await authClient.signIn.oauth2({
-          providerId: "higgsfield",
+        const { data, error } = await authClient.signIn.social({
+          provider: "google",
           callbackURL: "/",
           disableRedirect: true,
         });
@@ -60,10 +61,9 @@ function Homepage() {
         window.location.reload();
         return;
       }
-      // Web: redirects to Higgsfield and back to /api/auth/oauth2/callback/
-      // higgsfield; Better Auth creates the session, then returns to
-      // callbackURL ("/").
-      await authClient.signIn.oauth2({ providerId: "higgsfield", callbackURL: "/" });
+      // Web: redirects to Google and back to /api/auth/callback/google;
+      // Better Auth creates the session, then returns to callbackURL ("/").
+      await authClient.signIn.social({ provider: "google", callbackURL: "/" });
     } catch (e) {
       setErr(String(e?.message || e));
       setBusy(false);
@@ -112,11 +112,12 @@ function Homepage() {
           <div className="mt-9 flex w-full flex-col items-center gap-3">
             <Button size="lg" className="w-full max-w-xs gap-2 font-medium" disabled={busy} onClick={signIn}>
               {busy ? <Loader2 size={16} className="animate-spin" /> : null}
-              Sign in with Higgsfield
+              Sign in with Google
               {!busy ? <ArrowRight size={16} /> : null}
             </Button>
             <p className="text-xs text-muted-foreground">
-              Sign in with your Higgsfield account to unlock image, video &amp; audio generation.
+              Sign in with Google, then connect Higgsfield (or a render key) in Settings
+              to unlock image, video &amp; audio generation.
             </p>
             {err ? <p className="max-w-sm text-center text-xs text-destructive">{err}</p> : null}
           </div>
@@ -219,25 +220,94 @@ function ProviderKeyScreen({ userEmail }) {
           </a>
 
           {/* This screen only shows when the selected BYOK provider has no key —
-              offer the way back (Higgsfield's credential is the sign-in itself). */}
+              offer the way over to Higgsfield (the gate asks to connect it if
+              the account isn't linked yet). */}
           <button
             type="button"
             onClick={() => setActiveProvider("higgsfield")}
             className="mt-3 text-xs text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
           >
-            Or switch to Higgsfield and render with your sign-in
+            Or render with a Higgsfield account instead
           </button>
 
-          <div className="mt-8 flex items-center gap-2 text-xs text-muted-foreground">
-            {userEmail ? <span>Signed in as {userEmail}</span> : null}
-            <button
-              type="button"
-              onClick={() => signOut()}
-              className="inline-flex items-center gap-1 underline-offset-4 hover:text-foreground hover:underline"
-            >
-              <LogOut size={12} /> Sign out
-            </button>
-          </div>
+          <SignedInFooter userEmail={userEmail} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SignedInFooter({ userEmail }) {
+  return (
+    <div className="mt-8 flex items-center gap-2 text-xs text-muted-foreground">
+      {userEmail ? <span>Signed in as {userEmail}</span> : null}
+      <button
+        type="button"
+        onClick={() => signOut()}
+        className="inline-flex items-center gap-1 underline-offset-4 hover:text-foreground hover:underline"
+      >
+        <LogOut size={12} /> Sign out
+      </button>
+    </div>
+  );
+}
+
+// Shown when Higgsfield is the selected render provider but the signed-in user
+// hasn't linked a Higgsfield account yet (sign-in is Google now, so the link is
+// a separate one-tap OAuth flow). Connecting stores the per-user Higgsfield
+// token server-side; the alternative is switching to a BYOK provider, which
+// swaps this screen for the key one.
+function HiggsfieldConnectScreen({ userEmail }) {
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState(null);
+
+  const connect = async () => {
+    setBusy(true);
+    setErr(null);
+    try {
+      await connectHiggsfield("/");
+      // Web navigates away to Higgsfield; desktop resolves in-place once the
+      // child window finishes, and the refreshed account list unblocks the gate.
+    } catch (e) {
+      setErr(String(e?.message || e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="relative flex min-h-dvh items-center justify-center overflow-hidden bg-background px-6 py-12">
+      <div aria-hidden className="pointer-events-none absolute -top-40 left-1/2 size-[46rem] -translate-x-1/2 rounded-full bg-primary/15 blur-3xl" />
+      <div className="relative w-full max-w-md">
+        <div className="flex flex-col items-center text-center">
+          <span className="flex size-11 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-lg shadow-primary/20">
+            <Cable size={22} />
+          </span>
+          <h1 className="mt-6 text-balance text-2xl font-semibold tracking-tight">
+            Connect <span className="text-primary">Higgsfield</span>
+          </h1>
+          <p className="mt-2 text-sm text-muted-foreground">
+            Shot Studio is set to render with Higgsfield, but this account isn't linked
+            yet. Connect your Higgsfield account once and every image, video &amp; audio
+            generation bills it — you can manage the connection later in Settings.
+          </p>
+
+          <Button size="lg" className="mt-6 w-full max-w-xs gap-2 font-medium" disabled={busy} onClick={connect}>
+            {busy ? <Loader2 size={16} className="animate-spin" /> : null}
+            Connect Higgsfield
+            {!busy ? <ArrowRight size={16} /> : null}
+          </Button>
+          {err ? <p className="mt-2 max-w-sm text-center text-xs text-destructive">{err}</p> : null}
+
+          <button
+            type="button"
+            onClick={() => setActiveProvider("fal")}
+            className="mt-4 text-xs text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
+          >
+            Or render with your own fal.ai / Atlas Cloud key instead
+          </button>
+
+          <SignedInFooter userEmail={userEmail} />
         </div>
       </div>
     </div>
@@ -249,11 +319,19 @@ export default function LoginGate({ children }) {
   const falKey = useFalKey();
   const atlasKey = useAtlasKey();
   const prefs = useProviderPrefs();
+  const hfLinked = useHiggsfieldLinked();
   if (isPending) return <Splash />;
   if (!session) return <Homepage />;
-  // Exactly one provider is in use at a time. The Higgsfield sign-in is its
-  // own credential; a selected BYOK provider needs its key before the app can
-  // render — so gate only when the SELECTED provider's key is missing.
+  // Exactly one provider is in use at a time, and the gate blocks on the
+  // SELECTED provider's credential: Higgsfield needs its account linked (null =
+  // the account list is still loading — hold the splash rather than flashing
+  // the connect screen at someone who is connected; "error" = couldn't fetch
+  // the list — let the app through and let renders surface their own 401
+  // instead of deadlocking here), a BYOK provider its key.
+  if (prefs.active === "higgsfield") {
+    if (hfLinked === null) return <Splash />;
+    if (hfLinked === false) return <HiggsfieldConnectScreen userEmail={session.user?.email} />;
+  }
   const needKey =
     (prefs.active === "fal" && !falKey) || (prefs.active === "atlas" && !atlasKey);
   if (needKey) return <ProviderKeyScreen userEmail={session.user?.email} />;
