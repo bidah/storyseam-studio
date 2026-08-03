@@ -387,36 +387,40 @@ function hasRunningTool(messages: any[]): boolean {
   );
 }
 
-// Is a turn observably in flight in the TRANSCRIPT, whoever started it?
+// Is a turn observably in flight, whoever started it?
 //
 // flue's own `status` only reports busy for sends THIS AgentSession made
 // (`activeSubmissionIds` is fed by local sends alone) or while a text/reasoning
-// delta is literally mid-stream. But this runner REMOUNTS its session mid-turn
+// delta is literally mid-flush. But this runner REMOUNTS its session mid-turn
 // on purpose — the resync paths below, plus every cold start into a turn that
-// is still running (including one started from the web app). A remounted
-// observer therefore read `idle` for the rest of the turn whenever no delta was
-// streaming — exactly the long tool runs — and every busy-driven surface (the
-// tab-bar pill's "Agent is working…", the transcript shimmer, the composer
-// gate) showed the agent as free while it worked. The transcript itself knows
-// better: the turn is still open while its last message shows unfinished work.
-const USER_TURN_GRACE_MS = 180000;
-function turnInFlight(messages: any[]): boolean {
-  const last = messages[messages.length - 1];
-  if (!last) return false;
-  if (last.role === 'user') {
-    // Admitted (it carries a submissionId) but the assistant hasn't emitted
-    // anything yet — the pre-first-token beat. Time-bounded because an observer
-    // can't see settlements: a turn that failed before producing any output
-    // must not pin the app on "working" forever.
-    if (typeof last.submissionId !== 'string') return false;
-    const ts = Date.parse(last.metadata?.timestamp ?? '');
-    return Number.isFinite(ts) && Date.now() - ts < USER_TURN_GRACE_MS;
+// is still running (including one started from the web app) — and a remounted
+// observer reads `idle` for the rest of the turn outside those flushes.
+//
+// The durable answer is the SETTLEMENT LEDGER, not the part states: every
+// tracked submission gets a `FlueConversationSettlement` row
+// (completed/failed/aborted) when its turn ends, the observation streams that
+// ledger to every device, and canonical user messages carry their
+// `submissionId`. So the turn is in flight exactly while the newest user
+// message's submission is unsettled. An earlier version pattern-matched on
+// unfinished parts instead, and flickered idle at every step boundary (a tool
+// settles, the next step's first delta hasn't flushed — flue batches flushes
+// ~1s apart): the shimmer vanished, the composer unlocked, and a message sent
+// into that gap tangled the running turn.
+//
+// A submission that never settles (DO evicted mid-turn) pins this on busy;
+// that is deliberate — the shimmer telling the truth ("nothing arrived, turn
+// never ended") with Stop as the escape hatch, same as a hung local send.
+function turnInFlight(messages: any[], settlements: any[]): boolean {
+  // The newest user message names the current turn's submission. An optimistic
+  // local echo has no submissionId yet — flue's own status covers that beat
+  // (`submitted` while the send awaits admission).
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const m = messages[i];
+    if (m.role !== 'user') continue;
+    if (typeof m.submissionId !== 'string') return false;
+    return !settlements.some((s) => s?.submissionId === m.submissionId);
   }
-  return (last.parts || []).some(
-    (p: any) =>
-      ((p.type === 'text' || p.type === 'reasoning') && p.state === 'streaming') ||
-      (p.type === 'dynamic-tool' && p.state !== 'output-available' && p.state !== 'output-error'),
-  );
+  return false;
 }
 
 function AgentSessionRunner({
@@ -458,7 +462,9 @@ function AgentSessionRunner({
   // published agent — reads THIS, so the pill, the shimmer and the composer
   // gate agree with the transcript instead of with flue's blinkered status.
   const effectiveStatus =
-    flueAgent.status === 'idle' && turnInFlight(flueAgent.messages) ? 'streaming' : flueAgent.status;
+    flueAgent.status === 'idle' && turnInFlight(flueAgent.messages, flueAgent.settlements ?? [])
+      ? 'streaming'
+      : flueAgent.status;
 
   // eve gave us an `onFinish` callback; flue is state-driven, so we edge-trigger
   // on the status settling out of a busy phase (submitted/streaming → idle/error)

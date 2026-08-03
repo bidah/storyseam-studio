@@ -308,6 +308,35 @@ function useConversationManager() {
   );
 }
 
+// Is a turn observably in flight, whoever started it?
+//
+// flue's own `status` only reports busy for sends THIS AgentSession made
+// (`activeSubmissionIds` is fed by local sends alone) or while a text/reasoning
+// delta is literally mid-stream. A tab that is merely OBSERVING a running turn
+// — the page reloaded mid-turn, or the turn was started from the mobile app —
+// therefore reads `idle` during every tool run, and the busy-driven surfaces
+// (the shimmer, the composer gate) show the agent as free while it works.
+//
+// The durable answer is the settlement ledger: every tracked submission gets a
+// `FlueConversationSettlement` row (completed/failed/aborted) when its turn
+// ends, the observation streams that ledger to every device, and canonical
+// user messages carry their `submissionId`. So the turn is in flight exactly
+// while the newest user message's submission is unsettled. Mirrors the mobile
+// runner (mobile-app/src/lib/agent/provider.tsx), where session remounts made
+// the same gap show up as a flickering "Thinking…" row.
+function turnInFlight(messages, settlements) {
+  // The newest user message names the current turn's submission. An optimistic
+  // local echo has no submissionId yet — flue's own status covers that beat
+  // (`submitted` while the send awaits admission).
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const m = messages[i];
+    if (m.role !== "user") continue;
+    if (typeof m.submissionId !== "string") return false;
+    return !settlements.some((s) => s?.submissionId === m.submissionId);
+  }
+  return false;
+}
+
 // Follows the flue conversation for the active chat and publishes an adapted
 // snapshot upward. Rendered with `key={activeId}` so a chat switch remounts it
 // (pointing `useFlueAgent` at the new instance id, whose durable history flue
@@ -375,6 +404,18 @@ function AgentSessionRunner({ activeId, projectId, conv, publish }) {
     };
   }, [flueAgent.historyReady, flueAgent.messages, activeId]);
 
+  // The status the app actually consumes: flue's, lifted to `streaming` while
+  // the durable transcript shows a turn still running that this session has no
+  // local record of (see `turnInFlight`). Read off the canonical messages, not
+  // the cache-merged `messages` — a cached user message with no settlement
+  // loaded yet must not report busy (moot in practice: status is `connecting`,
+  // not `idle`, until history lands).
+  const effectiveStatus =
+    flueAgent.status === "idle" &&
+    turnInFlight(flueAgent.messages, flueAgent.settlements ?? [])
+      ? "streaming"
+      : flueAgent.status;
+
   // Adapt flue's surface (`messages`, `status`, `sendMessage`) to the shape the
   // rest of the app consumes (`messages`, `status`, `send`, `stop`, `error`).
   // flue's resting status is "idle"; the app treats "ready" as idle (e.g.
@@ -382,7 +423,7 @@ function AgentSessionRunner({ activeId, projectId, conv, publish }) {
   const agent = useMemo(
     () => ({
       messages,
-      status: flueAgent.status === "idle" ? "ready" : flueAgent.status,
+      status: effectiveStatus === "idle" ? "ready" : effectiveStatus,
       error: flueAgent.error,
       historyReady: flueAgent.historyReady,
       // `send({ message, images })` — `message` is a plain string; `images` is
@@ -412,7 +453,7 @@ function AgentSessionRunner({ activeId, projectId, conv, publish }) {
         client.abort().catch(() => {});
       },
     }),
-    [client, messages, flueAgent.status, flueAgent.error, flueAgent.historyReady],
+    [client, messages, effectiveStatus, flueAgent.error, flueAgent.historyReady],
   );
 
   // Keep the chat list titled + floated from the live transcript (flue owns the
