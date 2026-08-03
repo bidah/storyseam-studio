@@ -14,12 +14,14 @@ export const attachSound = (api: Api) =>
       url: v.optional(d(v.pipe(v.string(), v.url()), "Remote URL of the rendered audio (mp3/wav/…).")),
       localPath: v.optional(d(v.string(), "Absolute local path to the rendered audio file.")),
     }),
-    async run({ input, signal }) {
+    async run({ data: input, signal }) {
       const { id, v, url, localPath } = input;
-      return await api.post(
-        `/api/sounds/${encodeURIComponent(String(id))}/version/${v}/attach`,
-        { url, localPath },
-        signal,
-      );
+      return {
+        output: await api.post(
+          `/api/sounds/${encodeURIComponent(String(id))}/version/${v}/attach`,
+          { url, localPath },
+          signal,
+        ),
+      };
     },
   });

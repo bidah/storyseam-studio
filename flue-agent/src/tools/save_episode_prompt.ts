@@ -14,8 +14,8 @@ export const saveEpisodePrompt = (api: Api) =>
         d(v.string(), "Override prompt text; omit or empty to clear."),
       ),
     }),
-    async run({ input, signal }) {
+    async run({ data: input, signal }) {
       const { bundle, text } = input;
-      return await api.post("/api/episode/prompt", { bundle, text }, signal);
+      return { output: await api.post("/api/episode/prompt", { bundle, text }, signal) };
     },
   });

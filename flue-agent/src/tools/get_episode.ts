@@ -89,13 +89,13 @@ export const getEpisode = (api: Api) =>
         ),
       ),
     }),
-    async run({ input, signal }) {
+    async run({ data: input, signal }) {
       const data = (await api.get(
         "/api/episode",
         signal,
       )) as unknown as EpisodePayload;
       const manifest = data.episode;
-      if (!manifest) return { episode: null };
+      if (!manifest) return { output: { episode: null } };
       const bundles = manifest.bundles ?? [];
       const head = { title: manifest.title, totalShots: manifest.totalShots };
 
@@ -114,48 +114,54 @@ export const getEpisode = (api: Api) =>
         );
         if (!hits.length) {
           return {
-            error: `No bundle matched ${wantB ? `bundle "${wantB}"` : `beat "${wantBeat}"`}.`,
-            bundles: bundles.map((b) => ({ id: b.id, beat: b.beat })),
-          } as Json;
+            output: {
+              error: `No bundle matched ${wantB ? `bundle "${wantB}"` : `beat "${wantBeat}"`}.`,
+              bundles: bundles.map((b) => ({ id: b.id, beat: b.beat })),
+            } as Json,
+          };
         }
         return {
-          ...head,
-          bundles: hits.map((b) => ({
-            ...b,
-            ...bundleState(data, String(b.id)),
-            promptOverride: data.prompts?.[String(b.id)] ?? null,
-            video: data.video?.[String(b.id)] ?? [],
-            sceneNeeds: data.needs?.[String(b.id)] ?? null,
-          })),
-        } as Json;
+          output: {
+            ...head,
+            bundles: hits.map((b) => ({
+              ...b,
+              ...bundleState(data, String(b.id)),
+              promptOverride: data.prompts?.[String(b.id)] ?? null,
+              video: data.video?.[String(b.id)] ?? [],
+              sceneNeeds: data.needs?.[String(b.id)] ?? null,
+            })),
+          } as Json,
+        };
       }
 
       // Unscoped: compact overview — drop skillPrompt and the per-shot prompt/
       // summary/camera/dialogue text, keep everything needed to pick a slice.
       return {
-        ...head,
-        bundleCount: bundles.length,
-        bundles: bundles.map((b) => ({
-          id: b.id,
-          title: b.title,
-          beat: b.beat,
-          beatTitle: b.beatTitle,
-          group: b.group,
-          durationEst: b.durationEst,
-          shots: (b.shots ?? []).map((s) => ({
-            id: s.id,
-            src: s.src,
-            dur: s.dur,
-            location: s.location,
-            characters: s.characters,
+        output: {
+          ...head,
+          bundleCount: bundles.length,
+          bundles: bundles.map((b) => ({
+            id: b.id,
+            title: b.title,
+            beat: b.beat,
+            beatTitle: b.beatTitle,
+            group: b.group,
+            durationEst: b.durationEst,
+            shots: (b.shots ?? []).map((s) => ({
+              id: s.id,
+              src: s.src,
+              dur: s.dur,
+              location: s.location,
+              characters: s.characters,
+            })),
+            refs: b.images ?? [],
+            missing: b.missing ?? [],
+            speakers: b.speakers ?? [],
+            sceneNeeds: data.needs?.[String(b.id)] ?? null,
+            ...bundleState(data, String(b.id)),
           })),
-          refs: b.images ?? [],
-          missing: b.missing ?? [],
-          speakers: b.speakers ?? [],
-          sceneNeeds: data.needs?.[String(b.id)] ?? null,
-          ...bundleState(data, String(b.id)),
-        })),
-        note: "Compact overview. Call get_episode with { bundle } or { beat } for shot summaries, prompts, skillPrompt and video take URLs.",
-      } as Json;
+          note: "Compact overview. Call get_episode with { bundle } or { beat } for shot summaries, prompts, skillPrompt and video take URLs.",
+        } as Json,
+      };
     },
   });

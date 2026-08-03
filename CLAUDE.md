@@ -5,8 +5,8 @@ Vite + React front-end (`src/`, port 3333) backed by a Cloudflare Worker
 for media blobs only + KV + a `ProjectEvents`
 Durable Object for live-sync SSE) for building the Whistlewood episode: script,
 shots, audio/video renders, cuts, and library. A [flue](https://flueframework.com)
-chat agent (`flue-agent/`, its own Cloudflare Worker `shot-studio-flue`, proxied at
-`/eve`) drives the pipeline via typed tools + render skills. See `README.md` for
+chat agent (`flue-agent/`, its own Cloudflare Worker `shot-studio-flue-v2`, proxied
+at `/eve`) drives the pipeline via typed tools + render skills. See `README.md` for
 architecture and how to run it.
 
 ## Storage — D1 for state, R2 for bytes
@@ -148,9 +148,18 @@ touches only one, deploy only that one — but check.
   Vite, then `wrangler deploy` in `worker/`). Worker-only route changes tested via
   local web don't strictly need the rebuild — `cd worker && npx wrangler deploy`
   suffices — but a full `worker:deploy` keeps prod's SPA in sync too.
-- **Flue agent worker** (`shot-studio-flue`): `npm run flue:deploy` (`flue build`
+- **Flue agent worker** (`shot-studio-flue-v2`): `npm run flue:deploy` (`vite build`
   then `wrangler deploy`). Required whenever you add/change a skill (`src/skills/`),
-  a tool (`src/tools/`), or `agents/*.md`.
+  a tool (`src/tools/`), or `agents/*.md`. Flue owns the build through Vite now —
+  `flue build` / `flue dev` are gone; `vite build` writes the finalized wrangler
+  config into `dist/`, so deploy with a plain `wrangler deploy`, no `--config`.
+- **The OLD agent worker** (`shot-studio-flue`, flue 1) is still deployed and
+  still holds every pre-migration transcript. It is FROZEN: flue 2's persisted
+  schema rejects a flue-1 database outright, so a conversation can never move
+  between them. The `/eve` proxy pins each chat to its engine by the chat id's
+  `f2-` prefix (`worker/src/index.js`), and `FLUE_V2_NEW_CHATS` decides which
+  engine NEW chats are minted on. No feature lands on v1 — if you touch the
+  agent, you are touching v2.
 - **Local-dev caveat:** `npm run dev` / `npm run stack` proxies `/api` to the
   **deployed prod** worker by default (`WORKER` unset in `vite.config.js`), so a new
   worker route won't appear locally until it's deployed (symptom: existing routes

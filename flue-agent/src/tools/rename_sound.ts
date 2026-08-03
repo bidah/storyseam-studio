@@ -11,13 +11,15 @@ export const renameSound = (api: Api) =>
       id: d(v.pipe(v.string(), v.minLength(1)), "Track id, e.g. trk_2."),
       name: d(v.pipe(v.string(), v.minLength(1)), "New track name."),
     }),
-    async run({ input, signal }) {
+    async run({ data: input, signal }) {
       const { id, name } = input;
-      return await api.req(
-        `/api/sounds/${encodeURIComponent(String(id))}`,
-        "PATCH",
-        { name },
-        signal,
-      );
+      return {
+        output: await api.req(
+          `/api/sounds/${encodeURIComponent(String(id))}`,
+          "PATCH",
+          { name },
+          signal,
+        ),
+      };
     },
   });

@@ -6,19 +6,9 @@
  * interface. The user creates and configures the sandbox using the Daytona
  * SDK directly — Flue just adapts it.
  *
- * @example
- * ```typescript
- * import { Daytona } from '@daytona/sdk';
- * import { daytona } from './sandboxes/daytona';
- *
- * const client = new Daytona({ apiKey: process.env.DAYTONA_API_KEY });
- * const sandbox = await client.create({ image: 'ubuntu:latest' });
- * const agent = defineAgent(() => ({ sandbox: daytona(sandbox), model: 'anthropic/claude-sonnet-4-6' }));
- * export default defineWorkflow({ agent, async run({ harness }) {
- *   const session = await harness.session();
- *   return await session.prompt('Inspect the workspace.');
- * }});
- * ```
+ * The sandbox must already be resolved, so this is wrapped by
+ * `daytonaFactory()` in ../lib/sandbox.ts rather than used directly: the agent
+ * function is synchronous, and resolving a container is not.
  */
 import { createSandboxSessionEnv, SandboxOperationUnsupportedError } from '@flue/runtime';
 import type { SandboxApi, SandboxFactory, SessionEnv, FileStat } from '@flue/runtime';
@@ -121,7 +111,9 @@ class DaytonaSandboxApi implements SandboxApi {
  */
 export function daytona(sandbox: DaytonaSandbox): SandboxFactory {
 	return {
-		async createSessionEnv(): Promise<SessionEnv> {
+		// `options` is unused here on purpose: the caller already resolved the
+		// per-conversation sandbox from `options.id`.
+		async createSessionEnv(_options: { id: string }): Promise<SessionEnv> {
 			const sandboxCwd = (await sandbox.getWorkDir()) ?? '/home/daytona';
 			const api = new DaytonaSandboxApi(sandbox);
 			return createSandboxSessionEnv(api, sandboxCwd);

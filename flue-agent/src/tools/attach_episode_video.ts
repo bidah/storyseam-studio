@@ -15,12 +15,14 @@ export const attachEpisodeVideo = (api: Api) =>
         d(v.string(), "Optional Higgsfield job id for reference."),
       ),
     }),
-    async run({ input, signal }) {
+    async run({ data: input, signal }) {
       const { bundle, url, jobId } = input;
-      return await api.post(
-        "/api/episode/video",
-        { bundle, url, jobId },
-        signal,
-      );
+      return {
+        output: await api.post(
+          "/api/episode/video",
+          { bundle, url, jobId },
+          signal,
+        ),
+      };
     },
   });

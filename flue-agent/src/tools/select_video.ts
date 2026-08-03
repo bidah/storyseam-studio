@@ -16,12 +16,14 @@ export const selectVideo = (api: Api) =>
       ),
       selected: v.boolean(),
     }),
-    async run({ input, signal }) {
+    async run({ data: input, signal }) {
       const { bundle, file, selected } = input;
-      return await api.post(
-        "/api/episode/video-select",
-        { bundle, file, selected },
-        signal,
-      );
+      return {
+        output: await api.post(
+          "/api/episode/video-select",
+          { bundle, file, selected },
+          signal,
+        ),
+      };
     },
   });

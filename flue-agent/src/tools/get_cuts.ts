@@ -7,6 +7,6 @@ export const getCuts = (api: Api) =>
     description:
       "Get the ordered stitch plan: the selected take of each bundle in order, with per-segment durations and the current complete-cut output (if any). Use before stitch_cuts to preview what will be assembled.",
     async run({ signal }) {
-      return await api.get("/api/episode/cuts", signal);
+      return { output: await api.get("/api/episode/cuts", signal) };
     },
   });

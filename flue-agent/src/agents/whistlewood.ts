@@ -1,18 +1,32 @@
-import { defineAgent, type AgentRouteHandler } from "@flue/runtime";
+"use agent";
+import {
+  useMcpConnection,
+  useModel,
+  useSandbox,
+  useSkill,
+  useSubagent,
+  useTool,
+  type AgentProps,
+} from "@flue/runtime";
 import {
   extend,
   getCloudflareContext,
   type CloudflareAgentLike,
 } from "@flue/runtime/cloudflare";
-import instructions from "./whistlewood.md" with { type: "markdown" };
+import instructions from "./whistlewood.md";
 import { decodeInstanceId } from "../lib/instance-id.js";
 import { createApi } from "../lib/api.js";
 import { createTools } from "../tools/index.js";
-import { createHiggsfieldTools } from "../lib/higgsfield.js";
+import { upgradeSandbox } from "../tools/upgrade_sandbox.js";
+import { workerHiggsfieldToken } from "../lib/worker-token.js";
 import { createFalTools } from "../lib/fal.js";
 import { createAtlasTools } from "../lib/atlas.js";
 import { selectSearchTools } from "../lib/search.js";
-import { createSandbox } from "../lib/sandbox.js";
+import {
+  daytonaAvailable,
+  daytonaFactory,
+  memorySandbox,
+} from "../lib/sandbox.js";
 import { skills } from "../skills.js";
 import { createSubagents } from "../subagents.js";
 import {
@@ -41,19 +55,15 @@ import {
   type SandboxMode,
 } from "../lib/sandbox-prefs.js";
 
-export const description =
-  "Whistlewood production agent — drives the script → shots → renders → cuts → library pipeline.";
-
-// HTTP exposure at POST/GET /agents/whistlewood/:id. Auth (HMAC proxy-user verify
-// + instance-id ownership) is enforced by app.ts middleware, so this is a
-// pass-through.
-export const route: AgentRouteHandler = async (_c, next) => next();
+// HTTP exposure is app.ts's job now: `createAgentRouter(Whistlewood)` mounted at
+// /agents/whistlewood, with the auth middleware registered before the mount.
+// The module-level `route` and `description` conventions are gone in flue 2.
 
 // Read this conversation's per-turn model from its Durable Object storage
 // (written by app.ts's setModel just before the prompt was admitted — see
-// lib/models.js). The initializer re-runs on every harness init, so a fresh
-// selection is picked up each turn. Falls back to the default off the Cloudflare
-// runtime (e.g. build-time analysis) or when nothing valid is stored.
+// lib/models.js). The agent function re-renders before every model call, so a
+// fresh selection is picked up each turn. Falls back to the default off the
+// Cloudflare runtime (e.g. build-time analysis) or when nothing valid is stored.
 function selectedModel(): string {
   try {
     return readSelectedModel(getCloudflareContext().storage.sql);
@@ -157,54 +167,104 @@ export const cloudflare = extend<CloudflareAgentLike & { ctx: DurableObjectState
   },
 );
 
+const PROVIDER_TOOLS: Record<string, string> = {
+  higgsfield: "the Higgsfield tools (generate_image / generate_video / generate_audio)",
+  fal: "the fal tools (fal_generate_image / fal_generate_video)",
+  atlas: "the Atlas Cloud tools (atlas_generate_image / atlas_generate_video)",
+};
+
 // The instance id carries the conversation's scope: `userId~projectId~chatId`.
 // We decode it here to build project-scoped tools and per-user credentials via
-// closure, since a flue tool's `run({ input, signal })` gets no ambient context.
-export default defineAgent(async ({ id }) => {
+// closure, since a flue tool's `run({ data, signal })` gets no ambient context.
+//
+// This function is a RENDER: flue runs it before every model call, and it must
+// stay SYNCHRONOUS. The two things the old initializer awaited have moved to
+// where flue 2 puts async work — the Higgsfield tool list to `useMcpConnection`
+// (the runtime connects at submission init, off this path) and the Daytona
+// container to the sandbox factory's own `createSessionEnv`. Everything left
+// here is a `getCloudflareContext().storage.sql` read.
+export function Whistlewood({ id }: AgentProps): string {
   const decoded = decodeInstanceId(id);
   const projectId = decoded?.projectId ?? null;
   const userId = decoded?.userId ?? "";
 
   const api = createApi(projectId, userId, decoded?.chatId ?? null);
-  const tools = createTools(api);
+
+  useModel(selectedModel());
+
+  // Sandbox for bash/skill execution. There is no implicit environment in flue
+  // 2 — without this call the agent has no filesystem and no bash/read/write/
+  // grep/glob at all — so BOTH tiers are declared explicitly. Daytona is opt-in
+  // per conversation (Settings › Sandbox, or the agent's own `upgrade_sandbox`);
+  // everything else gets the free in-memory filesystem, which is also where
+  // daytonaFactory degrades to if the container can't be reached.
+  //
+  // No `cwd`: flue then uses the provider's own working directory
+  // (/home/daytona), the only place the sandbox's non-root `daytona` user can
+  // actually write. A `/workspace` cwd silently broke every bash call on
+  // Daytona — `mkdir /workspace` is Permission denied outside the home dir.
+  const sandboxMode = storedSandboxMode();
+  useSandbox(sandboxMode === "daytona" ? daytonaFactory() : memorySandbox());
+
+  // Higgsfield generation, as a remote MCP server rather than the hand-rolled
+  // client this file used to await. `optional` preserves the old behaviour for a
+  // user with no Higgsfield credential: zero tools mounted and the gap announced
+  // to the model, instead of a failed submission. Tool names are unchanged
+  // (`mcp__higgsfield__<tool>`), so every skill that references them still works.
+  //
+  // One thing did NOT survive the swap: the hand-rolled client appended a "this
+  // render is still RUNNING, poll job_status" note to every queued-job result.
+  // flue owns the tool results now, so that belt is gone and only the braces
+  // remain — the hard "Never end a turn with a render in flight" rule in
+  // whistlewood.md. Re-arming it properly is a `useAgentFinish` job.
+  const higgsfieldMcpUrl = process.env.HIGGSFIELD_MCP_URL;
+  if (higgsfieldMcpUrl && userId) {
+    useMcpConnection({
+      name: "higgsfield",
+      url: higgsfieldMcpUrl,
+      // Resolved per request, which is exactly the bridged per-user token's
+      // lifecycle: the shot-studio-uploads worker holds and refreshes each
+      // user's bearer, and we fetch the current one (lib/worker-token.ts).
+      auth: async () => (await workerHiggsfieldToken(userId))?.token ?? "",
+      optional: true,
+    });
+  }
+
   // All credentialed provider tools load regardless of the Settings selection
   // (see storedRenderPrefs above) — the selection only steers the default.
-  const prefs = storedRenderPrefs();
-  const higgsfieldTools = await createHiggsfieldTools(userId);
-  const falTools = createFalTools(storedFalKey());
-  const atlasTools = createAtlasTools(storedAtlasKey());
-  // Web search / page reading. Exactly ONE backend (Exa or Firecrawl) loads,
-  // per the Settings selection — both register the same `web_search` /
-  // `fetch_url` names. Independent of the render-provider selection.
+  // Web search / page reading loads exactly ONE backend (Exa or Firecrawl), per
+  // the Settings selection: both register the same `web_search` / `fetch_url`
+  // names. Independent of the render-provider selection.
   const search = selectSearchTools(storedSearchPrefs());
-  // Sandbox for bash/skill execution. OPT-IN per conversation: only a chat the
-  // user switched to Daytona in Settings gets a real (paid, persistent)
-  // container — its id lives in this DO's storage so files survive across turns.
-  // Everything else stays on flue's free per-turn in-memory filesystem, which is
-  // also where we land if the mode is on but DAYTONA_API_KEY is unset.
-  const sandbox =
-    storedSandboxMode() === "daytona" ? await createSandbox(id) : undefined;
+  for (const tool of [
+    ...createTools(api),
+    ...createFalTools(storedFalKey()),
+    ...createAtlasTools(storedAtlasKey()),
+    ...search.tools,
+  ]) {
+    useTool(tool);
+  }
 
-  const PROVIDER_TOOLS: Record<string, string> = {
-    higgsfield: "the Higgsfield tools (generate_image / generate_video / generate_audio)",
-    fal: "the fal tools (fal_generate_image / fal_generate_video)",
-    atlas: "the Atlas Cloud tools (atlas_generate_image / atlas_generate_video)",
-  };
+  // The escalation hatch, offered only when there is somewhere to escalate TO
+  // and the conversation isn't already there. Daytona is paid and shared, so a
+  // deployment without the key never sees the tool at all.
+  if (sandboxMode !== "daytona" && daytonaAvailable()) useTool(upgradeSandbox());
+
+  for (const skill of skills) useSkill(skill);
+  for (const subagent of createSubagents(api, search.tools)) useSubagent(subagent);
+
+  const prefs = storedRenderPrefs();
   const providerNote =
     prefs.active && PROVIDER_TOOLS[prefs.active]
       ? `\n\n## Render provider\n\nThe user has SELECTED **${prefs.active}** as their render provider — use ${PROVIDER_TOOLS[prefs.active]} for image/video renders. Only use another backend when a skill is hard-bound to it (multishot lip-sync and Seed Audio scenes are Higgsfield-only) or the user explicitly asks.`
       : "";
 
-  return {
-    model: selectedModel(),
-    instructions: providerNote ? `${instructions}${providerNote}` : instructions,
-    tools: [...tools, ...higgsfieldTools, ...falTools, ...atlasTools, ...search.tools],
-    skills,
-    subagents: createSubagents(api, search.tools),
-    // No `cwd` override: flue uses the provider's own working directory
-    // (/home/daytona), which is the only place the sandbox's non-root `daytona`
-    // user can actually write. A `/workspace` cwd silently broke every bash call
-    // on Daytona — `mkdir /workspace` is Permission denied outside the home dir.
-    ...(sandbox ? { sandbox } : {}),
-  };
-});
+  return providerNote ? `${instructions}${providerNote}` : instructions;
+}
+
+// Pin the storage identity. The generated Durable Object class and binding are
+// derived from it — `whistlewood` → FlueWhistlewoodAgent / FLUE_WHISTLEWOOD_AGENT,
+// which is what wrangler.jsonc's migration and app.ts's AGENT_BINDINGS declare.
+// Without the pin, renaming this function would silently orphan every stored
+// conversation.
+Whistlewood.agentName = "whistlewood";

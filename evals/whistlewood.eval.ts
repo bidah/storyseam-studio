@@ -44,9 +44,11 @@ d(`whistlewood evals @ ${FLUE_BASE_URL}`, () => {
     expect(run.usedToolMatching(/render|stitch|generate|seedance/i)).toBe(false);
   });
 
-  it("reports the model it ran on", async () => {
+  // Was "reports the model it ran on" — flue 2 stamps no model on the client
+  // surface (message metadata is entirely agent-authored), so the submission's
+  // own terminal outcome is what proves the turn ran to completion.
+  it("settles the submission as completed", async () => {
     const run = await runAgent("ping");
-    expect(run.model?.provider).toBeTruthy();
-    expect(run.model?.id).toBeTruthy();
+    expect(run.outcome).toBe("completed");
   });
 });

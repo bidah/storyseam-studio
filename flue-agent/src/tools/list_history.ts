@@ -29,8 +29,8 @@ export const listHistory = (api: Api) =>
     description:
       "List the saved earlier versions of a project document (the World bible, shot list, sounds, cuts, …). Every save parks the version it replaced, so this is the way back when something was overwritten or blanked. Returns { name, snapshots: [{ ts, at, size, source, generatedAt }] }, newest first — `ts` is the id you pass to restore_version, `source` says who wrote that version (\"agent\", \"app\", …), and a sudden drop in `size` is the fingerprint of a bad partial save. Use this whenever the author says content went missing, was lost, disappeared, or looks wrong — check here BEFORE offering to rewrite it from scratch.",
     input: v.object({ name: DOC }),
-    async run({ input, signal }) {
-      return await api.get(`/api/history/${input.name}`, signal);
+    async run({ data: input, signal }) {
+      return { output: await api.get(`/api/history/${input.name}`, signal) };
     },
   });
 
@@ -68,7 +68,7 @@ export const restoreVersion = (api: Api) =>
         ),
       ),
     }),
-    async run({ input, signal }) {
+    async run({ data: input, signal }) {
       const { name, ts, approval_token } = input;
 
       if (approval_token) {
@@ -78,11 +78,13 @@ export const restoreVersion = (api: Api) =>
           RESTORE_OP,
           signal,
         );
-        return await api.post(
-          `/api/history/${params?.name}/${encodeURIComponent(String(params?.ts))}/restore`,
-          undefined,
-          signal,
-        );
+        return {
+          output: await api.post(
+            `/api/history/${params?.name}/${encodeURIComponent(String(params?.ts))}/restore`,
+            undefined,
+            signal,
+          ),
+        };
       }
 
       // Resolve the snapshot before gating: asking the author to approve a
@@ -99,23 +101,25 @@ export const restoreVersion = (api: Api) =>
           `No stored version "${ts}" of the ${name} document. Call list_history to get a real \`ts\`.`,
         );
       }
-      return await gateAction(
-        api,
-        {
-          op: RESTORE_OP,
-          summary: `Restore the ${name} document to the version saved ${snap.at ?? snap.ts}${snap.source ? ` by "${snap.source}"` : ""}. The current ${name} is parked to history first, so this stays undoable.`,
-          params: { name: String(name), ts: String(ts) },
-          facts: {
-            Document: String(name),
-            Version: String(snap.at ?? snap.ts),
-            ...(snap.source ? { "Written by": String(snap.source) } : {}),
-            ...(snap.size ? { "Version size": `${snap.size} bytes` } : {}),
-            "Newer versions it skips back past": String(
-              snaps.findIndex((s) => s?.ts === ts),
-            ),
+      return {
+        output: await gateAction(
+          api,
+          {
+            op: RESTORE_OP,
+            summary: `Restore the ${name} document to the version saved ${snap.at ?? snap.ts}${snap.source ? ` by "${snap.source}"` : ""}. The current ${name} is parked to history first, so this stays undoable.`,
+            params: { name: String(name), ts: String(ts) },
+            facts: {
+              Document: String(name),
+              Version: String(snap.at ?? snap.ts),
+              ...(snap.source ? { "Written by": String(snap.source) } : {}),
+              ...(snap.size ? { "Version size": `${snap.size} bytes` } : {}),
+              "Newer versions it skips back past": String(
+                snaps.findIndex((s) => s?.ts === ts),
+              ),
+            },
           },
-        },
-        signal,
-      );
+          signal,
+        ),
+      };
     },
   });

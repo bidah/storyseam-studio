@@ -37,7 +37,7 @@ export const attachVisualGeneration = (api: Api) =>
         ),
       ),
     }),
-    async run({ input, signal }) {
-      return await api.post("/api/visual-world/image", input, signal);
+    async run({ data: input, signal }) {
+      return { output: await api.post("/api/visual-world/image", input, signal) };
     },
   });

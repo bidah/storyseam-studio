@@ -29,12 +29,12 @@ export const stitchCuts = (api: Api) =>
         ),
       ),
     }),
-    async run({ input, signal }) {
+    async run({ data: input, signal }) {
       const { approval_token } = input;
 
       if (approval_token) {
         await consumeApproval(api, approval_token, OP, signal);
-        return await api.post("/api/episode/stitch", undefined, signal);
+        return { output: await api.post("/api/episode/stitch", undefined, signal) };
       }
 
       // The card must show the REAL plan, so read it here rather than letting
@@ -56,22 +56,24 @@ export const stitchCuts = (api: Api) =>
         );
       }
 
-      return await gateAction(
-        api,
-        {
-          op: OP,
-          summary: `Stitch ${usable.length} selected take(s) into a new complete cut (~${Math.round(seconds)}s). The existing cut is kept as an earlier version.`,
-          params: null,
-          facts: {
-            "Bundles in the cut": String(usable.length),
-            ...(segments.length > usable.length
-              ? { "Bundles with no rendered take": String(segments.length - usable.length) }
-              : {}),
-            "Approx. length": `${Math.round(seconds)}s`,
-            "Current cut": cuts?.output?.file ?? "none yet",
+      return {
+        output: await gateAction(
+          api,
+          {
+            op: OP,
+            summary: `Stitch ${usable.length} selected take(s) into a new complete cut (~${Math.round(seconds)}s). The existing cut is kept as an earlier version.`,
+            params: null,
+            facts: {
+              "Bundles in the cut": String(usable.length),
+              ...(segments.length > usable.length
+                ? { "Bundles with no rendered take": String(segments.length - usable.length) }
+                : {}),
+              "Approx. length": `${Math.round(seconds)}s`,
+              "Current cut": cuts?.output?.file ?? "none yet",
+            },
           },
-        },
-        signal,
-      );
+          signal,
+        ),
+      };
     },
   });

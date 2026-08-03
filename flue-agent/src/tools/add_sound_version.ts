@@ -14,12 +14,14 @@ export const addSoundVersion = (api: Api) =>
       name: v.optional(d(v.string(), "Optional name for this version.")),
       params: v.optional(v.record(v.string(), v.unknown())),
     }),
-    async run({ input, signal }) {
+    async run({ data: input, signal }) {
       const { id, prompt, name, params } = input;
-      return await api.post(
-        `/api/sounds/${encodeURIComponent(String(id))}/version`,
-        { prompt, name, params },
-        signal,
-      );
+      return {
+        output: await api.post(
+          `/api/sounds/${encodeURIComponent(String(id))}/version`,
+          { prompt, name, params },
+          signal,
+        ),
+      };
     },
   });

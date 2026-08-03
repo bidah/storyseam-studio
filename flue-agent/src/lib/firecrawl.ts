@@ -75,7 +75,7 @@ export function createFirecrawlTools(userKey?: string): ToolDefinition[] {
     name: "web_search",
     description: WEB_SEARCH_DESCRIPTION,
     input: WEB_SEARCH_INPUT,
-    async run({ input, signal }) {
+    async run({ data: input, signal }) {
       const ignored: string[] = [];
       // Domain filters ride the query as search operators.
       const query = [
@@ -107,28 +107,30 @@ export function createFirecrawlTools(userKey?: string): ToolDefinition[] {
 
       const rows = rowsOf(data);
       return {
-        provider: "firecrawl",
-        query: input.query,
-        count: rows.length,
-        ...(ignored.length
-          ? {
-              ignored_filters: ignored,
-              note: "Firecrawl could not apply the listed filters — fold those constraints into the query text if they matter.",
-            }
-          : {}),
-        results: rows.map((r: any) =>
-          result({
-            title: r?.title,
-            url: r?.url,
-            publishedDate: r?.date ?? r?.metadata?.publishedTime,
-            author: r?.metadata?.author,
-            // `description`/`snippet` is the engine's excerpt — the closest
-            // thing to Exa's highlights.
-            excerpts: r?.description ?? r?.snippet,
-            text: r?.markdown,
-            textCap: SEARCH_TEXT_CHARS,
-          }),
-        ),
+        output: {
+          provider: "firecrawl",
+          query: input.query,
+          count: rows.length,
+          ...(ignored.length
+            ? {
+                ignored_filters: ignored,
+                note: "Firecrawl could not apply the listed filters — fold those constraints into the query text if they matter.",
+              }
+            : {}),
+          results: rows.map((r: any) =>
+            result({
+              title: r?.title,
+              url: r?.url,
+              publishedDate: r?.date ?? r?.metadata?.publishedTime,
+              author: r?.metadata?.author,
+              // `description`/`snippet` is the engine's excerpt — the closest
+              // thing to Exa's highlights.
+              excerpts: r?.description ?? r?.snippet,
+              text: r?.markdown,
+              textCap: SEARCH_TEXT_CHARS,
+            }),
+          ),
+        },
       };
     },
   });
@@ -137,7 +139,7 @@ export function createFirecrawlTools(userKey?: string): ToolDefinition[] {
     name: "fetch_url",
     description: FETCH_URL_DESCRIPTION,
     input: FETCH_URL_INPUT,
-    async run({ input, signal }) {
+    async run({ data: input, signal }) {
       const max = input.max_characters ?? FETCH_TEXT_CHARS;
       // /scrape is one URL per call — fan out, and let one bad page fail
       // alone rather than sinking the batch.
@@ -171,7 +173,7 @@ export function createFirecrawlTools(userKey?: string): ToolDefinition[] {
           }
         }),
       );
-      return { provider: "firecrawl", count: settled.length, results: settled };
+      return { output: { provider: "firecrawl", count: settled.length, results: settled } };
     },
   });
 

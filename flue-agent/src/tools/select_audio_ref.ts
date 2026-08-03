@@ -13,8 +13,8 @@ export const selectAudioRef = (api: Api) =>
       rel: d(v.pipe(v.string(), v.minLength(1)), "Project-relative path of the voice reference."),
       selected: d(v.boolean(), "true to add, false to remove."),
     }),
-    async run({ input, signal }) {
+    async run({ data: input, signal }) {
       const { bundle, rel, selected } = input;
-      return await api.post("/api/episode/audio-select", { bundle, rel, selected }, signal);
+      return { output: await api.post("/api/episode/audio-select", { bundle, rel, selected }, signal) };
     },
   });

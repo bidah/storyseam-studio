@@ -1,9 +1,21 @@
-// Daytona sandbox wiring. eve used a Vercel Sandbox (defaultBackend); on flue we
-// own the Daytona lifecycle: resolve a sandbox and hand it to the generated
-// `daytona(sandbox)` adapter. Gated on DAYTONA_API_KEY: without it we return
-// undefined and flue falls back to its in-memory `just-bash` sandbox, which is
-// rebuilt EMPTY on every harness init (i.e. every turn) — fine for tool-only
-// turns, useless for anything that writes a file and reads it back later.
+// The agent's two execution environments, as explicit factories.
+//
+// flue 2 has NO implicit sandbox: an agent that never calls `useSandbox()` has
+// no filesystem and no read/write/edit/bash/grep/glob tools at all. So the free
+// tier is not "leave it undefined" any more — it is `memorySandbox()`, a
+// just-bash instance over an in-memory filesystem, and it must be declared or
+// every chat that hasn't opted into Daytona silently loses bash (which is where
+// the ffmpeg/media skills run).
+//
+// Two tiers, chosen per conversation (Settings › Sandbox, lib/sandbox-prefs.ts):
+//
+//   memorySandbox()  — free, instant, rebuilt EMPTY on every harness init.
+//   daytonaFactory() — a real Linux container whose disk survives across turns.
+//                      Gated on DAYTONA_API_KEY; degrades to the in-memory one
+//                      rather than failing the turn if Daytona is unreachable.
+//
+// eve used a Vercel Sandbox (defaultBackend); on flue we own the Daytona
+// lifecycle: resolve a sandbox and hand it to the `daytona(sandbox)` adapter.
 //
 // The sandbox id lives in this conversation's Durable Object storage, NOT in a
 // module-level Map. The agent initializer re-runs on each harness init, and a DO
@@ -19,8 +31,10 @@
 
 import { Daytona } from "@daytona/sdk";
 import type { Sandbox as DaytonaSandbox } from "@daytona/sdk";
-import type { SandboxFactory } from "@flue/runtime";
+import { bash } from "@flue/runtime";
+import type { SandboxFactory, SessionEnv } from "@flue/runtime";
 import { getCloudflareContext } from "@flue/runtime/cloudflare";
+import { Bash, InMemoryFs } from "just-bash";
 import { daytona } from "../sandboxes/daytona.js";
 
 // Minimal SQL surface shared with models.ts / fal-key.ts (same DO key-value table).
@@ -172,32 +186,66 @@ async function resolveSandbox(client: Daytona): Promise<DaytonaSandbox> {
 // (one `get`, plus a `start` if it was stopped); only overlapping inits share.
 const inFlight = new Map<string, Promise<DaytonaSandbox>>();
 
-export async function createSandbox(
-  id: string,
-): Promise<SandboxFactory | undefined> {
-  const apiKey = process.env.DAYTONA_API_KEY;
-  if (!apiKey) return undefined;
-  try {
-    const client = new Daytona({
-      apiKey,
-      // The default event path opens a socket.io connection from the SDK
-      // constructor, which a Worker can't hold open. Poll instead.
-      useDeprecatedPolling: true,
-    });
-    let pending = inFlight.get(id);
-    if (!pending) {
-      pending = resolveSandbox(client);
-      inFlight.set(id, pending);
-      void pending.catch(() => {}).finally(() => inFlight.delete(id));
-    }
-    return daytona(await pending);
-  } catch (error) {
-    // Never fail the whole turn over the sandbox: degrade to flue's in-memory
-    // one (bash still works, it just won't persist) and surface it in Logs.
-    console.error(
-      "[sandbox] Daytona unavailable, using in-memory fallback",
-      error,
-    );
-    return undefined;
-  }
+// --- the two factories -------------------------------------------------------
+
+// The free tier. A fresh just-bash instance over an in-memory filesystem, built
+// once per harness init — so bash, grep, glob and the file verbs exist, and
+// nothing written survives to the next message.
+//
+// No `cwd` override is needed (just-bash lands on /home/user); the Daytona tier
+// below must not take one at all — see the comment on `daytonaFactory`.
+export function memorySandbox(): SandboxFactory {
+  return bash(() => new Bash({ fs: new InMemoryFs() }));
+}
+
+// Whether the paid tier can be offered at all. Daytona is optional and shared,
+// so the escalation tool is only mounted when the key is actually present.
+export function daytonaAvailable(): boolean {
+  return Boolean(process.env.DAYTONA_API_KEY);
+}
+
+// The persistent tier. All the expensive work happens inside `createSessionEnv`
+// — flue 2 calls it once per initialized harness and passes `options.id`, the
+// conversation id, which is exactly what `resolveSandbox` keys on. (In flue 1
+// this had to be awaited in the agent initializer; the agent function is
+// synchronous now, so this is the only place it can live.)
+//
+// No `cwd` is passed to `useSandbox` for this tier, deliberately: flue then
+// uses the provider's own working directory (/home/daytona), which is the only
+// place the sandbox's non-root `daytona` user can actually write. A /workspace
+// cwd silently broke every bash call — `mkdir /workspace` is Permission denied
+// outside the home dir.
+export function daytonaFactory(): SandboxFactory {
+  return {
+    async createSessionEnv(options): Promise<SessionEnv> {
+      const apiKey = process.env.DAYTONA_API_KEY;
+      try {
+        if (!apiKey) throw new Error("DAYTONA_API_KEY is not set");
+        const client = new Daytona({
+          apiKey,
+          // The default event path opens a socket.io connection from the SDK
+          // constructor, which a Worker can't hold open. Poll instead.
+          useDeprecatedPolling: true,
+        });
+        const id = options.id;
+        let pending = inFlight.get(id);
+        if (!pending) {
+          pending = resolveSandbox(client);
+          inFlight.set(id, pending);
+          void pending.catch(() => {}).finally(() => inFlight.delete(id));
+        }
+        return await daytona(await pending).createSessionEnv(options);
+      } catch (error) {
+        // Never fail the whole turn over the sandbox. A rejection here fails
+        // the agent's INITIALIZATION — the conversation would not run at all —
+        // so degrade to the in-memory environment (bash still works, it just
+        // won't persist) and surface the reason in Logs.
+        console.error(
+          "[sandbox] Daytona unavailable, using in-memory fallback",
+          error,
+        );
+        return await memorySandbox().createSessionEnv(options);
+      }
+    },
+  };
 }

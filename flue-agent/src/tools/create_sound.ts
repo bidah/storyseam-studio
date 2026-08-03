@@ -22,8 +22,8 @@ export const createSound = (api: Api) =>
         ),
       ),
     }),
-    async run({ input, signal }) {
+    async run({ data: input, signal }) {
       const { prompt, name, kind, params } = input;
-      return await api.post("/api/sounds", { prompt, name, kind, params }, signal);
+      return { output: await api.post("/api/sounds", { prompt, name, kind, params }, signal) };
     },
   });

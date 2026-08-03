@@ -11,12 +11,14 @@ export const likeSoundVersion = (api: Api) =>
       id: d(v.pipe(v.string(), v.minLength(1)), "Track id, e.g. trk_2."),
       v: d(v.pipe(v.number(), v.integer(), v.minValue(1)), "Version number."),
     }),
-    async run({ input, signal }) {
+    async run({ data: input, signal }) {
       const { id, v } = input;
-      return await api.post(
-        `/api/sounds/${encodeURIComponent(String(id))}/version/${v}/like`,
-        undefined,
-        signal,
-      );
+      return {
+        output: await api.post(
+          `/api/sounds/${encodeURIComponent(String(id))}/version/${v}/like`,
+          undefined,
+          signal,
+        ),
+      };
     },
   });

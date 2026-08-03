@@ -20,10 +20,12 @@ export const applyScriptProposal = (api: Api) =>
       const proposal = cur.proposal;
       if (!proposal) {
         return {
-          ok: false,
-          error:
-            "There's no pending proposal to apply. Propose a change first (save_script / append_script), or the user may have already accepted or discarded it on the Script tab.",
-        } as Json;
+          output: {
+            ok: false,
+            error:
+              "There's no pending proposal to apply. Propose a change first (save_script / append_script), or the user may have already accepted or discarded it on the Script tab.",
+          } as Json,
+        };
       }
       const title =
         typeof proposal.proposedTitle === "string"
@@ -34,6 +36,6 @@ export const applyScriptProposal = (api: Api) =>
         { doc: proposal.proposedDoc ?? null, title },
         signal,
       );
-      return { ok: true, applied: true, title } as Json;
+      return { output: { ok: true, applied: true, title } as Json };
     },
   });

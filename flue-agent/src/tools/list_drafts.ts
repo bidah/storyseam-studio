@@ -26,9 +26,11 @@ export const listDrafts = (api: Api) =>
         updatedAt: dr.updatedAt ?? null,
       }));
       return {
-        drafts,
-        pinned: drafts.find((dr) => dr.pinned)?.name ?? null,
-        count: drafts.length,
+        output: {
+          drafts,
+          pinned: drafts.find((dr) => dr.pinned)?.name ?? null,
+          count: drafts.length,
+        },
       };
     },
   });

@@ -1,6 +1,12 @@
-import { observe, registerProvider } from "@flue/runtime";
-import { flue } from "@flue/runtime/routing";
+import { observe, setProvider } from "@flue/runtime";
+import { createAgentRouter } from "@flue/runtime/routing";
+import { createProvider } from "@earendil-works/pi-ai";
+import { anthropicMessagesApi } from "@earendil-works/pi-ai/api/anthropic-messages.lazy";
+import { openAICompletionsApi } from "@earendil-works/pi-ai/api/openai-completions.lazy";
+import { anthropicProvider } from "@earendil-works/pi-ai/providers/anthropic";
+import { cerebrasProvider } from "@earendil-works/pi-ai/providers/cerebras";
 import { Hono, type MiddlewareHandler } from "hono";
+import { Whistlewood } from "./agents/whistlewood.js";
 import { verifyProxyUser, proxySecret, PROXY_HEADER } from "./lib/proxy-auth.js";
 import { decodeInstanceId } from "./lib/instance-id.js";
 import { createApi } from "./lib/api.js";
@@ -13,10 +19,10 @@ import { installWorkersAiOutputCap } from "./lib/output-cap.js";
 
 // Give every Workers AI completion an explicit output-token budget — without
 // it the endpoint's tiny default cap silently clips long responses (a
-// subagent's outline, a long draft) with finish_reason "length". Must run
-// AFTER the generated entry registers flue's binding provider (its module
-// body runs after ours), hence the microtask. See lib/output-cap.ts.
-queueMicrotask(installWorkersAiOutputCap);
+// subagent's outline, a long draft) with finish_reason "length". A plain
+// top-level call: an app.ts setProvider() beats the generated entry's own
+// registration whatever the module order. See lib/output-cap.ts.
+installWorkersAiOutputCap();
 
 // --- Observability -----------------------------------------------------------
 // Surface agent failures to Cloudflare Workers Logs (wrangler.jsonc enables
@@ -24,7 +30,8 @@ queueMicrotask(installWorkersAiOutputCap);
 // tail`). Without this, a failed run ("agent error" in the chat panel) left no
 // trace on this worker — the flue runtime emits the failure via observe() but
 // nothing consumed it. We log every error-ish event with enough correlation
-// (instanceId → userId~projectId~chatId, runId, operationKind) to find the run.
+// (instanceId → userId~projectId~chatId, submissionId, operationKind) to find
+// the run.
 // Subscriber work must stay light: observe() callbacks are fire-and-forget and
 // their promises are observed-for-rejection but never awaited, so we only emit
 // synchronous console lines here — no I/O.
@@ -47,12 +54,15 @@ function errText(error: unknown): string {
 // started card retires VISIBLY instead, badged Completed
 // (worker/src/routes/suggestions.js).
 //
-// This is the trigger: the END OF EVERY RUN, off the runtime's own lifecycle
-// event rather than a tool the model has to remember to call. The sweep itself
-// makes no judgement — the worker re-derives the digest and flips the started
-// cards whose gaps are now closed — so a run that CLAIMS to have boarded the
-// episode can't mark that card done, and a run that quietly finished something
-// gets the credit anyway.
+// This is the trigger: EVERY SUBMISSION THAT SETTLES COMPLETED, off the
+// runtime's own lifecycle event rather than a tool the model has to remember to
+// call. (`run_end` used to carry this; run-scoped events went away with
+// workflows, and `submission_settled` is the documented replacement — it is the
+// terminal outcome of every submission, which is exactly what the sweep wants.)
+// The sweep itself makes no judgement — the worker re-derives the digest and
+// flips the started cards whose gaps are now closed — so a run that CLAIMS to
+// have boarded the episode can't mark that card done, and a run that quietly
+// finished something gets the credit anyway.
 //
 // Fire-and-forget: observe() callbacks are not awaited (flue's own guidance is
 // to keep them light), and this is a DO isolate that may be cut off before an
@@ -74,21 +84,25 @@ async function sweepSuggestions(instanceId: string | undefined): Promise<void> {
 
 observe((event) => {
   // Correlation fields ride on every decoded event (optional per variant).
+  // Run-scoped events went away with workflows: `runId` is now `instanceId`
+  // (the conversation) plus `submissionId` (one submission, dispatched or
+  // direct), and `run_start`/`run_end` are `agent_start`/`agent_end`.
   const scope = {
     instanceId: event.instanceId,
-    runId: event.runId,
+    submissionId: event.submissionId,
     agent: event.agentName,
   };
   switch (event.type) {
-    case "run_end":
-      if (event.isError) {
-        console.error("[flue] run failed", {
+    case "submission_settled":
+      if (event.outcome !== "completed") {
+        console.error("[flue] submission " + event.outcome, {
           ...scope,
-          durationMs: event.durationMs,
-          error: errText(event.error),
+          error: event.error?.message,
+          type: event.error?.type,
+          details: event.error?.details,
         });
-        // A failed run finished nothing, and the sweep would only re-read the
-        // same open gaps. Skip it.
+        // A failed submission finished nothing, and the sweep would only re-read
+        // the same open gaps. Skip it.
         break;
       }
       // Errors are swallowed rather than thrown: a sweep that fails must not
@@ -99,17 +113,6 @@ observe((event) => {
           error: errText(err),
         });
       });
-      break;
-    case "submission_settled":
-      if (event.outcome !== "completed") {
-        console.error("[flue] submission " + event.outcome, {
-          ...scope,
-          submissionId: event.submissionId,
-          error: event.error?.message,
-          type: event.error?.type,
-          details: event.error?.details,
-        });
-      }
       break;
     case "operation":
       if (event.isError) {
@@ -168,11 +171,10 @@ const FIRECRAWL_KEY_HEADER = "x-flue-firecrawl-key";
 // conversation that asked for one — see lib/sandbox-prefs.ts.
 const SANDBOX_HEADER = "x-flue-sandbox";
 
-// Generated Durable Object binding for each agent: `whistlewood.ts` ->
-// class FlueWhistlewoodAgent -> env.FLUE_WHISTLEWOOD_AGENT.
-const AGENT_BINDINGS: Record<string, string> = {
-  whistlewood: "FLUE_WHISTLEWOOD_AGENT",
-};
+// Generated Durable Object binding for the agent. Derived from its identity:
+// `Whistlewood.agentName = "whistlewood"` -> class FlueWhistlewoodAgent ->
+// env.FLUE_WHISTLEWOOD_AGENT (also the name wrangler.jsonc's migration declares).
+const WHISTLEWOOD_BINDING = "FLUE_WHISTLEWOOD_AGENT";
 
 type ModelStub = {
   setModel(model: string): Promise<void>;
@@ -188,16 +190,41 @@ type ModelStub = {
 };
 type Env = Record<string, DurableObjectNamespace | undefined>;
 
+// --- provider overrides ------------------------------------------------------
+//
+// flue 2 has no provider-registration schema of its own: a provider is a Pi
+// object, registered with setProvider() and keyed by its id, and a registration
+// here always wins over the generated entry's built-in one. So "patch a built-in
+// with a different baseUrl" becomes "register a provider under the built-in's id
+// that reuses its catalog and auth, with the models re-pointed at the gateway".
+function gatewayOverride(
+  base: ReturnType<typeof anthropicProvider> | ReturnType<typeof cerebrasProvider>,
+  baseUrl: string,
+  api: Parameters<typeof createProvider>[0]["api"],
+): void {
+  setProvider(
+    createProvider({
+      id: base.id,
+      name: base.name,
+      // The built-in's own credential resolution, unchanged — which is what
+      // reading the provider's API key from the environment always was.
+      auth: base.auth,
+      models: base.getModels().map((model) => ({ ...model, baseUrl })),
+      api,
+    }),
+  );
+}
+
 // Route the built-in `anthropic/*` provider through Cloudflare AI Gateway
 // (caching / logging / rate limiting) when a gateway URL is configured, while
 // keeping clean `anthropic/claude-sonnet-5` specifiers everywhere. Falls back to
-// calling Anthropic directly when ANTHROPIC_GATEWAY_URL is unset. This is the
-// documented built-in-provider override pattern.
+// calling Anthropic directly when ANTHROPIC_GATEWAY_URL is unset.
 if (process.env.ANTHROPIC_GATEWAY_URL) {
-  registerProvider("anthropic", {
-    baseUrl: process.env.ANTHROPIC_GATEWAY_URL,
-    apiKey: process.env.ANTHROPIC_API_KEY,
-  });
+  gatewayOverride(
+    anthropicProvider(),
+    process.env.ANTHROPIC_GATEWAY_URL,
+    anthropicMessagesApi(),
+  );
 }
 
 // Route the built-in `cerebras/*` provider (a pi-ai catalog provider,
@@ -210,10 +237,11 @@ if (process.env.ANTHROPIC_GATEWAY_URL) {
 // setting only CEREBRAS_API_KEY still works (direct, no gateway). The key is
 // required for any cerebras/* turn; without it that turn errors.
 if (process.env.CEREBRAS_GATEWAY_URL) {
-  registerProvider("cerebras", {
-    baseUrl: process.env.CEREBRAS_GATEWAY_URL,
-    apiKey: process.env.CEREBRAS_API_KEY,
-  });
+  gatewayOverride(
+    cerebrasProvider(),
+    process.env.CEREBRAS_GATEWAY_URL,
+    openAICompletionsApi(),
+  );
 }
 
 // The single auth boundary. The shot-studio-uploads worker mints a short-lived
@@ -237,10 +265,10 @@ const requireProxyUser: MiddlewareHandler = async (c, next) => {
 // Apply the picker's per-turn model to this conversation just before the prompt
 // is admitted. Runs AFTER requireProxyUser (so the principal owns the instance)
 // and only on POST (send) — GET is the stream read. Persisting to the DO here,
-// before `next()` hands off to flue's admission, guarantees the agent
-// initializer reads the fresh model for this turn. Best-effort: a set failure
-// must never block the send (it just keeps the previously stored / default
-// model). The model is whitelisted so a client can't select an arbitrary one.
+// before `next()` hands off to flue's admission, guarantees the agent render
+// reads the fresh model for this turn. Best-effort: a set failure must never
+// block the send (it just keeps the previously stored / default model). The
+// model is whitelisted so a client can't select an arbitrary one.
 const applyModelSelection: MiddlewareHandler = async (c, next) => {
   const requested = c.req.header(MODEL_HEADER);
   const falKey = c.req.header(FAL_KEY_HEADER);
@@ -266,11 +294,9 @@ const applyModelSelection: MiddlewareHandler = async (c, next) => {
     c.req.method === "POST" &&
     (wantModel || wantFalKey || wantAtlasKey || wantPrefs || wantSearch || wantSandbox)
   ) {
-    const name = c.req.param("name") ?? "";
-    const bindingName = AGENT_BINDINGS[name];
-    const ns = bindingName
-      ? (c.env as unknown as Env)[bindingName]
-      : undefined;
+    // The mount is per-agent now, so there is no `:name` param to read — this
+    // middleware only ever ran on the one binding it names here.
+    const ns = (c.env as unknown as Env)[WHISTLEWOOD_BINDING];
     const id = c.req.param("id");
     if (ns && id) {
       try {
@@ -329,10 +355,16 @@ app.get("/health", (c) =>
     },
   }),
 );
-app.use("/agents/:name/:id", requireProxyUser);
-app.use("/agents/:name/:id/*", requireProxyUser);
-app.use("/agents/:name/:id", applyModelSelection);
+// The auto-router is gone: every route is mounted explicitly, so the middleware
+// paths lose their `:name` param and name the one agent instead. The URL shape
+// is UNCHANGED — createAgentRouter serves `POST /:id`, `GET|HEAD /:id`,
+// `POST /:id/abort` and `GET /:id/attachments/:attachmentId` relative to the
+// mount, which is the same four surfaces at the same paths the clients and the
+// /eve proxy already address.
+app.use("/agents/whistlewood/:id", requireProxyUser);
+app.use("/agents/whistlewood/:id/*", requireProxyUser);
+app.use("/agents/whistlewood/:id", applyModelSelection);
 
-app.route("/", flue());
+app.route("/agents/whistlewood", createAgentRouter(Whistlewood));
 
 export default app;

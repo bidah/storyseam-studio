@@ -115,14 +115,16 @@ export function createFalTools(userKey?: string): ToolDefinition[] {
       ),
       num_images: v.optional(d(v.pipe(v.number(), v.integer(), v.minValue(1), v.maxValue(4)), "How many images (1-4). Default 1.")),
     }),
-    async run({ input }) {
+    async run({ data: input }) {
       const refs = input.image_urls?.filter(Boolean) ?? [];
-      return await submit(key, refs.length ? IMAGE_EDIT_ENDPOINT : IMAGE_ENDPOINT, {
-        prompt: input.prompt,
-        aspect_ratio: input.aspect_ratio || "16:9",
-        num_images: input.num_images ?? 1,
-        ...(refs.length ? { image_urls: refs } : {}),
-      });
+      return {
+        output: await submit(key, refs.length ? IMAGE_EDIT_ENDPOINT : IMAGE_ENDPOINT, {
+          prompt: input.prompt,
+          aspect_ratio: input.aspect_ratio || "16:9",
+          num_images: input.num_images ?? 1,
+          ...(refs.length ? { image_urls: refs } : {}),
+        }),
+      };
     },
   });
 
@@ -138,15 +140,17 @@ export function createFalTools(userKey?: string): ToolDefinition[] {
       generate_audio: v.optional(d(v.boolean(), "Generate synchronized audio. Default false (dialogue/SFX usually come from the Radio track).")),
       resolution: v.optional(d(v.picklist(["480p", "720p"]), "Video resolution. Default 720p.")),
     }),
-    async run({ input }) {
-      return await submit(key, input.image_url ? VIDEO_I2V_ENDPOINT : VIDEO_T2V_ENDPOINT, {
-        prompt: input.prompt,
-        aspect_ratio: input.aspect_ratio || "16:9",
-        duration: String(input.duration ?? 5),
-        generate_audio: input.generate_audio ?? false,
-        resolution: input.resolution || "720p",
-        ...(input.image_url ? { image_url: input.image_url } : {}),
-      });
+    async run({ data: input }) {
+      return {
+        output: await submit(key, input.image_url ? VIDEO_I2V_ENDPOINT : VIDEO_T2V_ENDPOINT, {
+          prompt: input.prompt,
+          aspect_ratio: input.aspect_ratio || "16:9",
+          duration: String(input.duration ?? 5),
+          generate_audio: input.generate_audio ?? false,
+          resolution: input.resolution || "720p",
+          ...(input.image_url ? { image_url: input.image_url } : {}),
+        }),
+      };
     },
   });
 
@@ -158,11 +162,13 @@ export function createFalTools(userKey?: string): ToolDefinition[] {
       prompt: d(v.string(), "Text description of the sound effect to generate."),
       duration_seconds: v.optional(d(v.pipe(v.number(), v.minValue(0.5), v.maxValue(22)), "Duration in seconds (0.5-22). Omit to auto-fit.")),
     }),
-    async run({ input }) {
-      return await submit(key, AUDIO_SFX_ENDPOINT, {
-        text: input.prompt,
-        ...(input.duration_seconds != null ? { duration_seconds: input.duration_seconds } : {}),
-      });
+    async run({ data: input }) {
+      return {
+        output: await submit(key, AUDIO_SFX_ENDPOINT, {
+          text: input.prompt,
+          ...(input.duration_seconds != null ? { duration_seconds: input.duration_seconds } : {}),
+        }),
+      };
     },
   });
 
@@ -174,7 +180,7 @@ export function createFalTools(userKey?: string): ToolDefinition[] {
       endpoint: d(v.string(), "The endpoint id returned by the fal_generate_* tool."),
       request_id: d(v.string(), "The request_id returned by the fal_generate_* tool."),
     }),
-    async run({ input }): Promise<any> {
+    async run({ data: input }): Promise<any> {
       const endpoint = input.endpoint.trim();
       if (!KNOWN_ENDPOINTS.has(endpoint)) {
         throw new Error(`Unknown fal endpoint '${endpoint}' — pass the endpoint a fal_generate_* tool returned.`);
@@ -189,15 +195,15 @@ export function createFalTools(userKey?: string): ToolDefinition[] {
       const st: any = await stRes.json();
       const status = String(st?.status || "IN_PROGRESS").toUpperCase();
       if (status !== "COMPLETED") {
-        return { status, ...(st?.queue_position != null ? { queue_position: st.queue_position as number } : {}) };
+        return { output: { status, ...(st?.queue_position != null ? { queue_position: st.queue_position as number } : {}) } };
       }
       const outRes = await falFetch(key, `${FAL_QUEUE}/${base}/requests/${id}`);
       if (!outRes.ok) {
         // A completed-but-failed job surfaces here (422 with the failure detail).
         const detail = await falErrorText(outRes);
-        return { status: "FAILED", error: detail || `fal job failed (${outRes.status})` };
+        return { output: { status: "FAILED", error: detail || `fal job failed (${outRes.status})` } };
       }
-      return { status: "COMPLETED", result: (await outRes.json()) as any };
+      return { output: { status: "COMPLETED", result: (await outRes.json()) as any } };
     },
   });
 

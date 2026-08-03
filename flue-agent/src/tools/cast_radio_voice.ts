@@ -30,15 +30,17 @@ export const castRadioVoice = (api: Api) =>
         d(v.boolean(), "Set true to clear this speaker's cast voice."),
       ),
     }),
-    async run({ input, signal }) {
+    async run({ data: input, signal }) {
       const { character, trackId, v: version_, clear } = input;
       if (clear || !trackId) {
-        return await api.req(
-          "/api/radio/casting",
-          "PUT",
-          { character, voiceRef: null },
-          signal,
-        );
+        return {
+          output: await api.req(
+            "/api/radio/casting",
+            "PUT",
+            { character, voiceRef: null },
+            signal,
+          ),
+        };
       }
       // Resolve + validate the take against the Sound Studio so we snapshot the
       // real playable url and never cast an unrendered or non-voice track.
@@ -76,19 +78,21 @@ export const castRadioVoice = (api: Api) =>
           `Voice take ${trackId} v${version.v} isn't liked — like it first (like_sound_version) or pick a liked take.`,
         );
       }
-      return await api.req(
-        "/api/radio/casting",
-        "PUT",
-        {
-          character,
-          voiceRef: {
-            trackId: track.id,
-            v: version.v,
-            name: track.name || version.name || "Voice",
-            url: version.url,
+      return {
+        output: await api.req(
+          "/api/radio/casting",
+          "PUT",
+          {
+            character,
+            voiceRef: {
+              trackId: track.id,
+              v: version.v,
+              name: track.name || version.name || "Voice",
+              url: version.url,
+            },
           },
-        },
-        signal,
-      );
+          signal,
+        ),
+      };
     },
   });

@@ -31,7 +31,7 @@ export const saveScript = (api: Api) =>
         "The full ordered list of screenplay lines, top to bottom.",
       ),
     }),
-    async run({ input, signal }) {
+    async run({ data: input, signal }) {
       const { title, summary, elements } = input as {
         title?: string;
         summary?: string;
@@ -57,11 +57,13 @@ export const saveScript = (api: Api) =>
         signal,
       );
       return {
-        ok: true,
-        proposed: true,
-        title: nextTitle,
-        lineCount: elements.length,
-        hint: "Staged as a proposal — tell the user what you changed and ask if they want it applied. If they confirm, call apply_script_proposal; otherwise they can Accept/Reject (per line) on the Script tab.",
+        output: {
+          ok: true,
+          proposed: true,
+          title: nextTitle,
+          lineCount: elements.length,
+          hint: "Staged as a proposal — tell the user what you changed and ask if they want it applied. If they confirm, call apply_script_proposal; otherwise they can Accept/Reject (per line) on the Script tab.",
+        },
       };
     },
   });

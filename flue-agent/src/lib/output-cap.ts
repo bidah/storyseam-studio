@@ -13,17 +13,19 @@
 // with "truncated arguments" (same root cause as the old big-shotlist
 // failures).
 //
-// Fix: re-register the `cloudflare-ai-binding` API provider with a wrapper
-// that defaults `maxTokens` on every call. pi-ai's API-provider registry is
-// documented module-scoped last-write-wins, so re-registering the same slug
-// replaces flue's handler. ORDER MATTERS: the flue-generated worker entry
-// calls `registerApiProvider(getCloudflareAIBindingApiProvider())` in its
-// module body, which runs AFTER app.ts's module body (user imports are
-// hoisted above it) — so app.ts must install this via queueMicrotask, which
-// runs after the entire module graph evaluates and before any request/alarm
-// is dispatched.
-import { registerApiProvider } from "@flue/runtime";
-import { getCloudflareAIBindingApiProvider } from "@flue/runtime/cloudflare/internal";
+// Fix: build the `cloudflare` binding provider ourselves and register it with
+// a `stream` / `streamSimple` pair that defaults `maxTokens` on every call.
+// setProvider() is keyed by provider id and the latest write wins — the
+// generated Worker entry SKIPS any id already registered, and app.ts's imports
+// are hoisted above its body, so this registration always beats the default
+// one. (In flue 1 the same thing needed a queueMicrotask to win the ordering
+// race; that hack is gone.)
+import { setProvider } from "@flue/runtime";
+import {
+  cloudflareBindingProvider,
+  type CloudflareAIBinding,
+} from "@flue/runtime/cloudflare/workers-ai";
+import { env } from "cloudflare:workers";
 
 // Fallback when the catalog doesn't document the model's completion cap.
 // When it DOES (pi-ai's `model.maxTokens`), we use that instead — clamping
@@ -40,14 +42,22 @@ export const DEFAULT_MAX_COMPLETION_TOKENS = 16384;
 // is headroom, not an invitation.
 export const MAX_COMPLETION_TOKENS_CEILING = 65536;
 
+// Deliberately loose in the parameters: this wraps pi-ai's `stream` and
+// `streamSimple`, whose signatures differ in their option types and are generic
+// over the model's API. `T` carries the real signature through to the caller;
+// the body only ever reads `model.maxTokens` and `options.maxTokens`, which both
+// shapes have.
 type AnyStreamFn = (
-  model: { maxTokens?: number },
-  context: unknown,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  model: any,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  context: any,
   options?: { maxTokens?: number },
-) => unknown;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+) => any;
 
-function withOutputCap(stream: AnyStreamFn): AnyStreamFn {
-  return (model, context, options) => {
+function withOutputCap<T extends AnyStreamFn>(stream: T): T {
+  return ((model, context, options) => {
     if (options?.maxTokens) return stream(model, context, options);
     // The model's own documented completion cap when the catalog knows it
     // (0 = unknown), bounded by the ceiling. gpt-oss-120b stays at its 16384;
@@ -58,7 +68,7 @@ function withOutputCap(stream: AnyStreamFn): AnyStreamFn {
         : DEFAULT_MAX_COMPLETION_TOKENS;
     const maxTokens = Math.min(modelCap, MAX_COMPLETION_TOKENS_CEILING);
     return stream(model, context, { ...options, maxTokens });
-  };
+  }) as T;
 }
 
 let installed = false;
@@ -66,10 +76,17 @@ let installed = false;
 export function installWorkersAiOutputCap(): void {
   if (installed) return;
   installed = true;
-  const base = getCloudflareAIBindingApiProvider();
-  registerApiProvider({
-    api: base.api,
-    stream: withOutputCap(base.stream as AnyStreamFn),
-    streamSimple: withOutputCap(base.streamSimple as AnyStreamFn),
-  } as unknown as Parameters<typeof registerApiProvider>[0]);
+  // A Pi provider carries `stream` / `streamSimple` at the top level (the
+  // `api` field is only `createProvider`'s input), so the cap wraps those two.
+  // Spreading is safe: `createProvider` returns a plain object literal, and the
+  // binding provider's dynamic-model-template symbol is an own enumerable key.
+  // `env` is untyped here (no generated worker-configuration.d.ts in this
+  // project); wrangler.jsonc's `"ai": { "binding": "AI" }` is what supplies it.
+  const binding = (env as unknown as { AI: CloudflareAIBinding }).AI;
+  const base = cloudflareBindingProvider({ binding });
+  setProvider({
+    ...base,
+    stream: withOutputCap(base.stream),
+    streamSimple: withOutputCap(base.streamSimple),
+  });
 }

@@ -1,8 +1,10 @@
 // Bridge to the shot-studio-uploads Worker's per-user Higgsfield token. Ported
-// from eve's agent/lib/worker-token.ts. The app login IS "Sign in with
-// Higgsfield", so the worker already holds and refreshes each user's bearer;
-// the agent fetches it with a short-lived HMAC assertion signed with the shared
-// FLUE_PROXY_SECRET (reverse of the `x-flue-proxy-user` proxy header).
+// from eve's agent/lib/worker-token.ts. Web login is Google, but a Higgsfield
+// account linked via Settings › Connectors — or the mobile Higgsfield sign-in —
+// puts the token on the same account row, so the worker already holds and
+// refreshes each user's bearer; the agent fetches it with a short-lived HMAC
+// assertion signed with the shared FLUE_PROXY_SECRET (reverse of the
+// `x-flue-proxy-user` proxy header).
 //
 // Web Crypto + fetch only, so it runs on the Workers runtime.
 //

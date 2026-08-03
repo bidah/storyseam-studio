@@ -46,7 +46,7 @@ export const navigate = (api: Api) =>
         ),
       ),
     }),
-    async run({ input, signal }) {
-      return await api.post("/api/navigate", input, signal);
+    async run({ data: input, signal }) {
+      return { output: await api.post("/api/navigate", input, signal) };
     },
   });

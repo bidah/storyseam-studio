@@ -1,8 +1,6 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
 import { RouterProvider } from "react-router";
-import { FlueProvider } from "@flue/react";
-import { createFlueClient } from "@flue/sdk";
 import { router } from "./router.jsx";
 import { installProjectScope } from "./lib/projectFetch.js";
 import { initDesktop } from "./lib/desktop-bootstrap.js";
@@ -16,13 +14,13 @@ import "streamdown/styles.css";
 // Glowing border effect — used to glow the Script tab on a live agent edit.
 import "glowing/dist/index.css";
 
-// The flue SDK client for the studio agent. Same-origin: the shot-studio-uploads
-// worker proxies `/eve/*` to the flue worker and injects the per-user identity
+// There is no deployment-wide flue client any more: a client addresses ONE
+// conversation URL, so it is built where the conversation id is known
+// (src/components/AgentProvider.jsx) and `FlueProvider` is gone with it. The
+// transport is unchanged — same-origin `/eve/*`, proxied to the flue worker,
+// which mints the per-user identity and prepends `${userId}~` to the instance id
 // (the Better Auth session cookie rides along via the projectFetch shim, which
-// sets `credentials: "include"` on same-origin requests). No client-side token
-// or headers — the worker mints the identity and prepends `${userId}~` to the
-// conversation instance id.
-const flueClient = createFlueClient({ baseUrl: "/eve" });
+// sets `credentials: "include"` on same-origin requests).
 
 // Desktop (Electron) glue: hydrates the BYOK keys from the safeStorage vault
 // before the first render (the login gate reads them synchronously) and wires
@@ -30,9 +28,7 @@ const flueClient = createFlueClient({ baseUrl: "/eve" });
 initDesktop(router).then(() => {
   ReactDOM.createRoot(document.getElementById("root")).render(
     <React.StrictMode>
-      <FlueProvider client={flueClient}>
-        <RouterProvider router={router} />
-      </FlueProvider>
+      <RouterProvider router={router} />
     </React.StrictMode>
   );
 });

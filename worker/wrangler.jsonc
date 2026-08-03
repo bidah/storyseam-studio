@@ -44,15 +44,26 @@
     // The flue chat agent runs as its own Cloudflare Worker; this Worker proxies
     // /eve/* to it (stripping the prefix) so the browser reaches it same-origin
     // (see the /eve/* proxy in src/index.js).
-    "FLUE_ORIGIN": "https://shot-studio-flue.rodrigofigueroa-name.workers.dev"
+    "FLUE_ORIGIN": "https://shot-studio-flue.rodrigofigueroa-name.workers.dev",
+    // ...and a SECOND one on flue 2. Both stay deployed: flue 2's persisted
+    // schema is a hard break (it rejects a flue-1 database outright), so each
+    // conversation is pinned to the engine that holds its transcript. The proxy
+    // picks by the chat id's `f2-` prefix — see the /eve/* proxy in src/index.js.
+    "FLUE_V2_ORIGIN": "https://shot-studio-flue-v2.rodrigofigueroa-name.workers.dev",
+    // The cutover switch, and the only one: "1" makes the clients mint v2-prefixed
+    // ids for NEW chats. Existing conversations are unaffected either way, so
+    // flipping this back is a complete rollback with nothing to migrate.
+    "FLUE_V2_NEW_CHATS": "0"
   },
-  // Service binding to the flue chat agent Worker. The /eve/* proxy dispatches
-  // through this binding (c.env.FLUE.fetch) instead of a public-URL fetch, which
-  // avoids worker-to-worker DNS/Host routing (the public-URL path 404'd in prod).
-  // Falls back to fetch(FLUE_ORIGIN) when the binding is absent (e.g. local dev
-  // where flue runs as a separate `flue dev` process).
+  // Service bindings to the flue chat agent Workers. The /eve/* proxy dispatches
+  // through these (c.env.FLUE.fetch / c.env.FLUE_V2.fetch) instead of a
+  // public-URL fetch, which avoids worker-to-worker DNS/Host routing (the
+  // public-URL path 404'd in prod). Falls back to fetch(FLUE*_ORIGIN) when the
+  // binding is absent (e.g. local dev where flue runs as a separate `vite dev`
+  // process).
   "services": [
-    { "binding": "FLUE", "service": "shot-studio-flue" }
+    { "binding": "FLUE", "service": "shot-studio-flue" },
+    { "binding": "FLUE_V2", "service": "shot-studio-flue-v2" }
   ],
   // Serve the built Vite SPA from the Worker; API routes below take precedence,
   // and client-side routes fall back to index.html.

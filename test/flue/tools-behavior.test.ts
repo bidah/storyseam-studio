@@ -4,7 +4,6 @@ import * as v from "valibot";
 import { getWorld } from "../../flue-agent/src/tools/get_world";
 import { getScript } from "../../flue-agent/src/tools/get_script";
 import { saveShotlist } from "../../flue-agent/src/tools/save_shotlist";
-import { askQuestion } from "../../flue-agent/src/tools/ask_question";
 import { toggleLibrary } from "../../flue-agent/src/tools/toggle_library";
 import { attachStill } from "../../flue-agent/src/tools/attach_still";
 import { editTimeline } from "../../flue-agent/src/tools/edit_timeline";
@@ -24,7 +23,12 @@ function makeApi(responses: { get?: any; post?: any; req?: any } = {}) {
   } as any;
 }
 
-const run = (tool: any, input?: any) => tool.run({ input, signal: undefined });
+// A flue 2 tool takes its parsed arguments as `data` and returns a result
+// ENVELOPE — `{ output?, terminate? }` — so unwrap `.output` once here rather
+// than in every assertion. This is also the cheapest proof that every `run`
+// body was migrated: an unwrapped return shows up as `undefined` here.
+const run = async (tool: any, input?: any) =>
+  (await tool.run({ data: input, signal: undefined }))?.output;
 
 describe("read tools dispatch to the right endpoint", () => {
   it("get_world GETs /api/world and passes the payload through", async () => {
@@ -64,7 +68,11 @@ describe("save_shotlist", () => {
   it("POSTs /api/shotlist, defaulting mode=replace and source=agent", async () => {
     const api = makeApi({ post: { count: 1 } });
     await run(saveShotlist(api), { shots: [shot] });
-    expect(api.calls[0]).toMatchObject({
+    // A "replace" READS the current list first — that is the shrink gate
+    // (a shorter list over an existing one needs the author's go-ahead), and
+    // with nothing stored it falls straight through to the write.
+    expect(api.calls[0]).toMatchObject({ verb: "get", path: "/api/shotlist" });
+    expect(api.calls[1]).toMatchObject({
       verb: "post",
       path: "/api/shotlist",
       body: { shots: [shot], source: "agent", mode: "replace" },
@@ -78,32 +86,10 @@ describe("save_shotlist", () => {
   });
 });
 
-describe("ask_question (non-blocking HITL card)", () => {
-  it("requires a non-empty question and validates option shape", () => {
-    const tool: any = askQuestion();
-    expect(v.safeParse(tool.input, { question: "Which take?" }).success).toBe(true);
-    expect(v.safeParse(tool.input, { question: "" }).success).toBe(false);
-    expect(
-      v.safeParse(tool.input, {
-        question: "Pick",
-        options: [{ id: "a", label: "A", style: "danger" }],
-      }).success,
-    ).toBe(true);
-    expect(
-      v.safeParse(tool.input, { question: "Pick", options: [{ id: "a", label: "A", style: "loud" }] }).success,
-    ).toBe(false); // bad style enum
-  });
-
-  it("returns immediately with the card payload and a stop-the-turn note (no api)", async () => {
-    const out: any = await askQuestion().run({
-      input: { question: "Overwrite?", options: [{ id: "y", label: "Yes" }] },
-    });
-    expect(out.presented).toBe(true);
-    expect(out.question).toBe("Overwrite?");
-    expect(out.options).toEqual([{ id: "y", label: "Yes" }]);
-    expect(out.note).toMatch(/end your turn/i);
-  });
-});
+// The `ask_question` block that lived here is gone with the tool: `render_ui`
+// replaced it, and `flue-agent/src/tools/ask_question.ts` was deleted — this
+// file's import of it had been failing since. (Its parts still render in old
+// transcripts, but there is nothing left to unit-test.)
 
 describe("write tools dispatch", () => {
   it("toggle_library POSTs /api/library/toggle with { rel }", async () => {

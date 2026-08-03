@@ -16,12 +16,12 @@ export const scoreCut = (api: Api) =>
         ),
       ),
     }),
-    async run({ input, signal }) {
+    async run({ data: input, signal }) {
       const { gainDb } = input;
       const body =
         typeof gainDb === "number"
           ? { gain: Math.pow(10, gainDb / 20) }
           : undefined;
-      return await api.post("/api/episode/score", body, signal);
+      return { output: await api.post("/api/episode/score", body, signal) };
     },
   });
