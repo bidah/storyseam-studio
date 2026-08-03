@@ -22,6 +22,8 @@ import {
   trimStore,
   withActiveForProject,
 } from "@/lib/chat-store";
+import { toast } from "sonner";
+import { engineForChatId } from "@/lib/chatEngine";
 import { generateChatTitle } from "@/lib/agentTitle";
 import { dropTranscript, loadTranscript, saveTranscript } from "@/lib/transcript-cache";
 import { getProjectId, onProjectChange } from "@/lib/projectFetch";
@@ -385,8 +387,20 @@ function AgentSessionRunner({ activeId, projectId, conv, publish }) {
       historyReady: flueAgent.historyReady,
       // `send({ message, images })` — `message` is a plain string; `images` is
       // flue's optional `AgentPromptImage[]` (`{ data: base64, mimeType }`).
-      send: ({ message = "", images } = {}) =>
-        sendRef.current(message, images?.length ? { images } : undefined),
+      // A pre-migration (unprefixed) chat lives on flue 1, which this client
+      // cannot speak to — the old worker answers with 400 "Request is
+      // malformed". Block the send here, the one choke point every path
+      // (composer, quick suggestions, card responses, voice) goes through.
+      send: ({ message = "", images } = {}) => {
+        if (engineForChatId(activeId) === "flue1") {
+          toast.error("This chat runs on the previous agent engine", {
+            description:
+              "It's read-only now — start a new chat to keep working with the agent.",
+          });
+          return Promise.resolve();
+        }
+        return sendRef.current(message, images?.length ? { images } : undefined);
+      },
       // Cancel the in-flight turn. `useFlueAgent` doesn't surface a stop, but the
       // conversation client does: `abort()` POSTs `<mount>/:id/abort`, which the
       // flue worker threads as an AbortSignal through the running turn (and its

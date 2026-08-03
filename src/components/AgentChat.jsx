@@ -29,6 +29,7 @@ import { toast } from "sonner";
 import { Streamdown, defaultRemarkPlugins } from "streamdown";
 import remarkBreaks from "remark-breaks";
 import { cn } from "@/lib/utils";
+import { engineForChatId } from "@/lib/chatEngine";
 import { buildSuggestions, FALLBACK_SUGGESTIONS } from "@/lib/suggestions";
 import { cardArtPath, meshPalette, meshSeed, meshShape } from "@/lib/card-art";
 import { startSuggestion, sweepSuggestions } from "@/lib/suggestionProgress";
@@ -1555,6 +1556,9 @@ export default function AgentChat() {
   // transcript to wait for (default title, never titled, no attachments), so we
   // skip the spinner for it and show the empty state right away.
   const activeChat = conv.list.find((c) => c.id === conv.activeId);
+  // A pre-migration chat is pinned to flue 1, which this client can't talk to
+  // any more — surface that instead of letting a send bounce off a 400.
+  const legacyChat = engineForChatId(conv.activeId) === "flue1";
   const looksNew =
     !activeChat ||
     (activeChat.title === "New chat" && !activeChat.titled && !activeChat.attachments?.length);
@@ -2127,6 +2131,22 @@ export default function AgentChat() {
       </div>
 
       <div className="shrink-0 border-t p-3">
+        {legacyChat ? (
+          <div className="mb-2 flex items-center gap-2 rounded-lg border bg-muted/40 p-2.5 text-xs text-muted-foreground">
+            <History size={14} className="shrink-0" />
+            <span className="min-w-0">
+              This chat ran on the previous agent engine and is read-only.
+            </span>
+            <Button
+              size="sm"
+              variant="secondary"
+              className="ml-auto h-7 shrink-0"
+              onClick={() => conv.newChat()}
+            >
+              Start a new chat
+            </Button>
+          </div>
+        ) : null}
         {attachments.length > 0 ? (
           <AttachmentGroup className="mb-2">
             {attachments.map((a) => (
