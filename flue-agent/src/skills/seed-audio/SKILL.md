@@ -191,7 +191,12 @@ multiple generations. **Verified working** with both WAV and MP3 references.
 ### How to attach a reference via the Higgsfield MCP
 
 1. Have the reference file locally (record it, or generate a clean clip with
-   `seed_audio` itself: prompt "a short clean voice sample, no music, no SFX").
+   `seed_audio` itself). When the clip is a **character casting sample** for this
+   project, use the radio skill's canonical fixed dialogue (see `radio` →
+   "Casting a voice"), never ad-hoc or script-sourced text — its deliberate
+   calm → excited → questioning arc is the one sanctioned exception to the
+   "consistent emotion" guideline above, giving the clone delivery coverage
+   while staying one clean voice.
 2. `media_upload` with `files:[{filename, content_type}]` → returns presigned
    `upload_url` + `media_id` per file. `content_type`: `audio/wav` or `audio/mpeg`.
 3. `curl -X PUT -H "Content-Type: <signed type>" --data-binary @file '<upload_url>'`

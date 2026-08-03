@@ -1,6 +1,6 @@
 ---
 name: radio
-description: Voice a scene's dialogue for the Radio version — the audio-only pass of the episode. For each line in a scene, render the spoken line with Seed Audio using the character's favorited voice as a reference clip so the voice stays consistent, then link the take to the line. Use when the user presses "Render scene" on the Radio tab, or asks to "voice the dialogue", "make the radio version", "render the radio scene", or "voice-act this scene". This produces per-line voice takes only — sending the finished audio into the Editor timeline is a one-click step the user does from the Radio tab.
+description: Voice a scene's dialogue for the Radio version — the audio-only pass of the episode. For each line in a scene, render the spoken line with Seed Audio using the character's favorited voice as a reference clip so the voice stays consistent, then link the take to the line. Use when the user presses "Render scene" on the Radio tab, or asks to "voice the dialogue", "make the radio version", "render the radio scene", or "voice-act this scene". Casting a NEW voice always renders this skill's fixed canonical casting sample (~15s, calm → excited → questioning) — never sample text lifted from the script. This produces per-line voice takes only — sending the finished audio into the Editor timeline is a one-click step the user does from the Radio tab.
 ---
 
 # radio (voice a scene's dialogue → per-line Seed Audio takes)
@@ -16,13 +16,40 @@ This skill only produces audio. It does NOT stitch a timeline or render video.
 
 - The scene's lines each need a **cast voice** (`line.voiceRef`). If a line has
   `voiceRef: null`, its character has no voice cast. Cast one first, then render:
-  render a short in-character voice sample (seed-audio), `like_sound_version`, and
+  render the **canonical casting sample** (see "Casting a voice" below — fixed
+  dialogue, NEVER script lines), `like_sound_version`, and
   attach it — with `attach_character_voice` (by id) if the speaker is on the World
   roster, or `cast_radio_voice` (by name) if it's a **background / one-off speaker**
   with no World record (e.g. "Store Owner"). Only then voice the line. If the user
   would rather cast it themselves, tell them to use the Casting rail and skip that line.
 - Voices come from the Sound Studio (`kind: "voice"` liked takes). The Radio tab
   seeds them from each World character's attached voice.
+
+## Casting a voice — the canonical sample (fixed dialogue, ALWAYS)
+
+When casting a new voice, render the sample below with its dialogue **verbatim**
+— never build the sample from lines in the script. Script lines carry whatever
+emotion their scene has, so a script-sourced reference bakes a random mood into
+the clone. The fixed passage gives every voice the same ~15-second coverage —
+calm delivery → excitement → questions — so the reference clip works for any
+line it later voices.
+
+Only the **voice traits** in the parenthetical change per character (age,
+timbre, accent — from the World record's `voice` field or the user's direction).
+The spoken words never change.
+
+```jsonc
+generate_audio {
+  model: "seed_audio", format: "wav", sample_rate: 48000,
+  prompt: "<Character> (<voice traits>) speaks a single clean take — one voice, no music, no sound effects, no background ambience. They start calm and steady: \"I walked the long path this morning, past the old stone, and the woods were quiet as sleep.\" Then bright and excited: \"Then the wind turned — the whole forest woke up with birdsong, all at once, like it knew something!\" Then soft, curious questions: \"Did you hear it too? What do you think it means?\" Let the final word ring out completely, then hold about one second of clean silence before the clip ends."
+}
+```
+
+Then `create_sound({ kind: "voice", name: "<Character> — casting sample" })`,
+`attach_sound` the result, `like_sound_version`, and attach it to the speaker
+(`attach_character_voice` / `cast_radio_voice` per the precondition above). Play
+the sample back to the user (`render_ui` AudioList) before voicing whole scenes
+with it — a bad clone caught here saves a scene's worth of retakes.
 
 ## Steps
 
