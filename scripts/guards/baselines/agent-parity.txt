@@ -26,6 +26,10 @@
                                   # the agent IS a chat; it has no business listing or deleting them
 /api/transcribe                   # microphone capture → text, for the composer's dictation button
 /api/history/*/*/restore          # the agent reaches this through restore_version, which posts a different literal
+/api/auth/oauth2/link             # interactive browser OAuth (link Higgsfield to the Google session);
+                                  # the agent gets the resulting token via the worker token bridge
+/api/share/script/*               # the PUBLIC share-link viewer page (/share/script/<token>); the
+                                  # agent manages links via share_script and never plays the viewer
 
 # --- [gui-only] render plumbing the agent drives through provider tools ------
 /api/render                       # the GUI's own render kick-off; the agent uses the provider tools

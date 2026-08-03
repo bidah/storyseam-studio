@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react';
 import {
   Modal,
+  Platform,
   Pressable,
   RefreshControl,
   ScrollView,
+  Share,
   Text,
   TextInput,
   View,
@@ -17,6 +19,7 @@ import {
   GitPullRequestArrow,
   ListChecks,
   Lock,
+  Share2,
   Wand2,
   X,
 } from 'lucide-react-native';
@@ -327,6 +330,19 @@ export function ScriptSurface() {
     toast('Sent to agent — watch the Chat tab');
   };
 
+  // Share a public read-only link to the script. POST mints the link once and
+  // returns the same one thereafter (revocable from the web Share dialog); the
+  // page it opens is the worker-served SPA's /share/script/<token> view.
+  const shareScript = async () => {
+    try {
+      const res = (await postJson('/api/script/share', {})) as { url?: string };
+      if (!res?.url) throw new Error('No share link returned');
+      await Share.share(Platform.OS === 'ios' ? { url: res.url } : { message: res.url });
+    } catch (e: any) {
+      toast.error(String(e?.message || e || 'Share failed'));
+    }
+  };
+
   // Tapped a screenplay block and either rewrote it or asked for a change → route
   // the request (built by the sheet) to the agent as a reviewable proposal, then
   // jump to the Chat tab to watch it stream.
@@ -378,6 +394,9 @@ export function ScriptSurface() {
               <CircleCheck size={13} color={colors.foreground} />
             </Button>
           )}
+          <Button size="sm" variant="outline" title="Share" onPress={shareScript}>
+            <Share2 size={13} color={colors.foreground} />
+          </Button>
           {script.signed ? (
             <Button size="sm" title="Generate shot list" disabled={genDisabled} onPress={generate}>
               {script.shotlistExists ? (

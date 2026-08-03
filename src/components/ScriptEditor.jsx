@@ -18,7 +18,7 @@ import { TaskList, TaskItem } from "@tiptap/extension-list";
 import {
   Check, Loader2, Cloud, PenLine, Save, Pencil,
   GitBranch, Plus, Trash2, Pin, CircleCheck, ListChecks, Lock, FileUp,
-  Stethoscope, RotateCcw,
+  Stethoscope, RotateCcw, Share2, Copy, ExternalLink,
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -365,6 +365,113 @@ function ImportControls({ flush, reload }) {
         </span>
       )}
     </>
+  );
+}
+
+// Share — a public read-only link to the pinned draft (/share/script/<token>,
+// rendered by src/routes/share-script.jsx outside the login gate). Opening the
+// dialog IS the enable action: it POSTs /api/script/share, which mints a token
+// once and returns the same link on every subsequent open. "Stop sharing"
+// revokes the token, killing every copy of the link.
+function ShareControls() {
+  const [open, setOpen] = useState(false);
+  const [info, setInfo] = useState(null); // null = minting, { url } = live
+  const [err, setErr] = useState(null);
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    let alive = true;
+    setInfo(null);
+    setErr(null);
+    setCopied(false);
+    fetch("/api/script/share", { method: "POST" })
+      .then((r) => r.json())
+      .then((d) => {
+        if (!alive) return;
+        if (d.error || !d.url) throw new Error(d.error || "No share link returned");
+        setInfo(d);
+      })
+      .catch((e) => alive && setErr(String(e.message || e)));
+    return () => { alive = false; };
+  }, [open]);
+
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(info.url);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch (e) {
+      setErr(String(e.message || e));
+    }
+  };
+
+  const stopSharing = async () => {
+    try {
+      await fetch("/api/script/share", { method: "DELETE" });
+      setOpen(false);
+    } catch (e) {
+      setErr(String(e.message || e));
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button
+          variant="outline"
+          size="sm"
+          className="h-7 gap-1.5 text-xs"
+          title="Share a public read-only view of this script"
+        >
+          <Share2 size={13} />
+          Share
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Share2 size={16} /> Share script
+          </DialogTitle>
+          <DialogDescription>
+            Anyone with this link can read the current script — formatted, no editing.
+            The link always shows the latest saved version.
+          </DialogDescription>
+        </DialogHeader>
+        {err ? (
+          <p className="text-sm text-destructive" role="alert">{err}</p>
+        ) : !info ? (
+          <p className="flex items-center gap-2 text-sm text-muted-foreground">
+            <Loader2 size={14} className="animate-spin" /> Creating share link…
+          </p>
+        ) : (
+          <div className="flex items-center gap-2">
+            <Input readOnly value={info.url} className="h-8 text-xs" onFocus={(e) => e.target.select()} />
+            <Button variant="outline" size="sm" className="h-8 gap-1.5 shrink-0" onClick={copy}>
+              {copied ? <Check size={13} className="text-primary" /> : <Copy size={13} />}
+              {copied ? "Copied" : "Copy"}
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8 shrink-0"
+              aria-label="Open the shared view in a new tab"
+              onClick={() => window.open(info.url, "_blank", "noopener")}
+            >
+              <ExternalLink size={13} />
+            </Button>
+          </div>
+        )}
+        <DialogFooter className="sm:justify-between">
+          <Button variant="ghost" size="sm" className="text-destructive" disabled={!info} onClick={stopSharing}>
+            Stop sharing
+          </Button>
+          <Button variant="secondary" size="sm" onClick={() => setOpen(false)}>
+            Done
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -720,6 +827,7 @@ function Editor({ initial, drafts, pinnedId, currentName, reload, signed: signed
           reload={reload}
         />
         <ImportControls flush={saveNow} reload={reload} />
+        <ShareControls />
         <span className="mx-0.5 h-5 w-px bg-border" aria-hidden />
         <ShotlistGate
           draftId={draftId}

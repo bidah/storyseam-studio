@@ -29,6 +29,7 @@ import { registerShotlist } from "./routes/shotlist.js";
 import { registerRadio } from "./routes/radio.js";
 import { registerAnimatic } from "./routes/animatic.js";
 import { registerScript } from "./routes/script.js";
+import { registerShare } from "./routes/share.js";
 import { registerSounds } from "./routes/sounds.js";
 import { registerEpisode } from "./routes/episode.js";
 import { registerTimeline } from "./routes/timeline.js";
@@ -197,13 +198,17 @@ app.use("*", async (c, next) => {
   //                  assertion on the Authorization header.
   //   /api/mcp       the external MCP surface. It requires its own bearer token
   //                  and resolves its project explicitly.
+  //   /api/share/    the public read-only share views (routes/share.js). The
+  //                  share token is the credential — it names its project and
+  //                  is verified against that project's share doc. GET-only.
   const isData =
     p.startsWith("/api/") &&
     !p.startsWith("/api/auth/") &&
     !p.startsWith("/api/projects") &&
     !p.startsWith("/api/extract") &&
     !p.startsWith("/api/agent/") &&
-    !p.startsWith("/api/mcp");
+    !p.startsWith("/api/mcp") &&
+    !p.startsWith("/api/share/");
   // A WRITE we can't scope must never reach storage: `normalizeProjectId(null)`
   // resolves to `p_default`, and `p_default` is a REAL project (Whistlewood), so
   // an unscoped mutation silently lands in someone's actual world/shot list
@@ -544,6 +549,7 @@ registerShotlist(app);
 registerRadio(app);
 registerAnimatic(app);
 registerScript(app);
+registerShare(app);
 registerSounds(app);
 registerEpisode(app);
 registerTimeline(app);

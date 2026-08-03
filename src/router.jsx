@@ -22,6 +22,15 @@ const fallback = (tab) => () => <RouteSkeleton tab={tab} />;
 // Biggest win: /editor's Remotion deps leave the main bundle. ErrorBoundary stays
 // statically set so it also catches lazy-load failures.
 export const router = createBrowserRouter([
+  // PUBLIC read-only script view behind a share link. A SIBLING of RootLayout,
+  // not a child: the shell's LoginGate (session + provider key) and header must
+  // never wrap it — a link viewer has neither. Matching here also keeps it out
+  // of the catch-all redirect inside RootLayout's children.
+  {
+    path: "/share/script/:token",
+    lazy: () => import("@/routes/share-script"),
+    ErrorBoundary: RouteError,
+  },
   {
     path: "/",
     Component: RootLayout,

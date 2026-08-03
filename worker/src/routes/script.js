@@ -6,6 +6,8 @@
 // change the pinned draft broadcast on the "script" channel for live-sync.
 import { readDoc, updateDoc } from "../lib/docs.js";
 import { broadcast } from "../lib/broadcast.js";
+import { makeShareToken } from "../lib/share-token.js";
+import { SHARE_DOC } from "./share.js";
 import { SPECIALISTS, isSpecialist, readReviews, recordReview, reviewState } from "../lib/reviews.js";
 import {
   nowIso,
@@ -403,6 +405,55 @@ export function registerScript(app) {
         at: Date.now(),
       }, c.executionCtx);
       return c.json({ ok: true, specialist, entry });
+    } catch (e) {
+      return c.json({ error: String(e.message || e) }, 500);
+    }
+  });
+
+  // --- share link (authed management half; the public viewer route lives in
+  // routes/share.js). The link always shows the PINNED draft, read-only.
+  // The share page is served by this same worker's SPA, so the link's origin is
+  // simply the request's own.
+  const shareUrl = (c, token) => new URL(`/share/script/${token}`, c.req.url).toString();
+
+  // Is sharing on, and where does the link point?
+  app.get("/api/script/share", async (c) => {
+    try {
+      const cfg = await readDoc(c.env, c.get("projectId"), SHARE_DOC, null);
+      return c.json({
+        shared: !!cfg?.token,
+        url: cfg?.token ? shareUrl(c, cfg.token) : null,
+      });
+    } catch (e) {
+      return c.json({ error: String(e.message || e) }, 500);
+    }
+  });
+
+  // Turn sharing on. Idempotent: an existing live token is returned as-is, so
+  // reopening the Share dialog never silently rotates a link already sent out.
+  app.post("/api/script/share", async (c) => {
+    const pid = c.get("projectId");
+    try {
+      const { token } = await updateDoc(c.env, pid, SHARE_DOC, { token: null }, (cfg) => {
+        if (!cfg.token) cfg.token = makeShareToken(pid);
+        return { token: cfg.token };
+      });
+      return c.json({ shared: true, url: shareUrl(c, token) });
+    } catch (e) {
+      return c.json({ error: String(e.message || e) }, 500);
+    }
+  });
+
+  // Turn sharing off — every copy of the link dies immediately. A later share
+  // mints a fresh token, so old links stay dead.
+  app.delete("/api/script/share", async (c) => {
+    try {
+      await updateDoc(c.env, c.get("projectId"), SHARE_DOC, { token: null }, (cfg) => {
+        if (!cfg.token) return { abort: true };
+        cfg.token = null;
+        return {};
+      });
+      return c.json({ shared: false });
     } catch (e) {
       return c.json({ error: String(e.message || e) }, 500);
     }
