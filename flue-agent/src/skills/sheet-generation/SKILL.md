@@ -2,19 +2,20 @@
 name: sheet-generation
 description: >-
   Generate a CHARACTER SHEET (contact/model sheet, turnaround), a LOCATION
-  SHEET (design sheet), or a PROP SHEET (multi-view reference of an object a
-  character carries) with the project's sheet prompts, via Nano Banana Pro on
-  the Higgsfield MCP. Use for "generate a character/location/prop sheet",
-  "turnaround", "reference sheet" — and for ANY location image generation
-  ("create the locations", "generate <place name>"). Location and prop art is
-  ALWAYS a sheet (style preset + sheet prompt + a mandatory reference image),
-  and the user ALWAYS picks the reference: an image ATTACHED to the requesting
-  message IS that pick — use it, don't re-ask; otherwise render_ui a MediaGrid
-  of candidates and STOP before generating — never auto-pick. Layer the sheet
-  prompt (get_visual_world sheetPrompts) between style preset and subject,
-  attach with attach_visual_generation (sheetType set), and offer to link it as
-  the roster's sheetImage. The sheet comes back IN THE CHAT as a render_ui
-  MediaGrid card — never prose pointing at the tab.
+  SHEET, or a PROP SHEET with the project's sheet prompts via the Higgsfield
+  MCP. Use for "generate a character/location/prop sheet", "turnaround",
+  "reference sheet" — and for ANY location image generation ("create the
+  locations"). Location and prop art is ALWAYS a sheet (style preset + sheet
+  prompt + a mandatory reference image), and the user ALWAYS picks the
+  reference: an image ATTACHED to the requesting message IS that pick — use
+  it, don't re-ask; otherwise render_ui a MediaGrid of candidates and STOP —
+  never auto-pick. Honor Settings › Generation defaults (settings.model,
+  empty = Nano Banana Pro; settings.resolution 1k/2k/4k), and confirm EVERY
+  submit with a render_ui card whose one-per-group OptionList lets the user
+  pick model and resolution. Layer the sheet prompt (get_visual_world
+  sheetPrompts) between style preset and subject, attach with
+  attach_visual_generation (sheetType set), and show the sheet as a render_ui
+  MediaGrid card.
 ---
 
 # Character, location & prop sheet generation
@@ -72,15 +73,22 @@ always read them fresh, never improvise your own sheet instructions.
 If the user names a character/place that isn't on the roster, ask whether to add
 it first (`add_world_character` / `add_world_location`) or just generate.
 
-## Step 2 — Resolve the model (fresh, honoring the project default)
+## Step 2 — Resolve the model AND resolution (fresh, honoring the project defaults)
 
-The project's **configured default model** is `settings.model` from
-`get_visual_world` (Settings page › Generation defaults; empty string means
-Nano Banana Pro). Resolve as in `visual-world`: `models_explore` fresh, then
-pick the configured model if set — otherwise the current **Nano Banana Pro**
-image model — and read its allowed media role (`image`) if referencing. If the
-configured id no longer exists in the catalog, fall back to Nano Banana Pro and
-mention it. Never reuse a remembered/recorded model id.
+The project's **configured defaults** come from `get_visual_world` `settings`
+(Settings page › Generation defaults): `settings.model` (empty string means
+Nano Banana Pro) and `settings.resolution` (`1k` / `2k` / `4k`). Resolve as in
+`visual-world`: `models_explore` fresh, then pick the configured model if set —
+otherwise the current **Nano Banana Pro** image model — and read its allowed
+media role (`image`) if referencing. If the configured id no longer exists in
+the catalog, fall back to Nano Banana Pro and mention it. Never reuse a
+remembered/recorded model id.
+
+The resolution rides as the `resolution` param on `generate_image` — but ONLY
+when the chosen model's `models_explore` entry lists a `resolution` parameter
+(Nano Banana Pro/2 do; Soul models don't — omit it there). Note the model's
+`resolution` options and 2–3 sensible alternative models while you have the
+catalog open: the confirmation card (Interaction rules) offers both as choices.
 
 ## Step 3 — Assemble the prompt (three layers)
 
@@ -165,6 +173,7 @@ attach_visual_generation {
   "assembledPrompt": "<all three layers as sent>",
   "model": "<resolved model id>",
   "aspectRatio": "16:9",
+  "resolution": "2k",                    // when the generate call carried one
   "presetId": "<style preset id>",
   "sheetType": "character",              // or "location" / "prop" — REQUIRED for sheets
   "refs": [ { "kind":"generation", "genId":"<source>" } ]   // when referenced
@@ -195,11 +204,23 @@ asking.
 
 ## Interaction rules
 
-- **Confirm before the submit, every time.** Before `generate_image`, show the
-  full three-layer assembled prompt, the chosen reference (as a thumbnail), and
-  the model, then wait for an explicit go-ahead. A standing instruction like
-  "generate the locations" or "go one at a time" authorizes the TASK, not a
-  specific prompt + reference — the user still confirms each first submit.
+- **Confirm before the submit, every time — as a render_ui card that lets the
+  user pick the model and resolution.** Before `generate_image`, draw ONE card:
+  a `KeyValue` summarizing the submit (subject, style preset, aspect ratio,
+  sheet type) plus the chosen reference as a `MediaGrid` thumbnail (no `send`),
+  then an `OptionList` with `select: "one-per-group"` holding TWO groups —
+  `group: "Model"` (the project default model plus the 2–3 alternatives from
+  Step 2, noun-phrase `send`s, the default marked `selected` and badged
+  "Default") and `group: "Resolution"` (the chosen model's `resolution` options,
+  e.g. 1k / 2k / 4k, `settings.resolution` marked `selected`; skip this group
+  when the model has no `resolution` parameter) — with
+  `send: "Generate the sheet with"` and `confirm: "Generate"`. Then STOP; the
+  confirm posts the picks (e.g. "Generate the sheet with: Nano Banana Pro, 2k")
+  and you generate with exactly those. A standing instruction like "generate
+  the locations" or "go one at a time" authorizes the TASK, not a specific
+  prompt + reference — the user still confirms each first submit. If they pick
+  a model whose options exclude the default resolution, use the closest option
+  it does offer and say so.
 - Otherwise same as `visual-world`: keep chat short, let the images do the
   talking, no raw IDs/JSON in chat.
 - One subject per sheet. "Sheets for all my characters" = loop this skill per

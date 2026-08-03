@@ -433,6 +433,7 @@ function SettingsPage() {
   const [gen, setGen] = useState({
     model: world.settings?.model || "",
     aspectRatio: world.settings?.aspectRatio || "16:9",
+    resolution: world.settings?.resolution || "1k",
   });
   // Video defaults: which Seedance model + resolution the render skills use. The
   // catalog rides on the same /api/visual-world payload and carries each model's
@@ -453,16 +454,37 @@ function SettingsPage() {
       videoResolution: entry?.resolutions?.includes(s.videoResolution) ? s.videoResolution : "720p",
     };
   });
-  // Live image-model catalog (same source as the World › Visual composer).
+  // Live image-model catalog (same source as the World › Visual composer). Each
+  // entry carries its own `resolutions` list ("1k"/"2k"/"4k" on Nano Banana
+  // Pro; empty for models without the param), plus the catalog's defaultId so
+  // the "" (default) selection resolves to a real entry.
   const [models, setModels] = useState([]);
+  const [defaultModelId, setDefaultModelId] = useState("");
   useEffect(() => {
     let cancelled = false;
     fetch("/api/visual-world/models")
       .then((r) => (r.ok ? r.json() : null))
-      .then((j) => { if (!cancelled && j?.models) setModels(j.models); })
+      .then((j) => {
+        if (cancelled || !j?.models) return;
+        setModels(j.models);
+        setDefaultModelId(j.defaultId || "");
+      })
       .catch(() => {});
     return () => { cancelled = true; };
   }, []);
+  // Before the catalog answers (or for an unknown id) offer the common trio;
+  // a known model that lacks the param gets a disabled "Model default" state.
+  const genModelEntry = models.find((m) => m.id === (gen.model || defaultModelId)) || null;
+  const genResolutions = genModelEntry ? genModelEntry.resolutions || [] : ["1k", "2k", "4k"];
+  const pickGenModel = (id) => setGen((s) => {
+    const entry = models.find((m) => m.id === (id || defaultModelId));
+    const list = entry ? entry.resolutions || [] : ["1k", "2k", "4k"];
+    return {
+      ...s,
+      model: id,
+      resolution: list.includes(s.resolution) ? s.resolution : (list[0] || "1k"),
+    };
+  });
 
   const refetch = () => { invalidateTabCache("visual-world"); revalidator.revalidate(); };
 
@@ -488,7 +510,11 @@ function SettingsPage() {
     setError(null);
     try {
       const j = await put("/api/visual-world/settings", gen);
-      if (j.settings) setGen({ model: j.settings.model || "", aspectRatio: j.settings.aspectRatio || "16:9" });
+      if (j.settings) setGen({
+        model: j.settings.model || "",
+        aspectRatio: j.settings.aspectRatio || "16:9",
+        resolution: j.settings.resolution || "1k",
+      });
       refetch();
     } catch (e) { setError(String(e.message || e)); throw e; }
   };
@@ -529,14 +555,14 @@ function SettingsPage() {
 
       <Panel title={<span className="flex items-center gap-2"><SlidersHorizontal size={15} className="text-primary" /> Generation defaults</span>}>
         <p className="mb-3 text-sm text-muted-foreground">
-          The image model and aspect ratio used by default — by the World › Visual composer
-          <b> and by the agent</b> whenever it generates images (concept art, character sheets,
-          location sheets), unless you override them for a specific generation.
+          The image model, aspect ratio and resolution used by default — by the World › Visual
+          composer <b>and by the agent</b> whenever it generates images (concept art, character
+          sheets, location sheets), unless you override them for a specific generation.
         </p>
         <div className="flex flex-wrap items-center gap-2">
           <div>
             <Eyebrow className="normal-case tracking-normal text-foreground/70">Image model</Eyebrow>
-            <Select value={gen.model || DEFAULT_MODEL} onValueChange={(v) => setGen((s) => ({ ...s, model: v === DEFAULT_MODEL ? "" : v }))}>
+            <Select value={gen.model || DEFAULT_MODEL} onValueChange={(v) => pickGenModel(v === DEFAULT_MODEL ? "" : v)}>
               <SelectTrigger size="sm" className="w-[220px] text-xs"><SelectValue placeholder="Nano Banana Pro" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value={DEFAULT_MODEL}>Nano Banana Pro (default)</SelectItem>
@@ -550,6 +576,20 @@ function SettingsPage() {
               <SelectTrigger size="sm" className="w-[110px] text-xs"><SelectValue /></SelectTrigger>
               <SelectContent>{ASPECTS.map((a) => <SelectItem key={a} value={a}>{a}</SelectItem>)}</SelectContent>
             </Select>
+          </div>
+          <div>
+            <Eyebrow className="normal-case tracking-normal text-foreground/70">Resolution</Eyebrow>
+            {genResolutions.length ? (
+              <Select value={gen.resolution} onValueChange={(v) => setGen((s) => ({ ...s, resolution: v }))}>
+                <SelectTrigger size="sm" className="w-[90px] text-xs"><SelectValue /></SelectTrigger>
+                <SelectContent>{genResolutions.map((r) => <SelectItem key={r} value={r}>{r}</SelectItem>)}</SelectContent>
+              </Select>
+            ) : (
+              <Select value="none" disabled>
+                <SelectTrigger size="sm" className="w-[130px] text-xs"><SelectValue /></SelectTrigger>
+                <SelectContent><SelectItem value="none">Model default</SelectItem></SelectContent>
+              </Select>
+            )}
           </div>
           <div className="ml-auto self-end">
             <SaveButton onSave={saveGen}>Save defaults</SaveButton>

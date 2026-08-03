@@ -155,12 +155,31 @@ function normalizeSheetPrompts(s) {
   };
 }
 
+// Image output resolution (Higgsfield `resolution` param on Nano Banana Pro/2,
+// GPT Image 2, Cinema Studio, …). "1k" is the backend default; the project
+// default lives in settings.resolution (Settings page › Generation defaults).
+// Not every image model takes the param — the catalog records each model's own
+// `resolutions` list and the generate paths only pass a value that list allows.
+const IMAGE_RESOLUTIONS = ["1k", "2k", "4k"];
+const DEFAULT_IMAGE_RESOLUTION = "1k";
+const normalizeImageResolution = (v) =>
+  IMAGE_RESOLUTIONS.includes(v) ? v : DEFAULT_IMAGE_RESOLUTION;
+
+// The `{ resolution }` params to spread into an image generate call: the
+// requested resolution only when this model's catalog entry actually lists it
+// (fal/Atlas entries carry no `resolutions`, so BYOK paths are never affected).
+function imageResolutionParams(catalog, model, resolution) {
+  const entry = catalog.models.find((m) => m.id === model);
+  return entry?.resolutions?.includes(resolution) ? { resolution } : {};
+}
+
 function emptyVisualWorld() {
   return {
     generatedAt: null,
     source: null,
     settings: {
-      model: "", aspectRatio: "16:9", count: 1, cinematic: false, presetId: "preset-2d",
+      model: "", aspectRatio: "16:9", resolution: DEFAULT_IMAGE_RESOLUTION,
+      count: 1, cinematic: false, presetId: "preset-2d",
       videoModel: DEFAULT_VIDEO_MODEL, videoResolution: DEFAULT_VIDEO_RESOLUTION,
     },
     prompts: structuredClone(SEED_PROMPTS),
@@ -242,6 +261,9 @@ function normalizeGeneration(g, i = 0) {
     assembledPrompt: str(o.assembledPrompt),
     model: str(o.model),
     aspectRatio: str(o.aspectRatio) || "16:9",
+    // "1k" | "2k" | "4k" when the job was submitted with an explicit output
+    // resolution; "" for older records and models without the param.
+    resolution: IMAGE_RESOLUTIONS.includes(o.resolution) ? o.resolution : "",
     presetId: str(o.presetId),
     // "" (plain image) | "character" | "location" | "prop" — this generation was
     // made as a design sheet (the sheet prompt was layered into the assembled
@@ -384,6 +406,7 @@ function normalizeVisualWorld(raw) {
     base.settings = {
       model: str(w.settings.model),
       aspectRatio: str(w.settings.aspectRatio) || "16:9",
+      resolution: normalizeImageResolution(w.settings.resolution),
       count: clampCount(w.settings.count),
       cinematic: !!w.settings.cinematic,
       presetId: str(w.settings.presetId) || "preset-2d",
@@ -590,7 +613,7 @@ async function importRef(env, userId, token, url) {
 // catalog means we'd hand generate_image a dead id.
 const NANO_RE = /nano[\s_-]*banana/i;
 const PRO_RE = /\bpro\b/i;
-const MODELS_CACHE_KEY = "visual:image-models:v2";
+const MODELS_CACHE_KEY = "visual:image-models:v3";
 async function resolveModels(env, userId, token) {
   try {
     const cached = await env.AUTH_KV.get(MODELS_CACHE_KEY, "json");
@@ -605,6 +628,12 @@ async function resolveModels(env, userId, token) {
     .map((m) => ({
       id: str(m?.id || m?.model || m?.slug || m?.model_id),
       label: str(m?.name || m?.title || m?.label || m?.display_name || m?.id),
+      // The model's own output-resolution options (its `resolution` parameter,
+      // e.g. ["1k","2k","4k"] on Nano Banana Pro). Empty = no such param —
+      // Soul's "quality" tiers are a different knob and deliberately not this.
+      resolutions: (Array.isArray(m?.parameters)
+        ? m.parameters.find((p) => p?.name === "resolution")?.options
+        : null) || [],
     }))
     .filter((m) => m.id);
   // Prefer a Nano Banana "Pro"; else any Nano Banana; else the first image model.
@@ -889,12 +918,15 @@ async function fireNodeJob(env, userId, prov, pid, vw, node) {
       medias.push({ role, value: mediaId });
     }
   }
+  // Honour the project's image-resolution default, mirroring the Seedance
+  // resolution/mode guard above — only for a model whose catalog entry takes it.
+  const resolutionParams = imageResolutionParams(catalog, model, vw.settings.resolution);
   const data = await mcp(env, userId, prov.token, "generate_image", {
-    params: { model, prompt: assembledPrompt, aspect_ratio: aspectRatio, medias },
+    params: { model, prompt: assembledPrompt, aspect_ratio: aspectRatio, ...resolutionParams, medias },
   });
   const jobId = pickId(data, "jobId", "job_id", "id");
   if (!jobId) throw new Error(`Higgsfield generate_image returned no job id (got: ${JSON.stringify(data).slice(0, 220)})`);
-  return normalizeGeneration({ ...base, status: "processing", model, jobId });
+  return normalizeGeneration({ ...base, status: "processing", model, resolution: resolutionParams.resolution || "", jobId });
 }
 
 // ---- Run cascade (topological, driven by the client's /poll cycle) ----
@@ -1093,6 +1125,12 @@ export function registerVisualWorld(app) {
       // Assemble the final prompt: preset style prefix (if chosen) + the sheet
       // prompt (when tagged as a character/location/prop sheet) + the scene.
       const vw = await readVW(c.env, pid);
+      // Output resolution: an explicit body value wins, else the project
+      // default. Only reaches the API when this model takes the param.
+      const resolution = IMAGE_RESOLUTIONS.includes(body.resolution)
+        ? body.resolution
+        : vw.settings.resolution;
+      const resolutionParams = imageResolutionParams(catalog, model, resolution);
       const preset = presetId ? vw.prompts.find((p) => p.id === presetId) : null;
       const sheetPrompt = sheetType ? vw.sheetPrompts[sheetType] : "";
       const assembledPrompt = [preset?.image, sheetPrompt, prompt].filter(Boolean).join("\n\n");
@@ -1148,7 +1186,7 @@ export function registerVisualWorld(app) {
         }
         for (let i = 0; i < count; i++) {
           const data = await mcp(c.env, userId, prov.token, "generate_image", {
-            params: { model, prompt: assembledPrompt, aspect_ratio: aspectRatio, medias },
+            params: { model, prompt: assembledPrompt, aspect_ratio: aspectRatio, ...resolutionParams, medias },
           });
           const jobId = pickId(data, "jobId", "job_id", "id");
           if (!jobId) throw new Error(`Higgsfield generate_image returned no job id (got: ${JSON.stringify(data).slice(0, 220)})`);
@@ -1167,6 +1205,7 @@ export function registerVisualWorld(app) {
           assembledPrompt,
           model,
           aspectRatio,
+          resolution: resolutionParams.resolution || "",
           presetId,
           sheetType,
           jobId: s.jobId,
@@ -1176,7 +1215,7 @@ export function registerVisualWorld(app) {
       );
       await updateVW(c.env, pid, (v) => {
         v.generations.unshift(...created);
-        v.settings = { ...v.settings, model, aspectRatio, count, presetId };
+        v.settings = { ...v.settings, model, aspectRatio, resolution, count, presetId };
         v.generatedAt = ts;
         v.source = "app";
       });
@@ -1422,6 +1461,7 @@ export function registerVisualWorld(app) {
       assembledPrompt: str(body.assembledPrompt) || str(body.prompt),
       model: str(body.model),
       aspectRatio: str(body.aspectRatio) || "16:9",
+      resolution: str(body.resolution),
       presetId: str(body.presetId),
       sheetType: str(body.sheetType),
       file,
@@ -1487,9 +1527,11 @@ export function registerVisualWorld(app) {
     return c.json({ ok: true, prompts, revision: revision && { rev: revision.rev, ts: revision.ts } });
   });
 
-  // Merge-patch the generation defaults (Settings page): the image model and
-  // aspect ratio, plus the Seedance model + resolution, that the composer AND
-  // the agent skills use when the user doesn't override per-generation.
+  // Merge-patch the generation defaults (Settings page): the image model,
+  // aspect ratio and image resolution, plus the Seedance model + resolution,
+  // that the composer AND the agent skills use when the user doesn't override
+  // per-generation. Also takes the composer's remembered knobs (count,
+  // cinematic, presetId).
   // `model: ""` means the server default (Nano Banana Pro); aspectRatio falls
   // back to 16:9 on read (normalize).
   //
@@ -1505,6 +1547,11 @@ export function registerVisualWorld(app) {
       const next = { ...v.settings };
       if (typeof patch.model === "string") next.model = patch.model;
       if (typeof patch.aspectRatio === "string" && patch.aspectRatio) next.aspectRatio = patch.aspectRatio;
+      if (typeof patch.resolution === "string") next.resolution = normalizeImageResolution(patch.resolution);
+      // Composer-remembered knobs (previously a shadowed duplicate route).
+      if (patch.count != null) next.count = clampCount(patch.count);
+      if (typeof patch.cinematic === "boolean") next.cinematic = patch.cinematic;
+      if (typeof patch.presetId === "string") next.presetId = patch.presetId;
       if (typeof patch.videoModel === "string" || typeof patch.videoResolution === "string") {
         Object.assign(next, normalizeVideoDefaults(
           typeof patch.videoModel === "string" ? patch.videoModel : next.videoModel,
@@ -1534,21 +1581,6 @@ export function registerVisualWorld(app) {
     });
     const fresh = await readVW(c.env, pid);
     return c.json({ ok: true, sheetPrompts: fresh.sheetPrompts, revision: revision && { rev: revision.rev, ts: revision.ts } });
-  });
-
-  // Merge-patch the composer's remembered defaults.
-  app.put("/api/visual-world/settings", async (c) => {
-    const pid = c.get("projectId");
-    let patch;
-    try { patch = await c.req.json(); } catch { patch = {}; }
-    await updateVW(c.env, pid, (v) => {
-      if (typeof patch.model === "string") v.settings.model = patch.model;
-      if (typeof patch.aspectRatio === "string") v.settings.aspectRatio = patch.aspectRatio;
-      if (patch.count != null) v.settings.count = clampCount(patch.count);
-      if (typeof patch.cinematic === "boolean") v.settings.cinematic = patch.cinematic;
-      if (typeof patch.presetId === "string") v.settings.presetId = patch.presetId;
-    });
-    return c.json({ ok: true });
   });
 
   // Persist the generator canvas (nodes / edges / viewport). The active run

@@ -52,7 +52,11 @@ can arrange on the **Visual nodes** canvas. Built on the **Higgsfield MCP**
 The project's **configured default model** is `settings.model` from
 `get_visual_world` (Settings page › Generation defaults; empty string = Nano
 Banana Pro) — honor it unless the user overrides in chat. Likewise generate at
-**`settings.aspectRatio`** (normally `16:9`) unless the user asks otherwise.
+**`settings.aspectRatio`** (normally `16:9`) and at **`settings.resolution`**
+(`1k` / `2k` / `4k`) unless the user asks otherwise. The resolution rides as
+the `resolution` param on `generate_image` — but ONLY for a model whose
+`models_explore` entry lists a `resolution` parameter (Nano Banana Pro/2, GPT
+Image 2, Cinema Studio do; Soul models don't — omit it there).
 
 Do NOT hardcode a model id, and do NOT reuse a `model` id you read off a prior
 generation (`get_visual_world` records the id that WAS used) or remember from an
@@ -124,6 +128,9 @@ mcp__higgsfield__generate_image {
     "model": "<model id from models_explore>",
     "prompt": "<preset.image>\n\n<one-line scene>",
     "aspect_ratio": "16:9",
+    // settings.resolution — only for models whose models_explore entry
+    // lists a `resolution` parameter (Step 1); omit otherwise.
+    "resolution": "2k",
     // only when referencing — role MUST match the model (Step 1):
     // "image" for the Nano Banana / Soul image models.
     "medias": [ { "role":"image", "value":"<media_id>" } ]

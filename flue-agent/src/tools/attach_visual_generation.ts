@@ -16,6 +16,12 @@ export const attachVisualGeneration = (api: Api) =>
       assembledPrompt: v.optional(d(v.string(), "The full prompt actually sent, including any style-preset prefix.")),
       model: v.optional(d(v.string(), "The image model id you used, e.g. the Nano Banana Pro id from models_explore.")),
       aspectRatio: v.optional(d(v.string(), "Aspect ratio you generated at, e.g. '16:9'.")),
+      resolution: v.optional(
+        d(
+          v.picklist(["1k", "2k", "4k"]),
+          "Output resolution, when the generate call carried a `resolution` param (project default = get_visual_world settings.resolution). Omit for models without the param.",
+        ),
+      ),
       presetId: v.optional(d(v.string(), "Id of the prompt-library preset used, if any.")),
       sheetType: v.optional(
         d(
