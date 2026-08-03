@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useLoaderData, useRevalidator } from "react-router";
 import { X, RefreshCw, Loader2, Layers, Film } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -7,7 +7,30 @@ import { swr, useRevalidateOnMount, useRevalidateOnAgentIdle, useRevalidateOnAge
 import { useAgent, agentIsBusy } from "@/components/AgentProvider";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Command as CommandPrimitive } from "cmdk";
+import { Command, CommandGroup, CommandItem, CommandList } from "@/components/ui/command";
+import { Popover, PopoverAnchor, PopoverContent } from "@/components/ui/popover";
 import { Empty, Panel, ErrorNote, fmtTime } from "@/components/shared";
+import { CAMERA_FRAMINGS, CAMERA_MOVES } from "@/lib/cameraOptions";
+
+// PUT one field of shot :n; returns the fresh shot list + pack preview (or null).
+async function saveShotField(n, body) {
+  try {
+    const res = await fetch(`/api/shotlist/shot/${n}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const json = await res.json();
+    if (res.ok) return json;
+  } catch { /* ignore — keeps the typed value */ }
+  return null;
+}
+
+const fieldCls = (mono) => cn(
+  "w-full resize-y rounded-md border border-transparent bg-transparent px-2 py-1 text-sm hover:border-border focus:border-primary focus:bg-background focus:outline-none",
+  mono && "font-mono",
+);
 
 // One inline-editable shot field. Saves on blur (only when changed) via
 // PUT /api/shotlist/shot/:n and hands the fresh pack preview back up.
@@ -21,26 +44,96 @@ function ShotField({ n, field, value, onSaved, multiline, mono, placeholder, row
       : field === "dur"
         ? { dur: Number(v) || 0 }
         : { [field]: v };
-    try {
-      const res = await fetch(`/api/shotlist/shot/${n}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-      const json = await res.json();
-      if (res.ok) onSaved?.(json);
-    } catch { /* ignore — keeps the typed value */ }
+    const json = await saveShotField(n, body);
+    if (json) onSaved?.(json);
   };
-  const cls = cn(
-    "w-full resize-y rounded-md border border-transparent bg-transparent px-2 py-1 text-sm hover:border-border focus:border-primary focus:bg-background focus:outline-none",
-    mono && "font-mono",
-  );
   return multiline ? (
-    <textarea rows={rows} className={cls} value={v} placeholder={placeholder}
+    <textarea rows={rows} className={fieldCls(mono)} value={v} placeholder={placeholder}
       onChange={(e) => setV(e.target.value)} onBlur={commit} />
   ) : (
-    <input className={cls} value={v} placeholder={placeholder}
+    <input className={fieldCls(mono)} value={v} placeholder={placeholder}
       onChange={(e) => setV(e.target.value)} onBlur={commit} />
+  );
+}
+
+// The Camera field: the same inline save-on-blur input, plus an autocomplete
+// over the generator's camera vocabulary (framings + 2D-friendly moves).
+// A camera value is "framing, move", so suggestions match the segment after
+// the LAST comma and picking one replaces only that segment — "Medium
+// close-up, slo" completes to "Medium close-up, slow push-in". Free text
+// still works; the pick just edits the input, and blur commits as usual.
+function CameraField({ n, value, onSaved }) {
+  const [v, setV] = useState(value ?? "");
+  const [open, setOpen] = useState(false);
+  const inputRef = useRef(null);
+  useEffect(() => { setV(value ?? ""); }, [value]);
+
+  const commit = async () => {
+    if ((v ?? "") === (value ?? "")) return;
+    const json = await saveShotField(n, { camera: v });
+    if (json) onSaved?.(json);
+  };
+
+  // The segment being typed (after the last comma) drives the filter.
+  const lastComma = v.lastIndexOf(",");
+  const segment = v.slice(lastComma + 1).trim().toLowerCase();
+  const match = (opt) => opt.toLowerCase().includes(segment);
+  const framings = CAMERA_FRAMINGS.filter(match);
+  const moves = CAMERA_MOVES.filter(match);
+  const groups = lastComma === -1
+    ? [["Framing / angle", framings], ["Move", moves]]
+    : [["Move", moves], ["Framing / angle", framings]];
+  const hasMatches = framings.length + moves.length > 0;
+
+  const pick = (opt) => {
+    setV(lastComma === -1 ? opt : `${v.slice(0, lastComma + 1)} ${opt}`);
+    inputRef.current?.focus();
+  };
+
+  return (
+    // The cmdk root spans the input AND the (portaled) list so arrow keys /
+    // Enter navigate the suggestions while typing stays in the inline field.
+    <Command shouldFilter={false} className="overflow-visible bg-transparent">
+      <Popover open={open && hasMatches} onOpenChange={setOpen}>
+        <PopoverAnchor asChild>
+          <CommandPrimitive.Input
+            ref={inputRef}
+            className={fieldCls(false)}
+            value={v}
+            placeholder="Medium close-up, slow push-in"
+            aria-label="Camera"
+            onValueChange={(nv) => { setV(nv); setOpen(true); }}
+            onFocus={() => setOpen(true)}
+            onBlur={() => { setOpen(false); commit(); }}
+            onKeyDown={(e) => { if (e.key === "Escape") { e.stopPropagation(); setOpen(false); } }}
+          />
+        </PopoverAnchor>
+        <PopoverContent
+          align="start"
+          sideOffset={4}
+          className="w-[var(--radix-popover-trigger-width)] min-w-56 p-0"
+          onOpenAutoFocus={(e) => e.preventDefault()}
+        >
+          <CommandList>
+            {groups.map(([heading, opts]) => opts.length > 0 && (
+              <CommandGroup key={heading} heading={heading}>
+                {opts.map((opt) => (
+                  <CommandItem
+                    key={opt}
+                    value={opt}
+                    // keep focus in the input so picking doesn't blur-commit mid-edit
+                    onMouseDown={(e) => e.preventDefault()}
+                    onSelect={() => pick(opt)}
+                  >
+                    {opt}
+                  </CommandItem>
+                ))}
+              </CommandGroup>
+            ))}
+          </CommandList>
+        </PopoverContent>
+      </Popover>
+    </Command>
   );
 }
 
@@ -158,7 +251,7 @@ function ShotList() {
                         <label className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Characters
                           <ShotField n={s.n} field="characters" value={(s.characters || []).join(", ")} onSaved={onSaved} placeholder="Sara, Helena" /></label>
                         <label className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground sm:col-span-2">Camera
-                          <ShotField n={s.n} field="camera" value={s.camera} onSaved={onSaved} /></label>
+                          <CameraField n={s.n} value={s.camera} onSaved={onSaved} /></label>
                         <label className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground sm:col-span-2">Action
                           <ShotField n={s.n} field="action" value={s.action} onSaved={onSaved} multiline /></label>
                         <label className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Dialogue

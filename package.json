@@ -55,6 +55,7 @@
     "better-auth": "^1.6.23",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "cmdk": "^1.1.1",
     "express": "^4.19.2",
     "glowing": "^0.2.3",
     "lucide-react": "^1.23.0",
