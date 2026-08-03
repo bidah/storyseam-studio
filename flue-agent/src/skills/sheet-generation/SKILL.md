@@ -1,21 +1,21 @@
 ---
 name: sheet-generation
 description: >-
-  Generate a CHARACTER SHEET (contact/model sheet, turnaround), a LOCATION
-  SHEET, or a PROP SHEET with the project's sheet prompts via the Higgsfield
-  MCP. Use for "generate a character/location/prop sheet", "turnaround",
-  "reference sheet" — and for ANY location image generation ("create the
-  locations"). Location and prop art is ALWAYS a sheet (style preset + sheet
-  prompt + a mandatory reference image), and the user ALWAYS picks the
-  reference: an image ATTACHED to the requesting message IS that pick — use
-  it, don't re-ask; otherwise render_ui a MediaGrid of candidates and STOP —
-  never auto-pick. Honor Settings › Generation defaults (settings.model,
-  empty = Nano Banana Pro; settings.resolution 1k/2k/4k), and confirm EVERY
-  submit with a render_ui card whose one-per-group OptionList lets the user
-  pick model and resolution. Layer the sheet prompt (get_visual_world
-  sheetPrompts) between style preset and subject, attach with
-  attach_visual_generation (sheetType set), and show the sheet as a render_ui
-  MediaGrid card.
+  Generate a CHARACTER, LOCATION, or PROP SHEET (contact sheet/turnaround)
+  with the project's sheet prompts via the Higgsfield MCP. Use for any
+  sheet/turnaround/reference-sheet request — and ANY location image
+  generation ("create the locations"). Location and prop art is ALWAYS a
+  sheet (style preset + sheet prompt + a mandatory reference image), and the
+  user ALWAYS picks the reference: an image ATTACHED to the requesting
+  message IS that pick — use it, don't re-ask; otherwise render_ui a
+  MediaGrid of candidates and STOP — never auto-pick. Honor Settings ›
+  Generation defaults (settings.model, empty = Nano Banana Pro;
+  settings.resolution 1k/2k/4k); confirm EVERY submit with a render_ui
+  one-per-group OptionList picking model + resolution; model options ALWAYS
+  include Seedream and GPT Image alongside the default and a Soul model.
+  Layer the sheet prompt (get_visual_world sheetPrompts) between style preset
+  and subject, attach with attach_visual_generation (sheetType set), and show
+  the sheet as a render_ui MediaGrid.
 ---
 
 # Character, location & prop sheet generation
@@ -86,9 +86,13 @@ remembered/recorded model id.
 
 The resolution rides as the `resolution` param on `generate_image` — but ONLY
 when the chosen model's `models_explore` entry lists a `resolution` parameter
-(Nano Banana Pro/2 do; Soul models don't — omit it there). Note the model's
-`resolution` options and 2–3 sensible alternative models while you have the
-catalog open: the confirmation card (Interaction rules) offers both as choices.
+(Nano Banana Pro/2 do; Soul models don't — omit it there). While you have the
+catalog open, note the model's `resolution` options and the alternative models
+for the confirmation card (Interaction rules). The alternatives are a FIXED
+roster, not your judgment call: the current **Seedream** image model (e.g.
+Seedream 5.0), the current **GPT Image** model (e.g. GPT-Image 2), and one
+**Soul** model (e.g. Soul Cinema) — each resolved fresh from `models_explore`
+(skip a family only if the catalog no longer carries it, and say so).
 
 ## Step 3 — Assemble the prompt (three layers)
 
@@ -209,9 +213,9 @@ asking.
   a `KeyValue` summarizing the submit (subject, style preset, aspect ratio,
   sheet type) plus the chosen reference as a `MediaGrid` thumbnail (no `send`),
   then an `OptionList` with `select: "one-per-group"` holding TWO groups —
-  `group: "Model"` (the project default model plus the 2–3 alternatives from
-  Step 2, noun-phrase `send`s, the default marked `selected` and badged
-  "Default") and `group: "Resolution"` (the chosen model's `resolution` options,
+  `group: "Model"` (the project default model plus ALL the Step 2 alternatives
+  — Seedream, GPT Image, and a Soul model — noun-phrase `send`s, the default
+  marked `selected` and badged "Default") and `group: "Resolution"` (the chosen model's `resolution` options,
   e.g. 1k / 2k / 4k, `settings.resolution` marked `selected`; skip this group
   when the model has no `resolution` parameter) — with
   `send: "Generate the sheet with"` and `confirm: "Generate"`. Then STOP; the
