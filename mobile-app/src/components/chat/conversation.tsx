@@ -485,8 +485,28 @@ export function Conversation({
   const onContentSizeChange = useCallback(
     (_w: number, h: number) => {
       contentH.value = h;
+      // While pinned, RE-DRIVE the offset through the animated jump instead of
+      // relying on the passive pinned branch alone. The pinned contentOffset is
+      // a one-shot prop push, and when it lands before the native view has
+      // committed the grown content it gets CLAMPED to the old maxScroll — so
+      // whichever growth arrives LAST (the final ~1s batch of a reply, or the
+      // spacer restoring after the keyboard) rests short by that delta and the
+      // message tail hides under the composer. This native event fires AFTER
+      // the content size is committed, and the timing-driven target is applied
+      // frame by frame, so it cannot be clamped away.
+      if (pinned.value && !jumpAnimating.value) {
+        const bottom = Math.max(0, h - layoutH.value);
+        if (bottom > offsetY.value) {
+          jumpTarget.value = offsetY.value;
+          jumpAnimating.value = true;
+          jumpTarget.value = withTiming(bottom, { duration: 200 }, (finished) => {
+            'worklet';
+            if (finished) jumpAnimating.value = false;
+          });
+        }
+      }
     },
-    [contentH],
+    [contentH, layoutH, offsetY, pinned, jumpAnimating, jumpTarget],
   );
 
   const onListLayout = useCallback(
