@@ -22,6 +22,7 @@ import {
   withActiveForProject,
 } from "@/lib/chat-store";
 import { generateChatTitle } from "@/lib/agentTitle";
+import { dropTranscript, loadTranscript, saveTranscript } from "@/lib/transcript-cache";
 import { getProjectId, onProjectChange } from "@/lib/projectFetch";
 
 // ---------------------------------------------------------------------------
@@ -202,6 +203,7 @@ function useConversationManager() {
       // Forget it everywhere, not just this device. Fire-and-forget: deleting
       // an id the registry never saw is a no-op on the server.
       pushedRef.current.delete(id);
+      dropTranscript(id);
       fetch(`/api/chats/${encodeURIComponent(id)}`, { method: "DELETE" }).catch(() => {});
       update((prev) => {
         const chat = prev.chats[id];
@@ -327,13 +329,53 @@ function AgentSessionRunner({ activeId, projectId, conv, publish }) {
   const sendRef = useRef(flueAgent.sendMessage);
   sendRef.current = flueAgent.sendMessage;
 
+  // Instant paint on chat switch: flue reloads durable history in one
+  // unpaginated fetch, which on a long transcript is seconds of spinner. Until
+  // it settles, publish this chat's cached last-rendered transcript (plus any
+  // optimistic sends flue already holds — those are new, so no overlap) and let
+  // the durable snapshot replace it wholesale when it lands. The runner is
+  // keyed on the chat id, so the cache read happens once per mount.
+  const [cachedMessages] = useState(() => loadTranscript(activeId));
+  // Memoized so the merged array is referentially stable across renders — a
+  // fresh array each render would re-fire the publish effect below and loop
+  // (see the `agent` memo's stability note).
+  const messages = useMemo(
+    () =>
+      flueAgent.historyReady || cachedMessages.length === 0
+        ? flueAgent.messages
+        : [...cachedMessages, ...flueAgent.messages],
+    [flueAgent.historyReady, flueAgent.messages, cachedMessages],
+  );
+
+  // Keep the cache fresh from the SETTLED transcript only — while history is
+  // still loading, `messages` includes the cached copy itself, and writing that
+  // back would loop stale data. Debounced past flue's ~1s streaming batches;
+  // the trailing write flushes on unmount so a quick switch-away still caches
+  // the newest turn.
+  const saveTimerRef = useRef(null);
+  useEffect(() => {
+    if (!flueAgent.historyReady || flueAgent.messages.length === 0) return;
+    const msgs = flueAgent.messages;
+    saveTimerRef.current = setTimeout(() => {
+      saveTimerRef.current = null;
+      saveTranscript(activeId, msgs);
+    }, 1500);
+    return () => {
+      if (saveTimerRef.current) {
+        clearTimeout(saveTimerRef.current);
+        saveTimerRef.current = null;
+        saveTranscript(activeId, msgs);
+      }
+    };
+  }, [flueAgent.historyReady, flueAgent.messages, activeId]);
+
   // Adapt flue's surface (`messages`, `status`, `sendMessage`) to the shape the
   // rest of the app consumes (`messages`, `status`, `send`, `stop`, `error`).
   // flue's resting status is "idle"; the app treats "ready" as idle (e.g.
   // `useRevalidateOnAgentIdle` edge-triggers on it), so map idle → "ready".
   const agent = useMemo(
     () => ({
-      messages: flueAgent.messages,
+      messages,
       status: flueAgent.status === "idle" ? "ready" : flueAgent.status,
       error: flueAgent.error,
       historyReady: flueAgent.historyReady,
@@ -351,7 +393,7 @@ function AgentSessionRunner({ activeId, projectId, conv, publish }) {
         client.agents.abort(AGENT_NAME, idRef.current).catch(() => {});
       },
     }),
-    [client, flueAgent.messages, flueAgent.status, flueAgent.error, flueAgent.historyReady],
+    [client, messages, flueAgent.status, flueAgent.error, flueAgent.historyReady],
   );
 
   // Keep the chat list titled + floated from the live transcript (flue owns the
