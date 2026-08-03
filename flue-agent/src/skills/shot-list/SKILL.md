@@ -62,7 +62,9 @@ Episode tab from those packs. No media is generated in this skill.
    - **prompt** — the **Seedance prompt**: one vivid paragraph. Fold any 2D-directing intent
      (multiplane depth, on-2s/on-1s motion accents, smears, overlap/follow-through) straight
      into the prose — Seedance won't literally animate "on 2s" but the cues steer motion.
-     Always end with the project style tail and keep it diegetic (no music bed / transition VFX).
+     Keep the prompt **style-free** (no art-style clauses) and diegetic (no music bed /
+     transition VFX) — the render style is chosen on the Episode tab (`set_episode_style`)
+     and prepended to each bundle's prompt at render time.
 4. **Save the list one beat at a time — never in a single giant call.** A full episode
    is far too many shots (each with a long Seedance prompt) to emit in one
    `save_shotlist` call: that single tool call can blow past the model's output limit and
@@ -95,15 +97,14 @@ Episode tab from those packs. No media is generated in this skill.
    - Leave the genuine bit-parts OFF the roster — tell the user they stay castable from
      the Radio Casting rail (the app can voice them there without a World entry).
 
-## Style tail (append to every Seedance prompt)
+## Render style — do NOT bake one into the prompts
 
-> STYLE: Flat 2D hand-drawn animation, clean confident vector linework, strictly limited
-> muted palette of teal, mustard yellow and dusty rose, gouache-textured flat painterly
-> backgrounds with subtle paper grain, Scandinavian folklore storybook illustration style,
-> soft diffused light, flat ambient shading with no gradients, minimalist rounded character
-> design, strong graphic composition with generous negative space, subtle multiplane
-> parallax, camera stays flat and 2D-friendly. No hand-held camera, no 3D, no photorealism,
-> no CGI shading, no volumetric depth, no oversaturation.
+Per-shot Seedance prompts carry **no art-style clauses**. The render style is a
+project-level choice: the Episode tab's style selector (or the `set_episode_style`
+tool) picks a visual-world style preset — or none at all, which is the default and
+correct when the image references alone carry a realistic look — and the app
+prepends it to each bundle's composed prompt at render time. Baking a style into
+the shot prompts would fight that selector.
 
 ## Do NOT
 

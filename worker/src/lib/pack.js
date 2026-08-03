@@ -8,16 +8,10 @@ import { videoParamsText } from "./video-defaults.js";
 
 const MAX = 15; // Seedance 2.0 single-clip cap (seconds)
 
-// Locked render style — prepended to every bundle prompt so all clips match.
-const STYLE =
-  "STYLE: Flat 2D hand-drawn animation, clean confident vector linework, strictly limited muted palette of teal, " +
-  "mustard yellow and dusty rose, gouache-textured flat painterly backgrounds with subtle paper grain, Scandinavian " +
-  "folklore storybook illustration style, soft diffused morning light, flat ambient shading with no gradients, " +
-  "minimalist rounded character design with simple sparse facial features, strong graphic composition with generous " +
-  "negative space. Split of panes when needed between front, middle and backgrounds. Slow gentle dolly-in with subtle " +
-  "layered parallax on background planes, camera stays flat and 2D-friendly with no orbiting or perspective shifts. " +
-  "Cozy, adventurous, slightly melancholic Nordic atmosphere. Smooth hand-drawn 2D animated motion. No hand held camera. " +
-  "No 3D rendering, no photorealism, no CGI shading, no volumetric depth, no oversaturation.";
+// NOTE: the render STYLE is no longer baked into skillPrompt here. The manifest
+// stores a style-free prompt; routes/episode.js prepends the episode/scene style
+// selection (a visual-world style preset, or none) at read time, so switching
+// styles restyles every bundle without a rebuild.
 
 // Lead line so Seedance doesn't add a music bed / flashy transition VFX that gets
 // hard-cut when bundles are spliced together.
@@ -228,7 +222,7 @@ function buildBundles(shots, world, genSettings) {
     const bibleNote = bibleLines.length ? `LOCATION NOTES (keep consistent): ${bibleLines.join(" ")}\n` : "";
 
     const skillPrompt =
-      NOFX + "\n" + STYLE + "\n" +
+      NOFX + "\n" +
       `Use the generate-multishot skill to render ${id}.\n` +
       `Single location only — do NOT cross locations within this clip.\n` +
       `NO audio reference — set generate_audio: true so Seedance generates its own audio from the prompt.\n` +

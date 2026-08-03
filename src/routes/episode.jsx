@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLoaderData, useRevalidator } from "react-router";
-import { X, Check, Plus, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, RotateCcw, Maximize2, Volume2, Speech, Play, Copy, Pencil, Sparkles, PenLine, FileText, Film, Image as ImageIcon, Loader2, Wand2, Scissors, Boxes, CircleAlert, MapPin, User } from "lucide-react";
+import { X, Check, Plus, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, RotateCcw, Maximize2, Volume2, Speech, Play, Copy, Pencil, Sparkles, PenLine, FileText, Film, Image as ImageIcon, Loader2, Wand2, Scissors, Boxes, CircleAlert, MapPin, User, Palette } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { swr, useRevalidateOnMount, useRevalidateOnAgentIdle } from "@/lib/swr";
 import { invalidateTabCache } from "@/lib/tabCache";
@@ -14,6 +14,7 @@ import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Slider } from "@/components/ui/slider";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Empty, Chip, ErrorNote, ConfirmModal, IconSwap } from "@/components/shared";
 import MediaPicker from "@/components/MediaPicker";
 import { useShell } from "@/lib/shellContext";
@@ -815,7 +816,49 @@ function RefVideoModal({ bundle, open, takes, reloadKey, current, onPick, onClos
   );
 }
 
-function EpisodeBundle({ b, flat, picked, onOpenPicker, onRemove, onView, audioMap, audioPicked, onOpenAudio, vids, allVideos, reloadKey, onToggleVideo, stills, onToggleStill, firstFrame, onSetFirstFrame, refVideo, onSetRefVideo, override, onEditPrompt, onResetPrompt, signoff, onSign, needsState, onLinkNeed }) {
+/* ---------------------------------------------------------------- *
+ * Render style selection                                           *
+ * ---------------------------------------------------------------- */
+
+// Radix Select items can't carry an empty value, so the "clear" choices use
+// client-side sentinels; the API speaks presetId "" (no style) and — per scene
+// only — "none" (explicitly style-free while the episode has a style).
+const NO_STYLE = "__none";
+const EPISODE_STYLE = "__episode";
+
+// Per-scene style pick: defaults to the episode-wide choice, overridable to a
+// specific preset or to explicitly no style.
+function SceneStyleSelect({ bundleId, style, onSetStyle }) {
+  const override = style.scenes?.[bundleId] || "";
+  const value = override === "none" ? NO_STYLE : override || EPISODE_STYLE;
+  const epName = style.presets.find((p) => p.id === style.episode)?.name;
+  return (
+    <Select
+      value={value}
+      onValueChange={(v) =>
+        onSetStyle(bundleId, v === EPISODE_STYLE ? "" : v === NO_STYLE ? "none" : v)
+      }
+    >
+      <SelectTrigger
+        size="sm"
+        className={cn("h-7 gap-1.5 px-2 text-xs", value === EPISODE_STYLE && "text-muted-foreground")}
+        title="Render style for this scene — follows the episode style unless overridden"
+      >
+        <Palette size={12} />
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        <SelectItem value={EPISODE_STYLE}>Episode style{epName ? ` (${epName})` : " (none)"}</SelectItem>
+        <SelectItem value={NO_STYLE}>No style — references only</SelectItem>
+        {style.presets.map((p) => (
+          <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  );
+}
+
+function EpisodeBundle({ b, flat, picked, onOpenPicker, onRemove, onView, audioMap, audioPicked, onOpenAudio, vids, allVideos, reloadKey, onToggleVideo, stills, onToggleStill, firstFrame, onSetFirstFrame, refVideo, onSetRefVideo, override, onEditPrompt, onResetPrompt, signoff, onSign, needsState, onLinkNeed, style, onSetStyle }) {
   const [open, setOpen] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
   const [signOpen, setSignOpen] = useState(false);
@@ -932,6 +975,8 @@ function EpisodeBundle({ b, flat, picked, onOpenPicker, onRemove, onView, audioM
           {isImg
             ? stillCount > 0 && <Badge variant="success"><ImageIcon size={11} /> {stillCount} stills</Badge>
             : hasVid && <Badge variant="success"><Play size={11} fill="currentColor" /> {vids.length} rendered</Badge>}
+
+          <SceneStyleSelect bundleId={b.id} style={style} onSetStyle={onSetStyle} />
 
           {/* Images (storyboard) vs Video (Seedance) mode for this bundle */}
           <div className="flex items-center rounded-md border p-0.5">
@@ -1312,6 +1357,7 @@ function Episode({ reloadKey, onView }) {
   const [firstFrames, setFirstFrames] = useState(payload.ep.firstFrames || {}); // { bundle: { shot, file } }
   const [refVideos, setRefVideos] = useState(payload.ep.refVideos || {}); // { bundle: { from, file } }
   const [needsMap, setNeedsMap] = useState(payload.ep.needs || {}); // { bundle: scene-needs state }
+  const [style, setStyle] = useState(payload.ep.style || { episode: "", scenes: {}, presets: [] });
   const promptTimers = useRef({});
   const agent = useAgent();
 
@@ -1325,6 +1371,7 @@ function Episode({ reloadKey, onView }) {
     setFirstFrames(ep.firstFrames || {});
     setRefVideos(ep.refVideos || {});
     setNeedsMap(ep.needs || {});
+    setStyle(ep.style || { episode: "", scenes: {}, presets: [] });
     setFolders(lib.folders || []);
     const m = {};
     for (const [k, v] of Object.entries(fn.episode || {})) m[k] = new Set(v);
@@ -1597,6 +1644,34 @@ function Episode({ reloadKey, onView }) {
       setRebuilding(false);
     }
   }, [revalidate]);
+  // Choose the render style — episode-wide (bundle null) or a per-scene
+  // override. `presetId` speaks the API's language: a visual-world preset id,
+  // "" to clear, or "none" (scene only) for explicitly style-free. Optimistic
+  // on the style slice, then a revalidate pulls the re-composed skillPrompts
+  // (the STYLE line is assembled server-side at read time).
+  const onSetStyle = useCallback(async (bundle, presetId) => {
+    setStyle((s) => {
+      if (!bundle) return { ...s, episode: presetId };
+      const scenes = { ...s.scenes };
+      if (presetId) scenes[bundle] = presetId;
+      else delete scenes[bundle];
+      return { ...s, scenes };
+    });
+    try {
+      const res = await fetch("/api/episode/style", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ bundle: bundle || null, presetId }),
+      });
+      const out = await res.json();
+      if (!res.ok) throw new Error(out.error || "Style change failed");
+      invalidateTabCache("episode");
+      revalidate();
+    } catch (e) {
+      setError(String(e.message || e));
+    }
+  }, [revalidate]);
+
   // Auto-assign refs + voice picks; pass a beat id to scope the run to that
   // beat's bundles (everything else keeps its picks), omit for the whole episode.
   const autoAssign = useCallback(async (beat) => {
@@ -1654,6 +1729,24 @@ function Episode({ reloadKey, onView }) {
         <div className="flex flex-wrap items-center justify-between gap-3">
           <h2 className="text-xl font-semibold tracking-tight">{data.title}</h2>
           <div className="flex items-center gap-2">
+            <Select
+              value={style.episode || NO_STYLE}
+              onValueChange={(v) => onSetStyle(null, v === NO_STYLE ? "" : v)}
+            >
+              <SelectTrigger
+                size="sm"
+                title="Render style prepended to every scene's prompt — each scene can override it on its card"
+              >
+                <Palette size={14} />
+                <SelectValue placeholder="Style" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={NO_STYLE}>No style — references only</SelectItem>
+                {style.presets.map((p) => (
+                  <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
             <Button variant="outline" onClick={rebuild} disabled={rebuilding} title="Re-pack the current shot list into bundles (stills & renders are preserved; re-packed bundles need re-review)">
               {rebuilding ? <><Loader2 size={14} className="animate-spin" /> rebuilding…</> : <><Boxes size={14} /> rebuild plan</>}
             </Button>
@@ -1720,6 +1813,8 @@ function Episode({ reloadKey, onView }) {
                 onSign={onSign}
                 needsState={needsMap[b.id]}
                 onLinkNeed={onLinkNeed}
+                style={style}
+                onSetStyle={onSetStyle}
               />
             ))}
           </div>

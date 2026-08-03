@@ -34,6 +34,7 @@ import { listShots } from "./list_shots.js";
 import { getEpisode } from "./get_episode.js";
 import { getMultishot } from "./get_multishot.js";
 import { saveEpisodePrompt } from "./save_episode_prompt.js";
+import { setEpisodeStyle } from "./set_episode_style.js";
 import { saveSeedancePrompt } from "./save_seedance_prompt.js";
 import { attachEpisodeVideo } from "./attach_episode_video.js";
 import { attachStill } from "./attach_still.js";
@@ -117,6 +118,7 @@ export function createTools(api: Api): ToolDefinition[] {
     getEpisode(api),
     getMultishot(api),
     saveEpisodePrompt(api),
+    setEpisodeStyle(api),
     saveSeedancePrompt(api),
     attachEpisodeVideo(api),
     attachStill(api),

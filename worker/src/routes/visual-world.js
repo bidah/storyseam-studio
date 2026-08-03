@@ -88,8 +88,10 @@ const clampCount = (n) => Math.min(4, Math.max(1, Math.floor(Number(n) || 1)));
 
 // The user's 2D prompt (adapted for stills — style/palette/composition kept, the
 // Seedance camera-motion clauses moved to the `video` field). Seeds the library
-// so the composer has a real preset to choose from on first use.
-const SEED_PROMPTS = [
+// so the composer has a real preset to choose from on first use. Exported for
+// routes/episode.js: the Episode style selector offers these same presets even
+// before a project's visual-world doc exists.
+export const SEED_PROMPTS = [
   {
     id: "preset-2d",
     name: "2D storybook (Whistlewood)",

@@ -14,6 +14,7 @@ import { readDoc, updateDoc } from "../lib/docs.js";
 import { listMedia, listMediaSet, mediaKey, filesUrl } from "../lib/media.js";
 import { buildBundles, charKey, bundleSpeakers } from "../lib/pack.js";
 import { normalizeShot } from "../lib/shots.js";
+import { SEED_PROMPTS } from "./visual-world.js";
 
 // The de-facto selections DB (library picks + per-bundle episode selections).
 const DB_FALLBACK = { library: {}, episode: {} };
@@ -172,6 +173,51 @@ function needsStateFor(b, maps, db) {
   };
 }
 
+// ---- Episode render style ---------------------------------------------------
+// Which visual-world style preset (Settings › Style prompts) is prepended to
+// each bundle's composed skillPrompt. Deliberately NO baked-in default: with no
+// selection the prompt ships style-free — image references alone can carry the
+// look (e.g. realistic renders). Stored in the selections DB:
+//   db.episodeStyle          — episode-wide preset id ("" = none)
+//   db.sceneStyle[bundleId]  — per-scene override: a preset id, or the sentinel
+//                              "none" to force one scene style-free while the
+//                              episode has a style. Absent = follow the episode.
+const SCENE_STYLE_NONE = "none";
+
+// The project's style-preset library: the visual-world doc's prompts, falling
+// back to the seeds (same rule as normalizeVisualWorld) so the selector isn't
+// empty before the Visual World tab is first opened.
+const stylePresetsOf = (vw) =>
+  Array.isArray(vw?.prompts) && vw.prompts.length ? vw.prompts : SEED_PROMPTS;
+
+// One-line style text of a preset: its image look + video motion, joined.
+function styleTextOf(presets, presetId) {
+  if (!presetId) return "";
+  const p = presets.find((x) => x?.id === presetId);
+  return [p?.image, p?.video]
+    .map((s) => String(s || "").trim())
+    .filter(Boolean)
+    .join(" ")
+    .replace(/\s+/g, " ");
+}
+
+const resolveStyleId = (db, bundleId) => {
+  const scene = db.sceneStyle?.[bundleId];
+  if (scene === SCENE_STYLE_NONE) return "";
+  return scene || db.episodeStyle || "";
+};
+
+// Insert (or drop) the STYLE line of a composed skill prompt. Pre-selector
+// manifests baked the house style into skillPrompt at rebuild time — strip any
+// existing STYLE line first so those compose cleanly without a rebuild.
+function applyStyle(prompt, styleText) {
+  const lines = String(prompt || "")
+    .split("\n")
+    .filter((l) => !/^STYLE:/i.test(l));
+  if (styleText) lines.splice(1, 0, "STYLE: " + styleText.replace(/^STYLE:\s*/i, ""));
+  return lines.join("\n");
+}
+
 // Revision signing: the SECTIONS of a bundle that can be signed off independently.
 const SIGN_SECTIONS = new Set(["images", "prompt", "audio"]);
 
@@ -206,7 +252,11 @@ export { rosterMaps, needsStateFor };
 // gets the same joined view — reading the bare `episode-manifest` doc instead
 // would report bundles as unrendered whose media is sitting right there in R2.
 export async function buildEpisodeView(env, pid) {
-  const [manifest, world] = await Promise.all([readManifest(env, pid), readWorld(env, pid)]);
+  const [manifest, world, vw] = await Promise.all([
+    readManifest(env, pid),
+    readWorld(env, pid),
+    readDoc(env, pid, "visual-world", null),
+  ]);
   if (!manifest) return { episode: null };
   const db = await readDB(env, pid);
   // Heal stale multi-selection. Re-applied inside the CAS so the repair can't
@@ -242,14 +292,30 @@ export async function buildEpisodeView(env, pid) {
   const maps = rosterMaps(world);
   const needs = {};
   for (const b of manifest.bundles || []) needs[b.id] = needsStateFor(b, maps, db);
+  // Compose each bundle's skillPrompt with its resolved render style (episode
+  // default, per-scene override, or none). Done at read time — the manifest
+  // stores the style-free prompt — so a style switch needs no rebuild. Every
+  // consumer (web, mobile, MCP get_episode, the agent's get_episode) reads
+  // through this view, so they all see the styled prompt. `styleId` rides on
+  // each bundle so clients can show which preset is in effect.
+  const presets = stylePresetsOf(vw);
+  const bundles = (manifest.bundles || []).map((b) => {
+    const styleId = resolveStyleId(db, b.id);
+    return { ...b, styleId, skillPrompt: applyStyle(b.skillPrompt, styleTextOf(presets, styleId)) };
+  });
   return {
-    episode: manifest,
+    episode: { ...manifest, bundles },
     video,
     prompts: db.prompt || {},
     signoffs: db.signoffs || {},
     firstFrames: db.episodeFirstFrame || {},
     refVideos: db.episodeRefVideo || {},
     needs,
+    style: {
+      episode: db.episodeStyle || "",
+      scenes: db.sceneStyle || {},
+      presets: presets.map((p) => ({ id: p.id, name: p.name })),
+    },
   };
 }
 
@@ -589,6 +655,7 @@ export function registerEpisode(app) {
     db.prompt = carryUnchanged(db.prompt);
     db.signoffs = carryUnchanged(db.signoffs);
     db.needLinks = carryUnchanged(db.needLinks);
+    db.sceneStyle = carryUnchanged(db.sceneStyle); // episode-wide style survives as-is
 
     }, { also: [{ name: "episode-manifest", value: manifest }] });
 
@@ -670,6 +737,41 @@ export function registerEpisode(app) {
     });
     if (res.missing) return c.json({ error: "Generation not found" }, 404);
     return c.json({ ok: true, bundle, file, selected: res.selected });
+  });
+
+  // Choose the render STYLE for the whole episode or one scene. Body:
+  // { presetId, bundle? }. `presetId` is a visual-world style-preset id, "" (or
+  // omitted) to clear — no style, references alone carry the look — or, with a
+  // `bundle`, the sentinel "none" to force that one scene style-free while the
+  // episode has a style. Without `bundle` it sets the episode-wide default every
+  // scene follows unless overridden. Styles are prepended to skillPrompt at
+  // read time, so a switch restyles every live-composed prompt instantly (a
+  // per-bundle prompt OVERRIDE — db.prompt — is user text and is left alone).
+  app.post("/api/episode/style", async (c) => {
+    const pid = c.get("projectId");
+    let body;
+    try { body = await c.req.json(); } catch { body = {}; }
+    const bundle = String(body?.bundle || "").trim();
+    const presetId = String(body?.presetId || "").trim();
+    if (presetId && !(bundle && presetId === SCENE_STYLE_NONE)) {
+      const vw = await readDoc(c.env, pid, "visual-world", null);
+      if (!stylePresetsOf(vw).some((p) => p?.id === presetId)) {
+        return c.json({
+          error: `Unknown style preset '${presetId}' — pick a visual-world style-prompt id, or "" for no style.`,
+        }, 400);
+      }
+    }
+    const { style } = await editDB(c.env, pid, (db) => {
+      if (bundle) {
+        db.sceneStyle = db.sceneStyle || {};
+        if (presetId) db.sceneStyle[bundle] = presetId;
+        else delete db.sceneStyle[bundle];
+      } else {
+        db.episodeStyle = presetId;
+      }
+      return { style: { episode: db.episodeStyle || "", scenes: db.sceneStyle || {} } };
+    });
+    return c.json({ ok: true, bundle: bundle || null, style });
   });
 
   // Save (or clear) an edited skill prompt for one bundle. Empty/omitted text

@@ -103,7 +103,7 @@ the agent — call them directly, no loading step needed.
 
 ## Step 3 — Write the multishot prompt
 
-One prompt describing the shots as ordered beats, under 15s total. Per shot give: camera, action, and the spoken line (or "no dialogue"). Open with a one-line style + a "Match the attached reference images for the location and the characters … Lip-sync all dialogue to the attached audio track, and embed that dialogue as the video's audio." Keep total runtime ≤ the dialogue stem length and ≤ 15s.
+One prompt describing the shots as ordered beats, under 15s total. Per shot give: camera, action, and the spoken line (or "no dialogue"). When a composed bundle prompt is handed to you, its `STYLE:` line (or absence of one) reflects the project's Episode style selection — keep it verbatim, never invent your own style clause; with no STYLE line, the reference images alone define the look. Then "Match the attached reference images for the location and the characters … Lip-sync all dialogue to the attached audio track, and embed that dialogue as the video's audio." Keep total runtime ≤ the dialogue stem length and ≤ 15s.
 
 ## Step 4 — Preflight, then submit (MCP `generate_video`)
 
