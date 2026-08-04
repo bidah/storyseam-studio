@@ -6,12 +6,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Pressable,
-  StyleSheet,
   Text,
   View,
   type NativeScrollEvent,
   type NativeSyntheticEvent,
 } from 'react-native';
+import { StyleSheet } from 'react-native-unistyles';
 import { LegendList, type LegendListRef } from '@legendapp/list/react-native';
 import Animated, {
   useAnimatedStyle,
@@ -31,7 +31,6 @@ import { takePendingDraft } from '@/lib/agent/pending-draft';
 import { setAgentMode } from '@/lib/agent/pill-mode';
 import { peekTranscript, preloadTranscript } from '@/lib/agent/transcript-cache';
 import type { Chat } from '@/lib/agent/chat-store';
-import { cn } from '@/lib/utils';
 import { uploadFile } from '@/lib/api';
 import type { LocalAttachment } from '@/components/chat/composer';
 import { useChatComposer, useComposerHeight } from '@/components/chat/composer-host';
@@ -126,11 +125,11 @@ function ShimmerRow({ label }: { label: string }) {
   const style = useAnimatedStyle(() => ({ opacity: opacity.value }));
   return (
     <Animated.View style={style}>
-      <View className="flex-row items-start gap-2 px-4 py-1.5">
-        <View className="pt-0.5">
+      <View style={styles.shimmerRow}>
+        <View style={styles.shimmerIcon}>
           <ActivityIndicator size="small" color={c.mutedForeground} />
         </View>
-        <Text className="flex-1 text-sm text-muted-foreground" numberOfLines={1}>
+        <Text style={styles.shimmerLabel} numberOfLines={1}>
           {label}
         </Text>
       </View>
@@ -162,12 +161,15 @@ function TranscriptSkeleton() {
   }, [opacity]);
   const style = useAnimatedStyle(() => ({ opacity: opacity.value }));
   return (
-    <Animated.View style={style} className="flex-1 justify-end gap-3 px-4 pb-4" pointerEvents="none">
+    <Animated.View style={[SKELETON_ROOT, style]} pointerEvents="none">
       {SKELETON.map((s, i) => (
         <View
           key={i}
-          style={{ width: s.w as `${number}%`, height: s.h }}
-          className={cn('rounded-2xl', s.mine ? 'self-end bg-primary/20' : 'self-start bg-muted')}
+          style={[
+            styles.skeletonBar,
+            s.mine ? styles.skeletonBarMine : styles.skeletonBarTheirs,
+            { width: s.w as `${number}%`, height: s.h },
+          ]}
         />
       ))}
     </Animated.View>
@@ -592,13 +594,13 @@ export function Conversation({
   );
 
   return (
-    <View className="flex-1 bg-background">
+    <View style={styles.screen}>
       {/* Everything else about this bar — the back button, the history + new chat
           pair, the close item in the modal, the glass — is declared per-screen in
           the hosting stack's _layout so UIKit can morph into it during the push. */}
       <Stack.Screen options={{ title }} />
 
-      <View className="relative min-h-0 flex-1">
+      <View style={styles.body}>
         {rows.length === 0 ? (
           // A chat with nothing to show yet: skeleton while flue re-streams a
           // real transcript, bare surface for one just started (its first turn
@@ -652,11 +654,11 @@ export function Conversation({
                   <ShimmerRow label="Working…" />
                 ) : null}
                 {errorMessage ? (
-                  <View className="mx-4 mt-2 flex-row items-start gap-2 rounded-xl border border-destructive/40 bg-destructive/10 p-3">
+                  <View style={styles.errorCard}>
                     <CircleAlert size={15} color={c.destructive} style={{ marginTop: 2 }} />
-                    <View className="min-w-0 flex-1">
-                      <Text className="text-sm font-medium text-foreground">Agent error</Text>
-                      <Text className="text-xs text-muted-foreground">{errorMessage}</Text>
+                    <View style={styles.errorBody}>
+                      <Text style={styles.errorTitle}>Agent error</Text>
+                      <Text style={styles.errorText}>{errorMessage}</Text>
                     </View>
                   </View>
                 ) : null}
@@ -670,9 +672,11 @@ export function Conversation({
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Jump to latest"
-            className="absolute left-1/2"
             // Sits just above the floating composer, not behind it.
-            style={{ transform: [{ translateX: -21 }], bottom: composerOverlap + 12 }}
+            style={[
+              styles.jumpButton,
+              { transform: [{ translateX: -21 }], bottom: composerOverlap + 12 },
+            ]}
             onPress={jumpToLatest}
           >
             {/* Liquid glass, like the composer it floats above — the transcript
@@ -706,7 +710,20 @@ export function Conversation({
 // within maintainScrollAtEndThreshold of the end, so it never fights a gesture.
 const MAINTAIN_AT_END = { animated: true } as const;
 
-const styles = StyleSheet.create({
+// Handed to a REANIMATED component, so it stays a plain object: a unistyles
+// style carries a metadata key that the Babel plugin strips only for host
+// components it rewrites, and `Animated.View` is built at runtime by
+// `createAnimatedComponent`, so the key survives into Reanimated's validator
+// and blows up the screen. Pure layout, nothing to theme.
+const SKELETON_ROOT = {
+  flex: 1,
+  justifyContent: 'flex-end',
+  gap: 12,
+  paddingHorizontal: 16,
+  paddingBottom: 16,
+} as const;
+
+const styles = StyleSheet.create((theme) => ({
   list: { flex: 1 },
   // Pre-landing veil: mounted and measuring, but not yet scrolled to the
   // newest message — invisible so the top of history never flashes.
@@ -718,4 +735,55 @@ const styles = StyleSheet.create({
   // The old content `gap: 16`, moved into each row: space after every row —
   // between rows, and between the last row and the footer.
   row: { paddingBottom: 16 },
-});
+  shimmerRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 6,
+  },
+  shimmerIcon: { paddingTop: 2 },
+  shimmerLabel: {
+    flex: 1,
+    fontSize: 14,
+    lineHeight: 20,
+    color: theme.colors.mutedForeground,
+  },
+  skeletonBar: { borderRadius: 16 },
+  skeletonBarMine: {
+    alignSelf: 'flex-end',
+    backgroundColor: `${theme.colors.primary}33`,
+  },
+  skeletonBarTheirs: {
+    alignSelf: 'flex-start',
+    backgroundColor: theme.colors.muted,
+  },
+  screen: { flex: 1, backgroundColor: theme.colors.background },
+  body: { position: 'relative', minHeight: 0, flex: 1 },
+  errorCard: {
+    marginHorizontal: 16,
+    marginTop: 8,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: `${theme.colors.destructive}66`,
+    backgroundColor: `${theme.colors.destructive}1A`,
+    padding: 12,
+  },
+  errorBody: { minWidth: 0, flex: 1 },
+  errorTitle: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: theme.colors.foreground,
+  },
+  errorText: {
+    fontSize: 12,
+    color: theme.colors.mutedForeground,
+  },
+  jumpButton: {
+    position: 'absolute',
+    left: '50%',
+  },
+}));

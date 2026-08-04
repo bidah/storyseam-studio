@@ -10,6 +10,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { StyleSheet } from 'react-native-unistyles';
 import { router } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { toast } from 'sonner-native';
@@ -36,7 +37,6 @@ import { generateShotListMessage, scriptEditRequest, scriptRewriteRequest } from
 import { useColors } from '@/lib/colors';
 import { useInvalidate, useProjectResource } from '@/lib/queries';
 import { useManualRefresh } from '@/lib/use-manual-refresh';
-import { cn } from '@/lib/utils';
 import { useTabBarScrollProps } from '@/lib/use-tab-bar-inset';
 import { EditableField } from './field';
 import { ScreenplayView, SP_LABELS, docLines, type PMNode, type ScriptLine } from './screenplay';
@@ -91,29 +91,29 @@ function SignModal({
 
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="formSheet" onRequestClose={onClose}>
-      <View className="flex-1 bg-background px-4 pt-5">
-        <View className="mb-2 flex-row items-center justify-between">
-          <View className="flex-row items-center gap-2">
+      <View style={styles.sheet}>
+        <View style={styles.sheetHeader}>
+          <View style={styles.sheetHeaderLeft}>
             <CircleCheck size={16} color={colors.primary} />
-            <Text className="text-lg font-semibold text-foreground">Sign & close script</Text>
+            <Text style={styles.sheetTitle}>Sign & close script</Text>
           </View>
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Cancel signing"
-            className="h-9 w-9 items-center justify-center rounded-full active:opacity-60"
+            style={({ pressed }) => [styles.closeBtn, pressed && styles.pressed60]}
             onPress={onClose}
           >
             <X size={18} color={colors.mutedForeground} />
           </Pressable>
         </View>
-        <Text className="mb-4 text-[13px] leading-5 text-muted-foreground">
+        <Text style={styles.sheetBody}>
           Signing locks this draft as the closed screenplay and unlocks shot-list generation.
           Editing the script afterward unsigns it and requires re-signing.
         </Text>
-        <Text className="mb-1.5 text-[12px] font-semibold text-foreground/80">Signed by</Text>
+        <Text style={styles.signedByLabel}>Signed by</Text>
         <Input value={by} onChangeText={setBy} placeholder="your name" autoFocus />
         <Button
-          className="mt-4"
+          style={styles.mt4}
           title="Sign & close script"
           disabled={!by.trim() || busy}
           loading={busy}
@@ -185,29 +185,29 @@ function EditPassageModal({
       presentationStyle="formSheet"
       onRequestClose={onClose}
     >
-      <View className="flex-1 bg-background px-4 pt-5">
-        <View className="mb-3 flex-row items-center justify-between">
-          <View className="flex-row items-center gap-2">
+      <View style={styles.sheet}>
+        <View style={styles.editHeader}>
+          <View style={styles.sheetHeaderLeft}>
             <Wand2 size={16} color={colors.primary} />
-            <Text className="text-lg font-semibold text-foreground">Change passage</Text>
+            <Text style={styles.sheetTitle}>Change passage</Text>
           </View>
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Cancel change"
-            className="h-9 w-9 items-center justify-center rounded-full active:opacity-60"
+            style={({ pressed }) => [styles.closeBtn, pressed && styles.pressed60]}
             onPress={onClose}
           >
             <X size={18} color={colors.mutedForeground} />
           </Pressable>
         </View>
 
-        <View className="mb-3">
+        <View style={styles.mb3}>
           <SegmentedNative options={EDIT_MODES} value={mode} onChange={setMode} />
         </View>
 
         {mode === 'edit' ? (
           <>
-            <Text className="mb-2 text-[13px] leading-5 text-muted-foreground">
+            <Text style={styles.editIntro}>
               Rewrite this {label} directly. The agent applies your exact text as a reviewable
               proposal — nothing changes until you accept it.
             </Text>
@@ -218,22 +218,22 @@ function EditPassageModal({
               onChangeText={setDraft}
               placeholder="Rewrite this passage…"
               placeholderTextColor={colors.subtleForeground}
-              className="min-h-32 rounded-xl border border-primary bg-card px-3 py-2.5 text-[15px] leading-6 text-foreground"
+              style={styles.editInput}
               textAlignVertical="top"
             />
           </>
         ) : (
           <>
-            <Text className="mb-2 text-[13px] leading-5 text-muted-foreground">
+            <Text style={styles.editIntro}>
               Ask the agent to change this {label}. Describe what you want — it proposes the edit as
               a reviewable diff.
             </Text>
             {/* The passage being changed, shown fixed for reference. */}
-            <View className="mb-3 rounded-xl border border-border bg-secondary/40 px-3 py-2.5">
-              <Text className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+            <View style={styles.originalBox}>
+              <Text style={styles.originalLabel}>
                 {SP_LABELS[line?.type ?? ''] || 'Passage'}
               </Text>
-              <Text className="text-[14px] leading-5 text-foreground">{original}</Text>
+              <Text style={styles.originalText}>{original}</Text>
             </View>
             <TextInput
               autoFocus
@@ -242,14 +242,14 @@ function EditPassageModal({
               onChangeText={setInstruction}
               placeholder="Describe the change… (e.g. make this line angrier, tighten it, fix the slug)"
               placeholderTextColor={colors.subtleForeground}
-              className="min-h-24 rounded-xl border border-primary bg-card px-3 py-2.5 text-[15px] leading-6 text-foreground"
+              style={styles.askInput}
               textAlignVertical="top"
             />
           </>
         )}
 
         <Button
-          className="mt-4"
+          style={styles.mt4}
           title={mode === 'edit' ? 'Send rewrite' : 'Ask agent'}
           disabled={!canSend || busy}
           loading={busy}
@@ -257,7 +257,7 @@ function EditPassageModal({
         >
           {!busy ? <Wand2 size={15} color={colors.primaryForeground} /> : null}
         </Button>
-        <Text className="mt-2 text-center text-[11px] text-muted-foreground">
+        <Text style={styles.editFootnote}>
           {busy
             ? 'Agent is busy — finish the current turn first.'
             : 'Opens the Chat tab to watch it apply.'}
@@ -357,16 +357,16 @@ export function ScriptSurface() {
   const genDisabled = agentBusy || script.shotlistExists;
 
   return (
-    <View className="flex-1">
+    <View style={styles.flex1}>
       <ScrollView
         {...barInset}
-        className="flex-1"
-        contentContainerClassName="px-4 pb-28 pt-3"
+        style={styles.flex1}
+        contentContainerStyle={styles.contentContainer}
         keyboardShouldPersistTaps="handled"
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.mutedForeground} />}
       >
         {/* Toolbar */}
-        <View className="mb-3 flex-row flex-wrap items-center gap-2">
+        <View style={styles.toolbar}>
           <Button
             size="sm"
             variant="outline"
@@ -379,7 +379,7 @@ export function ScriptSurface() {
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="Unsign the script"
-              className="active:opacity-60"
+              style={({ pressed }) => [pressed && styles.pressed60]}
               onPress={() => toggleSign(false, null)}
             >
               <Badge
@@ -413,13 +413,13 @@ export function ScriptSurface() {
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Review the agent's proposed script changes"
-            className="mb-3 flex-row items-center gap-2.5 rounded-xl border border-warning/40 bg-warning/10 p-3 active:opacity-70"
+            style={({ pressed }) => [styles.proposalBanner, pressed && styles.pressed70]}
             onPress={() => setReviewOpen(true)}
           >
             <GitPullRequestArrow size={16} color={colors.amber} />
-            <View className="flex-1">
-              <Text className="text-[14px] font-semibold text-warning">Agent proposed changes</Text>
-              <Text className="text-[12px] text-muted-foreground">Tap to review and accept or reject.</Text>
+            <View style={styles.flex1}>
+              <Text style={styles.proposalTitle}>Agent proposed changes</Text>
+              <Text style={styles.proposalHint}>Tap to review and accept or reject.</Text>
             </View>
           </Pressable>
         ) : null}
@@ -430,13 +430,13 @@ export function ScriptSurface() {
           placeholder="Untitled script"
           multiline={false}
           onCommit={commitTitle}
-          className="mb-2"
+          style={styles.mb2}
         />
 
         {/* Screenplay body — tap any block to rewrite it; the change is routed
             to the agent and lands back here as a reviewable proposal. */}
         {hasBody ? (
-          <Card className="px-4 py-5">
+          <Card style={styles.screenplayCard}>
             <ScreenplayView doc={script.doc} onEditLine={(line) => setEditLine(line)} />
           </Card>
         ) : (
@@ -461,3 +461,165 @@ export function ScriptSurface() {
     </View>
   );
 }
+
+const styles = StyleSheet.create((theme) => ({
+  flex1: {
+    flex: 1,
+  },
+  contentContainer: {
+    paddingHorizontal: 16,
+    paddingBottom: 112,
+    paddingTop: 12,
+  },
+  sheet: {
+    flex: 1,
+    backgroundColor: theme.colors.background,
+    paddingHorizontal: 16,
+    paddingTop: 20,
+  },
+  sheetHeader: {
+    marginBottom: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  editHeader: {
+    marginBottom: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  sheetHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  sheetTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: theme.colors.foreground,
+  },
+  closeBtn: {
+    height: 36,
+    width: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 999,
+  },
+  pressed60: {
+    opacity: 0.6,
+  },
+  pressed70: {
+    opacity: 0.7,
+  },
+  sheetBody: {
+    marginBottom: 16,
+    fontSize: 13,
+    lineHeight: 20,
+    color: theme.colors.mutedForeground,
+  },
+  signedByLabel: {
+    marginBottom: 6,
+    fontSize: 12,
+    fontWeight: '600',
+    color: `${theme.colors.foreground}CC`,
+  },
+  mt4: {
+    marginTop: 16,
+  },
+  mb2: {
+    marginBottom: 8,
+  },
+  mb3: {
+    marginBottom: 12,
+  },
+  editIntro: {
+    marginBottom: 8,
+    fontSize: 13,
+    lineHeight: 20,
+    color: theme.colors.mutedForeground,
+  },
+  editInput: {
+    minHeight: 128,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: theme.colors.primary,
+    backgroundColor: theme.colors.card,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 15,
+    lineHeight: 24,
+    color: theme.colors.foreground,
+  },
+  askInput: {
+    minHeight: 96,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: theme.colors.primary,
+    backgroundColor: theme.colors.card,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 15,
+    lineHeight: 24,
+    color: theme.colors.foreground,
+  },
+  originalBox: {
+    marginBottom: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    backgroundColor: `${theme.colors.secondary}66`,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  originalLabel: {
+    marginBottom: 4,
+    fontSize: 11,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 0.3,
+    color: theme.colors.mutedForeground,
+  },
+  originalText: {
+    fontSize: 14,
+    lineHeight: 20,
+    color: theme.colors.foreground,
+  },
+  editFootnote: {
+    marginTop: 8,
+    textAlign: 'center',
+    fontSize: 11,
+    color: theme.colors.mutedForeground,
+  },
+  toolbar: {
+    marginBottom: 12,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: 8,
+  },
+  proposalBanner: {
+    marginBottom: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: `${theme.colors.warning}66`,
+    backgroundColor: `${theme.colors.warning}1A`,
+    padding: 12,
+  },
+  proposalTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: theme.colors.warning,
+  },
+  proposalHint: {
+    fontSize: 12,
+    color: theme.colors.mutedForeground,
+  },
+  screenplayCard: {
+    paddingHorizontal: 16,
+    paddingVertical: 20,
+  },
+}));

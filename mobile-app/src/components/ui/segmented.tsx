@@ -1,6 +1,33 @@
-import { Pressable, Text, View } from 'react-native';
+import { Pressable, Text, View, type StyleProp, type ViewStyle } from 'react-native';
+import { StyleSheet } from 'react-native-unistyles';
 import * as Haptics from 'expo-haptics';
-import { cn } from '@/lib/utils';
+
+const styles = StyleSheet.create((theme) => ({
+  track: {
+    flexDirection: 'row',
+    borderRadius: 12,
+    backgroundColor: theme.colors.secondary,
+    padding: 4,
+  },
+  segment: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 8,
+    paddingVertical: 6,
+  },
+  segmentActive: {
+    backgroundColor: theme.colors.card,
+  },
+  label: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: theme.colors.mutedForeground,
+  },
+  labelActive: {
+    color: theme.colors.foreground,
+  },
+}));
 
 // iOS-style segmented control used for in-tab sub-surfaces
 // (Story: World|Script|Shots · Assets: Library|Sounds · Sounds: Music|SFX|Voice).
@@ -8,22 +35,22 @@ export function Segmented<T extends string>({
   options,
   value,
   onChange,
-  className,
+  style,
 }: {
   options: { value: T; label: string }[];
   value: T;
   onChange: (v: T) => void;
-  className?: string;
+  style?: StyleProp<ViewStyle>;
 }) {
   return (
-    <View className={cn('flex-row rounded-xl bg-secondary p-1', className)}>
+    <View style={[styles.track, style]}>
       {options.map((opt) => {
         const active = opt.value === value;
         return (
           <Pressable
             key={opt.value}
             accessibilityRole="tab"
-            className={cn('flex-1 items-center justify-center rounded-lg py-1.5', active && 'bg-card')}
+            style={[styles.segment, active && styles.segmentActive]}
             onPress={() => {
               if (!active) {
                 Haptics.selectionAsync().catch(() => {});
@@ -31,9 +58,7 @@ export function Segmented<T extends string>({
               }
             }}
           >
-            <Text className={cn('text-[13px] font-semibold', active ? 'text-foreground' : 'text-muted-foreground')}>
-              {opt.label}
-            </Text>
+            <Text style={[styles.label, active && styles.labelActive]}>{opt.label}</Text>
           </Pressable>
         );
       })}

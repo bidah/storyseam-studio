@@ -14,6 +14,7 @@ import { Galeria } from '@nandorojo/galeria';
 import * as Haptics from 'expo-haptics';
 import { toast } from 'sonner-native';
 import { Check } from 'lucide-react-native';
+import { StyleSheet } from 'react-native-unistyles';
 import { Badge } from '@/components/ui/badge';
 import { Empty, ErrorNote, Loading } from '@/components/ui/empty';
 import { useColors } from '@/lib/colors';
@@ -144,7 +145,7 @@ export default function AssetFolderScreen() {
 
   if (isPending) {
     return (
-      <View className="flex-1 bg-background">
+      <View style={styles.root}>
         {screen}
         <Loading />
       </View>
@@ -152,7 +153,7 @@ export default function AssetFolderScreen() {
   }
   if (error) {
     return (
-      <View className="flex-1 bg-background">
+      <View style={styles.root}>
         {screen}
         <ErrorNote message={String((error as any)?.message || error)} onRetry={() => refetch()} />
       </View>
@@ -160,7 +161,7 @@ export default function AssetFolderScreen() {
   }
   if (!current) {
     return (
-      <View className="flex-1 bg-background">
+      <View style={styles.root}>
         {screen}
         <Empty title="Folder not found" hint={`No folder "${title}" in the library.`} />
       </View>
@@ -174,7 +175,7 @@ export default function AssetFolderScreen() {
 
   return (
     <Galeria urls={galleryUrls} theme={scheme}>
-      <View className="flex-1 bg-background">
+      <View style={styles.root}>
         {screen}
         <FlatList
           {...barInset}
@@ -182,10 +183,10 @@ export default function AssetFolderScreen() {
           keyExtractor={(im) => im.rel}
           numColumns={3}
           refreshControl={refresh}
-          columnWrapperClassName="gap-2 px-4"
-          contentContainerClassName="gap-2 pb-8 pt-3"
+          columnWrapperStyle={styles.columnWrapper}
+          contentContainerStyle={styles.listContent}
           ListHeaderComponent={
-            <View className="mb-1 flex-row items-center gap-2 px-4">
+            <View style={styles.headerRow}>
               <Badge variant="outline" label={`${current.count} images`} />
               {selCount > 0 ? <Badge variant="success" label={`${selCount} selected`} /> : null}
             </View>
@@ -194,28 +195,26 @@ export default function AssetFolderScreen() {
           renderItem={({ item: im, index }) => (
             <View style={{ width: cell }}>
               <View
-                className={
-                  im.selected
-                    ? 'overflow-hidden rounded-xl border-2 border-success'
-                    : 'overflow-hidden rounded-xl border border-border'
-                }
-                style={{ width: cell, height: cell }}
+                style={[
+                  im.selected ? styles.tileFrameLiked : styles.tileFrame,
+                  { width: cell, height: cell },
+                ]}
               >
                 <Galeria.Image index={index} onLongPress={() => showMenu(im)} style={{ width: cell, height: cell }}>
                   <Image
                     source={{ uri: mediaUrl(im.thumb || im.url) }}
-                    style={{ width: '100%', height: '100%' }}
+                    style={styles.tileImage}
                     contentFit="cover"
                     transition={100}
                   />
                 </Galeria.Image>
                 {im.selected ? (
-                  <View className="absolute right-1.5 top-1.5 h-5 w-5 items-center justify-center rounded-full bg-success">
+                  <View style={styles.tileBadge}>
                     <Check size={12} color="white" />
                   </View>
                 ) : null}
               </View>
-              <Text className="mt-1 text-[11px] text-muted-foreground" numberOfLines={1}>
+              <Text style={styles.tileCaption} numberOfLines={1}>
                 {im.name}
               </Text>
             </View>
@@ -225,3 +224,35 @@ export default function AssetFolderScreen() {
     </Galeria>
   );
 }
+
+const styles = StyleSheet.create((theme) => ({
+  root: { flex: 1, backgroundColor: theme.colors.background },
+  columnWrapper: { gap: 8, paddingHorizontal: 16 },
+  listContent: { gap: 8, paddingBottom: 32, paddingTop: 12 },
+  headerRow: { marginBottom: 4, flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 16 },
+  tileFrame: {
+    overflow: 'hidden',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+  },
+  tileFrameLiked: {
+    overflow: 'hidden',
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: theme.colors.success,
+  },
+  tileImage: { width: '100%', height: '100%' },
+  tileBadge: {
+    position: 'absolute',
+    right: 6,
+    top: 6,
+    height: 20,
+    width: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 999,
+    backgroundColor: theme.colors.success,
+  },
+  tileCaption: { marginTop: 4, fontSize: 11, color: theme.colors.mutedForeground },
+}));

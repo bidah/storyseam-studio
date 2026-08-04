@@ -1,5 +1,6 @@
 import { Fragment, useEffect, useRef, useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
+import { StyleSheet } from 'react-native-unistyles';
 import { router, Stack } from 'expo-router';
 import { Check, ChevronLeft, ChevronRight, X } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
@@ -22,7 +23,7 @@ export default function ImageModelPickerSheet() {
   const [pending, setPending] = useState<string | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const colors = useColors();
-  // 32 == the px-8 below, so the gap under the card matches the sides.
+  // 32 == the horizontal padding below, so the gap under the card matches the sides.
   const contentStyle = useSheetContentStyle(32);
 
   // Single screen, so this fires only on real sheet dismissal — resolve null (a
@@ -53,20 +54,20 @@ export default function ImageModelPickerSheet() {
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={opt.label}
-        className="flex-row items-center justify-between px-4 py-4 active:bg-secondary"
+        style={({ pressed }) => [styles.row, pressed && styles.rowActive]}
         onPress={() => pick(opt.value)}
       >
-        <Text className="mr-3 flex-1 text-[16px] font-medium text-foreground" numberOfLines={1}>
+        <Text style={styles.rowLabel} numberOfLines={1}>
           {opt.label}
         </Text>
         {checkedValue === opt.value ? <Check size={18} color={colors.primary} /> : null}
       </Pressable>
-      {!last ? <View className="ml-4 h-px bg-border" /> : null}
+      {!last ? <View style={styles.separator} /> : null}
     </>
   );
 
   const Card = ({ items }: { items: { value: string; label: string }[] }) => (
-    <View className="overflow-hidden rounded-[28px] border border-border bg-card">
+    <View style={styles.card}>
       {items.map((opt, i) => (
         <Fragment key={opt.value}>
           <Row opt={opt} last={i === items.length - 1} />
@@ -94,7 +95,7 @@ export default function ImageModelPickerSheet() {
                     accessibilityRole="button"
                     accessibilityLabel="Close"
                     hitSlop={8}
-                    className="h-8 w-8 items-center justify-center rounded-full bg-secondary active:opacity-60"
+                    style={({ pressed }) => [styles.closeButton, pressed && styles.pressedOpacity60]}
                     onPress={() => router.dismiss()}
                   >
                     <X size={18} color={colors.mutedForeground} />
@@ -109,7 +110,7 @@ export default function ImageModelPickerSheet() {
                     accessibilityRole="button"
                     accessibilityLabel="Back"
                     hitSlop={8}
-                    className="flex-row items-center active:opacity-60"
+                    style={({ pressed }) => [styles.backButton, pressed && styles.pressedOpacity60]}
                     onPress={() => setPage('default')}
                   >
                     <ChevronLeft size={26} color={colors.mutedForeground} />
@@ -122,7 +123,7 @@ export default function ImageModelPickerSheet() {
           height and hug the rows. The glass header floats over the content; the
           content reserves space for it and cancels the nav-bar height the
           fitToContents detent adds — see useSheetContentStyle. */}
-      <View className="bg-background px-8" style={contentStyle}>
+      <View style={[styles.content, contentStyle]}>
         {page === 'default' ? (
           <>
             <Card items={top} />
@@ -130,13 +131,13 @@ export default function ImageModelPickerSheet() {
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel="More models"
-                className="mt-3 flex-row items-center justify-between rounded-full border border-border bg-card px-5 py-4 active:opacity-70"
+                style={({ pressed }) => [styles.moreButton, pressed && styles.pressedOpacity70]}
                 onPress={() => {
                   Haptics.selectionAsync().catch(() => {});
                   setPage('more');
                 }}
               >
-                <Text className="text-[16px] font-medium text-foreground">More models</Text>
+                <Text style={styles.moreButtonLabel}>More models</Text>
                 <ChevronRight size={20} color={colors.mutedForeground} />
               </Pressable>
             ) : null}
@@ -148,3 +149,74 @@ export default function ImageModelPickerSheet() {
     </>
   );
 }
+
+const styles = StyleSheet.create((theme) => ({
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+  },
+  rowActive: {
+    backgroundColor: theme.colors.secondary,
+  },
+  rowLabel: {
+    marginRight: 12,
+    flex: 1,
+    fontSize: 16,
+    fontWeight: '500',
+    color: theme.colors.foreground,
+  },
+  separator: {
+    marginLeft: 16,
+    height: 1,
+    backgroundColor: theme.colors.border,
+  },
+  card: {
+    overflow: 'hidden',
+    borderRadius: 28,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    backgroundColor: theme.colors.card,
+  },
+  closeButton: {
+    height: 32,
+    width: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 999,
+    backgroundColor: theme.colors.secondary,
+  },
+  backButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  pressedOpacity60: {
+    opacity: 0.6,
+  },
+  pressedOpacity70: {
+    opacity: 0.7,
+  },
+  content: {
+    backgroundColor: theme.colors.background,
+    paddingHorizontal: 32,
+  },
+  moreButton: {
+    marginTop: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    backgroundColor: theme.colors.card,
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+  },
+  moreButtonLabel: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: theme.colors.foreground,
+  },
+}));

@@ -9,6 +9,7 @@ import {
   View,
   useWindowDimensions,
 } from 'react-native';
+import { StyleSheet } from 'react-native-unistyles';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { Image } from 'expo-image';
 import { Galeria } from '@nandorojo/galeria';
@@ -48,7 +49,6 @@ import { useColors } from '@/lib/colors';
 import { useEffectiveScheme } from '@/lib/theme';
 import { useInvalidate, useProjectResource } from '@/lib/queries';
 import { useManualRefresh } from '@/lib/use-manual-refresh';
-import { cn } from '@/lib/utils';
 import { useTabBarScrollProps } from '@/lib/use-tab-bar-inset';
 import {
   RESTRICTIONS,
@@ -85,17 +85,18 @@ function Chip({ on, label, onPress }: { on: boolean; label: string; onPress: () 
   return (
     <Pressable
       accessibilityRole="button"
-      className={cn(
-        'flex-row items-center gap-1 rounded-full border px-3 py-1.5 active:opacity-70',
-        on ? 'border-primary bg-primary/15' : 'border-border bg-transparent',
-      )}
+      style={({ pressed }) => [
+        styles.chip,
+        on ? styles.chipOn : styles.chipOff,
+        pressed && styles.pressed70,
+      ]}
       onPress={() => {
         Haptics.selectionAsync().catch(() => {});
         onPress();
       }}
     >
       {on ? <Check size={12} color={colors.primary} /> : null}
-      <Text className={cn('text-[12px] font-medium', on ? 'text-primary' : 'text-muted-foreground')}>
+      <Text style={[styles.chipLabel, on ? styles.chipLabelOn : styles.chipLabelOff]}>
         {label}
       </Text>
     </Pressable>
@@ -108,10 +109,7 @@ function SelectDot({ selected, onPress }: { selected: boolean; onPress: () => vo
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={selected ? 'Unselect' : 'Select'}
-      className={cn(
-        'absolute left-2 top-2 h-7 w-7 items-center justify-center rounded-full border-2 border-white/80',
-        selected ? 'bg-primary' : 'bg-black/50',
-      )}
+      style={[styles.selectDot, selected ? styles.selectDotOn : styles.selectDotOff]}
       onPress={() => {
         Haptics.selectionAsync().catch(() => {});
         onPress();
@@ -141,12 +139,9 @@ function TakeCard({
   const colors = useColors();
   return (
     <View
-      className={cn(
-        'w-[280px] rounded-xl border bg-card p-2',
-        take.selected ? 'border-primary' : 'border-border',
-      )}
+      style={[styles.takeCard, take.selected ? styles.takeCardOn : styles.takeCardOff]}
     >
-      <View className="overflow-hidden rounded-lg bg-black">
+      <View style={styles.takeVideoWrap}>
         <VideoView
           player={player}
           style={{ width: 262, height: 148 }}
@@ -156,7 +151,7 @@ function TakeCard({
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Play take"
-          className="absolute inset-0 items-center justify-center"
+          style={styles.takePlayOverlay}
           onPress={() =>
             router.push({
               pathname: '/viewer',
@@ -164,21 +159,21 @@ function TakeCard({
             })
           }
         >
-          <View className="h-11 w-11 items-center justify-center rounded-full bg-black/50">
+          <View style={styles.takePlayButton}>
             <Play size={20} color={colors.primaryForeground} />
           </View>
         </Pressable>
         <SelectDot selected={!!take.selected} onPress={() => onToggleSelect(take, !take.selected)} />
         {take.kind === 'trim' ? (
-          <View className="absolute right-2 top-2">
+          <View style={styles.takeTrimBadge}>
             <Badge label="Trim" variant="warning">
               <Scissors size={10} color={colors.amber} />
             </Badge>
           </View>
         ) : null}
       </View>
-      <View className="mt-2 flex-row items-center justify-between gap-2">
-        <Text className="flex-1 text-[12px] text-muted-foreground" numberOfLines={1}>
+      <View style={styles.takeFooter}>
+        <Text style={styles.takeName} numberOfLines={1}>
           {take.name || take.file}
         </Text>
         {take.selected ? (
@@ -208,10 +203,7 @@ function StillThumb({
 }) {
   return (
     <View
-      className={cn(
-        'overflow-hidden rounded-lg border',
-        still.selected ? 'border-primary' : 'border-border',
-      )}
+      style={[styles.stillThumb, still.selected ? styles.stillThumbOn : styles.stillThumbOff]}
     >
       <Pressable accessibilityRole="button" onPress={() => onView(still)}>
         <Image
@@ -222,8 +214,8 @@ function StillThumb({
       </Pressable>
       <SelectDot selected={!!still.selected} onPress={() => onToggle(still, !still.selected)} />
       {still.angle ? (
-        <View className="absolute bottom-0 left-0 right-0 bg-black/60 px-1.5 py-0.5">
-          <Text className="text-[10px] text-white/90" numberOfLines={1}>
+        <View style={styles.stillAngleBar}>
+          <Text style={styles.stillAngleText} numberOfLines={1}>
             {still.angle}
           </Text>
         </View>
@@ -587,7 +579,7 @@ export default function BundleDetail() {
   // The Stills/Video toggle sits just under the native header as a sub-nav (same
   // pattern as the Assets/Story tabs), rendered only once the bundle is loaded.
   const subNav = bundle ? (
-    <View className="px-4 pt-3">
+    <View style={styles.subNav}>
       <SegmentedNative
         options={[
           { value: 'stills', label: 'Stills' },
@@ -601,7 +593,7 @@ export default function BundleDetail() {
 
   if (ep.isPending || (!bundle && (fn.isPending || au.isPending))) {
     return (
-      <View className="flex-1 bg-background">
+      <View style={styles.root}>
         {screen}
         <Loading />
       </View>
@@ -609,7 +601,7 @@ export default function BundleDetail() {
   }
   if (ep.isError) {
     return (
-      <View className="flex-1 bg-background">
+      <View style={styles.root}>
         {screen}
         <ErrorNote message={(ep.error as Error)?.message || 'Failed to load'} onRetry={onRefresh} />
       </View>
@@ -617,7 +609,7 @@ export default function BundleDetail() {
   }
   if (!bundle) {
     return (
-      <View className="flex-1 bg-background">
+      <View style={styles.root}>
         {screen}
         <Empty title="Bundle not found" hint={`No bundle "${id}" in the episode plan.`} />
       </View>
@@ -632,16 +624,16 @@ export default function BundleDetail() {
   }));
 
   return (
-    <View className="flex-1 bg-background">
+    <View style={styles.root}>
       {screen}
       {subNav}
       <ScrollView
         {...barInset}
-        contentContainerClassName="px-4 pb-28 pt-4"
+        contentContainerStyle={styles.scrollContent}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       >
         {/* meta line */}
-        <Text className="mb-4 text-[12px] text-muted-foreground">
+        <Text style={styles.metaLine}>
           {bundle.shots.length} shots · ~{bundle.durationEst ?? '?'}s → {bundle.duration ?? '?'}s
           {bundle.images?.length
             ? `\nscene needs: ${bundle.images.map((im) => im.key).join(' · ')}`
@@ -650,7 +642,7 @@ export default function BundleDetail() {
 
         {mode === 'stills' ? (
           /* ------------------------------ STILLS ------------------------------ */
-          <View className="gap-4">
+          <View style={styles.gap4}>
             <Button
               title="Render all stills"
               disabled={agentBusy}
@@ -663,10 +655,10 @@ export default function BundleDetail() {
               const shotStills = stills[s.id] ?? [];
               const dlg = shotDialogue(s);
               return (
-                <View key={s.id} className="rounded-2xl border border-border bg-card p-3">
-                  <View className="mb-1 flex-row flex-wrap items-center gap-2">
+                <View key={s.id} style={styles.shotCard}>
+                  <View style={styles.shotHeaderRow}>
                     <Badge label={s.id} variant="outline" />
-                    <Text className="text-[12px] text-muted-foreground">
+                    <Text style={styles.shotMeta}>
                       {s.dur ? `${s.dur}s · ` : ''}
                       {s.location || ''}
                       {s.camera ? ` · ${s.camera}` : ''}
@@ -677,17 +669,17 @@ export default function BundleDetail() {
                       </Badge>
                     ) : null}
                   </View>
-                  <Text className="text-[14px] text-foreground">{s.summary || ''}</Text>
+                  <Text style={styles.shotSummary}>{s.summary || ''}</Text>
                   {dlg ? (
-                    <View className="mt-1 flex-row items-start gap-1.5">
+                    <View style={styles.shotDialogueRow}>
                       <Speech size={13} color={colors.subtleForeground} style={{ marginTop: 2 }} />
-                      <Text className="flex-1 text-[12px] text-muted-foreground">{dlg}</Text>
+                      <Text style={styles.shotDialogueText}>{dlg}</Text>
                     </View>
                   ) : null}
 
                   {shotStills.length > 0 ? (
-                    <ScrollView horizontal showsHorizontalScrollIndicator={false} className="mt-3">
-                      <View className="flex-row gap-2">
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.stillsStrip}>
+                      <View style={styles.rowGap2}>
                         {shotStills.map((st) => (
                           <StillThumb
                             key={st.file}
@@ -709,7 +701,7 @@ export default function BundleDetail() {
                     </ScrollView>
                   ) : null}
 
-                  <View className="mt-3 flex-row gap-2">
+                  <View style={styles.shotActionsRow}>
                     <Button
                       size="sm"
                       variant={shotStills.length ? 'outline' : 'default'}
@@ -737,13 +729,13 @@ export default function BundleDetail() {
           </View>
         ) : (
           /* ------------------------------ VIDEO ------------------------------- */
-          <View className="gap-6">
+          <View style={styles.gap6}>
             {/* takes carousel */}
             {vids.length > 0 ? (
               <View>
                 <Eyebrow>Takes ({vids.length})</Eyebrow>
                 <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                  <View className="flex-row gap-3">
+                  <View style={styles.rowGap3}>
                     {vids.map((v) => (
                       <TakeCard
                         key={v.file}
@@ -757,21 +749,21 @@ export default function BundleDetail() {
                 </ScrollView>
 
                 {trim ? (
-                  <View className="mt-3 rounded-xl border border-border bg-card p-3">
-                    <View className="mb-2 flex-row items-center gap-1.5">
+                  <View style={styles.trimPanel}>
+                    <View style={styles.trimHeaderRow}>
                       <Scissors size={13} color={colors.foreground} />
-                      <Text className="flex-1 text-[13px] font-semibold text-foreground">
+                      <Text style={styles.trimTitle}>
                         Trim {trim.take.name || trim.take.file}
                       </Text>
                       {trim.dur > 0 ? (
-                        <Text className="text-[12px] text-muted-foreground">
+                        <Text style={styles.hint}>
                           {trim.dur.toFixed(1)}s total
                         </Text>
                       ) : null}
                     </View>
-                    <View className="flex-row items-center gap-2">
-                      <View className="flex-1">
-                        <Text className="mb-1 text-[11px] text-muted-foreground">In (s)</Text>
+                    <View style={styles.trimInputsRow}>
+                      <View style={styles.flex1}>
+                        <Text style={styles.trimInputLabel}>In (s)</Text>
                         <Input
                           value={trimFrom}
                           onChangeText={setTrimFrom}
@@ -779,8 +771,8 @@ export default function BundleDetail() {
                           placeholder="0"
                         />
                       </View>
-                      <View className="flex-1">
-                        <Text className="mb-1 text-[11px] text-muted-foreground">Out (s)</Text>
+                      <View style={styles.flex1}>
+                        <Text style={styles.trimInputLabel}>Out (s)</Text>
                         <Input
                           value={trimTo}
                           onChangeText={setTrimTo}
@@ -789,10 +781,10 @@ export default function BundleDetail() {
                         />
                       </View>
                     </View>
-                    <Text className="mt-2 text-[11px] leading-4 text-muted-foreground">
+                    <Text style={styles.trimNote}>
                       Creating a trim keeps the original and adds a new selectable take.
                     </Text>
-                    <View className="mt-2 flex-row justify-end gap-2">
+                    <View style={styles.trimActionsRow}>
                       <Button size="sm" variant="ghost" title="Cancel" onPress={() => setTrim(null)} />
                       <Button
                         size="sm"
@@ -811,22 +803,22 @@ export default function BundleDetail() {
             {/* shots summary */}
             <View>
               <Eyebrow>Shots</Eyebrow>
-              <View className="gap-2">
+              <View style={styles.gap2}>
                 {bundle.shots.map((s) => {
                   const dlg = shotDialogue(s);
                   return (
-                    <View key={s.id} className="rounded-xl border border-border bg-card p-2.5">
-                      <View className="mb-0.5 flex-row flex-wrap items-center gap-2">
+                    <View key={s.id} style={styles.shotCardSm}>
+                      <View style={styles.shotHeaderRowSm}>
                         <Badge label={s.id} variant="outline" />
-                        <Text className="text-[11px] text-muted-foreground">
+                        <Text style={styles.shotMetaSm}>
                           {s.dur ? `${s.dur}s · ` : ''}
                           {s.location || ''}
                           {s.camera ? ` · ${s.camera}` : ''}
                         </Text>
                       </View>
-                      <Text className="text-[13px] text-foreground">{s.summary || ''}</Text>
+                      <Text style={styles.shotSummarySm}>{s.summary || ''}</Text>
                       {dlg ? (
-                        <Text className="mt-0.5 text-[11px] text-muted-foreground">{dlg}</Text>
+                        <Text style={styles.shotDialogueSm}>{dlg}</Text>
                       ) : null}
                     </View>
                   );
@@ -838,7 +830,7 @@ export default function BundleDetail() {
             <View>
               <Eyebrow>Image references ({picks.length})</Eyebrow>
               {assignedThumbs.length === 0 ? (
-                <Text className="mb-2 text-[13px] text-muted-foreground">
+                <Text style={styles.noRefsText}>
                   No references chosen for this shot yet.
                 </Text>
               ) : (
@@ -846,9 +838,9 @@ export default function BundleDetail() {
                   urls={assignedThumbs.map((im) => mediaUrl(im.url) ?? '')}
                   theme={scheme}
                 >
-                <View className="mb-2 flex-row flex-wrap gap-2">
+                <View style={styles.refThumbsWrap}>
                   {assignedThumbs.map((im, idx) => (
-                    <View key={im.rel} className="overflow-hidden rounded-lg border border-primary">
+                    <View key={im.rel} style={styles.refThumb}>
                       <Galeria.Image index={idx} style={{ width: cell, height: cell }}>
                         <Image
                           source={{ uri: mediaUrl(im.thumb) }}
@@ -859,13 +851,13 @@ export default function BundleDetail() {
                       <Pressable
                         accessibilityRole="button"
                         accessibilityLabel="Remove reference"
-                        className="absolute right-1 top-1 h-6 w-6 items-center justify-center rounded-full bg-black/60"
+                        style={styles.refRemoveBtn}
                         onPress={() => removeRef(im.rel)}
                       >
                         <X size={13} color={colors.primaryForeground} />
                       </Pressable>
-                      <View className="bg-black/60 px-1.5 py-0.5" style={{ width: cell }}>
-                        <Text className="text-[10px] text-white/90" numberOfLines={1}>
+                      <View style={[styles.refLabelBar, { width: cell }]}>
+                        <Text style={styles.refLabelText} numberOfLines={1}>
                           {refLabel(im.rel)}
                         </Text>
                       </View>
@@ -874,7 +866,7 @@ export default function BundleDetail() {
                 </View>
                 </Galeria>
               )}
-              <View className="flex-row gap-2">
+              <View style={styles.actionsRow}>
                 <Button size="sm" variant="outline" title="Add references" onPress={addRefs}>
                   <Plus size={14} color={colors.foreground} />
                 </Button>
@@ -893,34 +885,32 @@ export default function BundleDetail() {
             {/* audio references */}
             <View>
               <Eyebrow>Voice / sound references</Eyebrow>
-              <View className="gap-2">
+              <View style={styles.gap2}>
                 {audioRefs.map((a) => {
                   const on = audioPicks.includes(a.rel);
                   return (
                     <Pressable
                       key={a.rel}
                       accessibilityRole="button"
-                      className={cn(
-                        'flex-row items-center gap-3 rounded-xl border p-3 active:opacity-70',
-                        on ? 'border-primary bg-primary/10' : 'border-border bg-card',
-                      )}
+                      style={({ pressed }) => [
+                        styles.audioRow,
+                        on ? styles.audioRowOn : styles.audioRowOff,
+                        pressed && styles.pressed70,
+                      ]}
                       onPress={() => toggleAudio(a.rel, !on)}
                     >
                       <View
-                        className={cn(
-                          'h-7 w-7 items-center justify-center rounded-full border',
-                          on ? 'border-primary bg-primary' : 'border-border',
-                        )}
+                        style={[styles.audioDot, on ? styles.audioDotOn : styles.audioDotOff]}
                       >
                         {on ? <Check size={14} color={colors.primaryForeground} /> : <Plus size={14} color={colors.subtleForeground} />}
                       </View>
-                      <View className="flex-1">
-                        <View className="flex-row items-center gap-1.5">
+                      <View style={styles.flex1}>
+                        <View style={styles.rowGap1_5}>
                           <Volume2 size={13} color={on ? colors.primary : colors.subtleForeground} />
-                          <Text className="text-[14px] font-medium text-foreground">{a.label}</Text>
+                          <Text style={styles.audioLabel}>{a.label}</Text>
                         </View>
                         {a.order && a.order.length > 1 ? (
-                          <Text className="mt-0.5 text-[11px] text-muted-foreground">
+                          <Text style={styles.audioOrderText}>
                             voice order: {a.order.map((n, i) => `${i + 1}=${n}`).join(', ')}
                           </Text>
                         ) : null}
@@ -934,8 +924,8 @@ export default function BundleDetail() {
             {/* prompt editor */}
             {sec ? (
               <View>
-                <View className="mb-2 flex-row items-center gap-2">
-                  <Eyebrow className="mb-0 flex-1">Skill prompt</Eyebrow>
+                <View style={styles.promptHeaderRow}>
+                  <Eyebrow style={styles.promptEyebrow}>Skill prompt</Eyebrow>
                   <Badge label={edited ? 'edited' : 'live'} variant={edited ? 'warning' : 'success'} />
                   {edited ? (
                     <Button size="sm" variant="outline" title="Reset" onPress={resetPrompt}>
@@ -944,10 +934,10 @@ export default function BundleDetail() {
                   ) : null}
                 </View>
 
-                <Text className="mb-1.5 text-[12px] font-medium text-muted-foreground">
+                <Text style={styles.fieldLabel}>
                   Audio / VFX restrictions
                 </Text>
-                <View className="mb-1.5 flex-row flex-wrap gap-2">
+                <View style={styles.restrictionsRow}>
                   {RESTRICTIONS.map((r) => (
                     <Chip
                       key={r.key}
@@ -962,34 +952,32 @@ export default function BundleDetail() {
                     />
                   ))}
                 </View>
-                <View className="mb-3 rounded-lg bg-secondary px-3 py-2">
-                  <Text className="text-[11px] text-muted-foreground" style={{ fontFamily: MONO }}>
+                <View style={styles.restrictionLineBox}>
+                  <Text style={[styles.hint, { fontFamily: MONO }]}>
                     {sec.restrictionLine || '(no restrictions — Seedance may add music, VFX & sound)'}
                   </Text>
                 </View>
 
-                <Text className="mb-1.5 text-[12px] font-medium text-muted-foreground">Style</Text>
+                <Text style={styles.fieldLabel}>Style</Text>
                 <Input
                   multiline
                   value={sec.styleLine}
                   onChangeText={(t) => pushSec({ ...sec, styleLine: t })}
-                  className="mb-3 text-[12px]"
-                  style={{ fontFamily: MONO }}
+                  style={[styles.promptInput, { fontFamily: MONO }]}
                 />
 
-                <Text className="mb-1.5 text-[12px] font-medium text-muted-foreground">Directives</Text>
+                <Text style={styles.fieldLabel}>Directives</Text>
                 <Input
                   multiline
                   value={sec.directives}
                   onChangeText={(t) => pushSec({ ...sec, directives: t })}
-                  className="mb-3 text-[12px]"
-                  style={{ fontFamily: MONO }}
+                  style={[styles.promptInput, { fontFamily: MONO }]}
                 />
 
-                <Text className="mb-1.5 text-[12px] font-medium text-muted-foreground">
+                <Text style={styles.fieldLabel}>
                   Shot prompts ({sec.shots.length})
                 </Text>
-                <View className="gap-2">
+                <View style={styles.gap2}>
                   {sec.shots.map((s, i) => (
                     <Input
                       key={i}
@@ -1000,8 +988,7 @@ export default function BundleDetail() {
                         shots[i] = t;
                         pushSec({ ...sec, shots });
                       }}
-                      className="text-[12px]"
-                      style={{ fontFamily: MONO }}
+                      style={[styles.shotPromptInput, { fontFamily: MONO }]}
                     />
                   ))}
                 </View>
@@ -1011,34 +998,28 @@ export default function BundleDetail() {
             {/* revision signing */}
             <View>
               <Eyebrow>Revision signing</Eyebrow>
-              <Text className="mb-1 text-[11px] text-muted-foreground">Signed by</Text>
-              <Input value={signer} onChangeText={setSigner} placeholder="your name" className="mb-2" />
-              <View className="gap-2">
+              <Text style={styles.signedByLabel}>Signed by</Text>
+              <Input value={signer} onChangeText={setSigner} placeholder="your name" style={styles.signerInput} />
+              <View style={styles.gap2}>
                 {SIGN_SECTIONS.map(({ key, label, hint }) => {
                   const sig = signoff?.[key] ?? null;
                   const on = !!sig;
                   return (
                     <View
                       key={key}
-                      className={cn(
-                        'flex-row items-center gap-3 rounded-xl border p-3',
-                        on ? 'border-primary bg-primary/10' : 'border-border bg-card',
-                      )}
+                      style={[styles.signRow, on ? styles.signRowOn : styles.signRowOff]}
                     >
                       <Pressable
                         accessibilityRole="button"
                         accessibilityLabel={on ? `Unsign ${label}` : `Sign ${label}`}
-                        className={cn(
-                          'h-8 w-8 items-center justify-center rounded-full border',
-                          on ? 'border-primary bg-primary' : 'border-border',
-                        )}
+                        style={[styles.signDot, on ? styles.signDotOn : styles.signDotOff]}
                         onPress={() => onSign(key, !on)}
                       >
                         <Check size={16} color={on ? colors.primaryForeground : colors.border} />
                       </Pressable>
-                      <View className="flex-1">
-                        <Text className="text-[14px] font-medium text-foreground">{label}</Text>
-                        <Text className="text-[11px] text-muted-foreground">
+                      <View style={styles.flex1}>
+                        <Text style={styles.signLabel}>{label}</Text>
+                        <Text style={styles.signHint}>
                           {sig ? `signed by ${sig.by} · ${new Date(sig.at).toLocaleString()}` : hint}
                         </Text>
                       </View>
@@ -1057,7 +1038,7 @@ export default function BundleDetail() {
               <Wand2 size={15} color={colors.primaryForeground} />
             </Button>
             {!fullySigned ? (
-              <Text className="-mt-4 text-center text-[11px] text-muted-foreground">
+              <Text style={styles.signWarning}>
                 Sign off images, prompt, and audio before rendering.
               </Text>
             ) : null}
@@ -1067,3 +1048,257 @@ export default function BundleDetail() {
     </View>
   );
 }
+
+const styles = StyleSheet.create((theme) => ({
+  root: { flex: 1, backgroundColor: theme.colors.background },
+  flex1: { flex: 1 },
+  gap2: { gap: 8 },
+  gap4: { gap: 16 },
+  gap6: { gap: 24 },
+  rowGap2: { flexDirection: 'row', gap: 8 },
+  rowGap3: { flexDirection: 'row', gap: 12 },
+  rowGap1_5: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  actionsRow: { flexDirection: 'row', gap: 8 },
+  hint: { fontSize: 12, color: theme.colors.mutedForeground },
+  pressed70: { opacity: 0.7 },
+
+  // Chip
+  chip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    borderRadius: 999,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  chipOn: { borderColor: theme.colors.primary, backgroundColor: `${theme.colors.primary}26` },
+  chipOff: { borderColor: theme.colors.border, backgroundColor: 'transparent' },
+  chipLabel: { fontSize: 12, fontWeight: '500' },
+  chipLabelOn: { color: theme.colors.primary },
+  chipLabelOff: { color: theme.colors.mutedForeground },
+
+  // SelectDot
+  selectDot: {
+    position: 'absolute',
+    left: 8,
+    top: 8,
+    height: 28,
+    width: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 999,
+    borderWidth: 2,
+    borderColor: 'rgba(255,255,255,0.8)',
+  },
+  selectDotOn: { backgroundColor: theme.colors.primary },
+  selectDotOff: { backgroundColor: 'rgba(0,0,0,0.5)' },
+
+  // TakeCard
+  takeCard: {
+    width: 280,
+    borderRadius: 12,
+    borderWidth: 1,
+    backgroundColor: theme.colors.card,
+    padding: 8,
+  },
+  takeCardOn: { borderColor: theme.colors.primary },
+  takeCardOff: { borderColor: theme.colors.border },
+  takeVideoWrap: { overflow: 'hidden', borderRadius: 8, backgroundColor: '#000' },
+  takePlayOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  takePlayButton: {
+    height: 44,
+    width: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 999,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+  },
+  takeTrimBadge: { position: 'absolute', right: 8, top: 8 },
+  takeFooter: {
+    marginTop: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  takeName: { flex: 1, fontSize: 12, color: theme.colors.mutedForeground },
+
+  // StillThumb
+  stillThumb: { overflow: 'hidden', borderRadius: 8, borderWidth: 1 },
+  stillThumbOn: { borderColor: theme.colors.primary },
+  stillThumbOff: { borderColor: theme.colors.border },
+  stillAngleBar: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  stillAngleText: { fontSize: 10, color: 'rgba(255,255,255,0.9)' },
+
+  // Screen chrome
+  subNav: { paddingHorizontal: 16, paddingTop: 12 },
+  scrollContent: { paddingHorizontal: 16, paddingBottom: 112, paddingTop: 16 },
+  metaLine: { marginBottom: 16, fontSize: 12, color: theme.colors.mutedForeground },
+
+  // Stills mode
+  shotCard: {
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    backgroundColor: theme.colors.card,
+    padding: 12,
+  },
+  shotHeaderRow: {
+    marginBottom: 4,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: 8,
+  },
+  shotMeta: { fontSize: 12, color: theme.colors.mutedForeground },
+  shotSummary: { fontSize: 14, color: theme.colors.foreground },
+  shotDialogueRow: { marginTop: 4, flexDirection: 'row', alignItems: 'flex-start', gap: 6 },
+  shotDialogueText: { flex: 1, fontSize: 12, color: theme.colors.mutedForeground },
+  stillsStrip: { marginTop: 12 },
+  shotActionsRow: { marginTop: 12, flexDirection: 'row', gap: 8 },
+
+  // Video mode
+  trimPanel: {
+    marginTop: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    backgroundColor: theme.colors.card,
+    padding: 12,
+  },
+  trimHeaderRow: { marginBottom: 8, flexDirection: 'row', alignItems: 'center', gap: 6 },
+  trimTitle: { flex: 1, fontSize: 13, fontWeight: '600', color: theme.colors.foreground },
+  trimInputsRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  trimInputLabel: { marginBottom: 4, fontSize: 11, color: theme.colors.mutedForeground },
+  trimNote: { marginTop: 8, fontSize: 11, lineHeight: 16, color: theme.colors.mutedForeground },
+  trimActionsRow: { marginTop: 8, flexDirection: 'row', justifyContent: 'flex-end', gap: 8 },
+
+  shotCardSm: {
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    backgroundColor: theme.colors.card,
+    padding: 10,
+  },
+  shotHeaderRowSm: {
+    marginBottom: 2,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: 8,
+  },
+  shotMetaSm: { fontSize: 11, color: theme.colors.mutedForeground },
+  shotSummarySm: { fontSize: 13, color: theme.colors.foreground },
+  shotDialogueSm: { marginTop: 2, fontSize: 11, color: theme.colors.mutedForeground },
+
+  // Image references
+  noRefsText: { marginBottom: 8, fontSize: 13, color: theme.colors.mutedForeground },
+  refThumbsWrap: { marginBottom: 8, flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  refThumb: {
+    overflow: 'hidden',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: theme.colors.primary,
+  },
+  refRemoveBtn: {
+    position: 'absolute',
+    right: 4,
+    top: 4,
+    height: 24,
+    width: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 999,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+  },
+  refLabelBar: { backgroundColor: 'rgba(0,0,0,0.6)', paddingHorizontal: 6, paddingVertical: 2 },
+  refLabelText: { fontSize: 10, color: 'rgba(255,255,255,0.9)' },
+
+  // Audio references
+  audioRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    padding: 12,
+  },
+  audioRowOn: { borderColor: theme.colors.primary, backgroundColor: `${theme.colors.primary}1A` },
+  audioRowOff: { borderColor: theme.colors.border, backgroundColor: theme.colors.card },
+  audioDot: {
+    height: 28,
+    width: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 999,
+    borderWidth: 1,
+  },
+  audioDotOn: { borderColor: theme.colors.primary, backgroundColor: theme.colors.primary },
+  audioDotOff: { borderColor: theme.colors.border },
+  audioLabel: { fontSize: 14, fontWeight: '500', color: theme.colors.foreground },
+  audioOrderText: { marginTop: 2, fontSize: 11, color: theme.colors.mutedForeground },
+
+  // Prompt editor
+  promptHeaderRow: { marginBottom: 8, flexDirection: 'row', alignItems: 'center', gap: 8 },
+  promptEyebrow: { marginBottom: 0, flex: 1 },
+  fieldLabel: { marginBottom: 6, fontSize: 12, fontWeight: '500', color: theme.colors.mutedForeground },
+  restrictionsRow: { marginBottom: 6, flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  restrictionLineBox: {
+    marginBottom: 12,
+    borderRadius: 8,
+    backgroundColor: theme.colors.secondary,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  promptInput: { marginBottom: 12, fontSize: 12 },
+  shotPromptInput: { fontSize: 12 },
+
+  // Revision signing
+  signedByLabel: { marginBottom: 4, fontSize: 11, color: theme.colors.mutedForeground },
+  signerInput: { marginBottom: 8 },
+  signRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    padding: 12,
+  },
+  signRowOn: { borderColor: theme.colors.primary, backgroundColor: `${theme.colors.primary}1A` },
+  signRowOff: { borderColor: theme.colors.border, backgroundColor: theme.colors.card },
+  signDot: {
+    height: 32,
+    width: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 999,
+    borderWidth: 1,
+  },
+  signDotOn: { borderColor: theme.colors.primary, backgroundColor: theme.colors.primary },
+  signDotOff: { borderColor: theme.colors.border },
+  signLabel: { fontSize: 14, fontWeight: '500', color: theme.colors.foreground },
+  signHint: { fontSize: 11, color: theme.colors.mutedForeground },
+  signWarning: {
+    marginTop: -16,
+    textAlign: 'center',
+    fontSize: 11,
+    color: theme.colors.mutedForeground,
+  },
+}));

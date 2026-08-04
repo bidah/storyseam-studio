@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, RefreshControl, SectionList, Text, View } from 'react-native';
+import { StyleSheet } from 'react-native-unistyles';
 import { router } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Host, Switch } from '@expo/ui';
@@ -129,18 +130,18 @@ function CastingRow({
   };
 
   return (
-    <View className="gap-2 rounded-xl border border-border p-2.5">
-      <View className="flex-row flex-wrap items-center gap-2">
+    <View style={styles.castingRow}>
+      <View style={styles.rowWrap}>
         <Badge variant="outline" label={character} />
         {source === 'world' && voiceRef ? <Badge variant="muted" label="from World" /> : null}
       </View>
       {voiceRef ? (
-        <View className="flex-row items-center gap-2">
+        <View style={styles.rowCenter}>
           <Mic size={15} color={colors.primary} />
-          <Text className="flex-1 text-sm font-medium text-foreground" numberOfLines={1}>
+          <Text style={styles.voiceName} numberOfLines={1}>
             {voiceRef.name || 'Voice'}
             {voiceRef.v != null ? (
-              <Text className="text-muted-foreground"> · v{voiceRef.v}</Text>
+              <Text style={styles.mutedText}> · v{voiceRef.v}</Text>
             ) : null}
           </Text>
           <TakePlayButton url={voiceRef.url || null} label={`${character}'s voice`} />
@@ -161,8 +162,8 @@ function CastingRow({
           </Button>
         </View>
       ) : (
-        <View className="flex-row items-center gap-2">
-          <Text className="flex-1 text-sm text-muted-foreground">no voice cast</Text>
+        <View style={styles.rowCenter}>
+          <Text style={[styles.flex1, styles.mutedTextSm]}>no voice cast</Text>
           {/* Delegate to the agent: it designs, renders, likes and casts a voice,
               picking attach_character_voice or cast_radio_voice per name. */}
           <Button
@@ -198,8 +199,8 @@ function TakePills({
   const colors = useColors();
   if (takes.length < 2) return null;
   return (
-    <View className="mt-0.5 flex-row flex-wrap items-center gap-1.5">
-      <Text className="text-[10px] uppercase tracking-wide text-muted-foreground">takes</Text>
+    <View style={styles.takePillsRow}>
+      <Text style={styles.takePillsLabel}>takes</Text>
       {takes.map((t, i) => {
         const missing = t.status === 'missing';
         return (
@@ -215,19 +216,20 @@ function TakePills({
                   : `Use take ${i + 1}`
             }
             onPress={() => onSelect(t)}
-            className={[
-              'flex-row items-center gap-1 rounded-md border px-2 py-0.5 active:opacity-70',
-              t.selected ? 'border-primary bg-primary/10' : 'border-border',
-              !t.ready && !missing ? 'opacity-70' : '',
-            ].join(' ')}
+            style={({ pressed }) => [
+              styles.pill,
+              t.selected ? styles.pillSelected : styles.pillDefault,
+              !t.ready && !missing && styles.pillNotReady,
+              pressed && styles.pressed70,
+            ]}
           >
             {t.selected ? <Check size={11} color={colors.primary} /> : null}
             <Text
-              className={[
-                'text-[11px] font-medium',
-                t.selected ? 'text-primary' : 'text-foreground',
-                missing ? 'text-muted-foreground line-through' : '',
-              ].join(' ')}
+              style={[
+                styles.pillLabel,
+                t.selected ? styles.pillLabelSelected : styles.pillLabelDefault,
+                missing && styles.pillLabelMissing,
+              ]}
             >
               v{i + 1}
             </Text>
@@ -262,8 +264,8 @@ function LineCard({
   // the first render of the line.
   const recreateLabel = takes.length ? 'Recreate take' : 'Render take';
   return (
-    <View className="mb-2 gap-1.5 rounded-xl border border-border p-2.5">
-      <View className="flex-row flex-wrap items-center gap-2">
+    <View style={styles.lineCard}>
+      <View style={styles.rowWrap}>
         <Badge variant="outline" label={`shot ${line.shotId}`} />
         {line.voiceRef ? (
           <Badge variant="success" label={line.voiceRef.name || 'voice'}>
@@ -274,7 +276,7 @@ function LineCard({
             <CircleAlert size={10} color={colors.amber} />
           </Badge>
         )}
-        <View className="ml-auto flex-row items-center gap-1">
+        <View style={styles.mlAutoRow}>
           {take?.ready ? (
             <TakePlayButton url={take.url} label={`${line.character || 'line'} take`} />
           ) : take && take.status !== 'missing' ? (
@@ -485,28 +487,28 @@ export default function RadioScreen() {
 
   if (isLoading && !data)
     return (
-      <View className="flex-1 bg-background">
+      <View style={styles.root}>
         <Loading />
       </View>
     );
   if (error && !data) {
     return (
-      <View className="flex-1 bg-background">
+      <View style={styles.root}>
         <ErrorNote message={String((error as any)?.message || error)} onRetry={() => refetch()} />
       </View>
     );
   }
 
   const header = (
-    <View className="gap-4 pb-2 pt-4">
-      <View className="gap-3">
-        <Text className="text-sm text-muted-foreground">
+    <View style={styles.headerWrap}>
+      <View style={styles.gap3}>
+        <Text style={styles.bodyText}>
           The audio-only pass — every scene&apos;s dialogue voiced with each character&apos;s cast
           voice. Send it to the Editor on its own, or build the animatic: the same dialogue with
           each shot&apos;s storyboard still on the picture track.
         </Text>
 
-        <View className="flex-row flex-wrap items-center gap-2">
+        <View style={styles.rowWrap}>
           <Badge variant="outline" label={`${scenes.length} scenes`} />
           <Badge
             variant="info"
@@ -546,9 +548,9 @@ export default function RadioScreen() {
           ) : null}
         </View>
 
-        <View className="flex-row gap-2">
+        <View style={styles.actionsRow}>
           <Button
-            className="flex-1"
+            style={styles.flex1}
             variant="outline"
             title="Send to editor"
             loading={sending}
@@ -558,7 +560,7 @@ export default function RadioScreen() {
             {sending ? null : <Send size={14} color={colors.foreground} />}
           </Button>
           <Button
-            className="flex-1"
+            style={styles.flex1}
             title="Build animatic"
             loading={building}
             disabled={building || sending || !animatic?.shots}
@@ -570,15 +572,15 @@ export default function RadioScreen() {
 
         {/* Agent pacing rides WITH "Send to editor": on, the gapless first pass
             is still built deterministically, then the agent re-times the gaps. */}
-        <View className="flex-row items-center gap-2 rounded-xl border border-border p-2.5">
-          <View className="flex-1">
-            <Text className="text-[14px] font-medium text-foreground">Agent pacing</Text>
-            <Text className="text-[12px] text-muted-foreground">
+        <View style={styles.pacingRow}>
+          <View style={styles.flex1}>
+            <Text style={styles.pacingTitle}>Agent pacing</Text>
+            <Text style={styles.pacingHint}>
               After sending, have the agent space the lines from the shot timings so the story
               breathes.
             </Text>
           </View>
-          <View pointerEvents={sending ? 'none' : 'auto'} className={sending ? 'opacity-40' : ''}>
+          <View pointerEvents={sending ? 'none' : 'auto'} style={sending && styles.dimmed}>
             <Host matchContents key={pacing.nonce}>
               <Switch value={pacing.on} onValueChange={pacing.set} />
             </Host>
@@ -586,23 +588,23 @@ export default function RadioScreen() {
         </View>
 
         {animatic?.shots ? (
-          <Text className="text-xs text-muted-foreground">
+          <Text style={styles.hint}>
             Build animatic: {animatic.shots} shots — {animatic.withStill} with a still,{' '}
             {animatic.slates} slate{animatic.slates === 1 ? '' : 's'}.
           </Text>
         ) : (
-          <Text className="text-xs text-muted-foreground">
+          <Text style={styles.hint}>
             Write a shot list first to build an animatic.
           </Text>
         )}
       </View>
 
       {/* Casting */}
-      <Card className="gap-2 p-3">
-        <View className="flex-row items-center gap-2">
+      <Card style={styles.castingCard}>
+        <View style={styles.rowCenter}>
           <Mic size={15} color={colors.primary} />
-          <Eyebrow className="mb-0">Casting</Eyebrow>
-          <View className="ml-auto">
+          <Eyebrow style={styles.eyebrowNoMargin}>Casting</Eyebrow>
+          <View style={styles.mlAuto}>
             <Badge variant="outline" label={String(casting.length)} />
           </View>
         </View>
@@ -619,10 +621,10 @@ export default function RadioScreen() {
             />
           ))
         )}
-        <View className="flex-row gap-2">
+        <View style={styles.actionsRow}>
           {uncast > 0 ? (
             <Button
-              className="flex-1"
+              style={styles.flex1}
               size="sm"
               variant="secondary"
               title={busy ? 'Agent working…' : `Voice ${uncast} uncast`}
@@ -633,7 +635,7 @@ export default function RadioScreen() {
             </Button>
           ) : null}
           <Button
-            className="flex-1"
+            style={styles.flex1}
             size="sm"
             variant="outline"
             title="Create voice"
@@ -642,7 +644,7 @@ export default function RadioScreen() {
             <Plus size={13} color={colors.foreground} />
           </Button>
         </View>
-        <Text className="px-1 text-[11px] text-muted-foreground">
+        <Text style={styles.footnote}>
           Voices are seeded from the World tab and can be overridden here. Cast from your Sound
           Studio voice takes, or let the agent design and cast one.
         </Text>
@@ -652,10 +654,10 @@ export default function RadioScreen() {
 
   return (
     <TakeAudioProvider>
-      <View className="flex-1 bg-background">
+      <View style={styles.root}>
         <SectionList
           {...barInset}
-          className="flex-1 px-4"
+          style={styles.sectionList}
           sections={sections}
           keyExtractor={(line) => line.id}
           // The scene's render button stays reachable for as long as any of its
@@ -671,7 +673,7 @@ export default function RadioScreen() {
           }
           ListHeaderComponent={header}
           ListEmptyComponent={
-            <View className="mt-4 rounded-2xl border border-dashed border-border">
+            <View style={styles.emptyWrap}>
               <Empty
                 title="No dialogue yet"
                 hint="Generate a shot list with spoken lines, then cast voices and render here."
@@ -686,11 +688,11 @@ export default function RadioScreen() {
             // label so it can't be re-launched by accident.
             const sceneRendered = scene.lines.every((l) => l.take);
             return (
-              <View className="border-b border-border bg-background pb-2 pt-3">
-                <View className="flex-row items-center gap-2">
+              <View style={styles.sectionHeader}>
+                <View style={styles.rowCenter}>
                   <Film size={15} color={colors.primary} />
                   <Text
-                    className="flex-1 text-[15px] font-semibold text-foreground"
+                    style={styles.sectionTitle}
                     numberOfLines={1}
                   >
                     {scene.beatTitle || scene.beat}
@@ -719,7 +721,7 @@ export default function RadioScreen() {
                   </Button>
                 </View>
                 {sceneUncast ? (
-                  <Text className="pt-1 text-[11px] text-muted-foreground">
+                  <Text style={styles.sectionHint}>
                     Cast a voice for every speaker in this scene first.
                   </Text>
                 ) : null}
@@ -749,3 +751,107 @@ export default function RadioScreen() {
     </TakeAudioProvider>
   );
 }
+
+const styles = StyleSheet.create((theme) => ({
+  root: { flex: 1, backgroundColor: theme.colors.background },
+  flex1: { flex: 1 },
+  gap3: { gap: 12 },
+  mlAuto: { marginLeft: 'auto' },
+  mlAutoRow: { marginLeft: 'auto', flexDirection: 'row', alignItems: 'center', gap: 4 },
+  rowWrap: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 8 },
+  rowCenter: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  actionsRow: { flexDirection: 'row', gap: 8 },
+  dimmed: { opacity: 0.4 },
+  hint: { fontSize: 12, lineHeight: 16, color: theme.colors.mutedForeground },
+  bodyText: { fontSize: 14, lineHeight: 20, color: theme.colors.mutedForeground },
+  footnote: { paddingHorizontal: 4, fontSize: 11, color: theme.colors.mutedForeground },
+
+  // header
+  headerWrap: { gap: 16, paddingBottom: 8, paddingTop: 16 },
+  pacingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    padding: 10,
+  },
+  pacingTitle: { fontSize: 14, fontWeight: '500', color: theme.colors.foreground },
+  pacingHint: { fontSize: 12, color: theme.colors.mutedForeground },
+  castingCard: { gap: 8, padding: 12 },
+  eyebrowNoMargin: { marginBottom: 0 },
+
+  // section list
+  sectionList: { flex: 1, paddingHorizontal: 16 },
+  emptyWrap: {
+    marginTop: 16,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    borderColor: theme.colors.border,
+  },
+  sectionHeader: {
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.border,
+    backgroundColor: theme.colors.background,
+    paddingBottom: 8,
+    paddingTop: 12,
+  },
+  sectionTitle: { flex: 1, fontSize: 15, fontWeight: '600', color: theme.colors.foreground },
+  sectionHint: { paddingTop: 4, fontSize: 11, color: theme.colors.mutedForeground },
+
+  // casting row
+  castingRow: {
+    gap: 8,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    padding: 10,
+  },
+  voiceName: { flex: 1, fontSize: 14, fontWeight: '500', color: theme.colors.foreground },
+  mutedText: { color: theme.colors.mutedForeground },
+  mutedTextSm: { fontSize: 14, lineHeight: 20, color: theme.colors.mutedForeground },
+
+  // take pills
+  takePillsRow: {
+    marginTop: 2,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: 6,
+  },
+  takePillsLabel: {
+    fontSize: 10,
+    textTransform: 'uppercase',
+    letterSpacing: 0.3,
+    color: theme.colors.mutedForeground,
+  },
+  pill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    borderRadius: 6,
+    borderWidth: 1,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+  },
+  pillDefault: { borderColor: theme.colors.border },
+  pillSelected: { borderColor: theme.colors.primary, backgroundColor: `${theme.colors.primary}1A` },
+  pillNotReady: { opacity: 0.7 },
+  pressed70: { opacity: 0.7 },
+  pillLabel: { fontSize: 11, fontWeight: '500' },
+  pillLabelDefault: { color: theme.colors.foreground },
+  pillLabelSelected: { color: theme.colors.primary },
+  pillLabelMissing: { color: theme.colors.mutedForeground, textDecorationLine: 'line-through' },
+
+  // line card
+  lineCard: {
+    marginBottom: 8,
+    gap: 6,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    padding: 10,
+  },
+}));

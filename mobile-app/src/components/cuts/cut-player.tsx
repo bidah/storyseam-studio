@@ -1,10 +1,10 @@
 import { useMemo, useRef, useState } from 'react';
 import { Pressable, ScrollView, Text, View } from 'react-native';
+import { StyleSheet } from 'react-native-unistyles';
 import { useEventListener } from 'expo';
 import { VideoView, useVideoPlayer } from 'expo-video';
 import * as Haptics from 'expo-haptics';
 import { Clapperboard, Music } from 'lucide-react-native';
-import { cn } from '@/lib/utils';
 import { useColors } from '@/lib/colors';
 import { mediaUrl, toPreviewSrc } from '@/lib/api';
 import { fmtTime, segDuration, type CutGen } from './types';
@@ -81,8 +81,8 @@ export function CutPlayer({ gen, autoPlay = false }: { gen: CutGen; autoPlay?: b
   };
 
   return (
-    <View className="gap-3">
-      <View className="overflow-hidden rounded-xl bg-black">
+    <View style={styles.root}>
+      <View style={styles.videoWrap}>
         <VideoView
           player={player}
           style={{ width: '100%', aspectRatio: 16 / 9 }}
@@ -107,11 +107,12 @@ export function CutPlayer({ gen, autoPlay = false }: { gen: CutGen; autoPlay?: b
                 accessibilityRole="button"
                 accessibilityLabel={`${isCue ? 'Music cue' : 'Segment'} ${it.label} — seek to ${fmtTime(it.start)}`}
                 onPress={() => seek(it.start)}
-                className={cn(
-                  'flex-row items-center gap-1.5 rounded-full border border-border bg-secondary px-3 py-1.5 active:opacity-70',
-                  active && !isCue && 'border-primary/60 bg-primary/15',
-                  active && isCue && 'border-info/60 bg-info/15',
-                )}
+                style={({ pressed }) => [
+                  styles.chip,
+                  active && !isCue && styles.chipActivePrimary,
+                  active && isCue && styles.chipActiveInfo,
+                  pressed && styles.pressed,
+                ]}
               >
                 {isCue ? (
                   <Music size={12} color={active ? colors.info : colors.mutedForeground} />
@@ -119,13 +120,12 @@ export function CutPlayer({ gen, autoPlay = false }: { gen: CutGen; autoPlay?: b
                   <Clapperboard size={12} color={active ? colors.primary : colors.mutedForeground} />
                 )}
                 <Text
-                  className={cn('text-xs font-medium text-foreground', active && 'font-semibold')}
+                  style={[styles.chipLabel, active && styles.chipLabelActive]}
                   numberOfLines={1}
-                  style={{ maxWidth: 140 }}
                 >
                   {it.label}
                 </Text>
-                {it.sub ? <Text className="text-[11px] text-muted-foreground">{it.sub}</Text> : null}
+                {it.sub ? <Text style={styles.chipSub}>{it.sub}</Text> : null}
               </Pressable>
             );
           })}
@@ -134,3 +134,37 @@ export function CutPlayer({ gen, autoPlay = false }: { gen: CutGen; autoPlay?: b
     </View>
   );
 }
+
+const styles = StyleSheet.create((theme) => ({
+  root: { gap: 12 },
+  videoWrap: { overflow: 'hidden', borderRadius: 12, backgroundColor: '#000' },
+  chip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    backgroundColor: theme.colors.secondary,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  chipActivePrimary: {
+    borderColor: `${theme.colors.primary}99`,
+    backgroundColor: `${theme.colors.primary}26`,
+  },
+  chipActiveInfo: {
+    borderColor: `${theme.colors.info}99`,
+    backgroundColor: `${theme.colors.info}26`,
+  },
+  pressed: { opacity: 0.7 },
+  chipLabel: {
+    fontSize: 12,
+    lineHeight: 16,
+    fontWeight: '500',
+    color: theme.colors.foreground,
+    maxWidth: 140,
+  },
+  chipLabelActive: { fontWeight: '600' },
+  chipSub: { fontSize: 11, color: theme.colors.mutedForeground },
+}));

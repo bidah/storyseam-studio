@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Pressable, ScrollView, Text, View } from 'react-native';
+import { StyleSheet } from 'react-native-unistyles';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import { toast } from 'sonner-native';
@@ -33,17 +34,17 @@ function ContextRun({ lines }: { lines: ScriptLine[] }) {
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={`Expand ${lines.length} unchanged lines`}
-        className="px-3 py-1.5 active:opacity-60"
+        style={({ pressed }) => [styles.contextCollapsed, pressed && styles.pressed60]}
         onPress={() => setOpen(true)}
       >
-        <Text className="text-[12px] text-muted-foreground">
+        <Text style={styles.contextCollapsedText}>
           ··· {lines.length} unchanged lines — tap to expand
         </Text>
       </Pressable>
     );
   }
   return (
-    <View className="px-3 opacity-60">
+    <View style={styles.contextExpanded}>
       {lines.map((l, i) => (
         <ScreenplayLine key={i} line={l} />
       ))}
@@ -53,7 +54,7 @@ function ContextRun({ lines }: { lines: ScriptLine[] }) {
 
 function ChangeHunk({ hunk }: { hunk: Extract<DiffSegment, { kind: 'change' }> }) {
   return (
-    <View className="mx-2 my-1.5 rounded-xl border border-primary/30 bg-primary/5 px-2 py-1.5">
+    <View style={styles.hunk}>
       {hunk.removed.map((l, i) => (
         <ScreenplayLine key={`r${i}`} line={l} tone="del" />
       ))}
@@ -135,45 +136,45 @@ export function ScriptProposalReview({
   };
 
   return (
-    <View className="flex-1">
+    <View style={styles.flex1}>
       {/* Header */}
-      <View className="border-b border-primary/30 bg-card px-4 py-3">
-        <View className="flex-row items-center gap-2">
+      <View style={styles.header}>
+        <View style={styles.headerRow}>
           <GitPullRequestArrow size={16} color={colors.primary} />
-          <Text className="flex-1 text-[15px] font-semibold text-foreground">
+          <Text style={styles.headerTitle}>
             Proposed script edit
           </Text>
           <Badge variant="muted" label={String(proposal.source || 'agent')}>
             <Bot size={11} color={colors.mutedForeground} />
           </Badge>
         </View>
-        <View className="mt-1.5 flex-row items-center gap-2">
-          {stats.added > 0 ? <Text className="text-[12px] font-semibold text-success">+{stats.added}</Text> : null}
+        <View style={styles.statsRow}>
+          {stats.added > 0 ? <Text style={styles.statAdded}>+{stats.added}</Text> : null}
           {stats.removed > 0 ? (
-            <Text className="text-[12px] font-semibold text-destructive">−{stats.removed}</Text>
+            <Text style={styles.statRemoved}>−{stats.removed}</Text>
           ) : null}
-          <Text className="text-[12px] text-muted-foreground">
+          <Text style={styles.statText}>
             {stats.hunks + (titleChanged ? 1 : 0)} change{stats.hunks + (titleChanged ? 1 : 0) === 1 ? '' : 's'}
           </Text>
         </View>
         {proposal.note ? (
-          <Text className="mt-1 text-[12px] text-muted-foreground">{String(proposal.note)}</Text>
+          <Text style={styles.note}>{String(proposal.note)}</Text>
         ) : null}
       </View>
 
       {/* Diff body */}
-      <ScrollView className="flex-1" contentContainerClassName="pb-6 pt-2">
+      <ScrollView style={styles.flex1} contentContainerStyle={styles.diffBody}>
         {titleChanged ? (
-          <View className="mx-2 my-1.5 rounded-xl border border-primary/30 bg-primary/5 px-3 py-2">
-            <Text className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+          <View style={styles.titleBox}>
+            <Text style={styles.titleLabel}>
               Title
             </Text>
-            <Text className="text-[15px] text-destructive line-through">{baseTitle || '(untitled)'}</Text>
-            <Text className="text-[15px] text-success">{proposedTitle || '(untitled)'}</Text>
+            <Text style={styles.titleOld}>{baseTitle || '(untitled)'}</Text>
+            <Text style={styles.titleNew}>{proposedTitle || '(untitled)'}</Text>
           </View>
         ) : null}
         {noChanges ? (
-          <Text className="px-6 py-10 text-center text-sm text-muted-foreground">
+          <Text style={styles.noChanges}>
             The proposal matches the current script — nothing to review.
           </Text>
         ) : (
@@ -185,17 +186,16 @@ export function ScriptProposalReview({
 
       {/* Actions — pinned above the tab bar + agent accessory. */}
       <View
-        className="flex-row gap-2 border-t border-border bg-card px-4 pt-3"
-        style={{ paddingBottom: Math.max(insets.bottom, 8) + 5 }}
+        style={[styles.actions, { paddingBottom: Math.max(insets.bottom, 8) + 5 }]}
       >
         {noChanges ? (
-          <Button className="flex-1" title="Dismiss" loading={busy === 'reject'} onPress={reject}>
+          <Button style={styles.flex1} title="Dismiss" loading={busy === 'reject'} onPress={reject}>
             <X size={15} color={colors.primaryForeground} />
           </Button>
         ) : (
           <>
             <Button
-              className="flex-1"
+              style={styles.flex1}
               variant="outline"
               title="Reject"
               loading={busy === 'reject'}
@@ -205,7 +205,7 @@ export function ScriptProposalReview({
               <X size={15} color={colors.foreground} />
             </Button>
             <Button
-              className="flex-1"
+              style={styles.flex1}
               title="Accept changes"
               loading={busy === 'accept'}
               disabled={!!busy}
@@ -219,3 +219,124 @@ export function ScriptProposalReview({
     </View>
   );
 }
+
+const styles = StyleSheet.create((theme) => ({
+  flex1: {
+    flex: 1,
+  },
+  header: {
+    borderBottomWidth: 1,
+    borderBottomColor: `${theme.colors.primary}4D`,
+    backgroundColor: theme.colors.card,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+  },
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  headerTitle: {
+    flex: 1,
+    fontSize: 15,
+    fontWeight: '600',
+    color: theme.colors.foreground,
+  },
+  statsRow: {
+    marginTop: 6,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  statAdded: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: theme.colors.success,
+  },
+  statRemoved: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: theme.colors.destructive,
+  },
+  statText: {
+    fontSize: 12,
+    color: theme.colors.mutedForeground,
+  },
+  note: {
+    marginTop: 4,
+    fontSize: 12,
+    color: theme.colors.mutedForeground,
+  },
+  diffBody: {
+    paddingBottom: 24,
+    paddingTop: 8,
+  },
+  contextCollapsed: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  pressed60: {
+    opacity: 0.6,
+  },
+  contextCollapsedText: {
+    fontSize: 12,
+    color: theme.colors.mutedForeground,
+  },
+  contextExpanded: {
+    paddingHorizontal: 12,
+    opacity: 0.6,
+  },
+  hunk: {
+    marginHorizontal: 8,
+    marginVertical: 6,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: `${theme.colors.primary}4D`,
+    backgroundColor: `${theme.colors.primary}0D`,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+  },
+  titleBox: {
+    marginHorizontal: 8,
+    marginVertical: 6,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: `${theme.colors.primary}4D`,
+    backgroundColor: `${theme.colors.primary}0D`,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  titleLabel: {
+    marginBottom: 4,
+    fontSize: 10,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 0.3,
+    color: theme.colors.mutedForeground,
+  },
+  titleOld: {
+    fontSize: 15,
+    color: theme.colors.destructive,
+    textDecorationLine: 'line-through',
+  },
+  titleNew: {
+    fontSize: 15,
+    color: theme.colors.success,
+  },
+  noChanges: {
+    paddingHorizontal: 24,
+    paddingVertical: 40,
+    textAlign: 'center',
+    fontSize: 14,
+    color: theme.colors.mutedForeground,
+  },
+  actions: {
+    flexDirection: 'row',
+    gap: 8,
+    borderTopWidth: 1,
+    borderTopColor: theme.colors.border,
+    backgroundColor: theme.colors.card,
+    paddingHorizontal: 16,
+    paddingTop: 12,
+  },
+}));

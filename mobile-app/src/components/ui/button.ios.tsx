@@ -21,19 +21,19 @@
  * Liquid glass is iOS 26+ only; on older iOS `isLiquidGlassAvailable()` is false
  * and we fall back to the Pressable base so nothing regresses.
  */
-import { ActivityIndicator, Pressable, StyleSheet, Text, type ViewStyle } from 'react-native';
+import { ActivityIndicator, Pressable, Text, type ViewStyle } from 'react-native';
+import { StyleSheet } from 'react-native-unistyles';
 import * as Haptics from 'expo-haptics';
 import { GlassView, isLiquidGlassAvailable, type GlassStyle } from 'expo-glass-effect';
 import { useColors } from '@/lib/colors';
-import { cn } from '@/lib/utils';
-import { Button as PressableButton, textVariants, type ButtonProps } from './button-base';
+import { Button as PressableButton, type ButtonProps } from './button-base';
 
-export { buttonVariants, textVariants, type ButtonProps } from './button-base';
+export { buttonStyles, type ButtonProps, type ButtonSize, type ButtonVariant } from './button-base';
 
 const glassAvailable = isLiquidGlassAvailable();
 
-// Emerald `--primary` and red `--destructive` (global.css) as hex — the native
-// glass tint can't read Tailwind classes.
+// Emerald primary and red destructive as fixed hex — the native glass tint
+// wants a concrete color, and both read on either scheme.
 const TINT = '#10b981';
 const RED = '#dc2626';
 
@@ -46,8 +46,8 @@ const GLASS: Record<string, { style: GlassStyle; tint?: string; border?: boolean
   ghost: null,
 };
 
-// Size geometry, mirroring buttonVariants in button-base (h-11/h-8/h-13, px-4/
-// px-3/px-6, rounded-xl=12/rounded-lg=8; icon = 40×40 square).
+// Size geometry, mirroring buttonStyles in button-base (44/32/52 heights,
+// 16/12/24 horizontal padding, radius 12/8; icon = 40×40 square).
 const SIZES: Record<string, ViewStyle> = {
   default: { height: 44, paddingHorizontal: 16, borderRadius: 12 },
   sm: { height: 32, paddingHorizontal: 12, borderRadius: 8 },
@@ -55,36 +55,72 @@ const SIZES: Record<string, ViewStyle> = {
   icon: { height: 40, width: 40, borderRadius: 12 },
 };
 
+const styles = StyleSheet.create((theme) => ({
+  content: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    overflow: 'hidden',
+  },
+  // Same label mapping as buttonStyles in button-base — duplicated here rather
+  // than shared so each component owns its variant selection.
+  label: {
+    fontWeight: '600',
+    variants: {
+      variant: {
+        default: { color: theme.colors.primaryForeground },
+        secondary: { color: theme.colors.secondaryForeground },
+        outline: { color: theme.colors.foreground },
+        ghost: { color: theme.colors.foreground },
+        destructive: { color: theme.colors.destructiveForeground },
+      },
+      size: {
+        default: { fontSize: 15 },
+        sm: { fontSize: 13 },
+        lg: { fontSize: 16 },
+        icon: { fontSize: 15 },
+      },
+    },
+  },
+}));
+
 export function Button(props: ButtonProps) {
   const {
     title,
     loading,
     haptic = true,
-    variant,
-    size,
-    className,
-    textClassName,
+    variant = 'default',
+    size = 'default',
+    style,
+    textStyle,
     children,
     disabled,
     onPress,
     ...rest
   } = props;
 
+  // `default` is unistyles' FALLBACK key, not a selectable name — see the same
+  // note in button-base.
+  styles.useVariants({
+    variant: variant === 'default' ? undefined : variant,
+    size: size === 'default' ? undefined : size,
+  });
   const colors = useColors();
-  const v = variant ?? 'default';
-  const g = GLASS[v];
+  const g = GLASS[variant];
   // Older iOS / Android, or a chromeless ghost → the plain Pressable base.
   if (!glassAvailable || !g) return <PressableButton {...props} />;
 
-  const geom = SIZES[size ?? 'default'];
+  const geom = SIZES[size];
+  const off = disabled || loading;
 
   return (
     <Pressable
       accessibilityRole="button"
-      disabled={disabled || loading}
-      // Only layout-affecting classes here (flex-1 / w-full / margins); the glass
+      disabled={off}
+      // Only layout-affecting styles here (flex / width / margins); the glass
       // surface owns the shape and background.
-      className={cn((disabled || loading) && 'opacity-50', className)}
+      style={[off && { opacity: 0.5 }, style]}
       onPress={(e) => {
         if (haptic) Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
         onPress?.(e);
@@ -107,18 +143,8 @@ export function Button(props: ButtonProps) {
             untinted glass it takes the foreground so it shows in light mode. */}
         {loading ? <ActivityIndicator size="small" color={g.tint ? 'white' : colors.foreground} /> : null}
         {children}
-        {title ? <Text className={cn(textVariants({ variant: v, size }), textClassName)}>{title}</Text> : null}
+        {title ? <Text style={[styles.label, textStyle]}>{title}</Text> : null}
       </GlassView>
     </Pressable>
   );
 }
-
-const styles = StyleSheet.create({
-  content: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    overflow: 'hidden',
-  },
-});

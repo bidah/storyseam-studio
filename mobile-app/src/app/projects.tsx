@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
+import { StyleSheet } from 'react-native-unistyles';
 import { router } from 'expo-router';
 import { Check, FolderPlus, Pencil } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
@@ -75,27 +76,27 @@ export default function ProjectsSheet() {
   // eyebrow ends up underneath it), and the project count never needs
   // virtualising.
   return (
-    <View className="flex-1 bg-background px-5 pt-6">
+    <View style={styles.root}>
       <Eyebrow>Projects</Eyebrow>
       {projects.map((p) => (
         <Pressable
           key={p.id}
-          className="flex-row items-center justify-between rounded-xl px-3 py-3.5 active:bg-secondary"
+          style={({ pressed }) => [styles.projectRow, pressed && styles.projectRowPressed]}
           onPress={() => activate(p)}
           onLongPress={() => {
             setRenaming(p);
             setName(p.name);
           }}
         >
-          <Text className="flex-1 text-[15px] font-medium text-foreground" numberOfLines={1}>
+          <Text style={styles.projectName} numberOfLines={1}>
             {p.name}
           </Text>
           {p.id === projectId ? <Check size={18} color={colors.primary} /> : null}
         </Pressable>
       ))}
-      <View className="mt-4 gap-3">
+      <View style={styles.footer}>
         {creating || renaming ? (
-          <View className="gap-2">
+          <View style={styles.formGroup}>
             <Input
               autoFocus
               placeholder={renaming ? 'Rename project' : 'New project name'}
@@ -103,14 +104,14 @@ export default function ProjectsSheet() {
               onChangeText={setName}
               onSubmitEditing={renaming ? rename : create}
             />
-            <View className="flex-row gap-2">
+            <View style={styles.formRow}>
               <Button
-                className="flex-1"
+                style={styles.flex1}
                 title={renaming ? 'Rename' : 'Create'}
                 onPress={renaming ? rename : create}
               />
               <Button
-                className="flex-1"
+                style={styles.flex1}
                 variant="outline"
                 title="Cancel"
                 onPress={() => {
@@ -126,11 +127,62 @@ export default function ProjectsSheet() {
             <FolderPlus size={16} color={colors.foreground} />
           </Button>
         )}
-        <View className="flex-row items-center justify-center gap-1">
+        <View style={styles.hintRow}>
           <Pencil size={11} color={colors.subtleForeground} />
-          <Text className="text-xs text-muted-foreground">Long-press a project to rename</Text>
+          <Text style={styles.hintText}>Long-press a project to rename</Text>
         </View>
       </View>
     </View>
   );
 }
+
+const styles = StyleSheet.create((theme) => ({
+  root: {
+    flex: 1,
+    backgroundColor: theme.colors.background,
+    paddingHorizontal: 20,
+    paddingTop: 24,
+  },
+  projectRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 14,
+  },
+  projectRowPressed: {
+    backgroundColor: theme.colors.secondary,
+  },
+  projectName: {
+    flex: 1,
+    fontSize: 15,
+    fontWeight: '500',
+    color: theme.colors.foreground,
+  },
+  footer: {
+    marginTop: 16,
+    gap: 12,
+  },
+  formGroup: {
+    gap: 8,
+  },
+  formRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  flex1: {
+    flex: 1,
+  },
+  hintRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+  },
+  hintText: {
+    fontSize: 12,
+    lineHeight: 16,
+    color: theme.colors.mutedForeground,
+  },
+}));

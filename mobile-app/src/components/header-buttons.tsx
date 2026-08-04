@@ -1,4 +1,5 @@
 import { Pressable, View } from 'react-native';
+import { StyleSheet } from 'react-native-unistyles';
 import { router } from 'expo-router';
 import type {
   NativeStackHeaderItem,
@@ -157,7 +158,7 @@ export function MenuButton() {
     <Pressable
       accessibilityRole="button"
       accessibilityLabel="Menu"
-      className="h-9 w-9 items-center justify-center rounded-full active:opacity-60"
+      style={({ pressed }) => [styles.iconButton, pressed && styles.pressed]}
       onPress={() => router.push('/projects')}
     >
       <FolderKanban size={20} color={colors.foreground} />
@@ -171,11 +172,11 @@ export function TabHeaderActions() {
   const queryClient = useQueryClient();
   const colors = useColors();
   return (
-    <View className="flex-row items-center gap-1">
+    <View style={styles.headerActions}>
       <Pressable
         accessibilityRole="button"
         accessibilityLabel="Refresh"
-        className="h-9 w-9 items-center justify-center rounded-full active:opacity-60"
+        style={({ pressed }) => [styles.iconButton, pressed && styles.pressed]}
         onPress={() => {
           if (projectId) queryClient.invalidateQueries({ queryKey: [projectId] });
           queryClient.invalidateQueries({ queryKey: ['account'] });
@@ -231,3 +232,9 @@ export function useTabHeaderOptions(
     headerRight: showRefresh ? () => <TabHeaderActions /> : undefined,
   };
 }
+
+const styles = StyleSheet.create({
+  iconButton: { height: 36, width: 36, alignItems: 'center', justifyContent: 'center', borderRadius: 999 },
+  pressed: { opacity: 0.6 },
+  headerActions: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+});

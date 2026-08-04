@@ -1,4 +1,5 @@
 import { FlatList, RefreshControl, Text, View } from 'react-native';
+import { StyleSheet } from 'react-native-unistyles';
 import { router } from 'expo-router';
 import { Image } from 'expo-image';
 import { Badge } from '@/components/ui/badge';
@@ -40,10 +41,10 @@ export function LibrarySection() {
       refreshControl={
         <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.mutedForeground} />
       }
-      contentContainerClassName="px-4 pb-8 pt-3"
+      contentContainerStyle={styles.listContent}
       ListHeaderComponent={
         folders.length ? (
-          <View className="mb-2 flex-row items-center gap-2">
+          <View style={styles.headerRow}>
             <Badge variant="outline" label={`${folders.length} folders`} />
             <Badge variant="success" label={`${totalSelected} selected`} />
           </View>
@@ -60,21 +61,21 @@ export function LibrarySection() {
         return (
           <BouncyPressable
             accessibilityLabel={`Open ${f.folder === '.' ? 'library root' : f.folder}`}
-            className="mb-2 flex-row items-center gap-3 rounded-xl border border-border bg-card p-2.5"
+            style={styles.folderCard}
             onPress={() =>
               router.push({ pathname: '/(tabs)/assets/folder', params: { folder: f.folder } })
             }
           >
             <Image
               source={{ uri: mediaUrl(f.preview) }}
-              style={{ width: 52, height: 52, borderRadius: 10 }}
+              style={styles.folderPreview}
               contentFit="cover"
             />
-            <View className="flex-1">
-              <Text className="text-[15px] font-medium text-foreground" numberOfLines={1}>
+            <View style={styles.flex1}>
+              <Text style={styles.folderName} numberOfLines={1}>
                 {f.folder === '.' ? '(library root)' : f.folder}
               </Text>
-              <Text className="text-[12px] text-muted-foreground">{f.count} images</Text>
+              <Text style={styles.folderCount}>{f.count} images</Text>
             </View>
             {sel > 0 ? <Badge variant="success" label={`${sel}`} /> : null}
           </BouncyPressable>
@@ -83,3 +84,23 @@ export function LibrarySection() {
     />
   );
 }
+
+const styles = StyleSheet.create((theme) => ({
+  flex1: { flex: 1 },
+  listContent: { paddingHorizontal: 16, paddingBottom: 32, paddingTop: 12 },
+  headerRow: { marginBottom: 8, flexDirection: 'row', alignItems: 'center', gap: 8 },
+  folderCard: {
+    marginBottom: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    backgroundColor: theme.colors.card,
+    padding: 10,
+  },
+  folderPreview: { width: 52, height: 52, borderRadius: 10 },
+  folderName: { fontSize: 15, fontWeight: '500', color: theme.colors.foreground },
+  folderCount: { fontSize: 12, color: theme.colors.mutedForeground },
+}));

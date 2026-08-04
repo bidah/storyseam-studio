@@ -1,4 +1,5 @@
 import { Pressable } from 'react-native';
+import { StyleSheet } from 'react-native-unistyles';
 import { router, Stack } from 'expo-router';
 import { X } from 'lucide-react-native';
 import { useColors } from '@/lib/colors';
@@ -40,7 +41,7 @@ export default function DraftsLayout() {
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="Close"
-              className="h-9 w-9 items-center justify-center rounded-full active:opacity-60"
+              style={({ pressed }) => [styles.closeBtn, pressed && styles.pressed60]}
               onPress={() => router.back()}
             >
               <X size={20} color={colors.foreground} />
@@ -51,3 +52,16 @@ export default function DraftsLayout() {
     </Stack>
   );
 }
+
+const styles = StyleSheet.create({
+  closeBtn: {
+    height: 36,
+    width: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 999,
+  },
+  pressed60: {
+    opacity: 0.6,
+  },
+});

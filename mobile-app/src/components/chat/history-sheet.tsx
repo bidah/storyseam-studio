@@ -1,5 +1,6 @@
 import { useCallback } from 'react';
 import { Pressable } from 'react-native';
+import { StyleSheet } from 'react-native-unistyles';
 import { Stack } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { SquarePen } from 'lucide-react-native';
@@ -86,7 +87,7 @@ export function ChatHistorySheetBody({ leaveTo }: { leaveTo: (chatId?: string) =
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="New chat"
-              className="h-9 w-9 items-center justify-center rounded-full active:opacity-60"
+              style={({ pressed }) => [styles.newChatBtn, pressed && styles.pressed]}
               onPress={onNewChat}
             >
               <SquarePen size={18} color={chatC.mutedForeground} />
@@ -98,3 +99,14 @@ export function ChatHistorySheetBody({ leaveTo }: { leaveTo: (chatId?: string) =
     </>
   );
 }
+
+const styles = StyleSheet.create({
+  newChatBtn: {
+    height: 36,
+    width: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 999,
+  },
+  pressed: { opacity: 0.6 },
+});

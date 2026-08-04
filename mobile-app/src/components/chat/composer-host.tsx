@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useState } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { View } from 'react-native';
+import { StyleSheet } from 'react-native-unistyles';
 import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { useFocusEffect } from 'expo-router';
 import { Composer, type LocalAttachment } from './composer';
@@ -95,7 +96,7 @@ export function ChatComposerScope({ children }: { children: React.ReactNode }) {
             // a screen that hides the bar (the Discover poster) must not cost
             // the half-typed draft on the screen underneath it.
             <Animated.View
-              style={[styles.layer, fadeStyle]}
+              style={[LAYER, fadeStyle]}
               pointerEvents={hidden ? 'none' : 'box-none'}
             >
               <Composer
@@ -136,7 +137,11 @@ export function useComposerHeight() {
   return useContext(HeightCtx);
 }
 
+// Plain object, not a unistyles entry: it goes to an `Animated.View`, whose
+// runtime-built host the unistyles Babel plugin never rewrites, so the style's
+// metadata key would reach Reanimated's validator and throw.
+const LAYER = { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 } as const;
+
 const styles = StyleSheet.create({
   fill: { flex: 1 },
-  layer: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 },
 });

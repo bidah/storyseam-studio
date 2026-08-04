@@ -1,4 +1,5 @@
 import { Pressable, View } from 'react-native';
+import { StyleSheet } from 'react-native-unistyles';
 import type { NativeStackHeaderItem } from 'expo-router/build/react-navigation/native-stack/types';
 import { History, SquarePen } from 'lucide-react-native';
 import { useChatColors } from './theme';
@@ -69,7 +70,7 @@ export function ChatHeaderRight({ onHistoryPress, onNewChat }: ChatHeaderProps) 
     <Pressable
       accessibilityRole="button"
       accessibilityLabel="Chat history"
-      className="h-9 w-9 items-center justify-center active:opacity-60"
+      style={({ pressed }) => [styles.btn, pressed && styles.pressed]}
       onPress={onHistoryPress}
     >
       <History size={18} color={c.mutedForeground} />
@@ -77,17 +78,17 @@ export function ChatHeaderRight({ onHistoryPress, onNewChat }: ChatHeaderProps) 
   );
 
   if (!onNewChat) {
-    return <View className="flex-row items-center">{history}</View>;
+    return <View style={styles.row}>{history}</View>;
   }
 
   return (
-    <View className="flex-row items-center overflow-hidden rounded-full border border-border">
+    <View style={styles.pill}>
       {history}
-      <View className="h-5 w-px bg-border" />
+      <View style={styles.divider} />
       <Pressable
         accessibilityRole="button"
         accessibilityLabel="New chat"
-        className="h-9 w-9 items-center justify-center active:opacity-60"
+        style={({ pressed }) => [styles.btn, pressed && styles.pressed]}
         onPress={onNewChat}
       >
         <SquarePen size={18} color={c.mutedForeground} />
@@ -95,3 +96,30 @@ export function ChatHeaderRight({ onHistoryPress, onNewChat }: ChatHeaderProps) 
     </View>
   );
 }
+
+const styles = StyleSheet.create((theme) => ({
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  pill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    overflow: 'hidden',
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+  },
+  divider: {
+    height: 20,
+    width: 1,
+    backgroundColor: theme.colors.border,
+  },
+  btn: {
+    height: 36,
+    width: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pressed: { opacity: 0.6 },
+}));

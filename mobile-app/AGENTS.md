@@ -78,3 +78,45 @@ a port you have checked is free (other projects on this machine hold 8081/8082),
 then
 `xcrun simctl openurl <UDID> "mobileapp://expo-development-client/?url=http%3A%2F%2Flocalhost%3A<port>"`.
 `agent-device open --metro-port` does NOT rebind an already-installed client.
+
+# Styling — Unistyles v3, and nothing else
+
+There is **no NativeWind and no Tailwind** in this app, and no `className`
+anywhere. Styling is [Unistyles v3](https://www.unistyl.es/) end to end:
+
+```tsx
+import { StyleSheet } from 'react-native-unistyles'; // NEVER from 'react-native'
+
+const styles = StyleSheet.create((theme) => ({
+  card: { borderRadius: 16, backgroundColor: theme.colors.card },
+}));
+```
+
+- **`src/unistyles.ts` is the palette and the config**, imported for its side
+  effects by `index.js` before anything else. It is the ONLY place colors are
+  defined — `src/lib/colors.ts` is a thin view over it, keyed by scheme, for the
+  surfaces a stylesheet can't reach (lucide `color` props, the React Navigation
+  theme, native SwiftUI Forms). Add a color there, not in a component.
+- **`StyleSheet` always comes from `react-native-unistyles`.** It is API-compatible
+  (`create`, `hairlineWidth`, `absoluteFill`, `flatten`), so the only visible
+  difference is the import — but importing from `react-native` opts that file out
+  of theming silently.
+- **Conditionals compose as arrays** — `style={[styles.chip, active && styles.chipActive]}` —
+  and press feedback is `style={({ pressed }) => [styles.btn, pressed && styles.pressed]}`.
+  Never destructure or spread a stylesheet (`const { card } = styles` breaks it).
+- **A variant key literally named `default` is the FALLBACK**, not a selectable
+  name: `useVariants({ variant: v === 'default' ? undefined : v })`. Passing
+  `'default'` by name is a type error (see `components/ui/button-base.tsx`).
+- **The theme is DRIVEN, not adaptive.** `adaptiveThemes` is off on purpose:
+  Unistyles resolves the scheme natively from `UIScreen.main.traitCollection` (the
+  OS appearance) and cannot see the app-level override that the System/Dark/Light
+  picker sets via `Appearance.setColorScheme()`. So `RootLayout` pushes the one
+  resolved scheme to `UnistylesRuntime.setTheme()`. Turning adaptive themes back on
+  would light the icons and leave the surfaces dark on a dark phone set to Light.
+- **Third-party components need `withUnistyles`** to restyle on a theme change —
+  the Babel plugin only auto-processes React Native core and Reanimated components.
+  Today nothing needs it (every themed style lands on a core component), so if you
+  hand a themed style to `expo-image`, `LinearGradient` or a `@legendapp/list`, you
+  are the first — wrap it.
+- **Unistyles is native code (Nitro).** Adding or upgrading it needs a rebuild;
+  it can never ship as an OTA update.

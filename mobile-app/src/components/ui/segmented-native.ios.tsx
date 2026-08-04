@@ -57,7 +57,6 @@ export function SegmentedNative<T extends string>({
   options: { value: T; label: string; icon?: SFSymbol }[];
   value: T;
   onChange: (v: T) => void;
-  className?: string;
   // 'large' bumps the control to the taller Photos-picker capsule; 'small' is
   // the shrunken form for a compact row. Default slim.
   size?: 'small' | 'regular' | 'large';

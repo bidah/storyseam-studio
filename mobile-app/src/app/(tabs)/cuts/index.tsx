@@ -1,5 +1,6 @@
 import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
 import { Pressable, RefreshControl, ScrollView, Text, View } from 'react-native';
+import { StyleSheet } from 'react-native-unistyles';
 import { File, Paths } from 'expo-file-system';
 import { router } from 'expo-router';
 import * as Sharing from 'expo-sharing';
@@ -27,7 +28,6 @@ import { mediaUrl } from '@/lib/api';
 import { useColors } from '@/lib/colors';
 import { useInvalidate, useProjectResource } from '@/lib/queries';
 import { useManualRefresh } from '@/lib/use-manual-refresh';
-import { cn } from '@/lib/utils';
 import { useTabBarScrollProps } from '@/lib/use-tab-bar-inset';
 
 // Cuts tab — the complete-cut surface. The latest generation plays in an
@@ -132,16 +132,16 @@ export default function CutsScreen() {
     body = (
       <ScrollView
         {...barInset}
-        className="flex-1"
+        style={styles.flex1}
         contentContainerStyle={{ padding: 16, paddingBottom: 48, gap: 16 }}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.mutedForeground} />
         }
       >
         {/* Range summary + stitch-plan health */}
-        <View className="flex-row flex-wrap items-center gap-2">
+        <View style={styles.rangeRow}>
           {data?.range?.from ? (
-            <Text className="text-sm font-semibold text-foreground">
+            <Text style={styles.rowTitle}>
               {data.range.from} → {data.range.to}
             </Text>
           ) : null}
@@ -167,13 +167,13 @@ export default function CutsScreen() {
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Open the radio version and animatic"
-          className="flex-row items-center gap-3 rounded-2xl border border-border bg-card px-3 py-3 active:bg-secondary"
+          style={({ pressed }) => [styles.radioRow, pressed && styles.radioRowPressed]}
           onPress={() => router.push('/cuts/radio')}
         >
           <Radio size={16} color={colors.primary} />
-          <View className="flex-1">
-            <Text className="text-sm font-semibold text-foreground">Radio version</Text>
-            <Text className="text-xs text-muted-foreground">
+          <View style={styles.flex1}>
+            <Text style={styles.rowTitle}>Radio version</Text>
+            <Text style={styles.hint}>
               Voice the dialogue, then build the animatic
             </Text>
           </View>
@@ -182,14 +182,14 @@ export default function CutsScreen() {
 
         {/* Latest (or user-picked) generation */}
         {activeGen ? (
-          <Card className="gap-3 p-3">
-            <View className="flex-row flex-wrap items-center gap-2">
+          <Card style={styles.cutCard}>
+            <View style={styles.rangeRow}>
               {activeGen.kind === 'scored' ? (
                 <Music size={15} color={colors.primary} />
               ) : (
                 <Play size={15} color={colors.primary} />
               )}
-              <Text className="text-sm font-semibold text-foreground">v{activeGen.v}</Text>
+              <Text style={styles.rowTitle}>v{activeGen.v}</Text>
               <Badge
                 variant={activeGen.kind === 'scored' ? 'success' : 'muted'}
                 label={activeGen.kind === 'scored' ? 'scored' : 'base'}
@@ -199,7 +199,7 @@ export default function CutsScreen() {
               ) : (
                 <Badge variant="warning" label="older version" />
               )}
-              <View className="ml-auto flex-row items-center gap-1">
+              <View style={styles.headerActions}>
                 <Button
                   size="icon"
                   variant="ghost"
@@ -222,7 +222,7 @@ export default function CutsScreen() {
 
             <CutPlayer gen={activeGen} autoPlay={autoPlay} />
 
-            <Text className="text-xs text-muted-foreground">
+            <Text style={styles.hint}>
               {fmtTime(activeGen.totalDuration)} total
               {activeGen.kind === 'scored'
                 ? ` · ${activeGen.music?.length || 0} cues ~${Math.abs(activeGen.gainDb ?? -22)} dB bed`
@@ -231,15 +231,15 @@ export default function CutsScreen() {
             </Text>
           </Card>
         ) : (
-          <View className="rounded-2xl border border-dashed border-border">
+          <View style={styles.emptyWrap}>
             <Empty title="No cut yet" hint="Select takes on Episode, then stitch." />
           </View>
         )}
 
         {/* Agent actions */}
-        <View className="flex-row gap-2">
+        <View style={styles.actionsRow}>
           <Button
-            className="flex-1"
+            style={styles.flex1}
             title={output ? 'Re-stitch cut' : 'Stitch cut'}
             disabled={busy || usable.length === 0}
             onPress={stitch}
@@ -247,7 +247,7 @@ export default function CutsScreen() {
             <RefreshCw size={15} color={colors.primaryForeground} />
           </Button>
           <Button
-            className="flex-1"
+            style={styles.flex1}
             variant="secondary"
             title={hasScored ? 'Re-score music' : 'Add music'}
             disabled={busy || !output || music.length === 0}
@@ -257,14 +257,14 @@ export default function CutsScreen() {
           </Button>
         </View>
         {busy ? (
-          <Text className="text-xs text-muted-foreground">
+          <Text style={styles.hint}>
             Agent is busy — wait for the current turn to finish (watch the Chat tab).
           </Text>
         ) : null}
         {output && output.kind !== 'scored' && music.length > 0 ? (
-          <View className="flex-row items-center gap-2 rounded-xl border border-dashed border-border px-3 py-2.5">
+          <View style={styles.musicNote}>
             <Music size={13} color={colors.info} />
-            <Text className="flex-1 text-xs text-muted-foreground">
+            <Text style={[styles.hint, styles.flex1]}>
               {music.length} background-music cue{music.length === 1 ? '' : 's'} ready — Add music
               renders a scored version (it becomes the new latest).
             </Text>
@@ -273,43 +273,38 @@ export default function CutsScreen() {
 
         {/* Version history */}
         {history.length > 0 ? (
-          <View className="gap-2">
+          <View style={styles.gap2}>
             <Button
               variant="ghost"
               size="sm"
-              className="self-start"
+              style={styles.selfStart}
               title={showVersions ? 'Hide versions' : `Versions (${history.length})`}
               onPress={() => setShowVersions((v) => !v)}
             >
               <History size={14} color={colors.mutedForeground} />
             </Button>
             {showVersions ? (
-              <Card className="gap-0 p-1">
-                <View className="px-3 pt-2">
+              <Card style={styles.historyCard}>
+                <View style={styles.historyCardHeader}>
                   <Eyebrow>Complete-cut history</Eyebrow>
                 </View>
                 {history.map((g, i) => {
                   const isActive = activeGen?.v === g.v;
                   return (
                     <Fragment key={g.v}>
-                      {i > 0 ? <View className="h-px bg-border/60" /> : null}
-                      <View
-                        className={cn(
-                          'flex-row items-center gap-3 rounded-xl px-3 py-3',
-                          isActive && 'bg-secondary',
-                        )}
-                      >
+                      {i > 0 ? <View style={styles.divider} /> : null}
+                      <View style={[styles.historyRow, isActive && styles.historyRowActive]}>
                         {g.kind === 'scored' ? (
                           <Music size={14} color={colors.primary} />
                         ) : (
                           <Play size={14} color={colors.mutedForeground} />
                         )}
-                        <View className="flex-1">
-                          <Text className="text-sm font-semibold text-foreground">
+                        <View style={styles.flex1}>
+                          <Text style={styles.rowTitle}>
                             v{g.v} · {g.kind === 'scored' ? 'scored' : 'base'}
                             {i === 0 ? ' · latest' : ''}
                           </Text>
-                          <Text className="text-xs text-muted-foreground">
+                          <Text style={styles.hint}>
                             {fmtTime(g.totalDuration)}
                             {g.at ? ` · ${new Date(g.at).toLocaleString()}` : ''}
                           </Text>
@@ -354,5 +349,59 @@ export default function CutsScreen() {
     );
   }
 
-  return <View className="flex-1 bg-background">{body}</View>;
+  return <View style={styles.root}>{body}</View>;
 }
+
+const styles = StyleSheet.create((theme) => ({
+  root: { flex: 1, backgroundColor: theme.colors.background },
+  flex1: { flex: 1 },
+  gap2: { gap: 8 },
+  selfStart: { alignSelf: 'flex-start' },
+  rangeRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 8 },
+  rowTitle: { fontSize: 14, lineHeight: 20, fontWeight: '600', color: theme.colors.foreground },
+  hint: { fontSize: 12, lineHeight: 16, color: theme.colors.mutedForeground },
+  radioRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    backgroundColor: theme.colors.card,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+  },
+  radioRowPressed: { backgroundColor: theme.colors.secondary },
+  cutCard: { gap: 12, padding: 12 },
+  headerActions: { marginLeft: 'auto', flexDirection: 'row', alignItems: 'center', gap: 4 },
+  emptyWrap: {
+    borderRadius: 16,
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    borderColor: theme.colors.border,
+  },
+  actionsRow: { flexDirection: 'row', gap: 8 },
+  musicNote: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    borderColor: theme.colors.border,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  historyCard: { gap: 0, padding: 4 },
+  historyCardHeader: { paddingHorizontal: 12, paddingTop: 8 },
+  divider: { height: StyleSheet.hairlineWidth, backgroundColor: `${theme.colors.border}99` },
+  historyRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+  },
+  historyRowActive: { backgroundColor: theme.colors.secondary },
+}));

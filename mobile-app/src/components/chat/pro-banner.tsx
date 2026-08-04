@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { Text, View } from 'react-native';
+import { StyleSheet } from 'react-native-unistyles';
 import Animated, {
   Easing,
   interpolate,
@@ -120,7 +121,7 @@ function Mote({ mote, width, height }: { mote: Mote; width: number; height: numb
   return (
     <Animated.View
       style={[
-        styles.mote,
+        MOTE,
         { left: mote.x * width - MOTE_SIZE / 2, top: mote.y * height - MOTE_SIZE / 2 },
         style,
       ]}
@@ -235,6 +236,19 @@ export function ProBanner({ onPress }: { onPress?: () => void }) {
   );
 }
 
+// Handed to a REANIMATED component, so it stays a plain object. A unistyles
+// style carries a metadata key that the Babel plugin strips only for host
+// components it rewrites; `Animated.View` is built at runtime by
+// `createAnimatedComponent`, so the key survives into Reanimated's prop
+// validator and throws ("an empty object is not a valid style value").
+const MOTE = {
+  position: 'absolute',
+  width: MOTE_SIZE,
+  height: MOTE_SIZE,
+  borderRadius: MOTE_SIZE,
+  backgroundColor: '#fff',
+} as const;
+
 const styles = StyleSheet.create({
   card: {
     marginHorizontal: 20,
@@ -258,13 +272,6 @@ const styles = StyleSheet.create({
   },
   // Absolutely placed, so a mote's `left`/`top` are a position in the card and
   // its transform is free to carry the drift.
-  mote: {
-    position: 'absolute',
-    width: MOTE_SIZE,
-    height: MOTE_SIZE,
-    borderRadius: MOTE_SIZE,
-    backgroundColor: '#fff',
-  },
   // The ring the reference has around the button. On the wrapper, not the glass.
   pillRing: {
     borderRadius: 18,

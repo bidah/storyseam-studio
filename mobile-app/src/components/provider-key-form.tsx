@@ -1,6 +1,9 @@
-import { Text, View } from 'react-native';
+import { Platform, Text, View } from 'react-native';
+import { StyleSheet } from 'react-native-unistyles';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+
+const MONO = Platform.select({ ios: 'Menlo', default: 'monospace' });
 
 // Cross-platform fallback for the /provider-key sheet (the .ios.tsx sibling
 // renders a native SwiftUI Form). Same props, plain RN controls.
@@ -20,7 +23,7 @@ export default function ProviderKeyForm({
   onRemove: () => void;
 }) {
   return (
-    <View className="flex-1 gap-3 bg-background px-5 pt-4">
+    <View style={styles.root}>
       <Input
         placeholder={placeholder}
         onChangeText={onTextChange}
@@ -28,10 +31,10 @@ export default function ProviderKeyForm({
         autoCorrect={false}
         secureTextEntry
         autoFocus
-        className="font-mono text-[13px]"
+        style={styles.input}
         accessibilityLabel="API key"
       />
-      <Text className="text-[12px] leading-4 text-muted-foreground">
+      <Text style={styles.footnote}>
         Stored only on this device (secure keychain) and sent per-request — never on our
         servers.{footnote ? ` ${footnote}` : ''}
       </Text>
@@ -41,3 +44,9 @@ export default function ProviderKeyForm({
     </View>
   );
 }
+
+const styles = StyleSheet.create((theme) => ({
+  root: { flex: 1, gap: 12, backgroundColor: theme.colors.background, paddingHorizontal: 20, paddingTop: 16 },
+  input: { fontFamily: MONO, fontSize: 13 },
+  footnote: { fontSize: 12, lineHeight: 16, color: theme.colors.mutedForeground },
+}));

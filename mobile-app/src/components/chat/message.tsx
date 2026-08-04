@@ -6,7 +6,7 @@ import { Galeria } from '@nandorojo/galeria';
 import * as Haptics from 'expo-haptics';
 import * as WebBrowser from 'expo-web-browser';
 import { Check, ChevronRight, ExternalLink, FileText, Globe, Wrench } from 'lucide-react-native';
-import { cn } from '@/lib/utils';
+import { StyleSheet } from 'react-native-unistyles';
 import { apiUrl } from '@/lib/api';
 import { useEffectiveScheme } from '@/lib/theme';
 import { StudioUI } from '@/genui/StudioUI';
@@ -83,15 +83,12 @@ function QuestionCard({
   const options = Array.isArray(input.options) ? input.options : [];
   const answerable = pending && canRespond;
   return (
-    <View
-      className="gap-2 self-stretch rounded-xl border p-3"
-      style={{ borderColor: AMBER_BORDER, backgroundColor: AMBER_BG }}
-    >
+    <View style={[styles.questionCard, { borderColor: AMBER_BORDER, backgroundColor: AMBER_BG }]}>
       {question ? <ChatMarkdown text={question} /> : null}
       {answer ? (
-        <Text className="text-[15px] font-medium text-foreground">Responded: {answer}</Text>
+        <Text style={styles.respondedText}>Responded: {answer}</Text>
       ) : options.length ? (
-        <View className="flex-row flex-wrap gap-2">
+        <View style={styles.optionsRow}>
           {options.map((opt, i) => {
             const label = opt.label || opt.id || '';
             const danger = opt.style === 'danger';
@@ -105,18 +102,14 @@ function QuestionCard({
                   Haptics.selectionAsync().catch(() => {});
                   onRespond?.(label);
                 }}
-                className={cn(
-                  'rounded-lg border px-3 py-2 active:opacity-70',
-                  danger ? 'border-destructive/50 bg-destructive/10' : 'border-border bg-secondary',
-                  !answerable && 'opacity-50',
-                )}
+                style={({ pressed }) => [
+                  styles.optionBtn,
+                  danger ? styles.optionBtnDanger : styles.optionBtnNormal,
+                  !answerable && styles.optionBtnDisabled,
+                  pressed && styles.pressed,
+                ]}
               >
-                <Text
-                  className={cn(
-                    'text-[14px] font-medium',
-                    danger ? 'text-destructive' : 'text-foreground',
-                  )}
-                >
+                <Text style={[styles.optionLabel, danger ? styles.optionLabelDanger : styles.optionLabelNormal]}>
                   {label}
                 </Text>
               </Pressable>
@@ -124,7 +117,7 @@ function QuestionCard({
           })}
         </View>
       ) : (
-        <Text className="text-[12px] text-muted-foreground">Type your answer below to continue.</Text>
+        <Text style={styles.hintText}>Type your answer below to continue.</Text>
       )}
     </View>
   );
@@ -146,16 +139,11 @@ function ToolChip({ part, tail }: { part: MessagePart; tail?: boolean }) {
   const interrupted = !tail && !errored && !finished;
   const running = !errored && !finished && !interrupted;
   return (
-    <View className="max-w-full flex-col gap-0.5 self-start">
-      <View
-        className={cn(
-          'flex-row items-center gap-1.5 self-start rounded-md border px-2 py-1',
-          errored ? 'border-destructive/40 bg-destructive/10' : 'border-border bg-muted/50',
-        )}
-      >
+    <View style={styles.toolChipWrap}>
+      <View style={[styles.toolChip, errored ? styles.toolChipErrored : styles.toolChipNormal]}>
         <Wrench size={12} color={errored ? c.destructive : c.mutedForeground} />
         <Text
-          className={cn('text-[12px]', errored ? 'text-destructive' : 'text-muted-foreground')}
+          style={[styles.toolChipText, errored ? styles.toolChipTextErrored : styles.toolChipTextNormal]}
           numberOfLines={1}
         >
           {name}
@@ -168,9 +156,9 @@ function ToolChip({ part, tail }: { part: MessagePart; tail?: boolean }) {
         ) : null}
       </View>
       {errored && part.errorText ? (
-        <Text className="max-w-full text-[11px] text-destructive">{part.errorText}</Text>
+        <Text style={[styles.toolChipSub, styles.toolChipTextErrored]}>{part.errorText}</Text>
       ) : interrupted ? (
-        <Text className="max-w-full text-[11px] text-muted-foreground">
+        <Text style={[styles.toolChipSub, styles.toolChipTextNormal]}>
           The turn ended before this tool finished — nothing was saved. Ask again to retry.
         </Text>
       ) : null}
@@ -188,11 +176,11 @@ function SourcesCard({ data }: { data: { sources: Source[]; query: string } }) {
   const [open, setOpen] = useState(false);
   const { sources, query } = data;
   return (
-    <View className="self-stretch rounded-md border border-border bg-muted/30">
+    <View style={styles.sourcesCard}>
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={open ? 'Collapse sources' : `Expand ${sources.length} sources`}
-        className="flex-row items-center gap-1.5 px-2.5 py-1.5 active:opacity-70"
+        style={({ pressed }) => [styles.sourcesHeader, pressed && styles.pressed]}
         onPress={() => setOpen((v) => !v)}
       >
         <ChevronRight
@@ -201,40 +189,40 @@ function SourcesCard({ data }: { data: { sources: Source[]; query: string } }) {
           style={{ transform: [{ rotate: open ? '90deg' : '0deg' }] }}
         />
         <Globe size={12} color={c.primary} />
-        <Text className="text-[12px] font-medium text-foreground">Sources</Text>
-        <Text className="text-[12px] text-muted-foreground">· {sources.length}</Text>
+        <Text style={styles.sourcesTitle}>Sources</Text>
+        <Text style={styles.sourcesCount}>· {sources.length}</Text>
         {query ? (
-          <Text className="flex-1 text-[12px] italic text-muted-foreground" numberOfLines={1}>
+          <Text style={styles.sourcesQuery} numberOfLines={1}>
             {query}
           </Text>
         ) : null}
       </Pressable>
       {open ? (
-        <View className="gap-1.5 border-t border-border p-1.5">
+        <View style={styles.sourcesList}>
           {sources.map((s, i) => (
             <Pressable
               key={`${s.url}:${i}`}
               accessibilityRole="link"
               accessibilityLabel={`Open ${s.title}`}
-              className="gap-0.5 rounded-md border border-border bg-background/60 p-2 active:opacity-70"
+              style={({ pressed }) => [styles.sourceItem, pressed && styles.pressed]}
               onPress={() => {
                 WebBrowser.openBrowserAsync(s.url).catch(() => {});
               }}
             >
-              <View className="flex-row items-center gap-1.5">
-                <Text className="flex-1 text-[12px] font-medium text-foreground" numberOfLines={2}>
+              <View style={styles.sourceRow}>
+                <Text style={styles.sourceTitle} numberOfLines={2}>
                   {s.title}
                 </Text>
                 <ExternalLink size={11} color={c.mutedForeground} />
               </View>
-              <View className="flex-row items-center gap-1.5">
-                <Text className="flex-1 text-[11px] text-muted-foreground" numberOfLines={1}>
+              <View style={styles.sourceRow}>
+                <Text style={styles.sourceMeta} numberOfLines={1}>
                   {hostOf(s.url)}
                   {s.publishedDate ? ` · ${s.publishedDate.slice(0, 10)}` : ''}
                 </Text>
               </View>
               {s.snippet ? (
-                <Text className="text-[11px] leading-4 text-muted-foreground" numberOfLines={2}>
+                <Text style={styles.sourceSnippet} numberOfLines={2}>
                   {s.snippet}
                 </Text>
               ) : null}
@@ -288,18 +276,18 @@ function ReasoningRow({ part }: { part: MessagePart }) {
   };
 
   return (
-    <View className="my-1 self-stretch rounded-lg border border-border bg-muted/30">
+    <View style={styles.reasoningRow}>
       <Pressable
         accessibilityRole="button"
         accessibilityState={{ expanded: open }}
         accessibilityLabel={open ? 'Collapse reasoning' : 'Expand reasoning'}
-        className="flex-row items-center gap-2 px-3.5 py-3"
+        style={styles.reasoningHeader}
         onPress={toggle}
       >
         <Animated.View style={chevronStyle}>
           <ChevronRight size={13} color={c.mutedForeground} />
         </Animated.View>
-        <Text className="text-[12px] font-medium text-muted-foreground">Reasoning</Text>
+        <Text style={styles.reasoningLabel}>Reasoning</Text>
       </Pressable>
       {/* Always mounted (that's what keeps bodyH measured) and clipped to the
           animated height; untouchable while collapsed. */}
@@ -315,9 +303,7 @@ function ReasoningRow({ part }: { part: MessagePart }) {
             bodyH.value = e.nativeEvent.layout.height;
           }}
         >
-          <Text className="px-3.5 pb-3.5 text-[12px] leading-4 text-muted-foreground">
-            {part.text}
-          </Text>
+          <Text style={styles.reasoningBody}>{part.text}</Text>
         </View>
       </Animated.View>
     </View>
@@ -351,7 +337,7 @@ function ChatImage({ image, index }: { image: ImageRef; index?: number }) {
     />
   );
   return (
-    <View className="overflow-hidden self-stretch rounded-xl" style={{ aspectRatio: aspect }}>
+    <View style={[styles.chatImageWrap, { aspectRatio: aspect }]}>
       {index === undefined ? (
         img
       ) : (
@@ -387,7 +373,7 @@ function FilePart({ part, index }: { part: MessagePart; index?: number }) {
       />
     );
     return (
-      <View className="overflow-hidden self-start rounded-[10px]" style={{ width: 180, height: 180 }}>
+      <View style={[styles.fileImageWrap, { width: 180, height: 180 }]}>
         {index === undefined ? (
           img
         ) : (
@@ -399,9 +385,9 @@ function FilePart({ part, index }: { part: MessagePart; index?: number }) {
     );
   }
   return (
-    <View className="flex-row items-center gap-1.5 self-start rounded-md border border-border bg-muted/50 px-2 py-1">
+    <View style={styles.fileChip}>
       <FileText size={12} color={c.mutedForeground} />
-      <Text className="text-[12px] text-muted-foreground" numberOfLines={1}>
+      <Text style={styles.fileChipText} numberOfLines={1}>
         {part.filename || part.mediaType || 'attachment'}
       </Text>
     </View>
@@ -435,7 +421,7 @@ function PartView({
       const segments = splitImages(part.text);
       if (segments.some((s) => s.image)) {
         return (
-          <View className="gap-2">
+          <View style={styles.imageSegments}>
             {segments.map((s, i) =>
               s.image ? (
                 <ChatImage
@@ -521,16 +507,12 @@ function SentAttachments({ atts }: { atts: SentAttachment[] | null }) {
   const c = useChatColors();
   if (!atts?.length) return null;
   return (
-    <View className="mt-1.5 flex-row flex-wrap justify-end gap-1.5">
+    <View style={styles.attachmentsRow}>
       {atts.map((a, i) => (
         // Tappable for the same full-screen look the agent's images get — the
         // ordinal here IS the Galeria index, because a user row's url list is
         // exactly its attachments (see MessageRow).
-        <View
-          key={`${a.url}:${i}`}
-          className="overflow-hidden rounded-[10px]"
-          style={{ width: 76, height: 76 }}
-        >
+        <View key={`${a.url}:${i}`} style={[styles.attachmentThumb, { width: 76, height: 76 }]}>
           <Galeria.Image index={i} style={{ width: '100%', height: '100%' }}>
             <Image
               source={{ uri: a.url }}
@@ -576,10 +558,10 @@ export const MessageRow = memo(function MessageRow({
     const urls = (atts || []).map((a) => a.url).filter(Boolean);
     return (
       <Galeria urls={urls} theme={scheme}>
-        <View className="items-end px-4">
+        <View style={styles.userRow}>
           {text ? (
-            <View className="max-w-[88%] rounded-2xl bg-secondary px-3.5 py-2.5">
-              <Text className="text-[16px] leading-[23px] text-foreground" selectable>
+            <View style={styles.userBubble}>
+              <Text style={styles.userText} selectable>
                 {text}
               </Text>
             </View>
@@ -623,7 +605,7 @@ export const MessageRow = memo(function MessageRow({
   }
   return (
     <Galeria urls={urls} theme={scheme}>
-      <View className="gap-2 px-4">
+      <View style={styles.assistantRow}>
         {parts.map((part, i) => (
           <PartView
             key={part.toolCallId ?? `${part.type ?? 'part'}:${i}`}
@@ -640,3 +622,245 @@ export const MessageRow = memo(function MessageRow({
     </Galeria>
   );
 });
+
+const styles = StyleSheet.create((theme) => ({
+  questionCard: {
+    gap: 8,
+    alignSelf: 'stretch',
+    borderRadius: 12,
+    borderWidth: 1,
+    padding: 12,
+  },
+  respondedText: {
+    fontSize: 15,
+    fontWeight: '500',
+    color: theme.colors.foreground,
+  },
+  optionsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  optionBtn: {
+    borderRadius: 8,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  optionBtnDanger: {
+    borderColor: `${theme.colors.destructive}80`,
+    backgroundColor: `${theme.colors.destructive}1A`,
+  },
+  optionBtnNormal: {
+    borderColor: theme.colors.border,
+    backgroundColor: theme.colors.secondary,
+  },
+  optionBtnDisabled: {
+    opacity: 0.5,
+  },
+  pressed: {
+    opacity: 0.7,
+  },
+  optionLabel: {
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  optionLabelDanger: {
+    color: theme.colors.destructive,
+  },
+  optionLabelNormal: {
+    color: theme.colors.foreground,
+  },
+  hintText: {
+    fontSize: 12,
+    color: theme.colors.mutedForeground,
+  },
+  toolChipWrap: {
+    maxWidth: '100%',
+    flexDirection: 'column',
+    gap: 2,
+    alignSelf: 'flex-start',
+  },
+  toolChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    alignSelf: 'flex-start',
+    borderRadius: 6,
+    borderWidth: 1,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  toolChipErrored: {
+    borderColor: `${theme.colors.destructive}66`,
+    backgroundColor: `${theme.colors.destructive}1A`,
+  },
+  toolChipNormal: {
+    borderColor: theme.colors.border,
+    backgroundColor: `${theme.colors.muted}80`,
+  },
+  toolChipText: {
+    fontSize: 12,
+  },
+  toolChipSub: {
+    maxWidth: '100%',
+    fontSize: 11,
+  },
+  toolChipTextErrored: {
+    color: theme.colors.destructive,
+  },
+  toolChipTextNormal: {
+    color: theme.colors.mutedForeground,
+  },
+  sourcesCard: {
+    alignSelf: 'stretch',
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    backgroundColor: `${theme.colors.muted}4D`,
+  },
+  sourcesHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  sourcesTitle: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: theme.colors.foreground,
+  },
+  sourcesCount: {
+    fontSize: 12,
+    color: theme.colors.mutedForeground,
+  },
+  sourcesQuery: {
+    flex: 1,
+    fontSize: 12,
+    fontStyle: 'italic',
+    color: theme.colors.mutedForeground,
+  },
+  sourcesList: {
+    gap: 6,
+    borderTopWidth: 1,
+    borderTopColor: theme.colors.border,
+    padding: 6,
+  },
+  sourceItem: {
+    gap: 2,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    backgroundColor: `${theme.colors.background}99`,
+    padding: 8,
+  },
+  sourceRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  sourceTitle: {
+    flex: 1,
+    fontSize: 12,
+    fontWeight: '500',
+    color: theme.colors.foreground,
+  },
+  sourceMeta: {
+    flex: 1,
+    fontSize: 11,
+    color: theme.colors.mutedForeground,
+  },
+  sourceSnippet: {
+    fontSize: 11,
+    lineHeight: 16,
+    color: theme.colors.mutedForeground,
+  },
+  reasoningRow: {
+    marginVertical: 4,
+    alignSelf: 'stretch',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    backgroundColor: `${theme.colors.muted}4D`,
+  },
+  reasoningHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  reasoningLabel: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: theme.colors.mutedForeground,
+  },
+  reasoningBody: {
+    paddingHorizontal: 14,
+    paddingBottom: 14,
+    fontSize: 12,
+    lineHeight: 16,
+    color: theme.colors.mutedForeground,
+  },
+  chatImageWrap: {
+    overflow: 'hidden',
+    alignSelf: 'stretch',
+    borderRadius: 12,
+  },
+  fileImageWrap: {
+    overflow: 'hidden',
+    alignSelf: 'flex-start',
+    borderRadius: 10,
+  },
+  fileChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    alignSelf: 'flex-start',
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    backgroundColor: `${theme.colors.muted}80`,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  fileChipText: {
+    fontSize: 12,
+    color: theme.colors.mutedForeground,
+  },
+  imageSegments: {
+    gap: 8,
+  },
+  attachmentsRow: {
+    marginTop: 6,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'flex-end',
+    gap: 6,
+  },
+  attachmentThumb: {
+    overflow: 'hidden',
+    borderRadius: 10,
+  },
+  userRow: {
+    alignItems: 'flex-end',
+    paddingHorizontal: 16,
+  },
+  userBubble: {
+    maxWidth: '88%',
+    borderRadius: 16,
+    backgroundColor: theme.colors.secondary,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+  },
+  userText: {
+    fontSize: 16,
+    lineHeight: 23,
+    color: theme.colors.foreground,
+  },
+  assistantRow: {
+    gap: 8,
+    paddingHorizontal: 16,
+  },
+}));

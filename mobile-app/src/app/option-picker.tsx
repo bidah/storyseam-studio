@@ -1,5 +1,6 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
+import { StyleSheet } from 'react-native-unistyles';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { Check, X } from 'lucide-react-native';
@@ -72,7 +73,7 @@ export default function OptionPickerSheet() {
               accessibilityRole="button"
               accessibilityLabel="Close"
               hitSlop={8}
-              className="h-8 w-8 items-center justify-center rounded-full bg-secondary active:opacity-60"
+              style={({ pressed }) => [styles.closeButton, pressed && styles.closeButtonPressed]}
               onPress={() => router.back()}
             >
               <X size={18} color={colors.mutedForeground} />
@@ -85,18 +86,18 @@ export default function OptionPickerSheet() {
           height the fitToContents detent adds — see useSheetContentStyle. One
           iOS inset-grouped card with hairline dividers and a big liquid-glass
           radius — matches the chat model picker. */}
-      <View className="bg-background px-8" style={contentStyle}>
-        <View className="overflow-hidden rounded-[28px] border border-border bg-card">
+      <View style={[styles.container, contentStyle]}>
+        <View style={styles.card}>
           {list.map((opt, i) => (
             <Fragment key={opt.value}>
-              {i > 0 ? <View className="ml-4 h-px bg-border" /> : null}
+              {i > 0 ? <View style={styles.divider} /> : null}
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel={opt.label}
-                className="flex-row items-center justify-between px-4 py-5 active:bg-secondary"
+                style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
                 onPress={() => pick(opt.value)}
               >
-                <Text className="mr-3 flex-1 text-[16px] font-medium text-foreground" numberOfLines={1}>
+                <Text style={styles.label} numberOfLines={1}>
                   {opt.label}
                 </Text>
                 {checkedValue === opt.value ? <Check size={18} color={colors.primary} /> : null}
@@ -108,3 +109,50 @@ export default function OptionPickerSheet() {
     </>
   );
 }
+
+const styles = StyleSheet.create((theme) => ({
+  closeButton: {
+    height: 32,
+    width: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 999,
+    backgroundColor: theme.colors.secondary,
+  },
+  closeButtonPressed: {
+    opacity: 0.6,
+  },
+  container: {
+    backgroundColor: theme.colors.background,
+    paddingHorizontal: 32,
+  },
+  card: {
+    overflow: 'hidden',
+    borderRadius: 28,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    backgroundColor: theme.colors.card,
+  },
+  divider: {
+    marginLeft: 16,
+    height: 1,
+    backgroundColor: theme.colors.border,
+  },
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 20,
+  },
+  rowPressed: {
+    backgroundColor: theme.colors.secondary,
+  },
+  label: {
+    marginRight: 12,
+    flex: 1,
+    fontSize: 16,
+    fontWeight: '500',
+    color: theme.colors.foreground,
+  },
+}));

@@ -1,4 +1,5 @@
 import { FlatList, RefreshControl, Text, View } from 'react-native';
+import { StyleSheet } from 'react-native-unistyles';
 import { router } from 'expo-router';
 import { Image } from 'expo-image';
 import { ChevronRight, Film, Play } from 'lucide-react-native';
@@ -24,7 +25,7 @@ import {
 
 function SignPills({ signoff }: { signoff?: Signoff }) {
   return (
-    <View className="flex-row gap-1.5">
+    <View style={styles.pills}>
       <Badge label="Images" variant={signoff?.images ? 'success' : 'muted'} />
       <Badge label="Prompt" variant={signoff?.prompt ? 'success' : 'muted'} />
       <Badge label="Audio" variant={signoff?.audio ? 'success' : 'muted'} />
@@ -47,7 +48,7 @@ function BundleThumb({ still, takes }: { still: StillTake | null; takes: VideoTa
     );
   }
   return (
-    <View className="h-[60px] w-[92px] items-center justify-center rounded-[10px] bg-secondary">
+    <View style={styles.thumbPlaceholder}>
       {takes.length > 0 ? <Play size={20} color={colors.primary} /> : <Film size={20} color={colors.subtleForeground} />}
     </View>
   );
@@ -86,18 +87,18 @@ export default function EpisodeIndex() {
     return (
       <BouncyPressable
         accessibilityLabel={`Open ${b.beatTitle || b.beat || b.id}`}
-        className="mb-2.5 flex-row items-center gap-3 rounded-2xl border border-border bg-card p-3"
+        style={styles.card}
         onPress={() => router.push(`/episode/${b.id}`)}
       >
         <BundleThumb still={stillFor(b.id)} takes={takes} />
-        <View className="flex-1 gap-1.5">
-          <View className="flex-row flex-wrap items-center gap-2">
+        <View style={styles.cardBody}>
+          <View style={styles.titleRow}>
             <Badge label={b.id} variant="outline" />
-            <Text className="flex-1 text-[15px] font-semibold text-foreground" numberOfLines={1}>
+            <Text style={styles.title} numberOfLines={1}>
               {b.beatTitle || b.beat || ''}
             </Text>
           </View>
-          <Text className="text-[12px] text-muted-foreground">
+          <Text style={styles.meta}>
             {b.shots.length} shots · ~{b.durationEst ?? '?'}s → {b.duration ?? '?'}s
             {takes.length > 0 ? ` · ${takes.length} take${takes.length > 1 ? 's' : ''}` : ''}
             {signed === 3 ? ' · signed' : ''}
@@ -110,7 +111,7 @@ export default function EpisodeIndex() {
   };
 
   return (
-    <View className="flex-1 bg-background">
+    <View style={styles.root}>
       {ep.isPending ? (
         <Loading />
       ) : ep.isError ? (
@@ -123,9 +124,9 @@ export default function EpisodeIndex() {
           data={bundles}
           keyExtractor={(b) => b.id}
           renderItem={renderItem}
-          contentContainerClassName="px-4 pb-24 pt-3"
+          contentContainerStyle={styles.listContent}
           ListHeaderComponent={
-            <Text className="mb-3 text-[13px] text-muted-foreground">
+            <Text style={styles.header}>
               {ep.data?.episode?.title ? `${ep.data.episode.title} · ` : ''}
               {bundles.length} multishot bundles · {ep.data?.episode?.totalShots ?? 0} shots total
             </Text>
@@ -138,3 +139,33 @@ export default function EpisodeIndex() {
     </View>
   );
 }
+
+const styles = StyleSheet.create((theme) => ({
+  root: { flex: 1, backgroundColor: theme.colors.background },
+  listContent: { paddingHorizontal: 16, paddingBottom: 96, paddingTop: 12 },
+  header: { marginBottom: 12, fontSize: 13, color: theme.colors.mutedForeground },
+  pills: { flexDirection: 'row', gap: 6 },
+  thumbPlaceholder: {
+    height: 60,
+    width: 92,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 10,
+    backgroundColor: theme.colors.secondary,
+  },
+  card: {
+    marginBottom: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    backgroundColor: theme.colors.card,
+    padding: 12,
+  },
+  cardBody: { flex: 1, gap: 6 },
+  titleRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 8 },
+  title: { flex: 1, fontSize: 15, fontWeight: '600', color: theme.colors.foreground },
+  meta: { fontSize: 12, color: theme.colors.mutedForeground },
+}));

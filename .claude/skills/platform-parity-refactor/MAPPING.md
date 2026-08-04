@@ -30,7 +30,7 @@ already shared. When porting a feature, translate each concern below.
 |---|---|
 | `div`, `span`, `button`, `img` | `View`, `Text`, `Pressable`, `expo-image`'s `Image` (never raw DOM tags) |
 | shadcn/ui `src/components/ui/*` | `mobile-app/src/components/ui/*` (`card`, `button`, `badge`, `input`, `segmented`, `empty`) — extend this set, mirroring an existing one, before hand-rolling |
-| Tailwind v4 utility classes + `cn()` from `src/lib/utils.js` | **NativeWind** classes (`className=`) + `cn()` from `src/lib/utils.ts`; Tailwind config in `mobile-app/tailwind.config.js` |
+| Tailwind v4 utility classes + `cn()` from `src/lib/utils.js` | **Unistyles v3** — `StyleSheet.create(theme => …)` from `react-native-unistyles`, passed as `style=`. There is no `className` and no `cn()` on mobile; theme colors come from `theme.colors.*` (palette in `mobile-app/src/unistyles.ts`) |
 | In-file helpers `Empty`, `Panel`, `Chip`, `Spinner`, `ErrorNote` (`shared.jsx`) | `ui/empty`, `ui/card`, etc. — find the mobile analog, don't reimport web helpers |
 | Text-only layout with CSS flex | RN flex (defaults differ: `flexDirection: 'column'`, no `display`); use `SafeAreaView`/`react-native-safe-area-context` for insets |
 

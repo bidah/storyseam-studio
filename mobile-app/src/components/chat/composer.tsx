@@ -3,12 +3,12 @@ import {
   ActivityIndicator,
   Pressable,
   ScrollView,
-  StyleSheet,
   Text,
   TextInput,
   View,
   type LayoutChangeEvent,
 } from 'react-native';
+import { StyleSheet } from 'react-native-unistyles';
 import { KeyboardController, KeyboardStickyView } from 'react-native-keyboard-controller';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
@@ -18,7 +18,6 @@ import { Image } from 'expo-image';
 import { toast } from 'sonner-native';
 import { router } from 'expo-router';
 import { ArrowUp, Check, ChevronDown, CircleStop, ImagePlus, Mic, X } from 'lucide-react-native';
-import { cn } from '@/lib/utils';
 import { AGENT_MODELS, useAgentModelStore } from '@/lib/agent-model';
 import { transcribeAudio } from '@/lib/api';
 import { formatDuration, useAudioRecording } from '@/lib/use-audio-recording';
@@ -255,7 +254,7 @@ export function Composer({
 
           {atts.length > 0 ? (
             <ScrollView horizontal showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-              <View className="flex-row gap-3 py-1">
+              <View style={styles.attRow}>
                 {atts.map((a) => (
                   <View key={a.id}>
                     <Image
@@ -267,7 +266,7 @@ export function Composer({
                     <Pressable
                       accessibilityRole="button"
                       accessibilityLabel={`Remove ${a.name}`}
-                      className="absolute -right-1.5 -top-1.5 h-5 w-5 items-center justify-center rounded-full bg-secondary"
+                      style={styles.attRemove}
                       onPress={() => setAtts((prev) => prev.filter((x) => x.id !== a.id))}
                     >
                       <X size={11} color={c.foreground} />
@@ -289,7 +288,7 @@ export function Composer({
             key={`input-${focusTick ?? 0}`}
             autoFocus={!!focusTick}
             ref={inputRef}
-            className="max-h-32 px-1 py-1 text-[15px] leading-5 text-foreground"
+            style={styles.input}
             placeholder={pending ? 'Type your answer…' : 'Message the studio agent…'}
             placeholderTextColor={c.mutedForeground}
             multiline
@@ -301,15 +300,17 @@ export function Composer({
           {/* box-none: the row itself is transparent to touches, so the empty
               stretch between the model chip and the send/mic group falls through
               to the focus target underneath instead of being swallowed here. */}
-          <View className="flex-row items-center" pointerEvents="box-none">
+          <View style={styles.controlsRow} pointerEvents="box-none">
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="Attach image"
               disabled={sending}
-              className={cn(
-                'h-9 w-9 items-center justify-center rounded-full border border-border active:opacity-60',
-                sending && 'opacity-50',
-              )}
+              style={({ pressed }) => [
+                styles.iconBtn,
+                styles.iconBtnOutline,
+                pressed && styles.pressed60,
+                sending && styles.dim50,
+              ]}
               onPress={pick}
             >
               <ImagePlus size={17} color={c.mutedForeground} />
@@ -318,21 +319,21 @@ export function Composer({
             <Pressable
               accessibilityRole="button"
               accessibilityLabel={`Model: ${model.label}`}
-              className="ml-2 h-9 flex-row items-center gap-1 rounded-full border border-border px-3 active:opacity-60"
+              style={({ pressed }) => [styles.modelChip, pressed && styles.pressed60]}
               onPress={() => router.push('/model-picker')}
             >
-              <Text className="text-[13px] font-medium text-foreground" numberOfLines={1}>
+              <Text style={styles.modelChipText} numberOfLines={1}>
                 {model.label}
               </Text>
               <ChevronDown size={13} color={c.mutedForeground} />
             </Pressable>
 
-            <View className="ml-auto flex-row items-center gap-2" pointerEvents="box-none">
+            <View style={styles.trailingRow} pointerEvents="box-none">
               {busy ? (
                 <Pressable
                   accessibilityRole="button"
                   accessibilityLabel="Stop"
-                  className="h-9 w-9 items-center justify-center rounded-full bg-secondary active:opacity-70"
+                  style={({ pressed }) => [styles.iconBtn, styles.stopBtn, pressed && styles.pressed70]}
                   onPress={() => {
                     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
                     onStop();
@@ -350,7 +351,7 @@ export function Composer({
                       <Pressable
                         accessibilityRole="button"
                         accessibilityLabel="Record voice message"
-                        className="h-9 w-9 items-center justify-center rounded-full border border-border active:opacity-60"
+                        style={({ pressed }) => [styles.iconBtn, styles.iconBtnOutline, pressed && styles.pressed60]}
                         onPress={startRecording}
                       >
                         <Mic size={18} color={c.mutedForeground} />
@@ -360,8 +361,11 @@ export function Composer({
                       <Pressable
                         accessibilityRole="button"
                         accessibilityLabel="Record voice message"
-                        style={{ backgroundColor: c.higgsfield }}
-                        className="h-9 w-9 items-center justify-center rounded-full active:opacity-80"
+                        style={({ pressed }) => [
+                          styles.iconBtn,
+                          { backgroundColor: c.higgsfield },
+                          pressed && styles.pressed80,
+                        ]}
                         onPress={startRecording}
                       >
                         <Mic size={18} color={c.higgsfieldForeground} />
@@ -373,11 +377,12 @@ export function Composer({
                       accessibilityRole="button"
                       accessibilityLabel={sending ? 'Sending' : 'Send'}
                       disabled={!canSend}
-                      style={{ backgroundColor: c.higgsfield }}
-                      className={cn(
-                        'h-9 w-9 items-center justify-center rounded-full active:opacity-80',
-                        !canSend && 'opacity-40',
-                      )}
+                      style={({ pressed }) => [
+                        styles.iconBtn,
+                        { backgroundColor: c.higgsfield },
+                        pressed && styles.pressed80,
+                        !canSend && styles.dim40,
+                      ]}
                       onPress={submit}
                     >
                       {sending ? (
@@ -416,33 +421,33 @@ export function RecordingBar({
 }) {
   const c = useChatColors();
   return (
-    <View className="h-11 flex-row items-center">
+    <View style={styles.recordingRow}>
       <Pressable
         accessibilityRole="button"
         accessibilityLabel="Cancel recording"
         disabled={transcribing}
-        className={cn(
-          'h-9 w-9 items-center justify-center rounded-full border border-border active:opacity-60',
-          transcribing && 'opacity-40',
-        )}
+        style={({ pressed }) => [
+          styles.iconBtn,
+          styles.iconBtnOutline,
+          pressed && styles.pressed60,
+          transcribing && styles.dim40,
+        ]}
         onPress={onCancel}
       >
         <X size={17} color={c.mutedForeground} />
       </Pressable>
 
-      <View className="ml-3 flex-1 flex-row items-center gap-2">
+      <View style={styles.recordingStatus}>
         {transcribing ? (
           <ActivityIndicator size="small" color={c.mutedForeground} />
         ) : (
           <PulsingDot />
         )}
-        <Text className="text-[14px] font-medium text-foreground">
+        <Text style={styles.recordingLabel}>
           {transcribing ? 'Transcribing…' : 'Recording…'}
         </Text>
         {!transcribing ? (
-          <Text className="ml-auto text-[13px] tabular-nums text-muted-foreground">
-            {formatDuration(duration)}
-          </Text>
+          <Text style={styles.recordingTimer}>{formatDuration(duration)}</Text>
         ) : null}
       </View>
 
@@ -450,11 +455,13 @@ export function RecordingBar({
         accessibilityRole="button"
         accessibilityLabel="Stop and transcribe"
         disabled={transcribing}
-        style={{ backgroundColor: c.higgsfield }}
-        className={cn(
-          'ml-3 h-9 w-9 items-center justify-center rounded-full active:opacity-80',
-          transcribing && 'opacity-40',
-        )}
+        style={({ pressed }) => [
+          styles.iconBtn,
+          styles.recordingConfirm,
+          { backgroundColor: c.higgsfield },
+          pressed && styles.pressed80,
+          transcribing && styles.dim40,
+        ]}
         onPress={onConfirm}
       >
         <Check size={18} color={c.higgsfieldForeground} />
@@ -462,3 +469,101 @@ export function RecordingBar({
     </View>
   );
 }
+
+const styles = StyleSheet.create((theme) => ({
+  attRow: {
+    flexDirection: 'row',
+    gap: 12,
+    paddingVertical: 4,
+  },
+  attRemove: {
+    position: 'absolute',
+    right: -6,
+    top: -6,
+    height: 20,
+    width: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 999,
+    backgroundColor: theme.colors.secondary,
+  },
+  input: {
+    maxHeight: 128,
+    paddingHorizontal: 4,
+    paddingVertical: 4,
+    fontSize: 15,
+    lineHeight: 20,
+    color: theme.colors.foreground,
+  },
+  controlsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  iconBtn: {
+    height: 36,
+    width: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 999,
+  },
+  iconBtnOutline: {
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+  },
+  stopBtn: {
+    backgroundColor: theme.colors.secondary,
+  },
+  pressed60: { opacity: 0.6 },
+  pressed70: { opacity: 0.7 },
+  pressed80: { opacity: 0.8 },
+  dim40: { opacity: 0.4 },
+  dim50: { opacity: 0.5 },
+  modelChip: {
+    marginLeft: 8,
+    height: 36,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    paddingHorizontal: 12,
+  },
+  modelChipText: {
+    fontSize: 13,
+    fontWeight: '500',
+    color: theme.colors.foreground,
+  },
+  trailingRow: {
+    marginLeft: 'auto',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  recordingRow: {
+    height: 44,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  recordingStatus: {
+    marginLeft: 12,
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  recordingLabel: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: theme.colors.foreground,
+  },
+  recordingTimer: {
+    marginLeft: 'auto',
+    fontSize: 13,
+    fontVariant: ['tabular-nums'],
+    color: theme.colors.mutedForeground,
+  },
+  recordingConfirm: {
+    marginLeft: 12,
+  },
+}));

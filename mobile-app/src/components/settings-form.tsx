@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { Pressable, ScrollView, Text, View } from 'react-native';
+import { StyleSheet } from 'react-native-unistyles';
 import { Host, Picker, Switch } from '@expo/ui';
 import {
   Cable,
@@ -47,10 +48,10 @@ function NoteCard({
   children: ReactNode;
 }) {
   return (
-    <Card className="gap-3">
-      <View className="flex-row items-center gap-3">
+    <Card style={styles.noteCard}>
+      <View style={styles.noteHeader}>
         {icon}
-        <Text className="flex-1 text-[12px] leading-4 text-muted-foreground">{note}</Text>
+        <Text style={styles.noteText}>{note}</Text>
       </View>
       {children}
     </Card>
@@ -77,15 +78,13 @@ function ToggleRow({
   children?: ReactNode;
 }) {
   return (
-    <View
-      className={`gap-2 rounded-xl border p-3 ${isOn ? 'border-primary/40' : 'border-border opacity-70'}`}
-    >
-      <View className="flex-row items-center gap-2">
-        <View className="flex-1">
-          <Text className="text-[14px] font-medium text-foreground">{label}</Text>
-          <Text className="text-[12px] text-muted-foreground">{subtitle}</Text>
+    <View style={[styles.toggleRow, isOn ? styles.toggleRowOn : styles.toggleRowOff]}>
+      <View style={styles.rowGap2}>
+        <View style={styles.flex1}>
+          <Text style={styles.label14}>{label}</Text>
+          <Text style={styles.subtitle12}>{subtitle}</Text>
         </View>
-        <View pointerEvents={disabled ? 'none' : 'auto'} className={disabled ? 'opacity-40' : ''}>
+        <View pointerEvents={disabled ? 'none' : 'auto'} style={disabled ? styles.disabled : undefined}>
           <Host matchContents key={nonce}>
             <Switch value={isOn} onValueChange={onToggle} />
           </Host>
@@ -99,8 +98,8 @@ function ToggleRow({
 function KeyLink({ hasKey, onPress }: { hasKey: boolean; onPress: () => void }) {
   const colors = useColors();
   return (
-    <Pressable className="flex-row items-center gap-1" onPress={onPress} accessibilityRole="button">
-      <Text className="text-[12px] font-medium text-primary">{hasKey ? 'Manage key' : 'Add key'}</Text>
+    <Pressable style={styles.rowGap1} onPress={onPress} accessibilityRole="button">
+      <Text style={styles.keyLinkText}>{hasKey ? 'Manage key' : 'Add key'}</Text>
       <ChevronRight size={12} color={colors.primary} />
     </Pressable>
   );
@@ -111,12 +110,12 @@ function LinkRow({ label, value, onPress }: { label: string; value?: string; onP
   const colors = useColors();
   return (
     <Pressable
-      className="flex-row items-center gap-2 rounded-xl border border-border p-3"
+      style={styles.linkRow}
       onPress={onPress}
       accessibilityRole="button"
     >
-      <Text className="flex-1 text-[14px] font-medium text-foreground">{label}</Text>
-      {value ? <Text className="text-[12px] text-muted-foreground">{value}</Text> : null}
+      <Text style={styles.linkLabel}>{label}</Text>
+      {value ? <Text style={styles.subtitle12}>{value}</Text> : null}
       <ChevronRight size={14} color={colors.mutedForeground} />
     </Pressable>
   );
@@ -159,31 +158,31 @@ export default function SettingsForm({
 }: SettingsFormProps) {
   const colors = useColors();
   return (
-    <ScrollView className="flex-1 bg-background" contentContainerClassName="grow gap-4 px-5 pt-6">
+    <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
       <Eyebrow>Account</Eyebrow>
-      <Card className="flex-row items-center gap-3">
-        <View className="h-10 w-10 items-center justify-center rounded-full bg-secondary">
+      <Card style={styles.accountCard}>
+        <View style={styles.avatar}>
           <UserRound size={18} color={colors.mutedForeground} />
         </View>
-        <View className="flex-1">
-          <Text className="text-[15px] font-semibold text-foreground" numberOfLines={1}>
+        <View style={styles.flex1}>
+          <Text style={styles.nameText} numberOfLines={1}>
             {name}
           </Text>
           {email && email !== name ? (
-            <Text className="text-[13px] text-muted-foreground" numberOfLines={1}>
+            <Text style={styles.emailText} numberOfLines={1}>
               {email}
             </Text>
           ) : null}
         </View>
       </Card>
 
-      <Eyebrow className="mt-2">Appearance</Eyebrow>
-      <Card className="gap-2">
-        <Text className="text-[15px] text-foreground">Theme</Text>
+      <Eyebrow style={styles.mt2}>Appearance</Eyebrow>
+      <Card style={styles.gap2Card}>
+        <Text style={styles.text15}>Theme</Text>
         <Segmented value={themePref} onChange={onThemeChange} options={THEME_OPTIONS} />
       </Card>
 
-      <Eyebrow className="mt-2">Chat provider</Eyebrow>
+      <Eyebrow style={styles.mt2}>Chat provider</Eyebrow>
       <NoteCard icon={<Cpu size={18} color={colors.primary} />} note={CHAT_PROVIDERS_FOOTNOTE}>
         {chatProviders.map((cp) => (
           <ToggleRow
@@ -198,9 +197,9 @@ export default function SettingsForm({
         ))}
       </NoteCard>
 
-      <Eyebrow className="mt-2">Agent</Eyebrow>
-      <Card className="gap-2">
-        <Text className="text-[15px] text-foreground">Chat model</Text>
+      <Eyebrow style={styles.mt2}>Agent</Eyebrow>
+      <Card style={styles.gap2Card}>
+        <Text style={styles.text15}>Chat model</Text>
         <Host matchContents>
           <Picker selectedValue={modelId} onValueChange={(v) => onModelChange(String(v))} appearance="menu">
             {models.map((m) => (
@@ -210,7 +209,7 @@ export default function SettingsForm({
         </Host>
       </Card>
 
-      <Eyebrow className="mt-2">Web search</Eyebrow>
+      <Eyebrow style={styles.mt2}>Web search</Eyebrow>
       <NoteCard icon={<Globe size={18} color={colors.primary} />} note={SEARCH_FOOTNOTE}>
         {searchProviders.map((sp) => (
           <ToggleRow
@@ -226,7 +225,7 @@ export default function SettingsForm({
         ))}
       </NoteCard>
 
-      <Eyebrow className="mt-2">Sandbox providers</Eyebrow>
+      <Eyebrow style={styles.mt2}>Sandbox providers</Eyebrow>
       <NoteCard icon={<TerminalSquare size={18} color={colors.primary} />} note={SANDBOXES_FOOTNOTE}>
         {sandboxes.map((sb) => (
           <ToggleRow
@@ -240,12 +239,12 @@ export default function SettingsForm({
         ))}
       </NoteCard>
 
-      <Eyebrow className="mt-2">Connectors</Eyebrow>
+      <Eyebrow style={styles.mt2}>Connectors</Eyebrow>
       <NoteCard icon={<Cable size={18} color={colors.primary} />} note={CONNECTORS_FOOTNOTE}>
-        <View className="gap-2 rounded-xl border border-border p-3">
-          <View className="flex-row items-center gap-2">
-            <Text className="flex-1 text-[14px] font-medium text-foreground">Higgsfield</Text>
-            <Text className="text-[12px] text-muted-foreground">
+        <View style={styles.connectorBox}>
+          <View style={styles.rowGap2}>
+            <Text style={styles.linkLabel}>Higgsfield</Text>
+            <Text style={styles.subtitle12}>
               {higgsfieldLinked === true
                 ? 'Connected'
                 : higgsfieldLinked === false
@@ -273,7 +272,7 @@ export default function SettingsForm({
         </View>
       </NoteCard>
 
-      <Eyebrow className="mt-2">Render providers</Eyebrow>
+      <Eyebrow style={styles.mt2}>Render providers</Eyebrow>
       <NoteCard icon={<KeyRound size={18} color={colors.primary} />} note={PROVIDERS_FOOTNOTE}>
         {providers.map((p) => (
           <ToggleRow
@@ -289,13 +288,13 @@ export default function SettingsForm({
         ))}
       </NoteCard>
 
-      <Eyebrow className="mt-2">Generation defaults</Eyebrow>
+      <Eyebrow style={styles.mt2}>Generation defaults</Eyebrow>
       <NoteCard
         icon={<SlidersHorizontal size={18} color={colors.primary} />}
         note={GEN_DEFAULTS_FOOTNOTE}
       >
-        <View className="gap-1">
-          <Text className="text-[13px] text-foreground">Image model</Text>
+        <View style={styles.gap1}>
+          <Text style={styles.text13}>Image model</Text>
           <Host matchContents>
             <Picker
               selectedValue={imageModelTag}
@@ -309,8 +308,8 @@ export default function SettingsForm({
             </Picker>
           </Host>
         </View>
-        <View className="gap-1">
-          <Text className="text-[13px] text-foreground">Aspect ratio</Text>
+        <View style={styles.gap1}>
+          <Text style={styles.text13}>Aspect ratio</Text>
           <Host matchContents>
             <Picker
               selectedValue={aspectRatio}
@@ -325,17 +324,70 @@ export default function SettingsForm({
         </View>
       </NoteCard>
 
-      <Eyebrow className="mt-2">Prompts</Eyebrow>
+      <Eyebrow style={styles.mt2}>Prompts</Eyebrow>
       <NoteCard icon={<Palette size={18} color={colors.primary} />} note={PROMPTS_FOOTNOTE}>
         {promptLinks.map((l) => (
           <LinkRow key={l.key} label={l.label} value={l.value} onPress={() => onOpenPrompt(l.key)} />
         ))}
       </NoteCard>
 
-      <View className="mt-auto gap-3 pb-10">
-        <Text className="text-center text-xs text-muted-foreground">{apiOrigin}</Text>
+      <View style={styles.footer}>
+        <Text style={styles.footerText}>{apiOrigin}</Text>
         <Button variant="destructive" title="Sign out" onPress={onSignOut} />
       </View>
     </ScrollView>
   );
 }
+
+const styles = StyleSheet.create((theme) => ({
+  noteCard: { gap: 12 },
+  noteHeader: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  noteText: { flex: 1, fontSize: 12, lineHeight: 16, color: theme.colors.mutedForeground },
+  toggleRow: { gap: 8, borderRadius: 12, borderWidth: 1, padding: 12 },
+  toggleRowOn: { borderColor: `${theme.colors.primary}66` },
+  toggleRowOff: { borderColor: theme.colors.border, opacity: 0.7 },
+  rowGap2: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  rowGap1: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  flex1: { flex: 1 },
+  label14: { fontSize: 14, fontWeight: '500', color: theme.colors.foreground },
+  subtitle12: { fontSize: 12, color: theme.colors.mutedForeground },
+  disabled: { opacity: 0.4 },
+  keyLinkText: { fontSize: 12, fontWeight: '500', color: theme.colors.primary },
+  linkRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    padding: 12,
+  },
+  linkLabel: { flex: 1, fontSize: 14, fontWeight: '500', color: theme.colors.foreground },
+  scroll: { flex: 1, backgroundColor: theme.colors.background },
+  scrollContent: { flexGrow: 1, gap: 16, paddingHorizontal: 20, paddingTop: 24 },
+  accountCard: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  avatar: {
+    height: 40,
+    width: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 999,
+    backgroundColor: theme.colors.secondary,
+  },
+  nameText: { fontSize: 15, fontWeight: '600', color: theme.colors.foreground },
+  emailText: { fontSize: 13, color: theme.colors.mutedForeground },
+  mt2: { marginTop: 8 },
+  gap2Card: { gap: 8 },
+  text15: { fontSize: 15, color: theme.colors.foreground },
+  connectorBox: {
+    gap: 8,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    padding: 12,
+  },
+  gap1: { gap: 4 },
+  text13: { fontSize: 13, color: theme.colors.foreground },
+  footer: { marginTop: 'auto', gap: 12, paddingBottom: 40 },
+  footerText: { textAlign: 'center', fontSize: 12, lineHeight: 16, color: theme.colors.mutedForeground },
+}));

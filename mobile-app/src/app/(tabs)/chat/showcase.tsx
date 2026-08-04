@@ -1,13 +1,13 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
 import {
   Dimensions,
-  StyleSheet,
   Text,
   View,
   type NativeScrollEvent,
   type NativeSyntheticEvent,
   type ViewStyle,
 } from 'react-native';
+import { StyleSheet } from 'react-native-unistyles';
 import Animated, {
   interpolate,
   useAnimatedStyle,
@@ -333,10 +333,10 @@ function ShowcaseCard({
           The box below still has to match it exactly, so both take their margins
           from the same style. */}
       <View style={styles.boundary}>
-        <View className="border border-border bg-card" style={styles.card}>
+        <View style={styles.card}>
           {artBottom ? null : artBand}
           <View style={[styles.body, artBottom && styles.bodyTopmost]}>
-            <Text className="text-foreground" style={styles.title} numberOfLines={2}>
+            <Text style={styles.title} numberOfLines={2}>
               {item.title}
             </Text>
             {/* Dropped in `art-bottom`: the subtitle IS the blurb's first
@@ -344,14 +344,13 @@ function ShowcaseCard({
                 both directly above three paragraphs reads as a stutter. It
                 earns its line on the surfaces that only have room for it. */}
             {item.subtitle && !artBottom ? (
-              <Text className="text-muted-foreground" style={styles.subtitle} numberOfLines={1}>
+              <Text style={styles.subtitle} numberOfLines={1}>
                 {item.subtitle}
               </Text>
             ) : null}
             {paragraphs.map((p, i) => (
               <Text
                 key={i}
-                className="text-muted-foreground"
                 style={[styles.blurb, artBottom && styles.blurbTight]}
                 numberOfLines={4}
               >
@@ -600,11 +599,7 @@ export default function StoryShowcaseScreen() {
   );
 
   return (
-    <View
-      className="flex-1 bg-background"
-      style={styles.screen}
-      onLayout={(e) => setViewport(e.nativeEvent.layout.height)}
-    >
+    <View style={styles.screen} onLayout={(e) => setViewport(e.nativeEvent.layout.height)}>
       <Animated.FlatList
         data={suggestions}
         keyExtractor={(s) => s.id}
@@ -665,8 +660,8 @@ export default function StoryShowcaseScreen() {
 // marginBottom + GAP + marginTop, and it moves as one number or not at all.
 const CARD_BOX = { flex: 1, marginTop: 5, marginBottom: 1, borderRadius: 28 } as const;
 
-const styles = StyleSheet.create({
-  screen: { flex: 1 },
+const styles = StyleSheet.create((theme) => ({
+  screen: { flex: 1, backgroundColor: theme.colors.background },
   // Where the shadow lives: the card itself clips to hold its radius, and on iOS
   // a clipping view drops its own shadow.
   boundary: {
@@ -678,7 +673,14 @@ const styles = StyleSheet.create({
   },
   // The same box, empty and untouchable: it exists only to be measured.
   zoomSlot: CARD_BOX,
-  card: { flex: 1, borderRadius: 28, overflow: 'hidden' },
+  card: {
+    flex: 1,
+    borderRadius: 28,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    backgroundColor: theme.colors.card,
+  },
   body: { flex: 1, paddingHorizontal: 20, paddingTop: 16, paddingBottom: 18 },
   // `art-bottom` starts with the headline instead of arriving at it, so the top
   // of the card is the top of the TYPE — and type set 16pt off an edge reads as
@@ -697,11 +699,17 @@ const styles = StyleSheet.create({
   ctaOverArt: { position: 'absolute', left: 20, right: 20, bottom: 18 },
   // A size up from the landing poster's 17pt — this card has a whole screen, so
   // the headline can read as a headline instead of a caption.
-  title: { fontSize: 24, fontWeight: '700', lineHeight: 29, letterSpacing: -0.4 },
-  subtitle: { fontSize: 14, lineHeight: 18, marginTop: 4 },
+  title: {
+    fontSize: 24,
+    fontWeight: '700',
+    lineHeight: 29,
+    letterSpacing: -0.4,
+    color: theme.colors.foreground,
+  },
+  subtitle: { fontSize: 14, lineHeight: 18, marginTop: 4, color: theme.colors.mutedForeground },
   // The marginTop doubles as the gap BETWEEN paragraphs, since every one of
   // them wears this.
-  blurb: { fontSize: 15, lineHeight: 21, marginTop: 10 },
+  blurb: { fontSize: 15, lineHeight: 21, marginTop: 10, color: theme.colors.mutedForeground },
   // Three paragraphs where `art-top` has one, in a body that is only ~50pt
   // taller. A point off the size and two off the leading is what makes twelve
   // lines fit where nine did — at 15/21 the third paragraph ran off the card.
@@ -730,4 +738,4 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.34)',
   },
   doneBadgeText: { color: '#fff', fontSize: 13, fontWeight: '600', letterSpacing: 0.2 },
-});
+}));

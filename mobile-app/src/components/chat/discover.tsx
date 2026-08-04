@@ -1,4 +1,5 @@
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, Text, View } from 'react-native';
+import { StyleSheet } from 'react-native-unistyles';
 import { Link } from 'expo-router';
 import { Image } from 'expo-image';
 import * as Haptics from 'expo-haptics';
@@ -59,7 +60,7 @@ function DiscoverPoster({ card }: { card: DiscoverCard }) {
         style={styles.shadow}
       >
         <Link.AppleZoom>
-          <View className="border border-border bg-card" style={styles.card}>
+          <View style={styles.card}>
             <Image
               source={card.image ? { uri: card.image } : undefined}
               style={styles.art}
@@ -105,11 +106,11 @@ function DiscoverPoster({ card }: { card: DiscoverCard }) {
 export function DiscoverSection() {
   const cards = useDiscover();
   return (
-    <View className="gap-3">
+    <View style={styles.section}>
       {/* The same headline every section on the landing screen wears (see
           sectionTitle in app/(tabs)/chat/index.tsx), the project name at the top
           of the page included — the decks are peers, so nothing outranks. */}
-      <Text accessibilityRole="header" className="px-5 text-foreground" style={styles.headline}>
+      <Text accessibilityRole="header" style={styles.headline}>
         Discover
       </Text>
       <View style={styles.stack}>
@@ -121,10 +122,17 @@ export function DiscoverSection() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = StyleSheet.create((theme) => ({
+  section: { gap: 12 },
   // Half the large title — kept in lockstep with smallTitle in
   // app/(tabs)/chat/index.tsx.
-  headline: { fontSize: 20, fontWeight: '700', lineHeight: 25 },
+  headline: {
+    fontSize: 20,
+    fontWeight: '700',
+    lineHeight: 25,
+    paddingHorizontal: 20,
+    color: theme.colors.foreground,
+  },
   // The page margin lives here (matching the card rows above), and the posters
   // stack rather than scroll sideways.
   stack: { paddingHorizontal: 20, gap: 16 },
@@ -138,13 +146,19 @@ const styles = StyleSheet.create({
     shadowRadius: 12,
     shadowOffset: { width: 0, height: 7 },
   },
-  card: { borderRadius: 24, overflow: 'hidden' },
+  card: {
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    backgroundColor: theme.colors.card,
+    borderRadius: 24,
+    overflow: 'hidden',
+  },
   art: { width: '100%', aspectRatio: ART_RATIO, backgroundColor: '#0b0b0c' },
   // The text block. Its colour comes from the picture above it, so the two read
-  // as one object; the `bg-card` on the parent is what it falls back to for the
+  // as one object; the card's own colours are what it falls back to for the
   // frame or two before the tint is known.
   caption: { paddingHorizontal: 16, paddingTop: 12, paddingBottom: 14 },
   kicker: { fontSize: 11, fontWeight: '700', letterSpacing: 1.1 },
   title: { fontSize: 17, fontWeight: '700', lineHeight: 21, letterSpacing: -0.2, marginTop: 3 },
   tagline: { fontSize: 14, lineHeight: 18, marginTop: 2 },
-});
+}));

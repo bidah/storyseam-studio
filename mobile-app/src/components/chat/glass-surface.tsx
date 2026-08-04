@@ -1,5 +1,6 @@
 import { GlassContainer, GlassView, type GlassStyle, isLiquidGlassAvailable } from 'expo-glass-effect';
-import { StyleSheet, View, type ViewProps } from 'react-native';
+import { View, type ViewProps } from 'react-native';
+import { StyleSheet } from 'react-native-unistyles';
 
 // Liquid glass is only available on iOS 26+. Elsewhere (older iOS, Android)
 // fall back to a plain View filled with `fallbackColor`, so callers get a

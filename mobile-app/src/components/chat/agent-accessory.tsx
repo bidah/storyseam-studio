@@ -1,4 +1,5 @@
 import { ActivityIndicator, Pressable, Text, View } from 'react-native';
+import { StyleSheet } from 'react-native-unistyles';
 import { NativeTabs } from 'expo-router/unstable-native-tabs';
 import * as Haptics from 'expo-haptics';
 import { CircleStop, Mic, Square, X } from 'lucide-react-native';
@@ -203,13 +204,13 @@ export function AgentAccessory() {
             <X size={glyph} color={c.mutedForeground} />
           </Pressable>
 
-          <View className="flex-1 flex-row items-center gap-2" pointerEvents="none">
+          <View style={styles.captureStatus} pointerEvents="none">
             {transcribing ? (
               <ActivityIndicator size="small" color={c.mutedForeground} />
             ) : (
               <PulsingDot />
             )}
-            <Text className="text-[15px] font-medium text-foreground" numberOfLines={1}>
+            <Text style={styles.captureLabel} numberOfLines={1}>
               {transcribing ? 'Transcribing…' : 'Recording…'}
             </Text>
             {!transcribing ? <Timer /> : null}
@@ -270,7 +271,7 @@ export function AgentAccessory() {
             {busy ? <ActivityIndicator size="small" color={c.mutedForeground} /> : null}
 
             <Text
-              className="flex-1 text-[15px] text-muted-foreground"
+              style={styles.bodyLabel}
               numberOfLines={1}
               // The body is one target; the label must not eat the press.
               pointerEvents="none"
@@ -331,8 +332,33 @@ export function AgentAccessory() {
 function Timer() {
   const duration = useVoiceDuration();
   return (
-    <Text className="ml-auto text-[13px] tabular-nums text-muted-foreground">
+    <Text style={styles.timer}>
       {formatDuration(duration)}
     </Text>
   );
 }
+
+const styles = StyleSheet.create((theme) => ({
+  captureStatus: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  captureLabel: {
+    fontSize: 15,
+    fontWeight: '500',
+    color: theme.colors.foreground,
+  },
+  bodyLabel: {
+    flex: 1,
+    fontSize: 15,
+    color: theme.colors.mutedForeground,
+  },
+  timer: {
+    marginLeft: 'auto',
+    fontSize: 13,
+    fontVariant: ['tabular-nums'],
+    color: theme.colors.mutedForeground,
+  },
+}));

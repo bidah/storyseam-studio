@@ -1,4 +1,5 @@
 import { Pressable, Text, View, useWindowDimensions } from 'react-native';
+import { StyleSheet } from 'react-native-unistyles';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Image } from 'expo-image';
 import { useVideoPlayer, VideoView } from 'expo-video';
@@ -14,7 +15,7 @@ export default function ViewerModal() {
   const isVideo = kind === 'video';
 
   return (
-    <View className="flex-1 bg-black">
+    <View style={styles.root}>
       {isVideo ? (
         <VideoPlayer url={String(url)} width={width} height={height} />
       ) : (
@@ -25,17 +26,14 @@ export default function ViewerModal() {
           transition={150}
         />
       )}
-      <View
-        style={{ top: insets.top + 4 }}
-        className="absolute left-0 right-0 flex-row items-center justify-between px-4"
-      >
-        <Text className="mr-3 flex-1 text-sm text-white/80" numberOfLines={1}>
+      <View style={[styles.bar, { top: insets.top + 4 }]}>
+        <Text style={styles.title} numberOfLines={1}>
           {title || ''}
         </Text>
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Close"
-          className="h-9 w-9 items-center justify-center rounded-full bg-white/15 active:opacity-60"
+          style={({ pressed }) => [styles.closeBtn, pressed && styles.pressed]}
           onPress={() => router.back()}
         >
           <X size={18} color="white" />
@@ -58,3 +56,32 @@ function VideoPlayer({ url, width, height }: { url: string; width: number; heigh
     />
   );
 }
+
+const styles = StyleSheet.create({
+  root: { flex: 1, backgroundColor: '#000' },
+  bar: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+  },
+  title: {
+    marginRight: 12,
+    flex: 1,
+    fontSize: 14,
+    lineHeight: 20,
+    color: 'rgba(255,255,255,0.8)',
+  },
+  closeBtn: {
+    height: 36,
+    width: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+  },
+  pressed: { opacity: 0.6 },
+});

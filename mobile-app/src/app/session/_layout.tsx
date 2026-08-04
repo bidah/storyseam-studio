@@ -1,4 +1,5 @@
 import { Pressable, View } from 'react-native';
+import { StyleSheet } from 'react-native-unistyles';
 import { router, Stack, useNavigation } from 'expo-router';
 import type { NativeStackHeaderItem } from 'expo-router/build/react-navigation/native-stack/types';
 import { X } from 'lucide-react-native';
@@ -88,7 +89,7 @@ export default function SessionLayout() {
     <Pressable
       accessibilityRole="button"
       accessibilityLabel="Close chat"
-      className="h-9 w-9 items-center justify-center rounded-full active:opacity-60"
+      style={({ pressed }) => [styles.closeButton, pressed && styles.closeButtonPressed]}
       onPress={close}
     >
       <X size={19} color={colors.foreground} />
@@ -100,7 +101,7 @@ export default function SessionLayout() {
     // composer-host.tsx). A SEPARATE scope from that one, so a draft typed here and
     // a draft typed there don't fight over a single bar.
     <ChatComposerScope>
-      <View className="flex-1 bg-background">
+      <View style={styles.root}>
         <Stack
           screenOptions={{
             ...headerBase,
@@ -154,3 +155,15 @@ export default function SessionLayout() {
     </ChatComposerScope>
   );
 }
+
+const styles = StyleSheet.create((theme) => ({
+  root: { flex: 1, backgroundColor: theme.colors.background },
+  closeButton: {
+    height: 36,
+    width: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 999,
+  },
+  closeButtonPressed: { opacity: 0.6 },
+}));

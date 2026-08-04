@@ -1,4 +1,5 @@
 import { ScrollView, Text, TextInput, View } from 'react-native';
+import { StyleSheet } from 'react-native-unistyles';
 import { Button } from '@/components/ui/button';
 import { useColors } from '@/lib/colors';
 import type { PromptFormProps } from './prompt-form.types';
@@ -10,15 +11,15 @@ export default function PromptForm({ fields, onChange, destructive }: PromptForm
   const colors = useColors();
   return (
     <ScrollView
-      className="flex-1 bg-background"
-      contentContainerClassName="grow gap-5 px-5 pt-5 pb-12"
+      style={styles.scroll}
+      contentContainerStyle={styles.scrollContent}
       keyboardShouldPersistTaps="handled"
     >
       {fields.map((f) => {
         const lines = f.lines ?? 1;
         return (
-          <View key={f.key} className="gap-1.5">
-            <Text className="text-[13px] font-medium text-foreground">{f.title}</Text>
+          <View key={f.key} style={styles.field}>
+            <Text style={styles.label}>{f.title}</Text>
             <TextInput
               defaultValue={f.initial}
               onChangeText={(v) => onChange(f.key, v)}
@@ -28,12 +29,9 @@ export default function PromptForm({ fields, onChange, destructive }: PromptForm
               textAlignVertical={lines > 1 ? 'top' : 'center'}
               autoCapitalize="none"
               autoCorrect={false}
-              style={lines > 1 ? { minHeight: 22 * lines } : undefined}
-              className="rounded-xl border border-border bg-card px-3 py-2.5 text-[14px] leading-5 text-foreground"
+              style={[styles.input, lines > 1 && { minHeight: 22 * lines }]}
             />
-            {f.footer ? (
-              <Text className="text-[12px] leading-4 text-muted-foreground">{f.footer}</Text>
-            ) : null}
+            {f.footer ? <Text style={styles.footer}>{f.footer}</Text> : null}
           </View>
         );
       })}
@@ -43,3 +41,22 @@ export default function PromptForm({ fields, onChange, destructive }: PromptForm
     </ScrollView>
   );
 }
+
+const styles = StyleSheet.create((theme) => ({
+  scroll: { flex: 1, backgroundColor: theme.colors.background },
+  scrollContent: { flexGrow: 1, gap: 20, paddingHorizontal: 20, paddingTop: 20, paddingBottom: 48 },
+  field: { gap: 6 },
+  label: { fontSize: 13, fontWeight: '500', color: theme.colors.foreground },
+  input: {
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    backgroundColor: theme.colors.card,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 14,
+    lineHeight: 20,
+    color: theme.colors.foreground,
+  },
+  footer: { fontSize: 12, lineHeight: 16, color: theme.colors.mutedForeground },
+}));

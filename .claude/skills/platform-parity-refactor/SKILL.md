@@ -34,7 +34,7 @@ essentials:
 
 - Routing: React Router v7 loaders → **expo-router** file routes under `mobile-app/src/app/(tabs)/…`; no loaders.
 - Data: `swr` + `invalidateTabCache`/`revalidate` → **TanStack Query** via `src/lib/queries.ts` (`useProjectResource`, `useInvalidate`).
-- UI: shadcn/ui + Tailwind + `div/button` → `mobile-app/src/components/ui/*` + **NativeWind** classes on **`View/Text/Pressable`**.
+- UI: shadcn/ui + Tailwind + `div/button` → `mobile-app/src/components/ui/*` + **Unistyles v3** stylesheets (`style=`, never `className=`) on **`View/Text/Pressable`**.
 - Icons: `lucide-react` → **`lucide-react-native`** (still no emojis/glyphs).
 - Media: `<video>/<audio>` → **`expo-video`/`expo-audio`**.
 
@@ -47,5 +47,5 @@ essentials:
 ## Step 5 — Verify
 
 - `cd mobile-app && npx tsc --noEmit` (the mobile app is TypeScript; the web app is JSX — types must actually pass).
-- Confirm no `lucide-react` (web) import slipped in, no `className` on a raw RN element that isn't NativeWind-enabled, no web-only DOM (`div`, `<video>`, `window`, `localStorage`).
+- Confirm no `lucide-react` (web) import slipped in, no `className` anywhere (mobile is Unistyles-only — a `className` is a web habit that silently does nothing), no `StyleSheet` imported from `react-native` instead of `react-native-unistyles`, no web-only DOM (`div`, `<video>`, `window`, `localStorage`).
 - Summarize what ported, what was adapted, and what was skipped.

@@ -5,7 +5,8 @@
 // disable/enable, detach audio, link/unlink, remove — plus volume + fade sliders.
 // Web reference: /docs/modules/timeline ↔ this: /docs/react-native/timeline
 import { memo } from "react";
-import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Modal, Pressable, ScrollView, Text, View } from "react-native";
+import { StyleSheet } from "react-native-unistyles";
 import { Host, Slider, Switch, Button } from "@expo/ui";
 import { SymbolView } from "expo-symbols";
 import { framesToSec, secToFrames, type TimelineItem } from "@/editor/core/timeline";

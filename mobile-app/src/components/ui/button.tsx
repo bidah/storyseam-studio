@@ -3,4 +3,10 @@
 // iOS 26 Liquid-Glass surface; everywhere else it's the plain Pressable from
 // button-base. Same props on both, so callers just
 // `import { Button } from '@/components/ui/button'`.
-export { Button, buttonVariants, textVariants, type ButtonProps } from './button-base';
+export {
+  Button,
+  buttonStyles,
+  type ButtonProps,
+  type ButtonSize,
+  type ButtonVariant,
+} from './button-base';

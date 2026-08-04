@@ -8,27 +8,22 @@ import Animated, {
   withSpring,
   withTiming,
 } from 'react-native-reanimated';
-import { cn } from '@/lib/utils';
 
 // Bouncy press wrapper — a "button type" for tappable cards (the scrollable
 // episode beat cards, still/take thumbs, …). Press-in shrinks with a quick
 // timing, release springs back with a little overshoot so the tap feels bouncy.
 //
-// Styling convention: the card look lives on an INNER plain <View className>
-// (NativeWind only interops className on the components it knows — a
-// gesture-handler Animated.Pressable isn't one). The Animated.Pressable owns
-// only the transform + gesture, so the two never fight over the `style` prop.
-// The bounce is the press feedback, so consumers can drop their `active:*`
-// classes.
+// Styling convention: the card look lives on an INNER plain <View style> — the
+// Animated.Pressable owns only the transform + gesture, so the two never fight
+// over the `style` prop. The bounce is the press feedback, so consumers don't
+// add their own pressed styling.
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
 export type BouncyPressableProps = {
   children?: ReactNode;
   onPress?: () => void;
-  /** className applied to the inner view that holds the card's look. */
-  className?: string;
-  /** Extra style on the inner view (rarely needed alongside className). */
+  /** Style applied to the inner view that holds the card's look. */
   style?: StyleProp<ViewStyle>;
   /** Scale at full press. Cards read best subtle (~0.96); smaller = punchier. */
   pressedScale?: number;
@@ -53,7 +48,6 @@ export type BouncyPressableProps = {
 export function BouncyPressable({
   children,
   onPress,
-  className,
   style,
   pressedScale = 0.96,
   haptic = true,
@@ -84,7 +78,7 @@ export function BouncyPressable({
         onPress?.();
       }}
     >
-      <View className={cn(disabled && dimWhenDisabled && 'opacity-50', className)} style={style}>
+      <View style={[disabled && dimWhenDisabled ? { opacity: 0.5 } : null, style]}>
         {children}
       </View>
     </AnimatedPressable>

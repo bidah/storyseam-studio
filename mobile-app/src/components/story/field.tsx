@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, Text, TextInput, View } from 'react-native';
+import type { StyleProp, ViewStyle } from 'react-native';
+import { StyleSheet } from 'react-native-unistyles';
 import { useColors } from '@/lib/colors';
-import { cn } from '@/lib/utils';
 
 // Tap-to-edit inline field — the mobile port of the web World tab's
 // save-on-blur <textarea> (WorldField in src/routes/world.jsx). Renders the
@@ -14,7 +15,7 @@ export function EditableField({
   label,
   hint,
   multiline = true,
-  className,
+  style,
 }: {
   value: string | null | undefined;
   onCommit: (v: string) => Promise<void> | void;
@@ -22,7 +23,7 @@ export function EditableField({
   label?: string;
   hint?: string;
   multiline?: boolean;
-  className?: string;
+  style?: StyleProp<ViewStyle>;
 }) {
   const colors = useColors();
   const [editing, setEditing] = useState(false);
@@ -47,11 +48,9 @@ export function EditableField({
   };
 
   return (
-    <View className={className}>
-      {label ? (
-        <Text className="text-[12px] font-semibold text-foreground/80">{label}</Text>
-      ) : null}
-      {hint ? <Text className="mt-0.5 text-[11px] text-muted-foreground">{hint}</Text> : null}
+    <View style={style}>
+      {label ? <Text style={styles.label}>{label}</Text> : null}
+      {hint ? <Text style={styles.hint}>{hint}</Text> : null}
       {editing ? (
         <TextInput
           ref={inputRef}
@@ -62,24 +61,16 @@ export function EditableField({
           onBlur={commit}
           placeholder={placeholder}
           placeholderTextColor={colors.subtleForeground}
-          className={cn(
-            'mt-1 rounded-lg border border-primary bg-card px-2.5 py-2 text-[14px] leading-5 text-foreground',
-            multiline && 'min-h-16',
-          )}
+          style={[styles.input, multiline && styles.inputMultiline]}
         />
       ) : (
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={label ? `Edit ${label}` : 'Edit field'}
-          className="mt-1 flex-row items-start gap-2 rounded-lg border border-transparent px-2.5 py-2 active:border-border active:bg-secondary/50"
+          style={({ pressed }) => [styles.viewRow, pressed && styles.viewRowPressed]}
           onPress={() => setEditing(true)}
         >
-          <Text
-            className={cn(
-              'flex-1 text-[14px] leading-5',
-              (value ?? '').trim() ? 'text-foreground' : 'text-muted-foreground',
-            )}
-          >
+          <Text style={[styles.valueText, (value ?? '').trim() ? styles.valueTextFilled : styles.valueTextEmpty]}>
             {(value ?? '').trim() || placeholder || '—'}
           </Text>
           {saving ? <ActivityIndicator size="small" color={colors.mutedForeground} /> : null}
@@ -88,3 +79,57 @@ export function EditableField({
     </View>
   );
 }
+
+const styles = StyleSheet.create((theme) => ({
+  label: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: `${theme.colors.foreground}CC`,
+  },
+  hint: {
+    marginTop: 2,
+    fontSize: 11,
+    color: theme.colors.mutedForeground,
+  },
+  input: {
+    marginTop: 4,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: theme.colors.primary,
+    backgroundColor: theme.colors.card,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    fontSize: 14,
+    lineHeight: 20,
+    color: theme.colors.foreground,
+  },
+  inputMultiline: {
+    minHeight: 64,
+  },
+  viewRow: {
+    marginTop: 4,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: 'transparent',
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+  },
+  viewRowPressed: {
+    borderColor: theme.colors.border,
+    backgroundColor: `${theme.colors.secondary}80`,
+  },
+  valueText: {
+    flex: 1,
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  valueTextFilled: {
+    color: theme.colors.foreground,
+  },
+  valueTextEmpty: {
+    color: theme.colors.mutedForeground,
+  },
+}));

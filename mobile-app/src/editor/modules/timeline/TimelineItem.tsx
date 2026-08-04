@@ -8,7 +8,8 @@
 // through the native Inspector sheet rather than a right-click menu.
 // Web reference: /docs/modules/timeline ↔ this: /docs/react-native/timeline
 import { memo, useMemo } from "react";
-import { StyleSheet, Text, View } from "react-native";
+import { Text, View } from "react-native";
+import { StyleSheet } from "react-native-unistyles";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Animated, { useAnimatedStyle, useSharedValue } from "react-native-reanimated";
 import { Image } from "expo-image";

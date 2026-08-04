@@ -1,8 +1,9 @@
 /**
  * The MOBILE renderer set for the Studio generative-UI contract — React Native
- * + NativeWind. One export per component in `StudioRenderers` (contract.ts),
- * matching `src/genui/renderers.jsx` name for name and prop for prop, so a
- * single `render_ui` call draws the same decision on web and on the phone.
+ * + react-native-unistyles. One export per component in `StudioRenderers`
+ * (contract.ts), matching `src/genui/renderers.jsx` name for name and prop for
+ * prop, so a single `render_ui` call draws the same decision on web and on the
+ * phone.
  *
  * The look is the app's own, not a port of the web card:
  *   · OptionList / KeyValue are the inset grouped card from the model picker —
@@ -19,6 +20,7 @@
 import type { ReactNode } from 'react';
 import { createContext, Fragment, useContext, useEffect, useMemo, useState } from 'react';
 import { Text as RNText, View } from 'react-native';
+import { StyleSheet } from 'react-native-unistyles';
 import { Image } from 'expo-image';
 import { Galeria } from '@nandorojo/galeria';
 import { setAudioModeAsync, useAudioPlayer, useAudioPlayerStatus } from 'expo-audio';
@@ -29,7 +31,6 @@ import { SemiPillButton } from '@/components/ui/semi-pill-button';
 import { useColors } from '@/lib/colors';
 import { useEffectiveScheme } from '@/lib/theme';
 import { apiUrl, mediaUrl } from '@/lib/api';
-import { cn } from '@/lib/utils';
 import { useAnswerState } from './answered';
 import type {
   ActionProps,
@@ -220,7 +221,7 @@ function useMultiSelect(
         onPress={submit}
         disabled={!submit}
         variant="bounce"
-        className="mt-3"
+        style={styles.footerCta}
       />
     ) : null;
 
@@ -232,11 +233,13 @@ function CheckSquare({ checked }: { checked: boolean }) {
   const colors = useColors();
   return (
     <View
-      className="h-5 w-5 items-center justify-center rounded-md border"
-      style={{
-        borderColor: checked ? colors.primary : colors.border,
-        backgroundColor: checked ? colors.primary : 'transparent',
-      }}
+      style={[
+        styles.checkSquare,
+        {
+          borderColor: checked ? colors.primary : colors.border,
+          backgroundColor: checked ? colors.primary : 'transparent',
+        },
+      ]}
     >
       {checked ? <Check size={13} color={colors.primaryForeground} /> : null}
     </View>
@@ -252,12 +255,9 @@ function PickMark({ mode, checked }: { mode: 'many' | 'group'; checked: boolean 
   const colors = useColors();
   if (mode !== 'group') return <CheckSquare checked={checked} />;
   return (
-    <View
-      className="h-5 w-5 items-center justify-center rounded-full border-2"
-      style={{ borderColor: checked ? colors.primary : colors.border }}
-    >
+    <View style={[styles.radio, { borderColor: checked ? colors.primary : colors.border }]}>
       {checked ? (
-        <View className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: colors.primary }} />
+        <View style={[styles.radioDot, { backgroundColor: colors.primary }]} />
       ) : null}
     </View>
   );
@@ -265,23 +265,17 @@ function PickMark({ mode, checked }: { mode: 'many' | 'group'; checked: boolean 
 
 function Header({ children }: { children?: string | null }) {
   if (!children) return null;
-  return (
-    <RNText className="px-1 pb-1.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-      {children}
-    </RNText>
-  );
+  return <RNText style={styles.header}>{children}</RNText>;
 }
 
 /** The inset grouped card — the model picker's shell, reused verbatim. */
 function InsetCard({ children }: { children: ReactNode }) {
-  return (
-    <View className="overflow-hidden rounded-[28px] border border-border bg-card">{children}</View>
-  );
+  return <View style={styles.insetCard}>{children}</View>;
 }
 
 /** The hairline between rows, inset from the left the way iOS insets it. */
 function RowSeparator() {
-  return <View className="ml-4 h-px bg-border" />;
+  return <View style={styles.rowSeparator} />;
 }
 
 // ---------------------------------------------------------------------------
@@ -291,7 +285,7 @@ function RowSeparator() {
 export function Card({ props, renderNode }: Render<CardProps>) {
   const children = Array.isArray(props.children) ? props.children : [];
   return (
-    <View className="w-full gap-3 self-stretch">
+    <View style={styles.card}>
       {children.map((child, i) => (
         <View key={i}>{renderNode(child)}</View>
       ))}
@@ -302,14 +296,14 @@ export function Card({ props, renderNode }: Render<CardProps>) {
 export function Section({ props, renderNode }: Render<SectionProps>) {
   const children = Array.isArray(props.children) ? props.children : [];
   return (
-    <View className="gap-2.5">
+    <View style={styles.section}>
       <View>
-        <RNText className="text-[15px] font-semibold text-foreground">{props.title}</RNText>
+        <RNText style={styles.sectionTitle}>{props.title}</RNText>
         {props.subtitle ? (
-          <RNText className="mt-0.5 text-[13px] text-muted-foreground">{props.subtitle}</RNText>
+          <RNText style={styles.sectionSubtitle}>{props.subtitle}</RNText>
         ) : null}
       </View>
-      <View className="h-px bg-border" />
+      <View style={styles.divider} />
       {children.map((child, i) => (
         <View key={i}>{renderNode(child)}</View>
       ))}
@@ -317,15 +311,16 @@ export function Section({ props, renderNode }: Render<SectionProps>) {
   );
 }
 
-const TEXT_STYLES: Record<string, string> = {
-  body: 'text-[15px] leading-[21px] text-foreground',
-  muted: 'text-[13px] leading-[18px] text-muted-foreground',
-  strong: 'text-[15px] font-semibold text-foreground',
-  title: 'text-[16px] font-semibold text-foreground',
+const TEXT_STYLES: Record<string, 'textBody' | 'textMuted' | 'textStrong' | 'textTitle'> = {
+  body: 'textBody',
+  muted: 'textMuted',
+  strong: 'textStrong',
+  title: 'textTitle',
 };
 
 export function Text({ props }: Render<TextProps>) {
-  return <RNText className={TEXT_STYLES[props.style ?? 'body']}>{props.text}</RNText>;
+  const variant = TEXT_STYLES[props.style ?? 'body'];
+  return <RNText style={variant ? styles[variant] : undefined}>{props.text}</RNText>;
 }
 
 // Callout tints are alpha-suffixed brand hex (RN accepts #RRGGBBAA), because
@@ -342,15 +337,10 @@ export function Callout({ props }: Render<CalloutProps>) {
   const colors = useColors();
   const tone = colors[CALLOUT_TONE[props.variant] ?? 'info'];
   return (
-    <View
-      className="gap-1 rounded-2xl border p-3"
-      style={{ borderColor: `${tone}55`, backgroundColor: `${tone}14` }}
-    >
-      <RNText className="text-[15px] font-medium text-foreground">{props.title}</RNText>
+    <View style={[styles.callout, { borderColor: `${tone}55`, backgroundColor: `${tone}14` }]}>
+      <RNText style={styles.calloutTitle}>{props.title}</RNText>
       {props.description ? (
-        <RNText className="text-[13px] leading-[18px] text-muted-foreground">
-          {props.description}
-        </RNText>
+        <RNText style={styles.subtitleNoMargin}>{props.description}</RNText>
       ) : null}
     </View>
   );
@@ -385,11 +375,13 @@ export function Option({ props }: Render<OptionProps>) {
       disabled={!onPress}
       pressedScale={0.985}
       accessibilityLabel={props.title}
-      className="flex-row items-center gap-3 px-4 py-4"
-      style={{
-        backgroundColor: picked ? `${colors.primary}14` : undefined,
-        opacity: dimmed ? 0.45 : 1,
-      }}
+      style={[
+        styles.row,
+        {
+          backgroundColor: picked ? `${colors.primary}14` : undefined,
+          opacity: dimmed ? 0.45 : 1,
+        },
+      ]}
     >
       {selection ? <PickMark mode={selection.mode} checked={checked} /> : null}
       {uri ? (
@@ -400,34 +392,25 @@ export function Option({ props }: Render<OptionProps>) {
           style={{ width: 40, height: 40, borderRadius: 10, backgroundColor: colors.muted }}
         />
       ) : null}
-      <View className="flex-1">
-        <View className="flex-row items-center gap-1.5">
+      <View style={styles.flex1}>
+        <View style={styles.rowTitleLine}>
           <RNText
-            className={cn(
-              'flex-1 text-[16px] font-medium',
-              danger ? 'text-destructive' : 'text-foreground',
-            )}
+            style={[styles.rowTitle, danger && styles.rowTitleDanger]}
             numberOfLines={1}
           >
             {props.title}
           </RNText>
           {props.badge ? (
-            <View className="rounded-full bg-secondary px-2 py-0.5">
-              <RNText className="text-[11px] font-medium text-muted-foreground">
-                {props.badge}
-              </RNText>
+            <View style={styles.badge}>
+              <RNText style={styles.badgeText}>{props.badge}</RNText>
             </View>
           ) : null}
         </View>
         {props.subtitle ? (
-          <RNText className="mt-0.5 text-[13px] leading-[18px] text-muted-foreground">
-            {props.subtitle}
-          </RNText>
+          <RNText style={styles.subtitle}>{props.subtitle}</RNText>
         ) : null}
       </View>
-      {props.meta ? (
-        <RNText className="text-[13px] text-muted-foreground">{props.meta}</RNText>
-      ) : null}
+      {props.meta ? <RNText style={styles.meta}>{props.meta}</RNText> : null}
       {/* A multi-select row's affordance is its checkbox — no chevron, or the
           row would advertise a navigation it doesn't do. A passed-over row on an
           answered card gets neither: there is nothing left to navigate to. */}
@@ -448,7 +431,7 @@ export function OptionList({ props, renderNode }: Render<OptionListProps>) {
     <View>
       <Header>{props.header}</Header>
       <Provider>
-        <View className="gap-3">
+        <View style={styles.stack}>
           {buckets.map((bucket, b) => (
             <View key={b}>
               <Header>{bucket.name}</Header>
@@ -465,9 +448,7 @@ export function OptionList({ props, renderNode }: Render<OptionListProps>) {
         </View>
         <Footer />
       </Provider>
-      {props.footnote ? (
-        <RNText className="px-1 pt-1.5 text-[13px] text-muted-foreground">{props.footnote}</RNText>
-      ) : null}
+      {props.footnote ? <RNText style={styles.footnote}>{props.footnote}</RNText> : null}
     </View>
   );
 }
@@ -509,10 +490,12 @@ export function MediaItem({ props }: Render<MediaItemProps>) {
   const index = indices?.get(props.src) ?? 0;
 
   return (
-    <View className="gap-1.5" style={{ opacity: dimmed ? 0.45 : 1 }}>
+    <View style={[styles.mediaItem, { opacity: dimmed ? 0.45 : 1 }]}>
       <View
-        className="overflow-hidden rounded-2xl border-2"
-        style={{ borderColor: marked || checked ? colors.primary : 'transparent' }}
+        style={[
+          styles.mediaFrame,
+          { borderColor: marked || checked ? colors.primary : 'transparent' },
+        ]}
       >
         <Galeria.Image index={index} style={{ width: '100%', aspectRatio: 1 }}>
           <Image
@@ -524,21 +507,18 @@ export function MediaItem({ props }: Render<MediaItemProps>) {
           />
         </Galeria.Image>
         {marked && !selection ? (
-          <View
-            className="absolute left-1.5 top-1.5 rounded-full p-1"
-            style={{ backgroundColor: colors.primary }}
-          >
+          <View style={[styles.mediaCheckPip, { backgroundColor: colors.primary }]}>
             <Check size={11} color={colors.primaryForeground} />
           </View>
         ) : null}
       </View>
       {props.label ? (
-        <RNText className="px-1 text-[13px] font-medium text-foreground" numberOfLines={1}>
+        <RNText style={styles.mediaLabel} numberOfLines={1}>
           {props.label}
         </RNText>
       ) : null}
       {props.caption ? (
-        <RNText className="px-1 text-[12px] leading-[16px] text-muted-foreground" numberOfLines={2}>
+        <RNText style={styles.mediaCaption} numberOfLines={2}>
           {props.caption}
         </RNText>
       ) : null}
@@ -552,17 +532,10 @@ export function MediaItem({ props }: Render<MediaItemProps>) {
           disabled={!pick}
           pressedScale={0.97}
           accessibilityLabel={`${checked ? 'Unpick' : 'Use'} ${props.label || 'this image'}`}
-          className={cn(
-            'flex-row items-center justify-center gap-1.5 rounded-xl border py-2',
-            checked ? '' : 'border-border bg-secondary',
-          )}
-          style={checked ? { borderColor: colors.primary, backgroundColor: colors.primary } : undefined}
+          style={[styles.useBtn, checked ? styles.useBtnChecked : styles.useBtnIdle]}
         >
           {checked ? <Check size={13} color={colors.primaryForeground} /> : null}
-          <RNText
-            className={cn('text-[13px] font-medium', checked ? '' : 'text-foreground')}
-            style={checked ? { color: colors.primaryForeground } : undefined}
-          >
+          <RNText style={[styles.smallBtnText, checked && styles.smallBtnTextChecked]}>
             {checked ? 'Picked' : 'Use this'}
           </RNText>
         </BouncyPressable>
@@ -572,12 +545,10 @@ export function MediaItem({ props }: Render<MediaItemProps>) {
           disabled={!pick}
           pressedScale={0.97}
           accessibilityLabel={`${checked ? 'Unpick' : 'Pick'} ${props.label || 'image'}`}
-          className="flex-row items-center gap-2 px-1 py-1"
+          style={styles.pickRow}
         >
           <CheckSquare checked={checked} />
-          <RNText className="text-[13px] text-muted-foreground">
-            {checked ? 'Picked' : 'Pick'}
-          </RNText>
+          <RNText style={styles.meta}>{checked ? 'Picked' : 'Pick'}</RNText>
         </BouncyPressable>
       ) : props.send ? (
         <BouncyPressable
@@ -585,9 +556,9 @@ export function MediaItem({ props }: Render<MediaItemProps>) {
           disabled={!pick}
           pressedScale={0.97}
           accessibilityLabel={`Use ${props.label || 'this image'}`}
-          className="items-center rounded-xl border border-border bg-secondary py-2"
+          style={styles.useBtnSingle}
         >
-          <RNText className="text-[13px] font-medium text-foreground">Use this</RNText>
+          <RNText style={styles.smallBtnText}>Use this</RNText>
         </BouncyPressable>
       ) : null}
     </View>
@@ -635,11 +606,11 @@ export function MediaGrid({ props, renderNode }: Render<MediaGridProps>) {
           {/* Galeria wraps ALL the buckets: swiping full-screen runs through the
               whole card's images, not just the group the tile came from. */}
           <Galeria urls={urls} theme={scheme}>
-            <View className="gap-3">
+            <View style={styles.stack}>
               {buckets.map((bucket, b) => (
                 <View key={b}>
                   <Header>{bucket.name}</Header>
-                  <View className="flex-row flex-wrap gap-2">
+                  <View style={styles.wrapRow}>
                     {bucket.items.map((item, i) => (
                       <View key={i} style={{ width: widthFor(bucket.items.length) }}>
                         {renderNode(item)}
@@ -727,19 +698,23 @@ export function AudioItem({ props }: Render<AudioItemProps>) {
       disabled={!url}
       pressedScale={0.985}
       accessibilityLabel={`${playing ? 'Pause' : 'Play'} ${props.title}`}
-      className="flex-row items-center gap-3 px-4 py-4"
-      style={{
-        backgroundColor: picked ? `${colors.primary}14` : undefined,
-        opacity: dimmed ? 0.45 : 1,
-      }}
+      style={[
+        styles.row,
+        {
+          backgroundColor: picked ? `${colors.primary}14` : undefined,
+          opacity: dimmed ? 0.45 : 1,
+        },
+      ]}
     >
       {playing && url ? <AudioHost url={url} onDone={stop} /> : null}
       <View
-        className="h-10 w-10 items-center justify-center rounded-full border"
-        style={{
-          borderColor: playing ? colors.primary : colors.border,
-          backgroundColor: playing ? colors.primary : 'transparent',
-        }}
+        style={[
+          styles.playCircle,
+          {
+            borderColor: playing ? colors.primary : colors.border,
+            backgroundColor: playing ? colors.primary : 'transparent',
+          },
+        ]}
       >
         {playing ? (
           <Pause size={16} color={colors.primaryForeground} />
@@ -747,35 +722,29 @@ export function AudioItem({ props }: Render<AudioItemProps>) {
           <Play size={16} color={colors.foreground} style={{ marginLeft: 2 }} />
         )}
       </View>
-      <View className="flex-1">
-        <View className="flex-row items-center gap-1.5">
-          <RNText className="flex-1 text-[16px] font-medium text-foreground" numberOfLines={1}>
+      <View style={styles.flex1}>
+        <View style={styles.rowTitleLine}>
+          <RNText style={styles.rowTitle} numberOfLines={1}>
             {props.title}
           </RNText>
           {props.badge ? (
-            <View className="rounded-full bg-secondary px-2 py-0.5">
-              <RNText className="text-[11px] font-medium text-muted-foreground">
-                {props.badge}
-              </RNText>
+            <View style={styles.badge}>
+              <RNText style={styles.badgeText}>{props.badge}</RNText>
             </View>
           ) : null}
         </View>
         {props.subtitle ? (
-          <RNText className="mt-0.5 text-[13px] leading-[18px] text-muted-foreground">
-            {props.subtitle}
-          </RNText>
+          <RNText style={styles.subtitle}>{props.subtitle}</RNText>
         ) : null}
       </View>
-      {props.meta ? (
-        <RNText className="text-[13px] text-muted-foreground">{props.meta}</RNText>
-      ) : null}
+      {props.meta ? <RNText style={styles.meta}>{props.meta}</RNText> : null}
       {selection && props.send ? (
         <BouncyPressable
           onPress={pick}
           disabled={!pick}
           pressedScale={0.9}
           accessibilityLabel={`${checked ? 'Unpick' : 'Pick'} ${props.title}`}
-          className="py-1 pl-1"
+          style={styles.pickTap}
         >
           <PickMark mode={selection.mode} checked={checked} />
         </BouncyPressable>
@@ -788,9 +757,9 @@ export function AudioItem({ props }: Render<AudioItemProps>) {
             disabled={!pick}
             pressedScale={0.95}
             accessibilityLabel={`Use ${props.title}`}
-            className="rounded-full border border-border bg-secondary px-3 py-1.5"
+            style={styles.usePill}
           >
-            <RNText className="text-[13px] font-medium text-foreground">Use</RNText>
+            <RNText style={styles.smallBtnText}>Use</RNText>
           </BouncyPressable>
         )
       ) : null}
@@ -815,7 +784,7 @@ export function AudioList({ props, renderNode }: Render<AudioListProps>) {
       <Header>{props.header}</Header>
       <Provider>
         <AudioPlaybackContext.Provider value={playback}>
-          <View className="gap-3">
+          <View style={styles.stack}>
             {buckets.map((bucket, b) => (
               <View key={b}>
                 <Header>{bucket.name}</Header>
@@ -833,9 +802,7 @@ export function AudioList({ props, renderNode }: Render<AudioListProps>) {
         </AudioPlaybackContext.Provider>
         <Footer />
       </Provider>
-      {props.footnote ? (
-        <RNText className="px-1 pt-1.5 text-[13px] text-muted-foreground">{props.footnote}</RNText>
-      ) : null}
+      {props.footnote ? <RNText style={styles.footnote}>{props.footnote}</RNText> : null}
     </View>
   );
 }
@@ -867,48 +834,35 @@ export function Recommendation({ props }: Render<RecommendationProps>) {
           </Galeria.Image>
         </Galeria>
       ) : null}
-      <View className="gap-3 p-4">
+      <View style={styles.recBody}>
         <View>
-          <View className="flex-row items-center gap-2">
-            <RNText className="flex-1 text-[17px] font-semibold text-foreground">
-              {props.title}
-            </RNText>
+          <View style={styles.recTitleRow}>
+            <RNText style={styles.recTitle}>{props.title}</RNText>
             {props.badge ? (
-              <View
-                className="rounded-full px-2 py-0.5"
-                style={{ backgroundColor: `${colors.primary}1f` }}
-              >
-                <RNText className="text-[11px] font-medium" style={{ color: colors.primary }}>
-                  {props.badge}
-                </RNText>
+              <View style={styles.tintBadge}>
+                <RNText style={styles.tintBadgeText}>{props.badge}</RNText>
               </View>
             ) : null}
           </View>
-          <RNText className="mt-1 text-[14px] leading-[20px] text-muted-foreground">
-            {props.body}
-          </RNText>
+          <RNText style={styles.recBodyText}>{props.body}</RNText>
         </View>
         {bullets.length ? (
-          <View className="gap-1.5">
+          <View style={styles.bullets}>
             {bullets.slice(0, 4).map((b, i) => (
-              <View key={i} className="flex-row items-start gap-2">
+              <View key={i} style={styles.bulletRow}>
                 <Check size={13} color={colors.primary} style={{ marginTop: 3 }} />
-                <RNText className="flex-1 text-[13px] leading-[18px] text-muted-foreground">
-                  {b}
-                </RNText>
+                <RNText style={styles.bulletText}>{b}</RNText>
               </View>
             ))}
           </View>
         ) : null}
-        {props.meta ? (
-          <RNText className="text-[12px] text-muted-foreground">{props.meta}</RNText>
-        ) : null}
+        {props.meta ? <RNText style={styles.meta12}>{props.meta}</RNText> : null}
         {/* The hero slab — the same button the Discover story's "Try this" uses. */}
         <SemiPillButton
           title={props.cta || 'Continue'}
           onPress={onPress}
           disabled={!onPress}
-          className="mt-0.5"
+          style={styles.recCta}
         />
       </View>
     </InsetCard>
@@ -920,32 +874,24 @@ export function Recommendation({ props }: Render<RecommendationProps>) {
 // ---------------------------------------------------------------------------
 
 export function Column({ props }: Render<ColumnProps>) {
-  const colors = useColors();
   const onPress = useSend(props.send);
   const rows = Array.isArray(props.rows) ? props.rows : [];
   const body = (
     <>
-      <View className="flex-row items-center gap-1">
-        <RNText className="flex-1 text-[13px] font-semibold text-foreground" numberOfLines={1}>
+      <View style={styles.columnHead}>
+        <RNText style={styles.columnLabel} numberOfLines={1}>
           {props.label}
         </RNText>
       </View>
       {props.badge ? (
-        <View
-          className="self-start rounded-full px-1.5 py-0.5"
-          style={{ backgroundColor: `${colors.primary}1f` }}
-        >
-          <RNText className="text-[10px] font-medium" style={{ color: colors.primary }}>
-            {props.badge}
-          </RNText>
+        <View style={styles.columnBadge}>
+          <RNText style={styles.columnBadgeText}>{props.badge}</RNText>
         </View>
       ) : null}
       {rows.map((row, i) => (
         <View key={i}>
-          <RNText className="text-[10px] uppercase tracking-wide text-muted-foreground">
-            {row.label}
-          </RNText>
-          <RNText className="text-[13px] text-foreground">{row.value}</RNText>
+          <RNText style={styles.columnRowLabel}>{row.label}</RNText>
+          <RNText style={styles.columnRowValue}>{row.value}</RNText>
         </View>
       ))}
     </>
@@ -954,16 +900,10 @@ export function Column({ props }: Render<ColumnProps>) {
   // A pickable column bounces; a purely informational one is a plain view, so
   // it doesn't advertise a tap that does nothing.
   if (!onPress) {
-    return (
-      <View className="flex-1 gap-1.5 rounded-2xl border border-border bg-card p-3">{body}</View>
-    );
+    return <View style={styles.columnCard}>{body}</View>;
   }
   return (
-    <BouncyPressable
-      onPress={onPress}
-      accessibilityLabel={props.label}
-      className="flex-1 gap-1.5 rounded-2xl border border-border bg-card p-3"
-    >
+    <BouncyPressable onPress={onPress} accessibilityLabel={props.label} style={styles.columnCard}>
       {body}
     </BouncyPressable>
   );
@@ -974,9 +914,9 @@ export function Compare({ props, renderNode }: Render<CompareProps>) {
   return (
     <View>
       <Header>{props.header}</Header>
-      <View className="flex-row gap-2">
+      <View style={styles.compareRow}>
         {columns.map((col, i) => (
-          <View key={i} className="flex-1">
+          <View key={i} style={styles.flex1}>
             {renderNode(col)}
           </View>
         ))}
@@ -994,11 +934,9 @@ export function KeyValue({ props }: Render<KeyValueProps>) {
         {rows.map((row, i) => (
           <Fragment key={i}>
             {i > 0 ? <RowSeparator /> : null}
-            <View className="flex-row items-start gap-3 px-4 py-3">
-              <RNText className="text-[13px] text-muted-foreground">{row.label}</RNText>
-              <RNText className="flex-1 text-right text-[13px] font-medium text-foreground">
-                {row.value}
-              </RNText>
+            <View style={styles.kvRow}>
+              <RNText style={styles.meta}>{row.label}</RNText>
+              <RNText style={styles.kvValue}>{row.value}</RNText>
             </View>
           </Fragment>
         ))}
@@ -1014,50 +952,50 @@ export function Steps({ props }: Render<StepsProps>) {
   return (
     <View>
       <Header>{props.header}</Header>
-      <View className="gap-3">
+      <View style={styles.stack}>
         {steps.map((step, i) => {
           const done = current > i;
           const active = current === i;
           return (
-            <View key={i} className="flex-row items-start gap-3">
+            <View key={i} style={styles.stepRow}>
               <View
-                className="h-6 w-6 items-center justify-center rounded-full"
-                style={{
-                  backgroundColor: done ? colors.primary : 'transparent',
-                  borderWidth: done ? 0 : active ? 2 : 1,
-                  borderColor: active ? colors.primary : colors.border,
-                }}
+                style={[
+                  styles.stepCircle,
+                  {
+                    backgroundColor: done ? colors.primary : 'transparent',
+                    borderWidth: done ? 0 : active ? 2 : 1,
+                    borderColor: active ? colors.primary : colors.border,
+                  },
+                ]}
               >
                 {done ? (
                   <Check size={12} color={colors.primaryForeground} />
                 ) : (
                   <RNText
-                    className="text-[11px] font-semibold"
-                    style={{ color: active ? colors.primary : colors.mutedForeground }}
+                    style={[
+                      styles.stepNumber,
+                      { color: active ? colors.primary : colors.mutedForeground },
+                    ]}
                   >
                     {i + 1}
                   </RNText>
                 )}
               </View>
-              <View className="flex-1">
-                <View className="flex-row items-baseline gap-2">
+              <View style={styles.flex1}>
+                <View style={styles.stepTitleRow}>
                   <RNText
-                    className={cn(
-                      'flex-1 text-[15px]',
-                      active ? 'font-semibold' : 'font-medium',
-                      done ? 'text-muted-foreground' : 'text-foreground',
-                    )}
+                    style={[
+                      styles.stepTitle,
+                      active && styles.stepTitleActive,
+                      done && styles.stepTitleDone,
+                    ]}
                   >
                     {step.title}
                   </RNText>
-                  {step.meta ? (
-                    <RNText className="text-[12px] text-muted-foreground">{step.meta}</RNText>
-                  ) : null}
+                  {step.meta ? <RNText style={styles.meta12}>{step.meta}</RNText> : null}
                 </View>
                 {step.detail ? (
-                  <RNText className="mt-0.5 text-[13px] leading-[18px] text-muted-foreground">
-                    {step.detail}
-                  </RNText>
+                  <RNText style={styles.subtitle}>{step.detail}</RNText>
                 ) : null}
               </View>
             </View>
@@ -1079,9 +1017,9 @@ function Chip({ label }: { label: string }) {
       onPress={onPress}
       disabled={!onPress}
       accessibilityLabel={label}
-      className="rounded-full border border-border bg-secondary px-3.5 py-2"
+      style={styles.chip}
     >
-      <RNText className="text-[14px] font-medium text-foreground">{label}</RNText>
+      <RNText style={styles.chipText}>{label}</RNText>
     </BouncyPressable>
   );
 }
@@ -1089,7 +1027,7 @@ function Chip({ label }: { label: string }) {
 export function Chips({ props }: Render<{ labels?: string[] }>) {
   const labels = Array.isArray(props.labels) ? props.labels : [];
   return (
-    <View className="flex-row flex-wrap gap-2">
+    <View style={styles.wrapRow}>
       {labels.map((label, i) => (
         <Chip key={i} label={label} />
       ))}
@@ -1110,26 +1048,30 @@ export function Action({ props }: Render<ActionProps>) {
       onPress={onPress}
       disabled={!onPress}
       accessibilityLabel={props.label}
-      className="rounded-xl border px-4 py-2.5"
-      style={{
-        borderColor: danger ? `${colors.destructive}80` : primary ? colors.primary : colors.border,
-        backgroundColor: danger
-          ? `${colors.destructive}1a`
-          : primary
-            ? colors.primary
-            : colors.surfaceAlt,
-        opacity: dimmed ? 0.45 : 1,
-      }}
+      style={[
+        styles.actionBtn,
+        {
+          borderColor: danger ? `${colors.destructive}80` : primary ? colors.primary : colors.border,
+          backgroundColor: danger
+            ? `${colors.destructive}1a`
+            : primary
+              ? colors.primary
+              : colors.surfaceAlt,
+          opacity: dimmed ? 0.45 : 1,
+        },
+      ]}
     >
       <RNText
-        className="text-[15px] font-medium"
-        style={{
-          color: danger
-            ? colors.destructive
-            : primary
-              ? colors.primaryForeground
-              : colors.foreground,
-        }}
+        style={[
+          styles.actionText,
+          {
+            color: danger
+              ? colors.destructive
+              : primary
+                ? colors.primaryForeground
+                : colors.foreground,
+          },
+        ]}
       >
         {props.label}
       </RNText>
@@ -1141,7 +1083,7 @@ export function Actions({ props, renderNode }: Render<ActionsProps>) {
   const actions = Array.isArray(props.actions) ? props.actions : [];
   const column = props.direction === 'column';
   return (
-    <View className={cn('gap-2', column ? 'flex-col items-stretch' : 'flex-row flex-wrap')}>
+    <View style={[styles.actions, column ? styles.actionsColumn : styles.actionsRow]}>
       {actions.map((action, i) => (
         <View key={i}>{renderNode(action)}</View>
       ))}
@@ -1170,3 +1112,207 @@ export const nativeRenderers: StudioRenderers = {
   Action,
   Actions,
 } as unknown as StudioRenderers;
+
+const styles = StyleSheet.create((theme) => ({
+  // Shared bits
+  flex1: { flex: 1 },
+  stack: { gap: 12 },
+  wrapRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  header: {
+    paddingHorizontal: 4,
+    paddingBottom: 6,
+    fontSize: 11,
+    fontWeight: '500',
+    textTransform: 'uppercase',
+    letterSpacing: 0.3,
+    color: theme.colors.mutedForeground,
+  },
+  insetCard: {
+    overflow: 'hidden',
+    borderRadius: 28,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    backgroundColor: theme.colors.card,
+  },
+  rowSeparator: { marginLeft: 16, height: 1, backgroundColor: theme.colors.border },
+  footerCta: { marginTop: 12 },
+  footnote: { paddingHorizontal: 4, paddingTop: 6, fontSize: 13, color: theme.colors.mutedForeground },
+  // Pick controls
+  checkSquare: {
+    height: 20,
+    width: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 6,
+    borderWidth: 1,
+  },
+  radio: {
+    height: 20,
+    width: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 999,
+    borderWidth: 2,
+  },
+  radioDot: { height: 10, width: 10, borderRadius: 999 },
+  // Framing
+  card: { width: '100%', gap: 12, alignSelf: 'stretch' },
+  section: { gap: 10 },
+  sectionTitle: { fontSize: 15, fontWeight: '600', color: theme.colors.foreground },
+  sectionSubtitle: { marginTop: 2, fontSize: 13, color: theme.colors.mutedForeground },
+  divider: { height: 1, backgroundColor: theme.colors.border },
+  textBody: { fontSize: 15, lineHeight: 21, color: theme.colors.foreground },
+  textMuted: { fontSize: 13, lineHeight: 18, color: theme.colors.mutedForeground },
+  textStrong: { fontSize: 15, fontWeight: '600', color: theme.colors.foreground },
+  textTitle: { fontSize: 16, fontWeight: '600', color: theme.colors.foreground },
+  callout: { gap: 4, borderRadius: 16, borderWidth: 1, padding: 12 },
+  calloutTitle: { fontSize: 15, fontWeight: '500', color: theme.colors.foreground },
+  // Rows (Option / AudioItem share the shell)
+  row: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingVertical: 16 },
+  rowTitleLine: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  rowTitle: { flex: 1, fontSize: 16, fontWeight: '500', color: theme.colors.foreground },
+  rowTitleDanger: { color: theme.colors.destructive },
+  badge: {
+    borderRadius: 999,
+    backgroundColor: theme.colors.secondary,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+  },
+  badgeText: { fontSize: 11, fontWeight: '500', color: theme.colors.mutedForeground },
+  subtitle: { marginTop: 2, fontSize: 13, lineHeight: 18, color: theme.colors.mutedForeground },
+  subtitleNoMargin: { fontSize: 13, lineHeight: 18, color: theme.colors.mutedForeground },
+  meta: { fontSize: 13, color: theme.colors.mutedForeground },
+  meta12: { fontSize: 12, color: theme.colors.mutedForeground },
+  // Media
+  mediaItem: { gap: 6 },
+  mediaFrame: { overflow: 'hidden', borderRadius: 16, borderWidth: 2 },
+  mediaCheckPip: { position: 'absolute', left: 6, top: 6, borderRadius: 999, padding: 4 },
+  mediaLabel: { paddingHorizontal: 4, fontSize: 13, fontWeight: '500', color: theme.colors.foreground },
+  mediaCaption: {
+    paddingHorizontal: 4,
+    fontSize: 12,
+    lineHeight: 16,
+    color: theme.colors.mutedForeground,
+  },
+  useBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    borderRadius: 12,
+    borderWidth: 1,
+    paddingVertical: 8,
+  },
+  useBtnIdle: { borderColor: theme.colors.border, backgroundColor: theme.colors.secondary },
+  useBtnChecked: { borderColor: theme.colors.primary, backgroundColor: theme.colors.primary },
+  useBtnSingle: {
+    alignItems: 'center',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    backgroundColor: theme.colors.secondary,
+    paddingVertical: 8,
+  },
+  smallBtnText: { fontSize: 13, fontWeight: '500', color: theme.colors.foreground },
+  smallBtnTextChecked: { color: theme.colors.primaryForeground },
+  pickRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 4,
+    paddingVertical: 4,
+  },
+  // Audio
+  playCircle: {
+    height: 40,
+    width: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 999,
+    borderWidth: 1,
+  },
+  pickTap: { paddingVertical: 4, paddingLeft: 4 },
+  usePill: {
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    backgroundColor: theme.colors.secondary,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  // Recommendation
+  recBody: { gap: 12, padding: 16 },
+  recTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  recTitle: { flex: 1, fontSize: 17, fontWeight: '600', color: theme.colors.foreground },
+  tintBadge: {
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    backgroundColor: `${theme.colors.primary}1f`,
+  },
+  tintBadgeText: { fontSize: 11, fontWeight: '500', color: theme.colors.primary },
+  recBodyText: { marginTop: 4, fontSize: 14, lineHeight: 20, color: theme.colors.mutedForeground },
+  bullets: { gap: 6 },
+  bulletRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 8 },
+  bulletText: { flex: 1, fontSize: 13, lineHeight: 18, color: theme.colors.mutedForeground },
+  recCta: { marginTop: 2 },
+  // Comparison & detail
+  columnCard: {
+    flex: 1,
+    gap: 6,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    backgroundColor: theme.colors.card,
+    padding: 12,
+  },
+  columnHead: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  columnLabel: { flex: 1, fontSize: 13, fontWeight: '600', color: theme.colors.foreground },
+  columnBadge: {
+    alignSelf: 'flex-start',
+    borderRadius: 999,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    backgroundColor: `${theme.colors.primary}1f`,
+  },
+  columnBadgeText: { fontSize: 10, fontWeight: '500', color: theme.colors.primary },
+  columnRowLabel: {
+    fontSize: 10,
+    textTransform: 'uppercase',
+    letterSpacing: 0.3,
+    color: theme.colors.mutedForeground,
+  },
+  columnRowValue: { fontSize: 13, color: theme.colors.foreground },
+  compareRow: { flexDirection: 'row', gap: 8 },
+  kvRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+  },
+  kvValue: { flex: 1, textAlign: 'right', fontSize: 13, fontWeight: '500', color: theme.colors.foreground },
+  // Steps
+  stepRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
+  stepCircle: { height: 24, width: 24, alignItems: 'center', justifyContent: 'center', borderRadius: 999 },
+  stepNumber: { fontSize: 11, fontWeight: '600' },
+  stepTitleRow: { flexDirection: 'row', alignItems: 'baseline', gap: 8 },
+  stepTitle: { flex: 1, fontSize: 15, fontWeight: '500', color: theme.colors.foreground },
+  stepTitleActive: { fontWeight: '600' },
+  stepTitleDone: { color: theme.colors.mutedForeground },
+  // Buttons
+  chip: {
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    backgroundColor: theme.colors.secondary,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+  },
+  chipText: { fontSize: 14, fontWeight: '500', color: theme.colors.foreground },
+  actionBtn: { borderRadius: 12, borderWidth: 1, paddingHorizontal: 16, paddingVertical: 10 },
+  actionText: { fontSize: 15, fontWeight: '500' },
+  actions: { gap: 8 },
+  actionsColumn: { flexDirection: 'column', alignItems: 'stretch' },
+  actionsRow: { flexDirection: 'row', flexWrap: 'wrap' },
+}));

@@ -16,6 +16,7 @@ import { Galeria } from '@nandorojo/galeria';
 import * as Haptics from 'expo-haptics';
 import { toast } from 'sonner-native';
 import { Check, KeyRound } from 'lucide-react-native';
+import { StyleSheet } from 'react-native-unistyles';
 import { Empty, ErrorNote, Loading } from '@/components/ui/empty';
 import { ApiError, mediaUrl, postJson } from '@/lib/api';
 import { createPickerRequest } from '@/lib/picker-bus';
@@ -159,9 +160,9 @@ export function ImportSection() {
     (err instanceof ApiError && err.status === 401) || err?.message === 'no_higgsfield_token';
   if (needsAuth) {
     return (
-      <View className="flex-1 items-center justify-center gap-3 px-8">
+      <View style={styles.authNotice}>
         <KeyRound size={22} color={colors.mutedForeground} />
-        <Text className="text-center text-sm text-muted-foreground">
+        <Text style={styles.authNoticeText}>
           Your Higgsfield session expired. Ask the agent in the Chat tab to re-connect Higgsfield,
           then pull to refresh here.
         </Text>
@@ -180,8 +181,8 @@ export function ImportSection() {
       data={items}
       keyExtractor={(it) => it.id}
       numColumns={3}
-      columnWrapperClassName="gap-2 px-4"
-      contentContainerClassName="gap-2 pb-8 pt-3"
+      columnWrapperStyle={styles.columnWrapper}
+      contentContainerStyle={styles.listContent}
       refreshControl={
         <RefreshControl
           refreshing={refreshing}
@@ -201,7 +202,7 @@ export function ImportSection() {
       }
       ListFooterComponent={
         q.isFetchingNextPage ? (
-          <View className="items-center py-4">
+          <View style={styles.footerLoading}>
             <ActivityIndicator />
           </View>
         ) : null
@@ -217,32 +218,30 @@ export function ImportSection() {
               style={{ width: cell, height: cell }}
             >
               <View
-                className={
-                  inLibrary
-                    ? 'overflow-hidden rounded-xl border-2 border-success'
-                    : 'overflow-hidden rounded-xl border border-border'
-                }
-                style={{ width: cell, height: cell }}
+                style={[
+                  inLibrary ? styles.tileFrameLiked : styles.tileFrame,
+                  { width: cell, height: cell },
+                ]}
               >
                 <Image
                   source={{ uri: mediaUrl(item.thumb) || item.minUrl }}
-                  style={{ width: '100%', height: '100%' }}
+                  style={styles.tileImage}
                   contentFit="cover"
                   transition={100}
                 />
                 {busy ? (
-                  <View className="absolute inset-0 items-center justify-center">
+                  <View style={styles.tileBusyOverlay}>
                     <ActivityIndicator />
                   </View>
                 ) : null}
                 {inLibrary ? (
-                  <View className="absolute right-1.5 top-1.5 h-5 w-5 items-center justify-center rounded-full bg-success">
+                  <View style={styles.tileBadge}>
                     <Check size={12} color={colors.primaryForeground} />
                   </View>
                 ) : null}
               </View>
             </Galeria.Image>
-            <Text className="mt-1 text-[11px] text-muted-foreground" numberOfLines={1}>
+            <Text style={styles.tileCaption} numberOfLines={1}>
               {item.prompt || item.model}
             </Text>
           </View>
@@ -252,3 +251,45 @@ export function ImportSection() {
     </Galeria>
   );
 }
+
+const styles = StyleSheet.create((theme) => ({
+  authNotice: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12, paddingHorizontal: 32 },
+  authNoticeText: { textAlign: 'center', fontSize: 14, lineHeight: 20, color: theme.colors.mutedForeground },
+  columnWrapper: { gap: 8, paddingHorizontal: 16 },
+  listContent: { gap: 8, paddingBottom: 32, paddingTop: 12 },
+  footerLoading: { alignItems: 'center', paddingVertical: 16 },
+  tileFrame: {
+    overflow: 'hidden',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+  },
+  tileFrameLiked: {
+    overflow: 'hidden',
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: theme.colors.success,
+  },
+  tileImage: { width: '100%', height: '100%' },
+  tileBusyOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  tileBadge: {
+    position: 'absolute',
+    right: 6,
+    top: 6,
+    height: 20,
+    width: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 999,
+    backgroundColor: theme.colors.success,
+  },
+  tileCaption: { marginTop: 4, fontSize: 11, color: theme.colors.mutedForeground },
+}));

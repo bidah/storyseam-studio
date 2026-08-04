@@ -1,5 +1,5 @@
 import { Pressable, Text, View } from 'react-native';
-import { cn } from '@/lib/utils';
+import { StyleSheet } from 'react-native-unistyles';
 
 // Native screenplay renderer for the Script tab. The web app edits the script
 // as a TipTap/ProseMirror document whose body blocks are either `screenplay`
@@ -64,48 +64,43 @@ export function ScreenplayLine({
   line: ScriptLine;
   tone?: 'add' | 'del';
 }) {
-  const toneCls =
-    tone === 'add'
-      ? 'text-success'
-      : tone === 'del'
-        ? 'text-destructive line-through'
-        : undefined;
-  if (!line.text.trim()) return <View className="h-3" />;
+  const toneStyle = tone === 'add' ? styles.toneAdd : tone === 'del' ? [styles.toneDel, styles.lineThrough] : undefined;
+  if (!line.text.trim()) return <View style={styles.blank} />;
   switch (line.type) {
     case 'scene_heading':
       return (
-        <Text className={cn('mt-5 text-[15px] font-bold uppercase tracking-wide text-foreground', toneCls)}>
+        <Text style={[styles.sceneHeading, toneStyle]}>
           {line.text}
         </Text>
       );
     case 'character':
       return (
-        <Text className={cn('mt-4 text-center text-[15px] font-semibold uppercase text-foreground', toneCls)}>
+        <Text style={[styles.character, toneStyle]}>
           {line.text}
         </Text>
       );
     case 'dialogue':
       return (
-        <Text className={cn('px-10 text-center text-[15px] leading-6 text-foreground', toneCls)}>
+        <Text style={[styles.dialogue, toneStyle]}>
           {line.text}
         </Text>
       );
     case 'parenthetical':
       return (
-        <Text className={cn('px-10 text-center text-[14px] italic text-muted-foreground', toneCls)}>
+        <Text style={[styles.parenthetical, toneStyle]}>
           {line.text}
         </Text>
       );
     case 'transition':
       return (
-        <Text className={cn('mt-4 text-right text-[14px] font-semibold uppercase text-muted-foreground', toneCls)}>
+        <Text style={[styles.transition, toneStyle]}>
           {line.text}
         </Text>
       );
     case 'heading':
-      return <Text className={cn('mt-4 text-lg font-bold text-foreground', toneCls)}>{line.text}</Text>;
+      return <Text style={[styles.heading, toneStyle]}>{line.text}</Text>;
     default:
-      return <Text className={cn('mt-1 text-[15px] leading-6 text-foreground', toneCls)}>{line.text}</Text>;
+      return <Text style={[styles.paragraph, toneStyle]}>{line.text}</Text>;
   }
 }
 
@@ -120,14 +115,14 @@ export function ScreenplayView({
 }) {
   const lines = docLines(doc);
   return (
-    <View className="gap-1">
+    <View style={styles.list}>
       {lines.map((l, i) =>
         onEditLine && l.text.trim() ? (
           <Pressable
             key={i}
             accessibilityRole="button"
             accessibilityLabel={`Edit ${SP_LABELS[l.type] || 'line'}: ${l.text}`}
-            className="rounded-md active:bg-secondary/50"
+            style={({ pressed }) => [styles.editable, pressed && styles.editablePressed]}
             onPress={() => onEditLine(l, i)}
           >
             <ScreenplayLine line={l} />
@@ -195,3 +190,77 @@ export function diffLines(a: ScriptLine[], b: ScriptLine[]): DiffSegment[] {
   while (j < m) pushChange(undefined, b[j++]);
   return segments;
 }
+
+const styles = StyleSheet.create((theme) => ({
+  blank: {
+    height: 12,
+  },
+  sceneHeading: {
+    marginTop: 20,
+    fontSize: 15,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.3,
+    color: theme.colors.foreground,
+  },
+  character: {
+    marginTop: 16,
+    textAlign: 'center',
+    fontSize: 15,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    color: theme.colors.foreground,
+  },
+  dialogue: {
+    paddingHorizontal: 40,
+    textAlign: 'center',
+    fontSize: 15,
+    lineHeight: 24,
+    color: theme.colors.foreground,
+  },
+  parenthetical: {
+    paddingHorizontal: 40,
+    textAlign: 'center',
+    fontSize: 14,
+    fontStyle: 'italic',
+    color: theme.colors.mutedForeground,
+  },
+  transition: {
+    marginTop: 16,
+    textAlign: 'right',
+    fontSize: 14,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    color: theme.colors.mutedForeground,
+  },
+  heading: {
+    marginTop: 16,
+    fontSize: 18,
+    fontWeight: '700',
+    color: theme.colors.foreground,
+  },
+  paragraph: {
+    marginTop: 4,
+    fontSize: 15,
+    lineHeight: 24,
+    color: theme.colors.foreground,
+  },
+  toneAdd: {
+    color: theme.colors.success,
+  },
+  toneDel: {
+    color: theme.colors.destructive,
+  },
+  lineThrough: {
+    textDecorationLine: 'line-through',
+  },
+  list: {
+    gap: 4,
+  },
+  editable: {
+    borderRadius: 6,
+  },
+  editablePressed: {
+    backgroundColor: `${theme.colors.secondary}80`,
+  },
+}));

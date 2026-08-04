@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { View } from 'react-native';
+import { StyleSheet } from 'react-native-unistyles';
 import { Stack, useLocalSearchParams } from 'expo-router';
 import { useReportSegment } from '@/lib/screen-report';
 import { SegmentedNative } from '@/components/ui/segmented-native';
@@ -41,7 +42,7 @@ export default function StoryScreen() {
   });
 
   return (
-    <View className="flex-1 bg-background">
+    <View style={styles.root}>
       <Stack.Screen
         options={{
           headerTitle: () => (
@@ -63,3 +64,10 @@ export default function StoryScreen() {
     </View>
   );
 }
+
+const styles = StyleSheet.create((theme) => ({
+  root: {
+    flex: 1,
+    backgroundColor: theme.colors.background,
+  },
+}));

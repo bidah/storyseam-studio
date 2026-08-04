@@ -6,8 +6,9 @@ import { create } from 'zustand';
 // Theme preference (System / Dark / Light). Mirrors the persisted-store pattern
 // in agent-model.ts: a zustand store written through to AsyncStorage, hydrated
 // once on boot. `'system'` follows the OS appearance; the resolved `'dark'` |
-// `'light'` value drives NativeWind (colorScheme.set) + React Navigation + the
-// scheme-aware color source in src/lib/colors.ts.
+// `'light'` value drives React Navigation + the scheme-aware color source in
+// src/lib/colors.ts. Unistyles themes flip through the native channel instead:
+// applyNativeScheme() pushes the pref to UIKit and adaptive themes follow it.
 
 export type ThemePref = 'system' | 'dark' | 'light';
 export type Scheme = 'dark' | 'light';

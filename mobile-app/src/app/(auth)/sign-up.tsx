@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { KeyboardAvoidingView, Platform, ScrollView, Text } from 'react-native';
+import { StyleSheet } from 'react-native-unistyles';
 import { router } from 'expo-router';
 import { toast } from 'sonner-native';
 import { Button } from '@/components/ui/button';
@@ -33,14 +34,14 @@ export default function SignUp() {
 
   return (
     <KeyboardAvoidingView
-      className="flex-1 bg-background"
+      style={styles.root}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
       <ScrollView
-        contentContainerClassName="flex-1 justify-center gap-4 px-6"
+        contentContainerStyle={styles.scrollContent}
         keyboardShouldPersistTaps="handled"
       >
-        <Text className="mb-2 text-3xl font-bold text-foreground">Create account</Text>
+        <Text style={styles.title}>Create account</Text>
         <Input placeholder="Name" autoComplete="name" value={name} onChangeText={setName} />
         <Input
           placeholder="Email"
@@ -64,3 +65,9 @@ export default function SignUp() {
     </KeyboardAvoidingView>
   );
 }
+
+const styles = StyleSheet.create((theme) => ({
+  root: { flex: 1, backgroundColor: theme.colors.background },
+  scrollContent: { flex: 1, justifyContent: 'center', gap: 16, paddingHorizontal: 24 },
+  title: { marginBottom: 8, fontSize: 30, lineHeight: 36, fontWeight: '700', color: theme.colors.foreground },
+}));

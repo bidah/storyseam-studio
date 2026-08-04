@@ -9,6 +9,7 @@ import {
   View,
   useWindowDimensions,
 } from 'react-native';
+import { StyleSheet } from 'react-native-unistyles';
 import { KeyboardController, KeyboardStickyView } from 'react-native-keyboard-controller';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
@@ -138,14 +139,12 @@ function OptionChip({
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={a11y}
-      className="h-8 flex-row items-center gap-1 rounded-full border border-border px-2.5 active:opacity-60"
+      style={({ pressed }) => [styles.chip, pressed && styles.pressed60]}
       onPress={onPress}
     >
       {icon}
       <Text
-        className={
-          active ? 'text-[12px] font-medium text-foreground' : 'text-[12px] text-muted-foreground'
-        }
+        style={[styles.chipText, active ? styles.chipTextActive : styles.chipTextInactive]}
         numberOfLines={1}
       >
         {label}
@@ -176,7 +175,7 @@ function GenerationCell({
   return (
     <View>
       {gen.status === 'ready' && gen.url ? (
-        <View className="overflow-hidden rounded-[10px]" style={{ width: size, height: size }}>
+        <View style={[styles.cellWrap, { width: size, height: size }]}>
           <Galeria.Image
             index={galeriaIndex}
             style={{ width: size, height: size }}
@@ -188,7 +187,7 @@ function GenerationCell({
             <Image
               source={{ uri: mediaUrl(gen.url) }}
               accessibilityLabel={gen.prompt || 'generation'}
-              style={{ width: '100%', height: '100%' }}
+              style={styles.fullSize}
               contentFit="cover"
               transition={100}
             />
@@ -196,25 +195,23 @@ function GenerationCell({
         </View>
       ) : gen.status === 'error' ? (
         <View
-          className="items-center justify-center rounded-[10px] border border-destructive/40 bg-secondary px-2"
-          style={{ width: size, height: size }}
+          style={[styles.errorBox, { width: size, height: size }]}
         >
           <AlertCircle size={16} color={colors.destructive} />
-          <Text className="mt-1 text-center text-[9px] leading-3 text-destructive" numberOfLines={3}>
+          <Text style={styles.errorText} numberOfLines={3}>
             {gen.error || 'Failed'}
           </Text>
         </View>
       ) : (
         <View
-          className="items-center justify-center rounded-[10px] bg-secondary"
-          style={{ width: size, height: size }}
+          style={[styles.pendingBox, { width: size, height: size }]}
         >
           <ActivityIndicator size="small" color={colors.mutedForeground} />
-          <Text className="mt-1 text-[10px] text-muted-foreground">generating…</Text>
+          <Text style={styles.pendingText}>generating…</Text>
         </View>
       )}
       {tag && gen.status === 'ready' ? (
-        <View pointerEvents="none" className="absolute left-1.5 top-1.5">
+        <View pointerEvents="none" style={styles.tagWrap}>
           <Badge variant="info" label={tag.short} />
         </View>
       ) : null}
@@ -648,18 +645,18 @@ function Loaded({
   const canSend = prompt.trim().length > 0 && !busy && !attaching;
 
   return (
-    <View className="flex-1">
+    <View style={styles.flex1}>
       <ScrollView
-        className="flex-1"
-        contentContainerClassName="px-4 pb-64 pt-3"
+        style={styles.flex1}
+        contentContainerStyle={styles.scrollContent}
         keyboardShouldPersistTaps="handled"
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={c.mutedForeground} />
         }
       >
         {/* Status row: pending badge + let-the-agent-explore (web parity). */}
-        <View className="mb-3 flex-row items-center justify-between">
-          <View className="flex-row items-center gap-2">
+        <View style={styles.statusRow}>
+          <View style={styles.statusLeft}>
             {pending > 0 ? <Badge variant="warning" label={`${pending} generating`} /> : null}
             {agentBusy ? <Badge variant="warning" label="agent working…" /> : null}
           </View>
@@ -675,7 +672,7 @@ function Loaded({
         </View>
 
         {generations.length === 0 ? (
-          <View className="pt-6">
+          <View style={styles.emptyWrap}>
             <Empty
               title="No images yet"
               hint="Describe a character or place below and hit Generate — or let the agent explore the look."
@@ -690,7 +687,7 @@ function Loaded({
               .map((g) => mediaUrl(g.url) ?? '')}
             theme={scheme}
           >
-            <View className="flex-row flex-wrap gap-2">
+            <View style={styles.galleryGrid}>
               {(() => {
                 let ready = -1;
                 return generations.map((g) => {
@@ -743,7 +740,7 @@ function Loaded({
                     showsHorizontalScrollIndicator={false}
                     keyboardShouldPersistTaps="handled"
                   >
-                    <View className="flex-row gap-3 py-1">
+                    <View style={styles.refsRow}>
                       {refs.map((r) => (
                         <View key={r.id}>
                           <Image
@@ -760,7 +757,7 @@ function Loaded({
                           <Pressable
                             accessibilityRole="button"
                             accessibilityLabel={`Remove ${r.name || 'reference'}`}
-                            className="absolute -right-1.5 -top-1.5 h-5 w-5 items-center justify-center rounded-full bg-secondary"
+                            style={styles.refRemoveBtn}
                             onPress={() =>
                               setRefs((prev) => prev.filter((x) => x.id !== r.id))
                             }
@@ -776,7 +773,7 @@ function Loaded({
                 <TextInput
                   key={`prompt-${focusTick}`}
                   autoFocus={!!focusTick}
-                  className="max-h-32 px-1 py-1 text-[15px] leading-5 text-foreground"
+                  style={styles.promptInput}
                   placeholder="Describe a character or a place…"
                   placeholderTextColor={c.mutedForeground}
                   multiline
@@ -791,7 +788,7 @@ function Loaded({
                   showsHorizontalScrollIndicator={false}
                   keyboardShouldPersistTaps="handled"
                 >
-                  <View className="flex-row items-center gap-2">
+                  <View style={styles.optionsRow}>
                     <OptionChip a11y={`Model: ${modelLabel}`} label={modelLabel} onPress={pickModel} />
                     <OptionChip a11y={`Count: ${count}`} label={`${count}×`} onPress={pickCount} />
                     <OptionChip
@@ -819,12 +816,12 @@ function Loaded({
                   </View>
                 </ScrollView>
 
-                <View className="flex-row items-center">
+                <View style={styles.bottomRow}>
                   <Pressable
                     accessibilityRole="button"
                     accessibilityLabel="Add reference image"
                     disabled={attaching}
-                    className="h-9 w-9 items-center justify-center rounded-full border border-border active:opacity-60"
+                    style={({ pressed }) => [styles.attachBtn, pressed && styles.pressed60]}
                     onPress={attachRef}
                   >
                     {attaching ? (
@@ -834,21 +831,24 @@ function Loaded({
                     )}
                   </Pressable>
                   {refs.length > 0 ? (
-                    <View className="ml-2 flex-row items-center gap-1">
+                    <View style={styles.refsCountRow}>
                       <Library size={13} color={c.mutedForeground} />
-                      <Text className="text-[12px] text-muted-foreground">
+                      <Text style={styles.refsCountText}>
                         {refs.length} ref{refs.length > 1 ? 's' : ''}
                       </Text>
                     </View>
                   ) : null}
 
-                  <View className="ml-auto">
+                  <View style={styles.mlAuto}>
                     {prompt.trim().length === 0 && !busy ? (
                       <Pressable
                         accessibilityRole="button"
                         accessibilityLabel="Dictate the prompt"
-                        style={{ backgroundColor: c.higgsfield }}
-                        className="h-9 w-9 items-center justify-center rounded-full active:opacity-80"
+                        style={({ pressed }) => [
+                          styles.micBtn,
+                          { backgroundColor: c.higgsfield },
+                          pressed && styles.pressed80,
+                        ]}
                         onPress={startRecording}
                       >
                         <Mic size={18} color={c.higgsfieldForeground} />
@@ -858,12 +858,12 @@ function Loaded({
                         accessibilityRole="button"
                         accessibilityLabel={busy ? 'Generating' : 'Generate'}
                         disabled={!canSend}
-                        style={{ backgroundColor: c.higgsfield }}
-                        className={
-                          canSend
-                            ? 'h-9 flex-row items-center gap-1.5 rounded-full px-3.5 active:opacity-80'
-                            : 'h-9 flex-row items-center gap-1.5 rounded-full px-3.5 opacity-40'
-                        }
+                        style={({ pressed }) => [
+                          styles.generateBtn,
+                          { backgroundColor: c.higgsfield },
+                          !canSend && styles.generateBtnDisabled,
+                          canSend && pressed && styles.pressed80,
+                        ]}
                         onPress={generate}
                       >
                         {busy ? (
@@ -872,8 +872,7 @@ function Loaded({
                           <Wand2 size={15} color={c.higgsfieldForeground} />
                         )}
                         <Text
-                          className="text-[13px] font-semibold"
-                          style={{ color: c.higgsfieldForeground }}
+                          style={[styles.generateText, { color: c.higgsfieldForeground }]}
                         >
                           Generate
                         </Text>
@@ -889,3 +888,176 @@ function Loaded({
     </View>
   );
 }
+
+const styles = StyleSheet.create((theme) => ({
+  flex1: {
+    flex: 1,
+  },
+  chip: {
+    height: 32,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    paddingHorizontal: 10,
+  },
+  pressed60: {
+    opacity: 0.6,
+  },
+  pressed80: {
+    opacity: 0.8,
+  },
+  chipText: {
+    fontSize: 12,
+  },
+  chipTextActive: {
+    fontWeight: '500',
+    color: theme.colors.foreground,
+  },
+  chipTextInactive: {
+    color: theme.colors.mutedForeground,
+  },
+  cellWrap: {
+    overflow: 'hidden',
+    borderRadius: 10,
+  },
+  fullSize: {
+    width: '100%',
+    height: '100%',
+  },
+  errorBox: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: `${theme.colors.destructive}66`,
+    backgroundColor: theme.colors.secondary,
+    paddingHorizontal: 8,
+  },
+  errorText: {
+    marginTop: 4,
+    textAlign: 'center',
+    fontSize: 9,
+    lineHeight: 12,
+    color: theme.colors.destructive,
+  },
+  pendingBox: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 10,
+    backgroundColor: theme.colors.secondary,
+  },
+  pendingText: {
+    marginTop: 4,
+    fontSize: 10,
+    color: theme.colors.mutedForeground,
+  },
+  tagWrap: {
+    position: 'absolute',
+    left: 6,
+    top: 6,
+  },
+  scrollContent: {
+    paddingHorizontal: 16,
+    paddingBottom: 256,
+    paddingTop: 12,
+  },
+  statusRow: {
+    marginBottom: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  statusLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  emptyWrap: {
+    paddingTop: 24,
+  },
+  galleryGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  refsRow: {
+    flexDirection: 'row',
+    gap: 12,
+    paddingVertical: 4,
+  },
+  refRemoveBtn: {
+    position: 'absolute',
+    right: -6,
+    top: -6,
+    height: 20,
+    width: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 999,
+    backgroundColor: theme.colors.secondary,
+  },
+  promptInput: {
+    maxHeight: 128,
+    paddingHorizontal: 4,
+    paddingVertical: 4,
+    fontSize: 15,
+    lineHeight: 20,
+    color: theme.colors.foreground,
+  },
+  optionsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  bottomRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  attachBtn: {
+    height: 36,
+    width: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+  },
+  refsCountRow: {
+    marginLeft: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  refsCountText: {
+    fontSize: 12,
+    color: theme.colors.mutedForeground,
+  },
+  mlAuto: {
+    marginLeft: 'auto',
+  },
+  micBtn: {
+    height: 36,
+    width: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 999,
+  },
+  generateBtn: {
+    height: 36,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    borderRadius: 999,
+    paddingHorizontal: 14,
+  },
+  generateBtnDisabled: {
+    opacity: 0.4,
+  },
+  generateText: {
+    fontSize: 13,
+    fontWeight: '600',
+  },
+}));

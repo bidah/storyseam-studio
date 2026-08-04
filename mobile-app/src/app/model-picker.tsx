@@ -1,5 +1,6 @@
 import { Fragment, useEffect, useRef, useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
+import { StyleSheet } from 'react-native-unistyles';
 import { router, Stack } from 'expo-router';
 import { Check, X } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
@@ -63,20 +64,20 @@ export default function ModelPickerSheet() {
       {/* The formSheet's native header floats transparently over the content
           (glass); the content reserves space for it and cancels the nav-bar
           height the fitToContents detent adds — see useSheetContentStyle. */}
-      <View className="bg-background px-8" style={contentStyle}>
-        <View className="overflow-hidden rounded-[28px] border border-border bg-card">
+      <View style={[styles.root, contentStyle]}>
+        <View style={styles.card}>
           {models.map((m, i) => (
             <Fragment key={m.id}>
-              {i > 0 ? <View className="ml-4 h-px bg-border" /> : null}
+              {i > 0 ? <View style={styles.separator} /> : null}
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel={m.label}
-                className="flex-row items-center justify-between px-4 py-4 active:bg-secondary"
+                style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
                 onPress={() => pick(m.id)}
               >
-                <View className="mr-3 flex-1">
-                  <Text className="text-[16px] font-medium text-foreground">{m.label}</Text>
-                  <Text className="mt-0.5 text-[13px] text-muted-foreground">{m.hint}</Text>
+                <View style={styles.rowText}>
+                  <Text style={styles.title}>{m.label}</Text>
+                  <Text style={styles.hint}>{m.hint}</Text>
                 </View>
                 {checkedId === m.id ? <Check size={18} color={colors.primary} /> : null}
               </Pressable>
@@ -87,3 +88,46 @@ export default function ModelPickerSheet() {
     </>
   );
 }
+
+const styles = StyleSheet.create((theme) => ({
+  root: {
+    backgroundColor: theme.colors.background,
+    paddingHorizontal: 32,
+  },
+  card: {
+    overflow: 'hidden',
+    borderRadius: 28,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    backgroundColor: theme.colors.card,
+  },
+  separator: {
+    marginLeft: 16,
+    height: 1,
+    backgroundColor: theme.colors.border,
+  },
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+  },
+  rowPressed: {
+    backgroundColor: theme.colors.secondary,
+  },
+  rowText: {
+    marginRight: 12,
+    flex: 1,
+  },
+  title: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: theme.colors.foreground,
+  },
+  hint: {
+    marginTop: 2,
+    fontSize: 13,
+    color: theme.colors.mutedForeground,
+  },
+}));

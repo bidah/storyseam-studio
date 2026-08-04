@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Alert, ScrollView, Text, View, useWindowDimensions } from 'react-native';
+import { StyleSheet } from 'react-native-unistyles';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Image } from 'expo-image';
 import { Galeria } from '@nandorojo/galeria';
@@ -31,9 +32,9 @@ const SHEET_LABELS: Record<string, string> = {
 
 function DetailRow({ label, value }: { label: string; value: string }) {
   return (
-    <View className="flex-row items-baseline justify-between gap-3">
-      <Text className="text-[13px] text-muted-foreground">{label}</Text>
-      <Text className="min-w-0 flex-1 text-right text-[13px] font-medium text-foreground" numberOfLines={1}>
+    <View style={styles.detailRow}>
+      <Text style={styles.detailLabel}>{label}</Text>
+      <Text style={styles.detailValue} numberOfLines={1}>
         {value}
       </Text>
     </View>
@@ -63,7 +64,7 @@ export default function GenerationSheet() {
   const gen = (data?.generations || []).find((g: VisualGen) => g.id === id);
   if (!gen) {
     return (
-      <View className="flex-1 bg-background px-4 pt-8">
+      <View style={styles.notFoundRoot}>
         <Empty title="Generation not found" hint="It may have been deleted. Pull to refresh the gallery." />
       </View>
     );
@@ -124,7 +125,7 @@ export default function GenerationSheet() {
   };
 
   return (
-    <ScrollView className="flex-1 bg-background" contentContainerClassName="px-4 pb-10 pt-6">
+    <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
       <Eyebrow>Generation</Eyebrow>
 
       {/* Tap = the Galeria full-screen preview (pinch-zoom, shared-element
@@ -141,15 +142,15 @@ export default function GenerationSheet() {
       </Galeria>
 
       {/* Prompt */}
-      <View className="mt-4 rounded-2xl border border-border bg-card p-3">
-        <View className="mb-2 flex-row items-center gap-1.5">
+      <View style={[styles.card, styles.promptCard]}>
+        <View style={styles.cardHeader}>
           <Sparkles size={13} color={colors.primary} />
-          <Text className="text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">
+          <Text style={styles.cardHeaderLabel}>
             Prompt
           </Text>
         </View>
         {refThumbs.length > 0 ? (
-          <View className="mb-2.5 flex-row flex-wrap gap-1.5">
+          <View style={styles.refThumbsRow}>
             {refThumbs.map((r, i) => (
               <Image
                 key={`${r.rel || r.genId || i}`}
@@ -161,20 +162,20 @@ export default function GenerationSheet() {
             ))}
           </View>
         ) : null}
-        <Text className="text-[14px] leading-5 text-foreground" selectable>
+        <Text style={styles.promptText} selectable>
           {gen.prompt || '—'}
         </Text>
       </View>
 
       {/* Details */}
-      <View className="mt-3 rounded-2xl border border-border bg-card p-3">
-        <View className="mb-2 flex-row items-center gap-1.5">
+      <View style={[styles.card, styles.detailsCard]}>
+        <View style={styles.cardHeader}>
           <Info size={13} color={colors.primary} />
-          <Text className="text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">
+          <Text style={styles.cardHeaderLabel}>
             Details
           </Text>
         </View>
-        <View className="gap-2">
+        <View style={styles.detailsList}>
           <DetailRow label="Model" value={gen.model || 'Default'} />
           {gen.sheetType && SHEET_LABELS[gen.sheetType] ? (
             <DetailRow label="Sheet" value={SHEET_LABELS[gen.sheetType]} />
@@ -187,17 +188,17 @@ export default function GenerationSheet() {
       </View>
 
       {/* Actions */}
-      <View className="mt-4 gap-2">
+      <View style={styles.actions}>
         <Button title="Recreate" onPress={() => finish('recreate')}>
           <RefreshCw size={15} color={colors.primaryForeground} />
         </Button>
-        <View className="flex-row gap-2">
-          <View className="flex-1">
+        <View style={styles.actionRow}>
+          <View style={styles.flex1}>
             <Button variant="outline" title="Reference" onPress={() => finish('ref')}>
               <ImagePlus size={14} color={colors.foreground} />
             </Button>
           </View>
-          <View className="flex-1">
+          <View style={styles.flex1}>
             <Button
               variant="outline"
               title={saved ? 'Saved' : 'Save to library'}
@@ -210,11 +211,11 @@ export default function GenerationSheet() {
           </View>
         </View>
         {saved ? (
-          <View className="items-center">
+          <View style={styles.savedRow}>
             <Badge variant="success" label="in the asset library" />
           </View>
         ) : null}
-        <View className="mt-1 items-end">
+        <View style={styles.deleteRow}>
           <Button variant="ghost" size="sm" title="Delete" onPress={remove}>
             <Trash2 size={13} color={colors.mutedForeground} />
           </Button>
@@ -223,3 +224,97 @@ export default function GenerationSheet() {
     </ScrollView>
   );
 }
+
+const styles = StyleSheet.create((theme) => ({
+  detailRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  detailLabel: {
+    fontSize: 13,
+    color: theme.colors.mutedForeground,
+  },
+  detailValue: {
+    minWidth: 0,
+    flex: 1,
+    textAlign: 'right',
+    fontSize: 13,
+    fontWeight: '500',
+    color: theme.colors.foreground,
+  },
+  notFoundRoot: {
+    flex: 1,
+    backgroundColor: theme.colors.background,
+    paddingHorizontal: 16,
+    paddingTop: 32,
+  },
+  scroll: {
+    flex: 1,
+    backgroundColor: theme.colors.background,
+  },
+  scrollContent: {
+    paddingHorizontal: 16,
+    paddingBottom: 40,
+    paddingTop: 24,
+  },
+  card: {
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    backgroundColor: theme.colors.card,
+    padding: 12,
+  },
+  promptCard: {
+    marginTop: 16,
+  },
+  detailsCard: {
+    marginTop: 12,
+  },
+  cardHeader: {
+    marginBottom: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  cardHeaderLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 0.3,
+    color: theme.colors.mutedForeground,
+  },
+  refThumbsRow: {
+    marginBottom: 10,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  promptText: {
+    fontSize: 14,
+    lineHeight: 20,
+    color: theme.colors.foreground,
+  },
+  detailsList: {
+    gap: 8,
+  },
+  actions: {
+    marginTop: 16,
+    gap: 8,
+  },
+  actionRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  flex1: {
+    flex: 1,
+  },
+  savedRow: {
+    alignItems: 'center',
+  },
+  deleteRow: {
+    marginTop: 4,
+    alignItems: 'flex-end',
+  },
+}));

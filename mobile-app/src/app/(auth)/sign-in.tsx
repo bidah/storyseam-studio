@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { KeyboardAvoidingView, Platform, ScrollView, Text, View } from 'react-native';
+import { StyleSheet } from 'react-native-unistyles';
 import { router } from 'expo-router';
 import { Clapperboard } from 'lucide-react-native';
 import { toast } from 'sonner-native';
@@ -62,28 +63,28 @@ export default function SignIn() {
 
   return (
     <KeyboardAvoidingView
-      className="flex-1 bg-background"
+      style={styles.root}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       // The other cold-start landing: signed out, this is the finished screen,
       // so it lifts the splash itself (lib/splash.ts).
       onLayout={splashReady}
     >
       <ScrollView
-        contentContainerClassName="flex-1 justify-center gap-4 px-6"
+        contentContainerStyle={styles.scrollContent}
         keyboardShouldPersistTaps="handled"
       >
-        <View className="mb-4 items-center gap-3">
-          <View className="h-16 w-16 items-center justify-center rounded-3xl bg-primary/15">
+        <View style={styles.header}>
+          <View style={styles.iconWrap}>
             <Clapperboard size={30} color={colors.primary} />
           </View>
-          <Text className="text-3xl font-bold text-foreground">Shot Studio</Text>
-          <Text className="text-center text-sm text-muted-foreground">
+          <Text style={styles.title}>Shot Studio</Text>
+          <Text style={styles.subtitle}>
             Script → shots → renders → cuts, with an agent in the loop.
           </Text>
         </View>
 
         <Button title="Sign in with Google" loading={oauthBusy} onPress={signInGoogle} />
-        <Text className="text-center text-xs text-muted-foreground">or use email</Text>
+        <Text style={styles.orText}>or use email</Text>
 
         <Input
           placeholder="Email"
@@ -111,3 +112,20 @@ export default function SignIn() {
     </KeyboardAvoidingView>
   );
 }
+
+const styles = StyleSheet.create((theme) => ({
+  root: { flex: 1, backgroundColor: theme.colors.background },
+  scrollContent: { flex: 1, justifyContent: 'center', gap: 16, paddingHorizontal: 24 },
+  header: { marginBottom: 16, alignItems: 'center', gap: 12 },
+  iconWrap: {
+    height: 64,
+    width: 64,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 24,
+    backgroundColor: `${theme.colors.primary}26`,
+  },
+  title: { fontSize: 30, lineHeight: 36, fontWeight: '700', color: theme.colors.foreground },
+  subtitle: { textAlign: 'center', fontSize: 14, lineHeight: 20, color: theme.colors.mutedForeground },
+  orText: { textAlign: 'center', fontSize: 12, lineHeight: 16, color: theme.colors.mutedForeground },
+}));

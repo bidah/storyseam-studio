@@ -10,13 +10,13 @@ import {
 } from 'react-native';
 import { toast } from 'sonner-native';
 import { X } from 'lucide-react-native';
+import { StyleSheet } from 'react-native-unistyles';
 import { Button } from '@/components/ui/button';
 import { Eyebrow } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { SegmentedNative } from '@/components/ui/segmented-native';
 import { patchJson, postJson } from '@/lib/api';
 import { useColors } from '@/lib/colors';
-import { cn } from '@/lib/utils';
 import type { SoundTrack, SoundVersion, TrackKind } from './types';
 
 // Create / edit sheets for the Sound studio. The web app has elaborate
@@ -74,25 +74,25 @@ function Sheet({
       presentationStyle="pageSheet"
       onRequestClose={onClose}
     >
-      <View className="flex-1 bg-background">
-        <View className="flex-row items-center justify-between border-b border-border px-4 py-3">
-          <Text className="text-base font-semibold text-foreground">{title}</Text>
+      <View style={styles.sheetRoot}>
+        <View style={styles.sheetHeader}>
+          <Text style={styles.sheetTitle}>{title}</Text>
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Close"
-            className="h-8 w-8 items-center justify-center rounded-full bg-secondary active:opacity-60"
+            style={({ pressed }) => [styles.closeBtn, pressed && styles.pressed]}
             onPress={onClose}
           >
             <X size={16} color={colors.mutedForeground} />
           </Pressable>
         </View>
         <KeyboardAvoidingView
-          className="flex-1"
+          style={styles.flex1}
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         >
           <ScrollView
-            className="flex-1"
-            contentContainerClassName="gap-4 px-4 py-4 pb-12"
+            style={styles.flex1}
+            contentContainerStyle={styles.scrollContent}
             keyboardShouldPersistTaps="handled"
           >
             {children}
@@ -106,7 +106,7 @@ function Sheet({
 function CharCount({ text }: { text: string }) {
   const over = text.length > SEED_AUDIO_CAP;
   return (
-    <Text className={cn('text-[11px]', over ? 'font-semibold text-destructive' : 'text-muted-foreground')}>
+    <Text style={[styles.charCount, over ? styles.charCountOver : styles.charCountNormal]}>
       {text.length} / {SEED_AUDIO_CAP} chars
     </Text>
   );
@@ -215,17 +215,17 @@ export function CreateTrackSheet({
             onChangeText={setSeconds}
             keyboardType="number-pad"
             placeholder={kind === 'music' ? '15' : 'e.g. 3'}
-            className="w-28"
+            style={styles.secondsInput}
           />
         </View>
       ) : null}
 
       <View>
         <Eyebrow>Composed prompt</Eyebrow>
-        <View className="rounded-xl border border-border bg-card p-3">
-          <Text className="text-[12px] leading-relaxed text-muted-foreground">{prompt}</Text>
+        <View style={styles.composedBox}>
+          <Text style={styles.composedText}>{prompt}</Text>
         </View>
-        <View className="mt-1.5 items-end">
+        <View style={styles.charCountRow}>
           <CharCount text={prompt} />
         </View>
       </View>
@@ -292,9 +292,9 @@ export function EditVersionSheet({
           onChangeText={setPrompt}
           multiline
           textAlignVertical="top"
-          className="min-h-40 text-[13px]"
+          style={styles.promptInput}
         />
-        <View className="mt-1.5 items-end">
+        <View style={styles.charCountRow}>
           <CharCount text={prompt} />
         </View>
       </View>
@@ -328,3 +328,42 @@ export function EditVersionSheet({
     </Sheet>
   );
 }
+
+const styles = StyleSheet.create((theme) => ({
+  flex1: { flex: 1 },
+  sheetRoot: { flex: 1, backgroundColor: theme.colors.background },
+  sheetHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderBottomWidth: 1,
+    borderColor: theme.colors.border,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+  },
+  sheetTitle: { fontSize: 16, fontWeight: '600', color: theme.colors.foreground },
+  closeBtn: {
+    height: 32,
+    width: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 999,
+    backgroundColor: theme.colors.secondary,
+  },
+  pressed: { opacity: 0.6 },
+  scrollContent: { gap: 16, paddingHorizontal: 16, paddingVertical: 16, paddingBottom: 48 },
+  charCount: { fontSize: 11 },
+  charCountOver: { fontWeight: '600', color: theme.colors.destructive },
+  charCountNormal: { color: theme.colors.mutedForeground },
+  secondsInput: { width: 112 },
+  composedBox: {
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    backgroundColor: theme.colors.card,
+    padding: 12,
+  },
+  composedText: { fontSize: 12, lineHeight: 20, color: theme.colors.mutedForeground },
+  charCountRow: { marginTop: 6, alignItems: 'flex-end' },
+  promptInput: { minHeight: 160, fontSize: 13 },
+}));

@@ -1,5 +1,6 @@
 import { Children, use, useCallback, useEffect, useMemo, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View, type ViewStyle } from 'react-native';
+import { Pressable, ScrollView, Text, View, type ViewStyle } from 'react-native';
+import { StyleSheet } from 'react-native-unistyles';
 import Animated, {
   Easing,
   useAnimatedStyle,
@@ -212,12 +213,9 @@ function PressCard({
       // The scrim below IS the disabled affordance, so the default half-opacity
       // fade would only wash the artwork out behind it.
       dimWhenDisabled={false}
-      style={styles.cardShadow}
+      style={animatedSafe.cardShadow}
     >
-      <View
-        className="border border-border bg-card"
-        style={[styles.card, bandSide === 'left' && styles.cardRow, style]}
-      >
+      <View style={[styles.card, bandSide === 'left' && styles.cardRow, style]}>
         {/* No band at all on a plain card. Otherwise: a mesh on the wide top
             bands, and a FLAT fill for a spine — at 10pt wide a gradient reads as
             colour noise, not art, though the seed still picks the hue.
@@ -312,11 +310,11 @@ function Section({
     // gap-0.5, not the gap-3 the Discover section uses: the card row carries
     // 10pt of its own top padding (shadow-bleed room — see styles.row), so 2pt
     // here lands the headline the same 12pt from the cards as Discover's.
-    <View className="gap-0.5">
+    <View style={styles.sectionWrap}>
       {/* One headline size for every section, the project name at the top
           included: the page is a stack of peer decks, and a 34pt large title on
           the first one made it read as a page header the rest hung off. */}
-      <Text accessibilityRole="header" className="px-5 text-foreground" style={styles.sectionTitle}>
+      <Text accessibilityRole="header" style={styles.sectionTitle}>
         {title}
       </Text>
       <ScrollView
@@ -367,20 +365,23 @@ function SuggestionSkeletons() {
     opacity.value = withRepeat(withTiming(0.7, { duration: 900 }), -1, true);
   }, [opacity]);
   const style = useAnimatedStyle(() => ({ opacity: opacity.value }));
+  // The unistyles style goes FIRST in the array below and the animated one
+  // second. Reversed, Reanimated walks unistyles' own metadata key and rejects
+  // it as an empty style value, which takes the whole screen down.
   return (
     <>
       {[0, 1, 2].map((i) => (
-        <Animated.View key={i} style={[style, styles.cardShadow]} pointerEvents="none">
-          <View className="border border-border bg-card" style={[styles.card, styles.suggestionCard]}>
+        <Animated.View key={i} style={[animatedSafe.cardShadow, style]} pointerEvents="none">
+          <View style={[styles.card, styles.suggestionCard, styles.skeletonCard]}>
             <View style={{ height: SUGGESTION_BAND, backgroundColor: MESH_PALETTES[i][4] }} />
             {/* Two bars for the headline, three for the paragraph — the real
                 card's proportions, so nothing shifts when the deck lands. */}
             <View style={[styles.cardBody, styles.suggestionBody]}>
-              <View className="h-5 w-44 rounded bg-muted" />
-              <View className="mt-1 h-5 w-28 rounded bg-muted" />
-              <View className="mt-4 h-3.5 w-48 rounded bg-muted" />
-              <View className="mt-2 h-3.5 w-44 rounded bg-muted" />
-              <View className="mt-2 h-3.5 w-24 rounded bg-muted" />
+              <View style={[styles.skeletonBar, styles.skeletonBarHeadline1]} />
+              <View style={[styles.skeletonBar, styles.skeletonBarHeadline2]} />
+              <View style={[styles.skeletonBar, styles.skeletonBarBlurb1]} />
+              <View style={[styles.skeletonBar, styles.skeletonBarBlurb2]} />
+              <View style={[styles.skeletonBar, styles.skeletonBarBlurb3]} />
             </View>
           </View>
         </Animated.View>
@@ -543,7 +544,7 @@ export default function ChatHomeScreen() {
   useChatComposer(null);
 
   return (
-    <View className="flex-1 bg-background">
+    <View style={styles.screen}>
       {/* Content is TOP-aligned under the headline, not centered.
           A ScrollView rather than a plain View for two reasons:
           contentInsetAdjustmentBehavior="automatic" lays it out under the
@@ -552,9 +553,9 @@ export default function ChatHomeScreen() {
           instead of nailed down. minHeight is the measured visible band — enough
           to fill the screen and bounce, without dead space to scroll through. */}
       <Animated.ScrollView
-        style={[styles.list, enter]}
+        style={[animatedSafe.list, enter]}
         onLayout={(e) => setViewport(e.nativeEvent.layout.height)}
-        contentContainerStyle={[styles.content, band ? { minHeight: band } : styles.grow]}
+        contentContainerStyle={[animatedSafe.content, band ? { minHeight: band } : animatedSafe.grow]}
         contentInsetAdjustmentBehavior="automatic"
         alwaysBounceVertical
         showsVerticalScrollIndicator={false}
@@ -592,10 +593,10 @@ export default function ChatHomeScreen() {
                     card's layout. Small text on purpose — a recap is a row you
                     recognize, not a poster you read; the big headline type stays
                     on the suggestion cards. */}
-                <Text className="text-foreground" style={styles.recapTitle} numberOfLines={3}>
+                <Text style={styles.recapTitle} numberOfLines={3}>
                   {r.title}
                 </Text>
-                <Text className="text-xs text-muted-foreground" style={styles.recapWhen}>
+                <Text style={styles.recapWhen}>
                   {r.when}
                 </Text>
               </PressCard>
@@ -614,7 +615,7 @@ export default function ChatHomeScreen() {
               onPress={startChat}
             >
               <SquarePen size={18} color={colors.mutedForeground} />
-              <Text className="mt-1 text-foreground" style={styles.recapTitle} numberOfLines={2}>
+              <Text style={[styles.recapTitle, styles.startChatTitle]} numberOfLines={2}>
                 Start chat
               </Text>
             </PressCard>
@@ -679,10 +680,10 @@ export default function ChatHomeScreen() {
                     {/* Poster order: the headline reads FIRST, hanging off the mesh
                         band, and the paragraph explains it underneath. (A recap is
                         the other way round — its timestamp is an eyebrow.) */}
-                    <Text className="text-foreground" style={styles.cardTitle} numberOfLines={3}>
+                    <Text style={styles.cardTitle} numberOfLines={3}>
                       {s.title}
                     </Text>
-                    <Text className="text-muted-foreground" style={styles.cardBlurb} numberOfLines={5}>
+                    <Text style={styles.cardBlurb} numberOfLines={5}>
                       {s.blurb}
                     </Text>
                   </PressCard>
@@ -705,22 +706,22 @@ export default function ChatHomeScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+// Styles handed to a REANIMATED component, kept as plain objects on purpose.
+//
+// A unistyles style carries a metadata key that its Babel plugin normally
+// strips when it rewrites the host component — but `Animated.View` and
+// `Animated.ScrollView` are built at runtime by `createAnimatedComponent`, so
+// the plugin never sees them and the key survives into Reanimated's prop
+// validator, which rejects it ("an empty object is not a valid style value")
+// and takes the whole screen down. None of these need theming, so a plain
+// object is the honest fix rather than a workaround.
+const animatedSafe = {
   list: { flex: 1 },
-  // Every section headline on the screen — kept in lockstep with headline in
-  // components/chat/discover.tsx so the four decks read as one list.
-  sectionTitle: { fontSize: 20, fontWeight: '700', lineHeight: 25 },
   content: { paddingTop: 8, paddingBottom: 24, gap: 20 },
   // Only until the viewport is measured (one frame) — then a minHeight takes over.
   grow: { flexGrow: 1 },
-  // A section's card row: the page margin lives here so a card can bleed off
-  // the edge and invite the sideways swipe. The vertical padding is room for the
-  // drop shadow and for the press grow to bleed into — without it the row clips
-  // both, squaring off the corners against its own edge.
-  row: { paddingHorizontal: ROW_PAD, paddingVertical: 10, gap: ROW_GAP },
   // The shadow lives on its own wrapper because the card body clips (overflow
-  // hidden) to hold its corner radius, and on iOS a clipping view drops its own
-  // shadow.
+  // hidden) to hold its corner radius, and a clipping view drops its own shadow.
   cardShadow: {
     borderRadius: 22,
     shadowColor: '#000',
@@ -729,13 +730,42 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 6 },
     paddingBottom: 15,
   },
+} as const;
+
+const styles = StyleSheet.create((theme) => ({
+  screen: { flex: 1, backgroundColor: theme.colors.background },
+  // gap-0.5, not the gap-3 the Discover section uses: the card row carries
+  // 10pt of its own top padding (shadow-bleed room — see styles.row), so 2pt
+  // here lands the headline the same 12pt from the cards as Discover's.
+  sectionWrap: { gap: 2 },
+  // Every section headline on the screen — kept in lockstep with headline in
+  // components/chat/discover.tsx so the four decks read as one list.
+  sectionTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    lineHeight: 25,
+    paddingHorizontal: 20,
+    color: theme.colors.foreground,
+  },
+  // A section's card row: the page margin lives here so a card can bleed off
+  // the edge and invite the sideways swipe. The vertical padding is room for the
+  // drop shadow and for the press grow to bleed into — without it the row clips
+  // both, squaring off the corners against its own edge.
+  row: { paddingHorizontal: ROW_PAD, paddingVertical: 10, gap: ROW_GAP },
   // The card body: the app's standard surface (border + bg-card come from the
-  // className) with the landing screen's rounder corners and roomier padding.
+  // stylesheet) with the landing screen's rounder corners and roomier padding.
   card: {
     borderRadius: 22,
     // Clips the mesh header into the card's rounded top corners. Safe here: the
     // drop shadow lives on the wrapper above, so nothing of ours gets cut.
     overflow: 'hidden',
+  },
+  // The skeleton's own surface — the real card's border + bg-card, since the
+  // skeleton doesn't route through <PressCard>.
+  skeletonCard: {
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    backgroundColor: theme.colors.card,
   },
   // A left-spine card lays out as a row: mesh first, text beside it.
   cardRow: { flexDirection: 'row' },
@@ -762,7 +792,12 @@ const styles = StyleSheet.create({
   // Bottom RIGHT, per the card's reading order. `alignSelf` rather than
   // textAlign: the box shrinks to the stamp, so nothing invisible sits over the
   // title's last line.
-  recapWhen: { alignSelf: 'flex-end' },
+  recapWhen: {
+    alignSelf: 'flex-end',
+    fontSize: 12,
+    lineHeight: 16,
+    color: theme.colors.mutedForeground,
+  },
   // A poster, not a chip. The height is the worst case of the layout below —
   // three lines of headline over four of paragraph, plus the padding — because a
   // card that clipped its own last line would hide the reason to tap it.
@@ -779,10 +814,19 @@ const styles = StyleSheet.create({
   // The Discover posters' title metrics (see title in components/chat/discover.tsx)
   // so the two decks of big cards share one headline size — under the section
   // headlines, so a card can't outshout the row it sits in.
-  cardTitle: { fontSize: 17, fontWeight: '700', lineHeight: 21, letterSpacing: -0.2 },
+  cardTitle: {
+    fontSize: 17,
+    fontWeight: '700',
+    lineHeight: 21,
+    letterSpacing: -0.2,
+    color: theme.colors.foreground,
+  },
   // The recap's small title — body-sized, semibold so it still reads as the
   // card's name over the muted timestamp above it.
-  recapTitle: { fontSize: 15, fontWeight: '600', lineHeight: 20 },
+  recapTitle: { fontSize: 15, fontWeight: '600', lineHeight: 20, color: theme.colors.foreground },
+  // The empty-state card's title sits a touch below its icon, unlike the recap
+  // row's title (which hangs at the bottom with nothing above it).
+  startChatTitle: { marginTop: 4 },
   // The finished-card treatment. A flat black wash at 55% rather than a
   // gradient: the scrim covers artwork AND text, and a ramp would leave one end
   // of the card legible and the other not — which reads as a rendering bug, not
@@ -821,5 +865,19 @@ const styles = StyleSheet.create({
   // three-line headline (63) plus its gap (8) plus five blurb lines (90) plus the
   // body's padding (26) is 187, which is exactly what SUGGESTION_BODY reserves.
   // Grow either text and raise SUGGESTION_BODY with it, or the last line clips.
-  cardBlurb: { marginTop: 8, fontSize: 14, lineHeight: 18 },
-});
+  cardBlurb: {
+    marginTop: 8,
+    fontSize: 14,
+    lineHeight: 18,
+    color: theme.colors.mutedForeground,
+  },
+  // The skeleton's placeholder bars — the real headline/paragraph shape in flat
+  // muted rectangles, so nothing shifts when the deck lands (see
+  // SuggestionSkeletons).
+  skeletonBar: { borderRadius: 4, backgroundColor: theme.colors.muted },
+  skeletonBarHeadline1: { height: 20, width: 176 },
+  skeletonBarHeadline2: { marginTop: 4, height: 20, width: 112 },
+  skeletonBarBlurb1: { marginTop: 16, height: 14, width: 192 },
+  skeletonBarBlurb2: { marginTop: 8, height: 14, width: 176 },
+  skeletonBarBlurb3: { marginTop: 8, height: 14, width: 96 },
+}));

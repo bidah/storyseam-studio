@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import { ActivityIndicator, View } from 'react-native';
+import { StyleSheet } from 'react-native-unistyles';
 import { Redirect } from 'expo-router';
 import { NativeTabs } from 'expo-router/unstable-native-tabs';
 import { isLiquidGlassAvailable } from 'expo-glass-effect';
@@ -68,7 +69,7 @@ function ProjectGate({ children }: { children: React.ReactNode }) {
   const ready = hydrated && (!!projectId || (!isPending && !adopting));
   if (!ready && !isError) {
     return (
-      <View className="flex-1 items-center justify-center bg-background">
+      <View style={styles.center}>
         <ActivityIndicator />
       </View>
     );
@@ -105,7 +106,7 @@ export default function TabsLayout() {
 
   if (askingWho || !falHydrated || !atlasHydrated || !providersHydrated) {
     return (
-      <View className="flex-1 items-center justify-center bg-background">
+      <View style={styles.center}>
         <ActivityIndicator />
       </View>
     );
@@ -131,7 +132,7 @@ export default function TabsLayout() {
         {/* The cold start lands here, and THIS is the frame worth uncovering:
             everything above resolved behind the splash (lib/boot.ts), so its
             first layout is the finished Home screen. */}
-        <View className="flex-1" onLayout={splashReady}>
+        <View style={styles.flex1} onLayout={splashReady}>
         <NativeTabs
           // Selected tab = the high-contrast foreground (near-white on dark,
           // near-black on light), unselected stays the native muted gray. The
@@ -190,3 +191,8 @@ export default function TabsLayout() {
     </ProjectGate>
   );
 }
+
+const styles = StyleSheet.create((theme) => ({
+  center: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.colors.background },
+  flex1: { flex: 1 },
+}));

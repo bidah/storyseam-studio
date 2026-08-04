@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { View } from 'react-native';
+import { StyleSheet } from 'react-native-unistyles';
 import { Stack } from 'expo-router';
 import { useReportSegment } from '@/lib/screen-report';
 import { SegmentedNative } from '@/components/ui/segmented-native';
@@ -25,7 +26,7 @@ export default function AssetsTab() {
   useReportSegment({ view: seg === 'sounds' ? 'sounds' : 'library', path: '/assets' });
 
   return (
-    <View className="flex-1 bg-background">
+    <View style={styles.root}>
       <Stack.Screen
         options={{
           headerTitle: () => (
@@ -56,3 +57,7 @@ export default function AssetsTab() {
     </View>
   );
 }
+
+const styles = StyleSheet.create((theme) => ({
+  root: { flex: 1, backgroundColor: theme.colors.background },
+}));

@@ -5,7 +5,8 @@
 // PoolCards. Tapping a card adds it to the timeline (onAdd).
 // Web reference: /docs/modules/media ↔ this: /docs/react-native/media
 import { memo } from "react";
-import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Modal, Pressable, ScrollView, Text, View } from "react-native";
+import { StyleSheet } from "react-native-unistyles";
 import { SymbolView } from "expo-symbols";
 import { EditorTheme } from "@/editor/theme";
 import { PoolCard } from "./PoolCard";

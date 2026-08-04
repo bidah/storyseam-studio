@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import { StyleSheet } from 'react-native-unistyles';
 import { router } from 'expo-router';
 import { toast } from 'sonner-native';
 import { Pencil, Pin, Plus, Trash2 } from 'lucide-react-native';
@@ -10,7 +11,6 @@ import { useColors } from '@/lib/colors';
 import { deleteJson, patchJson, postJson } from '@/lib/api';
 import { CLIENT_ID } from '@/lib/client-id';
 import { useInvalidate, useProjectResource } from '@/lib/queries';
-import { cn } from '@/lib/utils';
 import { useTabBarScrollProps } from '@/lib/use-tab-bar-inset';
 import type { ScriptData } from '@/components/story/script';
 
@@ -84,19 +84,18 @@ export default function DraftsSheet() {
   return (
     <ScrollView
       {...barInset}
-      className="flex-1"
-      style={{ backgroundColor: colors.pageBg }}
-      contentContainerClassName="px-4 pt-4 pb-8"
+      style={[styles.flex1, { backgroundColor: colors.pageBg }]}
+      contentContainerStyle={styles.contentContainer}
       keyboardShouldPersistTaps="handled"
     >
-      <Text className="mb-3 text-[12px] text-muted-foreground">
+      <Text style={styles.intro}>
         The pinned draft is the active version — both this app and the chat agent read and write
         only the pinned draft. Creating a draft clones the current pinned one, then pins it.
       </Text>
 
-      <View className="mb-4 flex-row gap-2">
+      <View style={styles.createRow}>
         <Input
-          className="flex-1"
+          style={styles.flex1}
           value={name}
           onChangeText={setName}
           placeholder={`Draft ${drafts.length + 1}`}
@@ -112,17 +111,14 @@ export default function DraftsSheet() {
         return (
           <View
             key={d.id}
-            className={cn(
-              'mb-2 rounded-xl border p-3',
-              isPinned ? 'border-primary/50 bg-primary/5' : 'border-border bg-card',
-            )}
+            style={[styles.draftCard, isPinned ? styles.draftCardPinned : styles.draftCardDefault]}
           >
-              <View className="flex-row items-center gap-2">
+              <View style={styles.draftRow}>
                 <Pressable
                   accessibilityRole="button"
                   accessibilityLabel={isPinned ? `${d.name} is pinned` : `Pin ${d.name}`}
                   disabled={busy || isPinned}
-                  className="flex-1 flex-row items-center gap-2 active:opacity-60"
+                  style={({ pressed }) => [styles.pinPressable, pressed && styles.pressed60]}
                   onPress={() => pin(d.id)}
                 >
                   <Pin
@@ -130,7 +126,7 @@ export default function DraftsSheet() {
                     color={isPinned ? colors.primary : colors.mutedForeground}
                     fill={isPinned ? colors.primary : 'none'}
                   />
-                  <View className="min-w-0 flex-1">
+                  <View style={styles.draftInfo}>
                     {renaming === d.id ? (
                       <TextInput
                         autoFocus
@@ -138,15 +134,15 @@ export default function DraftsSheet() {
                         onChangeText={setRenameValue}
                         onBlur={() => rename(d.id)}
                         onSubmitEditing={() => rename(d.id)}
-                        className="rounded-lg border border-primary bg-card px-2 py-1 text-[14px] text-foreground"
+                        style={styles.renameInput}
                         placeholderTextColor={colors.subtleForeground}
                       />
                     ) : (
-                      <Text className="text-[15px] font-medium text-foreground" numberOfLines={1}>
+                      <Text style={styles.draftName} numberOfLines={1}>
                         {d.name}
                       </Text>
                     )}
-                    <Text className="mt-0.5 text-[11px] text-muted-foreground">
+                    <Text style={styles.draftMeta}>
                       {d.lineCount != null ? `${d.lineCount} lines · ` : ''}
                       {relTime(d.updatedAt)}
                       {isPinned ? ' · pinned' : ''}
@@ -157,7 +153,7 @@ export default function DraftsSheet() {
                   accessibilityRole="button"
                   accessibilityLabel={`Rename ${d.name}`}
                   disabled={busy}
-                  className="h-8 w-8 items-center justify-center rounded-full active:opacity-60"
+                  style={({ pressed }) => [styles.iconBtn, pressed && styles.pressed60]}
                   onPress={() => {
                     setRenaming(d.id);
                     setRenameValue(d.name);
@@ -169,10 +165,11 @@ export default function DraftsSheet() {
                   accessibilityRole="button"
                   accessibilityLabel={`Delete ${d.name}`}
                   disabled={busy || drafts.length <= 1}
-                  className={cn(
-                    'h-8 w-8 items-center justify-center rounded-full active:opacity-60',
-                    drafts.length <= 1 && 'opacity-30',
-                  )}
+                  style={({ pressed }) => [
+                    styles.iconBtn,
+                    drafts.length <= 1 && styles.iconBtnDisabled,
+                    pressed && styles.pressed60,
+                  ]}
                   onPress={() => remove(d.id)}
                 >
                   <Trash2 size={14} color={colors.destructive} />
@@ -184,3 +181,86 @@ export default function DraftsSheet() {
     </ScrollView>
   );
 }
+
+const styles = StyleSheet.create((theme) => ({
+  flex1: {
+    flex: 1,
+  },
+  contentContainer: {
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 32,
+  },
+  intro: {
+    marginBottom: 12,
+    fontSize: 12,
+    color: theme.colors.mutedForeground,
+  },
+  createRow: {
+    marginBottom: 16,
+    flexDirection: 'row',
+    gap: 8,
+  },
+  draftCard: {
+    marginBottom: 8,
+    borderRadius: 12,
+    borderWidth: 1,
+    padding: 12,
+  },
+  draftCardPinned: {
+    borderColor: `${theme.colors.primary}80`,
+    backgroundColor: `${theme.colors.primary}0D`,
+  },
+  draftCardDefault: {
+    borderColor: theme.colors.border,
+    backgroundColor: theme.colors.card,
+  },
+  draftRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  pinPressable: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  pressed60: {
+    opacity: 0.6,
+  },
+  draftInfo: {
+    minWidth: 0,
+    flex: 1,
+  },
+  renameInput: {
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: theme.colors.primary,
+    backgroundColor: theme.colors.card,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    fontSize: 14,
+    color: theme.colors.foreground,
+  },
+  draftName: {
+    fontSize: 15,
+    fontWeight: '500',
+    color: theme.colors.foreground,
+  },
+  draftMeta: {
+    marginTop: 2,
+    fontSize: 11,
+    color: theme.colors.mutedForeground,
+  },
+  iconBtn: {
+    height: 32,
+    width: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 999,
+  },
+  iconBtnDisabled: {
+    opacity: 0.3,
+  },
+}));

@@ -15,6 +15,7 @@
  */
 import { useCallback, useState } from 'react';
 import { Text, View } from 'react-native';
+import { StyleSheet } from 'react-native-unistyles';
 import { Renderer } from '@openuidev/react-lang';
 import { TriangleAlert } from 'lucide-react-native';
 import { useColors } from '@/lib/colors';
@@ -110,28 +111,30 @@ export function StudioUI({
   if (errors.length) {
     return (
       <View
-        className="gap-1.5 self-stretch rounded-2xl border p-3"
-        style={{ borderColor: `${colors.amber}55`, backgroundColor: `${colors.amber}14` }}
+        style={[
+          styles.errorCard,
+          { borderColor: `${colors.amber}55`, backgroundColor: `${colors.amber}14` },
+        ]}
       >
-        <View className="flex-row items-center gap-1.5">
+        <View style={styles.errorHeader}>
           <TriangleAlert size={13} color={colors.amber} />
-          <Text className="text-[12px] font-medium" style={{ color: colors.amber }}>
+          <Text style={[styles.errorTitle, { color: colors.amber }]}>
             This card didn&apos;t render
           </Text>
         </View>
         {errors.map((e, i) => (
-          <Text key={i} className="text-[12px] leading-4 text-muted-foreground">
+          <Text key={i} style={styles.errorLine}>
             {errorText(e)}
           </Text>
         ))}
-        <Text className="text-[12px] leading-4 text-muted-foreground">{program}</Text>
+        <Text style={styles.errorLine}>{program}</Text>
       </View>
     );
   }
 
   return (
     <AnsweredContext.Provider value={answer ?? null}>
-      <View className="self-stretch">
+      <View style={styles.host}>
         <Renderer
           response={program}
           library={studioLibrary}
@@ -146,3 +149,30 @@ export function StudioUI({
     </AnsweredContext.Provider>
   );
 }
+
+const styles = StyleSheet.create((theme) => ({
+  errorCard: {
+    gap: 6,
+    alignSelf: 'stretch',
+    borderRadius: 16,
+    borderWidth: 1,
+    padding: 12,
+  },
+  errorHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  errorTitle: {
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  errorLine: {
+    fontSize: 12,
+    lineHeight: 16,
+    color: theme.colors.mutedForeground,
+  },
+  host: {
+    alignSelf: 'stretch',
+  },
+}));

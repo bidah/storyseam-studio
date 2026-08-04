@@ -21,7 +21,8 @@
 // API parity: the web component takes `tracks`; here the resolved playback state
 // is passed in as `video` (so the timeline model stays the single source of
 // truth). Web reference: /docs/modules/playback ↔ this: /docs/react-native/playback
-import { StyleSheet, Text, View } from "react-native";
+import { Text, View } from "react-native";
+import { StyleSheet } from "react-native-unistyles";
 import { Image } from "expo-image";
 import { VideoView } from "expo-video";
 import { isImageItem, isSlateItem } from "@/editor/core/timeline";

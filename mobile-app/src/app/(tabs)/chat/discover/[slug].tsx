@@ -1,5 +1,6 @@
 import { useCallback, useMemo } from 'react';
-import { ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { ScrollView, Text, View, useWindowDimensions } from 'react-native';
+import { StyleSheet } from 'react-native-unistyles';
 import { Image } from 'expo-image';
 import { Link, Stack, router, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -70,7 +71,7 @@ export default function DiscoverDetailScreen() {
 
   if (!card) {
     return (
-      <View className="flex-1 bg-background">
+      <View style={[styles.screen, { backgroundColor: colors.background }]}>
         <Stack.Screen options={{ title: 'Discover' }} />
         <Empty title="Nothing here" hint="This card no longer exists." />
       </View>
@@ -81,7 +82,7 @@ export default function DiscoverDetailScreen() {
     // The page colour, not the app background — it's what the bounce at the top
     // and the bottom of the scroll reveals, and the story block below is set on
     // the same fill.
-    <View className="flex-1" style={{ backgroundColor: colors.pageBg }}>
+    <View style={[styles.screen, { backgroundColor: colors.pageBg }]}>
       {/* No title in the bar — the masthead a few points below already carries
           the headline, and a second copy of it riding over the picture just
           doubles up. What's left is chrome: the back chevron and the menu. */}
@@ -115,8 +116,7 @@ export default function DiscoverDetailScreen() {
             page, which is what keeps a long read legible instead of setting
             three screens of body copy on an arbitrary photographic colour. */}
         <View
-          className="gap-2 px-5 pb-6 pt-6"
-          style={{ backgroundColor: tint?.background ?? colors.pageBg }}
+          style={[styles.masthead, { backgroundColor: tint?.background ?? colors.pageBg }]}
         >
           <Text style={[styles.kicker, { color: subtle }]}>{card.kicker.toUpperCase()}</Text>
           <Text style={[styles.title, { color: foreground }]}>{card.title}</Text>
@@ -132,7 +132,7 @@ export default function DiscoverDetailScreen() {
         <View
           style={[styles.body, { backgroundColor: colors.pageBg, paddingBottom: insets.bottom + 40 }]}
         >
-          <View className="px-5 pt-7">
+          <View style={styles.storySection}>
             <Text style={[styles.lead, { color: colors.mutedForeground }]}>
               <Text style={[styles.leadOpener, { color: colors.foreground }]}>
                 {card.lead.opener}
@@ -148,7 +148,7 @@ export default function DiscoverDetailScreen() {
             ))}
           </View>
 
-          <View className="px-5 pt-9">
+          <View style={styles.ctaSection}>
             {/* The page's one action, so it gets the page's one button: the
                 semi-pill slab, inverted (the page's own foreground as the fill).
                 `variant` is the knob for how it feels under the thumb —
@@ -171,11 +171,17 @@ export default function DiscoverDetailScreen() {
 // something to READ, and body copy set at row-label size reads as a caption. The
 // leading is generous for the same reason — long paragraphs need the air.
 const styles = StyleSheet.create({
+  screen: { flex: 1 },
   hero: { width: '100%', backgroundColor: '#0b0b0c' },
   // Runs to the bottom of the scroll view, so the colour block ends with the
   // page rather than stopping under the last line of text. Its paddingBottom is
   // set inline — it carries the home-indicator inset.
   body: { flexGrow: 1 },
+  // The tinted masthead block behind the headline — background comes from the
+  // picture's tint (or the page fill) at the call site.
+  masthead: { gap: 8, paddingHorizontal: 20, paddingBottom: 24, paddingTop: 24 },
+  storySection: { paddingHorizontal: 20, paddingTop: 28 },
+  ctaSection: { paddingHorizontal: 20, paddingTop: 36 },
   kicker: { fontSize: 12, fontWeight: '700', letterSpacing: 1.1 },
   title: { fontSize: 32, fontWeight: '700', lineHeight: 37, letterSpacing: -0.6 },
   standfirst: { fontSize: 17, lineHeight: 23 },

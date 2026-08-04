@@ -4,7 +4,8 @@
 // matching the platform's tap-first interaction.
 // Web reference: /docs/modules/media ↔ this: /docs/react-native/media
 import { memo } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Pressable, Text, View } from "react-native";
+import { StyleSheet } from "react-native-unistyles";
 import { SymbolView } from "expo-symbols";
 import { EditorTheme } from "@/editor/theme";
 import { colorForSrc } from "./thumbs";

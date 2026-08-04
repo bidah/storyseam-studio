@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Pressable, ScrollView, Text, View, useWindowDimensions } from 'react-native';
+import { StyleSheet } from 'react-native-unistyles';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Image } from 'expo-image';
 import { Check, ChevronLeft } from 'lucide-react-native';
@@ -48,7 +49,7 @@ export default function LibraryPickerSheet() {
   // eyebrow), dropping the wrapper's padding too. A plain scroll view that owns
   // its padding is the shape that behaves here (same as the character sheet).
   return (
-    <ScrollView className="flex-1 bg-background" contentContainerClassName="px-4 pb-8 pt-6">
+    <ScrollView style={styles.root} contentContainerStyle={styles.contentContainer}>
       <Eyebrow>Pick from library</Eyebrow>
       {!current ? (
         <>
@@ -58,7 +59,7 @@ export default function LibraryPickerSheet() {
             folders.map((item: any) => (
               <Pressable
                 key={item.folder}
-                className="mb-2 flex-row items-center gap-3 rounded-xl border border-border bg-card p-2.5 active:bg-secondary"
+                style={({ pressed }) => [styles.folderRow, pressed && styles.folderRowPressed]}
                 onPress={() => setFolder(item.folder)}
               >
                 <Image
@@ -66,9 +67,9 @@ export default function LibraryPickerSheet() {
                   style={{ width: 44, height: 44, borderRadius: 8 }}
                   contentFit="cover"
                 />
-                <View className="flex-1">
-                  <Text className="text-[15px] font-medium text-foreground">{item.folder}</Text>
-                  <Text className="text-[12px] text-muted-foreground">{item.count} images</Text>
+                <View style={styles.folderInfo}>
+                  <Text style={styles.folderName}>{item.folder}</Text>
+                  <Text style={styles.folderCount}>{item.count} images</Text>
                 </View>
               </Pressable>
             ))
@@ -76,13 +77,13 @@ export default function LibraryPickerSheet() {
         </>
       ) : (
         <>
-          <View className="mb-3 flex-row items-center justify-between">
+          <View style={styles.headerRow}>
             <Pressable
-              className="flex-row items-center gap-1 active:opacity-60"
+              style={({ pressed }) => [styles.backButton, pressed && styles.backButtonPressed]}
               onPress={() => setFolder(null)}
             >
               <ChevronLeft size={16} color={colors.mutedForeground} />
-              <Text className="text-sm font-medium text-muted-foreground">{current.folder}</Text>
+              <Text style={styles.backLabel}>{current.folder}</Text>
             </Pressable>
             {multi ? (
               <Button
@@ -93,7 +94,7 @@ export default function LibraryPickerSheet() {
               />
             ) : null}
           </View>
-          <View className="flex-row flex-wrap gap-2">
+          <View style={styles.grid}>
             {(current.images || []).map((item: any) => {
               const selected = picked.includes(item.rel);
               return (
@@ -112,7 +113,7 @@ export default function LibraryPickerSheet() {
                     contentFit="cover"
                   />
                   {multi && selected ? (
-                    <View className="absolute right-1.5 top-1.5 h-6 w-6 items-center justify-center rounded-full bg-primary">
+                    <View style={styles.checkBadge}>
                       <Check size={14} color={colors.primaryForeground} />
                     </View>
                   ) : null}
@@ -125,3 +126,77 @@ export default function LibraryPickerSheet() {
     </ScrollView>
   );
 }
+
+const styles = StyleSheet.create((theme) => ({
+  root: {
+    flex: 1,
+    backgroundColor: theme.colors.background,
+  },
+  contentContainer: {
+    paddingHorizontal: 16,
+    paddingBottom: 32,
+    paddingTop: 24,
+  },
+  folderRow: {
+    marginBottom: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    backgroundColor: theme.colors.card,
+    padding: 10,
+  },
+  folderRowPressed: {
+    backgroundColor: theme.colors.secondary,
+  },
+  folderInfo: {
+    flex: 1,
+  },
+  folderName: {
+    fontSize: 15,
+    fontWeight: '500',
+    color: theme.colors.foreground,
+  },
+  folderCount: {
+    fontSize: 12,
+    color: theme.colors.mutedForeground,
+  },
+  headerRow: {
+    marginBottom: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  backButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  backButtonPressed: {
+    opacity: 0.6,
+  },
+  backLabel: {
+    fontSize: 14,
+    lineHeight: 20,
+    fontWeight: '500',
+    color: theme.colors.mutedForeground,
+  },
+  grid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  checkBadge: {
+    position: 'absolute',
+    right: 6,
+    top: 6,
+    height: 24,
+    width: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 999,
+    backgroundColor: theme.colors.primary,
+  },
+}));

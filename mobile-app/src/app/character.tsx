@@ -1,4 +1,5 @@
 import { Alert, ScrollView, Text, View } from 'react-native';
+import { StyleSheet } from 'react-native-unistyles';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Image } from 'expo-image';
 import { ImagePlus, Mic, Trash2, X } from 'lucide-react-native';
@@ -28,7 +29,7 @@ export default function CharacterSheet() {
   const char = (data?.characters || []).find((c) => c.id === id);
   if (!char) {
     return (
-      <View className="flex-1 bg-background px-4 pt-8">
+      <View style={styles.notFound}>
         <Empty title="Character not found" hint="It may have been removed. Pull down to refresh the World tab." />
       </View>
     );
@@ -97,8 +98,8 @@ export default function CharacterSheet() {
 
   return (
     <ScrollView
-      className="flex-1 bg-background"
-      contentContainerClassName="px-4 pb-12 pt-5 gap-3"
+      style={styles.root}
+      contentContainerStyle={styles.content}
       keyboardShouldPersistTaps="handled"
     >
       <EditableField
@@ -110,16 +111,16 @@ export default function CharacterSheet() {
       />
 
       {/* Character sheet image */}
-      <View className="rounded-xl border border-border bg-secondary/40 p-2.5">
-        <Eyebrow className="mb-1.5">Character sheet</Eyebrow>
+      <View style={styles.card}>
+        <Eyebrow style={styles.eyebrow}>Character sheet</Eyebrow>
         {sheet ? (
-          <View className="flex-row items-center gap-3">
+          <View style={styles.sheetRow}>
             <Image
               source={{ uri: mediaUrl(sheet.thumb || sheet.url) }}
               style={{ width: 88, height: 88, borderRadius: 10 }}
               contentFit="cover"
             />
-            <View className="flex-1 gap-1.5">
+            <View style={styles.sheetActions}>
               <Button size="sm" variant="outline" title="Change sheet" onPress={pickSheet}>
                 <ImagePlus size={13} color={colors.foreground} />
               </Button>
@@ -127,7 +128,7 @@ export default function CharacterSheet() {
                 size="sm"
                 variant="ghost"
                 title="Unlink"
-                textClassName="text-muted-foreground"
+                textStyle={styles.mutedText}
                 onPress={() => onPatch({ sheetImage: null })}
               >
                 <X size={13} color={colors.mutedForeground} />
@@ -142,18 +143,18 @@ export default function CharacterSheet() {
       </View>
 
       {/* Attached voice */}
-      <View className="rounded-xl border border-border bg-secondary/40 p-2.5">
-        <Eyebrow className="mb-1.5">Voice</Eyebrow>
+      <View style={styles.card}>
+        <Eyebrow style={styles.eyebrow}>Voice</Eyebrow>
         {voiceRef ? (
-          <View className="gap-1.5">
-            <View className="flex-row items-center gap-2">
+          <View style={styles.voiceGroup}>
+            <View style={styles.voiceRow}>
               <Mic size={14} color={colors.primary} />
-              <Text className="flex-1 text-[14px] font-medium text-foreground" numberOfLines={1}>
+              <Text style={styles.voiceName} numberOfLines={1}>
                 {voiceRef.name || 'Voice'}
                 {voiceRef.v != null ? `  ·  v${voiceRef.v}` : ''}
               </Text>
             </View>
-            <View className="flex-row gap-1.5">
+            <View style={styles.voiceActions}>
               <Button size="sm" variant="outline" title="Change voice" onPress={pickVoice}>
                 <Mic size={13} color={colors.foreground} />
               </Button>
@@ -161,7 +162,7 @@ export default function CharacterSheet() {
                 size="sm"
                 variant="ghost"
                 title="Unlink"
-                textClassName="text-muted-foreground"
+                textStyle={styles.mutedText}
                 onPress={() => onPatch({ voiceRef: null })}
               >
                 <X size={13} color={colors.mutedForeground} />
@@ -185,9 +186,71 @@ export default function CharacterSheet() {
         />
       ))}
 
-      <Button size="sm" variant="ghost" title="Remove character" textClassName="text-destructive" onPress={remove}>
+      <Button size="sm" variant="ghost" title="Remove character" textStyle={styles.destructiveText} onPress={remove}>
         <Trash2 size={13} color={colors.destructive} />
       </Button>
     </ScrollView>
   );
 }
+
+const styles = StyleSheet.create((theme) => ({
+  notFound: {
+    flex: 1,
+    backgroundColor: theme.colors.background,
+    paddingHorizontal: 16,
+    paddingTop: 32,
+  },
+  root: {
+    flex: 1,
+    backgroundColor: theme.colors.background,
+  },
+  content: {
+    paddingHorizontal: 16,
+    paddingBottom: 48,
+    paddingTop: 20,
+    gap: 12,
+  },
+  card: {
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    backgroundColor: `${theme.colors.secondary}66`,
+    padding: 10,
+  },
+  eyebrow: {
+    marginBottom: 6,
+  },
+  sheetRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  sheetActions: {
+    flex: 1,
+    gap: 6,
+  },
+  mutedText: {
+    color: theme.colors.mutedForeground,
+  },
+  voiceGroup: {
+    gap: 6,
+  },
+  voiceRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  voiceName: {
+    flex: 1,
+    fontSize: 14,
+    fontWeight: '500',
+    color: theme.colors.foreground,
+  },
+  voiceActions: {
+    flexDirection: 'row',
+    gap: 6,
+  },
+  destructiveText: {
+    color: theme.colors.destructive,
+  },
+}));

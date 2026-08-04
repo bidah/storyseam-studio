@@ -12,6 +12,7 @@ import {
 import { setAudioModeAsync, useAudioPlayer, useAudioPlayerStatus } from 'expo-audio';
 import * as Haptics from 'expo-haptics';
 import { toast } from 'sonner-native';
+import { StyleSheet } from 'react-native-unistyles';
 import {
   Clock,
   Heart,
@@ -37,7 +38,6 @@ import { deleteJson, mediaUrl, patchJson, postJson } from '@/lib/api';
 import { useColors } from '@/lib/colors';
 import { useInvalidate, useProjectResource } from '@/lib/queries';
 import { useManualRefresh } from '@/lib/use-manual-refresh';
-import { cn } from '@/lib/utils';
 import { useTabBarScrollProps } from '@/lib/use-tab-bar-inset';
 import { CreateTrackSheet, EditVersionSheet } from './sound-sheets';
 import { trackKind, type SoundTrack, type SoundVersion, type TrackKind } from './types';
@@ -120,20 +120,15 @@ function VersionRow({
   };
 
   return (
-    <View
-      className={cn(
-        'gap-2 rounded-xl border border-border bg-secondary/40 p-3',
-        ver.liked && 'border-primary/40',
-      )}
-    >
-      <View className="flex-row items-center gap-2">
+    <View style={[styles.versionRow, ver.liked && styles.versionRowLiked]}>
+      <View style={styles.rowGap2}>
         <Badge variant="muted" label={`v${ver.v}`} />
         {ver.name ? (
-          <Text className="flex-1 text-[13px] font-medium text-foreground" numberOfLines={1}>
+          <Text style={styles.versionName} numberOfLines={1}>
             {ver.name}
           </Text>
         ) : (
-          <View className="flex-1" />
+          <View style={styles.flex1} />
         )}
         {ready ? (
           <Badge variant="success" label="ready" />
@@ -143,20 +138,20 @@ function VersionRow({
           </Badge>
         )}
         {ver.duration ? (
-          <Text className="text-[11px] text-muted-foreground">{ver.duration.toFixed(1)}s</Text>
+          <Text style={styles.durationText}>{ver.duration.toFixed(1)}s</Text>
         ) : null}
       </View>
 
-      <Text className="text-[12px] leading-snug text-muted-foreground" numberOfLines={2}>
+      <Text style={styles.promptText} numberOfLines={2}>
         {ver.prompt}
       </Text>
 
-      <View className="flex-row items-center gap-1">
+      <View style={styles.rowGap1}>
         {ready && ver.url ? (
           <Pressable
             accessibilityRole="button"
             accessibilityLabel={playing ? 'Pause' : 'Play'}
-            className="h-9 w-9 items-center justify-center rounded-full bg-secondary active:opacity-60"
+            style={({ pressed }) => [styles.playBtn, pressed && styles.pressed]}
             onPress={() => {
               Haptics.selectionAsync().catch(() => {});
               onTogglePlay();
@@ -168,14 +163,14 @@ function VersionRow({
         {!ready ? (
           <Button size="sm" disabled={agentBusy} onPress={requestRender}>
             <Wand2 size={13} color={colors.primaryForeground} />
-            <Text className="text-[13px] font-semibold text-primary-foreground">Render</Text>
+            <Text style={styles.renderBtnText}>Render</Text>
           </Button>
         ) : null}
-        <View className="flex-1" />
+        <View style={styles.flex1} />
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={ver.liked ? 'Unlike this version' : 'Like this version'}
-          className="h-9 w-9 items-center justify-center rounded-full active:opacity-60"
+          style={({ pressed }) => [styles.iconBtn, pressed && styles.pressed]}
           disabled={busy}
           onPress={toggleLike}
         >
@@ -188,7 +183,7 @@ function VersionRow({
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Edit this version"
-          className="h-9 w-9 items-center justify-center rounded-full active:opacity-60"
+          style={({ pressed }) => [styles.iconBtn, pressed && styles.pressed]}
           onPress={onEdit}
         >
           <Pencil size={15} color={colors.mutedForeground} />
@@ -196,7 +191,7 @@ function VersionRow({
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Delete this version"
-          className="h-9 w-9 items-center justify-center rounded-full active:opacity-60"
+          style={({ pressed }) => [styles.iconBtn, pressed && styles.pressed]}
           disabled={busy}
           onPress={del}
         >
@@ -301,20 +296,20 @@ function TrackCard({
   };
 
   return (
-    <Card className="mb-3 gap-3">
-      <View className="flex-row items-center gap-2">
+    <Card style={styles.trackCard}>
+      <View style={styles.rowGap2}>
         <Icon size={17} color={colors.primary} />
-        <Text className="flex-1 text-[15px] font-semibold text-foreground" numberOfLines={1}>
+        <Text style={styles.trackName} numberOfLines={1}>
           {track.name}
         </Text>
         {liked ? <Heart size={14} color={colors.destructive} fill={colors.destructive} /> : null}
-        <Text className="text-[11px] text-muted-foreground">
+        <Text style={styles.durationText}>
           {track.versions.length} version{track.versions.length === 1 ? '' : 's'}
         </Text>
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Track actions"
-          className="h-8 w-8 items-center justify-center rounded-full active:opacity-60"
+          style={({ pressed }) => [styles.trackMenuBtn, pressed && styles.pressed]}
           onPress={menu}
         >
           <MoreHorizontal size={17} color={colors.mutedForeground} />
@@ -393,8 +388,8 @@ export function SoundsSection() {
         : 'No voice lines yet';
 
   return (
-    <View className="flex-1">
-      <View className="gap-2.5 px-4 pt-3">
+    <View style={styles.flex1}>
+      <View style={styles.header}>
         <SegmentedNative<TrackKind>
           options={[
             { value: 'music', label: 'Music' },
@@ -404,15 +399,15 @@ export function SoundsSection() {
           value={kind}
           onChange={setKind}
         />
-        <View className="flex-row items-center gap-2">
+        <View style={styles.rowGap2}>
           <Button size="sm" onPress={() => setCreateOpen(true)}>
             <Plus size={14} color={colors.primaryForeground} />
-            <Text className="text-[13px] font-semibold text-primary-foreground">New track</Text>
+            <Text style={styles.renderBtnText}>New track</Text>
           </Button>
           {pending > 0 ? (
             <Button size="sm" variant="outline" disabled={agentBusy} onPress={renderAll}>
               <Wand2 size={13} color={colors.foreground} />
-              <Text className="text-[13px] font-semibold text-foreground">
+              <Text style={styles.renderAllBtnText}>
                 Render all pending ({pending})
               </Text>
             </Button>
@@ -424,7 +419,7 @@ export function SoundsSection() {
         {...barInset}
         data={filtered}
         keyExtractor={(t) => t.id}
-        contentContainerClassName="px-4 pb-8 pt-3"
+        contentContainerStyle={styles.listContent}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.mutedForeground} />
         }
@@ -461,3 +456,50 @@ export function SoundsSection() {
     </View>
   );
 }
+
+const styles = StyleSheet.create((theme) => ({
+  flex1: { flex: 1 },
+  header: { gap: 10, paddingHorizontal: 16, paddingTop: 12 },
+  rowGap2: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  rowGap1: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  listContent: { paddingHorizontal: 16, paddingBottom: 32, paddingTop: 12 },
+  versionRow: {
+    gap: 8,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    backgroundColor: `${theme.colors.secondary}66`,
+    padding: 12,
+  },
+  versionRowLiked: { borderColor: `${theme.colors.primary}66` },
+  versionName: { flex: 1, fontSize: 13, fontWeight: '500', color: theme.colors.foreground },
+  durationText: { fontSize: 11, color: theme.colors.mutedForeground },
+  promptText: { fontSize: 12, lineHeight: 17, color: theme.colors.mutedForeground },
+  playBtn: {
+    height: 36,
+    width: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 999,
+    backgroundColor: theme.colors.secondary,
+  },
+  iconBtn: {
+    height: 36,
+    width: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 999,
+  },
+  pressed: { opacity: 0.6 },
+  renderBtnText: { fontSize: 13, fontWeight: '600', color: theme.colors.primaryForeground },
+  renderAllBtnText: { fontSize: 13, fontWeight: '600', color: theme.colors.foreground },
+  trackCard: { marginBottom: 12, gap: 12 },
+  trackName: { flex: 1, fontSize: 15, fontWeight: '600', color: theme.colors.foreground },
+  trackMenuBtn: {
+    height: 32,
+    width: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 999,
+  },
+}));

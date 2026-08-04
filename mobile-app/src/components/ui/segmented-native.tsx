@@ -16,7 +16,6 @@ export function SegmentedNative<T extends string>({
   options: { value: T; label: string; icon?: SFSymbol }[];
   value: T;
   onChange: (v: T) => void;
-  className?: string;
   // Accepted for parity with the iOS variant; the JS control has one size and
   // draws its own selection chrome from the theme.
   size?: 'small' | 'regular' | 'large';

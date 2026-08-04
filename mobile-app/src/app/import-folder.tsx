@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import { StyleSheet } from 'react-native-unistyles';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Folder, FolderRoot } from 'lucide-react-native';
 import { Button } from '@/components/ui/button';
@@ -42,12 +43,12 @@ export default function ImportFolderSheet() {
     // sheet instead, so the form scrolls with the list rather than staying
     // pinned to the bottom.
     <ScrollView
-      className="flex-1 bg-background"
-      contentContainerClassName="px-4 pb-6 pt-5"
+      style={styles.root}
+      contentContainerStyle={styles.content}
       keyboardShouldPersistTaps="handled"
     >
       <Eyebrow>Add to library</Eyebrow>
-      <Text className="mb-3 mt-0.5 text-[13px] text-muted-foreground">
+      <Text style={styles.subtitle}>
         Pick a destination folder for this image.
       </Text>
 
@@ -56,21 +57,21 @@ export default function ImportFolderSheet() {
         return (
           <Pressable
             key={item.folder}
-            className="mb-2 flex-row items-center gap-3 rounded-xl border border-border bg-card p-3 active:bg-secondary"
+            style={({ pressed }) => [styles.folderRow, pressed && styles.folderRowPressed]}
             onPress={() => pick(item.folder)}
           >
-            <View className="h-9 w-9 items-center justify-center rounded-full bg-secondary">
+            <View style={styles.folderIcon}>
               {root ? <FolderRoot size={16} color={colors.mutedForeground} /> : <Folder size={16} color={colors.mutedForeground} />}
             </View>
-            <Text className="flex-1 text-[15px] font-medium text-foreground" numberOfLines={1}>
+            <Text style={styles.folderName} numberOfLines={1}>
               {root ? '(library root)' : item.folder}
             </Text>
-            <Text className="text-[12px] text-muted-foreground">{item.count}</Text>
+            <Text style={styles.folderCount}>{item.count}</Text>
           </Pressable>
         );
       })}
 
-      <View className="mt-3 gap-2 border-t border-border pt-3">
+      <View style={styles.newFolderSection}>
         <Eyebrow>New folder</Eyebrow>
         <TextInput
           value={name}
@@ -78,13 +79,13 @@ export default function ImportFolderSheet() {
           placeholder="Folder name"
           placeholderTextColor={colors.subtleForeground}
           autoCapitalize="none"
-          className="rounded-lg border border-border bg-card px-3 py-2.5 text-[15px] text-foreground"
+          style={styles.input}
         />
-        <View className="mt-1 flex-row gap-2 pb-2">
+        <View style={styles.buttonRow}>
           <Button
             variant="secondary"
             title="Cancel"
-            className="flex-1"
+            style={styles.buttonFlex}
             onPress={() => {
               resolvePickerRequest(requestId, null);
               router.back();
@@ -92,7 +93,7 @@ export default function ImportFolderSheet() {
           />
           <Button
             title="New folder"
-            className="flex-1"
+            style={styles.buttonFlex}
             disabled={!trimmed}
             onPress={() => pick(trimmed)}
           />
@@ -101,3 +102,79 @@ export default function ImportFolderSheet() {
     </ScrollView>
   );
 }
+
+const styles = StyleSheet.create((theme) => ({
+  root: {
+    flex: 1,
+    backgroundColor: theme.colors.background,
+  },
+  content: {
+    paddingHorizontal: 16,
+    paddingBottom: 24,
+    paddingTop: 20,
+  },
+  subtitle: {
+    marginBottom: 12,
+    marginTop: 2,
+    fontSize: 13,
+    color: theme.colors.mutedForeground,
+  },
+  folderRow: {
+    marginBottom: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    backgroundColor: theme.colors.card,
+    padding: 12,
+  },
+  folderRowPressed: {
+    backgroundColor: theme.colors.secondary,
+  },
+  folderIcon: {
+    height: 36,
+    width: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 999,
+    backgroundColor: theme.colors.secondary,
+  },
+  folderName: {
+    flex: 1,
+    fontSize: 15,
+    fontWeight: '500',
+    color: theme.colors.foreground,
+  },
+  folderCount: {
+    fontSize: 12,
+    color: theme.colors.mutedForeground,
+  },
+  newFolderSection: {
+    marginTop: 12,
+    gap: 8,
+    borderTopWidth: 1,
+    borderTopColor: theme.colors.border,
+    paddingTop: 12,
+  },
+  input: {
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    backgroundColor: theme.colors.card,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 15,
+    color: theme.colors.foreground,
+  },
+  buttonRow: {
+    marginTop: 4,
+    flexDirection: 'row',
+    gap: 8,
+    paddingBottom: 8,
+  },
+  buttonFlex: {
+    flex: 1,
+  },
+}));

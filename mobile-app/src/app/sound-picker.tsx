@@ -1,5 +1,6 @@
 import { useEffect, useMemo } from 'react';
 import { FlatList, Pressable, Text, View } from 'react-native';
+import { StyleSheet } from 'react-native-unistyles';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Heart, Mic } from 'lucide-react-native';
 import { Empty, Loading } from '@/components/ui/empty';
@@ -43,7 +44,7 @@ export default function SoundPickerSheet() {
   if (isPending) return <Loading />;
 
   return (
-    <View className="flex-1 bg-background px-4 pt-6">
+    <View style={styles.root}>
       <Eyebrow>Attach a voice</Eyebrow>
       <FlatList
         data={takes}
@@ -53,7 +54,7 @@ export default function SoundPickerSheet() {
         }
         renderItem={({ item }) => (
           <Pressable
-            className="mb-2 flex-row items-center gap-3 rounded-xl border border-border bg-card p-3 active:bg-secondary"
+            style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
             onPress={() => {
               resolvePickerRequest(requestId, {
                 trackId: item.trackId,
@@ -64,14 +65,14 @@ export default function SoundPickerSheet() {
               router.back();
             }}
           >
-            <View className="h-9 w-9 items-center justify-center rounded-full bg-secondary">
+            <View style={styles.avatar}>
               <Mic size={16} color={colors.mutedForeground} />
             </View>
-            <View className="flex-1">
-              <Text className="text-[15px] font-medium text-foreground" numberOfLines={1}>
+            <View style={styles.textWrap}>
+              <Text style={styles.title} numberOfLines={1}>
                 {item.trackName}
               </Text>
-              <Text className="text-[12px] text-muted-foreground">
+              <Text style={styles.subtitle}>
                 {item.name} · v{item.v}
               </Text>
             </View>
@@ -82,3 +83,46 @@ export default function SoundPickerSheet() {
     </View>
   );
 }
+
+const styles = StyleSheet.create((theme) => ({
+  root: {
+    flex: 1,
+    backgroundColor: theme.colors.background,
+    paddingHorizontal: 16,
+    paddingTop: 24,
+  },
+  row: {
+    marginBottom: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    backgroundColor: theme.colors.card,
+    padding: 12,
+  },
+  rowPressed: {
+    backgroundColor: theme.colors.secondary,
+  },
+  avatar: {
+    height: 36,
+    width: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 999,
+    backgroundColor: theme.colors.secondary,
+  },
+  textWrap: {
+    flex: 1,
+  },
+  title: {
+    fontSize: 15,
+    fontWeight: '500',
+    color: theme.colors.foreground,
+  },
+  subtitle: {
+    fontSize: 12,
+    color: theme.colors.mutedForeground,
+  },
+}));

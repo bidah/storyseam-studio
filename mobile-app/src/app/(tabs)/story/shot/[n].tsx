@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { ScrollView, Text, View } from 'react-native';
+import { StyleSheet } from 'react-native-unistyles';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { toast } from 'sonner-native';
@@ -60,8 +61,8 @@ function ShotForm({ shot }: { shot: Shot }) {
     key: keyof typeof f,
     opts?: { multiline?: boolean; numeric?: boolean; placeholder?: string },
   ) => (
-    <View className="mb-3">
-      <Text className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+    <View style={styles.fieldWrap}>
+      <Text style={styles.fieldLabel}>
         {label}
       </Text>
       <Input
@@ -77,8 +78,8 @@ function ShotForm({ shot }: { shot: Shot }) {
   return (
     <ScrollView
       {...barInset}
-      className="flex-1"
-      contentContainerClassName="px-4 pb-24 pt-4"
+      style={styles.flex1}
+      contentContainerStyle={styles.contentContainer}
       keyboardShouldPersistTaps="handled"
     >
       {field('Location', 'location')}
@@ -100,16 +101,45 @@ export default function ShotSheet() {
   const shot = (data?.shots || []).find((s) => String(s.n) === String(n));
 
   return (
-    <View className="flex-1 bg-background">
+    <View style={styles.root}>
       <Stack.Screen options={{ title: shot ? `Shot ${shot.id}` : 'Shot' }} />
       {shot ? (
         // Keyed by the shot so the form re-seeds if the sheet is reused.
         <ShotForm key={shot.n} shot={shot} />
       ) : (
-        <View className="pt-6">
+        <View style={styles.emptyWrap}>
           <Empty title="Shot not found" hint="It may have been removed by a shot-list rebuild." />
         </View>
       )}
     </View>
   );
 }
+
+const styles = StyleSheet.create((theme) => ({
+  root: {
+    flex: 1,
+    backgroundColor: theme.colors.background,
+  },
+  emptyWrap: {
+    paddingTop: 24,
+  },
+  flex1: {
+    flex: 1,
+  },
+  contentContainer: {
+    paddingHorizontal: 16,
+    paddingBottom: 96,
+    paddingTop: 16,
+  },
+  fieldWrap: {
+    marginBottom: 12,
+  },
+  fieldLabel: {
+    marginBottom: 4,
+    fontSize: 11,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 0.3,
+    color: theme.colors.mutedForeground,
+  },
+}));

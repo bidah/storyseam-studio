@@ -1,5 +1,3 @@
-import '../global.css';
-
 import { useEffect, useState } from 'react';
 import { View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -7,7 +5,7 @@ import { KeyboardProvider } from 'react-native-keyboard-controller';
 import { DarkTheme, DefaultTheme, Stack, ThemeProvider } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import * as SplashScreen from 'expo-splash-screen';
-import { colorScheme } from 'nativewind';
+import { UnistylesRuntime } from 'react-native-unistyles';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Toaster } from 'sonner-native';
 import { bootstrap } from '@/lib/boot';
@@ -76,17 +74,22 @@ export default function RootLayout() {
     return () => clearTimeout(timer);
   }, [booted]);
 
-  // Keep NativeWind's active scheme in lockstep with the resolved preference so
-  // the `.dark:root` CSS variables (global.css) flip for className-based surfaces.
-  useEffect(() => {
-    colorScheme.set(scheme);
-  }, [scheme]);
-
-  // …and UIKit's, so the native chrome (nav bars, SwiftUI Forms, keyboard)
-  // follows the preference instead of the OS. Headers can then stay color-free.
+  // Push the preference to UIKit, so the native chrome (nav bars, SwiftUI
+  // Forms, keyboard) follows it instead of the OS. Headers can then stay
+  // color-free.
   useEffect(() => {
     applyNativeScheme(themePref);
   }, [themePref]);
+
+  // …and the RESOLVED scheme to unistyles, which is what flips every
+  // StyleSheet.create(theme => …) surface. Deliberately driven rather than left
+  // to `adaptiveThemes`: unistyles reads the OS-level interface style natively
+  // and can't see the app-level override `applyNativeScheme` just set, so on a
+  // dark phone a "Light" preference would light the icons and leave the
+  // surfaces dark. Sending the same `scheme` both places keeps them honest.
+  useEffect(() => {
+    UnistylesRuntime.setTheme(scheme);
+  }, [scheme]);
 
   if (!booted) return null;
 
@@ -96,7 +99,7 @@ export default function RootLayout() {
         <QueryClientProvider client={queryClient}>
           <ThemeProvider value={navThemeFor(scheme)}>
             <StatusBar style={isDark ? 'light' : 'dark'} />
-            <View className={isDark ? 'dark flex-1 bg-background' : 'flex-1 bg-background'}>
+            <View style={{ flex: 1, backgroundColor: colors.pageBg }}>
               <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.pageBg } }}>
                 <Stack.Screen name="index" />
                 {/* The two COLD-START landings, and neither is a push the author

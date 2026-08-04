@@ -1,4 +1,5 @@
 import { Pressable, RefreshControl, ScrollView, Text, View } from 'react-native';
+import { StyleSheet } from 'react-native-unistyles';
 import { router } from 'expo-router';
 import { Image } from 'expo-image';
 import * as Haptics from 'expo-haptics';
@@ -92,11 +93,11 @@ function CharacterCard({ char }: { char: WorldCharacter }) {
   const voiceRef = char.voiceRef;
 
   return (
-    <Card className="mb-3 p-3">
+    <Card style={styles.charCard}>
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={`Edit ${char.name || 'character'}`}
-        className="flex-row items-center gap-3 active:opacity-70"
+        style={({ pressed }) => [styles.charRow, pressed && styles.pressed]}
         onPress={() => {
           Haptics.selectionAsync().catch(() => {});
           router.push({ pathname: '/character', params: { id: char.id } });
@@ -105,19 +106,19 @@ function CharacterCard({ char }: { char: WorldCharacter }) {
         {sheet ? (
           <Image
             source={{ uri: mediaUrl(sheet.thumb || sheet.url) }}
-            style={{ width: 52, height: 52, borderRadius: 10 }}
+            style={styles.sheetImage}
             contentFit="cover"
           />
         ) : (
-          <View className="items-center justify-center rounded-[10px] bg-secondary" style={{ width: 52, height: 52 }}>
+          <View style={styles.sheetPlaceholder}>
             <Users size={20} color={colors.mutedForeground} />
           </View>
         )}
-        <View className="min-w-0 flex-1">
-          <Text className="text-[15px] font-semibold text-foreground" numberOfLines={1}>
+        <View style={styles.charInfo}>
+          <Text style={styles.charName} numberOfLines={1}>
             {char.name || 'Unnamed character'}
           </Text>
-          <View className="mt-1 flex-row items-center gap-2">
+          <View style={styles.charMetaRow}>
             {char.archetype ? <Badge variant="muted" label={char.archetype} /> : null}
             {voiceRef ? <Mic size={13} color={colors.primary} /> : null}
           </View>
@@ -185,13 +186,13 @@ export function WorldSurface() {
   return (
     <ScrollView
       {...barInset}
-      className="flex-1"
-      contentContainerClassName="px-4 pb-28 pt-3"
+      style={styles.flex1}
+      contentContainerStyle={styles.contentContainer}
       keyboardShouldPersistTaps="handled"
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.mutedForeground} />}
     >
       {isEmpty ? (
-        <View className="pt-8">
+        <View style={styles.emptyWrap}>
           <Empty
             title="No world yet"
             hint="The world that makes the series — let the agent interview you, or fill any field in directly."
@@ -199,9 +200,9 @@ export function WorldSurface() {
           {agentButton}
         </View>
       ) : (
-        <View className="gap-4">
+        <View style={styles.gap4}>
           {/* Progress pills */}
-          <View className="flex-row flex-wrap items-center gap-2">
+          <View style={styles.pillsRow}>
             <Badge variant="outline" label={`${mapFilled}/${MAP.length} story map`}>
               <Globe size={11} color={colors.mutedForeground} />
             </Badge>
@@ -216,7 +217,7 @@ export function WorldSurface() {
 
           {/* Title + logline */}
           <Card>
-            <View className="mb-2 flex-row items-center gap-2">
+            <View style={styles.sectionHeader}>
               <Sparkles size={15} color={colors.primary} />
               <CardTitle>The series</CardTitle>
             </View>
@@ -231,21 +232,21 @@ export function WorldSurface() {
               label="Logline"
               value={world.logline}
               placeholder="One sentence that captures the series."
-              className="mt-2"
+              style={styles.mt2}
               onCommit={(v) => patchWorld({ logline: v })}
             />
           </Card>
 
           {/* Story map */}
           <Card>
-            <View className="mb-2 flex-row items-center gap-2">
+            <View style={styles.sectionHeader}>
               <Globe size={15} color={colors.primary} />
               <CardTitle>Story map</CardTitle>
-              <View className="ml-auto">
+              <View style={styles.mlAuto}>
                 <Badge variant="outline" label={`${mapFilled}/${MAP.length}`} />
               </View>
             </View>
-            <View className="gap-3">
+            <View style={styles.gap3}>
               {MAP.map((m) => (
                 <EditableField
                   key={m.key}
@@ -260,17 +261,17 @@ export function WorldSurface() {
 
           {/* Story depth */}
           <Card>
-            <View className="mb-2 flex-row items-center gap-2">
+            <View style={styles.sectionHeader}>
               <BookOpen size={15} color={colors.primary} />
               <CardTitle>Story depth</CardTitle>
-              <View className="ml-auto">
+              <View style={styles.mlAuto}>
                 <Badge variant="outline" label={`${depthFilled}/${DEPTH.length}`} />
               </View>
             </View>
-            <Text className="mb-2 text-[12px] text-muted-foreground">
+            <Text style={styles.depthHint}>
               Understand the story — the core elements beneath the plot.
             </Text>
-            <View className="gap-3">
+            <View style={styles.gap3}>
               {DEPTH.map((d) => (
                 <EditableField
                   key={d.key}
@@ -285,8 +286,8 @@ export function WorldSurface() {
 
           {/* Characters */}
           <View>
-            <View className="mb-2 flex-row items-center justify-between">
-              <View className="flex-row items-center gap-2">
+            <View style={styles.charsHeader}>
+              <View style={styles.charsHeaderLeft}>
                 <Users size={15} color={colors.primary} />
                 <CardTitle>Characters</CardTitle>
               </View>
@@ -295,8 +296,8 @@ export function WorldSurface() {
               </Button>
             </View>
             {characters.length === 0 ? (
-              <Card className="items-center py-6">
-                <Text className="text-sm text-muted-foreground">
+              <Card style={styles.noCharsCard}>
+                <Text style={styles.noCharsText}>
                   no characters yet — add one, or let the agent build the roster.
                 </Text>
               </Card>
@@ -305,9 +306,111 @@ export function WorldSurface() {
             )}
           </View>
 
-          <View className="mt-2">{agentButton}</View>
+          <View style={styles.mt2}>{agentButton}</View>
         </View>
       )}
     </ScrollView>
   );
 }
+
+const styles = StyleSheet.create((theme) => ({
+  flex1: {
+    flex: 1,
+  },
+  contentContainer: {
+    paddingHorizontal: 16,
+    paddingBottom: 112,
+    paddingTop: 12,
+  },
+  emptyWrap: {
+    paddingTop: 32,
+  },
+  gap4: {
+    gap: 16,
+  },
+  gap3: {
+    gap: 12,
+  },
+  pillsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: 8,
+  },
+  sectionHeader: {
+    marginBottom: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  mlAuto: {
+    marginLeft: 'auto',
+  },
+  mt2: {
+    marginTop: 8,
+  },
+  depthHint: {
+    marginBottom: 8,
+    fontSize: 12,
+    color: theme.colors.mutedForeground,
+  },
+  charsHeader: {
+    marginBottom: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  charsHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  noCharsCard: {
+    alignItems: 'center',
+    paddingVertical: 24,
+  },
+  noCharsText: {
+    fontSize: 14,
+    color: theme.colors.mutedForeground,
+  },
+  charCard: {
+    marginBottom: 12,
+    padding: 12,
+  },
+  charRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  pressed: {
+    opacity: 0.7,
+  },
+  sheetImage: {
+    width: 52,
+    height: 52,
+    borderRadius: 10,
+  },
+  sheetPlaceholder: {
+    width: 52,
+    height: 52,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 10,
+    backgroundColor: theme.colors.secondary,
+  },
+  charInfo: {
+    minWidth: 0,
+    flex: 1,
+  },
+  charName: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: theme.colors.foreground,
+  },
+  charMetaRow: {
+    marginTop: 4,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+}));

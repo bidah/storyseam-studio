@@ -16,10 +16,10 @@ import {
   NativeScrollEvent,
   NativeSyntheticEvent,
   Pressable,
-  StyleSheet,
   Text,
   View,
 } from "react-native";
+import { StyleSheet } from "react-native-unistyles";
 import { SymbolView } from "expo-symbols";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Animated, {

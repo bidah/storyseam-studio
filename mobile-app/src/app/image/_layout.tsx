@@ -1,4 +1,5 @@
 import { Pressable, View } from 'react-native';
+import { StyleSheet } from 'react-native-unistyles';
 import { router, Stack, useNavigation } from 'expo-router';
 import type { NativeStackHeaderItem } from 'expo-router/build/react-navigation/native-stack/types';
 import { X } from 'lucide-react-native';
@@ -63,7 +64,7 @@ export default function ImageLayout() {
     <Pressable
       accessibilityRole="button"
       accessibilityLabel="Close visual world"
-      className="h-9 w-9 items-center justify-center rounded-full active:opacity-60"
+      style={({ pressed }) => [styles.closeButton, pressed && styles.pressed]}
       onPress={close}
     >
       <X size={19} color={colors.foreground} />
@@ -71,7 +72,7 @@ export default function ImageLayout() {
   );
 
   return (
-    <View className="flex-1 bg-background">
+    <View style={styles.root}>
       <Stack
         screenOptions={{
           ...headerBase,
@@ -94,3 +95,15 @@ export default function ImageLayout() {
     </View>
   );
 }
+
+const styles = StyleSheet.create((theme) => ({
+  root: { flex: 1, backgroundColor: theme.colors.background },
+  closeButton: {
+    height: 36,
+    width: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 999,
+  },
+  pressed: { opacity: 0.6 },
+}));

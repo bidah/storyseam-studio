@@ -1,7 +1,14 @@
-import { cva, type VariantProps } from 'class-variance-authority';
-import { ActivityIndicator, Pressable, Text, type PressableProps } from 'react-native';
+import {
+  ActivityIndicator,
+  Pressable,
+  Text,
+  type PressableProps,
+  type StyleProp,
+  type TextStyle,
+  type ViewStyle,
+} from 'react-native';
+import { StyleSheet } from 'react-native-unistyles';
 import * as Haptics from 'expo-haptics';
-import { cn } from '@/lib/utils';
 
 // Pressable button — the cross-platform base. It ships as-is on Android/web
 // (via button.tsx) and is also the fallback the iOS Liquid-Glass button
@@ -9,75 +16,98 @@ import { cn } from '@/lib/utils';
 // a native SwiftUI Button can't render. Living in a platform-neutral filename
 // lets button.ios.tsx import it without resolving back onto itself.
 
-export const buttonVariants = cva(
-  'flex-row items-center justify-center gap-2 rounded-xl active:opacity-80',
-  {
+export type ButtonVariant = 'default' | 'secondary' | 'outline' | 'ghost' | 'destructive';
+export type ButtonSize = 'default' | 'sm' | 'lg' | 'icon';
+
+export type ButtonProps = Omit<PressableProps, 'style'> & {
+  title?: string;
+  loading?: boolean;
+  haptic?: boolean;
+  variant?: ButtonVariant;
+  size?: ButtonSize;
+  /** Layout overrides for the button itself (width, margins, flex). */
+  style?: StyleProp<ViewStyle>;
+  textStyle?: StyleProp<TextStyle>;
+  children?: React.ReactNode;
+};
+
+export const buttonStyles = StyleSheet.create((theme) => ({
+  button: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    borderRadius: 12,
     variants: {
       variant: {
-        default: 'bg-primary',
-        secondary: 'bg-secondary',
-        outline: 'border border-border bg-transparent',
-        ghost: 'bg-transparent',
-        destructive: 'bg-destructive',
+        default: { backgroundColor: theme.colors.primary },
+        secondary: { backgroundColor: theme.colors.secondary },
+        outline: {
+          borderWidth: 1,
+          borderColor: theme.colors.border,
+          backgroundColor: 'transparent',
+        },
+        ghost: { backgroundColor: 'transparent' },
+        destructive: { backgroundColor: theme.colors.destructive },
       },
       size: {
-        default: 'h-11 px-4',
-        sm: 'h-8 px-3 rounded-lg',
-        lg: 'h-13 px-6',
-        icon: 'h-10 w-10',
+        default: { height: 44, paddingHorizontal: 16 },
+        sm: { height: 32, paddingHorizontal: 12, borderRadius: 8 },
+        lg: { height: 52, paddingHorizontal: 24 },
+        icon: { height: 40, width: 40 },
       },
     },
-    defaultVariants: { variant: 'default', size: 'default' },
   },
-);
-
-export const textVariants = cva('font-semibold', {
-  variants: {
-    variant: {
-      default: 'text-primary-foreground',
-      secondary: 'text-secondary-foreground',
-      outline: 'text-foreground',
-      ghost: 'text-foreground',
-      destructive: 'text-destructive-foreground',
-    },
-    size: {
-      default: 'text-[15px]',
-      sm: 'text-[13px]',
-      lg: 'text-base',
-      icon: 'text-[15px]',
+  label: {
+    fontWeight: '600',
+    variants: {
+      variant: {
+        default: { color: theme.colors.primaryForeground },
+        secondary: { color: theme.colors.secondaryForeground },
+        outline: { color: theme.colors.foreground },
+        ghost: { color: theme.colors.foreground },
+        destructive: { color: theme.colors.destructiveForeground },
+      },
+      size: {
+        default: { fontSize: 15 },
+        sm: { fontSize: 13 },
+        lg: { fontSize: 16 },
+        icon: { fontSize: 15 },
+      },
     },
   },
-  defaultVariants: { variant: 'default', size: 'default' },
-});
-
-export type ButtonProps = PressableProps &
-  VariantProps<typeof buttonVariants> & {
-    title?: string;
-    loading?: boolean;
-    haptic?: boolean;
-    className?: string;
-    textClassName?: string;
-    children?: React.ReactNode;
-  };
+}));
 
 export function Button({
   title,
   loading,
   haptic = true,
-  variant,
-  size,
-  className,
-  textClassName,
+  variant = 'default',
+  size = 'default',
+  style,
+  textStyle,
   children,
   disabled,
   onPress,
   ...rest
 }: ButtonProps) {
+  // `default` is unistyles' FALLBACK key, not a selectable name — it's the
+  // branch applied when a variant group gets no selection, so it has to be
+  // passed as `undefined` rather than by name.
+  buttonStyles.useVariants({
+    variant: variant === 'default' ? undefined : variant,
+    size: size === 'default' ? undefined : size,
+  });
+  const off = disabled || loading;
   return (
     <Pressable
       accessibilityRole="button"
-      disabled={disabled || loading}
-      className={cn(buttonVariants({ variant, size }), (disabled || loading) && 'opacity-50', className)}
+      disabled={off}
+      style={({ pressed }) => [
+        buttonStyles.button,
+        off ? { opacity: 0.5 } : pressed ? { opacity: 0.8 } : null,
+        style,
+      ]}
       onPress={(e) => {
         if (haptic) Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
         onPress?.(e);
@@ -86,7 +116,7 @@ export function Button({
     >
       {loading ? <ActivityIndicator size="small" color="white" /> : null}
       {children}
-      {title ? <Text className={cn(textVariants({ variant, size }), textClassName)}>{title}</Text> : null}
+      {title ? <Text style={[buttonStyles.label, textStyle]}>{title}</Text> : null}
     </Pressable>
   );
 }

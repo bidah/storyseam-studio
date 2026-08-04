@@ -18,7 +18,6 @@ import { ActivityIndicator, Pressable, Text } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { GlassView, isLiquidGlassAvailable } from 'expo-glass-effect';
 import { useColors } from '@/lib/colors';
-import { cn } from '@/lib/utils';
 import {
   SemiPillButton as BounceSemiPillButton,
   semiPillStyles,
@@ -43,7 +42,7 @@ export function SemiPillButton(props: SemiPillButtonProps) {
     loading,
     disabled,
     haptic = true,
-    className,
+    style,
     accessibilityLabel,
   } = props;
 
@@ -67,7 +66,7 @@ export function SemiPillButton(props: SemiPillButtonProps) {
       accessibilityLabel={accessibilityLabel ?? title}
       disabled={off}
       // Layout only — the glass surface owns the shape and the fill.
-      className={cn('w-full', off && 'opacity-50', className)}
+      style={[semiPillStyles.fullWidth, off && { opacity: 0.5 }, style]}
       onPress={() => {
         if (haptic) Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
         onPress?.();

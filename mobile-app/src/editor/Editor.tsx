@@ -5,7 +5,8 @@
 // stateless/props-driven. Only the UI shell + gesture wiring are native.
 // Web reference: /docs/architecture ↔ this: /docs/react-native/architecture
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Alert, Pressable, StyleSheet, Text, View } from "react-native";
+import { Alert, Pressable, Text, View } from "react-native";
+import { StyleSheet } from "react-native-unistyles";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { runOnJS, useAnimatedReaction, useSharedValue, type SharedValue } from "react-native-reanimated";
 import { SymbolView, type SymbolViewProps } from "expo-symbols";

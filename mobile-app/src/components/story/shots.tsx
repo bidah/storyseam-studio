@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Alert, Pressable, RefreshControl, ScrollView, SectionList, Text, View } from 'react-native';
+import { StyleSheet } from 'react-native-unistyles';
 import { router } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { toast } from 'sonner-native';
@@ -12,7 +13,6 @@ import { postJson } from '@/lib/api';
 import { useColors } from '@/lib/colors';
 import { useInvalidate, useProjectResource } from '@/lib/queries';
 import { useManualRefresh } from '@/lib/use-manual-refresh';
-import { cn } from '@/lib/utils';
 import { useTabBarScrollProps } from '@/lib/use-tab-bar-inset';
 
 // Shot list sub-surface — port of src/routes/shotlist.jsx (web). Shots are
@@ -112,8 +112,8 @@ export function ShotsSurface() {
   if (error) return <ErrorNote message={String((error as any)?.message || error)} onRetry={refetch} />;
 
   const header = (
-    <View className="pb-2 pt-3">
-      <View className="mb-2 flex-row flex-wrap items-center gap-2">
+    <View style={styles.header}>
+      <View style={styles.badgeRow}>
         <Badge variant="outline" label={`${shots.length} shots`} />
         <Badge variant="success" label={`~${fmtTime(runtime)} total`} />
         <Badge variant="info" label={`${packs.length} packs`}>
@@ -121,7 +121,7 @@ export function ShotsSurface() {
         </Badge>
       </View>
       {packs.length > 0 ? (
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerClassName="gap-2 pr-4">
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.packsRow}>
           {packs.map((p) => {
             const on = effPack === p.id;
             return (
@@ -129,27 +129,19 @@ export function ShotsSurface() {
                 key={p.id}
                 accessibilityRole="button"
                 accessibilityLabel={on ? 'Show all shots' : `Show only ${p.id}'s shots`}
-                className={cn(
-                  'flex-row items-center gap-1.5 rounded-full border px-3 py-1.5',
-                  on ? 'border-primary bg-primary/15' : 'border-border bg-card',
-                )}
+                style={[styles.packChip, on ? styles.packChipOn : styles.packChipOff]}
                 onPress={() => {
                   Haptics.selectionAsync().catch(() => {});
                   setActivePack((cur) => (cur === p.id ? null : p.id));
                 }}
               >
-                <Text className={cn('text-[12px] font-semibold', on ? 'text-primary' : 'text-foreground')}>
+                <Text style={[styles.packLabel, on ? styles.packLabelOn : styles.packLabelOff]}>
                   {p.id}
                 </Text>
-                <Text className="text-[11px] text-muted-foreground">
+                <Text style={styles.packMeta}>
                   {p.from}–{p.to} · {p.count}
                 </Text>
-                <Text
-                  className={cn(
-                    'text-[11px] font-semibold',
-                    p.durationEst > 15 ? 'text-warning' : 'text-success',
-                  )}
-                >
+                <Text style={[styles.packDuration, p.durationEst > 15 ? styles.packDurationWarn : styles.packDurationOk]}>
                   {p.durationEst}s
                 </Text>
               </Pressable>
@@ -161,18 +153,18 @@ export function ShotsSurface() {
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Show all shots"
-          className="mt-2 flex-row items-center gap-1 self-start rounded-md border border-dashed border-border px-2 py-1 active:opacity-60"
+          style={({ pressed }) => [styles.clearPack, pressed && styles.pressed60]}
           onPress={() => setActivePack(null)}
         >
           <X size={11} color={colors.mutedForeground} />
-          <Text className="text-[11px] text-muted-foreground">showing {effPack} — show all</Text>
+          <Text style={styles.clearPackText}>showing {effPack} — show all</Text>
         </Pressable>
       ) : null}
     </View>
   );
 
   const footer = (
-    <View className="py-6">
+    <View style={styles.footer}>
       <Button
         variant="outline"
         title={rebuilding ? 'Rebuilding…' : 'Rebuild from current episode'}
@@ -185,10 +177,10 @@ export function ShotsSurface() {
   );
 
   return (
-    <View className="flex-1">
+    <View style={styles.flex1}>
       <SectionList
         {...barInset}
-        className="flex-1 px-4"
+        style={styles.list}
         sections={sections}
         keyExtractor={(s) => String(s.n)}
         stickySectionHeadersEnabled={false}
@@ -196,7 +188,7 @@ export function ShotsSurface() {
         ListHeaderComponent={header}
         ListFooterComponent={shots.length > 0 ? footer : null}
         ListEmptyComponent={
-          <View className="pt-4">
+          <View style={styles.emptyWrap}>
             <Empty
               title="No shots yet"
               hint='Sign the script and press "Generate shot list", or rebuild from the current episode.'
@@ -205,9 +197,9 @@ export function ShotsSurface() {
           </View>
         }
         renderSectionHeader={({ section }) => (
-          <View className="flex-row items-center gap-2 pb-2 pt-4">
+          <View style={styles.sectionHeader}>
             <Film size={14} color={colors.primary} />
-            <Text className="flex-1 text-[15px] font-semibold text-foreground" numberOfLines={1}>
+            <Text style={styles.sectionTitle} numberOfLines={1}>
               {section.beatTitle || section.beat}
             </Text>
             <Badge variant="outline" label={`${section.data.length} shots`} />
@@ -216,24 +208,24 @@ export function ShotsSurface() {
         renderItem={({ item: s }) => (
           <BouncyPressable
             accessibilityLabel={`Edit shot ${s.id}`}
-            className="mb-2 rounded-xl border border-border bg-card p-3"
+            style={styles.shotCard}
             onPress={() => router.push(`/story/shot/${s.n}`)}
           >
-            <View className="flex-row items-center gap-2">
+            <View style={styles.shotHeaderRow}>
               <Badge variant="muted" label={s.id} />
               {packById.get(s.id) ? <Badge variant="info" label={packById.get(s.id)!} /> : null}
-              <Text className="ml-auto text-[12px] text-muted-foreground">{s.dur || 0}s</Text>
+              <Text style={styles.shotDur}>{s.dur || 0}s</Text>
             </View>
-            <Text className="mt-1.5 text-[12px] text-muted-foreground" numberOfLines={1}>
+            <Text style={styles.shotMeta} numberOfLines={1}>
               {[s.location, s.camera].filter(Boolean).join(' · ') || '—'}
             </Text>
             {s.action ? (
-              <Text className="mt-1 text-[14px] leading-5 text-foreground" numberOfLines={2}>
+              <Text style={styles.shotAction} numberOfLines={2}>
                 {s.action}
               </Text>
             ) : null}
             {s.dialogue && !/\(no dialogue\)/i.test(s.dialogue) ? (
-              <Text className="mt-1 text-[13px] italic text-muted-foreground" numberOfLines={2}>
+              <Text style={styles.shotDialogue} numberOfLines={2}>
                 {s.dialogue}
               </Text>
             ) : null}
@@ -243,3 +235,143 @@ export function ShotsSurface() {
     </View>
   );
 }
+
+const styles = StyleSheet.create((theme) => ({
+  flex1: {
+    flex: 1,
+  },
+  list: {
+    flex: 1,
+    paddingHorizontal: 16,
+  },
+  header: {
+    paddingBottom: 8,
+    paddingTop: 12,
+  },
+  badgeRow: {
+    marginBottom: 8,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: 8,
+  },
+  packsRow: {
+    gap: 8,
+    paddingRight: 16,
+  },
+  packChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    borderRadius: 999,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  packChipOn: {
+    borderColor: theme.colors.primary,
+    backgroundColor: `${theme.colors.primary}26`,
+  },
+  packChipOff: {
+    borderColor: theme.colors.border,
+    backgroundColor: theme.colors.card,
+  },
+  packLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  packLabelOn: {
+    color: theme.colors.primary,
+  },
+  packLabelOff: {
+    color: theme.colors.foreground,
+  },
+  packMeta: {
+    fontSize: 11,
+    color: theme.colors.mutedForeground,
+  },
+  packDuration: {
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  packDurationWarn: {
+    color: theme.colors.warning,
+  },
+  packDurationOk: {
+    color: theme.colors.success,
+  },
+  clearPack: {
+    marginTop: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    alignSelf: 'flex-start',
+    borderRadius: 6,
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    borderColor: theme.colors.border,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  pressed60: {
+    opacity: 0.6,
+  },
+  clearPackText: {
+    fontSize: 11,
+    color: theme.colors.mutedForeground,
+  },
+  footer: {
+    paddingVertical: 24,
+  },
+  emptyWrap: {
+    paddingTop: 16,
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingBottom: 8,
+    paddingTop: 16,
+  },
+  sectionTitle: {
+    flex: 1,
+    fontSize: 15,
+    fontWeight: '600',
+    color: theme.colors.foreground,
+  },
+  shotCard: {
+    marginBottom: 8,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    backgroundColor: theme.colors.card,
+    padding: 12,
+  },
+  shotHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  shotDur: {
+    marginLeft: 'auto',
+    fontSize: 12,
+    color: theme.colors.mutedForeground,
+  },
+  shotMeta: {
+    marginTop: 6,
+    fontSize: 12,
+    color: theme.colors.mutedForeground,
+  },
+  shotAction: {
+    marginTop: 4,
+    fontSize: 14,
+    lineHeight: 20,
+    color: theme.colors.foreground,
+  },
+  shotDialogue: {
+    marginTop: 4,
+    fontSize: 13,
+    fontStyle: 'italic',
+    color: theme.colors.mutedForeground,
+  },
+}));

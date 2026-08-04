@@ -22,9 +22,9 @@
  * fill are the same either way, only the surface differs.
  */
 import type { ReactNode } from 'react';
-import { ActivityIndicator, StyleSheet, Text } from 'react-native';
+import { ActivityIndicator, Text, type StyleProp, type ViewStyle } from 'react-native';
+import { StyleSheet } from 'react-native-unistyles';
 import { useColors } from '@/lib/colors';
-import { cn } from '@/lib/utils';
 import { BouncyPressable } from './bouncy-pressable';
 
 export type SemiPillVariant = 'glass' | 'bounce' | 'clear';
@@ -42,8 +42,8 @@ export type SemiPillButtonProps = {
   loading?: boolean;
   disabled?: boolean;
   haptic?: boolean;
-  /** Layout classes for the button itself (width, margins). */
-  className?: string;
+  /** Layout style for the button itself (width, margins). */
+  style?: StyleProp<ViewStyle>;
   accessibilityLabel?: string;
 };
 
@@ -64,6 +64,7 @@ export const semiPillStyles = StyleSheet.create({
     gap: 8,
     overflow: 'hidden',
   },
+  fullWidth: { width: '100%' },
   label: { fontSize: 17, fontWeight: '600' },
   // `clear` without real glass: a dark wash plus a lit edge. The wash is what
   // keeps a white label readable over an arbitrary frame of video, and the edge
@@ -85,7 +86,7 @@ export function SemiPillButton({
   loading,
   disabled,
   haptic = true,
-  className,
+  style,
   accessibilityLabel,
 }: SemiPillButtonProps) {
   const colors = useColors();
@@ -108,10 +109,11 @@ export function SemiPillButton({
       accessibilityLabel={accessibilityLabel ?? title}
       // A slab this big shouldn't travel as far as a card does on press.
       pressedScale={0.975}
-      className={cn('w-full', className)}
       style={[
+        semiPillStyles.fullWidth,
         semiPillStyles.face,
         clear ? semiPillStyles.clearFace : { backgroundColor: colors.foreground },
+        style,
       ]}
     >
       {loading ? <ActivityIndicator size="small" color={content} /> : null}
