@@ -11,10 +11,12 @@
   // record and the cert for the zone on deploy, so this file is the source of
   // truth for where the app lives rather than a click in the dashboard.
   //
-  // The workers.dev origin STAYS reachable (workers_dev defaults on) — installed
-  // desktop builds poll it for updates and existing sessions were issued on it.
-  // It is a fallback, not the address: WORKER_PUBLIC_URL below is what every
-  // absolute URL the Worker mints uses, and what OAuth redirects come back to.
+  // `workers_dev` must be set EXPLICITLY once `routes` exists: adding a route
+  // silently turns the workers.dev subdomain OFF on the next deploy, which would
+  // strand every installed desktop build (they poll the old origin for updates)
+  // and every session issued there. It stays on as a fallback, not as the
+  // address — WORKER_PUBLIC_URL below is what every absolute URL the Worker
+  // mints uses, and what OAuth redirects come back to.
   //
   // Apex only, deliberately. A second custom domain on www would be a SECOND
   // origin, and Better Auth cookies are per-origin — a user who landed on www
@@ -23,6 +25,7 @@
   "routes": [
     { "pattern": "storyseam.app", "custom_domain": true }
   ],
+  "workers_dev": true,
   // Non-secret config. Secrets are set with `wrangler secret put <NAME>`:
   //   R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY  (presign R2 for the
   //     Daytona ffmpeg sandbox — see src/lib/ffmpeg.js)
