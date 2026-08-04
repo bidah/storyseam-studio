@@ -144,10 +144,13 @@ function etagMatches(ifNoneMatch, etag) {
 // proxy fallback to serve originals with a short TTL); `extraHeaders` are set
 // on the final response (e.g. `x-proxy: fallback`).
 //
-// NOTE: Workers Cache API (`caches.default`) is a no-op on workers.dev and there
-// is no custom domain, so the win here is purely the *browser* HTTP cache. If a
-// custom domain is ever attached, add a `caches.default` block around this
-// (~15 lines: check on entry, `waitUntil(cache.put(...))` before returning).
+// NOTE: this only uses the *browser* HTTP cache today. It was written when the
+// app was on workers.dev, where the Workers Cache API (`caches.default`) is a
+// no-op. The app now serves from the custom domain `storyseam.app`, so edge
+// caching is available and worth adding here (~15 lines: check on entry,
+// `waitUntil(cache.put(...))` before returning). Requests that arrive on the
+// workers.dev origin still get nothing from it, which is fine — that origin is
+// only a fallback now.
 export async function streamKey(env, key, rangeHeader, opts = {}) {
   const { ifNoneMatch, cacheControl, extraHeaders } = opts;
   const cc = cacheControl || defaultCacheControl(key);

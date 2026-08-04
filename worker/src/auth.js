@@ -60,6 +60,10 @@ export function createAuth(env, cf, baseURL) {
         trustedOrigins: [
           baseURL,
           "http://localhost:3333",
+          // The app's own domain, and the workers.dev origin it moved off. The
+          // old one stays trusted on purpose: sessions issued there are still
+          // live, and installed desktop builds still reach the Worker that way.
+          "https://storyseam.app",
           "https://shot-studio-uploads.rodrigofigueroa-name.workers.dev",
           // The Expo mobile app (scheme + dev-client URLs).
           "mobileapp://",

@@ -15,7 +15,7 @@ npx expo run:ios          # or: npx expo run:android
 ```
 
 By default the app talks to the deployed Worker
-(`https://shot-studio-uploads.rodrigofigueroa-name.workers.dev`). To point at a
+(`https://storyseam.app`). To point at a
 local Worker instead, create `.env`:
 
 ```bash

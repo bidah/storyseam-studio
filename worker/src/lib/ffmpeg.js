@@ -20,7 +20,7 @@ function shq(s) {
 }
 
 function workerBase(env) {
-  return (env.WORKER_PUBLIC_URL || "https://shot-studio-uploads.rodrigofigueroa-name.workers.dev").replace(/\/+$/, "");
+  return (env.WORKER_PUBLIC_URL || "https://storyseam.app").replace(/\/+$/, "");
 }
 
 // A reused Daytona sandbox, looked up by label so it survives the Worker's

@@ -15,7 +15,7 @@ deployed Cloudflare Worker API and the same eve chat agent.
 ## Architecture decisions
 
 1. **Backend unchanged** — the app is a pure client of the existing Worker
-   (`EXPO_PUBLIC_API_URL`, default `https://shot-studio-uploads.rodrigofigueroa-name.workers.dev`).
+   (`EXPO_PUBLIC_API_URL`, default `https://storyseam.app`).
    One Worker change only: Better Auth gets the `@better-auth/expo` server plugin +
    `mobileapp://` (and dev `exp://`) trusted origins.
 2. **Auth** — Better Auth email/password via `@better-auth/expo` client plugin

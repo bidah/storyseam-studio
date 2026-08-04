@@ -35,7 +35,7 @@
   // Non-secret config. Secrets (FLUE_PROXY_SECRET; plus ANTHROPIC_API_KEY only if
   // you re-add an anthropic/* model) are set with `wrangler secret put`.
   "vars": {
-    "SHOT_STUDIO_API": "https://shot-studio-uploads.rodrigofigueroa-name.workers.dev",
+    "SHOT_STUDIO_API": "https://storyseam.app",
     "HIGGSFIELD_MCP_URL": "https://mcp.higgsfield.ai/mcp"
   }
   // Secrets (set with `wrangler secret put` in prod, `.dev.vars` locally):

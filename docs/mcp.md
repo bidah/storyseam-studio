@@ -64,7 +64,7 @@ List your project ids with `GET /api/projects` (signed in), or read the
 
 ```sh
 claude mcp add --transport http shot-studio \
-  "https://shot-studio-uploads.rodrigofigueroa-name.workers.dev/api/mcp?projectId=p_xxxxxxxx" \
+  "https://storyseam.app/api/mcp?projectId=p_xxxxxxxx" \
   --header "Authorization: Bearer $MCP_TOKEN"
 ```
 
@@ -75,7 +75,7 @@ claude mcp add --transport http shot-studio \
   "mcpServers": {
     "shot-studio": {
       "type": "http",
-      "url": "https://shot-studio-uploads.rodrigofigueroa-name.workers.dev/api/mcp?projectId=p_xxxxxxxx",
+      "url": "https://storyseam.app/api/mcp?projectId=p_xxxxxxxx",
       "headers": { "Authorization": "Bearer YOUR_MCP_TOKEN" }
     }
   }

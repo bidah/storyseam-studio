@@ -114,6 +114,9 @@ app.use(
 // origins to prevent spoofing.
 const TRUSTED_APP_ORIGINS = [
   "http://localhost:3333",
+  "https://storyseam.app",
+  // The origin the app moved off. Kept so a client still pointed at workers.dev
+  // (an installed desktop build, a stale bookmark) keeps authenticating.
   "https://shot-studio-uploads.rodrigofigueroa-name.workers.dev",
 ];
 function appOrigin(c) {

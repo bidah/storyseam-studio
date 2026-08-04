@@ -17,7 +17,7 @@ function shq(s) {
   return `'${String(s).replace(/'/g, "'\\''")}'`;
 }
 function workerBase(env) {
-  return (env.WORKER_PUBLIC_URL || "https://shot-studio-uploads.rodrigofigueroa-name.workers.dev").replace(/\/+$/, "");
+  return (env.WORKER_PUBLIC_URL || "https://storyseam.app").replace(/\/+$/, "");
 }
 
 const PROXY_SCALE =

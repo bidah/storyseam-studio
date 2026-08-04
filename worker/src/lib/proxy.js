@@ -20,7 +20,7 @@ import { isAllowedMediaUrl } from "./higgsfield.js";
 const shq = (s) => `'${String(s).replace(/'/g, "'\\''")}'`;
 
 function workerBase(env) {
-  return (env.WORKER_PUBLIC_URL || "https://shot-studio-uploads.rodrigofigueroa-name.workers.dev").replace(/\/+$/, "");
+  return (env.WORKER_PUBLIC_URL || "https://storyseam.app").replace(/\/+$/, "");
 }
 
 const LOCK_TTL_MS = 15 * 60 * 1000; // a lock older than this is presumed dead

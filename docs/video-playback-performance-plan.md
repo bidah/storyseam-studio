@@ -98,7 +98,7 @@ Replace the bespoke handler body with `streamKey(c.env, key, c.req.header("range
 
 ## Risks / flags
 
-- Cache API deliberately excluded (no-op on workers.dev); revisit `streamKey` if a custom domain is added.
+- Cache API was deliberately excluded because it is a no-op on workers.dev. **That constraint is gone** — the app now serves from the custom domain `storyseam.app` (`worker/wrangler.jsonc` `routes`), where `caches.default` is live. `streamKey` (`worker/src/lib/media.js`) is the place to revisit: range responses can now be edge-cached instead of re-reading R2 on every scrub.
 - How new Higgsfield takes currently land in R2 is unclear (`episode.js:331` TODO) — those get proxies only via lazy fallback/backfill until that's implemented.
 - Proxy duration can differ from original by ≲1 frame — all duration-authoritative surfaces (pool metadata, timeline doc, render) stay on originals.
 - Media routes have no ownership check today (only `/api/*` is guarded); proxies match the existing exposure, no change.

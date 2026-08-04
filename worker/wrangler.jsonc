@@ -7,6 +7,22 @@
   // orchestration moves onto the Worker (Stage 3).
   "compatibility_flags": ["nodejs_compat"],
   "observability": { "enabled": true },
+  // The app's own domain. `custom_domain` makes wrangler create/keep the DNS
+  // record and the cert for the zone on deploy, so this file is the source of
+  // truth for where the app lives rather than a click in the dashboard.
+  //
+  // The workers.dev origin STAYS reachable (workers_dev defaults on) — installed
+  // desktop builds poll it for updates and existing sessions were issued on it.
+  // It is a fallback, not the address: WORKER_PUBLIC_URL below is what every
+  // absolute URL the Worker mints uses, and what OAuth redirects come back to.
+  //
+  // Apex only, deliberately. A second custom domain on www would be a SECOND
+  // origin, and Better Auth cookies are per-origin — a user who landed on www
+  // would get a different session from one who landed on the apex. Send www here
+  // with a Cloudflare Redirect Rule instead.
+  "routes": [
+    { "pattern": "storyseam.app", "custom_domain": true }
+  ],
   // Non-secret config. Secrets are set with `wrangler secret put <NAME>`:
   //   R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY  (presign R2 for the
   //     Daytona ffmpeg sandbox — see src/lib/ffmpeg.js)
@@ -15,7 +31,9 @@
   //   GOOGLE_CLIENT_SECRET           ("Sign in with Google" — the OAuth client
   //     secret pairing GOOGLE_CLIENT_ID below. Create a Web application OAuth
   //     client in Google Cloud Console with redirect URI
-  //     <WORKER_PUBLIC_URL>/api/auth/callback/google.)
+  //     <WORKER_PUBLIC_URL>/api/auth/callback/google — i.e.
+  //     https://storyseam.app/api/auth/callback/google. Keep the old workers.dev
+  //     redirect URI registered alongside it while that origin still answers.)
   //   FAL_KEY                        (OPTIONAL fal.ai fallback key. The primary
   //     path is BYOK: each user's own key rides per-request as x-fal-key from
   //     their browser's localStorage and is never stored server-side. This env
@@ -33,7 +51,7 @@
   "vars": {
     "R2_BUCKET": "shot-studio-uploads",
     "R2_ACCOUNT_ID": "cda687c8b568323a9b535ca44a192131",
-    "WORKER_PUBLIC_URL": "https://shot-studio-uploads.rodrigofigueroa-name.workers.dev",
+    "WORKER_PUBLIC_URL": "https://storyseam.app",
     "HIGGSFIELD_CLIENT_ID": "LgvtzrTQ0pgrGOzD",
     // Google OAuth web client for "Sign in with Google" (secret is the
     // GOOGLE_CLIENT_SECRET wrangler secret). Empty = Google sign-in disabled.

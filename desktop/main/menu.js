@@ -33,7 +33,7 @@ export function installMenu() {
           click: () =>
             shell.openExternal(
               process.env.SHOT_STUDIO_WORKER ||
-                "https://shot-studio-uploads.rodrigofigueroa-name.workers.dev",
+                "https://storyseam.app",
             ),
         },
         {

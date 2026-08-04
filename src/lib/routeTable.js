@@ -11,8 +11,7 @@
 // Electron main process alike.
 
 // Where the backend lives when nothing overrides it (WORKER env var in dev).
-export const DEFAULT_WORKER_ORIGIN =
-  "https://shot-studio-uploads.rodrigofigueroa-name.workers.dev";
+export const DEFAULT_WORKER_ORIGIN = "https://storyseam.app";
 
 // Ordered prefix → kind list. Order matters: the SSE event paths and the agent
 // path stream unbuffered and MUST match before the general "/api" prefix; the

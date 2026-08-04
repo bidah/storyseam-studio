@@ -38,7 +38,7 @@ Three processes, no Express server (the old Express/Render backend was retired):
   data, **R2** (`BUCKET`) for media bytes, **KV** (`AUTH_KV`) for sessions. A
   Durable Object (`ProjectEvents`) fans out live-update SSE so edits sync across
   tabs. It also serves the built `dist/` as static `ASSETS` in production.
-  Deployed at `https://shot-studio-uploads.rodrigofigueroa-name.workers.dev`.
+  Deployed at `https://storyseam.app`.
 - **Studio agent** (`flue-agent/`) — a [flue](https://flueframework.com) chat
   agent running as its **own Cloudflare Worker** (`shot-studio-flue-v2`; agents are
   Durable Objects), model `anthropic/claude-sonnet-5` (Opus 4.6 / Fable 5 via the
