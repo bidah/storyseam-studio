@@ -13,6 +13,23 @@ import { createJob, pollJob, startSandboxJob, jobView } from "../lib/jobs.js";
 
 const RENDER_LABELS = { app: "shot-studio", role: "render" };
 
+// Keep the render inside the sandbox's 8 GB. Left to its own devices Remotion
+// sizes both its tab pool and its OffthreadVideo frame cache from what it reads
+// as available memory — which inside a container is the HOST's, not the cgroup
+// limit — so a picture lane with several 720p clips walks straight past the cap
+// and the kernel SIGKILLs the Rust compositor mid-render ("Compositor quit with
+// signal SIGKILL"). Bounding all three is what makes the render fit:
+//   concurrency         — how many Chrome tabs render frames at once
+//   offthreadvideo …    — hard ceiling on the decoded-frame cache
+//   disallow-parallel…  — don't hold an encode and a render in memory together
+// Raising these is a memory tradeoff, not a free speedup; raise the sandbox's
+// `resources.memory` first if a render ever needs to go faster.
+const MEMORY_FLAGS = [
+  "--concurrency=2",
+  "--offthreadvideo-cache-size-in-bytes=536870912",
+  "--disallow-parallel-encoding",
+].join(" ");
+
 async function daytonaClient(env) {
   const { Daytona } = await import("@daytona/sdk");
   return new Daytona({ apiKey: env.DAYTONA_API_KEY });
@@ -102,10 +119,17 @@ export function registerRender(app) {
     const outKey = `media/${pid}/final/${file}`;
 
     const base = (c.env.WORKER_PUBLIC_URL || "").replace(/\/+$/, "");
-    const inputProps = {
-      tracks: absolutizeTracks(timeline.tracks, base, pid),
-      fps: timeline.fps || 24, width: timeline.width || 1280, height: timeline.height || 720,
-    };
+    const fps = timeline.fps || 24;
+    const width = timeline.width || 1280;
+    const height = timeline.height || 720;
+    const inputProps = { tracks: absolutizeTracks(timeline.tracks, base, pid), fps, width, height };
+    // Longest track end — the same rule RemotionRoot's calculateMetadata applies.
+    // Echoed back so the client can report what it asked for while the job runs.
+    let end = 0;
+    for (const t of timeline.tracks || []) {
+      for (const it of t.items || []) end = Math.max(end, (it.from || 0) + (it.durationInFrames || 0));
+    }
+    const durationInFrames = Math.max(1, Math.round(end));
     const jobId = await createJob(c.env, "render");
     const jd = `/tmp/${jobId}`;
     const script = [
@@ -114,7 +138,8 @@ export function registerRender(app) {
       `curl -fsS -o b.tgz ${base}/files/remotion-bundle/editor.tar.gz`,
       "mkdir bundle && tar xzf b.tgz -C bundle",
       `printf %s ${b64(JSON.stringify(inputProps))} | base64 -d > props.json`,
-      `cd /app && npx remotion render ${jd}/bundle Editor ${jd}/out.mp4 --props=${jd}/props.json --codec=${codec} --crf=${crf} --scale=${scale} --log=error`,
+      `cd /app && npx remotion render ${jd}/bundle Editor ${jd}/out.mp4 --props=${jd}/props.json ` +
+        `--codec=${codec} --crf=${crf} --scale=${scale} --log=error ${MEMORY_FLAGS}`,
       // Move the moov atom to the head so the browser can start playback without
       // range-fetching the file tail first (stream copy — no re-encode).
       `ffmpeg -y -i ${jd}/out.mp4 -c copy -movflags +faststart ${jd}/out_fs.mp4 && mv ${jd}/out_fs.mp4 ${jd}/out.mp4`,
@@ -128,7 +153,12 @@ export function registerRender(app) {
     } catch (e) {
       return c.json({ error: `Could not start render: ${e.message || e}` }, 502);
     }
-    return c.json({ ok: true, jobId, url: `/files/${outKey}` });
+    // The mp4 does NOT exist yet — this only started the sandbox. `url` is where
+    // it WILL land; the caller must poll /api/jobs/:id before offering it.
+    return c.json({
+      ok: true, jobId, status: "running", url: `/files/${outKey}`,
+      out: outKey, file, codec, crf, scale, fps, width, height, durationInFrames,
+    });
   });
 
   app.get("/api/jobs/:id", async (c) => {

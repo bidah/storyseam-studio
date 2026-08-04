@@ -77,6 +77,13 @@ const fmtTime = (sec) => {
   return `${m}:${s.toFixed(1).padStart(4, "0")}`;
 };
 
+// Whole-second wall clock (m:ss) — for a render's elapsed time, where fmtTime's
+// tenths would just flicker.
+const fmtElapsed = (sec) => {
+  const t = Math.max(0, Math.round(sec || 0));
+  return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, "0")}`;
+};
+
 const fmtBytes = (b) => {
   if (!Number.isFinite(b)) return "";
   if (b < 1024) return `${b} B`;
@@ -470,6 +477,29 @@ function makeTrack(tl, type) {
   let n = 2;
   while (ids.has(`${base}-${n}`)) n++;
   return { id: `${base}-${n}`, name: `${isAudio ? "Music" : "Video"} ${n}`, type, items: [] };
+}
+
+// An audio channel with room for [from, from+dur) — for sound the author never
+// aimed at a lane: a dropped video's detached audio, "Detach audio". Piling it
+// onto the FIRST audio track landed it on top of the previous clip's sound,
+// where two overlapping items play at once and neither is reachable. Returns
+// the first audio lane whose items all clear the span, else inserts a fresh
+// channel after the last audio lane. Lanes the author DID aim at (a pool audio
+// drag, the audio dialog's right-clicked lane) don't come through here — an
+// overlap there is a visible, deliberate choice.
+function audioTrackWithRoom(tl, from, dur) {
+  const end = from + dur;
+  const audio = tl.tracks.filter((t) => t.type === "audio");
+  const open = audio.find((t) =>
+    t.items.every((it) => it.from >= end || it.from + it.durationInFrames <= from));
+  if (open) return open;
+  const nt = audio.length
+    ? makeTrack(tl, "audio")
+    : { id: "music", name: "Music", type: "audio", items: [] };
+  const last = audio[audio.length - 1];
+  const at = last ? tl.tracks.indexOf(last) + 1 : tl.tracks.length;
+  tl.tracks.splice(at, 0, nt);
+  return nt;
 }
 
 /* ---- one clip/music block on the timeline ---- */
@@ -1303,6 +1333,50 @@ function writePlayhead(pid, frame) {
   }
 }
 
+/* ---- Deliver render job ------------------------------------------------------
+ * POST /api/render only STARTS a sandbox render; the mp4 lands minutes later and
+ * the job only advances when someone polls GET /api/jobs/:id. So the render is
+ * owned by whoever is watching it — and a tab switch unmounts this lazy route.
+ * Park the in-flight job per project so a reload (or a trip to another tab)
+ * picks the poll back up instead of abandoning a render that is still running. */
+const RENDER_JOB_PREFIX = "editor-render-job:";
+const RENDER_POLL_MS = 4000;
+// A stored job outlives its sandbox, so a parked id can never be polled forever.
+const RENDER_MAX_MS = 60 * 60 * 1000;
+
+function readRenderJob(pid) {
+  if (!pid) return null;
+  try {
+    const raw = localStorage.getItem(RENDER_JOB_PREFIX + pid);
+    const job = raw ? JSON.parse(raw) : null;
+    return job && job.jobId ? job : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeRenderJob(pid, job) {
+  if (!pid) return;
+  try {
+    if (job) localStorage.setItem(RENDER_JOB_PREFIX + pid, JSON.stringify(job));
+    else localStorage.removeItem(RENDER_JOB_PREFIX + pid);
+  } catch {
+    /* storage unavailable — the poll still runs for this mount */
+  }
+}
+
+// Size of the finished render, for the result panel. Best-effort: a missing or
+// unreadable content-length just leaves the size off the readout.
+async function fetchRenderBytes(url) {
+  try {
+    const res = await fetch(url, { method: "HEAD", cache: "no-store" });
+    const n = Number(res.headers.get("content-length"));
+    return Number.isFinite(n) && n > 0 ? n : null;
+  } catch {
+    return null;
+  }
+}
+
 export default function Editor({ reloadKey }) {
   const [timeline, setTimeline] = useState(null);
   const [cuts, setCuts] = useState([]);
@@ -1358,9 +1432,12 @@ export default function Editor({ reloadKey }) {
   const [renderCodec, setRenderCodec] = useState("h264");
   const [renderCrf, setRenderCrf] = useState(18);
   const [renderScale, setRenderScale] = useState(1);
-  const [rendering, setRendering] = useState(false);
+  const [renderStarting, setRenderStarting] = useState(false); // the POST that kicks the job off
+  const [renderJob, setRenderJob] = useState(null); // { jobId, meta, startedAt } while the sandbox renders
+  const [renderElapsed, setRenderElapsed] = useState(0); // seconds since the job started, for the readout
   const [renderResult, setRenderResult] = useState(null);
   const [renderError, setRenderError] = useState(null);
+  const rendering = renderStarting || !!renderJob;
   const [exporting, setExporting] = useState(false); // "Export for Resolve" (FCPXML zip)
 
   const playerRef = useRef(null);
@@ -1834,6 +1911,13 @@ export default function Editor({ reloadKey }) {
     const onKey = (e) => {
       const t = e.target;
       const typing = t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable);
+      // These are bare `window` shortcuts, so they also fire for keys pressed at
+      // a modal — Deliver, the Scene modal, a clip menu — and act on the timeline
+      // BEHIND it. Typing a filename in Deliver would shuttle the player (L) and
+      // disable the selected clip (D). A modal owns the keyboard while it's up.
+      // (`typing` doesn't cover this: a click that lands beside the field leaves
+      // focus on the body with the sheet still open.)
+      if (document.querySelector('[role="dialog"][data-state="open"], [role="menu"][data-state="open"]')) return;
       const ctx = keyCtxRef.current;
       if ((e.metaKey || e.ctrlKey) && (e.key === "z" || e.key === "Z") && !e.shiftKey) {
         e.preventDefault();
@@ -2042,7 +2126,7 @@ export default function Editor({ reloadKey }) {
     });
   }, [mutate]);
 
-  // Separate a video clip's audio onto the first audio track as a LINKED audio
+  // Separate a video clip's audio onto a free audio channel as a LINKED audio
   // item playing the same source file (an <audio> element plays an mp4's audio
   // track), and mute the video card so the sound isn't doubled.
   const detachAudio = useCallback((id) => {
@@ -2056,8 +2140,7 @@ export default function Editor({ reloadKey }) {
       // would hand <Audio> a PNG — or `null` for a slate, which throws and takes
       // the whole preview down. The menu hides the entry; this is the backstop.
       if (!vid || vid.linkId || isImageItem(vid)) return tl;
-      let at = tl.tracks.find((t) => t.type === "audio");
-      if (!at) { at = { id: "music", name: "Music", type: "audio", items: [] }; tl.tracks.push(at); }
+      const at = audioTrackWithRoom(tl, vid.from, vid.durationInFrames);
       const linkId = `link_${id}`;
       at.items.push({
         id: `${id}_audio`,
@@ -2736,8 +2819,9 @@ export default function Editor({ reloadKey }) {
   // (also its trim cap). `drop` decides whether it joins an existing lane or
   // spawns a brand-new matching-type channel. A VIDEO drop also separates its
   // audio: a linked audio item (same source file — an <audio> element plays an
-  // mp4's audio track) lands on the first audio track and carries the sound,
-  // while the video card itself is muted. Selects the new clip.
+  // mp4's audio track) lands on the first audio channel with room for it (a new
+  // one when every lane is busy there) and carries the sound, while the video
+  // card itself is muted. Selects the new clip.
   const addPoolClip = useCallback((item, drop, durationSec) => {
     const newId = `pool_${item.mediaType}_${poolSeqRef.current++}_${Date.now()}`;
     const type = item.mediaType === "audio" ? "audio" : "video";
@@ -2768,8 +2852,7 @@ export default function Editor({ reloadKey }) {
         t.items.push(newItem);
       }
       if (isVideo) {
-        let at = tl.tracks.find((t) => t.type === "audio");
-        if (!at) { at = { id: "music", name: "Music", type: "audio", items: [] }; tl.tracks.push(at); }
+        const at = audioTrackWithRoom(tl, newItem.from, dur);
         at.items.push({
           id: `${newId}_audio`,
           src: item.src,
@@ -2920,8 +3003,13 @@ export default function Editor({ reloadKey }) {
   // Render the current timeline to an mp4 via Remotion (server-side). Sends the
   // live in-editor timeline (not just the saved one) plus the chosen options so
   // what you see is what gets delivered.
+  //
+  // This call only STARTS the job — the sandbox renders for minutes afterwards.
+  // The response is a job handle, NOT a finished render, so it goes to the poll
+  // effect below; treating it as the result reports success over an mp4 that R2
+  // won't have for another five minutes.
   const runRender = useCallback(async () => {
-    setRendering(true);
+    setRenderStarting(true);
     setRenderError(null);
     setRenderResult(null);
     try {
@@ -2938,13 +3026,86 @@ export default function Editor({ reloadKey }) {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Render failed");
-      setRenderResult(data);
+      if (!data.jobId) throw new Error("Render did not start — no job id came back");
+      const { jobId, ...meta } = data;
+      const job = { jobId, meta, startedAt: Date.now() };
+      writeRenderJob(getProjectId(), job);
+      setRenderJob(job);
     } catch (e) {
       setRenderError(String(e.message || e));
     } finally {
-      setRendering(false);
+      setRenderStarting(false);
     }
   }, [renderOut, renderCodec, renderCrf, renderScale]);
+
+  // Pick a render back up after a reload or a tab round-trip. The sandbox keeps
+  // going regardless of who is watching, but the job only settles when polled.
+  useEffect(() => {
+    const saved = readRenderJob(getProjectId());
+    if (saved) setRenderJob(saved);
+  }, []);
+
+  // Watch the running job to completion. Nothing else advances it: /api/jobs/:id
+  // is poll-driven, so a job nobody asks about stays "running" forever.
+  useEffect(() => {
+    if (!renderJob) return;
+    let live = true;
+    let timer = null;
+    const settle = (fn) => {
+      writeRenderJob(getProjectId(), null);
+      setRenderJob(null);
+      fn();
+    };
+    const tick = async () => {
+      if (Date.now() - renderJob.startedAt > RENDER_MAX_MS) {
+        settle(() => setRenderError("Gave up waiting on this render — check the sandbox, then try again."));
+        return;
+      }
+      let data;
+      try {
+        const res = await fetch(`/api/jobs/${encodeURIComponent(renderJob.jobId)}`);
+        data = await res.json().catch(() => ({}));
+        if (!live) return;
+        // 404 / 401 / 403 are final — the job is gone or isn't ours, and no
+        // amount of retrying brings it back. A 5xx or a dropped connection is a
+        // blip: the sandbox is still rendering, so keep asking.
+        if (res.status >= 400 && res.status < 500) {
+          settle(() => setRenderError(data?.error || "Lost track of the render job"));
+          return;
+        }
+        if (!res.ok) throw new Error("transient");
+      } catch {
+        if (live) timer = setTimeout(tick, RENDER_POLL_MS);
+        return;
+      }
+      if (data.status === "done") {
+        const url = data.url || renderJob.meta.url;
+        const bytes = await fetchRenderBytes(url);
+        if (!live) return;
+        // Cache-bust: the output key is fixed, so a re-render would otherwise be
+        // masked by the previous mp4 sitting in the browser cache.
+        settle(() => setRenderResult({ ...renderJob.meta, url: `${url}?v=${Date.now()}`, bytes }));
+        return;
+      }
+      if (data.status === "error") {
+        settle(() => setRenderError(data.error || "The render failed on the sandbox"));
+        return;
+      }
+      timer = setTimeout(tick, RENDER_POLL_MS);
+    };
+    timer = setTimeout(tick, RENDER_POLL_MS);
+    return () => { live = false; clearTimeout(timer); };
+  }, [renderJob]);
+
+  // Elapsed clock for the "still rendering" line — a multi-minute wait with no
+  // moving number reads as a hang.
+  useEffect(() => {
+    if (!renderJob) { setRenderElapsed(0); return; }
+    const tick = () => setRenderElapsed(Math.max(0, Math.round((Date.now() - renderJob.startedAt) / 1000)));
+    tick();
+    const iv = setInterval(tick, 1000);
+    return () => clearInterval(iv);
+  }, [renderJob]);
 
   // "Export for Resolve" — persist the LIVE timeline, then let the browser stream
   // the FCPXML+media zip to disk via a plain <a download>. An <a> can't send the
@@ -3613,8 +3774,15 @@ export default function Editor({ reloadKey }) {
 
   const RenderPanel = (
     <>
-      <Button size="sm" onClick={() => setRenderOpen(true)} disabled={!timeline} title="Render this timeline to an mp4">
-        <Clapperboard size={14} /> Deliver
+      <Button
+        size="sm"
+        onClick={() => setRenderOpen(true)}
+        disabled={!timeline}
+        title={rendering ? "A render is running — open to watch it" : "Render this timeline to an mp4"}
+      >
+        {/* A render outlives the panel, so the trigger carries the spinner too —
+            otherwise a job resumed after a tab switch is invisible. */}
+        {rendering ? <Loader2 size={14} className="animate-spin" /> : <Clapperboard size={14} />} Deliver
       </Button>
       <Sheet open={renderOpen} onOpenChange={setRenderOpen}>
         <SheetContent side="right" className="w-[495px] max-w-none gap-0 p-0 sm:max-w-none">
@@ -3690,7 +3858,9 @@ export default function Editor({ reloadKey }) {
 
             {rendering && (
               <p className="text-center text-xs text-muted-foreground">
-                Rendering in the background — this can take a while for long timelines. Keep this panel open.
+                Rendering on the sandbox{renderElapsed > 0 ? ` — ${fmtElapsed(renderElapsed)} elapsed` : "…"}. A
+                full timeline takes several minutes. You can leave this tab; the render keeps going and picks
+                back up when you return.
               </p>
             )}
 
@@ -3703,7 +3873,7 @@ export default function Editor({ reloadKey }) {
                 </div>
                 <div className="break-all font-mono text-xs text-muted-foreground">{renderResult.out}</div>
                 <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
-                  <span>{fmtBytes(renderResult.bytes)}</span>
+                  {Number.isFinite(renderResult.bytes) && <span>{fmtBytes(renderResult.bytes)}</span>}
                   <span>{renderResult.width}×{renderResult.height}</span>
                   <span>{renderResult.durationInFrames} frames @ {renderResult.fps}fps</span>
                   <span>{renderResult.codec} · crf {renderResult.crf} · {renderResult.scale}×</span>

@@ -148,6 +148,13 @@ touches only one, deploy only that one — but check.
   Vite, then `wrangler deploy` in `worker/`). Worker-only route changes tested via
   local web don't strictly need the rebuild — `cd worker && npx wrangler deploy`
   suffices — but a full `worker:deploy` keeps prod's SPA in sync too.
+- **The Remotion render bundle** (R2 `remotion-bundle/editor.tar.gz`):
+  `worker/build-remotion-bundle.sh`, then commit `worker/remotion-bundle.stamp`.
+  The Deliver render does NOT run `src/editor/` — it runs this prebuilt webpack
+  bundle, so a composition change reaches the preview instantly and the render
+  never. Nothing errors; the mp4 is just built from the old composition. Required
+  after any change to `src/editor/{RemotionRoot,Composition,timeline}.*`; the
+  `remotion-bundle` guard fails when the stamp and the sources disagree.
 - **Flue agent worker** (`shot-studio-flue-v2`): `npm run flue:deploy` (`vite build`
   then `wrangler deploy`). Required whenever you add/change a skill (`src/skills/`),
   a tool (`src/tools/`), or `agents/*.md`. Flue owns the build through Vite now —

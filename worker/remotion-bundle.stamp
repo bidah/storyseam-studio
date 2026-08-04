@@ -1,0 +1,9 @@
+{
+  "hash": "a7894ee2b4d35006833da7e5bb4483e418fb84538303b2f97657ce40d42bc16a",
+  "sources": [
+    "src/editor/RemotionRoot.jsx",
+    "src/editor/Composition.jsx",
+    "src/editor/timeline.js"
+  ],
+  "builtAt": "2026-08-04T15:00:26.905Z"
+}

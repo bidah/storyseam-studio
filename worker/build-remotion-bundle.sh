@@ -8,9 +8,14 @@
 # Run after ANY change to src/editor/{RemotionRoot,Composition,timeline}.* —
 # otherwise the headless render keeps using stale composition code (e.g. it
 # would ignore offsetFrames/trimBefore and render splits from source frame 0).
+# Nothing about that failure is visible: the render succeeds, and quietly
+# delivers last month's composition. A real upload therefore stamps what it
+# built into worker/remotion-bundle.stamp, and the `remotion-bundle` guard fails
+# when the composition has moved on since — see scripts/guards/remotion-bundle.mjs.
 #
 # Usage: worker/build-remotion-bundle.sh [--no-upload]
 #   --no-upload  build + tar only; leaves the artifact at worker/editor.tar.gz
+#                (no stamp — nothing reached R2, so nothing is fresh)
 set -euo pipefail
 cd "$(dirname "$0")/.." # repo root — @remotion/bundler comes from the root node_modules
 
@@ -43,4 +48,10 @@ fi
 
 echo "[bundle] uploading to r2://$BUCKET/$KEY …"
 (cd worker && npx wrangler r2 object put "$BUCKET/$KEY" --file "$WORK/editor.tar.gz" --remote)
+
+# Record WHAT was published, so the guard can tell whether the live bundle still
+# matches the composition. Written only after the upload succeeds — a stamp for
+# a bundle that never landed would be worse than no stamp at all.
+node scripts/stamp-remotion-bundle.mjs
+
 echo "[bundle] done — the render sandbox now pulls the fresh bundle from /files/$KEY"

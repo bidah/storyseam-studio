@@ -11,6 +11,22 @@ function shq(s) {
   return `'${String(s).replace(/'/g, "'\\''")}'`;
 }
 
+// Daytona returns command logs as either a string or a { stdout, stderr } object
+// depending on SDK version. A bare String() on the object yields "[object
+// Object]" — which is what a failed render used to record as its only
+// diagnostic, destroying the stack trace at the exact moment it mattered.
+function logText(logs) {
+  if (!logs) return "";
+  if (typeof logs === "string") return logs;
+  const parts = [logs.stdout, logs.stderr, logs.output, logs.logs].filter((p) => typeof p === "string" && p);
+  if (parts.length) return parts.join("\n");
+  try {
+    return JSON.stringify(logs);
+  } catch {
+    return "";
+  }
+}
+
 export async function createJob(env, kind) {
   const id = newJobId();
   const ts = nowIso();
@@ -77,8 +93,8 @@ export async function pollJob(env, jobId, getSandboxById) {
     await patchJob(env, jobId, { status: "done" });
   } else {
     let logs = "";
-    try { logs = await sandbox.process.getSessionCommandLogs(row.session_id, row.cmd_id); } catch { /* ignore */ }
-    await patchJob(env, jobId, { status: "error", error: String(logs || `exit ${exit}`).slice(-1200) });
+    try { logs = logText(await sandbox.process.getSessionCommandLogs(row.session_id, row.cmd_id)); } catch { /* ignore */ }
+    await patchJob(env, jobId, { status: "error", error: `exit ${exit}${logs ? `\n${logs}` : ""}`.slice(-1200) });
   }
   try { await sandbox.process.deleteSession(row.session_id); } catch { /* ignore */ }
   return getJob(env, jobId);
