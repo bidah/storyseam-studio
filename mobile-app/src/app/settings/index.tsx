@@ -10,6 +10,12 @@ import { authClient, useSession } from '@/lib/auth-client';
 import { API_ORIGIN } from '@/lib/env';
 import { useEveHealth } from '@/lib/eve-health';
 import { useFalKeyStore } from '@/lib/fal-key';
+import {
+  connectHiggsfield,
+  disconnectHiggsfield,
+  LINKED_ACCOUNTS_KEY,
+  useHiggsfieldLinked,
+} from '@/lib/higgsfield-account';
 import { useAtlasKeyStore } from '@/lib/atlas-key';
 import { fromModelTag, toModelTag, type GenSettings } from '@/lib/gen-defaults';
 import { PROVIDERS, useProvidersStore, type ProviderId } from '@/lib/providers';
@@ -52,6 +58,23 @@ export default function SettingsSheet() {
   // on, or flipping the active one off — radio semantics), bumping the nonce
   // remounts them back to store state.
   const [switchNonce, setSwitchNonce] = useState(0);
+
+  // Connectors: Higgsfield linked to the (Google) sign-in — the mobile twin of
+  // the web's Settings › Connectors panel. Either action ends by refetching the
+  // linked-account list, which is what flips the row's status.
+  const hfLinked = useHiggsfieldLinked();
+  const [connectorBusy, setConnectorBusy] = useState(false);
+  const runConnector = async (fn: () => Promise<unknown>) => {
+    setConnectorBusy(true);
+    try {
+      await fn();
+    } catch (e: any) {
+      toast.error(String(e?.message || e));
+    } finally {
+      await queryClient.invalidateQueries({ queryKey: LINKED_ACCOUNTS_KEY });
+      setConnectorBusy(false);
+    }
+  };
 
   const keyFor = (id: ProviderId) => (id === 'fal' ? falKey : id === 'atlas' ? atlasKey : '');
   const searchKeyFor = (id: SearchProviderId) => (id === 'exa' ? exaKey : firecrawlKey);
@@ -182,11 +205,21 @@ export default function SettingsSheet() {
         isOn: active === p.id,
         subtitle:
           p.id === 'higgsfield'
-            ? 'Connected through your sign-in'
+            ? hfLinked === false
+              ? 'Not connected — link it in Connectors'
+              : hfLinked === true
+                ? 'Connected through your linked account'
+                : hfLinked === 'error'
+                  ? 'Link status unknown'
+                  : 'Checking linked account…'
             : keyFor(p.id)
               ? `Key ••••${keyFor(p.id).slice(-4)}`
               : 'No key added',
       }))}
+      higgsfieldLinked={hfLinked}
+      connectorBusy={connectorBusy}
+      onConnectHiggsfield={() => void runConnector(connectHiggsfield)}
+      onDisconnectHiggsfield={() => void runConnector(disconnectHiggsfield)}
       switchNonce={switchNonce}
       onToggleProvider={toggleProvider}
       onManageKey={(id) => router.push(`/settings/provider-key?provider=${id}`)}

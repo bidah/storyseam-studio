@@ -31,13 +31,15 @@ export default function SignIn() {
     }
   };
 
-  // Same OAuth server the render skills use — one login yields both the app
-  // account and the per-user Higgsfield token (see worker/src/auth.js).
-  const signInHiggsfield = async () => {
+  // "Sign in with Google" — the app login, same Better Auth social provider the
+  // web gate uses (worker/src/auth.js). Higgsfield is no longer the front door:
+  // it's a CONNECTOR linked afterwards in Settings › Connectors
+  // (lib/higgsfield-account.ts), which is what unlocks rendering.
+  const signInGoogle = async () => {
     setOauthBusy(true);
     try {
-      const { error } = await authClient.signIn.oauth2({
-        providerId: 'higgsfield',
+      const { error } = await authClient.signIn.social({
+        provider: 'google',
         callbackURL: '/chat',
       });
       if (error) throw new Error(error.message || 'OAuth failed');
@@ -49,10 +51,10 @@ export default function SignIn() {
       if (await confirmSignedIn()) {
         router.replace('/chat');
       } else {
-        toast.error('Higgsfield sign-in didn’t complete');
+        toast.error('Google sign-in didn’t complete');
       }
     } catch (e: any) {
-      toast.error(e?.message || 'Higgsfield sign-in failed');
+      toast.error(e?.message || 'Google sign-in failed');
     } finally {
       setOauthBusy(false);
     }
@@ -80,6 +82,9 @@ export default function SignIn() {
           </Text>
         </View>
 
+        <Button title="Sign in with Google" loading={oauthBusy} onPress={signInGoogle} />
+        <Text className="text-center text-xs text-muted-foreground">or use email</Text>
+
         <Input
           placeholder="Email"
           autoCapitalize="none"
@@ -96,13 +101,7 @@ export default function SignIn() {
           onChangeText={setPassword}
           onSubmitEditing={signInEmail}
         />
-        <Button title="Sign in" loading={busy} onPress={signInEmail} />
-        <Button
-          variant="outline"
-          title="Sign in with Higgsfield"
-          loading={oauthBusy}
-          onPress={signInHiggsfield}
-        />
+        <Button variant="outline" title="Sign in" loading={busy} onPress={signInEmail} />
         <Button
           variant="ghost"
           title="No account? Sign up"

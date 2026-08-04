@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import { Pressable, ScrollView, Text, View } from 'react-native';
 import { Host, Picker, Switch } from '@expo/ui';
 import {
+  Cable,
   ChevronRight,
   Cpu,
   Globe,
@@ -19,6 +20,7 @@ import { ASPECTS, DEFAULT_MODEL, DEFAULT_MODEL_LABEL } from '@/lib/gen-defaults'
 import type { ThemePref } from '@/lib/theme';
 import {
   CHAT_PROVIDERS_FOOTNOTE,
+  CONNECTORS_FOOTNOTE,
   GEN_DEFAULTS_FOOTNOTE,
   PROMPTS_FOOTNOTE,
   PROVIDERS_FOOTNOTE,
@@ -133,6 +135,10 @@ export default function SettingsForm({
   chatProviders,
   onToggleChatProvider,
   providers,
+  higgsfieldLinked,
+  connectorBusy,
+  onConnectHiggsfield,
+  onDisconnectHiggsfield,
   switchNonce,
   onToggleProvider,
   onManageKey,
@@ -232,6 +238,39 @@ export default function SettingsForm({
             onToggle={(on) => onToggleSandbox(sb.id, on)}
           />
         ))}
+      </NoteCard>
+
+      <Eyebrow className="mt-2">Connectors</Eyebrow>
+      <NoteCard icon={<Cable size={18} color={colors.primary} />} note={CONNECTORS_FOOTNOTE}>
+        <View className="gap-2 rounded-xl border border-border p-3">
+          <View className="flex-row items-center gap-2">
+            <Text className="flex-1 text-[14px] font-medium text-foreground">Higgsfield</Text>
+            <Text className="text-[12px] text-muted-foreground">
+              {higgsfieldLinked === true
+                ? 'Connected'
+                : higgsfieldLinked === false
+                  ? 'Not connected'
+                  : higgsfieldLinked === 'error'
+                    ? 'Status unknown'
+                    : 'Checking…'}
+            </Text>
+          </View>
+          {higgsfieldLinked === true ? (
+            <Button
+              variant="outline"
+              title="Disconnect Higgsfield"
+              loading={connectorBusy}
+              onPress={onDisconnectHiggsfield}
+            />
+          ) : (
+            <Button
+              title="Connect Higgsfield"
+              loading={connectorBusy}
+              disabled={higgsfieldLinked === null}
+              onPress={onConnectHiggsfield}
+            />
+          )}
+        </View>
       </NoteCard>
 
       <Eyebrow className="mt-2">Render providers</Eyebrow>

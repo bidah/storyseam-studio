@@ -15,6 +15,7 @@ import { ASPECTS, DEFAULT_MODEL, DEFAULT_MODEL_LABEL } from '@/lib/gen-defaults'
 import type { ThemePref } from '@/lib/theme';
 import {
   CHAT_PROVIDERS_FOOTNOTE,
+  CONNECTORS_FOOTNOTE,
   GEN_DEFAULTS_FOOTNOTE,
   PROMPTS_FOOTNOTE,
   PROVIDERS_FOOTNOTE,
@@ -69,6 +70,10 @@ export default function SettingsForm({
   chatProviders,
   onToggleChatProvider,
   providers,
+  higgsfieldLinked,
+  connectorBusy,
+  onConnectHiggsfield,
+  onDisconnectHiggsfield,
   switchNonce,
   onToggleProvider,
   onManageKey,
@@ -172,6 +177,36 @@ export default function SettingsForm({
               <Text>{sb.subtitle}</Text>
             </Toggle>
           ))}
+        </Section>
+
+        <Section title="Connectors" footer={<Text>{CONNECTORS_FOOTNOTE}</Text>}>
+          <HStack spacing={6}>
+            <Text>Higgsfield</Text>
+            <Spacer />
+            <Text modifiers={[SECONDARY]}>
+              {higgsfieldLinked === true
+                ? 'Connected'
+                : higgsfieldLinked === false
+                  ? 'Not connected'
+                  : higgsfieldLinked === 'error'
+                    ? 'Status unknown'
+                    : 'Checking…'}
+            </Text>
+          </HStack>
+          {higgsfieldLinked === true ? (
+            <Button
+              role="destructive"
+              label="Disconnect Higgsfield"
+              onPress={onDisconnectHiggsfield}
+              modifiers={[disabled(connectorBusy)]}
+            />
+          ) : (
+            <Button
+              label={connectorBusy ? 'Connecting…' : 'Connect Higgsfield…'}
+              onPress={onConnectHiggsfield}
+              modifiers={[disabled(connectorBusy || higgsfieldLinked === null)]}
+            />
+          )}
         </Section>
 
         <Section title="Render providers" footer={<Text>{PROVIDERS_FOOTNOTE}</Text>}>

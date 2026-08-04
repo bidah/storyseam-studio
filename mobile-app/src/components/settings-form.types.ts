@@ -46,6 +46,13 @@ export type SettingsFormProps = {
     byok: boolean;
     hasKey: boolean;
   }[];
+  // Connectors: external accounts LINKED to the signed-in (Google) user — only
+  // Higgsfield today. null while the linked-account list is loading, 'error'
+  // when it couldn't be fetched (lib/higgsfield-account.ts).
+  higgsfieldLinked: boolean | null | 'error';
+  connectorBusy: boolean;
+  onConnectHiggsfield: () => void;
+  onDisconnectHiggsfield: () => void;
   // Native toggles flip optimistically; bumping this remounts them back to
   // store state when a flip must not commit (keyless on / active off).
   switchNonce: number;
@@ -98,6 +105,12 @@ export const CHAT_PROVIDERS_FOOTNOTE =
   'Which models the chat picker offers. One provider is in use at a time; switching snaps the ' +
   'picker and the next message to that provider. Cerebras serves Gemma, GLM and GPT-OSS through ' +
   "Cloudflare AI Gateway and needs a Cerebras key on the agent worker.";
+
+export const CONNECTORS_FOOTNOTE =
+  'External accounts linked to your sign-in. Connecting Higgsfield runs a one-tap OAuth flow ' +
+  'and lets Shot Studio render images, video & audio on your Higgsfield account — and browse ' +
+  'your past generations in the library. Disconnecting stops Higgsfield renders until you ' +
+  'reconnect.';
 
 export const PROVIDERS_FOOTNOTE =
   'Renders bill your accounts. Keys are stored only on this device (secure keychain) and ' +
