@@ -43,6 +43,7 @@ import { registerAdmin } from "./routes/admin.js";
 import { registerHiggsfield } from "./routes/higgsfield.js";
 import { registerStoryboard } from "./routes/storyboard.js";
 import { registerVisualWorld } from "./routes/visual-world.js";
+import { registerMoodboard } from "./routes/moodboard.js";
 import { registerTranscribe } from "./routes/transcribe.js";
 import { registerExtract } from "./routes/extract.js";
 import { registerChatTitle } from "./routes/chat-title.js";
@@ -466,7 +467,7 @@ function mediaRoute(prefix) {
     });
   };
 }
-for (const p of ["media", "gen", "sound-media", "final", "refs", "multishot-media", "stills", "storyboard-media", "visual-media"]) {
+for (const p of ["media", "gen", "sound-media", "final", "refs", "multishot-media", "stills", "storyboard-media", "visual-media", "moodboard-media"]) {
   app.get(`/${p}/*`, mediaRoute(p));
 }
 // The shared asset library (voice refs, browsable images) — per project under
@@ -563,6 +564,7 @@ registerAdmin(app);
 registerHiggsfield(app);
 registerStoryboard(app);
 registerVisualWorld(app);
+registerMoodboard(app);
 registerTranscribe(app);
 registerExtract(app);
 registerChatTitle(app);

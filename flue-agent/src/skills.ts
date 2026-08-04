@@ -16,6 +16,7 @@ import trimVideo from "./skills/trim-video/SKILL.md";
 import videoFromAudioVfx from "./skills/video-from-audio-vfx/SKILL.md";
 import worldCreation from "./skills/world-creation/SKILL.md";
 import visualWorld from "./skills/visual-world/SKILL.md";
+import moodboard from "./skills/moodboard/SKILL.md";
 import sheetGeneration from "./skills/sheet-generation/SKILL.md";
 import assignRefs from "./skills/assign-refs/SKILL.md";
 import generativeUi from "./skills/generative-ui/SKILL.md";
@@ -26,6 +27,7 @@ export const skills = [
   destructiveApproval,
   worldCreation,
   visualWorld,
+  moodboard,
   sheetGeneration,
   scriptWriting,
   shotList,

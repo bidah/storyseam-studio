@@ -32,6 +32,7 @@ import { ShellContext } from "@/lib/shellContext";
 
 const TABS = [
   { value: "world", label: "World" },
+  { value: "moodboard", label: "Moodboard" },
   { value: "script", label: "Script" },
   { value: "shotlist", label: "Shot list" },
   { value: "radio", label: "Radio" },
@@ -414,7 +415,19 @@ export default function RootLayout() {
 
         <div className="flex min-h-0 flex-1 overflow-hidden">
           <div className="min-w-0 flex-1 overflow-y-auto">
-            <main key={projectKey} className="mx-auto w-full max-w-[1500px] px-4 py-6 md:px-6">
+            {/* The Moodboard is a canvas: it wants the whole pane, so it drops
+                the reading-width cap AND becomes a fixed-height flex column so
+                the board can fill the remaining space instead of guessing a vh.
+                Every other tab is a document and keeps the measure. */}
+            <main
+              key={projectKey}
+              className={cn(
+                "mx-auto w-full px-4 py-6 md:px-6",
+                activeTab === "moodboard"
+                  ? "flex h-full max-w-none flex-col"
+                  : "max-w-[1500px]",
+              )}
+            >
               {pendingView ? <RouteSkeleton tab={pendingView} /> : <Outlet />}
             </main>
           </div>

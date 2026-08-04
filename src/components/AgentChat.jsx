@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useLocation } from "react-router";
 import { useAgent, useConversations } from "@/components/AgentProvider";
 import {
   Send,
@@ -23,6 +24,8 @@ import {
   Upload,
   Globe,
   ExternalLink,
+  PanelRightClose,
+  PanelRightOpen,
 } from "lucide-react";
 import { useDropzone } from "react-dropzone";
 import { toast } from "sonner";
@@ -1471,10 +1474,37 @@ function ModelPicker({ disabled }) {
   );
 }
 
+// Tabs that open with the agent panel RAILED — a thin strip with an expand
+// button instead of the full 495px column.
+//
+// The rule is "the surface itself is the work". On the Moodboard the canvas is
+// the whole point: it's an infinite board the author arranges by hand, and every
+// pixel the chat holds is board they can't see. Everywhere else the panel earns
+// its width, so it stays open.
+const RAILED_BY_DEFAULT = new Set(["moodboard"]);
+
+// "/moodboard" → "moodboard"; "/world/nodes" → "world".
+const tabOf = (pathname) => pathname.split("/")[1] || "";
+
 export default function AgentChat() {
   // Shared session: the same instance the sound-studio Render buttons drive.
   const agent = useAgent();
   const conv = useConversations();
+  const { pathname } = useLocation();
+  const tab = tabOf(pathname);
+
+  // Collapsed state is PER TAB and lives for the session only. Per tab, because
+  // wanting the board wide says nothing about wanting the shot list narrow. For
+  // the session only, because persisting it would make "railed by default" a
+  // one-time event: expand it on the Moodboard once and it would never rail
+  // again. So a manual toggle sticks while the author moves around, and a reload
+  // returns every tab to its default.
+  const [railedByTab, setRailedByTab] = useState(() => ({}));
+  const railed = railedByTab[tab] ?? RAILED_BY_DEFAULT.has(tab);
+  const setRailed = useCallback(
+    (next) => setRailedByTab((m) => ({ ...m, [tab]: next })),
+    [tab],
+  );
   // The shell's data-change nonce (bumped by the /api/data/events firehose, a
   // project switch, and the Refresh button). The landing screen re-reads the
   // pipeline digest on it, so finishing a stage anywhere retires its card here.
@@ -1725,6 +1755,13 @@ export default function AgentChat() {
     noClick: true,
     noKeyboard: true,
   });
+
+  // Dragging a file onto the rail expands the panel. Dropping on a 48px strip
+  // works — the attachment lands and the composer is hidden behind it — but the
+  // author would have no idea it succeeded.
+  useEffect(() => {
+    if (isDragActive && railed) setRailed(false);
+  }, [isDragActive, railed, setRailed]);
 
   // Items picked from the MediaPicker (asset gallery, Visual World generations,
   // or a fresh PC upload). Each becomes a "done" attachment: uploads already
@@ -2022,12 +2059,47 @@ export default function AgentChat() {
   return (
     <aside
       {...getDropRootProps({
-        className: "relative flex h-full w-[495px] shrink-0 flex-col border-l bg-card",
+        className: cn(
+          "relative flex h-full shrink-0 flex-col border-l bg-card transition-[width] duration-200",
+          railed ? "w-12" : "w-[495px]",
+        ),
       })}
     >
       {/* The file dialog's input, opened by the attach menu. `noClick` keeps it
           from firing on a stray click anywhere in the panel. */}
       <input {...getDropInputProps()} />
+
+      {/* Railed: a thin strip that gives the width back to the tab. The panel
+          below is HIDDEN, not unmounted — a half-typed message, a pending
+          upload and the live transcript all survive a collapse. */}
+      {railed ? (
+        <div className="flex h-full w-full flex-col items-center gap-2 py-3">
+          <Button
+            size="icon"
+            variant="ghost"
+            className="size-8 text-muted-foreground hover:text-foreground"
+            aria-label="Expand the studio agent"
+            title="Expand the studio agent"
+            onClick={() => setRailed(false)}
+          >
+            <PanelRightOpen size={16} />
+          </Button>
+          {/* The only way to be busy while railed is to have sent something and
+              then collapsed — so the author needs to see the turn is still
+              running, or the rail looks like the agent stopped. */}
+          {isBusy ? (
+            <Loader2 size={14} className="animate-spin text-primary" aria-label="The agent is working" />
+          ) : null}
+          <button
+            type="button"
+            onClick={() => setRailed(false)}
+            title="Expand the studio agent"
+            className="mt-1 cursor-pointer rotate-180 text-xs tracking-wide text-muted-foreground transition-colors [writing-mode:vertical-rl] hover:text-foreground"
+          >
+            Studio agent
+          </button>
+        </div>
+      ) : null}
       {/* Files can be dropped anywhere on the chat panel, not just the composer
           strip — so the whole aside is the drop target and this covers it. */}
       {isDragActive ? (
@@ -2038,6 +2110,10 @@ export default function AgentChat() {
           </span>
         </div>
       ) : null}
+      {/* `hidden` rather than a conditional render: unmounting would throw away
+          the composer's draft, any in-flight attachment upload, and the
+          transcript's scroll position every time the panel is railed. */}
+      <div className={cn("flex min-h-0 flex-1 flex-col", railed && "hidden")}>
       <div className="relative min-h-0 flex-1">
         {/* New chat + previous-chats controls, floating over the top-right of the
             transcript, each in its own rounded wrapper so they read over the
@@ -2057,6 +2133,16 @@ export default function AgentChat() {
             conv={conv}
             triggerClassName="rounded-full border bg-card/80 text-muted-foreground shadow-sm backdrop-blur hover:bg-accent hover:text-foreground"
           />
+          <Button
+            size="icon"
+            variant="ghost"
+            className="size-8 rounded-full border bg-card/80 text-muted-foreground shadow-sm backdrop-blur hover:bg-accent hover:text-foreground"
+            aria-label="Collapse the studio agent"
+            title="Collapse the studio agent"
+            onClick={() => setRailed(true)}
+          >
+            <PanelRightClose size={16} />
+          </Button>
         </div>
         <div
           ref={scrollRef}
@@ -2353,6 +2439,7 @@ export default function AgentChat() {
         <div className="mt-1.5 flex items-center">
           <ModelPicker disabled={isBusy} />
         </div>
+      </div>
       </div>
 
       <MediaPicker

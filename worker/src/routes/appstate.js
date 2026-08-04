@@ -105,6 +105,7 @@ function loaders(env, pid) {
     manifest: () => once("manifest", () => readDoc(env, pid, "episode-manifest", null)),
     radio: () => once("radio", () => readDoc(env, pid, "radio", {})),
     script: () => once("script", () => readStore(env, pid)),
+    moodboard: () => once("moodboard", () => readDoc(env, pid, "moodboard", null)),
   };
 }
 
@@ -166,6 +167,34 @@ async function shotlistScreen(nav, L) {
     ...(focusId && !focus ? { note: `No shot matches navigation.shotId "${focusId}".` } : {}),
   };
 }
+
+// What the author is looking at on the Moodboard. Notes carry their text (that
+// IS the content, and it's short); images/videos/links carry only a label —
+// the agent can't see pixels, and a wall of R2 filenames is noise.
+async function moodboardScreen(L) {
+  const board = await L.moodboard();
+  const cards = Object.values(board?.cards || {});
+  const notes = cards.filter((c) => c.type === "postIt");
+  return {
+    tab: "Moodboard",
+    counts: {
+      notes: notes.length,
+      images: cards.filter((c) => c.type === "image").length,
+      videos: cards.filter((c) => c.type === "video").length,
+      links: cards.filter((c) => c.type === "link").length,
+    },
+    notes: notes.slice(0, NOTE_CAP).map((c) => ({ id: c.id, text: clip(stripTags(c.content), 200) })),
+    links: cards
+      .filter((c) => c.type === "link")
+      .slice(0, NOTE_CAP)
+      .map((c) => ({ id: c.id, url: c.url, title: c.previewData?.title || null })),
+  };
+}
+// Past this the agent should be reading `get_moodboard`, not the screen.
+const NOTE_CAP = 60;
+// Post-it bodies are TipTap HTML; the agent wants the words.
+const stripTags = (html) =>
+  String(html || "").replace(/<[^>]*>/g, " ").replace(/&nbsp;/g, " ").replace(/\s+/g, " ").trim();
 
 async function worldScreen(L) {
   const world = await L.world();
@@ -306,6 +335,8 @@ async function screenForView(nav, L) {
       return await animaticScreen(L);
     case "episode":
       return await episodeScreen(L);
+    case "moodboard":
+      return await moodboardScreen(L);
     default:
       // library / settings / anything new: the view name alone is still useful
       // context, and inventing a hydration for it would just be a guess.

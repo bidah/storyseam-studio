@@ -481,3 +481,119 @@
   animation: nav-flash 1.5s ease-out 1;
   border-radius: var(--radius);
 }
+
+/* ---------------------------------------------------------------- *
+ * Moodboard cards                                                  *
+ * ---------------------------------------------------------------- *
+ * Ported from idea-mural. These are deliberately NOT theme-tokened:
+ * a sticky note is a piece of coloured paper, so its body stays dark
+ * on the note's own colour in both themes — the same way a photo on
+ * the board doesn't invert in dark mode. Only the chrome around the
+ * canvas follows the theme.
+ */
+@layer components {
+  .post-it-node {
+    border-radius: 0;
+    /* Transparent at rest so the card is borderless, but the 2px box is
+       reserved to avoid any layout shift when the active border appears. */
+    border: 2px solid transparent;
+    box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.18), 0 1px 2px -1px rgb(0 0 0 / 0.18);
+    transition-property: all;
+    transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+    transition-duration: 150ms;
+    width: 160px;
+    height: 160px;
+  }
+
+  /* "Notepad" variant: a square note grows into a taller, slightly wider
+     rectangle once it holds more text than fits a square. Height is two stacked
+     stickies plus the grid gap; width a touch over a square. The base
+     transition (all 150ms) animates the morph between the two shapes. */
+  .post-it-node.notepad {
+    width: 200px;
+    height: 340px;
+  }
+
+  /* The notepad uses a fixed, smaller font (the auto-fitter is disabled for it),
+     so longer notes read at a consistent size instead of being scaled to fit. */
+  .post-it-node.notepad .ProseMirror {
+    font-size: 10px;
+  }
+
+  /* Opt-in black inner border (toggled from the edit toolbar). Paints the
+     already-reserved 2px border box, plus a 2px inset shadow inside it, for a
+     4px-thick black band that never shifts the card's footprint. The inset half
+     lives inside the border box, so when the card is selected and the accent
+     border claims the outer 2px, the inner 2px of black still shows through —
+     the user keeps seeing the black border while editing. */
+  .post-it-node.has-border {
+    border-color: #000;
+    box-shadow:
+      inset 0 0 0 2px #000,
+      0 1px 3px 0 rgb(0 0 0 / 0.18),
+      0 1px 2px -1px rgb(0 0 0 / 0.18);
+  }
+
+  /* The only card border: shown when selected or while being dragged. Kept as a
+     border (not an outline) so it never flickers off mid-drag. */
+  .post-it-node.selected,
+  .post-it-node.dragging {
+    border-color: var(--primary);
+  }
+
+  .post-it-node .ProseMirror {
+    outline: none;
+  }
+
+  .post-it-node span[data-uppercase] {
+    text-transform: uppercase;
+  }
+
+  .post-it-node mark[data-highlight] {
+    background-color: #c7ff00;
+    color: inherit;
+    border-radius: 0.125rem;
+    padding: 0 0.05em;
+    box-decoration-break: clone;
+    -webkit-box-decoration-break: clone;
+  }
+
+  .post-it-node .ProseMirror p.is-editor-empty:first-child::before {
+    content: attr(data-placeholder);
+    color: rgb(120 113 108);
+    float: left;
+    pointer-events: none;
+  }
+
+  .post-it-node .ProseMirror:focus p.is-editor-empty:first-child::before,
+  .post-it-node.fresh-card .ProseMirror p.is-editor-empty:first-child::before {
+    display: none;
+  }
+
+  .link-card-node {
+    border-radius: var(--radius);
+    box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.18), 0 1px 2px -1px rgb(0 0 0 / 0.18);
+    transition: all 150ms cubic-bezier(0.4, 0, 0.2, 1);
+    width: 280px;
+    height: 260px;
+    background: var(--card);
+    border: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .link-card-node.selected {
+    outline: 2px solid var(--primary);
+    outline-offset: -2px;
+  }
+
+  /* Image/video cards carry no chrome of their own — the picture IS the card —
+     so selection is drawn as a ring rather than a border, which would eat into
+     the footprint the resize handle is pinned to. */
+  .image-node.selected img,
+  .video-node.selected video {
+    outline: 2px solid var(--primary);
+    outline-offset: 2px;
+  }
+}

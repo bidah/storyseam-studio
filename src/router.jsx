@@ -49,6 +49,8 @@ export const router = createBrowserRouter([
           { path: "nodes", lazy: () => import("@/routes/world/nodes") },
         ],
       },
+      // Keeps React Flow + TipTap out of the main chunk, like /world/nodes.
+      { path: "moodboard", lazy: () => import("@/routes/moodboard"), ErrorBoundary: RouteError, HydrateFallback: fallback("moodboard") },
       { path: "script", lazy: () => import("@/routes/script") },
       { path: "shotlist", lazy: () => import("@/routes/shotlist"), ErrorBoundary: RouteError, HydrateFallback: fallback("shotlist") },
       { path: "radio", lazy: () => import("@/routes/radio"), ErrorBoundary: RouteError, HydrateFallback: fallback("radio") },

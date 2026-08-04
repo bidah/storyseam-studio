@@ -31,6 +31,19 @@
 /api/share/script/*               # the PUBLIC share-link viewer page (/share/script/<token>); the
                                   # agent manages links via share_script and never plays the viewer
 
+# --- [gui-only] moodboard canvas transport -----------------------------------
+# The Moodboard's agent capability is /api/moodboard/cards (add_moodboard_card,
+# remove_moodboard_card), which takes intent and does the placing, fetching and
+# unfurling itself. These four are the CANVAS's transport: they carry live
+# geometry (cursor position, measured image size, the free cell under the
+# pointer) that only a pointer on a rendered canvas has, and handing the model a
+# coordinate space to invent would just pile cards on top of each other.
+/api/moodboard/ops                # optimistic op stream; needs live drag/resize geometry
+/api/moodboard/image              # raw bytes from a dropped File / clipboard Blob
+/api/moodboard/video-from-url     # the card route fetches + stores video itself
+# (/api/moodboard/unfurl needs no entry: the client builds it as a template
+#  literal with a query string, which the guard's path regex doesn't collect.)
+
 # --- [gui-only] render plumbing the agent drives through provider tools ------
 /api/render                       # the GUI's own render kick-off; the agent uses the provider tools
 /api/final                        # final-render listing for the GUI picker

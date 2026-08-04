@@ -9,6 +9,7 @@
 //   src/lib/suggestions.ts  → mobile-app + worker copies   (npm --prefix mobile-app run sync:suggestions)
 //   src/lib/routeTable.js   → desktop/main/routeTable.js   (npm --prefix desktop run sync)
 //   shared/schemas/*.json   → worker + flue-agent copies    (npm run schemas:sync)
+//   src/lib/moodboard-document.js → worker copy             (npm run moodboard:sync)
 //
 // Every one of them fails silently when it drifts. Edit the timeline model and
 // forget the sync, and the Vercel render path renders LAST WEEK'S composition
@@ -29,6 +30,10 @@ const PAIRS = [
   ["src/lib/suggestions.ts", "mobile-app/src/lib/suggestions.ts", "npm --prefix mobile-app run sync:suggestions"],
   ["src/lib/suggestions.ts", "worker/src/lib/suggestions.ts", "npm --prefix mobile-app run sync:suggestions"],
   ["src/lib/routeTable.js", "desktop/main/routeTable.js", "npm --prefix desktop run sync"],
+  // The moodboard op reducer. Applied optimistically on the client AND
+  // authoritatively inside the Worker's updateDoc CAS — a drifted copy means
+  // cards that silently snap back to a different position after a reload.
+  ["src/lib/moodboard-document.js", "worker/src/lib/moodboard-document.js", "npm run moodboard:sync"],
   // Capability contracts. JSON can't carry a "generated" banner, so these copies
   // are byte-identical to the source and compare verbatim — which is also why
   // the warning not to edit them lives in shared/schemas/README.md.

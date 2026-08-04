@@ -19,6 +19,9 @@ import { getVisualWorld } from "./get_visual_world.js";
 import { attachVisualGeneration } from "./attach_visual_generation.js";
 import { saveGenerationToLibrary } from "./save_generation_to_library.js";
 import { saveVisualPrompt } from "./save_visual_prompt.js";
+// Moodboard (the reference wall)
+import { getMoodboard } from "./get_moodboard.js";
+import { addMoodboardCard, removeMoodboardCard } from "./add_moodboard_card.js";
 import { getScript } from "./get_script.js";
 import { appendScript } from "./append_script.js";
 import { saveScript } from "./save_script.js";
@@ -105,6 +108,9 @@ export function createTools(api: Api): ToolDefinition[] {
     attachVisualGeneration(api),
     saveGenerationToLibrary(api),
     saveVisualPrompt(api),
+    getMoodboard(api),
+    addMoodboardCard(api),
+    removeMoodboardCard(api),
     getScript(api),
     appendScript(api),
     saveScript(api),
@@ -186,6 +192,7 @@ export function createReadTools(api: Api): ToolDefinition[] {
     getWorld(api),
     listHistory(api),
     getVisualWorld(api),
+    getMoodboard(api),
     getScript(api),
     listDrafts(api),
     // Shotlist / Episode

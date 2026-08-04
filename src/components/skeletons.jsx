@@ -468,9 +468,22 @@ function MultishotSkeleton() {
   );
 }
 
+// Shape of moodboard.jsx: title + subtitle, four small actions, then one big
+// canvas panel. The canvas is a single opaque block on purpose — sketching card
+// shapes inside it would promise a layout we can't know before the board loads.
+function MoodboardSkeleton() {
+  return (
+    <div className="space-y-3">
+      <StackedHeader titleWidth="w-40" subtitle actions={["w-24", "w-24", "w-24", "w-32"]} />
+      <Skeleton className="h-[78vh] w-full rounded-xl" />
+    </div>
+  );
+}
+
 // Tab → skeleton. Keys match the route paths in src/router.jsx.
 const SKELETONS = {
   world: WorldSkeleton,
+  moodboard: MoodboardSkeleton,
   shotlist: ShotlistSkeleton,
   radio: RadioSkeleton,
   shots: ShotsSkeleton,

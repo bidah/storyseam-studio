@@ -28,6 +28,7 @@
     "test:evals": "vitest run --config evals/vitest.config.ts",
     "genui:sync": "node scripts/sync-genui.mjs",
     "schemas:sync": "node scripts/sync-schemas.mjs",
+    "moodboard:sync": "node scripts/sync-moodboard.mjs",
     "guards": "node scripts/run-guards.mjs"
   },
   "dependencies": {
