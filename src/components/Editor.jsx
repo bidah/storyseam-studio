@@ -16,6 +16,8 @@ import {
   PanelLeftClose, PanelLeftOpen, FolderOpen, Ban, FileDown, FoldHorizontal, Magnet,
   ZoomIn, ZoomOut, Camera, Images, Link2, Unlink2, AudioLines, GripHorizontal,
   FlipHorizontal2, FlipVertical2, Radio, Timer, FilePlus2, Gauge,
+  Play, Pause, SkipBack, ChevronDown, GripVertical,
+  ArrowDownToLine, BetweenHorizontalStart, Replace, X,
   // Aliased: a bare `Image` import would shadow the DOM's global Image
   // constructor for this whole module.
   Image as ImageIcon, ImageOff, Sparkles, Plus, RefreshCcwDot,
@@ -42,6 +44,9 @@ import {
 } from "@/components/ui/context-menu";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 import { IconSwap } from "@/components/shared";
 import EditorComposition from "@/editor/Composition";
@@ -200,6 +205,76 @@ function splittableAt(timeline, f, sel) {
     }
   }
   return any;
+}
+
+// The track an item lives on, by id.
+function findItemTrack(timeline, id) {
+  for (const track of timeline?.tracks || []) {
+    const item = (track.items || []).find((x) => x.id === id);
+    if (item) return { track, item };
+  }
+  return null;
+}
+
+/* ---- source-monitor edit primitives ------------------------------------------
+ *
+ * The three insert modes below (overwrite / insert / replace) all reshape items
+ * around a span, and each one does in-point math that an IMAGE item has no
+ * source timeline for. These two helpers hold that branch once, so a still can
+ * be trimmed or razored by an insert without trying to seek media it doesn't
+ * have. They mirror `splitAtPlayhead` and the worker's `resize edge:"start"`.
+ */
+
+// Move an item's head to `newFrom` (later), keeping its tail anchored: the
+// source in-point advances by the frames consumed (× speed on a retimed clip).
+function trimHeadTo(item, newFrom) {
+  const delta = newFrom - (item.from || 0);
+  if (delta <= 0) return;
+  if (!isImageItem(item)) item.offsetFrames = (item.offsetFrames || 0) + Math.round(delta * itemSpeed(item));
+  item.from = newFrom;
+  item.durationInFrames = Math.max(1, (item.durationInFrames || 0) - delta);
+  delete item.fadeInFrames; // the fade-in belonged to the frames just cut off
+  if (item.fadeOutFrames) item.fadeOutFrames = Math.min(item.fadeOutFrames, item.durationInFrames);
+}
+
+// The right half of a razor at absolute frame `at` — a NEW item continuing at
+// the same source position. Callers own the id and the left half's truncation.
+function rightHalfAt(item, at, id) {
+  const right = { ...item, id, from: at };
+  right.durationInFrames = Math.max(1, (item.from || 0) + (item.durationInFrames || 0) - at);
+  right.offsetFrames = isImageItem(item) ? 0 : (item.offsetFrames || 0) + Math.round((at - (item.from || 0)) * itemSpeed(item));
+  delete right.fadeInFrames;
+  if (right.fadeOutFrames) right.fadeOutFrames = Math.min(right.fadeOutFrames, right.durationInFrames);
+  return right;
+}
+
+// Clear [from, to) on one track, the way an OVERWRITE does: items fully covered
+// vanish, ones straddling an edge are trimmed, and one spanning the whole span
+// is razored in two. `only` (a Set of linkIds, or null for "every item") limits
+// the sweep — used to carry the clear onto the separated audio of the picture
+// clips being overwritten, without touching the music bed beside it.
+function clearSpan(track, from, to, nextId, only) {
+  const out = [];
+  for (const it of track.items || []) {
+    const s = it.from || 0;
+    const e = s + (it.durationInFrames || 0);
+    if (e <= from || s >= to || (only && !only.has(it.linkId))) { out.push(it); continue; }
+    if (s >= from && e <= to) continue; // fully covered — gone
+    if (s < from && e > to) {
+      // Spans the whole span: keep a head and a tail, both unlinked (they are no
+      // longer the same clip their partner is linked to).
+      const right = rightHalfAt(it, to, nextId(it.id));
+      delete right.linkId;
+      it.durationInFrames = from - s;
+      delete it.fadeOutFrames;
+      out.push(it, right);
+      continue;
+    }
+    if (s < from) { it.durationInFrames = from - s; delete it.fadeOutFrames; out.push(it); continue; }
+    trimHeadTo(it, to);
+    out.push(it);
+  }
+  track.items = out;
 }
 
 /* ---- first-frame thumbnails for video timeline cards ---- */
@@ -825,9 +900,11 @@ function TimelineItem({
 
 /* ---- media pool: one draggable source clip ---- */
 // A video generation (or audio track) shown in the left rail. Pointer-down
-// starts a drag onto the timeline; on metadata load it reports its natural
-// duration up so a drop knows how long the clip should be.
-function PoolCard({ item, active, onMeta, onDragStart }) {
+// starts a drag onto the timeline; releasing WITHOUT moving opens the asset in
+// the source monitor instead (see `startPoolDrag`), so auditioning a clip no
+// longer costs an edit. On metadata load it reports its natural duration up so
+// a drop knows how long the clip should be.
+function PoolCard({ item, active, open, onMeta, onDragStart }) {
   const mediaRef = useRef(null);
   const isVideo = item.mediaType === "video";
   return (
@@ -836,10 +913,11 @@ function PoolCard({ item, active, onMeta, onDragStart }) {
         "group relative select-none overflow-hidden rounded-md border bg-card text-left transition-shadow",
         "cursor-grab active:cursor-grabbing hover:border-primary/50 hover:shadow-sm",
         item.selected && "ring-1 ring-emerald-500/50",
+        open && "border-primary ring-2 ring-primary",
         active && "opacity-40",
       )}
       onPointerDown={(e) => { if (e.button !== 0) return; onDragStart(e, item, mediaRef.current); }}
-      title={item.name}
+      title={`${item.name} — click to preview, drag onto the timeline`}
     >
       {isVideo ? (
         <video
@@ -895,6 +973,408 @@ function StillCard({ still, onOpen }) {
         <span className="truncate text-[10px] font-medium">{still.sourceBundle || still.sourceName || "Still"}</span>
       </div>
     </button>
+  );
+}
+
+/* ---- source monitor: audition a pool asset, mark in/out, insert it -----------
+ *
+ * Until this existed the only way to SEE a media-pool clip was to drag it onto
+ * the timeline and play it there — so "is this the right take?" cost an edit and
+ * an undo, and there was no way to look at the pool's audio at all. This is the
+ * other monitor every NLE has: click a pool card and the preview box switches
+ * from the PROGRAM (the Remotion <Player>, showing the sequence) to the SOURCE —
+ * that one asset, alone, with its own transport.
+ *
+ * The strip over the bottom of the picture is the in/out rail: drag the two
+ * grips, or press I / O, to mark the piece you actually want. Everything the
+ * insert button does uses that marked piece, so trimming happens BEFORE the clip
+ * lands rather than as a second gesture on the timeline.
+ *
+ * Playback and scrubbing use the 720p proxy (`toPreviewSrc`), like the rest of
+ * the editor; what gets inserted is always the ORIGINAL src.
+ */
+const INSERT_MODES = [
+  {
+    id: "overwrite",
+    label: "Overwrite",
+    icon: ArrowDownToLine,
+    hint: "Lay the clip at the playhead, replacing whatever it covers.",
+  },
+  {
+    id: "insert",
+    label: "Insert",
+    icon: BetweenHorizontalStart,
+    hint: "Cut the timeline at the playhead and push everything after it right, so nothing is overwritten.",
+  },
+  {
+    id: "replace",
+    label: "Replace clip",
+    icon: Replace,
+    hint: "Swap the clip under the playhead for this one, keeping that clip's position and length.",
+  },
+];
+
+function SourceMonitor({
+  item, marks, onMarks, mode, onMode, onInsert, canReplace, targetName, note, ctlRef, onClose, fps,
+}) {
+  const mediaRef = useRef(null);
+  const railRef = useRef(null);
+  const isVideo = item.mediaType !== "audio";
+  const src = useMemo(() => toPreviewSrc(item.src), [item.src]);
+  // Audio has no picture, so the waveform IS the picture (same peaks the audio
+  // timeline cards paint).
+  const peaks = useAudioPeaks(isVideo ? null : item.src);
+  const [dur, setDur] = useState(0);
+  const [cur, setCur] = useState(0);
+  const [playing, setPlaying] = useState(false);
+
+  const MIN = 1 / (fps || 24); // marks stay at least one frame apart
+  const inSec = Math.max(0, Math.min(marks?.inSec ?? 0, dur || Infinity));
+  const outSec = marks?.outSec != null ? Math.min(marks.outSec, dur || marks.outSec) : dur;
+  const outRef = useRef(outSec);
+  outRef.current = outSec;
+
+  // The asset's length, taken from whichever event reports it first. Browsers
+  // fire `durationchange` before `loadedmetadata` on some containers and only
+  // `durationchange` when a streamed length firms up later, so both are wired to
+  // the same handler — a monitor stuck at 00:00 can't be marked or inserted.
+  const onDur = useCallback((e) => {
+    const d = e.currentTarget?.duration;
+    if (Number.isFinite(d) && d > 0) setDur(d);
+  }, []);
+
+  const seek = useCallback((t) => {
+    const m = mediaRef.current;
+    const next = Math.max(0, Math.min(t, (m?.duration || 0) || t));
+    if (m) m.currentTime = next;
+    setCur(next);
+  }, []);
+
+  const toggle = useCallback(() => {
+    const m = mediaRef.current;
+    if (!m) return;
+    if (m.paused) {
+      // Replaying a finished range starts from the in point rather than sitting
+      // stuck on the out point doing nothing.
+      if (m.currentTime >= outRef.current - MIN) m.currentTime = inSec;
+      m.play().catch(() => {});
+    } else m.pause();
+  }, [inSec, MIN]);
+
+  const markIn = useCallback(() => {
+    onMarks({ inSec: Math.max(0, Math.min(cur, outSec - MIN)), outSec });
+  }, [cur, outSec, MIN, onMarks]);
+  const markOut = useCallback(() => {
+    onMarks({ inSec, outSec: Math.min(dur, Math.max(cur, inSec + MIN)) });
+  }, [cur, inSec, dur, MIN, onMarks]);
+
+  // The keyboard handler in Editor drives these (Space / I / O). Reassigned every
+  // render so it never calls a stale closure.
+  useEffect(() => {
+    if (!ctlRef) return undefined;
+    ctlRef.current = { toggle, markIn, markOut };
+    return () => { ctlRef.current = null; };
+  });
+
+  // Follow playback smoothly, and stop at the out point — the marked range is
+  // what you're auditioning, so running past it just wastes the review.
+  useEffect(() => {
+    if (!playing) return undefined;
+    let raf = 0;
+    const tick = () => {
+      const m = mediaRef.current;
+      if (m) {
+        if (m.currentTime >= outRef.current - 0.001) { m.pause(); m.currentTime = outRef.current; }
+        setCur(m.currentTime);
+      }
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [playing]);
+
+  const pct = (t) => (dur > 0 ? Math.max(0, Math.min(100, (t / dur) * 100)) : 0);
+  const inPct = pct(inSec);
+  const outPct = dur > 0 ? pct(outSec) : 100;
+  const curPct = pct(cur);
+
+  const fracAt = (clientX) => {
+    const el = railRef.current;
+    if (!el) return 0;
+    const r = el.getBoundingClientRect();
+    return Math.max(0, Math.min(1, (clientX - r.left) / Math.max(1, r.width)));
+  };
+
+  // One gesture for all three grips. "scrub" also handles a plain press on the
+  // rail, so tapping anywhere on it jumps the needle there.
+  const startRailDrag = (e, what) => {
+    if (e.button !== 0 || !dur) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const move = (ev) => {
+      const t = fracAt(ev.clientX) * dur;
+      if (what === "in") onMarks({ inSec: Math.max(0, Math.min(t, outSec - MIN)), outSec });
+      else if (what === "out") onMarks({ inSec, outSec: Math.min(dur, Math.max(t, inSec + MIN)) });
+      else seek(t);
+    };
+    move(e);
+    const up = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  };
+
+  const active = INSERT_MODES.find((m) => m.id === mode) || INSERT_MODES[0];
+  const ActiveIcon = active.icon;
+  const ready = dur > 0;
+  const canRun = (m) => ready && (m !== "replace" || canReplace);
+  // The monitor owns the marks, so it hands the exact piece to insert down with
+  // the mode — the timeline side never has to guess what "the selection" was.
+  const run = (m) => onInsert(m, { inSec, outSec, durationSec: dur });
+
+  return (
+    <div
+      className="flex h-full w-full flex-col bg-black"
+      // The preview box's context menu belongs to the PROGRAM (grab still, flip
+      // the clip at the playhead) — none of it applies to a source asset.
+      onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); }}
+    >
+      <div className="relative min-h-0 flex-1">
+        {isVideo ? (
+          <video
+            ref={mediaRef}
+            src={src}
+            playsInline
+            preload="metadata"
+            className="h-full w-full object-contain"
+            onLoadedMetadata={onDur}
+            onDurationChange={onDur}
+            onPlay={() => setPlaying(true)}
+            onPause={() => setPlaying(false)}
+            onSeeked={(e) => setCur(e.currentTarget.currentTime)}
+            onClick={toggle}
+          />
+        ) : (
+          <div className="flex h-full w-full items-center justify-center px-4">
+            <SourceWave peaks={peaks} inFrac={dur ? inSec / dur : 0} outFrac={dur ? outSec / dur : 1} />
+            <audio
+              ref={mediaRef}
+              src={src}
+              preload="metadata"
+              onLoadedMetadata={onDur}
+              onDurationChange={onDur}
+              onPlay={() => setPlaying(true)}
+              onPause={() => setPlaying(false)}
+              onSeeked={(e) => setCur(e.currentTarget.currentTime)}
+            />
+          </div>
+        )}
+
+        <div className="pointer-events-none absolute inset-x-0 top-0 flex items-start gap-2 bg-gradient-to-b from-black/70 to-transparent px-2.5 py-1.5">
+          <span className="flex min-w-0 items-center gap-1.5 text-[11px] font-medium text-white/90">
+            {isVideo ? <Film size={11} className="shrink-0 text-emerald-400" /> : <Music size={11} className="shrink-0 text-violet-300" />}
+            <span className="truncate">{item.name}</span>
+          </span>
+        </div>
+
+        {/* in/out rail — a layer over the bottom of the picture, above the
+            transport. Grips at the bottom edge, the needle's head at the top,
+            exactly where a trim bar reads fastest. */}
+        <div className="absolute inset-x-0 bottom-0 bg-black/75 px-3 pb-2 pt-1 backdrop-blur-sm">
+          <div className="mb-0.5 flex items-center gap-2 text-[10px] tabular-nums text-white/60">
+            <span>in {formatTimecode(inSec, fps)}</span>
+            <span>out {formatTimecode(outSec, fps)}</span>
+            <span className="text-white/80">{formatTimecode(Math.max(0, outSec - inSec), fps)} selected</span>
+          </div>
+          <div
+            ref={railRef}
+            className={cn("relative h-6 select-none touch-none", ready ? "cursor-ew-resize" : "opacity-40")}
+            onPointerDown={(e) => startRailDrag(e, "scrub")}
+          >
+            <div className="absolute inset-x-0 top-1/2 h-px -translate-y-1/2 bg-white/25" />
+            <div
+              className="absolute top-1/2 h-[3px] -translate-y-1/2 rounded-full bg-white/70"
+              style={{ left: `${inPct}%`, width: `${Math.max(0, outPct - inPct)}%` }}
+            />
+            {/* in grip — its right edge sits on the mark */}
+            <div
+              role="slider"
+              aria-label="In point"
+              aria-valuenow={Math.round(inSec * 100) / 100}
+              aria-valuemin={0}
+              aria-valuemax={Math.round(dur * 100) / 100}
+              tabIndex={0}
+              onPointerDown={(e) => startRailDrag(e, "in")}
+              title={`In — ${formatTimecode(inSec, fps, true)}`}
+              className="absolute bottom-0 flex h-4 w-3.5 -translate-x-full cursor-ew-resize items-center justify-center rounded-sm bg-zinc-400 text-zinc-900 hover:bg-zinc-200"
+              style={{ left: `${inPct}%` }}
+            >
+              <GripVertical size={9} />
+            </div>
+            {/* out grip — its left edge sits on the mark */}
+            <div
+              role="slider"
+              aria-label="Out point"
+              aria-valuenow={Math.round(outSec * 100) / 100}
+              aria-valuemin={0}
+              aria-valuemax={Math.round(dur * 100) / 100}
+              tabIndex={0}
+              onPointerDown={(e) => startRailDrag(e, "out")}
+              title={`Out — ${formatTimecode(outSec, fps, true)}`}
+              className="absolute bottom-0 flex h-4 w-3.5 cursor-ew-resize items-center justify-center rounded-sm bg-zinc-400 text-zinc-900 hover:bg-zinc-200"
+              style={{ left: `${outPct}%` }}
+            >
+              <GripVertical size={9} />
+            </div>
+            {/* the source needle */}
+            <div className="pointer-events-none absolute bottom-0 top-1.5 w-px bg-red-500" style={{ left: `${curPct}%` }} />
+            <div
+              className="pointer-events-none absolute top-0 flex h-4 w-4 -translate-x-1/2 items-center justify-center rounded-sm bg-red-500 text-white"
+              style={{ left: `${curPct}%` }}
+            >
+              <GripVertical size={9} />
+            </div>
+          </div>
+        </div>
+
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          onClick={onClose}
+          aria-label="Back to the program monitor"
+          title="Back to the program monitor (Esc)"
+          className="absolute right-1.5 top-1.5 z-10 text-white/70 hover:bg-white/10 hover:text-white"
+        >
+          <X size={15} />
+        </Button>
+      </div>
+
+      {/* transport + insert */}
+      <div className="flex flex-wrap items-center gap-1.5 border-t bg-card px-2 py-1.5">
+        <Button variant="ghost" size="icon-sm" onClick={() => seek(inSec)} disabled={!ready} title="Jump to the in point">
+          <SkipBack size={14} />
+        </Button>
+        <Button variant="ghost" size="icon-sm" onClick={toggle} disabled={!ready} title="Play / pause (Space)">
+          {playing ? <Pause size={14} /> : <Play size={14} />}
+        </Button>
+        <span className="text-[11px] tabular-nums text-muted-foreground">
+          <span className="text-foreground">{formatTimecode(cur, fps, true)}</span> / {formatTimecode(dur, fps, true)}
+        </span>
+        <Separator orientation="vertical" className="mx-0.5 h-4" />
+        <Button variant="outline" size="sm" className="h-7 px-2 text-[11px]" onClick={markIn} disabled={!ready} title="Mark in at the needle (I)">
+          Mark in <span className="opacity-60">I</span>
+        </Button>
+        <Button variant="outline" size="sm" className="h-7 px-2 text-[11px]" onClick={markOut} disabled={!ready} title="Mark out at the needle (O)">
+          Mark out <span className="opacity-60">O</span>
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-7 px-2 text-[11px]"
+          onClick={() => onMarks(null)}
+          disabled={!marks}
+          title="Clear the in/out marks — insert the whole asset"
+        >
+          Clear
+        </Button>
+
+        <div className="ml-auto flex items-center gap-2">
+          {targetName && (
+            <span className="hidden text-[10px] text-muted-foreground sm:inline" title="The lane this insert lands on — the selected clip's lane, else the first of its type">
+              → {targetName}
+            </span>
+          )}
+          <div className="flex items-stretch" aria-label="Insert this clip into the timeline">
+            <Button
+              size="sm"
+              className="h-7 rounded-r-none px-2 text-[11px]"
+              onClick={() => run(active.id)}
+              disabled={!canRun(active.id)}
+              title={active.hint}
+            >
+              <ActiveIcon size={13} /> {active.label}
+            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button size="sm" className="h-7 rounded-l-none border-l border-primary-foreground/25 px-1" aria-label="Choose how the clip lands">
+                  <ChevronDown size={13} />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="max-w-[19rem]">
+                {INSERT_MODES.map((m) => {
+                  const Icon = m.icon;
+                  return (
+                    <DropdownMenuItem
+                      key={m.id}
+                      disabled={!canRun(m.id)}
+                      onSelect={() => { onMode(m.id); run(m.id); }}
+                      className="items-start gap-2"
+                    >
+                      <Icon size={14} className="mt-0.5 shrink-0" />
+                      <span className="flex flex-col gap-0.5">
+                        <span className="flex items-center gap-1.5 font-medium">
+                          {m.label}
+                          {m.id === mode && <Check size={12} className="text-primary" />}
+                        </span>
+                        <span className="text-[11px] leading-snug text-muted-foreground">
+                          {m.id === "replace" && !canReplace ? "No clip under the playhead on the target lane." : m.hint}
+                        </span>
+                      </span>
+                    </DropdownMenuItem>
+                  );
+                })}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+        </div>
+        {note && <p className="w-full text-[10px] text-amber-400">{note}</p>}
+      </div>
+    </div>
+  );
+}
+
+// The audio source's picture: the same peaks the timeline cards use, drawn big,
+// with everything outside the marked range dimmed so the selection reads at a
+// glance.
+function SourceWave({ peaks, inFrac, outFrac }) {
+  const ref = useRef(null);
+  useEffect(() => {
+    const canvas = ref.current;
+    if (!canvas) return;
+    const box = canvas.parentElement?.getBoundingClientRect();
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const W = Math.max(1, Math.min(Math.round((box?.width || 600) * dpr), 4096));
+    const H = Math.max(1, Math.round(Math.min(box?.height || 160, 220) * dpr));
+    canvas.width = W;
+    canvas.height = H;
+    const ctx = canvas.getContext("2d");
+    ctx.clearRect(0, 0, W, H);
+    if (!peaks) return;
+    const mid = H / 2;
+    const n = peaks.length;
+    for (let x = 0; x < W; x++) {
+      const f = x / W;
+      const i0 = Math.floor(f * n);
+      const i1 = Math.max(i0 + 1, Math.ceil(((x + 1) / W) * n));
+      let a = 0;
+      for (let i = i0; i < i1 && i < n; i++) if (peaks[i] > a) a = peaks[i];
+      const inRange = f >= inFrac && f <= outFrac;
+      ctx.fillStyle = inRange ? "rgba(196,181,253,0.9)" : "rgba(196,181,253,0.22)";
+      const half = Math.max(a, 0.01) * (mid - dpr);
+      ctx.fillRect(x, mid - half, 1, half * 2);
+    }
+  }, [peaks, inFrac, outFrac]);
+  return (
+    <div className="relative h-full max-h-[220px] w-full">
+      <canvas ref={ref} aria-hidden className="h-full w-full" />
+      {!peaks && (
+        <div className="absolute inset-0 flex items-center justify-center">
+          <AudioLines size={22} className="animate-pulse text-violet-300/60" />
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -1205,7 +1685,7 @@ function AudioDialog({ open, onOpenChange, onPick }) {
 }
 
 /* ---- media pool rail (collapsible, ~1/4 width, left of the player) ---- */
-function MediaPool({ pool, stills, collapsed, height, onToggle, dragId, onMeta, onDragStart, tab, onTab, onStillOpen }) {
+function MediaPool({ pool, stills, collapsed, height, onToggle, dragId, openId, onMeta, onDragStart, tab, onTab, onStillOpen }) {
   const video = pool.video || [];
   const audio = pool.audio || [];
   const total = video.length + audio.length;
@@ -1251,7 +1731,7 @@ function MediaPool({ pool, stills, collapsed, height, onToggle, dragId, onMeta, 
         <TabsContent value="media" className="min-h-0 flex-1 overflow-y-auto p-2">
           {total === 0 ? (
             <p className="px-1 py-6 text-center text-[11px] text-muted-foreground">
-              No generations yet. Render some clips and they'll show up here to drag onto the timeline.
+              No generations yet. Render some clips and they'll show up here — click one to preview it, drag it onto the timeline.
             </p>
           ) : (
             <div className="space-y-3">
@@ -1262,7 +1742,7 @@ function MediaPool({ pool, stills, collapsed, height, onToggle, dragId, onMeta, 
                   </div>
                   <div className="grid grid-cols-2 gap-1.5">
                     {video.map((it) => (
-                      <PoolCard key={it.id} item={it} active={dragId === it.id} onMeta={onMeta} onDragStart={onDragStart} />
+                      <PoolCard key={it.id} item={it} active={dragId === it.id} open={openId === it.id} onMeta={onMeta} onDragStart={onDragStart} />
                     ))}
                   </div>
                 </div>
@@ -1274,7 +1754,7 @@ function MediaPool({ pool, stills, collapsed, height, onToggle, dragId, onMeta, 
                   </div>
                   <div className="grid grid-cols-2 gap-1.5">
                     {audio.map((it) => (
-                      <PoolCard key={it.id} item={it} active={dragId === it.id} onMeta={onMeta} onDragStart={onDragStart} />
+                      <PoolCard key={it.id} item={it} active={dragId === it.id} open={openId === it.id} onMeta={onMeta} onDragStart={onDragStart} />
                     ))}
                   </div>
                 </div>
@@ -1426,6 +1906,15 @@ export default function Editor({ reloadKey }) {
   //   { item, frameUrl, durationSec, x, y, drop }
   //   drop: null | { trackId, from, valid }
   const [poolDrag, setPoolDrag] = useState(null);
+  // Source monitor: the pool asset open in the preview box, its in/out marks and
+  // the insert mode the split button is armed with. Marks are kept PER ASSET so
+  // flipping between two takes doesn't throw away the trim you just set on one.
+  const [sourceItem, setSourceItem] = useState(null);
+  const [sourceMarks, setSourceMarks] = useState({}); // pool item id → { inSec, outSec }
+  const [sourceMode, setSourceMode] = useState("overwrite");
+  const [sourceNote, setSourceNote] = useState(null); // e.g. "the source ran out"
+  const sourceCtlRef = useRef(null); // { toggle, markIn, markOut } — the keyboard's handle on the monitor
+  const openSourceRef = useRef(null); // startPoolDrag is defined before openSource, so it goes through a ref
   // Render / "Deliver" panel state + Remotion options chosen before rendering.
   const [renderOpen, setRenderOpen] = useState(false);
   const [renderOut, setRenderOut] = useState("final_selection/renders/editor-render.mp4");
@@ -1938,6 +2427,17 @@ export default function Editor({ reloadKey }) {
         ctx.splitAtPlayhead?.();
         return;
       }
+      // While the source monitor is up it owns the transport and the mark keys:
+      // Space auditions the ASSET, I/O set its in/out, Esc hands the box back to
+      // the program. (Space bypasses `spaceAllowedRef` here on purpose — you get
+      // to the monitor by clicking a pool card, which marks the library region.)
+      const src = ctx.sourceActive;
+      if (src && !typing && !e.metaKey && !e.ctrlKey && !e.altKey) {
+        if (e.code === "Space" || e.key === " ") { e.preventDefault(); sourceCtlRef.current?.toggle?.(); return; }
+        if (e.key === "i" || e.key === "I") { e.preventDefault(); sourceCtlRef.current?.markIn?.(); return; }
+        if (e.key === "o" || e.key === "O") { e.preventDefault(); sourceCtlRef.current?.markOut?.(); return; }
+        if (e.key === "Escape") { e.preventDefault(); ctx.closeSource?.(); return; }
+      }
       // Space toggles playback when the last click was in the preview or timeline
       // (not the media pool). We drive the Remotion player imperatively because its
       // built-in Space handling only fires while the player itself holds focus.
@@ -1972,7 +2472,13 @@ export default function Editor({ reloadKey }) {
     // playback. Only marked regions change it; clicks elsewhere leave it as-is.
     const onPointerDown = (e) => {
       const el = e.target?.closest?.("[data-editor-region]");
-      if (el) spaceAllowedRef.current = el.dataset.editorRegion !== "library";
+      if (!el) return;
+      spaceAllowedRef.current = el.dataset.editorRegion !== "library";
+      // Touching the TIMELINE means you're back on the sequence — selecting a
+      // clip, grabbing the needle, clicking the ruler. The preview has to follow
+      // you back to the program, or you'd be moving the playhead and changing
+      // the selection while the box still shows an unrelated source asset.
+      if (el.dataset.editorRegion === "timeline") keyCtxRef.current.closeSource?.();
     };
     window.addEventListener("keydown", onKey);
     window.addEventListener("pointerdown", onPointerDown, true);
@@ -2874,15 +3380,25 @@ export default function Editor({ reloadKey }) {
 
   // Begin dragging a pool card. A translucent frame follows the cursor; over a
   // matching lane it becomes a translucent clip preview; releasing there commits.
+  //
+  // A press that never MOVES isn't a drag at all — it opens the asset in the
+  // source monitor. The 4px threshold is what separates the two: without it the
+  // ghost would flash on every click, and with a plain onClick beside the
+  // pointer handler a completed drag would also count as a click.
   const startPoolDrag = useCallback((e, item, mediaEl) => {
     e.preventDefault();
     const frameUrl = captureVideoFrame(mediaEl);
     const durationSec = poolDurRef.current[item.id] || (mediaEl && Number.isFinite(mediaEl.duration) ? mediaEl.duration : 0) || 3;
-    poolDragRef.current = { item, frameUrl, durationSec };
-    setPoolDrag({ item, frameUrl, durationSec, x: e.clientX, y: e.clientY, drop: null });
+    const x0 = e.clientX;
+    const y0 = e.clientY;
+    poolDragRef.current = { item, frameUrl, durationSec, moved: false };
     const onMove = (ev) => {
       const d = poolDragRef.current;
       if (!d) return;
+      if (!d.moved) {
+        if (Math.abs(ev.clientX - x0) < 4 && Math.abs(ev.clientY - y0) < 4) return;
+        d.moved = true;
+      }
       const drop = computePoolDrop(ev.clientX, ev.clientY, d.item.mediaType);
       d.drop = drop;
       setPoolDrag({ ...d, x: ev.clientX, y: ev.clientY, drop });
@@ -2893,11 +3409,197 @@ export default function Editor({ reloadKey }) {
       setPoolDrag(null);
       window.removeEventListener("pointermove", onMove);
       window.removeEventListener("pointerup", onUp);
-      if (d && d.drop && d.drop.valid) addPoolClip(d.item, d.drop, d.durationSec);
+      if (!d) return;
+      if (!d.moved) { openSourceRef.current?.(d.item); return; }
+      if (d.drop && d.drop.valid) addPoolClip(d.item, d.drop, d.durationSec);
     };
     window.addEventListener("pointermove", onMove);
     window.addEventListener("pointerup", onUp);
   }, [computePoolDrop, addPoolClip]);
+
+  /* ---- source monitor ---- */
+  // Open a pool asset in the preview box. The program is paused first: the
+  // monitor covers the <Player>, and a sequence you can hear but can't see is
+  // just noise over the clip you came to audition.
+  const openSource = useCallback((item) => {
+    playerRef.current?.pause?.();
+    setSourceNote(null);
+    setSourceItem(item);
+  }, []);
+  openSourceRef.current = openSource;
+  const closeSource = useCallback(() => { setSourceItem(null); setSourceNote(null); }, []);
+
+  // Which lane a source-monitor edit lands on: the selected clip's lane when its
+  // media type matches (so "replace this one" means the clip you just clicked),
+  // else the first lane of that type. The monitor prints it, because an insert
+  // that quietly picked a different lane is worse than one that refuses.
+  const sourceTarget = useMemo(() => {
+    if (!timeline || !sourceItem) return null;
+    const type = sourceItem.mediaType === "audio" ? "audio" : "video";
+    const sel = selectedId ? findItemTrack(timeline, selectedId) : null;
+    const track = sel && sel.track.type === type ? sel.track : timeline.tracks.find((t) => t.type === type);
+    if (!track) return { type, track: null, under: null };
+    const f = Math.round(frame);
+    const under = track.items.find((it) => f >= (it.from || 0) && f < (it.from || 0) + (it.durationInFrames || 0)) || null;
+    return { type, track, under };
+  }, [timeline, sourceItem, selectedId, frame]);
+
+  // Put the marked piece of the open source asset onto the timeline at the
+  // playhead. Three modes, the standard NLE trio:
+  //
+  //   overwrite – stamp it down where the needle is. Whatever it covers on the
+  //               target lane is trimmed or removed, and so is the SEPARATED
+  //               AUDIO of those same clips (matched by linkId) — otherwise the
+  //               old clip's sound would keep playing under the new picture.
+  //               Nothing else moves, so the rest of the edit keeps its timing.
+  //   insert    – razor EVERY lane at the needle and push everything from there
+  //               on to the right by the new clip's length, then drop it in the
+  //               hole. All lanes ripple together because the point of an insert
+  //               is that the edit past it survives intact — rippling only the
+  //               picture lane would slide it out of sync with its own audio.
+  //   replace   – swap the media of the clip under the needle, keeping that
+  //               clip's position and length (its slot). The out mark is ignored
+  //               here; the slot's length decides how much source is used, which
+  //               is what makes it the move for upgrading an animatic slate to
+  //               the real video without touching the pacing.
+  //
+  // A video lands muted with its audio separated onto an audio lane, exactly as
+  // a pool DRAG does — same clip, same shape, whichever way it got there.
+  const insertFromSource = useCallback((mode, sel) => {
+    const tl = timelineRef.current;
+    const asset = sourceItem;
+    if (!tl || !asset) return;
+    const f = tl.fps || fps;
+    const at = Math.max(0, Math.round(frameRef.current));
+    const srcLen = Math.max(1, Math.round((sel?.durationSec || 0) * f));
+    const offset = Math.max(0, Math.min(srcLen - 1, Math.round((sel?.inSec || 0) * f)));
+    const outAt = sel?.outSec != null ? Math.round(sel.outSec * f) : srcLen;
+    const len = Math.max(1, Math.min(outAt, srcLen) - offset);
+    const type = asset.mediaType === "audio" ? "audio" : "video";
+    const isVideo = type === "video";
+    const newId = `src_${type}_${poolSeqRef.current++}_${Date.now()}`;
+    const linkId = isVideo ? `link_${newId}` : undefined;
+    const nextId = (base) => `${base}_r${++splitSeqRef.current}`;
+    const clip = (over) => ({
+      id: newId,
+      src: asset.src,
+      name: asset.name,
+      from: at,
+      durationInFrames: len,
+      sourceDurationInFrames: srcLen,
+      offsetFrames: offset,
+      volume: 1,
+      ...(asset.bundle ? { bundle: asset.bundle } : {}),
+      ...over,
+    });
+    // Resolve the lane and (for replace) the slot up front, off the live
+    // timeline: the state updater has to stay pure — StrictMode runs it twice —
+    // so nothing inside it may set state or depend on having run once.
+    const selT = selectedId ? findItemTrack(tl, selectedId) : null;
+    const trackId = (selT && selT.track.type === type ? selT.track : tl.tracks.find((t) => t.type === type))?.id ?? null;
+    const slot = trackId
+      ? (tl.tracks.find((t) => t.id === trackId)?.items || []).find(
+          (it) => at >= (it.from || 0) && at < (it.from || 0) + (it.durationInFrames || 0),
+        )
+      : null;
+    if (mode === "replace" && !slot) return;
+
+    const replaceDur = slot ? Math.min(slot.durationInFrames || 1, Math.max(1, srcLen - offset)) : 0;
+    setSourceNote(
+      mode === "replace" && slot && replaceDur < (slot.durationInFrames || 1)
+        ? `The source ran out ${fmtTime(framesToSec((slot.durationInFrames || 1) - replaceDur, f))} short of the slot — the clip was shortened.`
+        : null,
+    );
+    const landed = mode === "replace" ? slot.id : newId;
+
+    mutate((next) => {
+      // A project with no lane of this type yet gets one rather than refusing.
+      let track = trackId ? next.tracks.find((t) => t.id === trackId) : null;
+      if (!track) {
+        track = makeTrack(next, type);
+        next.tracks.push(track);
+      }
+
+      if (mode === "replace") {
+        const target = track.items.find((it) => it.id === slot.id);
+        if (!target) return next;
+        const dur = replaceDur;
+        const oldSrc = target.src;
+        const swap = (it) => {
+          it.src = asset.src;
+          it.name = asset.name;
+          it.offsetFrames = offset;
+          it.sourceDurationInFrames = srcLen;
+          it.durationInFrames = dur;
+          delete it.speed; // the retime belonged to the media being replaced
+          delete it.kind; // a slate/still slot becomes real media
+          delete it.stillFile;
+          if (asset.bundle) it.bundle = asset.bundle;
+          if (it.fadeInFrames) it.fadeInFrames = Math.min(it.fadeInFrames, dur);
+          if (it.fadeOutFrames) it.fadeOutFrames = Math.min(it.fadeOutFrames, dur);
+        };
+        swap(target);
+        // The clip's OWN separated audio (same linkId, same file) follows the
+        // swap; an unrelated clip that merely shares the group does not.
+        if (target.linkId) {
+          for (const t of next.tracks) {
+            for (const it of t.items) if (it !== target && it.linkId === target.linkId && it.src === oldSrc) swap(it);
+          }
+        }
+        return next;
+      }
+
+      if (mode === "insert") {
+        // Razor every lane at the needle. Right halves that came from one link
+        // group stay linked to each other under a fresh id (as splitAtPlayhead
+        // does), so a picture clip and its audio don't come apart at the cut.
+        const freshLink = new Map();
+        for (const t of next.tracks) {
+          const add = [];
+          for (const it of t.items) {
+            const s = it.from || 0;
+            const e = s + (it.durationInFrames || 0);
+            if (!(s < at && e > at)) continue;
+            const right = rightHalfAt(it, at, nextId(it.id));
+            if (it.linkId) {
+              if (!freshLink.has(it.linkId)) freshLink.set(it.linkId, `link_ins_${Date.now()}_${freshLink.size}`);
+              right.linkId = freshLink.get(it.linkId);
+            }
+            it.durationInFrames = at - s;
+            delete it.fadeOutFrames;
+            add.push(right);
+          }
+          t.items.push(...add);
+        }
+        for (const t of next.tracks) for (const it of t.items) if ((it.from || 0) >= at) it.from = (it.from || 0) + len;
+      } else {
+        // overwrite: clear the span on the target lane, and on the separated
+        // audio of exactly the clips being cleared.
+        const end = at + len;
+        const hit = track.items.filter((it) => (it.from || 0) < end && (it.from || 0) + (it.durationInFrames || 0) > at);
+        const links = new Set(hit.map((it) => it.linkId).filter(Boolean));
+        clearSpan(track, at, end, nextId, null);
+        if (links.size) for (const t of next.tracks) if (t !== track) clearSpan(t, at, end, nextId, links);
+      }
+
+      track.items.push(clip(isVideo ? { muted: true, linkId } : {}));
+      if (isVideo) {
+        const at2 = audioTrackWithRoom(next, at, len);
+        at2.items.push(clip({ id: `${newId}_audio`, linkId }));
+      }
+      return next;
+    });
+
+    applySelection(new Set([landed]), landed);
+    setSelectedGap(null);
+    // Park the needle on the outgoing edit point so clips can be laid down
+    // back-to-back without touching the timeline in between. Deferred a tick:
+    // the <Player> clamps a seek to the duration it was last rendered with.
+    if (mode !== "replace") {
+      const to = at + len;
+      setTimeout(() => { playerRef.current?.seekTo(to); setFrame(to); }, 0);
+    }
+  }, [sourceItem, selectedId, fps, mutate, applySelection]);
 
   const loadCut = useCallback(async (v) => {
     setLoading(true);
@@ -3503,6 +4205,7 @@ export default function Editor({ reloadKey }) {
 
   // Left/Right nudge the playhead one frame back/forward in the video.
   const stepFrame = (delta) => {
+    closeSource(); // driving the needle is program work — show the program
     const next = Math.max(0, Math.min(durationInFrames - 1, Math.round(frameRef.current) + delta));
     playerRef.current?.seekTo(next);
     revealFrame(next);
@@ -3519,6 +4222,7 @@ export default function Editor({ reloadKey }) {
   const MIN_SHUTTLE = 2;
   const MAX_SHUTTLE = 8;
   const shuttle = (dir) => {
+    closeSource();
     const cur = playbackRateRef.current;
     const sameWay = shuttleActiveRef.current && Math.sign(cur) === dir;
     const next = sameWay
@@ -3541,6 +4245,7 @@ export default function Editor({ reloadKey }) {
   // spread across video/video-2/… tracks. The landed-on clip becomes selected.
   const gotoClip = (dir) => {
     if (!timeline) return;
+    closeSource();
     const clips = [];
     for (const t of timeline.tracks) {
       if (t.type !== "video") continue;
@@ -3568,6 +4273,7 @@ export default function Editor({ reloadKey }) {
     undo, selectedGap, selectedId, removeGap, removeItem, removeSelected, toggleDisable,
     stepFrame, gotoClip, splitAtPlayhead, shuttle, resetShuttle,
     hasTimeline: !!timeline, hasSelection: selectedIds.size > 0,
+    sourceActive: !!sourceItem, closeSource,
   };
 
   // Commit the paced timing on THIS timeline back to the Shot list (`dur` per
@@ -4088,6 +4794,7 @@ export default function Editor({ reloadKey }) {
               height={poolH}
               onToggle={() => setPoolCollapsed((c) => !c)}
               dragId={poolDrag?.item.id}
+              openId={sourceItem?.id}
               onMeta={onPoolMeta}
               onDragStart={startPoolDrag}
               tab={poolTab}
@@ -4120,9 +4827,36 @@ export default function Editor({ reloadKey }) {
                     playbackRate={playbackRate}
                     acknowledgeRemotionLicense
                   />
-                  {playbackRate !== 1 && (
+                  {playbackRate !== 1 && !sourceItem && (
                     <div className="pointer-events-none absolute left-3 top-3 z-10 rounded-md bg-black/70 px-2 py-1 text-xs font-semibold tabular-nums text-white">
                       {playbackRate < 0 ? "◀◀" : "▶▶"} {Math.abs(playbackRate)}×
+                    </div>
+                  )}
+                  {/* The SOURCE monitor covers the program rather than replacing
+                      it: the <Player> keeps its playhead and its measured box
+                      (which the media pool's height tracks), so closing the
+                      monitor drops you back exactly where you were. */}
+                  {sourceItem && (
+                    <div className="absolute inset-0 z-20">
+                      <SourceMonitor
+                        key={sourceItem.id}
+                        item={sourceItem}
+                        fps={fps}
+                        marks={sourceMarks[sourceItem.id] || null}
+                        onMarks={(m) => setSourceMarks((prev) => {
+                          const next = { ...prev };
+                          if (m) next[sourceItem.id] = m; else delete next[sourceItem.id];
+                          return next;
+                        })}
+                        mode={sourceMode}
+                        onMode={setSourceMode}
+                        onInsert={(m, sel) => insertFromSource(m, sel)}
+                        canReplace={!!sourceTarget?.under}
+                        targetName={sourceTarget?.track?.name || null}
+                        note={sourceNote}
+                        ctlRef={sourceCtlRef}
+                        onClose={closeSource}
+                      />
                     </div>
                   )}
                 </div>
@@ -4483,6 +5217,9 @@ export default function Editor({ reloadKey }) {
             </div>
           ) : (
             <p className="text-center text-xs text-muted-foreground">
+              Click a media-pool card to open it in the source monitor: play it, drag the rail's grips (or press I / O) to mark
+              in and out, then Overwrite / Insert / Replace clip drops that piece at the playhead. Dragging a card still lands
+              it straight on a lane.
               Click a clip to trim, reorder, adjust volume or remove it. Drag a clip to move it, its right edge to trim the end,
               or its left edge to trim the start. Press S (or the Split button) to cut the clip(s) under the playhead in two.
               Drag it onto another channel — or up/down past the edge to spawn a new one; higher channels play on top.
