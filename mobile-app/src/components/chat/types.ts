@@ -24,6 +24,10 @@ export type MessagePart = {
 export type AgentMessage = {
   id?: string;
   role?: string;
+  // flue's render-lane hint: "visible" is primary chat; "diagnostic"/"hidden"
+  // mark framework advisories (skill/instruction deltas, abort markers) that
+  // must not render as prose. See `isChatMessage` in helpers.ts.
+  display?: string;
   parts?: MessagePart[];
 };
 

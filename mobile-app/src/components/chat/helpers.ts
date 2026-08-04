@@ -2,6 +2,18 @@ import type { AgentMessage, MessagePart, QuestionState } from './types';
 
 // Ports of the web AgentChat.jsx derivations — same semantics, typed.
 
+// flue appends framework-authored "signal" records to the transcript: skill /
+// instruction delta narration after a deploy ("System instructions updated.",
+// "The skill "radio" was updated: …"), abort and interruption advisories. They
+// project as role:'system' with display:'diagnostic' or 'hidden' — model-facing
+// bookkeeping the SDK contract says to keep out of the primary transcript
+// (only display:'visible' is chat). Mirrors `isChatMessage` in the web
+// AgentProvider.jsx.
+export function isChatMessage(m: AgentMessage): boolean {
+  if (m.role === 'system') return false;
+  return m.display == null || m.display === 'visible';
+}
+
 // Does this part render anything visible in the transcript?
 function isVisible(p: MessagePart | undefined): boolean {
   if (!p) return false;

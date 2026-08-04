@@ -1,5 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { AgentMessage, MessagePart } from '@/components/chat/types';
+import { isChatMessage } from '@/components/chat/helpers';
 
 // Local mirror of the last-seen transcript, per chat.
 //
@@ -69,11 +70,16 @@ function slimPart(part: MessagePart): MessagePart | null {
 }
 
 function slim(messages: AgentMessage[]): AgentMessage[] {
-  return messages.slice(-MAX_MESSAGES).map((m) => ({
-    id: m.id,
-    role: m.role,
-    parts: (m.parts || []).map(slimPart).filter(Boolean) as MessagePart[],
-  }));
+  // System advisories never render (see `isChatMessage`) — keep them out of
+  // the cover entirely. The provider hands us the RAW transcript.
+  return messages
+    .filter(isChatMessage)
+    .slice(-MAX_MESSAGES)
+    .map((m) => ({
+      id: m.id,
+      role: m.role,
+      parts: (m.parts || []).map(slimPart).filter(Boolean) as MessagePart[],
+    }));
 }
 
 // Serialize under the byte ceiling, shedding from the oldest end.
@@ -139,7 +145,9 @@ export async function preloadTranscript(chatId: string): Promise<AgentMessage[]>
   try {
     const raw = await AsyncStorage.getItem(PREFIX + chatId);
     const parsed = raw ? JSON.parse(raw) : null;
-    if (Array.isArray(parsed)) messages = parsed;
+    // The filter self-heals covers written to disk before advisories were
+    // stripped at save time.
+    if (Array.isArray(parsed)) messages = parsed.filter(isChatMessage);
   } catch {
     // corrupted / unavailable storage — fall through to the skeleton
   }

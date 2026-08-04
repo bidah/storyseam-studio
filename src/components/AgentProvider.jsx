@@ -337,6 +337,19 @@ function turnInFlight(messages, settlements) {
   return false;
 }
 
+// flue appends framework-authored "signal" records to the transcript: skill /
+// instruction delta narration after a deploy ("System instructions updated.",
+// "The skill "radio" was updated: …"), abort and interruption advisories. They
+// project as role:"system" with display:"diagnostic" or "hidden" — model-facing
+// bookkeeping the SDK contract says to keep out of the primary transcript
+// (only display:"visible" is chat). Without this filter, any `flue:deploy`
+// that touches a skill description dumps the whole new description into every
+// open chat as assistant-looking prose.
+function isChatMessage(m) {
+  if (m.role === "system") return false;
+  return m.display == null || m.display === "visible";
+}
+
 // Follows the flue conversation for the active chat and publishes an adapted
 // snapshot upward. Rendered with `key={activeId}` so a chat switch remounts it
 // (pointing `useFlueAgent` at the new instance id, whose durable history flue
@@ -374,11 +387,15 @@ function AgentSessionRunner({ activeId, projectId, conv, publish }) {
   // Memoized so the merged array is referentially stable across renders — a
   // fresh array each render would re-fire the publish effect below and loop
   // (see the `agent` memo's stability note).
+  // Filtered through `isChatMessage` AFTER the merge, so system advisories are
+  // dropped from the live transcript and from cached copies written before the
+  // filter existed alike.
   const messages = useMemo(
     () =>
-      flueAgent.historyReady || cachedMessages.length === 0
+      (flueAgent.historyReady || cachedMessages.length === 0
         ? flueAgent.messages
-        : [...cachedMessages, ...flueAgent.messages],
+        : [...cachedMessages, ...flueAgent.messages]
+      ).filter(isChatMessage),
     [flueAgent.historyReady, flueAgent.messages, cachedMessages],
   );
 

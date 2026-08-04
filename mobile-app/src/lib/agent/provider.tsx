@@ -40,6 +40,7 @@ import {
   pruneTranscripts,
   saveTranscript,
 } from './transcript-cache';
+import { isChatMessage } from '@/components/chat/helpers';
 
 // ---------------------------------------------------------------------------
 // A single shared flue agent conversation for the whole app — port of the web
@@ -525,6 +526,15 @@ function AgentSessionRunner({
     return () => clearTimeout(timer);
   }, [busy, flueAgent.messages, requestResync]);
 
+  // The transcript the app consumes: flue's, minus system advisories (skill /
+  // instruction delta narration after a deploy, abort markers — see
+  // `isChatMessage`). Memoized on the stable `flueAgent.messages` snapshot so
+  // the array identity only moves when the transcript does — consumers select
+  // on it (see the streaming re-render notes in conversation.tsx). Everything
+  // internal (turnInFlight, hasRunningTool, saveTranscript, deriveTitle) keeps
+  // reading the raw messages.
+  const messages = useMemo(() => flueAgent.messages.filter(isChatMessage), [flueAgent.messages]);
+
   // Adapt flue's surface (`messages`, `status`, `sendMessage`) to the shape the
   // rest of the app consumes (`messages`, `status`, `send`, `stop`, `error`).
   // flue's resting status is "idle"; the app treats "ready" as not-busy (see
@@ -536,7 +546,7 @@ function AgentSessionRunner({
       // whether the runner has caught up to it yet (it repoints a render later,
       // keyed on activeId) before rendering a transcript or sending a draft.
       chatId: activeId,
-      messages: flueAgent.messages,
+      messages,
       status: effectiveStatus === 'idle' ? 'ready' : effectiveStatus,
       error: flueAgent.error,
       historyReady: flueAgent.historyReady,
@@ -560,7 +570,7 @@ function AgentSessionRunner({
         client.abort().catch(() => {});
       },
     }),
-    [flueAgent, effectiveStatus, activeId, client],
+    [flueAgent, messages, effectiveStatus, activeId, client],
   );
 
   // Keep the chat list titled + floated from the live transcript (flue owns the
