@@ -9,7 +9,7 @@
 // items become <Audio> beds mixed under everything.
 
 import React from "react";
-import { isImageItem, isSlateItem } from "./timeline.js";
+import { isImageItem, isSlateItem, itemSpeed } from "./timeline.js";
 // Native <Video>/<Audio> (HTML media elements) — smoother realtime playback and
 // audio in the <Player> preview than the WebCodecs-based @remotion/media path,
 // which stutters/repeats audio while buffering during scrubbing. (These are
@@ -51,6 +51,10 @@ function VideoItem({ item, zIndex }) {
         // Source in-point: skip the first offsetFrames of the media (a split's
         // right half plays the continuation, not the source from frame 0).
         trimBefore={item.offsetFrames || undefined}
+        // Retime. Remotion trims FIRST and applies the rate SECOND, which is
+        // exactly the model in timeline.js: the clip plays durationInFrames ×
+        // speed source frames starting at offsetFrames.
+        playbackRate={itemSpeed(item)}
         pauseWhenBuffering
         style={{
           width: "100%",
@@ -160,8 +164,15 @@ function AudioItem({ item }) {
       name={item.name || "music"}
     >
       {/* trimBefore = source in-point. The frame passed to a volume callback
-          stays clip-relative under trimBefore, so the fade math above holds. */}
-      <Audio src={item.src} volume={volume} trimBefore={item.offsetFrames || undefined} pauseWhenBuffering />
+          stays clip-relative under trimBefore AND under playbackRate, so the
+          fade math above is in TIMELINE frames either way and still holds. */}
+      <Audio
+        src={item.src}
+        volume={volume}
+        trimBefore={item.offsetFrames || undefined}
+        playbackRate={itemSpeed(item)}
+        pauseWhenBuffering
+      />
     </Sequence>
   );
 }

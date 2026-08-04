@@ -64,6 +64,16 @@
 // and its separated audio) and move/trim/delete together while the editor's
 // "Link" toggle is on. An audio item whose `src` is a video file plays that
 // file's audio track (how separated clip audio works).
+//
+// `speed` is the item's playback RATE (retime): 2 plays the source twice as
+// fast, 0.5 at half speed. Absent ⇒ 1. It is the only field that breaks the
+// 1:1 frame mapping between the source and the timeline, so every piece of
+// in-point math multiplies by it — the item plays source frames
+//   [offsetFrames, offsetFrames + durationInFrames × speed)
+// across timeline frames [from, from + durationInFrames). Remotion applies the
+// two in that exact order (trimBefore first, then playbackRate, fixed since
+// v4.0.141), so passing both straight through renders what the timeline draws.
+// Images have no source timeline and therefore no speed.
 
 export const FPS = 24;
 export const WIDTH = 1280;
@@ -80,6 +90,38 @@ export const isImageItem = (item) => item?.kind === "image";
 // A slate is an image item with no still yet — it renders as a placeholder.
 export const isSlateItem = (item) => isImageItem(item) && !item.src;
 
+// --- speed / retime ------------------------------------------------------
+// One definition of the retime math, shared by the compositions, the Editor and
+// (mirrored) the worker. Everything reads the speed through `itemSpeed`, so a
+// doc written before the field existed — or one carrying a garbage value —
+// plays at 1× instead of dividing by zero.
+export const SPEED_MIN = 0.1;
+export const SPEED_MAX = 10;
+export const clampSpeed = (v) => {
+  const n = Number(v);
+  if (!Number.isFinite(n) || n <= 0) return 1;
+  return Math.min(SPEED_MAX, Math.max(SPEED_MIN, Math.round(n * 1000) / 1000));
+};
+export const itemSpeed = (item) => (item?.speed == null ? 1 : clampSpeed(item.speed));
+
+// Source frames an item consumes: its timeline length × speed. This is the
+// quantity a retime PRESERVES — changing speed re-times the same piece of
+// media, it doesn't reach for more of it.
+export const sourceSpanOf = (item) =>
+  Math.max(1, Math.round((item?.durationInFrames || 0) * itemSpeed(item)));
+
+// Longest timeline length the remaining source allows at `speed`. Infinity when
+// the item has no source length to run out of (an image, or a clip saved before
+// `sourceDurationInFrames` existed) — absent already means "uncapped resize".
+export const maxDurationOf = (item, speed = itemSpeed(item)) => {
+  const src = item?.sourceDurationInFrames;
+  if (!src || isImageItem(item)) return Infinity;
+  return Math.max(1, Math.floor((src - (item.offsetFrames || 0)) / speed));
+};
+
+// Timeline length that plays `span` source frames at `speed`.
+export const retimedDuration = (span, speed) => Math.max(1, Math.round(span / clampSpeed(speed)));
+
 // Enforce the image invariants on one item (idempotent). Applied when a timeline
 // is LOADED (`withSourceDurations` in Editor.jsx), so a hand-edited or
 // agent-written doc can't produce an image that tries to seek into a source it
@@ -90,6 +132,9 @@ export function normalizeItemKind(item) {
   if (!isImageItem(item)) return item;
   item.offsetFrames = 0;
   delete item.sourceDurationInFrames;
+  // A still has no source timeline to play faster or slower — its length IS
+  // its duration, which the trim handles already set.
+  delete item.speed;
   return item;
 }
 

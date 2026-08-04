@@ -15,7 +15,7 @@ import {
   Eye, EyeOff, Clapperboard, Download, ExternalLink,
   PanelLeftClose, PanelLeftOpen, FolderOpen, Ban, FileDown, FoldHorizontal, Magnet,
   ZoomIn, ZoomOut, Camera, Images, Link2, Unlink2, AudioLines, GripHorizontal,
-  FlipHorizontal2, FlipVertical2, Radio, Timer, FilePlus2,
+  FlipHorizontal2, FlipVertical2, Radio, Timer, FilePlus2, Gauge,
   // Aliased: a bare `Image` import would shadow the DOM's global Image
   // constructor for this whole module.
   Image as ImageIcon, ImageOff, Sparkles, Plus, RefreshCcwDot,
@@ -41,10 +41,14 @@ import {
   ContextMenuSub, ContextMenuSubContent, ContextMenuSubTrigger,
 } from "@/components/ui/context-menu";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 import { IconSwap } from "@/components/shared";
 import EditorComposition from "@/editor/Composition";
-import { timelineDuration, framesToSec, isImageItem, isSlateItem, normalizeItemKind } from "@/editor/timeline";
+import {
+  timelineDuration, framesToSec, isImageItem, isSlateItem, normalizeItemKind,
+  itemSpeed, sourceSpanOf, maxDurationOf, clampSpeed, retimedDuration,
+} from "@/editor/timeline";
 import { useAgent, agentIsBusy, renderAnimaticStillMessage } from "@/components/AgentProvider";
 import { CLIENT_ID } from "@/lib/clientId";
 import { getProjectId } from "@/lib/projectFetch";
@@ -144,6 +148,20 @@ function captureStillFromSource(src, timeSec) {
     v.src = src;
   });
 }
+
+// Retime presets — the familiar NLE ladder. 1× is always on it: a clip that has
+// been slowed needs an obvious, exact way back to normal (nudging a slider to
+// "about 1" leaves a clip that is subtly off-speed forever).
+const SPEED_PRESETS = [0.25, 0.5, 0.75, 1, 1.5, 2, 4];
+const fmtSpeed = (s) => `${Number(Number(s).toFixed(3))}×`;
+
+// Gain range for a clip: 0 = silent, 1 = unity, 2 = +6dB. Matches the model's
+// clamp (worker/src/routes/timeline.js) and the inspector slider, so the card's
+// volume line and the slider are two views of one number. `VOLUME_SNAP` is how
+// close a drag has to get before it locks onto unity.
+const VOLUME_MAX = 2;
+const VOLUME_SNAP = 0.04;
+const itemVolume = (item) => (item?.muted ? 0 : item?.volume ?? 1);
 
 // Which video clip is showing at composition frame `f`: the first (topmost —
 // earlier tracks win z-order) non-disabled video item whose span covers `f`.
@@ -374,9 +392,12 @@ function withSourceDurations(tl) {
         it.sourceDurationInFrames = it.durationInFrames;
       }
       it.offsetFrames = Math.max(0, Math.round(it.offsetFrames || 0));
-      if (it.sourceDurationInFrames && it.offsetFrames + it.durationInFrames > it.sourceDurationInFrames) {
-        it.durationInFrames = Math.max(1, it.sourceDurationInFrames - it.offsetFrames);
-      }
+      if (it.speed != null) it.speed = clampSpeed(it.speed);
+      // The cap is on SOURCE frames consumed (duration × speed), not on the
+      // duration itself: a clip slowed to 0.5× is legitimately twice as long as
+      // the media it plays, and clamping it here would silently un-retime it.
+      const cap = maxDurationOf(it);
+      if (Number.isFinite(cap) && it.durationInFrames > cap) it.durationInFrames = cap;
     }
   }
   return tl;
@@ -456,6 +477,7 @@ function TimelineItem({
   item, track, pxPerSec, fps, selected, linkHighlight, multiCount, canSplit,
   onSelect, onDragStart, onFadeStart, onToggleDisable, onRemove,
   onUnlink, onLinkSelected, onDetachAudio, onSplit, onNewStill, onSwapTake, takes,
+  onFlip, onSpeed, onVolumeStart,
 }) {
   const left = framesToSec(item.from, fps) * pxPerSec;
   const width = Math.max(6, framesToSec(item.durationInFrames, fps) * pxPerSec);
@@ -474,10 +496,15 @@ function TimelineItem({
   const fadeInPx = framesToSec(item.fadeInFrames || 0, fps) * pxPerSec;
   const fadeOutPx = framesToSec(item.fadeOutFrames || 0, fps) * pxPerSec;
   // Waveform window: the slice of the source the card currently plays —
-  // [offsetFrames, offsetFrames + durationInFrames) of the full source.
+  // [offsetFrames, offsetFrames + durationInFrames × speed) of the full source.
+  // A retimed clip covers more (or less) source than its on-screen length, so
+  // the window is measured in SOURCE frames or a sped-up clip would draw a
+  // waveform that doesn't match what you hear.
   const srcDur = item.sourceDurationInFrames || 0;
+  const speed = itemSpeed(item);
+  const vol = itemVolume(item);
   const winStart = srcDur ? Math.min(1, (item.offsetFrames || 0) / srcDur) : 0;
-  const winEnd = srcDur ? Math.min(1, ((item.offsetFrames || 0) + item.durationInFrames) / srcDur) : 1;
+  const winEnd = srcDur ? Math.min(1, ((item.offsetFrames || 0) + sourceSpanOf(item)) / srcDur) : 1;
   const hasArt = isAudio ? !!peaks : !!thumb;
   return (
     <ContextMenu>
@@ -554,6 +581,30 @@ function TimelineItem({
               disabled={disabled}
             />
           )}
+          {/* Volume rubber band: the horizontal gain line across an audio card.
+              Grab it anywhere and drag up/down. The strip is 12px tall so it's
+              catchable on a 54px card, and centred on the line it draws. */}
+          {isAudio && (
+            <div
+              data-handle="volume"
+              onPointerDown={(e) => {
+                e.stopPropagation(); // never start a clip move from the line
+                onSelect(item.id);
+                onVolumeStart(e, item, e.currentTarget.parentElement?.getBoundingClientRect().height || 0);
+              }}
+              className="group/vol absolute inset-x-0 z-[5] flex h-3 -translate-y-1/2 cursor-ns-resize items-center"
+              style={{ top: `${Math.max(0, Math.min(100, (1 - vol / VOLUME_MAX) * 100))}%` }}
+              title={`Volume ${Math.round(vol * 100)}% — drag up / down to change (Alt to pass unity)`}
+            >
+              <div
+                className={cn(
+                  "w-full rounded-full transition-all",
+                  selected || vol !== 1 ? "h-0.5" : "h-px",
+                  disabled ? "bg-muted-foreground/50" : "bg-violet-100/70 group-hover/vol:h-0.5 group-hover/vol:bg-violet-50",
+                )}
+              />
+            </div>
+          )}
           {/* label strip */}
           <div
             className={cn(
@@ -573,7 +624,23 @@ function TimelineItem({
               <Film size={11} className="shrink-0" />
             )}
             <span className="truncate">{item.name}</span>
-            {item.linkId && <Link2 size={10} className="ml-auto shrink-0 opacity-70" aria-label="Linked clip" />}
+            {/* Right-hand cluster: the states a card can be in that its shape
+                alone can't show. A retimed clip especially has to SAY so — its
+                length no longer matches the media under it, which otherwise
+                reads as a bug next to the pool item it came from. */}
+            <span className="ml-auto flex shrink-0 items-center gap-1">
+              {isAudio && vol !== 1 && (
+                <span className="rounded-sm bg-black/50 px-1 tabular-nums text-white">
+                  {Math.round(vol * 100)}%
+                </span>
+              )}
+              {speed !== 1 && (
+                <span className="rounded-sm bg-black/50 px-1 font-medium tabular-nums text-white">
+                  {fmtSpeed(speed)}
+                </span>
+              )}
+              {item.linkId && <Link2 size={10} className="opacity-70" aria-label="Linked clip" />}
+            </span>
           </div>
           {/* fade handles — the classic dots at the card's top corners; drag
               inward to lengthen the fade (the dot sits where the fade ends) */}
@@ -656,6 +723,41 @@ function TimelineItem({
           <ContextMenuShortcut>S</ContextMenuShortcut>
         </ContextMenuItem>
         <ContextMenuSeparator />
+        {/* Retime. An image has no source timeline to run faster or slower —
+            its length is just its duration, which the trim handles set. */}
+        {!isImage && (
+          <ContextMenuSub>
+            <ContextMenuSubTrigger>
+              <span className="flex items-center gap-2"><Gauge size={14} /> Speed</span>
+              {speed !== 1 && <ContextMenuShortcut>{fmtSpeed(speed)}</ContextMenuShortcut>}
+            </ContextMenuSubTrigger>
+            <ContextMenuSubContent>
+              {SPEED_PRESETS.map((s) => (
+                <ContextMenuItem key={s} onSelect={() => onSpeed?.(item.id, s)}>
+                  <span className="flex items-center gap-2">
+                    {s === 1 ? "Normal" : s < 1 ? "Slow" : "Fast"} {fmtSpeed(s)}
+                  </span>
+                  {speed === s && <ContextMenuShortcut><Check size={14} /></ContextMenuShortcut>}
+                </ContextMenuItem>
+              ))}
+            </ContextMenuSubContent>
+          </ContextMenuSub>
+        )}
+        {/* Mirror. Audio has no picture, and a slate is a text placeholder —
+            flipping either would be a no-op the checkmark then lies about. */}
+        {!isAudio && !isSlate && (
+          <>
+            <ContextMenuItem onSelect={() => onFlip?.(item.id, "h")}>
+              <span className="flex items-center gap-2"><FlipHorizontal2 size={14} /> Flip horizontal</span>
+              {item.flipH && <ContextMenuShortcut><Check size={14} /></ContextMenuShortcut>}
+            </ContextMenuItem>
+            <ContextMenuItem onSelect={() => onFlip?.(item.id, "v")}>
+              <span className="flex items-center gap-2"><FlipVertical2 size={14} /> Flip vertical</span>
+              {item.flipV && <ContextMenuShortcut><Check size={14} /></ContextMenuShortcut>}
+            </ContextMenuItem>
+          </>
+        )}
+        {(!isImage || (!isAudio && !isSlate)) && <ContextMenuSeparator />}
         <ContextMenuItem onSelect={() => onToggleDisable(item.id)}>
           <span className="flex items-center gap-2">
             {disabled ? <Eye size={14} /> : <EyeOff size={14} />}
@@ -1823,12 +1925,79 @@ export default function Editor({ reloadKey }) {
   // Flip the clip at the playhead horizontally / vertically. Like "Grab still",
   // it acts on whichever video clip is showing at the current frame; the mirror
   // is a per-clip flag the composition renders as a CSS transform.
+  const flipItem = useCallback((id, axis) => {
+    const key = axis === "v" ? "flipV" : "flipH";
+    mapItem(id, (it) => ({ [key]: !it[key] }));
+  }, [mapItem]);
+
   const flipClipAtPlayhead = useCallback((axis) => {
     const clip = itemAtFrame(timeline, Math.round(frameRef.current));
     if (!clip) { setError("No clip at the playhead to flip."); return; }
-    const key = axis === "v" ? "flipV" : "flipH";
-    mapItem(clip.id, (it) => ({ [key]: !it[key] }));
-  }, [timeline, mapItem]);
+    flipItem(clip.id, axis);
+  }, [timeline, flipItem]);
+
+  // Retime a clip — the NLE "speed / duration" edit. The SOURCE SPAN is what's
+  // preserved: the clip keeps playing the same piece of media, and its timeline
+  // length becomes span / speed (2× makes it half as long). Two consequences
+  // are the whole reason this isn't a one-line flag:
+  //
+  //  • Linked partners retime together. A clip and its separated audio at
+  //    different rates drift apart frame by frame — the one thing a link is
+  //    there to prevent.
+  //  • Every affected track RIPPLES by the length delta, the way a speed change
+  //    does in an NLE with ripple on. Without it, slowing a clip down grows it
+  //    straight over the next clip on the lane (two items overlapping on one
+  //    track is a state nothing else in the editor produces), and speeding one
+  //    up leaves a hole where the cut used to be.
+  //
+  // Items BEFORE the first retimed clip on a lane never move (the shift
+  // accumulator is still 0 when the walk reaches them), so an edit late in the
+  // timeline can't disturb everything upstream of it.
+  const retimeItems = useCallback((ids, speed) => {
+    const next = clampSpeed(speed);
+    mutate((tl) => {
+      // Expand to the link groups first: the ripple below has to see every
+      // retimed item on a lane in one pass, or a partner's delta rips its own
+      // track out of sync with the one it's linked to.
+      const targets = new Set(ids);
+      for (const t of tl.tracks) {
+        for (const it of t.items) {
+          if (!targets.has(it.id) || !it.linkId) continue;
+          for (const g of linkGroupOf(tl, it.linkId)) targets.add(g.id);
+        }
+      }
+      for (const t of tl.tracks) {
+        if (!t.items.some((it) => targets.has(it.id) && !isImageItem(it))) continue;
+        // Ripple in play order, not array order — the two agree on a repacked
+        // lane but not after a drag, and a shift applied out of order would
+        // push a clip over the neighbour it was supposed to follow.
+        const ordered = [...t.items].sort((a, b) => (a.from || 0) - (b.from || 0));
+        let shift = 0;
+        for (const it of ordered) {
+          if (shift) it.from = Math.max(0, (it.from || 0) + shift);
+          if (!targets.has(it.id) || isImageItem(it)) continue;
+          const span = sourceSpanOf(it);
+          const dur = Math.min(retimedDuration(span, next), maxDurationOf(it, next));
+          shift += dur - it.durationInFrames;
+          it.durationInFrames = dur;
+          if (next === 1) delete it.speed; else it.speed = next;
+          // Fades are timeline-frame lengths; a shortened clip can't hold the
+          // ones it had (the same clamp `split` applies to its halves).
+          if (it.fadeInFrames) it.fadeInFrames = Math.min(it.fadeInFrames, dur);
+          if (it.fadeOutFrames) it.fadeOutFrames = Math.min(it.fadeOutFrames, dur - (it.fadeInFrames || 0));
+        }
+      }
+      return tl;
+    });
+  }, [mutate]);
+
+  // Right-clicking one clip retimes that clip — unless it's part of the current
+  // multi-selection, in which case it retimes all of them (matching how Remove
+  // and the drag handles treat a selection).
+  const retimeItem = useCallback((id, speed) => {
+    const sel = selectedIdsRef.current;
+    retimeItems(sel.has(id) && sel.size > 1 ? [...sel] : [id], speed);
+  }, [retimeItems]);
 
   // Removing a linked clip takes its partners with it — deleting a video clip
   // also deletes its separated audio, and vice versa. Removing a member of a
@@ -2244,8 +2413,10 @@ export default function Editor({ reloadKey }) {
             durationInFrames: (it.durationInFrames || 0) - p.leftDur,
             // An image has no source timeline, so both halves keep in-point 0 and
             // simply hold the same still — splitting a still is a legitimate way
-            // to hold one frame across a cut point.
-            offsetFrames: isImageItem(it) ? 0 : (it.offsetFrames || 0) + p.leftDur,
+            // to hold one frame across a cut point. On real media the right half
+            // resumes where the left one stopped CONSUMING source, which on a
+            // retimed clip is leftDur × speed frames in, not leftDur.
+            offsetFrames: isImageItem(it) ? 0 : (it.offsetFrames || 0) + Math.round(p.leftDur * itemSpeed(it)),
           };
           delete right.fadeInFrames; // fade-in belongs to the left half
           if (p.rightLinkId) right.linkId = p.rightLinkId; else delete right.linkId;
@@ -2867,6 +3038,10 @@ export default function Editor({ reloadKey }) {
     const group = [...byId.values()].map((it) => ({
       id: it.id, startFrom: it.from, startDur: it.durationInFrames, srcDur: it.sourceDurationInFrames,
       offset: it.offsetFrames || 0,
+      // Retimed clips consume source at a different rate than the timeline
+      // runs, so every clamp below converts through it.
+      speed: itemSpeed(it),
+      maxDur: maxDurationOf(it),
       // An image has no source media: its in-point stays 0 and its head can be
       // re-extended as far as the timeline allows (no trimmed-off media to run
       // out of). Snapshot it so the drag clamps can tell the two cases apart.
@@ -2915,15 +3090,17 @@ export default function Editor({ reloadKey }) {
         for (const g of d.group) {
           // An image's head is limited only by the timeline start (from ≥ 0);
           // real media also can't back up past its own source start
-          // (offsetFrames ≥ 0).
-          lo = Math.max(lo, g.isImage ? -g.startFrom : Math.max(-g.offset, -g.startFrom));
+          // (offsetFrames ≥ 0). One timeline frame of head costs `speed` source
+          // frames, so a 2× clip runs out of trimmed-off media twice as fast.
+          const headRoom = Math.floor(g.offset / g.speed);
+          lo = Math.max(lo, g.isImage ? -g.startFrom : Math.max(-headRoom, -g.startFrom));
           hi = Math.min(hi, g.startDur - 1);          // durationInFrames ≥ 1
         }
         delta = lo > hi ? 0 : Math.max(lo, Math.min(hi, delta));
         const patches = new Map(d.group.map((g) => [g.id, {
           from: g.startFrom + delta,
           // Images stay pinned at in-point 0 — there is nothing to seek into.
-          offsetFrames: g.isImage ? 0 : g.offset + delta,
+          offsetFrames: g.isImage ? 0 : Math.max(0, g.offset + Math.round(delta * g.speed)),
           durationInFrames: g.startDur - delta,
         }]));
         mapItems(patches, true);
@@ -2933,7 +3110,9 @@ export default function Editor({ reloadKey }) {
         // clamped to its own source cap).
         const patches = new Map(d.group.map((g) => {
           let next = Math.max(1, Math.round(g.startDur + deltaFrames));
-          if (g.srcDur) next = Math.min(next, Math.max(1, g.srcDur - g.offset));
+          // The cap is in TIMELINE frames: the source left past the in-point,
+          // divided by the rate it plays at (a 0.5× clip stretches twice as far).
+          if (Number.isFinite(g.maxDur)) next = Math.min(next, g.maxDur);
           return [g.id, { durationInFrames: next }];
         }));
         mapItems(patches, true);
@@ -2976,6 +3155,37 @@ export default function Editor({ reloadKey }) {
     window.addEventListener("pointermove", onMove);
     window.addEventListener("pointerup", onUp);
   }, [pxPerSec, fps, mapItem, beginGesture]);
+
+  // Drag the volume line across an audio card up/down to set its gain — the
+  // rubber band every NLE puts on an audio clip. The card's full height maps to
+  // 0…VOLUME_MAX, so unity sits exactly halfway up and the gesture reads the
+  // same on every lane regardless of zoom (`cardH` is measured at pointer-down,
+  // because the lane height is user-resizable).
+  //
+  // Unity SNAPS: a clip nudged to 0.98 is inaudibly-but-permanently off, and
+  // dragging back to "exactly normal" by eye is otherwise impossible. Holding
+  // Alt suspends the snap for a deliberate touch just under/over unity.
+  const onVolumeStart = useCallback((e, item, cardH) => {
+    e.preventDefault();
+    beginGesture(); // one undo step for the whole drag
+    const startY = e.clientY;
+    const start = item.muted ? 0 : item.volume ?? 1;
+    const h = Math.max(1, cardH);
+    const onMove = (ev) => {
+      const delta = ((startY - ev.clientY) / h) * VOLUME_MAX; // up = louder
+      let v = Math.max(0, Math.min(VOLUME_MAX, start + delta));
+      if (!ev.altKey && Math.abs(v - 1) < VOLUME_SNAP) v = 1;
+      // Dragging the line is itself an unmute — the line's position IS the gain,
+      // so leaving `muted` set would show a raised line playing silence.
+      mapItem(item.id, { volume: Math.round(v * 100) / 100, muted: false }, true);
+    };
+    const onUp = () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+  }, [mapItem, beginGesture]);
 
   // Snap targets for the playhead: the timeline start (0) and every clip edge
   // across all tracks (the playhead itself is obviously not a target).
@@ -3606,6 +3816,9 @@ export default function Editor({ reloadKey }) {
               onSplit={splitAtPlayhead}
               onNewStill={openSceneForItem}
               onSwapTake={swapTake}
+              onFlip={flipItem}
+              onSpeed={retimeItem}
+              onVolumeStart={onVolumeStart}
               takes={item.shot && item.bundle ? takesByShot[`${item.bundle}/${item.shot}`] : undefined}
             />
           ))}
@@ -4023,7 +4236,7 @@ export default function Editor({ reloadKey }) {
                   <Button variant="destructive" size="sm" onClick={() => removeItem(selected.item.id)}><Trash2 size={13} /> Remove</Button>
                 </div>
               </div>
-              <div className={cn("grid gap-4", selected.track.type === "audio" ? "sm:grid-cols-4" : "sm:grid-cols-3")}>
+              <div className={cn("grid gap-4", selected.track.type === "audio" ? "sm:grid-cols-5" : "sm:grid-cols-4")}>
                 <div className="text-xs">
                   <div className="mb-1 text-muted-foreground">Start</div>
                   <div className="tabular-nums">{fmtTime(framesToSec(selected.item.from, fps))}</div>
@@ -4036,6 +4249,34 @@ export default function Editor({ reloadKey }) {
                   <div className="text-xs">
                     <div className="mb-1 text-muted-foreground">Source in</div>
                     <div className="tabular-nums">{fmtTime(framesToSec(selected.item.offsetFrames, fps))}</div>
+                  </div>
+                )}
+                {/* Retime. Images are excluded: a still has no source timeline
+                    to run at another rate — its length IS its duration. */}
+                {!isImageItem(selected.item) && (
+                  <div className="text-xs">
+                    <div className="mb-1 flex items-center gap-1 text-muted-foreground">
+                      <Gauge size={12} /> Speed
+                    </div>
+                    <Select
+                      value={String(itemSpeed(selected.item))}
+                      onValueChange={(v) => retimeItem(selected.item.id, Number(v))}
+                    >
+                      <SelectTrigger size="sm" className="w-full" aria-label="Clip speed">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {/* An agent-set rate that isn't on the ladder still needs
+                            an item here, or Radix renders an empty trigger. */}
+                        {[...new Set([...SPEED_PRESETS, itemSpeed(selected.item)])]
+                          .sort((a, b) => a - b)
+                          .map((s) => (
+                            <SelectItem key={s} value={String(s)}>
+                              {fmtSpeed(s)}{s === 1 ? " · normal" : ""}
+                            </SelectItem>
+                          ))}
+                      </SelectContent>
+                    </Select>
                   </div>
                 )}
                 {selected.track.type === "audio" && (
@@ -4059,8 +4300,8 @@ export default function Editor({ reloadKey }) {
                   <div className="flex items-center gap-2">
                     <Slider
                       className="flex-1"
-                      min={0} max={2} step={0.05}
-                      value={[selected.item.muted ? 0 : selected.item.volume ?? 1]}
+                      min={0} max={VOLUME_MAX} step={0.05}
+                      value={[itemVolume(selected.item)]}
                       onPointerDownCapture={beginGesture}
                       onValueChange={([v]) => mapItem(selected.item.id, { volume: v, muted: false }, true)}
                       aria-label="Volume"
@@ -4075,11 +4316,14 @@ export default function Editor({ reloadKey }) {
               Click a clip to trim, reorder, adjust volume or remove it. Drag a clip to move it, its right edge to trim the end,
               or its left edge to trim the start. Press S (or the Split button) to cut the clip(s) under the playhead in two.
               Drag it onto another channel — or up/down past the edge to spawn a new one; higher channels play on top.
-              On audio clips, drag the dots at the top corners to fade in / out.
+              On audio clips, drag the dots at the top corners to fade in / out, and drag the horizontal volume line
+              up / down to set the gain (it snaps to unity — hold Alt to pass it).
               Video clips dropped from the pool carry their audio as a separate linked clip on the audio tracks — linked clips
               always move, trim and delete together; right-click to unlink or detach a clip's audio.
               Drag on empty timeline space to rubber-band-select clips (Cmd-click adds one at a time), then move them together
               or right-click → Link selected clips to make the group permanent.
+              Right-click a clip for Speed (0.25×–4×; the clip keeps the same piece of media and the rest of the lane
+              ripples) and Flip horizontal / vertical — both also on the preview, where they act on the clip at the playhead.
             </p>
           )}
         </>

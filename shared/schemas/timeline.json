@@ -2,7 +2,7 @@
   "capability": "timeline.edit",
   "route": "POST /api/timeline/edit",
   "tool": "edit_timeline",
-  "description": "Edit the video editor timeline by applying a list of ops (call get_timeline first for item ids, track ids, and frame positions; times are FRAMES at the timeline fps, usually 24). Ops:\n- insert: ADD a new clip to a track — { op:'insert', trackId, item:{ id, src, name, from, durationInFrames, … } }. This is how an edit that did NOT come from a cut gets built: `new_editor_project` for an empty timeline, `list_media_pool` for the available media, then one insert per clip. `id` must be new and unique; `src` is a pool item's `src` ('/gen/<file>' for video, '/sound-media/<file>' for audio); `from` and `durationInFrames` are frames. Put video/image items on a type 'video' track and audio on a type 'audio' track, and never overlap two items on ONE track — lay them end to end (next `from` = previous `from` + its `durationInFrames`) or add a lane with addTrack. `kind:'image'` inserts a still held on screen; `kind:'image'` with `src:null` reserves a SLATE to fill later with replace\n- move: set a clip's start frame — { op:'move', id, from, track? }. Optional `track` also re-homes the item onto another track of the SAME media type (the Editor is multi-track — e.g. move a line onto a second dialogue lane so two takes can overlap; items on ONE track must never overlap)\n- resize: set a clip's length in frames — { op:'resize', id, durationInFrames, edge? }. Default edge 'end' trims/extends the tail; edge:'start' trims/extends the HEAD (the clip's end stays anchored and its source in-point `offsetFrames` slides with the start)\n- split: razor a clip in two at an absolute timeline frame — { op:'split', id, at }. `at` must fall strictly inside the clip. The right half is a NEW item; re-read the returned timeline for its id\n- replace: swap an item's MEDIA in place, keeping its position, length, kind and links — { op:'replace', id, src, stillFile?, name? }. This is how a still you just generated lands on the animatic: fill the SLATE with the url + file returned by attach_still. Never use move/remove to place a generated still\n- rename: set the PROJECT's name — { op:'rename', name }. This is the timeline's own label (shown in the Editor header and editable there), NOT a clip's label; use replace's `name` for a clip. A blank name clears it back to unnamed\n- remove: delete a clip/music item — { op:'remove', id }\n- volume: set gain 0..2 (1 = unity, 0 = silent) — { op:'volume', id, volume }\n- mute: mute/unmute an item — { op:'mute', id, muted }\n- disable: disable/enable a clip — skipped in playback but kept on the timeline (greyed) — { op:'disable', id, disabled }\n- reorder: set the play order of a track then close gaps — { op:'reorder', track:'video', order:[id,id,...] }\n- repack: close gaps in a track so clips play back-to-back — { op:'repack', track:'video' }\n- addTrack: append an empty track — { op:'addTrack', type:'audio'|'video', id?, name? } (id must be new; omit it for an auto id). Add a lane BEFORE moving items onto it\nTrack ids are 'video' and 'music' on a cut, 'picture' and 'dialogue' on an animatic (plus any added lanes). Returns { ok, timeline } with the updated timeline.",
+  "description": "Edit the video editor timeline by applying a list of ops (call get_timeline first for item ids, track ids, and frame positions; times are FRAMES at the timeline fps, usually 24). Ops:\n- insert: ADD a new clip to a track — { op:'insert', trackId, item:{ id, src, name, from, durationInFrames, … } }. This is how an edit that did NOT come from a cut gets built: `new_editor_project` for an empty timeline, `list_media_pool` for the available media, then one insert per clip. `id` must be new and unique; `src` is a pool item's `src` ('/gen/<file>' for video, '/sound-media/<file>' for audio); `from` and `durationInFrames` are frames. Put video/image items on a type 'video' track and audio on a type 'audio' track, and never overlap two items on ONE track — lay them end to end (next `from` = previous `from` + its `durationInFrames`) or add a lane with addTrack. `kind:'image'` inserts a still held on screen; `kind:'image'` with `src:null` reserves a SLATE to fill later with replace\n- move: set a clip's start frame — { op:'move', id, from, track? }. Optional `track` also re-homes the item onto another track of the SAME media type (the Editor is multi-track — e.g. move a line onto a second dialogue lane so two takes can overlap; items on ONE track must never overlap)\n- resize: set a clip's length in frames — { op:'resize', id, durationInFrames, edge? }. Default edge 'end' trims/extends the tail; edge:'start' trims/extends the HEAD (the clip's end stays anchored and its source in-point `offsetFrames` slides with the start)\n- split: razor a clip in two at an absolute timeline frame — { op:'split', id, at }. `at` must fall strictly inside the clip. The right half is a NEW item; re-read the returned timeline for its id\n- replace: swap an item's MEDIA in place, keeping its position, length, kind and links — { op:'replace', id, src, stillFile?, name? }. This is how a still you just generated lands on the animatic: fill the SLATE with the url + file returned by attach_still. Never use move/remove to place a generated still\n- rename: set the PROJECT's name — { op:'rename', name }. This is the timeline's own label (shown in the Editor header and editable there), NOT a clip's label; use replace's `name` for a clip. A blank name clears it back to unnamed\n- remove: delete a clip/music item — { op:'remove', id }\n- speed: RETIME a clip — { op:'speed', id, speed }. 2 plays it twice as fast, 0.5 at half speed, 1 restores normal. The clip keeps playing the SAME piece of media, so its length becomes span / speed, and the rest of that lane ripples by the difference (the following cut neither overlaps nor leaves a hole). Linked partners retime together. Not for images — a still has no source timeline; change its `resize` duration instead\n- flip: MIRROR a picture clip — { op:'flip', id, flipH?, flipV? }. flipH mirrors left/right, flipV top/bottom; an omitted flag leaves that axis as it was\n- volume: set gain 0..2 (1 = unity, 0 = silent) — { op:'volume', id, volume }\n- mute: mute/unmute an item — { op:'mute', id, muted }\n- disable: disable/enable a clip — skipped in playback but kept on the timeline (greyed) — { op:'disable', id, disabled }\n- reorder: set the play order of a track then close gaps — { op:'reorder', track:'video', order:[id,id,...] }\n- repack: close gaps in a track so clips play back-to-back — { op:'repack', track:'video' }\n- addTrack: append an empty track — { op:'addTrack', type:'audio'|'video', id?, name? } (id must be new; omit it for an auto id). Add a lane BEFORE moving items onto it\nTrack ids are 'video' and 'music' on a cut, 'picture' and 'dialogue' on an animatic (plus any added lanes). Returns { ok, timeline } with the updated timeline.",
   "input": {
     "type": "object",
     "fields": {
@@ -22,6 +22,8 @@
                 "replace",
                 "rename",
                 "remove",
+                "speed",
+                "flip",
                 "volume",
                 "mute",
                 "disable",
@@ -34,7 +36,22 @@
             "id": {
               "type": "string",
               "optional": true,
-              "description": "Target item id (move/resize/split/replace/remove/volume/mute/disable), or the new track's id (addTrack — must not collide; omit for an auto id)."
+              "description": "Target item id (move/resize/split/replace/remove/speed/flip/volume/mute/disable), or the new track's id (addTrack — must not collide; omit for an auto id)."
+            },
+            "speed": {
+              "type": "number",
+              "optional": true,
+              "description": "Playback rate 0.1..10 (for speed) — 2 = twice as fast, 0.5 = half speed, 1 = normal."
+            },
+            "flipH": {
+              "type": "boolean",
+              "optional": true,
+              "description": "Mirror left/right (for flip). Omit to leave the horizontal axis unchanged."
+            },
+            "flipV": {
+              "type": "boolean",
+              "optional": true,
+              "description": "Mirror top/bottom (for flip). Omit to leave the vertical axis unchanged."
             },
             "track": {
               "type": "string",
@@ -84,6 +101,11 @@
                   "type": "number",
                   "optional": true,
                   "description": "Source in-point — frames skipped at the head of the media (default 0)."
+                },
+                "speed": {
+                  "type": "number",
+                  "optional": true,
+                  "description": "Playback rate (default 1). The clip plays durationInFrames × speed source frames, so set durationInFrames to the RETIMED length, not the media's own."
                 },
                 "kind": {
                   "type": "enum",

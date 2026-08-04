@@ -234,6 +234,17 @@ const repackTrack = (tl, track) => {
 //                                             (`timeline.name`, shown in the
 //                                             Editor header); blank clears it
 //   { op:"remove", id }                     – delete an item
+//   { op:"speed", id, speed }               – RETIME a clip: 2 plays it twice as
+//                                             fast, 0.5 at half speed. The clip
+//                                             keeps playing the same piece of
+//                                             source; its timeline length
+//                                             becomes span / speed and the rest
+//                                             of the lane ripples by the delta,
+//                                             so the cut after it neither
+//                                             overlaps nor leaves a hole.
+//                                             Linked partners retime together.
+//   { op:"flip", id, flipH?, flipV? }       – mirror a picture clip left/right
+//                                             and/or top/bottom
 //   { op:"volume", id, volume }             – set gain (0..2, 1 = unity)
 //   { op:"mute", id, muted }                – mute/unmute an item
 //   { op:"disable", id, disabled }          – grey out + skip an item in playback
@@ -251,6 +262,29 @@ const repackTrack = (tl, track) => {
 // branch on `isImage` — otherwise a head-trimmed or split still would try to
 // seek into media that has no frames to seek to. Mirrors src/editor/timeline.js.
 const isImage = (it) => it?.kind === "image";
+
+// Retime, mirrored from src/editor/timeline.js. `speed` is the item's playback
+// rate; the item plays source frames [offsetFrames, offsetFrames +
+// durationInFrames × speed). Absent/garbage ⇒ 1, so every pre-retime doc — and
+// anything an agent sends — reads as normal speed rather than dividing by zero.
+const SPEED_MIN = 0.1;
+const SPEED_MAX = 10;
+const clampSpeed = (v) => {
+  const n = Number(v);
+  if (!Number.isFinite(n) || n <= 0) return 1;
+  return Math.min(SPEED_MAX, Math.max(SPEED_MIN, Math.round(n * 1000) / 1000));
+};
+const itemSpeed = (it) => (it?.speed == null ? 1 : clampSpeed(it.speed));
+// Source frames the item consumes — the quantity a retime preserves.
+const sourceSpan = (it) => Math.max(1, Math.round((it?.durationInFrames || 0) * itemSpeed(it)));
+// Longest timeline length the source left past the in-point allows at `speed`.
+// Infinity when there is no source length to run out of (image, or a legacy
+// clip with no sourceDurationInFrames).
+const maxDuration = (it, speed = itemSpeed(it)) => {
+  const src = it?.sourceDurationInFrames;
+  if (!src || isImage(it)) return Infinity;
+  return Math.max(1, Math.floor((src - (it.offsetFrames || 0)) / speed));
+};
 
 function applyTimelineOps(tl, ops) {
   for (const op of ops || []) {
@@ -287,22 +321,26 @@ function applyTimelineOps(tl, ops) {
         const it = f.item;
         const off = it.offsetFrames || 0;
         const d = Math.max(1, Math.round(op.durationInFrames || 1));
+        const speed = itemSpeed(it);
         if (op.edge === "start") {
           // Head trim/extend, end anchored: the start slides by the duration
           // change and the source in-point follows. Clamps: offsetFrames ≥ 0
           // (can't extend before the source start), from ≥ 0, duration ≥ 1.
           // An image has no source start to bump into, so only from ≥ 0 binds.
-          const lo = isImage(it) ? -(it.from || 0) : Math.max(-off, -(it.from || 0));
+          // One timeline frame of head costs `speed` source frames, so a retimed
+          // clip runs out of trimmed-off media at that rate.
+          const headRoom = Math.floor(off / speed);
+          const lo = isImage(it) ? -(it.from || 0) : Math.max(-headRoom, -(it.from || 0));
           const delta = Math.max(lo, Math.min((it.durationInFrames || 1) - 1, (it.durationInFrames || 0) - d));
           it.from = (it.from || 0) + delta;
-          if (!isImage(it)) it.offsetFrames = off + delta;
+          if (!isImage(it)) it.offsetFrames = Math.max(0, off + Math.round(delta * speed));
           it.durationInFrames = (it.durationInFrames || 0) - delta;
         } else {
-          // End trim: never exceed what's left of the source past the in-point.
+          // End trim: never exceed what's left of the source past the in-point,
+          // measured in TIMELINE frames (a 0.5× clip stretches twice as far).
           // An image has no source length — it holds for as long as you want.
-          it.durationInFrames = it.sourceDurationInFrames
-            ? Math.min(d, Math.max(1, it.sourceDurationInFrames - off))
-            : d;
+          const cap = maxDuration(it, speed);
+          it.durationInFrames = Number.isFinite(cap) ? Math.min(d, cap) : d;
         }
       }
     } else if (op.op === "split" && op.id != null) {
@@ -341,7 +379,9 @@ function applyTimelineOps(tl, ops) {
               from: at,
               durationInFrames: (it.durationInFrames || 0) - leftDur,
               // Both halves of a split still hold the same frame from in-point 0.
-              offsetFrames: isImage(it) ? 0 : (it.offsetFrames || 0) + leftDur,
+              // On real media the right half resumes where the left one stopped
+              // CONSUMING source — leftDur × speed frames in, not leftDur.
+              offsetFrames: isImage(it) ? 0 : (it.offsetFrames || 0) + Math.round(leftDur * itemSpeed(it)),
             };
             delete right.fadeInFrames; // fade-in belongs to the left half
             if (rightLinkId) right.linkId = rightLinkId; else delete right.linkId;
@@ -366,9 +406,11 @@ function applyTimelineOps(tl, ops) {
         if (isImage(it)) {
           it.offsetFrames = 0;
           delete it.sourceDurationInFrames;
+          delete it.speed; // a still has no source timeline to retime
           if (!it.src) it.src = null; // explicit: a slate, not a broken clip
         } else {
           it.offsetFrames = Math.max(0, Math.round(it.offsetFrames || 0));
+          if (it.speed != null) it.speed = clampSpeed(it.speed);
         }
         t.items.push(it);
       }
@@ -386,9 +428,10 @@ function applyTimelineOps(tl, ops) {
         if (op.stillFile !== undefined) it.stillFile = op.stillFile || null;
         if (isImage(it)) {
           // Re-assert the image invariants: a slate that just became a real
-          // still must not inherit a stale in-point or source cap.
+          // still must not inherit a stale in-point, source cap or speed.
           it.offsetFrames = 0;
           delete it.sourceDurationInFrames;
+          delete it.speed;
         }
       }
     } else if (op.op === "remove" && op.id != null) {
@@ -397,6 +440,53 @@ function applyTimelineOps(tl, ops) {
       const linkId = findItem(tl, op.id)?.item.linkId || null;
       for (const t of tl.tracks) {
         t.items = t.items.filter((x) => x.id !== op.id && (!linkId || x.linkId !== linkId));
+      }
+    } else if (op.op === "speed" && op.id != null) {
+      // Retime, the same edit the Editor's clip menu makes: the clip keeps
+      // playing the SAME piece of source and its timeline length becomes
+      // span / speed. Linked partners retime with it (a clip and its separated
+      // audio at different rates drift apart), and each affected lane ripples by
+      // the length delta so the following cut neither overlaps nor gaps.
+      const f = findItem(tl, op.id);
+      const speed = clampSpeed(op.speed);
+      if (f && !isImage(f.item)) {
+        const targets = new Set([f.item.id]);
+        if (f.item.linkId) {
+          for (const t of tl.tracks) {
+            for (const it of t.items) if (it.linkId === f.item.linkId) targets.add(it.id);
+          }
+        }
+        for (const t of tl.tracks) {
+          if (!t.items.some((it) => targets.has(it.id) && !isImage(it))) continue;
+          // Ripple in PLAY order — array order only agrees with it on a
+          // repacked lane, and a shift applied out of order would push a clip
+          // over the neighbour it was meant to follow.
+          const ordered = [...t.items].sort((a, b) => (a.from || 0) - (b.from || 0));
+          let shift = 0;
+          for (const it of ordered) {
+            if (shift) it.from = Math.max(0, (it.from || 0) + shift);
+            if (!targets.has(it.id) || isImage(it)) continue;
+            const span = sourceSpan(it);
+            const dur = Math.min(Math.max(1, Math.round(span / speed)), maxDuration(it, speed));
+            shift += dur - it.durationInFrames;
+            it.durationInFrames = dur;
+            if (speed === 1) delete it.speed; else it.speed = speed;
+            if (it.fadeInFrames) it.fadeInFrames = Math.min(it.fadeInFrames, dur);
+            if (it.fadeOutFrames) it.fadeOutFrames = Math.min(it.fadeOutFrames, dur - (it.fadeInFrames || 0));
+          }
+        }
+      }
+    } else if (op.op === "flip" && op.id != null) {
+      // Mirror a picture clip. Absent flag = leave that axis alone, so an agent
+      // can flip horizontally without silently un-flipping the vertical.
+      const f = findItem(tl, op.id);
+      if (f) {
+        if (op.flipH !== undefined) {
+          if (op.flipH) f.item.flipH = true; else delete f.item.flipH;
+        }
+        if (op.flipV !== undefined) {
+          if (op.flipV) f.item.flipV = true; else delete f.item.flipV;
+        }
       }
     } else if (op.op === "volume" && op.id != null) {
       const f = findItem(tl, op.id);
