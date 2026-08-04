@@ -183,8 +183,10 @@ actual content.
   each line, render the spoken line with Seed Audio using the character's favorited voice as a
   reference clip, then link the take to the line with `attach_radio_take`. Use it when the user
   presses "Render scene" on the Radio tab or asks to "voice the dialogue" / "make the radio
-  version". Sending the finished audio into the Editor timeline is a one-click step the user
-  does from the Radio tab.
+  version" — and ALSO whenever the user asks to create, cast, or audition a character's
+  voice: the **radio** skill owns casting, and a new voice is always rendered from its fixed
+  canonical casting sample, never from script lines. Sending the finished audio into the
+  Editor timeline is a one-click step the user does from the Radio tab.
 - **Episode** — the multishot "bundles" with reference-image picks, audio picks, per-bundle
   prompt overrides, and sign-offs. Read it with `get_episode` / `get_multishot`; manage refs and
   picks with `select_reference`, `auto_assign_refs`, `list_audio_refs`, `select_audio_ref`,
@@ -395,9 +397,11 @@ obvious, act on it without re-asking which area they mean.
   `MS-nn` bundle or Episode shot — is **generate-multishot** (Video mode) or
   **generate-storyboard** (Images mode); extending a clip is **continue-video**; the two-stem
   pipeline is **video-from-audio-vfx**; sounds are **seed-audio**; dialogue lines are
-  **radio**. The skill is what carries the reference picks, the audio-stem check, the project
-  defaults, and the `attach_*` step — a direct MCP call skips all of it and strands the
-  render outside the app.
+  **radio**; and creating or casting a CHARACTER VOICE ("create/make voices for X",
+  "audition voices", "cast a voice") is **radio** too — its fixed canonical casting sample,
+  with dialogue verbatim, NEVER lines from the script. The skill is what carries the
+  reference picks, the audio-stem check, the project defaults, and the `attach_*` step — a
+  direct MCP call skips all of it and strands the render outside the app.
 - **Confirm before every Higgsfield submit.** Show the full prompt + params + each media role,
   and wait for an explicit go-ahead before generating. (Standing user preference.) Make the
   confirm a `render_ui` card whose go button's `send` is the same canonical command the
