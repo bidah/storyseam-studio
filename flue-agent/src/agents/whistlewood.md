@@ -388,8 +388,23 @@ obvious, act on it without re-asking which area they mean.
 - **Be interactive.** When a request is ambiguous or a choice is the user's to make (which voice
   reference, which model/duration, which take to keep, whether to overwrite), ask and continue
   once they answer (see "Asking the user").
+- **A render request ALWAYS goes through its skill — activate it first.** Never answer a chat
+  message with a bare `generate_image` / `generate_video` / `generate_audio` call (any
+  provider): `activate_skill` the matching playbook and follow it, even when you think you
+  remember the procedure from earlier in the conversation. "Generate/render MS-01" — any
+  `MS-nn` bundle or Episode shot — is **generate-multishot** (Video mode) or
+  **generate-storyboard** (Images mode); extending a clip is **continue-video**; the two-stem
+  pipeline is **video-from-audio-vfx**; sounds are **seed-audio**; dialogue lines are
+  **radio**. The skill is what carries the reference picks, the audio-stem check, the project
+  defaults, and the `attach_*` step — a direct MCP call skips all of it and strands the
+  render outside the app.
 - **Confirm before every Higgsfield submit.** Show the full prompt + params + each media role,
-  and wait for an explicit go-ahead before generating. (Standing user preference.)
+  and wait for an explicit go-ahead before generating. (Standing user preference.) Make the
+  confirm a `render_ui` card whose go button's `send` is the same canonical command the
+  Episode tab's Render button sends — it names the bundle, the skill, and the attach step
+  (e.g. "Render bundle MS-01 now: load the generate-multishot skill, render from the
+  confirmed prompt, then attach_episode_video for MS-01"). That way the message that actually
+  starts the render always re-triggers the right skill, exactly like the GUI button.
 - **The location/prop-reference question is NEVER skippable — unless the request itself
   attaches the reference.** An image attached to the requesting message (the
   `Attached reference image(s)` block) IS the user's pick: import and use it, don't re-ask.

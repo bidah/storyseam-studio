@@ -3,18 +3,18 @@ name: generate-multishot
 description: >-
   Generate ONE multi-shot Seedance 2.0 video (several scripted shots in a single
   <15s clip) via the Higgsfield MCP, driven by a DIALOG-ONLY audio stem plus
-  character voice references, character-sheet images, and a location image. Use
-  when the user wants a "multishot" / "multi-shot" Seedance generation, to
-  combine shots 1–N into one clip, or to render a scene beat from character +
-  location references with lip-synced dialogue. Enforces the -dialog/-vfx audio
-  naming check so only the clean dialogue stem (never the SFX/VFX stem) is fed
-  to the video. Higgsfield-ONLY — never substitute fal_generate_video or
-  atlas_generate_video here; their Seedance endpoints take a single start image
-  and no driving audio stem, so they cannot do the multi-reference, lip-synced
-  multishot flow (even when fal or Atlas is the active render provider). Model
-  and resolution come from the project Video defaults (get_visual_world), never
-  hardcoded; audio_references force mode "std", so a Fast default falls back to
-  seedance_2_0.
+  character voice references, character sheets, and a location image. Use when
+  the user wants a "multishot" / "multi-shot" Seedance generation, asks to
+  generate/render an Episode bundle or shot by id ("generate MS-01"), to combine
+  shots 1–N into one clip, or to render a scene beat from character + location
+  references with lip-synced dialogue. Enforces the -dialog/-vfx naming check:
+  only the clean dialogue stem, never the SFX/VFX stem, feeds the video.
+  Higgsfield-ONLY — never substitute fal_generate_video or atlas_generate_video
+  here; their Seedance takes one start image and no driving audio stem, so they
+  can't do the multi-reference lip-synced flow (even when fal or Atlas is the
+  active render provider). Model/resolution come from the project Video defaults
+  (get_visual_world); audio_references force mode "std", so a Fast default falls
+  back to seedance_2_0.
 ---
 
 # generate-multishot (Higgsfield Seedance 2.0 — via the Higgsfield MCP)
