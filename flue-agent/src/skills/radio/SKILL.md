@@ -1,6 +1,6 @@
 ---
 name: radio
-description: Voice a scene's dialogue for the Radio version — the audio-only pass of the episode. For each line in a scene, render the spoken line with Seed Audio using the character's favorited voice as a reference clip so the voice stays consistent, then link the take to the line. Use when the user presses "Render scene" on the Radio tab, or asks to "voice the dialogue", "make the radio version", "render the radio scene", or "voice-act this scene". ALSO the casting skill — use whenever the user asks to "create a voice" / "create voices for <character>", "make him/her a voice", "cast a voice", "try voices", or "audition voices"; casting a NEW voice always renders this skill's fixed canonical casting sample (~15s, calm → excited → questioning) — NEVER sample text lifted from the script. This produces per-line voice takes only — sending the finished audio into the Editor timeline is a one-click step the user does from the Radio tab.
+description: Voice a scene's dialogue for the Radio version — the audio-only pass of the episode. For each line in a scene, render the spoken line with Seed Audio using the character's favorited voice as a reference clip so the voice stays consistent, then link the take to the line. Use when the user presses "Render scene" on the Radio tab, or asks to "voice the dialogue", "make the radio version", "render the radio scene", or "voice-act this scene". ALSO the casting skill — use whenever the user asks to "create a voice" / "create voices for <character>", "make him/her a voice", "cast a voice", "try voices", or "audition voices"; a NEW voice always renders the fixed canonical sample built by the casting_sample_prompt tool, passed to generate_audio verbatim (~15s, calm → excited → questioning) — NEVER dialogue you compose or lift from the script. This produces per-line voice takes only — sending the finished audio into the Editor timeline is a one-click step the user does from the Radio tab.
 ---
 
 # radio (voice a scene's dialogue → per-line Seed Audio takes)
@@ -27,23 +27,20 @@ This skill only produces audio. It does NOT stitch a timeline or render video.
 
 ## Casting a voice — the canonical sample (fixed dialogue, ALWAYS)
 
-When casting a new voice, render the sample below with its dialogue **verbatim**
-— never build the sample from lines in the script. Script lines carry whatever
-emotion their scene has, so a script-sourced reference bakes a random mood into
-the clone. The fixed passage gives every voice the same ~15-second coverage —
-calm delivery → excitement → questions — so the reference clip works for any
-line it later voices.
+The sample's dialogue is **not yours to write** — not from the script, not from
+the character's World record, not improvised, no matter what you planned before
+loading this skill. Script lines carry whatever emotion their scene has, so a
+script-sourced reference bakes a random mood into the clone. The fixed passage
+gives every voice the same ~15-second coverage — calm delivery → excitement →
+questions — so the reference clip works for any line it later voices.
 
-Only the **voice traits** in the parenthetical change per character (age,
-timbre, accent — from the World record's `voice` field or the user's direction).
-The spoken words never change.
-
-```jsonc
-generate_audio {
-  model: "seed_audio", format: "wav", sample_rate: 48000,
-  prompt: "<Character> (<voice traits>) speaks a single clean take — one voice, no music, no sound effects, no background ambience. They start calm and steady: \"I walked the long path this morning, past the old stone, and the woods were quiet as sleep.\" Then bright and excited: \"Then the wind turned — the whole forest woke up with birdsong, all at once, like it knew something!\" Then soft, curious questions: \"Did you hear it too? What do you think it means?\" Let the final word ring out completely, then hold about one second of clean silence before the clip ends."
-}
-```
+Call **`casting_sample_prompt({ character, traits })`** — traits are the voice
+qualities only (age, timbre, accent — from the World record's `voice` field or
+the user's direction) — and pass its returned `prompt`, `model`, `format`, and
+`sample_rate` to `generate_audio` **verbatim**. If the words you are about to
+render differ from that tool's output, stop: you are off the playbook. This
+includes the confirm card — the prompt you show the user for approval is the
+tool's output, unedited.
 
 Then `create_sound({ kind: "voice", name: "<Character> — casting sample" })`,
 `attach_sound` the result, `like_sound_version`, and attach it to the speaker

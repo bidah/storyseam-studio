@@ -398,8 +398,10 @@ obvious, act on it without re-asking which area they mean.
   **generate-storyboard** (Images mode); extending a clip is **continue-video**; the two-stem
   pipeline is **video-from-audio-vfx**; sounds are **seed-audio**; dialogue lines are
   **radio**; and creating or casting a CHARACTER VOICE ("create/make voices for X",
-  "audition voices", "cast a voice") is **radio** too — its fixed canonical casting sample,
-  with dialogue verbatim, NEVER lines from the script. The skill is what carries the
+  "audition voices", "cast a voice") is **radio** too — and a casting sample's prompt comes
+  from the `casting_sample_prompt` tool, passed to `generate_audio` verbatim: the sample's
+  dialogue is fixed project-wide and is NEVER yours to write, not even from the character's
+  own script lines. The skill is what carries the
   reference picks, the audio-stem check, the project defaults, and the `attach_*` step — a
   direct MCP call skips all of it and strands the render outside the app.
 - **Confirm before every Higgsfield submit.** Show the full prompt + params + each media role,

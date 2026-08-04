@@ -192,8 +192,8 @@ multiple generations. **Verified working** with both WAV and MP3 references.
 
 1. Have the reference file locally (record it, or generate a clean clip with
    `seed_audio` itself). When the clip is a **character casting sample** for this
-   project, use the radio skill's canonical fixed dialogue (see `radio` →
-   "Casting a voice"), never ad-hoc or script-sourced text — its deliberate
+   project, the prompt comes from the `casting_sample_prompt` tool verbatim (see
+   `radio` → "Casting a voice"), never ad-hoc or script-sourced text — its deliberate
    calm → excited → questioning arc is the one sanctioned exception to the
    "consistent emotion" guideline above, giving the clone delivery coverage
    while staying one clean voice.

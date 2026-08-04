@@ -58,6 +58,7 @@ import { attachSound } from "./attach_sound.js";
 import { saveAudioPrompt } from "./save_audio_prompt.js";
 // Radio
 import { getRadio } from "./get_radio.js";
+import { castingSamplePrompt } from "./casting_sample_prompt.js";
 import { attachRadioTake } from "./attach_radio_take.js";
 import { castRadioVoice } from "./cast_radio_voice.js";
 import { commitPacing } from "./commit_pacing.js";
@@ -142,6 +143,7 @@ export function createTools(api: Api): ToolDefinition[] {
     saveAudioPrompt(api),
     // Radio
     getRadio(api),
+    castingSamplePrompt(),
     attachRadioTake(api),
     castRadioVoice(api),
     commitPacing(api),
@@ -191,6 +193,7 @@ export function createReadTools(api: Api): ToolDefinition[] {
     listAudioRefs(api),
     listSounds(api),
     getRadio(api),
+    castingSamplePrompt(),
     // Cuts / Editor timeline
     getCuts(api),
     getTimeline(api),
