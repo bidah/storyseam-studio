@@ -58,6 +58,7 @@ import { useAgent, agentIsBusy, renderAnimaticStillMessage } from "@/components/
 import { CLIENT_ID } from "@/lib/clientId";
 import { getProjectId } from "@/lib/projectFetch";
 import { toPreviewSrc } from "@/lib/previewSrc";
+import { prefetchMedia, prefetchedUrl } from "@/lib/mediaPrefetch";
 
 /* ---- tiny shared bits (kept local so this file is self-contained) ---- */
 function Spinner({ label }) {
@@ -485,6 +486,25 @@ function withSourceDurations(tl) {
   return tl;
 }
 
+// Every media src the <Player> will mount, nearest the playhead first, so a
+// prefetch queue works outward from what you're about to watch. Takes the
+// ALREADY-proxied tracks (playerInputProps): the prefetch cache is keyed on the
+// exact src string the media component asks for, so a mismatch here would
+// download bytes nothing ever reads. Slates carry no src; disabled items are
+// skipped in playback, so they're skipped here too.
+function orderedMediaSrcs(tracks, frame) {
+  const out = [];
+  for (const t of tracks || []) {
+    for (const it of t.items || []) {
+      if (!it || it.disabled || !it.src) continue;
+      const mid = (it.from || 0) + (it.durationInFrames || 0) / 2;
+      out.push({ src: it.src, d: Math.abs(mid - frame) });
+    }
+  }
+  out.sort((a, b) => a.d - b.d);
+  return out.map((o) => o.src);
+}
+
 // Every item sharing `linkId` across all tracks (the "link group") — e.g. a
 // video clip plus its separated audio, or any clips linked by hand.
 function linkGroupOf(tl, linkId) {
@@ -907,6 +927,15 @@ function TimelineItem({
 function PoolCard({ item, active, open, onMeta, onDragStart }) {
   const mediaRef = useRef(null);
   const isVideo = item.mediaType === "video";
+  // The tile previews the 720p proxy, like every other media surface in the
+  // editor. The pool mounts one of these per asset with no lazy gating, so on
+  // the original it opened the panel with ~5 MB of video per card. The proxy is
+  // a same-resolution re-encode — identical frame count and duration — so the
+  // `onMeta` duration a drop relies on is unchanged.
+  //
+  // Audio stays on the original: an AAC re-encode can pad the length by a frame,
+  // and here that would land in the dropped clip's durationInFrames.
+  const src = isVideo ? toPreviewSrc(item.src) : item.src;
   return (
     <div
       className={cn(
@@ -922,7 +951,7 @@ function PoolCard({ item, active, open, onMeta, onDragStart }) {
       {isVideo ? (
         <video
           ref={mediaRef}
-          src={item.src}
+          src={src}
           muted
           playsInline
           preload="metadata"
@@ -2131,6 +2160,21 @@ export default function Editor({ reloadKey }) {
     return { tracks };
   }, [timeline]);
 
+  // Pull the timeline's media into memory, nearest the playhead first. This is
+  // what makes a cut land instantly instead of leaning on premountFor to win a
+  // race against ~0.6s of per-request latency — and, because the cache is
+  // module-scoped, what makes coming BACK to this tab free: the route unmounts
+  // on every navigation and the <Player> rebuilds each <video> from scratch.
+  //
+  // The bucket re-sorts the queue as the playhead travels without re-running
+  // this on every frame (the playhead readout re-renders us ~24×/s).
+  const prefetchBucket = Math.floor(frame / (fps * 10));
+  useEffect(() => {
+    prefetchMedia(orderedMediaSrcs(playerInputProps.tracks, frameRef.current), {
+      projectId: getProjectId(),
+    });
+  }, [playerInputProps, prefetchBucket]);
+
   // `silent` refreshes in place without the full-panel spinner — used by the
   // live SSE reload so an agent edit doesn't flash the editor to a loading state.
   const load = useCallback(async ({ silent = false } = {}) => {
@@ -2212,7 +2256,15 @@ export default function Editor({ reloadKey }) {
     // Several clips can be premounted at once — prefer the <video> whose source
     // is the clip showing at the playhead so the frame matches its metadata. The
     // preview plays the PROXY, so match against the proxy src.
-    const matched = clip && painted.find((v) => (v.currentSrc || v.src || "").includes(toPreviewSrc(clip.src)));
+    // A prefetched clip's element reports a blob: url, so matching on the proxy
+    // path alone would fall through to painted[0] — the wrong clip, and (since
+    // the full-res branch below is gated on `matched`) a proxy-quality still.
+    const want = clip ? toPreviewSrc(clip.src) : null;
+    const blob = want ? prefetchedUrl(want) : null;
+    const matched = want && painted.find((v) => {
+      const s = v.currentSrc || v.src || "";
+      return (blob && s === blob) || s.includes(want);
+    });
     const el = matched || painted[0] || vids.find((v) => v.videoWidth);
     if (!el) { setError("Couldn't grab a still — the frame isn't ready yet (or the media is cross-origin)."); return; }
 
