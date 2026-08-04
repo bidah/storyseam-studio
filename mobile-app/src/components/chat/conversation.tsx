@@ -1,21 +1,19 @@
 /* eslint-disable react-hooks/immutability */
-// (immutability): the jump animation writes Reanimated shared values
-// (offsetY/jumpTarget/jumpAnimating .value) — by design. The lint rule doesn't
-// model worklets and false-positives on those writes; disabled for this file.
+// (immutability): the shimmer/skeleton animations write Reanimated shared
+// values (opacity .value) — by design. The lint rule doesn't model worklets and
+// false-positives on those writes; disabled for this file.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
-  FlatList,
   Pressable,
   StyleSheet,
   Text,
   View,
   type NativeScrollEvent,
   type NativeSyntheticEvent,
-  type ScrollViewProps,
 } from 'react-native';
+import { LegendList, type LegendListRef } from '@legendapp/list/react-native';
 import Animated, {
-  useAnimatedProps,
   useAnimatedStyle,
   useSharedValue,
   withRepeat,
@@ -66,34 +64,36 @@ import type { AgentMessage, SentAttachment } from '@/components/chat/types';
 // a single agent at a time and repoints it a render later, so without that check
 // the first frame would show the previous chat's messages.
 //
-// The transcript is a NATURAL-ORDER FlatList (oldest→newest, newest at the
-// bottom). It used to be `inverted`, which made "pinned to the newest" free —
-// but `inverted` is a scaleY(-1) transform, and iOS 26 flips the liquid-glass
-// tab bar's scroll-edge effect along with it: the fade meant for the thin strip
-// passing under the bar landed on the whole body instead, washing the text to
-// ~15% opacity. Un-inverted, the effect lands where it belongs and content
-// fades correctly as it slides under the bar — at the cost of having to keep
-// ourselves at the bottom by hand (`pinned`, below).
+// The transcript is a NATURAL-ORDER LegendList (oldest→newest, newest at the
+// bottom). Never `inverted`: that's a scaleY(-1) transform, and iOS 26 flips
+// the liquid-glass tab bar's scroll-edge effect along with it — the fade meant
+// for the thin strip passing under the bar landed on the whole body instead,
+// washing the text to ~15% opacity. LegendList is built for exactly this
+// un-inverted chat shape: `alignItemsAtEnd` bottoms-up a short transcript,
+// and `maintainScrollAtEnd` IS the stick-to-bottom primitive RN lacks — it
+// follows the stream as items grow (and the keyboard spacer in the footer),
+// releases when a drag leaves the bottom, and re-arms when a gesture returns
+// within its threshold. One LegendList chat prop is deliberately NOT used:
+// `initialScrollAtEnd` (see the landing effect below for why and for what
+// replaces it).
 //
-// Scrolling the list *programmatically* is the hard part on this stack (Expo SDK
-// 57 / RN 0.86 / React 19 / New Architecture / React Compiler). EVERY imperative
-// path is dead — verified on-device: FlatList.scrollToOffset/scrollToEnd no-op
-// (getNativeScrollRef() returns null, so the inner _scrollRef never attaches),
-// a plain <ScrollView> ref is null too, reanimated's scrollTo reports an
-// "uninitialized ref" (useAnimatedRef never captures the Fabric tag), and
-// Animated.FlatList crashes (__internalInstanceHandle of null). Only native
-// gestures move the list.
+// History note: this used to be a FlatList driven by a controlled,
+// reanimated-animated contentOffset, because on this stack (Expo SDK 57 /
+// RN 0.86 / React 19 / New Architecture / React Compiler) every imperative
+// scroll path THROUGH FLATLIST was dead — scrollToOffset/scrollToEnd no-op'd
+// (getNativeScrollRef() returned null), reanimated's scrollTo never captured
+// the Fabric tag, Animated.FlatList crashed (docs/troubleshoot-solutions.md,
+// 2026-07-20). LegendList sidesteps all of it: it attaches a plain ref
+// DIRECTLY to the ScrollView it renders (no cloneElement in between to
+// clobber it), so its own scrollTo — which is all maintainScrollAtEnd and
+// scrollToEnd use — actually works here. Verified on-device.
 //
-// The one thing that DOES move it is a *controlled* contentOffset — a prop, not
-// a ref. So we inject an Animated.ScrollView as the FlatList's scroll view
-// (renderScrollComponent; cloneElement only clobbers ref, not animatedProps) and
-// hand it an animated contentOffset. That one mechanism now does double duty:
-// "Jump to latest" animates the offset to the content's end, and `pinned` holds
-// it there so the view follows the agent's stream (RN has no stick-to-bottom
-// primitive — maintainVisibleContentPosition anchors insertions ABOVE the
-// viewport, not below). A drag drops the pin so the gesture isn't fought;
-// coming back to the end re-arms it. Otherwise animatedProps yields {} so
-// native momentum scrolling is untouched.
+// Two LegendList contracts worth keeping in mind (legend-skills):
+// - Rows are absolutely positioned, so the content container's `gap` does
+//   nothing — inter-row spacing lives on the row wrapper (styles.row).
+// - `renderItem` identity is NOT an invalidation signal; anything a row reads
+//   besides its item rides `extraData` (qa/canRespond/busy/onRespond), which
+//   is what re-renders mounted rows when an answer becomes tappable.
 
 type Row = {
   key: string;
@@ -105,6 +105,10 @@ type Row = {
 
 // Stable empty transcript, so "no cover" keeps one identity across renders.
 const NO_MESSAGES: AgentMessage[] = [];
+
+// Module-scope so the list prop keeps one identity (message ids, so cached row
+// measurements survive the cover→live transcript swap).
+const keyExtractor = (r: Row) => r.key;
 
 // The compact nav bar (44pt, under the status bar). The transcript runs the
 // FULL height of the screen — `headerTransparent` puts it under the bar so the
@@ -227,19 +231,9 @@ export function Conversation({
   const insets = useSafeAreaInsets();
   // Natural-order list: the newest message is at the BOTTOM, so "at newest"
   // means scrolled to the end. atNewest drives the "jump to latest" button
-  // (shown only when scrolled up into history); remountKey bumps on chat switch.
+  // (shown only when scrolled up into history).
   const [atNewest, setAtNewest] = useState(true);
-  const [remountKey, setRemountKey] = useState(0);
-  // Scroll state lives in shared values because the ONLY programmatic scroll
-  // that works on this stack is a controlled contentOffset fed through
-  // animatedProps (see file header). contentH/layoutH are what let us compute
-  // where "the bottom" is; `pinned` sticks us there as the agent streams.
-  const offsetY = useSharedValue(0);
-  const contentH = useSharedValue(0);
-  const layoutH = useSharedValue(0);
-  const pinned = useSharedValue(true);
-  const jumpTarget = useSharedValue(0);
-  const jumpAnimating = useSharedValue(false);
+  const listRef = useRef<LegendListRef>(null);
   // One entry per user turn (ordinal-aligned to user messages): the images
   // that turn was sent with, re-rendered into its bubble.
   const sentAttachmentsRef = useRef<SentAttachment[][]>([]);
@@ -289,17 +283,17 @@ export function Conversation({
     }, [stillHere, hubHref]),
   );
 
-  // On mount / chat switch: reseed the attachments record. The list rests at the
-  // newest message by construction, so there's nothing to scroll.
+  // On mount / chat switch: reseed the attachments record. The list itself
+  // resets through `dataKey={id}` (LegendList re-initializes its layout state
+  // internally — cheaper than a React `key` remount) and `initialScrollAtEnd`
+  // lands the fresh transcript at its newest message.
   useEffect(() => {
     const initial = getInitial(id);
     sentAttachmentsRef.current = Array.isArray(initial.attachments)
       ? (initial.attachments as SentAttachment[][])
       : [];
     setAtNewest(true);
-    pinned.value = true;
-    setRemountKey((k) => k + 1);
-  }, [id, getInitial, pinned]);
+  }, [id, getInitial]);
 
   // --- The cover (see src/lib/agent/transcript-cache.ts) ---
   //
@@ -393,8 +387,8 @@ export function Conversation({
   const composerOverlap = composerHeight;
   // The list's frame starts at the top of the SCREEN (transparent header), so
   // the oldest message would otherwise rest under the bar. Reserved as content
-  // padding rather than a contentInset: the stick-to-bottom pin measures
-  // `contentSize - layoutHeight`, which insets would shift out from under it.
+  // padding — which LegendList reads for its own layout math (and folds into
+  // alignItemsAtEnd's top padding) — rather than a contentInset.
   const listContentStyle = useMemo(
     () => [styles.listContent, { paddingTop: insets.top + COMPACT_HEADER + 16 }],
     [insets.top],
@@ -412,12 +406,13 @@ export function Conversation({
   );
 
   // Put the newest turn back in view. Separate from `send` because the draft
-  // path below sends from an effect, where a synchronous setState would cascade
-  // a render — and a just-opened list is already at its end anyway.
+  // path below sends from an effect — and a just-opened list is already at its
+  // end anyway. The un-animated scrollToEnd re-arms maintainScrollAtEnd (we're
+  // back within its threshold), so the reply that follows stays pinned.
   const snapToNewest = useCallback(() => {
-    pinned.value = true;
     setAtNewest(true);
-  }, [pinned]);
+    void listRef.current?.scrollToEnd({ animated: false });
+  }, []);
 
   // Send one turn: upload each picked image to R2 for a durable thumbnail URL
   // rendered back into the bubble, AND read its bytes as base64 to hand flue
@@ -479,120 +474,93 @@ export function Conversation({
     [agent, recordAttachments, busy, snapToNewest],
   );
 
-  // Natural order: the bottom of the content is the newest message.
-  const onScroll = useCallback(
-    (e: NativeSyntheticEvent<NativeScrollEvent>) => {
-      const { contentOffset, contentSize, layoutMeasurement } = e.nativeEvent;
-      offsetY.value = contentOffset.y;
-      contentH.value = contentSize.height;
-      layoutH.value = layoutMeasurement.height;
-      const fromBottom = contentSize.height - layoutMeasurement.height - contentOffset.y;
-      const near = fromBottom < 80;
-      // Re-arm the stick-to-bottom pin only once you've come back to the end;
-      // scrolling up into history releases it (onScrollBeginDrag).
-      if (near) pinned.value = true;
-      setAtNewest((prev) => (prev === near ? prev : near));
-    },
-    [offsetY, contentH, layoutH, pinned],
-  );
+  // Natural order: the bottom of the content is the newest message. Only the
+  // "jump to latest" button needs this — following the stream, releasing on a
+  // drag away and re-arming on return are all maintainScrollAtEnd's.
+  const onScroll = useCallback((e: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const { contentOffset, contentSize, layoutMeasurement } = e.nativeEvent;
+    const fromBottom = contentSize.height - layoutMeasurement.height - contentOffset.y;
+    const near = fromBottom < 80;
+    setAtNewest((prev) => (prev === near ? prev : near));
+  }, []);
 
-  // A drag is the user taking over: drop the pin so the controlled offset stops
-  // fighting the gesture. onScroll re-arms it when they return to the bottom.
-  const onScrollBeginDrag = useCallback(() => {
-    pinned.value = false;
-  }, [pinned]);
-
-  // Keep the bottom reachable as content grows mid-stream. Setting contentH here
-  // (rather than waiting for the next onScroll) is what makes the pin follow
-  // streaming text — no scroll event fires while the agent is typing.
-  const onContentSizeChange = useCallback(
-    (_w: number, h: number) => {
-      contentH.value = h;
-      // While pinned, RE-DRIVE the offset through the animated jump instead of
-      // relying on the passive pinned branch alone. The pinned contentOffset is
-      // a one-shot prop push, and when it lands before the native view has
-      // committed the grown content it gets CLAMPED to the old maxScroll — so
-      // whichever growth arrives LAST (the final ~1s batch of a reply, or the
-      // spacer restoring after the keyboard) rests short by that delta and the
-      // message tail hides under the composer. This native event fires AFTER
-      // the content size is committed, and the timing-driven target is applied
-      // frame by frame, so it cannot be clamped away.
-      if (pinned.value && !jumpAnimating.value) {
-        const bottom = Math.max(0, h - layoutH.value);
-        if (bottom > offsetY.value) {
-          jumpTarget.value = offsetY.value;
-          jumpAnimating.value = true;
-          jumpTarget.value = withTiming(bottom, { duration: 200 }, (finished) => {
-            'worklet';
-            if (finished) jumpAnimating.value = false;
-          });
-        }
-      }
-    },
-    [contentH, layoutH, offsetY, pinned, jumpAnimating, jumpTarget],
-  );
-
-  const onListLayout = useCallback(
-    (e: { nativeEvent: { layout: { height: number } } }) => {
-      layoutH.value = e.nativeEvent.layout.height;
-    },
-    [layoutH],
-  );
-
-  // Animate to the newest (the content's end) by driving a controlled
-  // contentOffset — the only programmatic scroll that works on this stack.
+  // Animate to the newest message. LegendList's own scrollTo — unlike every
+  // imperative path through FlatList on this stack — actually works (see the
+  // file header).
   const jumpToLatest = useCallback(() => {
-    jumpTarget.value = offsetY.value;
-    jumpAnimating.value = true;
-    const bottom = Math.max(0, contentH.value - layoutH.value);
-    jumpTarget.value = withTiming(bottom, { duration: 350 }, (finished) => {
-      'worklet';
-      if (finished) {
-        jumpAnimating.value = false;
-        pinned.value = true;
-      }
-    });
-  }, [offsetY, jumpTarget, jumpAnimating, contentH, layoutH, pinned]);
+    void listRef.current?.scrollToEnd({ animated: true });
+  }, []);
 
-  // Feed a controlled contentOffset while jumping, and while pinned to the end
-  // (which is how the view follows the agent's stream now that the list is no
-  // longer inverted). Otherwise yield {} so native scrolling is untouched.
-  const scrollAnimatedProps = useAnimatedProps(() => {
-    if (jumpAnimating.value) return { contentOffset: { x: 0, y: jumpTarget.value } };
-    if (pinned.value) {
-      return { contentOffset: { x: 0, y: Math.max(0, contentH.value - layoutH.value) } };
-    }
-    return {};
-  });
-
-  // Inject an Animated.ScrollView as the FlatList's scroll view so the jump's
-  // animatedProps have a Fabric-animatable target (cloneElement clobbers ref,
-  // not animatedProps; see file header).
-  const renderScrollComponent = useCallback(
-    (props: ScrollViewProps) => <Animated.ScrollView {...props} animatedProps={scrollAnimatedProps} />,
-    [scrollAnimatedProps],
+  // Everything a row reads besides its item. extraData is LegendList's honest
+  // invalidation signal: a changed renderItem identity does NOT re-render
+  // mounted rows, so anything that must repaint them rides here. Memoized so
+  // rows aren't invalidated by parent renders that changed none of it.
+  type RowExtra = {
+    qa: ReturnType<typeof deriveQA>;
+    canRespond: boolean;
+    busy: boolean;
+    onRespond: (label: string) => void;
+  };
+  const extraData = useMemo<RowExtra>(
+    () => ({ qa, canRespond, busy, onRespond }),
+    [qa, canRespond, busy, onRespond],
   );
 
+  // Stable identity by design (deps: []): rows re-render from item or
+  // extraData changes. The wrapper View owns inter-row spacing — LegendList
+  // positions rows absolutely, so the content container's `gap` is inert.
   const renderItem = useCallback(
-    ({ item }: { item: Row }) => (
-      <MessageRow
-        message={item.message}
-        atts={item.atts}
-        qa={qa}
-        canRespond={canRespond}
-        onRespond={onRespond}
-        // Only the settled newest turn may rescue a prose choice list — mid-turn
-        // the text is still arriving, and older turns keep their markdown.
-        isLast={item.isLast && !busy}
-        // Raw tail position (no busy gate): an unfinished tool part on a
-        // non-tail message is dead — see ToolChip.
-        tail={item.isLast}
-      />
+    ({ item, extraData: x }: { item: Row; extraData: RowExtra }) => (
+      <View style={styles.row}>
+        <MessageRow
+          message={item.message}
+          atts={item.atts}
+          qa={x.qa}
+          canRespond={x.canRespond}
+          onRespond={x.onRespond}
+          // Only the settled newest turn may rescue a prose choice list — mid-turn
+          // the text is still arriving, and older turns keep their markdown.
+          isLast={item.isLast && !x.busy}
+          // Raw tail position (no busy gate): an unfinished tool part on a
+          // non-tail message is dead — see ToolChip.
+          tail={item.isLast}
+        />
+      </View>
     ),
-    [qa, canRespond, onRespond, busy],
+    [],
   );
 
   const errorMessage = useSettledError(live ? agent?.error : null, busy);
+  // Open a chat AT its newest message. LegendList's own `initialScrollAtEnd`
+  // is off-limits on this stack: its bootstrap (a per-frame scroll-until-
+  // converged loop that hides content meanwhile) burns its convergence budget
+  // on these rows, aborts having revealed nothing, and its scroll churn has
+  // crashed Fabric outright (SIGABRT in ShadowTree::commit, reproduced twice).
+  // A plain ref.scrollToEnd is verified to work here, so the landing is one
+  // explicit non-animated jump once the first rows are in; the list hides
+  // behind opacity until it settles so the top of history never flashes. The
+  // timeout is the safety net against a hung promise — a one-frame flash
+  // beats an invisible transcript. maintainScrollAtEnd takes over from there,
+  // correcting toward the true end as the remaining rows measure in.
+  const [landedId, setLandedId] = useState<string | null>(null);
+  const landed = landedId === id;
+  useEffect(() => {
+    if (landed || rows.length === 0) return;
+    let alive = true;
+    const settle = () => {
+      if (alive) setLandedId(id);
+    };
+    const raf = requestAnimationFrame(() => {
+      const jump = listRef.current?.scrollToEnd({ animated: false });
+      if (jump) void jump.then(settle);
+    });
+    const t = setTimeout(settle, 800);
+    return () => {
+      alive = false;
+      cancelAnimationFrame(raf);
+      clearTimeout(t);
+    };
+  }, [id, landed, rows.length]);
 
   // Point the stack's shared composer at this conversation while it's focused
   // (a recap tap, the history sheet, a fresh push — the bar itself never moved).
@@ -639,20 +607,29 @@ export function Conversation({
             <TranscriptSkeleton />
           ) : null
         ) : (
-          <FlatList
-            key={remountKey}
-            renderScrollComponent={renderScrollComponent}
+          <LegendList
+            ref={listRef}
+            // Chat-switch reset WITHOUT a React remount: a new dataKey tells
+            // LegendList "new logical dataset", dropping cached layouts, and
+            // initialScrollAtEnd re-lands it at the newest message.
+            dataKey={id}
             data={rows}
-            keyExtractor={(r) => r.key}
+            keyExtractor={keyExtractor}
             renderItem={renderItem}
-            style={styles.list}
+            extraData={extraData}
+            // recycleItems stays OFF deliberately: the row tree holds
+            // item-scoped state (expanded Sources, genui cards, streaming
+            // markdown) that recycling would bleed across messages; migrating
+            // it all to useRecyclingState isn't worth it at transcript scale.
+            // NO initialScrollAtEnd — its bootstrap crashes this stack; the
+            // explicit landing effect above owns the initial position.
+            alignItemsAtEnd
+            maintainScrollAtEnd={MAINTAIN_AT_END}
+            style={landed ? styles.list : styles.listLanding}
             contentContainerStyle={listContentStyle}
             keyboardShouldPersistTaps="handled"
             keyboardDismissMode="interactive"
             onScroll={onScroll}
-            onScrollBeginDrag={onScrollBeginDrag}
-            onContentSizeChange={onContentSizeChange}
-            onLayout={onListLayout}
             scrollEventThrottle={16}
             // Natural order → the newest edge is the FOOTER (visual bottom).
             ListFooterComponent={
@@ -724,7 +701,21 @@ export function Conversation({
   );
 }
 
+// Follow the stream to the bottom smoothly (items growing, the keyboard spacer
+// in the footer) — the animated scroll only engages while the user is already
+// within maintainScrollAtEndThreshold of the end, so it never fights a gesture.
+const MAINTAIN_AT_END = { animated: true } as const;
+
 const styles = StyleSheet.create({
   list: { flex: 1 },
-  listContent: { flexGrow: 1, justifyContent: 'flex-end', gap: 16, paddingVertical: 16 },
+  // Pre-landing veil: mounted and measuring, but not yet scrolled to the
+  // newest message — invisible so the top of history never flashes.
+  listLanding: { flex: 1, opacity: 0 },
+  // No flexGrow/justifyContent: alignItemsAtEnd is what bottoms-up a short
+  // transcript. No `gap` either — rows are absolutely positioned (styles.row
+  // carries the spacing). paddingTop is completed per-device in listContentStyle.
+  listContent: { paddingBottom: 16 },
+  // The old content `gap: 16`, moved into each row: space after every row —
+  // between rows, and between the last row and the footer.
+  row: { paddingBottom: 16 },
 });
