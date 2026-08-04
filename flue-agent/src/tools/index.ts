@@ -67,7 +67,9 @@ import { getCuts } from "./get_cuts.js";
 import { stitchCuts } from "./stitch_cuts.js";
 import { scoreCut } from "./score_cut.js";
 import { getTimeline } from "./get_timeline.js";
+import { listMediaPool } from "./list_media_pool.js";
 import { loadCutIntoEditor } from "./load_cut_into_editor.js";
+import { newEditorProject } from "./new_editor_project.js";
 import { editTimeline } from "./edit_timeline.js";
 // Library / Characters / Signing
 import { listLibrary } from "./list_library.js";
@@ -152,7 +154,9 @@ export function createTools(api: Api): ToolDefinition[] {
     stitchCuts(api),
     scoreCut(api),
     getTimeline(api),
+    listMediaPool(api),
     loadCutIntoEditor(api),
+    newEditorProject(api),
     editTimeline(api),
     // Library / Characters / Signing
     listLibrary(api),
@@ -197,6 +201,7 @@ export function createReadTools(api: Api): ToolDefinition[] {
     // Cuts / Editor timeline
     getCuts(api),
     getTimeline(api),
+    listMediaPool(api),
     // Library / Characters
     listLibrary(api),
     listCharacterVoices(api),

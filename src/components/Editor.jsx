@@ -15,7 +15,7 @@ import {
   Eye, EyeOff, Clapperboard, Download, ExternalLink,
   PanelLeftClose, PanelLeftOpen, FolderOpen, Ban, FileDown, FoldHorizontal, Magnet,
   ZoomIn, ZoomOut, Camera, Images, Link2, Unlink2, AudioLines, GripHorizontal,
-  FlipHorizontal2, FlipVertical2, Radio, Timer,
+  FlipHorizontal2, FlipVertical2, Radio, Timer, FilePlus2,
   // Aliased: a bare `Image` import would shadow the DOM's global Image
   // constructor for this whole module.
   Image as ImageIcon, ImageOff, Sparkles, Plus, RefreshCcwDot,
@@ -30,7 +30,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Separator } from "@/components/ui/separator";
 import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from "@/components/ui/dialog";
 import {
   Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription,
@@ -1232,6 +1232,9 @@ export default function Editor({ reloadKey }) {
   //   { type: "new", at }        – spawn a new channel at track index `at`
   const [dropTarget, setDropTarget] = useState(null);
   const [cutPickerOpen, setCutPickerOpen] = useState(false); // "load a cut" modal
+  const [newProjectOpen, setNewProjectOpen] = useState(false); // "start empty" modal
+  const [newProjectName, setNewProjectName] = useState(""); // its name field
+  const [renaming, setRenaming] = useState(null); // in-place header rename: the draft name, or null
   // Media pool (draggable source generations) shown left of the player.
   const [pool, setPool] = useState({ video: [], audio: [] });
   const [poolCollapsed, setPoolCollapsed] = useState(false);
@@ -2697,6 +2700,47 @@ export default function Editor({ reloadKey }) {
     }
   }, []);
 
+  // Start from nothing: an empty timeline with the same two lanes a cut builds,
+  // so the media pool is the source instead of a stitched cut. Same reset as
+  // loadCut — it IS a fresh document.
+  const newProject = useCallback(async (name) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/timeline/new", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, clientId: CLIENT_ID }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to start a new project");
+      dirtyRef.current = false;
+      histRef.current = [];
+      setCanUndo(false);
+      setTimeline(withSourceDurations(data.timeline));
+      setSelectedId(null);
+      setSelectedIds(new Set());
+      selectedIdsRef.current = new Set();
+      setSelectedGap(null);
+    } catch (e) {
+      setError(String(e.message || e));
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  // Rename the project from the header. It's an ordinary timeline edit — dirty,
+  // undoable, autosaved — not its own endpoint, so it rides the same 600ms save
+  // as a drag and the agent sees it through get_timeline like anything else.
+  const renameProject = useCallback((name) => {
+    const next = (name || "").trim().slice(0, 120);
+    mutate((t) => {
+      if (next) t.name = next;
+      else delete t.name;
+      return t;
+    });
+  }, [mutate]);
+
   // A stored radio version: the audio-only dialogue timeline built on the Radio tab.
   const loadRadio = useCallback((v) => loadVersion("/api/timeline/from-radio", v, "radio version"), [loadVersion]);
   // A stored animatic: that same dialogue plus each shot's still on the picture track.
@@ -3188,6 +3232,93 @@ export default function Editor({ reloadKey }) {
 
   if (loading && !timeline) return <Spinner label="loading editor…" />;
 
+  // "New project" — the way into the editor that ISN'T derived from a cut. The
+  // modal names it and doubles as the confirm, since starting fresh replaces
+  // whatever edit is open.
+  const startNewProject = () => {
+    setNewProjectOpen(false);
+    newProject(newProjectName.trim());
+  };
+  const NewProject = (
+    <>
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={() => { setNewProjectName(""); setNewProjectOpen(true); }}
+        title="Start an empty timeline and build the edit from the media pool"
+      >
+        <FilePlus2 size={14} /> New project
+      </Button>
+      <Dialog open={newProjectOpen} onOpenChange={setNewProjectOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>New project</DialogTitle>
+            <DialogDescription>
+              An empty timeline — no cut, no clips. You build the edit by dragging from the
+              media pool.
+              {timeline
+                ? " This replaces the timeline you have open; the current one stays in the document history, so you can restore it."
+                : ""}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            <Label htmlFor="new-project-name">Name</Label>
+            <Input
+              id="new-project-name"
+              autoFocus
+              value={newProjectName}
+              maxLength={120}
+              placeholder="Untitled project"
+              onChange={(e) => setNewProjectName(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); startNewProject(); } }}
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" size="sm" onClick={() => setNewProjectOpen(false)}>Cancel</Button>
+            <Button size="sm" onClick={startNewProject}>
+              <FilePlus2 size={14} /> Create project
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+
+  // The project name in the header: click it and it becomes an input. Enter or
+  // blur commits, Escape reverts. An unnamed timeline (anything loaded from a
+  // cut before this existed) shows a muted prompt in the same slot, so naming
+  // it is the same one click.
+  const ProjectName = timeline && (
+    renaming === null ? (
+      <button
+        type="button"
+        onClick={() => setRenaming(timeline.name || "")}
+        title="Click to rename this project"
+        className={cn(
+          "max-w-[22rem] truncate rounded-md px-1.5 py-0.5 text-xl font-semibold tracking-tight transition-colors hover:bg-accent",
+          !timeline.name && "text-base font-normal text-muted-foreground",
+        )}
+      >
+        {timeline.name || "Name this project"}
+      </button>
+    ) : (
+      <Input
+        autoFocus
+        value={renaming}
+        maxLength={120}
+        placeholder="Untitled project"
+        className="h-9 w-[22rem] text-xl font-semibold tracking-tight"
+        onChange={(e) => setRenaming(e.target.value)}
+        onBlur={() => { renameProject(renaming); setRenaming(null); }}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") { e.preventDefault(); renameProject(renaming); setRenaming(null); }
+          // Escape must not also reach the editor's global key handler.
+          if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); setRenaming(null); }
+        }}
+      />
+    )
+  );
+
   const CutPicker = (
     <>
       <Button variant="outline" size="sm" onClick={() => setCutPickerOpen(true)}>
@@ -3504,11 +3635,17 @@ export default function Editor({ reloadKey }) {
   return (
     <div className="w-full min-w-0 space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
-          <h2 className="text-xl font-semibold tracking-tight">Editor</h2>
+        <div className="flex min-w-0 items-center gap-2">
+          <h2 className="shrink-0 text-xl font-semibold tracking-tight">Editor</h2>
+          {timeline && <span className="shrink-0 text-muted-foreground">·</span>}
+          {ProjectName}
           {timeline?.source && (
             <Badge variant="secondary" className="font-mono">
-              {paceableKind ? (paceableKind === "radio" ? "radio version" : "animatic") : `from cut v${timeline.source.v}`}
+              {paceableKind
+                ? (paceableKind === "radio" ? "radio version" : "animatic")
+                : timeline.source.kind === "blank"
+                  ? "new project"
+                  : `from cut v${timeline.source.v}`}
             </Badge>
           )}
         </div>
@@ -3522,6 +3659,7 @@ export default function Editor({ reloadKey }) {
               {committingPacing ? <><Loader2 size={14} className="animate-spin" /> committing…</> : <><Timer size={14} /> Commit pacing</>}
             </Button>
           )}
+          {NewProject}
           {CutPicker}
           <Button variant="outline" size="sm" onClick={load}><RefreshCw size={14} /> Refresh</Button>
           <Button
@@ -3549,8 +3687,12 @@ export default function Editor({ reloadKey }) {
         <div className="rounded-xl border border-dashed p-10 text-center">
           <Wand2 className="mx-auto mb-3 text-muted-foreground" />
           <p className="text-sm text-muted-foreground">
-            No timeline yet. Pick a complete cut above to load its clips and music into the editor.
+            No timeline yet. Pick a complete cut above to load its clips and music into the editor,
+            or start a new project and build the edit from the media pool.
           </p>
+          <Button variant="outline" size="sm" className="mt-4" onClick={newProject}>
+            <FilePlus2 size={14} /> New project
+          </Button>
         </div>
       ) : (
         <>

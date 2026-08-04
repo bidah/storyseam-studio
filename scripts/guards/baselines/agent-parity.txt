@@ -33,7 +33,6 @@
 
 # --- [gui-only] render plumbing the agent drives through provider tools ------
 /api/render                       # the GUI's own render kick-off; the agent uses the provider tools
-/api/pool                         # render-worker pool status, shown in the GUI status rail
 /api/final                        # final-render listing for the GUI picker
 /api/higgsfield/import            # browser-side import of a Higgsfield generation
 

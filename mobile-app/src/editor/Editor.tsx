@@ -5,7 +5,7 @@
 // stateless/props-driven. Only the UI shell + gesture wiring are native.
 // Web reference: /docs/architecture ↔ this: /docs/react-native/architecture
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Alert, Pressable, Text, View } from "react-native";
+import { Alert, Modal, Pressable, Text, TextInput, View } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { runOnJS, useAnimatedReaction, useSharedValue, type SharedValue } from "react-native-reanimated";
@@ -45,6 +45,10 @@ import {
 } from "@/editor/modules/timeline";
 import { Inspector } from "@/editor/modules/timeline/Inspector";
 import { MediaPool } from "@/editor/modules/media";
+
+// Matches the server's cap in worker/src/routes/timeline.js — a longer name is
+// trimmed there anyway, so stop it at the keyboard instead.
+const NAME_MAX = 120;
 
 function findItem(tl: TL | null, id: string | null): TimelineItem | null {
   if (!tl || !id) return null;
@@ -104,6 +108,10 @@ export function Editor({ onClose }: { onClose?: () => void } = {}) {
   const [poolOpen, setPoolOpen] = useState(false);
   const [inspectorOpen, setInspectorOpen] = useState(false);
   const [committingPacing, setCommittingPacing] = useState(false);
+  const [newProjectOpen, setNewProjectOpen] = useState(false);
+  const [newProjectName, setNewProjectName] = useState("");
+  // In-place header rename: the draft name while editing, or null when idle.
+  const [renaming, setRenaming] = useState<string | null>(null);
   const pxPerSecRef = useRef(48);
   const currentFrameRef = useRef(0);
 
@@ -367,6 +375,37 @@ export function Editor({ onClose }: { onClose?: () => void } = {}) {
     );
   }, [runCommitPacing]);
 
+  // ---- new project ---------------------------------------------------------
+  // Start an EMPTY timeline instead of one derived from a cut / radio pass /
+  // animatic — the edit gets assembled from the media pool. It replaces what's
+  // open (the previous timeline stays in the document history), so the naming
+  // sheet doubles as the confirm.
+  const runNewProject = useCallback(async (name: string) => {
+    setNewProjectOpen(false);
+    try {
+      const { timeline: tl } = await backend.newProject(name.trim());
+      setTimeline(withSourceDurations(tl), { dirty: false });
+      resetHistory();
+      setSelectedId(null);
+      setSelectedIds(new Set());
+      setSelectedGap(null);
+    } catch (e: any) {
+      Alert.alert("Could not start a new project", String(e?.message || e));
+    }
+  }, [backend, resetHistory, setTimeline]);
+
+  // Rename the project in place from the header — an ordinary timeline edit, so
+  // it rides the same debounced autosave as a drag.
+  const commitRename = useCallback(() => {
+    const next = (renaming || "").trim().slice(0, NAME_MAX);
+    setRenaming(null);
+    mutate((t) => {
+      if (next) t.name = next;
+      else delete t.name;
+      return t;
+    });
+  }, [mutate, renaming]);
+
   const { durationInFrames } = timelineDuration(timeline);
   const selectedItem = findItem(timeline, selectedId);
   const selectedTrack = findTrack(timeline, selectedId);
@@ -386,8 +425,46 @@ export function Editor({ onClose }: { onClose?: () => void } = {}) {
             onPress={undo}
           />
         </View>
-        <Text style={styles.brand}>{paceableKind === "animatic" ? "Animatic" : paceableKind === "radio" ? "Radio version" : "Editor"}</Text>
+        {/* Project name — tap it to rename in place. Unnamed timelines (a cut,
+            an animatic) keep showing what they came from, and tapping that
+            names them. */}
+        {renaming === null ? (
+          <Pressable
+            style={styles.brandTap}
+            hitSlop={8}
+            onPress={() => timeline && setRenaming(timeline.name || "")}
+            accessibilityLabel="Rename project"
+          >
+            <Text numberOfLines={1} style={styles.brand}>
+              {timeline?.name
+                || (paceableKind === "animatic"
+                  ? "Animatic"
+                  : paceableKind === "radio"
+                    ? "Radio version"
+                    : "Editor")}
+            </Text>
+          </Pressable>
+        ) : (
+          <TextInput
+            autoFocus
+            value={renaming}
+            maxLength={NAME_MAX}
+            placeholder="Untitled project"
+            placeholderTextColor={EditorTheme.textFaint}
+            selectTextOnFocus
+            returnKeyType="done"
+            style={styles.brandInput}
+            onChangeText={setRenaming}
+            onSubmitEditing={commitRename}
+            onBlur={commitRename}
+          />
+        )}
         <View style={styles.topbarSide}>
+          <ToolButton
+            icon="doc.badge.plus"
+            label="New"
+            onPress={() => { setNewProjectName(""); setNewProjectOpen(true); }}
+          />
           {canCommitPacing ? (
             <ToolButton
               icon="timer"
@@ -472,6 +549,52 @@ export function Editor({ onClose }: { onClose?: () => void } = {}) {
         />
       </View>
 
+      {/* New project — names it and confirms replacing the open edit in one step */}
+      <Modal
+        visible={newProjectOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setNewProjectOpen(false)}
+      >
+        <Pressable style={styles.scrim} onPress={() => setNewProjectOpen(false)}>
+          {/* Swallow taps on the card itself so they don't dismiss the sheet. */}
+          <Pressable style={styles.dialog} onPress={() => {}}>
+            <Text style={styles.dialogTitle}>New project</Text>
+            <Text style={styles.dialogBody}>
+              An empty timeline — no cut, no clips. You build the edit from the media pool.
+              {timeline
+                ? " This replaces the edit you have open; the current one stays in the document history."
+                : ""}
+            </Text>
+            <TextInput
+              autoFocus
+              value={newProjectName}
+              maxLength={NAME_MAX}
+              placeholder="Untitled project"
+              placeholderTextColor={EditorTheme.textFaint}
+              returnKeyType="done"
+              style={styles.dialogInput}
+              onChangeText={setNewProjectName}
+              onSubmitEditing={() => void runNewProject(newProjectName)}
+            />
+            <View style={styles.dialogRow}>
+              <Pressable
+                style={({ pressed }) => [styles.dialogBtn, pressed && styles.toolPressed]}
+                onPress={() => setNewProjectOpen(false)}
+              >
+                <Text style={styles.dialogBtnText}>Cancel</Text>
+              </Pressable>
+              <Pressable
+                style={({ pressed }) => [styles.dialogBtn, styles.dialogBtnPrimary, pressed && styles.toolPressed]}
+                onPress={() => void runNewProject(newProjectName)}
+              >
+                <Text style={[styles.dialogBtnText, styles.dialogBtnTextPrimary]}>Create</Text>
+              </Pressable>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
       {/* Native sheets */}
       <MediaPool visible={poolOpen} pool={pool} onClose={() => setPoolOpen(false)} onAdd={addClip} />
       <Inspector
@@ -533,7 +656,64 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
   },
   topbarSide: { flexDirection: "row", alignItems: "center", gap: 4 },
-  brand: { color: EditorTheme.text, fontSize: 16, fontWeight: "700" },
+  // The name sits between two fixed-width button clusters, so it takes the
+  // slack and truncates rather than pushing Export off the row.
+  brandTap: { flexShrink: 1, paddingHorizontal: 8, paddingVertical: 4 },
+  brand: { color: EditorTheme.text, fontSize: 16, fontWeight: "700", textAlign: "center" },
+  brandInput: {
+    flexShrink: 1,
+    minWidth: 120,
+    color: EditorTheme.text,
+    fontSize: 16,
+    fontWeight: "700",
+    textAlign: "center",
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: EditorTheme.accent,
+    backgroundColor: EditorTheme.panel,
+  },
+  scrim: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.6)",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 24,
+  },
+  dialog: {
+    width: "100%",
+    maxWidth: 420,
+    gap: 12,
+    padding: 20,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: EditorTheme.border,
+    backgroundColor: EditorTheme.panelRaised,
+  },
+  dialogTitle: { color: EditorTheme.text, fontSize: 18, fontWeight: "700" },
+  dialogBody: { color: EditorTheme.textDim, fontSize: 13, lineHeight: 18 },
+  dialogInput: {
+    color: EditorTheme.text,
+    fontSize: 16,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: EditorTheme.border,
+    backgroundColor: EditorTheme.panel,
+  },
+  dialogRow: { flexDirection: "row", justifyContent: "flex-end", gap: 8 },
+  dialogBtn: {
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: EditorTheme.border,
+  },
+  dialogBtnPrimary: { backgroundColor: EditorTheme.accent, borderColor: EditorTheme.accent },
+  dialogBtnText: { color: EditorTheme.text, fontSize: 15, fontWeight: "600" },
+  dialogBtnTextPrimary: { color: "#0B0B0F" },
   preview: {
     flex: 1,
     backgroundColor: "#000",

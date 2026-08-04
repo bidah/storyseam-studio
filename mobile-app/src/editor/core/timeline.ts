@@ -105,6 +105,8 @@ export interface Timeline {
   fps: number;
   width: number;
   height: number;
+  /** The author's label for this project, shown and edited in the Editor header. */
+  name?: string;
   source?: { kind?: string; v?: number; file?: string; at?: number };
   tracks: Track[];
 }

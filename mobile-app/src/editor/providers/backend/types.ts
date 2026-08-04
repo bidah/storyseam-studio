@@ -40,6 +40,12 @@ export interface EditorBackend {
   loadTimeline(): Promise<{ timeline: Timeline; cuts: unknown[] }>;
   saveTimeline(timeline: Timeline): Promise<{ ok: boolean; timeline: Timeline }>;
   loadCut(v: number): Promise<{ timeline: Timeline }>;
+  /**
+   * Replace the working timeline with an EMPTY one — the "New project" path,
+   * the only way into the editor that isn't derived from a cut, a radio pass or
+   * an animatic. The edit gets built from the media pool instead.
+   */
+  newProject(name?: string): Promise<{ timeline: Timeline }>;
   loadPool(): Promise<Pool>;
   uploadMedia(file: { uri: string; name?: string; mediaType?: "video" | "audio" }): Promise<PoolItem>;
   listStills(): Promise<Still[]>;

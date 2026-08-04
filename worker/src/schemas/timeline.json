@@ -2,7 +2,7 @@
   "capability": "timeline.edit",
   "route": "POST /api/timeline/edit",
   "tool": "edit_timeline",
-  "description": "Edit the video editor timeline by applying a list of ops (call get_timeline first for item ids, track ids, and frame positions; times are FRAMES at the timeline fps, usually 24). Ops:\n- move: set a clip's start frame — { op:'move', id, from, track? }. Optional `track` also re-homes the item onto another track of the SAME media type (the Editor is multi-track — e.g. move a line onto a second dialogue lane so two takes can overlap; items on ONE track must never overlap)\n- resize: set a clip's length in frames — { op:'resize', id, durationInFrames, edge? }. Default edge 'end' trims/extends the tail; edge:'start' trims/extends the HEAD (the clip's end stays anchored and its source in-point `offsetFrames` slides with the start)\n- split: razor a clip in two at an absolute timeline frame — { op:'split', id, at }. `at` must fall strictly inside the clip. The right half is a NEW item; re-read the returned timeline for its id\n- replace: swap an item's MEDIA in place, keeping its position, length, kind and links — { op:'replace', id, src, stillFile?, name? }. This is how a still you just generated lands on the animatic: fill the SLATE with the url + file returned by attach_still. Never use move/remove to place a generated still\n- remove: delete a clip/music item — { op:'remove', id }\n- volume: set gain 0..2 (1 = unity, 0 = silent) — { op:'volume', id, volume }\n- mute: mute/unmute an item — { op:'mute', id, muted }\n- disable: disable/enable a clip — skipped in playback but kept on the timeline (greyed) — { op:'disable', id, disabled }\n- reorder: set the play order of a track then close gaps — { op:'reorder', track:'video', order:[id,id,...] }\n- repack: close gaps in a track so clips play back-to-back — { op:'repack', track:'video' }\n- addTrack: append an empty track — { op:'addTrack', type:'audio'|'video', id?, name? } (id must be new; omit it for an auto id). Add a lane BEFORE moving items onto it\nTrack ids are 'video' and 'music' on a cut, 'picture' and 'dialogue' on an animatic (plus any added lanes). Returns { ok, timeline } with the updated timeline.",
+  "description": "Edit the video editor timeline by applying a list of ops (call get_timeline first for item ids, track ids, and frame positions; times are FRAMES at the timeline fps, usually 24). Ops:\n- insert: ADD a new clip to a track — { op:'insert', trackId, item:{ id, src, name, from, durationInFrames, … } }. This is how an edit that did NOT come from a cut gets built: `new_editor_project` for an empty timeline, `list_media_pool` for the available media, then one insert per clip. `id` must be new and unique; `src` is a pool item's `src` ('/gen/<file>' for video, '/sound-media/<file>' for audio); `from` and `durationInFrames` are frames. Put video/image items on a type 'video' track and audio on a type 'audio' track, and never overlap two items on ONE track — lay them end to end (next `from` = previous `from` + its `durationInFrames`) or add a lane with addTrack. `kind:'image'` inserts a still held on screen; `kind:'image'` with `src:null` reserves a SLATE to fill later with replace\n- move: set a clip's start frame — { op:'move', id, from, track? }. Optional `track` also re-homes the item onto another track of the SAME media type (the Editor is multi-track — e.g. move a line onto a second dialogue lane so two takes can overlap; items on ONE track must never overlap)\n- resize: set a clip's length in frames — { op:'resize', id, durationInFrames, edge? }. Default edge 'end' trims/extends the tail; edge:'start' trims/extends the HEAD (the clip's end stays anchored and its source in-point `offsetFrames` slides with the start)\n- split: razor a clip in two at an absolute timeline frame — { op:'split', id, at }. `at` must fall strictly inside the clip. The right half is a NEW item; re-read the returned timeline for its id\n- replace: swap an item's MEDIA in place, keeping its position, length, kind and links — { op:'replace', id, src, stillFile?, name? }. This is how a still you just generated lands on the animatic: fill the SLATE with the url + file returned by attach_still. Never use move/remove to place a generated still\n- rename: set the PROJECT's name — { op:'rename', name }. This is the timeline's own label (shown in the Editor header and editable there), NOT a clip's label; use replace's `name` for a clip. A blank name clears it back to unnamed\n- remove: delete a clip/music item — { op:'remove', id }\n- volume: set gain 0..2 (1 = unity, 0 = silent) — { op:'volume', id, volume }\n- mute: mute/unmute an item — { op:'mute', id, muted }\n- disable: disable/enable a clip — skipped in playback but kept on the timeline (greyed) — { op:'disable', id, disabled }\n- reorder: set the play order of a track then close gaps — { op:'reorder', track:'video', order:[id,id,...] }\n- repack: close gaps in a track so clips play back-to-back — { op:'repack', track:'video' }\n- addTrack: append an empty track — { op:'addTrack', type:'audio'|'video', id?, name? } (id must be new; omit it for an auto id). Add a lane BEFORE moving items onto it\nTrack ids are 'video' and 'music' on a cut, 'picture' and 'dialogue' on an animatic (plus any added lanes). Returns { ok, timeline } with the updated timeline.",
   "input": {
     "type": "object",
     "fields": {
@@ -15,10 +15,12 @@
             "op": {
               "type": "enum",
               "values": [
+                "insert",
                 "move",
                 "resize",
                 "split",
                 "replace",
+                "rename",
                 "remove",
                 "volume",
                 "mute",
@@ -39,9 +41,87 @@
               "optional": true,
               "description": "Target track id — 'video'/'music' on a cut, 'picture'/'dialogue' on an animatic (reorder/repack; on move it re-homes the item onto that same-type track)."
             },
+            "trackId": {
+              "type": "string",
+              "optional": true,
+              "description": "Track to insert into (for insert) — the lane's id, e.g. 'video' or 'music'."
+            },
+            "item": {
+              "type": "object",
+              "optional": true,
+              "description": "The new clip (for insert).",
+              "fields": {
+                "id": {
+                  "type": "string",
+                  "description": "Unique id for the new item — must not already exist on the timeline (every other op targets items by id)."
+                },
+                "src": {
+                  "type": "string",
+                  "optional": true,
+                  "description": "Media URL, e.g. a pool item's `src` ('/gen/<file>' or '/sound-media/<file>'). Omit (or null) only for a slate."
+                },
+                "name": {
+                  "type": "string",
+                  "optional": true,
+                  "description": "Label shown on the clip."
+                },
+                "from": {
+                  "type": "number",
+                  "optional": true,
+                  "description": "Start frame on the timeline (default 0)."
+                },
+                "durationInFrames": {
+                  "type": "number",
+                  "optional": true,
+                  "description": "Length in frames (default 1) — seconds × fps."
+                },
+                "sourceDurationInFrames": {
+                  "type": "number",
+                  "optional": true,
+                  "description": "The media's full natural length in frames. Set it for video/audio (a clip can be trimmed shorter but never stretched past it); leave it off for images."
+                },
+                "offsetFrames": {
+                  "type": "number",
+                  "optional": true,
+                  "description": "Source in-point — frames skipped at the head of the media (default 0)."
+                },
+                "kind": {
+                  "type": "enum",
+                  "values": [
+                    "image",
+                    "video"
+                  ],
+                  "optional": true,
+                  "description": "'image' for a still held on screen (no source timeline); omit for ordinary video/audio media."
+                },
+                "volume": {
+                  "type": "number",
+                  "optional": true,
+                  "description": "Gain 0..2 (1 = unity, the default)."
+                },
+                "bundle": {
+                  "type": "string",
+                  "optional": true,
+                  "description": "Which shot bundle this clip came from, e.g. 'MS-05'."
+                },
+                "shot": {
+                  "type": "string",
+                  "optional": true,
+                  "description": "Which shot's picture slot this is (image items)."
+                },
+                "stillFile": {
+                  "type": "string",
+                  "optional": true,
+                  "description": "Which still take is showing (image items)."
+                }
+              }
+            },
             "type": {
               "type": "enum",
-              "values": ["audio", "video"],
+              "values": [
+                "audio",
+                "video"
+              ],
               "optional": true,
               "description": "New track's media type (for addTrack)."
             },
@@ -58,7 +138,7 @@
             "name": {
               "type": "string",
               "optional": true,
-              "description": "New label for the item (for replace) or the new track (for addTrack)."
+              "description": "New label — for `replace` the clip's label, for `addTrack` the track's, for `rename` the PROJECT's name."
             },
             "from": {
               "type": "number",
@@ -72,7 +152,10 @@
             },
             "edge": {
               "type": "enum",
-              "values": ["start", "end"],
+              "values": [
+                "start",
+                "end"
+              ],
               "optional": true,
               "description": "Which edge resize trims (default 'end')."
             },
@@ -99,7 +182,9 @@
             "order": {
               "type": "array",
               "optional": true,
-              "items": { "type": "string" },
+              "items": {
+                "type": "string"
+              },
               "description": "Ordered item ids (for reorder)."
             }
           }

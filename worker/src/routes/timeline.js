@@ -139,6 +139,38 @@ async function buildTimelineFromCut(env, pid, db, v) {
   };
 }
 
+// An empty editor project — the "new project" the Editor's toolbar and the
+// agent's `new_editor_project` tool both start from. Mirrors `emptyTimeline()`
+// in src/editor/timeline.js (same track ids, so a clip dragged in from the
+// media pool lands on the same lanes a cut would have built), plus the
+// `source` stamp the loaders write so the UI can label the timeline.
+// `fps`/`width`/`height` let the caller pick a format (e.g. a vertical
+// 1080×1920 project); anything out of range falls back to the 24fps 720p
+// default rather than producing a timeline Remotion can't render.
+// The author's label for the timeline (`timeline.name`) — shown in the Editor
+// header and editable in place. Capped so a paste can't push the row off the
+// header or bloat the doc; blank/absent means "no name", not an empty string.
+const NAME_MAX = 120;
+const cleanName = (v) => (typeof v === "string" ? v.trim().slice(0, NAME_MAX) : "");
+
+const clampInt = (v, fallback, min, max) => {
+  const n = Number(v);
+  return Number.isFinite(n) && n >= min && n <= max ? Math.round(n) : fallback;
+};
+function buildBlankTimeline(opts = {}) {
+  return {
+    fps: clampInt(opts.fps, TL_FPS, 1, 120),
+    width: clampInt(opts.width, 1280, 16, 8192),
+    height: clampInt(opts.height, 720, 16, 8192),
+    name: cleanName(opts.name) || "Untitled project",
+    source: { kind: "blank", at: new Date().toISOString() },
+    tracks: [
+      { id: "video", name: "Video", type: "video", items: [] },
+      { id: "music", name: "Music", type: "audio", items: [] },
+    ],
+  };
+}
+
 const findItem = (tl, id) => {
   for (const t of tl.tracks || []) {
     const it = (t.items || []).find((x) => x.id === id);
@@ -198,6 +230,9 @@ const repackTrack = (tl, track) => {
 //                                             length, kind and links. How a
 //                                             generated still lands in the slot
 //                                             the Editor reserved for it.
+//   { op:"rename", name }                   – set the PROJECT's label
+//                                             (`timeline.name`, shown in the
+//                                             Editor header); blank clears it
 //   { op:"remove", id }                     – delete an item
 //   { op:"volume", id, volume }             – set gain (0..2, 1 = unity)
 //   { op:"mute", id, muted }                – mute/unmute an item
@@ -372,6 +407,12 @@ function applyTimelineOps(tl, ops) {
     } else if (op.op === "disable" && op.id != null) {
       const f = findItem(tl, op.id);
       if (f) f.item.disabled = !!op.disabled;
+    } else if (op.op === "rename") {
+      // Rename the PROJECT, not a clip — `op.name` is the timeline's label.
+      // A blank name clears it back to unnamed rather than storing "".
+      const next = cleanName(op.name);
+      if (next) tl.name = next;
+      else delete tl.name;
     } else if (op.op === "reorder" && op.track && Array.isArray(op.order)) {
       const t = tl.tracks.find((x) => x.id === op.track);
       if (t) {
@@ -560,6 +601,25 @@ export function registerTimeline(app) {
     return c.json({ ok: true, timeline });
   });
 
+  // Start a NEW, empty editor project — the same "replace the working timeline"
+  // move as from-cut/from-radio/from-animatic, but with nothing preloaded. This
+  // is the only way into the editor that isn't derived from something built
+  // elsewhere in the pipeline: an author (or the agent) assembles the edit from
+  // the media pool instead of from a stitched cut.
+  //
+  // The replaced timeline is NOT lost — `editSelections` parks the previous
+  // `selections` value in doc_history, so a mis-tapped "New project" is one
+  // restore_version away.
+  app.post("/api/timeline/new", async (c) => {
+    const pid = c.get("projectId");
+    let body;
+    try { body = await c.req.json(); } catch { body = {}; }
+    const timeline = buildBlankTimeline(body || {});
+    await editSelections(c.env, pid, (db) => { db.editorTimeline = timeline; });
+    await broadcastTimeline(c, pid, body?.clientId);
+    return c.json({ ok: true, timeline });
+  });
+
   // Apply granular edit ops to the working timeline (used by the chat agent).
   //
   // Validated against the SHARED contract in shared/schemas/timeline.json — the
@@ -581,7 +641,11 @@ export function registerTimeline(app) {
       return { timeline: db.editorTimeline };
     });
     if (res.noTimeline) {
-      return c.json({ error: "No timeline loaded yet — load a cut into the editor first" }, 400);
+      return c.json({
+        error:
+          "No timeline loaded yet — load a cut into the editor (load_cut_into_editor) " +
+          "or start an empty one (new_editor_project) first",
+      }, 400);
     }
     // The chat agent has no clientId, so open Editor tabs treat this as a
     // foreign edit and reload — reflecting agent edits in the UI right away.

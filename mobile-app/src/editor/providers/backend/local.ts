@@ -6,7 +6,7 @@
 // uses) — nothing else in the editor changes.
 // Web reference: /docs/connectors/storage-client ↔ this: /docs/react-native/storage
 import type { VideoSource } from "expo-video";
-import { FPS, type Timeline } from "@/editor/core/timeline";
+import { FPS, emptyTimeline, type Timeline } from "@/editor/core/timeline";
 import type { EditorBackend, Pool, PoolItem, Still } from "./types";
 
 // Bundled sample assets. `require()` paths must be static literals for Metro.
@@ -96,6 +96,10 @@ export function createLocalBackend(): EditorBackend {
       return { ok: true, timeline };
     },
     async loadCut() {
+      return { timeline: saved };
+    },
+    async newProject(name) {
+      saved = { ...emptyTimeline(), name: name?.trim() || "Untitled project" };
       return { timeline: saved };
     },
     async loadPool() {

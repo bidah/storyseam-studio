@@ -10,6 +10,10 @@
 // Shape:
 //   {
 //     fps: 24, width: 1280, height: 720,
+//     name?: "Trailer cut",   // the author's label, shown + editable in the
+//                             // Editor header (POST /api/timeline/new sets it,
+//                             // the `rename` op changes it). Purely editorial —
+//                             // nothing in the composition reads it.
 //     tracks: [
 //       { id, name, type: "video", items: [ { id, src, from, durationInFrames, offsetFrames?, name, bundle } ] },
 //       { id, name, type: "audio", items: [ { id, src, from, durationInFrames, offsetFrames?, name, volume,

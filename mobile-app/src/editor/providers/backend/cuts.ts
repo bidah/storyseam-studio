@@ -79,6 +79,18 @@ export function createCutsBackend(opts: { fromCutV?: number } = {}): EditorBacke
       return { timeline: res.timeline || emptyTimeline() };
     },
 
+    async newProject(name) {
+      // Starting empty also LATCHES the from-cut seam: the route param that
+      // opened this screen must not rebuild the cut on the next reload and undo
+      // the fresh project.
+      builtFromCut = true;
+      const res = await postJson<{ ok: boolean; timeline: Timeline }>("/api/timeline/new", {
+        name,
+        clientId: CLIENT_ID,
+      });
+      return { timeline: res.timeline || emptyTimeline() };
+    },
+
     // Web parity (src/components/Editor.jsx). The route reads the SAVED
     // editorTimeline doc, so the caller must flush the in-memory timeline
     // FIRST — the Editor's autosave is debounced 600ms and a just-dragged edit
