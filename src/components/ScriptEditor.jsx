@@ -847,16 +847,16 @@ function Editor({ initial, drafts, pinnedId, currentName, reload, signed: signed
           <PenLine size={13} /> {t("Screenplay")}
         </span>
         <div className="flex flex-wrap items-center gap-1">
-          {SP_TYPES.map((t) => (
+          {SP_TYPES.map((type) => (
             <Button
-              key={t}
-              variant={spType === t ? "default" : "outline"}
+              key={type}
+              variant={spType === type ? "default" : "outline"}
               size="sm"
               className="h-7 text-xs"
-              onClick={() => setType(t)}
-              title={t("Format as {label}", { label: SP_LABELS[t] })}
+              onClick={() => setType(type)}
+              title={t("Format as {label}", { label: SP_LABELS[type] })}
             >
-              {SP_LABELS[t]}
+              {SP_LABELS[type]}
             </Button>
           ))}
         </div>
