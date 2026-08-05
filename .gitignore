@@ -18,3 +18,4 @@ playwright-report
 .playwright
 vitest-results.json
 .DS_Store
+.worktrees
