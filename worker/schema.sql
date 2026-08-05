@@ -12,18 +12,29 @@ CREATE TABLE IF NOT EXISTS uploads (
 CREATE INDEX IF NOT EXISTS idx_uploads_created_at ON uploads (created_at DESC);
 
 -- Project registry. One row per project; the source of truth for "what
--- projects exist". Per-project script drafts live in R2 at `script/<id>.json`;
--- other per-project data lives in local subfolders (walking-skeleton phase).
--- A future per-user split adds a `user_id` column + index; nothing else changes.
+-- projects exist". Per-project JSON state lives in the `docs` table keyed by
+-- `project_id`; media bytes live in R2.
+--
+-- `owner_user_id` is the creator (the "p_" + short uuid project belongs to the
+-- user who made it). `organization_id` is the TENANT the project lives in — a
+-- project is always owned by exactly one org, and access is granted at the org
+-- level (see org_members / project_member below). Both are nullable for the
+-- walking-skeleton legacy rows (an unclaimed p_default, a pre-org project); the
+-- access predicate treats a null org as "owner-only" and lib/orgs.js backfills a
+-- personal org lazily on first sign-in.
 CREATE TABLE IF NOT EXISTS projects (
-  id          TEXT PRIMARY KEY,      -- "p_" + short uuid
-  name        TEXT NOT NULL,
-  created_at  TEXT NOT NULL,
-  updated_at  TEXT NOT NULL,
-  archived    INTEGER NOT NULL DEFAULT 0
+  id              TEXT PRIMARY KEY,      -- "p_" + short uuid
+  name            TEXT NOT NULL,
+  created_at      TEXT NOT NULL,
+  updated_at      TEXT NOT NULL,
+  archived        INTEGER NOT NULL DEFAULT 0,
+  owner_user_id   TEXT,                  -- creator; references "user"(id)
+  organization_id TEXT                   -- owning tenant; references organizations(id)
 );
 
 CREATE INDEX IF NOT EXISTS idx_projects_updated_at ON projects (updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_projects_owner ON projects (owner_user_id);
+CREATE INDEX IF NOT EXISTS idx_projects_org ON projects (organization_id);
 
 -- Secrets KV store (ported from the file-backed `.secrets/` store). GLOBAL, not
 -- per-project: these are the single user's credentials (e.g. the Higgsfield
@@ -120,3 +131,85 @@ CREATE TABLE IF NOT EXISTS doc_history (
 );
 
 CREATE INDEX IF NOT EXISTS idx_doc_history_doc ON doc_history (project_id, name, ts DESC);
+
+-- ─── Teams & multi-tenancy ──────────────────────────────────────────────────
+--
+-- The tenant boundary. Every user gets a PERSONAL org on first sign-in (owner =
+-- that user), and every project lives in exactly one org. A user can be a member
+-- of other people's orgs too, with a scope chosen by whoever invited them.
+--
+-- Access to a project = the caller is the project's owner_user_id, OR an
+-- org_members row for the project's org grants it (owner/admin see everything;
+-- a plain member sees only projects they hold a project_member grant on, unless
+-- their membership is marked all_projects). The predicate lives in one place,
+-- lib/orgs.js#canAccessProject, and is applied to BOTH credentials (the session
+-- cookie and the agent's signed header) by the middleware in index.js.
+CREATE TABLE IF NOT EXISTS organizations (
+  id            TEXT PRIMARY KEY,     -- "o_" + short uuid
+  name          TEXT NOT NULL,
+  slug          TEXT,
+  owner_user_id TEXT NOT NULL,        -- the user who owns the tenant; references "user"(id)
+  personal      INTEGER NOT NULL DEFAULT 0,  -- 1 = the owner's auto-created personal workspace
+  created_at    TEXT NOT NULL,
+  updated_at    TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_organizations_owner ON organizations (owner_user_id);
+
+-- Who belongs to an org, and how much of it they see.
+--   role         owner | admin | member
+--                owner/admin ⇒ access to EVERY project in the org.
+--                member      ⇒ access only to granted projects (project_member),
+--                              UNLESS all_projects = 1.
+--   all_projects 1 ⇒ this member sees all current AND FUTURE projects of the org
+--                    without being an admin (the inviter picked "all" scope).
+CREATE TABLE IF NOT EXISTS org_members (
+  organization_id TEXT NOT NULL,
+  user_id         TEXT NOT NULL,
+  role            TEXT NOT NULL DEFAULT 'member',
+  all_projects    INTEGER NOT NULL DEFAULT 0,
+  invited_by      TEXT,
+  created_at      TEXT NOT NULL,
+  PRIMARY KEY (organization_id, user_id)
+);
+CREATE INDEX IF NOT EXISTS idx_org_members_user ON org_members (user_id);
+
+-- Per-project grant: a scoped member sees exactly these projects. Present only
+-- when the inviter chose a selection (or a single project); "all" scope is the
+-- all_projects flag on org_members instead. role gates writes within the project.
+--   role  editor | viewer
+CREATE TABLE IF NOT EXISTS project_member (
+  project_id  TEXT NOT NULL,
+  user_id     TEXT NOT NULL,
+  role        TEXT NOT NULL DEFAULT 'editor',
+  granted_by  TEXT,
+  created_at  TEXT NOT NULL,
+  PRIMARY KEY (project_id, user_id)
+);
+CREATE INDEX IF NOT EXISTS idx_project_member_user ON project_member (user_id);
+
+-- A pending invite into an org, carrying the scope the inviter chose. The token
+-- is the credential the invitee presents to accept (no email provider is wired,
+-- so the invite is delivered as a copy-link; when email lands it just sends this
+-- same link). On accept we materialise the org_members row (+ all_projects for
+-- "all" scope) and the project_member grants named in scope_project_ids.
+--   scope_mode        all | selection
+--   scope_project_ids JSON array of project ids (for "selection")
+--   status            pending | accepted | revoked
+CREATE TABLE IF NOT EXISTS org_invitations (
+  id                TEXT PRIMARY KEY,   -- "inv_" + short uuid
+  organization_id   TEXT NOT NULL,
+  email             TEXT NOT NULL,
+  role              TEXT NOT NULL DEFAULT 'member',
+  scope_mode        TEXT NOT NULL DEFAULT 'selection',
+  scope_project_ids TEXT,               -- JSON array
+  project_role      TEXT NOT NULL DEFAULT 'editor',
+  token             TEXT NOT NULL,      -- 128-bit hex secret, verified constant-time
+  status            TEXT NOT NULL DEFAULT 'pending',
+  invited_by        TEXT NOT NULL,
+  created_at        TEXT NOT NULL,
+  expires_at        TEXT,
+  accepted_by       TEXT,
+  accepted_at       TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_org_invitations_org ON org_invitations (organization_id);
+CREATE INDEX IF NOT EXISTS idx_org_invitations_email ON org_invitations (email);

@@ -21,10 +21,12 @@ import sheetGeneration from "./skills/sheet-generation/SKILL.md";
 import assignRefs from "./skills/assign-refs/SKILL.md";
 import generativeUi from "./skills/generative-ui/SKILL.md";
 import destructiveApproval from "./skills/destructive-approval/SKILL.md";
+import teamAccess from "./skills/team-access/SKILL.md";
 
 export const skills = [
   generativeUi,
   destructiveApproval,
+  teamAccess,
   worldCreation,
   visualWorld,
   moodboard,

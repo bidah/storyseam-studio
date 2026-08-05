@@ -79,6 +79,11 @@ export const router = createBrowserRouter([
       { path: "sounds", lazy: () => import("@/routes/sounds"), ErrorBoundary: RouteError, HydrateFallback: fallback("sounds") },
       // Not a top tab — opened from the header avatar menu.
       { path: "settings", lazy: () => import("@/routes/settings"), ErrorBoundary: RouteError },
+      // Team & access management, and the invite-acceptance landing. Both live
+      // inside RootLayout so LoginGate guarantees a signed-in user (accepting an
+      // invite needs an identity to attach the membership to).
+      { path: "members", lazy: () => import("@/routes/members"), ErrorBoundary: RouteError },
+      { path: "accept-invite/:id", lazy: () => import("@/routes/accept-invite"), ErrorBoundary: RouteError },
       // Unknown paths fall back to the Script tab.
       { path: "*", loader: () => redirect("/script") },
     ],

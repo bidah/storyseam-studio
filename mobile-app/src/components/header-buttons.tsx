@@ -116,6 +116,12 @@ export function useMenuItem(): NativeStackHeaderItem {
     },
     {
       type: 'action',
+      label: 'Team & access',
+      icon: { type: 'sfSymbol', name: 'person.2' },
+      onPress: () => router.push('/members'),
+    },
+    {
+      type: 'action',
       label: 'Settings',
       icon: { type: 'sfSymbol', name: 'gearshape' },
       onPress: () => router.push('/settings'),

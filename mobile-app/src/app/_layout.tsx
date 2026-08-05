@@ -162,6 +162,26 @@ export default function RootLayout() {
                     headerShown: false,
                   }}
                 />
+                {/* Team & access — opened from the header menu. A full-detent
+                    formSheet like Settings (the roster + invite form need the
+                    room). Own header so the sheet has a title + Close. */}
+                <Stack.Screen
+                  name="members"
+                  options={{
+                    presentation: 'formSheet',
+                    sheetAllowedDetents: [1],
+                    sheetGrabberVisible: true,
+                    sheetCornerRadius: 24,
+                    headerShown: true,
+                    title: 'Team & access',
+                  }}
+                />
+                {/* Invite acceptance, reached by deep link. A modal page-sheet;
+                    it carries its own centered card. */}
+                <Stack.Screen
+                  name="accept-invite/[id]"
+                  options={{ presentation: 'modal', headerShown: true, title: 'Invitation' }}
+                />
                 <Stack.Screen
                   name="model-picker"
                   options={{

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, Outlet, useLocation, useNavigate, useNavigation, useRevalidator } from "react-router";
-import { RefreshCw, ExternalLink, Clapperboard, Sun, Moon, LogOut, User, Settings } from "lucide-react";
+import { RefreshCw, ExternalLink, Clapperboard, Sun, Moon, LogOut, User, Users, Settings } from "lucide-react";
 import { Glowing } from "glowing";
 import { cn } from "@/lib/utils";
 import { useProjectEvents } from "@/lib/useProjectEvents";
@@ -139,6 +139,11 @@ function UserMenu() {
         <DropdownMenuItem asChild>
           <Link to="/settings">
             <Settings size={14} /> Settings
+          </Link>
+        </DropdownMenuItem>
+        <DropdownMenuItem asChild>
+          <Link to="/members">
+            <Users size={14} /> Team &amp; access
           </Link>
         </DropdownMenuItem>
         <DropdownMenuItem onSelect={(e) => { e.preventDefault(); toggleTheme(); }}>

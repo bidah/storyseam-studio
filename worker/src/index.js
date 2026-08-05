@@ -36,7 +36,9 @@ import { registerTimeline } from "./routes/timeline.js";
 import { registerSecrets } from "./routes/auth.js";
 import { registerLibrary } from "./routes/library.js";
 import { registerCuts } from "./routes/cuts.js";
-import { registerProjects, getActiveProject, userCanAccessProject } from "./routes/projects.js";
+import { registerProjects, getActiveProject } from "./routes/projects.js";
+import { registerOrgs } from "./routes/orgs.js";
+import { canAccessProject } from "./lib/orgs.js";
 import { registerRender } from "./routes/render.js";
 import { registerExport } from "./routes/export.js";
 import { registerAdmin } from "./routes/admin.js";
@@ -206,10 +208,16 @@ app.use("*", async (c, next) => {
   //   /api/share/    the public read-only share views (routes/share.js). The
   //                  share token is the credential — it names its project and
   //                  is verified against that project's share doc. GET-only.
+  //   /api/orgs      the teams surface (routes/orgs.js). It manages ORG state,
+  //                  not project state, and authorises itself (member-of vs.
+  //                  can-manage). Scoping it to an active project would 400 an
+  //                  invitee accepting their first invite — they have no project
+  //                  yet — so it's exempt here and gated inside the route.
   const isData =
     p.startsWith("/api/") &&
     !p.startsWith("/api/auth/") &&
     !p.startsWith("/api/projects") &&
+    !p.startsWith("/api/orgs") &&
     !p.startsWith("/api/extract") &&
     !p.startsWith("/api/agent/") &&
     !p.startsWith("/api/mcp") &&
@@ -240,7 +248,12 @@ app.use("*", async (c, next) => {
         401,
       );
     }
-    if (pid && !(await userCanAccessProject(c.env, userId, pid))) {
+    // Team-aware: the project's owner, an org owner/admin, or a member granted
+    // this project (all_projects or an explicit grant) may reach it. A write is
+    // additionally rejected for a read-only ("viewer") grant. One predicate,
+    // lib/orgs.js#canAccessProject, decides for BOTH the cookie and the agent.
+    const write = c.req.method !== "GET" && c.req.method !== "HEAD";
+    if (pid && !(await canAccessProject(c.env, userId, pid, { write }))) {
       return c.json({ error: "Forbidden" }, 403);
     }
   }
@@ -276,6 +289,9 @@ app.use("*", async (c, next) => {
   // MCP envelope (every MCP message is a POST, reads included) would otherwise
   // make every open tab refetch. The MCP write tools announce for themselves.
   if (p.startsWith("/api/approvals") || p.startsWith("/api/mcp")) return;
+  // Org/membership changes are tenant bookkeeping, not project doc state — a new
+  // invite or scope tweak shouldn't make every open project tab refetch.
+  if (p.startsWith("/api/orgs")) return;
   if (!c.res || c.res.status >= 400) return;
   broadcast(
     c.env,
@@ -634,6 +650,7 @@ registerSecrets(app);
 registerLibrary(app);
 registerCuts(app);
 registerProjects(app);
+registerOrgs(app);
 registerRender(app);
 registerExport(app);
 registerAdmin(app);

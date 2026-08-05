@@ -57,6 +57,12 @@ import { editSoundVersion } from "./edit_sound_version.js";
 import { deleteSoundVersion } from "./delete_sound_version.js";
 import { likeSoundVersion } from "./like_sound_version.js";
 import { renameSound } from "./rename_sound.js";
+// Teams / org access
+import { listOrgs } from "./list_orgs.js";
+import { listMembers } from "./list_members.js";
+import { inviteMember } from "./invite_member.js";
+import { setMemberScope } from "./set_member_scope.js";
+import { removeMember } from "./remove_member.js";
 import { attachSound } from "./attach_sound.js";
 import { saveAudioPrompt } from "./save_audio_prompt.js";
 // Radio
@@ -172,6 +178,12 @@ export function createTools(api: Api): ToolDefinition[] {
     attachCharacterVoice(api),
     listCharacterVoices(api),
     signBundle(api),
+    // Teams / org access
+    listOrgs(api),
+    listMembers(api),
+    inviteMember(api),
+    setMemberScope(api),
+    removeMember(api),
   ];
 }
 
@@ -212,5 +224,8 @@ export function createReadTools(api: Api): ToolDefinition[] {
     // Library / Characters
     listLibrary(api),
     listCharacterVoices(api),
+    // Teams / org access (read)
+    listOrgs(api),
+    listMembers(api),
   ];
 }

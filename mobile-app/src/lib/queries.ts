@@ -90,6 +90,52 @@ export function useProjects() {
   return useQuery<ProjectList>(projectsQuery());
 }
 
+// --- Teams / orgs (account-scoped) ------------------------------------------
+
+export type Org = {
+  id: string;
+  name: string;
+  slug?: string;
+  personal: boolean;
+  role: 'owner' | 'admin' | 'member';
+  isOwner: boolean;
+  allProjects: boolean;
+};
+
+export type OrgGrant = { projectId: string; name: string; role: 'editor' | 'viewer' };
+
+export type OrgMember = {
+  userId: string;
+  name: string | null;
+  email: string | null;
+  role: 'owner' | 'admin' | 'member';
+  allProjects: boolean;
+  grants: OrgGrant[];
+};
+
+export type OrgInvitation = {
+  id: string;
+  email: string;
+  role: string;
+  scope_mode: 'all' | 'selection';
+  project_role: string;
+  status: string;
+  created_at: string;
+  expires_at?: string | null;
+};
+
+export function orgsQuery() {
+  return {
+    queryKey: ['account', 'orgs'] as const,
+    queryFn: () => apiJson<{ orgs: Org[] }>('/api/orgs'),
+  };
+}
+
+// Every org the signed-in user belongs to (their personal one + any they joined).
+export function useOrgs() {
+  return useQuery(orgsQuery());
+}
+
 // --- Higgsfield gallery (infinite) ------------------------------------------
 
 export function useHiggsfieldImages(size = 24) {

@@ -86,3 +86,13 @@
 /api/visual-world/settings
 /api/visual-world/sheet-prompts
 /api/suggestions/start            # "the author tapped this card" — there is no card for the agent to tap
+
+# --- [gui-only] teams: the accept flow + management transport ----------------
+# Team CAPABILITIES the agent has: list_orgs, list_members, invite_member,
+# set_member_scope, remove_member (see flue-agent/src/tools/). The paths below
+# are the browser-side of teams that the agent legitimately doesn't drive.
+/api/orgs/*/projects              # the invite scope-PICKER enumerates an org's projects; the
+                                  # agent already has project ids from its own context / list_orgs
+/api/orgs/*/invitations/*/revoke  # un-inviting is a manager click in the members UI
+/api/orgs/invitations/*/accept    # a human accepts their own invite in the browser while signed in —
+                                  # not an agent operation (the agent isn't the invitee)
