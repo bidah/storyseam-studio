@@ -10,7 +10,9 @@ let etagSeq = 0;
 const toBytes = (body) =>
   body instanceof Uint8Array
     ? body
-    : new TextEncoder().encode(typeof body === "string" ? body : String(body));
+    : body instanceof ArrayBuffer
+      ? new Uint8Array(body)
+      : new TextEncoder().encode(typeof body === "string" ? body : String(body));
 
 export function makeBucket(initial = {}) {
   const store = new Map(); // key -> { bytes, contentType, etag }

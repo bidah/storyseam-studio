@@ -11,7 +11,8 @@
 // /score, /trim) are intentionally NOT ported here (handled separately). See the
 // TODO markers for the media-copy step still owed.
 import { readDoc, updateDoc } from "../lib/docs.js";
-import { listMedia, listMediaSet, mediaKey, filesUrl } from "../lib/media.js";
+import { listMedia, listMediaSet, mediaKey, filesUrl, putMedia } from "../lib/media.js";
+import { ensureProxy } from "../lib/proxy.js";
 import { buildBundles, charKey, bundleSpeakers } from "../lib/pack.js";
 import { normalizeShot } from "../lib/shots.js";
 import { SEED_PROMPTS } from "./visual-world.js";
@@ -243,6 +244,80 @@ function normalizeVideoSelections(db) {
   return changed;
 }
 
+// ---- Rendered takes: bytes, not just records -------------------------------
+// A take is only VISIBLE if its mp4 is an object in R2 — `buildEpisodeView`
+// lists generations by membership in the `gen` key set. So a record that has a
+// `source` URL and no bytes is a take the author can never see: the agent
+// announces "live as gen 3 in the carousel", the carousel shows nothing, and
+// Refresh doesn't help because there is nothing to find. That was the state of
+// EVERY take attached by URL while `/api/episode/video` only wrote the record
+// (its download was left as a TODO through the R2 migration).
+//
+// The write path now downloads. These two exist for the takes recorded before
+// it did: on read, pull their bytes from `source` so the backlog heals on the
+// next load instead of needing a migration.
+
+/** At most this many orphaned takes are pulled in per episode read. */
+const HYDRATE_LIMIT = 8;
+
+/** How long a failed pull is trusted — a dead source shouldn't be refetched every load. */
+const HYDRATE_RETRY_MS = 24 * 60 * 60 * 1000;
+
+/** Download one take's mp4 into R2. Returns false on any failure — best effort. */
+async function hydrateGen(env, pid, file, source) {
+  try {
+    const res = await fetch(source);
+    if (!res.ok) return false;
+    await putMedia(
+      env, pid, "gen", file,
+      await res.arrayBuffer(),
+      res.headers.get("content-type") || "video/mp4",
+    );
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Pull in every recorded take that has a `source` but no bytes, up to
+ * HYDRATE_LIMIT. Mutates `genSet` with what landed so the caller lists them in
+ * the same response. A take whose source is gone (an expired CDN link) is
+ * stamped so the next read skips it for a day rather than refetching forever.
+ */
+async function hydrateOrphanedTakes(env, pid, db, genSet) {
+  const now = Date.now();
+  const orphans = [];
+  for (const entry of Object.values(db.video || {})) {
+    const arr = Array.isArray(entry) ? entry : entry ? [entry] : [];
+    for (const v of arr) {
+      if (!v?.file || !v.source || genSet.has(v.file)) continue;
+      const failedAt = Date.parse(v.hydrateFailedAt) || 0;
+      if (failedAt && now - failedAt < HYDRATE_RETRY_MS) continue;
+      orphans.push(v);
+    }
+  }
+  if (!orphans.length) return;
+
+  const batch = orphans.slice(0, HYDRATE_LIMIT);
+  const landed = await Promise.all(batch.map((v) => hydrateGen(env, pid, v.file, v.source)));
+  const failed = new Set();
+  batch.forEach((v, i) => {
+    if (landed[i]) genSet.add(v.file);
+    else failed.add(v.file);
+  });
+
+  // Stamp the dead ones inside the CAS so the note can't revert a concurrent
+  // edit. The preview proxy is left to the lazy `/proxy/gen/*` fallback.
+  if (!failed.size) return;
+  await editDB(env, pid, (d) => {
+    for (const entry of Object.values(d.video || {})) {
+      const arr = Array.isArray(entry) ? entry : entry ? [entry] : [];
+      for (const v of arr) if (v?.file && failed.has(v.file)) v.hydrateFailedAt = new Date().toISOString();
+    }
+  });
+}
+
 export { rosterMaps, needsStateFor };
 
 // The full episode plan as `GET /api/episode` serves it: the packed <=15s
@@ -268,6 +343,9 @@ export async function buildEpisodeView(env, pid) {
   // this used to fire one serial `mediaExists` per generation (100+ round-trips
   // for a full episode) — now it's a single list + in-memory membership checks.
   const genSet = await listMediaSet(env, pid, "gen");
+  // Takes recorded by URL before the download existed have no bytes — pull them
+  // in now so they appear in THIS response rather than staying invisible.
+  await hydrateOrphanedTakes(env, pid, db, genSet);
   const video = {};
   for (const [id, entry] of Object.entries(db.video || {})) {
     const arr = Array.isArray(entry) ? entry : entry ? [entry] : [];
@@ -799,23 +877,55 @@ export function registerEpisode(app) {
     try { body = await c.req.json(); } catch { body = {}; }
     const { bundle, url, jobId } = body || {};
     if (!bundle || !url) return c.json({ error: "Missing 'bundle' or 'url'" }, 400);
-    const { file, name, count } = await editDB(c.env, pid, (db) => {
-    db.video = db.video || {};
-    // normalize to an array (migrate old single-object / legacy <bundle>.mp4 entry)
-    let list = db.video[bundle];
-    list = Array.isArray(list) ? list : list ? [list] : [];
-    const n = list.length + 1;
-    const file = `${bundle}_gen${n}.mp4`;
-    // TODO(stage2): put media into R2 via putMedia — download `url` and store it
-    // as the "gen" media object for `file` (Express fetched + wrote it to disk).
-    // When implemented, also kick off a preview proxy here:
-    //   c.executionCtx.waitUntil(ensureProxy(c.env, { pid, kind: "gen", file }));
-    // Until then, gens land in R2 only via /ingest* (which already hooks
-    // ensureProxy) or the backfill job / lazy /proxy fallback.
-    list.push({ file, name: `gen ${n}`, jobId: jobId || null, source: url, ts: new Date().toISOString() });
-    db.video[bundle] = list;
-    return { file, name: `gen ${n}`, count: list.length };
+    // The take's ordinal (and so its filename) depends on how many the bundle
+    // already has, so read that BEFORE fetching the bytes — `editDB`'s mutate
+    // may re-run under CAS and must stay pure. The filename also carries a
+    // RANDOM suffix, like storyboard stills: two renders attaching in the same
+    // moment would otherwise claim the same ordinal, overwrite each other's R2
+    // object, and leave two records pointing at one clip. The mutate below is
+    // still the authority on the "gen N" LABEL.
+    const priorEntry = (await readDB(c.env, pid)).video?.[bundle];
+    const prior = Array.isArray(priorEntry) ? priorEntry : priorEntry ? [priorEntry] : [];
+    const file = `${bundle}_gen${prior.length + 1}_${crypto.randomUUID().slice(0, 8)}.mp4`;
+
+    // Download the clip into R2. Without this the record is invisible: the
+    // episode view lists only takes whose object exists, so the author is told
+    // the take is live and finds an empty carousel. On failure keep the record
+    // — it holds `source`, and the read path retries the pull — but say so in
+    // the response rather than reporting a clean success.
+    let stored = false;
+    try {
+      const res = await fetch(url);
+      if (res.ok) {
+        await putMedia(
+          c.env, pid, "gen", file,
+          await res.arrayBuffer(),
+          res.headers.get("content-type") || "video/mp4",
+        );
+        stored = true;
+      }
+    } catch { /* fall back to the source URL; the read path hydrates it later */ }
+
+    const { name, count } = await editDB(c.env, pid, (db) => {
+      db.video = db.video || {};
+      // normalize to an array (migrate old single-object / legacy <bundle>.mp4 entry)
+      let list = db.video[bundle];
+      list = Array.isArray(list) ? list : list ? [list] : [];
+      const n = list.length + 1;
+      list.push({ file, name: `gen ${n}`, jobId: jobId || null, source: url, ts: new Date().toISOString() });
+      db.video[bundle] = list;
+      return { name: `gen ${n}`, count: list.length };
     });
-    return c.json({ ok: true, bundle, name, count, url: "/gen/" + file });
+
+    // 720p preview proxy for the editor/cuts pages, same as an /ingest write.
+    if (stored) c.executionCtx.waitUntil(ensureProxy(c.env, { pid, kind: "gen", file }));
+
+    return c.json({
+      ok: true, bundle, name, count, file, stored, url: "/gen/" + file,
+      ...(stored ? {} : {
+        warning:
+          "The clip was recorded but its bytes could not be downloaded from `url` — the take will not appear in the Episode tab until the download succeeds. Tell the author, and re-attach with a fresh URL if the source has expired.",
+      }),
+    });
   });
 }
