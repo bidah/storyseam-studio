@@ -16,6 +16,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Empty, Eyebrow, Panel, Spinner, ErrorNote, ConfirmModal } from "@/components/shared";
 import DocHistory from "@/components/DocHistory";
 import MediaPicker from "@/components/MediaPicker";
+import { useT, t as staticT } from "@/lib/i18n";
 
 /* ---------------------------------------------------------------- *
  * Section definitions — the pieces of the world bible               *
@@ -121,6 +122,7 @@ function PromptRow({ label, hint, value, onCommit, rows, big, autoGrow }) {
  * ---------------------------------------------------------------- */
 
 function ExpandSection({ title, icon, children }) {
+  const t = useT();
   const [open, setOpen] = useState(false);
   return (
     <>
@@ -128,10 +130,10 @@ function ExpandSection({ title, icon, children }) {
         variant="ghost"
         size="sm"
         onClick={() => setOpen(true)}
-        aria-label={`Expand ${typeof title === "string" ? title : "section"}`}
+        aria-label={t("Expand {title}", { title: typeof title === "string" ? title : t("section") })}
         className="text-muted-foreground"
       >
-        <Maximize2 size={13} /> Expand
+        <Maximize2 size={13} /> {t("Expand")}
       </Button>
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-4xl">
@@ -163,6 +165,7 @@ function isVoiceTrack(t) {
 }
 
 function VoicePicker({ open, onOpenChange, onPick }) {
+  const t = useT();
   const [tracks, setTracks] = useState(null); // null = loading
   const [error, setError] = useState(null);
   const [q, setQ] = useState("");
@@ -195,7 +198,7 @@ function VoicePicker({ open, onOpenChange, onPick }) {
           .map((v) => ({
             trackId: t.id,
             v: v.v,
-            name: t.name || v.name || "Untitled voice",
+            name: t.name || v.name || staticT("Untitled voice"),
             url: v.url,
           })),
       );
@@ -207,15 +210,15 @@ function VoicePicker({ open, onOpenChange, onPick }) {
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-2xl">
         <DialogHeader>
-          <DialogTitle>Attach a voice</DialogTitle>
+          <DialogTitle>{t("Attach a voice")}</DialogTitle>
         </DialogHeader>
         <p className="text-xs text-muted-foreground">
-          Your liked voices from the Sound Studio — like a voice take on the Sounds tab to see it here.
+          {t("Your liked voices from the Sound Studio — like a voice take on the Sounds tab to see it here.")}
         </p>
         <Input
           value={q}
           onChange={(e) => setQ(e.target.value)}
-          placeholder="Search liked voices…"
+          placeholder={t("Search liked voices…")}
           className="h-8 text-sm"
         />
         {error && <ErrorNote>{error}</ErrorNote>}
@@ -223,7 +226,7 @@ function VoicePicker({ open, onOpenChange, onPick }) {
           <div className="py-10"><Spinner /></div>
         ) : voices.length === 0 && !error ? (
           <div className="rounded-lg border border-dashed p-8 text-center">
-            <Empty>no liked voices yet — generate a voice on the Sounds tab and tap the heart to like a take.</Empty>
+            <Empty>{t("no liked voices yet — generate a voice on the Sounds tab and tap the heart to like a take.")}</Empty>
           </div>
         ) : (
           <div className="max-h-[60vh] space-y-2 overflow-y-auto pr-1">
@@ -236,7 +239,7 @@ function VoicePicker({ open, onOpenChange, onPick }) {
                   </div>
                   <audio controls src={o.url} preload="none" className="mt-1 h-8 w-full" />
                 </div>
-                <Button size="sm" className="shrink-0" onClick={() => onPick(o)}>Select</Button>
+                <Button size="sm" className="shrink-0" onClick={() => onPick(o)}>{t("Select")}</Button>
               </div>
             ))}
           </div>
@@ -251,6 +254,7 @@ function VoicePicker({ open, onOpenChange, onPick }) {
  * ---------------------------------------------------------------- */
 
 function CharacterCard({ char, onField, onRemove, expanded }) {
+  const t = useT();
   const { setModalImage } = useShell();
   const [pickerOpen, setPickerOpen] = useState(false);
   const [voiceOpen, setVoiceOpen] = useState(false);
@@ -261,7 +265,7 @@ function CharacterCard({ char, onField, onRemove, expanded }) {
       <div className="mb-2 flex items-center gap-2">
         <input
           defaultValue={char.name}
-          placeholder="Character name"
+          placeholder={t("Character name")}
           onBlur={(e) => e.target.value !== char.name && onField("name", e.target.value)}
           className={cn(
             "min-w-0 flex-1 rounded-md border border-transparent bg-transparent px-1.5 py-0.5 font-semibold hover:border-border focus:border-primary focus:bg-background focus:outline-none",
@@ -272,7 +276,7 @@ function CharacterCard({ char, onField, onRemove, expanded }) {
         <Button
           variant="ghost"
           size="icon-sm"
-          aria-label={`Remove ${char.name || "character"}`}
+          aria-label={t("Remove {name}", { name: char.name || t("character") })}
           onClick={() => onRemove(char)}
           className="shrink-0 text-muted-foreground hover:text-destructive"
         >
@@ -286,19 +290,19 @@ function CharacterCard({ char, onField, onRemove, expanded }) {
         <div className="mb-2 flex items-center gap-3 rounded-lg border bg-muted/60 p-2">
           <button
             type="button"
-            onClick={() => setModalImage({ url: sheet.url, name: sheet.name || `${char.name || "character"} sheet`, role: "asset" })}
-            title="View full image"
+            onClick={() => setModalImage({ url: sheet.url, name: sheet.name || t("{name} sheet", { name: char.name || t("character") }), role: "asset" })}
+            title={t("View full image")}
             className="shrink-0 overflow-hidden rounded-md border transition-colors hover:border-primary/60"
           >
             <img
               src={sheet.thumb || sheet.url}
-              alt={sheet.name || `${char.name || "character"} sheet`}
+              alt={sheet.name || t("{name} sheet", { name: char.name || t("character") })}
               className="h-28 w-28 object-cover"
             />
           </button>
           <div className="flex min-w-0 flex-col items-start gap-1.5">
             <Button variant="outline" size="sm" onClick={() => setPickerOpen(true)}>
-              <ImagePlus size={13} /> Change character sheet
+              <ImagePlus size={13} /> {t("Change character sheet")}
             </Button>
             <Button
               variant="ghost"
@@ -306,14 +310,14 @@ function CharacterCard({ char, onField, onRemove, expanded }) {
               onClick={() => onField("sheetImage", null)}
               className="text-muted-foreground hover:text-destructive"
             >
-              <X size={14} /> Unlink
+              <X size={14} /> {t("Unlink")}
             </Button>
           </div>
         </div>
       ) : (
         <div className="mb-2">
           <Button variant="outline" size="sm" onClick={() => setPickerOpen(true)}>
-            <ImagePlus size={13} /> Link character sheet
+            <ImagePlus size={13} /> {t("Link character sheet")}
           </Button>
         </div>
       )}
@@ -325,13 +329,13 @@ function CharacterCard({ char, onField, onRemove, expanded }) {
           <Mic size={16} className="shrink-0 text-primary" />
           <div className="flex min-w-0 flex-1 flex-col gap-1.5">
             <span className="truncate text-sm font-medium">
-              {voiceRef.name || "Voice"}
+              {voiceRef.name || t("Voice")}
               {voiceRef.v != null && <span className="text-muted-foreground"> · v{voiceRef.v}</span>}
             </span>
             {voiceRef.url && <audio controls src={voiceRef.url} preload="none" className="h-8 w-full max-w-sm" />}
             <div className="flex items-center gap-1.5">
               <Button variant="outline" size="sm" onClick={() => setVoiceOpen(true)}>
-                <Mic size={13} /> Change voice
+                <Mic size={13} /> {t("Change voice")}
               </Button>
               <Button
                 variant="ghost"
@@ -339,7 +343,7 @@ function CharacterCard({ char, onField, onRemove, expanded }) {
                 onClick={() => onField("voiceRef", null)}
                 className="text-muted-foreground hover:text-destructive"
               >
-                <X size={14} /> Unlink
+                <X size={14} /> {t("Unlink")}
               </Button>
             </div>
           </div>
@@ -347,7 +351,7 @@ function CharacterCard({ char, onField, onRemove, expanded }) {
       ) : (
         <div className="mb-2">
           <Button variant="outline" size="sm" onClick={() => setVoiceOpen(true)}>
-            <Mic size={13} /> Attach voice
+            <Mic size={13} /> {t("Attach voice")}
           </Button>
         </div>
       )}
@@ -358,10 +362,10 @@ function CharacterCard({ char, onField, onRemove, expanded }) {
             <span className={cn(
               "font-semibold uppercase tracking-wide text-muted-foreground",
               expanded ? "text-xs" : "text-[10px]",
-            )}>{f.label}</span>
+            )}>{t(f.label)}</span>
             <WorldField
               value={char[f.key]}
-              placeholder={f.placeholder}
+              placeholder={t(f.placeholder)}
               rows={2}
               big={expanded}
               autoGrow={expanded}
@@ -374,7 +378,7 @@ function CharacterCard({ char, onField, onRemove, expanded }) {
       <MediaPicker
         open={pickerOpen}
         onOpenChange={setPickerOpen}
-        title="Link character sheet"
+        title={t("Link character sheet")}
         sources={["library"]}
         multiple={false}
         onAdd={([im]) => {
@@ -400,6 +404,7 @@ function CharacterCard({ char, onField, onRemove, expanded }) {
  * ---------------------------------------------------------------- */
 
 function LocationCard({ loc, onField, onRemove }) {
+  const t = useT();
   const { setModalImage } = useShell();
   const [pickerOpen, setPickerOpen] = useState(false);
   const sheet = loc.sheetImage;
@@ -408,14 +413,14 @@ function LocationCard({ loc, onField, onRemove }) {
       <div className="mb-2 flex items-center gap-2">
         <input
           defaultValue={loc.name}
-          placeholder="Location name"
+          placeholder={t("Location name")}
           onBlur={(e) => e.target.value !== loc.name && onField("name", e.target.value)}
           className="min-w-0 flex-1 rounded-md border border-transparent bg-transparent px-1.5 py-0.5 text-sm font-semibold hover:border-border focus:border-primary focus:bg-background focus:outline-none"
         />
         <Button
           variant="ghost"
           size="icon-sm"
-          aria-label={`Remove ${loc.name || "location"}`}
+          aria-label={t("Remove {name}", { name: loc.name || t("location") })}
           onClick={() => onRemove(loc)}
           className="shrink-0 text-muted-foreground hover:text-destructive"
         >
@@ -425,7 +430,7 @@ function LocationCard({ loc, onField, onRemove }) {
 
       {/* Slug — the key a shot's `location` string resolves to. */}
       <label className="mb-2 flex items-center gap-2">
-        <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Slug</span>
+        <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">{t("Slug")}</span>
         <input
           defaultValue={loc.slug}
           placeholder="school-clearing"
@@ -440,19 +445,19 @@ function LocationCard({ loc, onField, onRemove }) {
         <div className="mb-2 flex items-center gap-3 rounded-lg border bg-muted/60 p-2">
           <button
             type="button"
-            onClick={() => setModalImage({ url: sheet.url, name: sheet.name || `${loc.name || "location"} sheet`, role: "asset" })}
-            title="View full image"
+            onClick={() => setModalImage({ url: sheet.url, name: sheet.name || t("{name} sheet", { name: loc.name || t("location") }), role: "asset" })}
+            title={t("View full image")}
             className="shrink-0 overflow-hidden rounded-md border transition-colors hover:border-primary/60"
           >
             <img
               src={sheet.thumb || sheet.url}
-              alt={sheet.name || `${loc.name || "location"} sheet`}
+              alt={sheet.name || t("{name} sheet", { name: loc.name || t("location") })}
               className="h-28 w-28 object-cover"
             />
           </button>
           <div className="flex min-w-0 flex-col items-start gap-1.5">
             <Button variant="outline" size="sm" onClick={() => setPickerOpen(true)}>
-              <ImagePlus size={13} /> Change location sheet
+              <ImagePlus size={13} /> {t("Change location sheet")}
             </Button>
             <Button
               variant="ghost"
@@ -460,23 +465,23 @@ function LocationCard({ loc, onField, onRemove }) {
               onClick={() => onField("sheetImage", null)}
               className="text-muted-foreground hover:text-destructive"
             >
-              <X size={14} /> Unlink
+              <X size={14} /> {t("Unlink")}
             </Button>
           </div>
         </div>
       ) : (
         <div className="mb-2">
           <Button variant="outline" size="sm" onClick={() => setPickerOpen(true)}>
-            <ImagePlus size={13} /> Link location sheet
+            <ImagePlus size={13} /> {t("Link location sheet")}
           </Button>
         </div>
       )}
 
       <label className="space-y-0.5">
-        <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Description</span>
+        <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">{t("Description")}</span>
         <WorldField
           value={loc.description}
-          placeholder="What the place looks like — keep it consistent across scenes."
+          placeholder={t("What the place looks like — keep it consistent across scenes.")}
           rows={2}
           onCommit={(val) => onField("description", val)}
         />
@@ -485,7 +490,7 @@ function LocationCard({ loc, onField, onRemove }) {
       <MediaPicker
         open={pickerOpen}
         onOpenChange={setPickerOpen}
-        title="Link location sheet"
+        title={t("Link location sheet")}
         sources={["library"]}
         multiple={false}
         onAdd={([im]) => {
@@ -501,6 +506,7 @@ function LocationCard({ loc, onField, onRemove }) {
  * ---------------------------------------------------------------- */
 
 function World() {
+  const t = useT();
   const agent = useAgent();
   const agentBusy = agentIsBusy(agent);
   const world = useLoaderData();
@@ -527,7 +533,7 @@ function World() {
         headers: init?.body ? { "Content-Type": "application/json" } : undefined,
         ...init,
       });
-      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "Save failed");
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || t("Save failed"));
       refetch();
     } catch (e) {
       setError(String(e.message || e));
@@ -558,9 +564,9 @@ function World() {
       <div className="flex flex-col gap-3">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h2 className="text-xl font-semibold tracking-tight">World creation</h2>
+            <h2 className="text-xl font-semibold tracking-tight">{t("World creation")}</h2>
             <p className="text-sm text-muted-foreground">
-              The world that makes the series — define it here before you write the script.
+              {t("The world that makes the series — define it here before you write the script.")}
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -569,18 +575,18 @@ function World() {
             <DocHistory doc="world" onRestored={refetch} />
             <Button onClick={createWithAgent} disabled={agentBusy}>
               {agentBusy
-                ? <><Loader2 size={14} className="animate-spin" /> agent working…</>
-                : <><Wand2 size={14} /> Let's create the world</>}
+                ? <><Loader2 size={14} className="animate-spin" /> {t("agent working…")}</>
+                : <><Wand2 size={14} /> {t("Let's create the world")}</>}
             </Button>
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-          <Badge variant="outline"><Globe size={11} /> {mapFilled}/{MAP.length} story map</Badge>
-          <Badge variant="outline"><BookOpen size={11} /> {depthFilled}/{DEPTH.length} story depth</Badge>
-          <Badge variant="info"><Users size={11} /> {characters.length} characters</Badge>
-          <Badge variant="info"><MapPin size={11} /> {locations.length} locations</Badge>
-          {agentBusy && <Badge variant="warning"><Loader2 size={11} className="animate-spin" /> agent working…</Badge>}
-          <span>press “Let's create the world” to have the agent interview you, or fill any field in directly.</span>
+          <Badge variant="outline"><Globe size={11} /> {mapFilled}/{MAP.length} {t("story map")}</Badge>
+          <Badge variant="outline"><BookOpen size={11} /> {depthFilled}/{DEPTH.length} {t("story depth")}</Badge>
+          <Badge variant="info"><Users size={11} /> {characters.length} {t("characters")}</Badge>
+          <Badge variant="info"><MapPin size={11} /> {locations.length} {t("locations")}</Badge>
+          {agentBusy && <Badge variant="warning"><Loader2 size={11} className="animate-spin" /> {t("agent working…")}</Badge>}
+          <span>{t("press “Let's create the world” to have the agent interview you, or fill any field in directly.")}</span>
         </div>
       </div>
 
@@ -588,28 +594,28 @@ function World() {
 
       {/* Title + logline */}
       <Panel
-        title={<span className="flex items-center gap-2"><Sparkles size={15} className="text-primary" /> The series</span>}
+        title={<span className="flex items-center gap-2"><Sparkles size={15} className="text-primary" /> {t("The series")}</span>}
         meta={
-          <ExpandSection title="The series" icon={<Sparkles size={18} className="text-primary" />}>
+          <ExpandSection title={t("The series")} icon={<Sparkles size={18} className="text-primary" />}>
             <div className="space-y-1">
-              <Eyebrow className="text-sm normal-case tracking-normal text-foreground/80">Title</Eyebrow>
-              <WorldField value={world.title} onCommit={(v) => patchWorld({ title: v })} placeholder="Untitled world" big autoGrow />
+              <Eyebrow className="text-sm normal-case tracking-normal text-foreground/80">{t("Title")}</Eyebrow>
+              <WorldField value={world.title} onCommit={(v) => patchWorld({ title: v })} placeholder={t("Untitled world")} big autoGrow />
             </div>
             <div className="space-y-1">
-              <Eyebrow className="text-sm normal-case tracking-normal text-foreground/80">Logline</Eyebrow>
-              <WorldField value={world.logline} onCommit={(v) => patchWorld({ logline: v })} placeholder="One sentence that captures the series." big autoGrow />
+              <Eyebrow className="text-sm normal-case tracking-normal text-foreground/80">{t("Logline")}</Eyebrow>
+              <WorldField value={world.logline} onCommit={(v) => patchWorld({ logline: v })} placeholder={t("One sentence that captures the series.")} big autoGrow />
             </div>
           </ExpandSection>
         }
       >
         <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
           <div className="space-y-1">
-            <Eyebrow className="normal-case tracking-normal text-foreground/80">Title</Eyebrow>
-            <WorldField value={world.title} onCommit={(v) => patchWorld({ title: v })} placeholder="Untitled world" rows={1} />
+            <Eyebrow className="normal-case tracking-normal text-foreground/80">{t("Title")}</Eyebrow>
+            <WorldField value={world.title} onCommit={(v) => patchWorld({ title: v })} placeholder={t("Untitled world")} rows={1} />
           </div>
           <div className="space-y-1">
-            <Eyebrow className="normal-case tracking-normal text-foreground/80">Logline</Eyebrow>
-            <WorldField value={world.logline} onCommit={(v) => patchWorld({ logline: v })} placeholder="One sentence that captures the series." rows={2} />
+            <Eyebrow className="normal-case tracking-normal text-foreground/80">{t("Logline")}</Eyebrow>
+            <WorldField value={world.logline} onCommit={(v) => patchWorld({ logline: v })} placeholder={t("One sentence that captures the series.")} rows={2} />
           </div>
         </div>
       </Panel>
@@ -617,13 +623,13 @@ function World() {
       <div className="grid gap-4 lg:grid-cols-2">
         {/* Story map — the 5 shaping questions */}
         <Panel
-          title={<span className="flex items-center gap-2"><Globe size={15} className="text-primary" /> Story map</span>}
+          title={<span className="flex items-center gap-2"><Globe size={15} className="text-primary" /> {t("Story map")}</span>}
           meta={
             <div className="flex items-center gap-2">
               <Badge variant="outline">{mapFilled}/{MAP.length}</Badge>
-              <ExpandSection title="Story map" icon={<Globe size={18} className="text-primary" />}>
+              <ExpandSection title={t("Story map")} icon={<Globe size={18} className="text-primary" />}>
                 {MAP.map((m) => (
-                  <PromptRow key={m.key} label={m.label} hint={m.hint} value={world.map?.[m.key]} onCommit={(v) => setMap(m.key, v)} big autoGrow />
+                  <PromptRow key={m.key} label={t(m.label)} hint={t(m.hint)} value={world.map?.[m.key]} onCommit={(v) => setMap(m.key, v)} big autoGrow />
                 ))}
               </ExpandSection>
             </div>
@@ -631,30 +637,30 @@ function World() {
         >
           <div className="space-y-4">
             {MAP.map((m) => (
-              <PromptRow key={m.key} label={m.label} hint={m.hint} value={world.map?.[m.key]} onCommit={(v) => setMap(m.key, v)} />
+              <PromptRow key={m.key} label={t(m.label)} hint={t(m.hint)} value={world.map?.[m.key]} onCommit={(v) => setMap(m.key, v)} />
             ))}
           </div>
         </Panel>
 
         {/* Story depth — the core elements */}
         <Panel
-          title={<span className="flex items-center gap-2"><BookOpen size={15} className="text-primary" /> Story depth</span>}
+          title={<span className="flex items-center gap-2"><BookOpen size={15} className="text-primary" /> {t("Story depth")}</span>}
           meta={
             <div className="flex items-center gap-2">
               <Badge variant="outline">{depthFilled}/{DEPTH.length}</Badge>
-              <ExpandSection title="Story depth" icon={<BookOpen size={18} className="text-primary" />}>
-                <p className="text-sm text-muted-foreground">Understand the story — the core elements beneath the plot.</p>
+              <ExpandSection title={t("Story depth")} icon={<BookOpen size={18} className="text-primary" />}>
+                <p className="text-sm text-muted-foreground">{t("Understand the story — the core elements beneath the plot.")}</p>
                 {DEPTH.map((d) => (
-                  <PromptRow key={d.key} label={d.label} hint={d.hint} value={world.depth?.[d.key]} onCommit={(v) => setDepth(d.key, v)} big autoGrow />
+                  <PromptRow key={d.key} label={t(d.label)} hint={t(d.hint)} value={world.depth?.[d.key]} onCommit={(v) => setDepth(d.key, v)} big autoGrow />
                 ))}
               </ExpandSection>
             </div>
           }
         >
-          <p className="mb-3 text-xs text-muted-foreground">Understand the story — the core elements beneath the plot.</p>
+          <p className="mb-3 text-xs text-muted-foreground">{t("Understand the story — the core elements beneath the plot.")}</p>
           <div className="space-y-4">
             {DEPTH.map((d) => (
-              <PromptRow key={d.key} label={d.label} hint={d.hint} value={world.depth?.[d.key]} onCommit={(v) => setDepth(d.key, v)} />
+              <PromptRow key={d.key} label={t(d.label)} hint={t(d.hint)} value={world.depth?.[d.key]} onCommit={(v) => setDepth(d.key, v)} />
             ))}
           </div>
         </Panel>
@@ -662,14 +668,14 @@ function World() {
 
       {/* Characters */}
       <Panel
-        title={<span className="flex items-center gap-2"><Users size={15} className="text-primary" /> Characters</span>}
+        title={<span className="flex items-center gap-2"><Users size={15} className="text-primary" /> {t("Characters")}</span>}
         meta={
           <div className="flex items-center gap-2">
             <Button variant="outline" size="sm" onClick={addChar}>
-              <UserPlus size={13} /> Add character
+              <UserPlus size={13} /> {t("Add character")}
             </Button>
             {characters.length > 0 && (
-              <ExpandSection title="Characters" icon={<Users size={18} className="text-primary" />}>
+              <ExpandSection title={t("Characters")} icon={<Users size={18} className="text-primary" />}>
                 {characters.map((char) => (
                   <CharacterCard
                     key={char.id}
@@ -686,7 +692,7 @@ function World() {
       >
         {characters.length === 0 ? (
           <div className="rounded-lg border border-dashed p-6 text-center">
-            <Empty>no characters yet — add one, or let the agent build the roster.</Empty>
+            <Empty>{t("no characters yet — add one, or let the agent build the roster.")}</Empty>
           </div>
         ) : (
           <div className="grid gap-3 md:grid-cols-2">
@@ -707,18 +713,18 @@ function World() {
           `locations` id is the anchor the Animatic's "Add in World" button jumps to. */}
       <Panel
         id="locations"
-        title={<span className="flex items-center gap-2"><MapPin size={15} className="text-primary" /> Locations</span>}
+        title={<span className="flex items-center gap-2"><MapPin size={15} className="text-primary" /> {t("Locations")}</span>}
         meta={
           <div className="flex items-center gap-2">
             <Button variant="outline" size="sm" onClick={addLoc}>
-              <MapPinPlus size={13} /> Add location
+              <MapPinPlus size={13} /> {t("Add location")}
             </Button>
           </div>
         }
       >
         {locations.length === 0 ? (
           <div className="rounded-lg border border-dashed p-6 text-center">
-            <Empty>no locations yet — add the places your shots happen in so scenes get a consistent background.</Empty>
+            <Empty>{t("no locations yet — add the places your shots happen in so scenes get a consistent background.")}</Empty>
           </div>
         ) : (
           <div className="grid gap-3 md:grid-cols-2">
@@ -736,16 +742,16 @@ function World() {
 
       <ConfirmModal
         open={!!confirm}
-        title="Remove character"
-        message={`Remove “${confirm?.name || "this character"}” from the world? This can't be undone.`}
+        title={t("Remove character")}
+        message={t("Remove “{name}” from the world? This can't be undone.", { name: confirm?.name || t("this character") })}
         onConfirm={() => removeChar(confirm)}
         onCancel={() => setConfirm(null)}
       />
 
       <ConfirmModal
         open={!!confirmLoc}
-        title="Remove location"
-        message={`Remove “${confirmLoc?.name || "this location"}” from the world? This can't be undone.`}
+        title={t("Remove location")}
+        message={t("Remove “{name}” from the world? This can't be undone.", { name: confirmLoc?.name || t("this location") })}
         onConfirm={() => removeLoc(confirmLoc)}
         onCancel={() => setConfirmLoc(null)}
       />
@@ -758,7 +764,7 @@ export function loader() {
   return swr("world", async () => {
     const res = await fetch("/api/world");
     const json = await res.json();
-    if (!res.ok) throw new Error(json.error || "Failed to load");
+    if (!res.ok) throw new Error(json.error || staticT("Failed to load"));
     return json;
   });
 }
