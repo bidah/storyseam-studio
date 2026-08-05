@@ -14,8 +14,8 @@
 // `/media/*`, `/multishot-media/*` streaming routes serve the R2 objects. See the
 // TODO(stage2) markers for the media-copy / build-file work still owed.
 import { normalizeProjectId, readDoc, updateDoc } from "../lib/docs.js";
-import { listMedia, listProxies, proxyKey, assetRefUrl } from "../lib/media.js";
-import { ensureAssetThumbs } from "../lib/proxy.js";
+import { listMedia, listProxies, assetRefUrl } from "../lib/media.js";
+import { ensureVariants, deriveInBackground, variantKey, IMAGE_TIER_NAMES } from "../lib/images.js";
 
 // The de-facto selections DB (library picks + per-bundle episode selections).
 const DB_FALLBACK = { library: {}, episode: {} };
@@ -155,13 +155,22 @@ export function registerLibrary(app) {
     const db = await readDB(c.env, pid);
     const rels = await listAssets(c.env, pid);
 
-    // Small-thumb backfill: grids render `/thumb/<rel>` (tiny webp under
+    // Derivative backfill: grids render `/thumb/<rel>` (small webp under
     // media/<pid>/proxy/asset/) instead of the full-res original. Diff assets
-    // against existing thumbs and batch-generate the missing ones in the
-    // background; /thumb/* serves originals until they land.
+    // against existing thumbs and derive the missing ones in the background;
+    // /thumb/* serves originals until they land.
+    //
+    // Capped per request: each miss costs two transforms, and a library that has
+    // never been through this pipe would otherwise try to encode every image on
+    // one page load. The next load picks up the next batch, so a big library
+    // converges over a handful of visits instead of one very long tail.
     const thumbs = new Set(await listProxies(c.env, pid, "asset"));
-    const missing = rels.filter((r) => !thumbs.has(r));
-    if (missing.length) c.executionCtx.waitUntil(ensureAssetThumbs(c.env, pid, missing));
+    const missing = rels.filter((r) => !thumbs.has(r)).slice(0, 40);
+    if (missing.length) {
+      c.executionCtx.waitUntil(
+        Promise.all(missing.map((rel) => ensureVariants(c.env, { pid, kind: "asset", file: rel }))),
+      );
+    }
 
     // Group by containing folder (Node path.dirname of the rel), matching Express.
     const folders = new Map(); // dir -> [{ rel, name }]
@@ -184,6 +193,7 @@ export function registerLibrary(app) {
             name: im.name,
             url: "/asset/" + im.rel,
             thumb: "/thumb/" + im.rel,
+            display: "/img/display/asset/" + im.rel,
             // Absolute ungated `/files/...` URL for an anonymous external fetcher
             // (the flue agent feeds this to Higgsfield `media_import_url` to use a
             // library image as a reference — the relative `url` isn't fetchable).
@@ -220,6 +230,7 @@ export function registerLibrary(app) {
     await c.env.BUCKET.put(`media/${safePid}/asset/${rel}`, obj.body, {
       httpMetadata: { contentType: obj.httpMetadata?.contentType || "image/png" },
     });
+    deriveInBackground(c.env, c.executionCtx, { pid, kind: "asset", file: rel });
     return c.json({ ok: true, rel, name: `${base}.${ext}`, folder: dir, url: `/asset/${rel}` });
   });
 
@@ -281,7 +292,11 @@ export function registerLibrary(app) {
     const key = assetKey(pid, rel);
 
     await c.env.BUCKET.delete(key);
-    await c.env.BUCKET.delete(proxyKey(pid, "asset", rel));
+    // Every derivative, not just the thumb — an orphaned display variant would
+    // otherwise be served to a later image that reuses the same name.
+    await Promise.all(
+      IMAGE_TIER_NAMES.map((tier) => c.env.BUCKET.delete(variantKey(pid, tier, "asset", rel))),
+    );
     await deselectRel(c.env, pid, rel);
     return c.json({ ok: true, rel });
   });
@@ -326,11 +341,15 @@ export function registerLibrary(app) {
     await c.env.BUCKET.put(newKey, obj.body, { httpMetadata: obj.httpMetadata });
     await c.env.BUCKET.delete(oldKey);
 
-    // Move the thumb too (best-effort — ensureAssetThumbs regenerates if lost).
-    const th = await c.env.BUCKET.get(proxyKey(pid, "asset", rel));
-    if (th) {
-      await c.env.BUCKET.put(proxyKey(pid, "asset", newRel), th.body, { httpMetadata: th.httpMetadata });
-      await c.env.BUCKET.delete(proxyKey(pid, "asset", rel));
+    // Move the derivatives too (best-effort — a lost one is re-derived on the
+    // next view by the lazy fallback in the serving route).
+    for (const tier of IMAGE_TIER_NAMES) {
+      const from = variantKey(pid, tier, "asset", rel);
+      const to = variantKey(pid, tier, "asset", newRel);
+      const v = await c.env.BUCKET.get(from);
+      if (!v) continue;
+      await c.env.BUCKET.put(to, v.body, { httpMetadata: v.httpMetadata });
+      await c.env.BUCKET.delete(from);
     }
 
     // The R2 copy/delete above is the side effect; only the rel rename runs

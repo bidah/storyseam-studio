@@ -219,7 +219,9 @@ export function GenerationCard({ gen, onOpen }) {
         </Badge>
       )}
       {gen.status === "ready" && gen.url ? (
-        <img src={gen.url} loading="lazy" alt={gen.prompt} className="h-full w-full object-cover" />
+        // The grid renders the ~400px webp; the full-res original is what the
+        // lightbox and any downstream image-to-video job get.
+        <img src={gen.thumb || gen.url} loading="lazy" alt={gen.prompt} className="h-full w-full object-cover" />
       ) : gen.status === "error" ? (
         <div className="flex h-full flex-col items-center justify-center gap-1 p-3 text-center text-destructive">
           <AlertCircle size={18} />

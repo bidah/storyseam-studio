@@ -37,12 +37,12 @@ function ShotCell({ shot, reloadKey, onView }) {
       {still ? (
         <button
           type="button"
-          onClick={() => onView({ url: still.url + (reloadKey ? `?v=${reloadKey}` : ""), name: `${shot.id} · ${shot.action || ""}`, role: "storyboard" })}
+          onClick={() => onView({ url: (still.display || still.url) + (reloadKey ? `?v=${reloadKey}` : ""), name: `${shot.id} · ${shot.action || ""}`, role: "storyboard" })}
           className="group relative aspect-video overflow-hidden rounded-md border bg-muted transition-colors hover:border-primary/60"
           title="View full still"
         >
           <img
-            src={still.url + (reloadKey ? `?v=${reloadKey}` : "")}
+            src={(still.thumb || still.url) + (reloadKey ? `?v=${reloadKey}` : "")}
             loading="lazy"
             alt={shot.action || shot.id}
             className="h-full w-full object-cover"

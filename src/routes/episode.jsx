@@ -549,10 +549,10 @@ function PromptModal({ bundle, body, fullPrefix, assigned, audioAssigned, edited
                     <button
                       type="button"
                       className="block w-full overflow-hidden rounded-md border bg-muted"
-                      onClick={() => onView({ url: im.url, name: im.rel, role: "reference" })}
+                      onClick={() => onView({ url: im.display || im.url, name: im.rel, role: "reference" })}
                       title="click to view full image"
                     >
-                      <img src={im.url} loading="lazy" alt={im.name} className="aspect-square w-full object-cover" />
+                      <img src={im.thumb || im.url} loading="lazy" alt={im.name} className="aspect-square w-full object-cover" />
                     </button>
                     <figcaption className="truncate text-center text-[11px] text-muted-foreground">{refLabel(im.rel)}</figcaption>
                   </figure>
@@ -611,7 +611,8 @@ function EpStillRail({ stills, reloadKey, onView, onToggle }) {
   const g = stills[idx];
   const prev = () => setI((n) => (n - 1 + stills.length) % stills.length);
   const next = () => setI((n) => (n + 1) % stills.length);
-  const src = `${g.url}?v=${reloadKey}`;
+  // The viewer shows the ~1600px webp, not the multi-MB original PNG.
+  const src = `${g.display || g.url}?v=${reloadKey}`;
 
   return (
     <div className="rounded-xl border bg-muted/30 p-2">
@@ -752,7 +753,7 @@ function FirstFrameModal({ bundle, open, stills, reloadKey, current, onPick, onC
                   )}
                   title={sel ? "Click to clear" : `Open on ${t.shotId}`}
                 >
-                  <img src={t.url + (reloadKey ? `?v=${reloadKey}` : "")} alt={t.shotId} className="h-full w-full object-cover" />
+                  <img src={(t.thumb || t.url) + (reloadKey ? `?v=${reloadKey}` : "")} alt={t.shotId} className="h-full w-full object-cover" />
                   <span className="absolute left-1 top-1 rounded bg-background/80 px-1 font-mono text-[9px]">{t.shotId}</span>
                   {sel && <span className="absolute right-1 top-1 rounded-full bg-primary p-0.5 text-primary-foreground"><Check size={10} /></span>}
                 </button>
@@ -1020,7 +1021,7 @@ function EpisodeBundle({ b, flat, picked, onOpenPicker, onRemove, onView, audioM
                 title={allStills.length === 0 ? "Render some stills first — a first frame is one of them" : "Choose the frame the clip opens on (Seedance start_image)"}
               >
                 {firstFrameTake ? (
-                  <img src={firstFrameTake.url + (reloadKey ? `?v=${reloadKey}` : "")} alt="first frame" className="h-4 w-7 rounded-sm border object-cover" />
+                  <img src={(firstFrameTake.thumb || firstFrameTake.url) + (reloadKey ? `?v=${reloadKey}` : "")} alt="first frame" className="h-4 w-7 rounded-sm border object-cover" />
                 ) : (
                   <ImageIcon size={13} />
                 )}
@@ -1085,8 +1086,8 @@ function EpisodeBundle({ b, flat, picked, onOpenPicker, onRemove, onView, audioM
                   const linkedNeed = !autoNeed && ns?.needs.find((n) => n.link === im.rel);
                   return (
                     <figure key={im.rel} className="relative overflow-hidden rounded-lg border border-primary bg-muted ring-1 ring-primary/40">
-                      <button className="block w-full" onClick={() => onView({ url: im.url, name: im.rel, role: "reference" })}>
-                        <img src={im.url} loading="lazy" alt={im.name} className="aspect-square w-full object-cover" />
+                      <button className="block w-full" onClick={() => onView({ url: im.display || im.url, name: im.rel, role: "reference" })}>
+                        <img src={im.thumb || im.url} loading="lazy" alt={im.name} className="aspect-square w-full object-cover" />
                       </button>
                       <Button
                         variant="destructive" size="icon-xs"

@@ -87,7 +87,11 @@ export type VisualRef = {
 export type VisualGen = {
   id: string;
   status: 'processing' | 'ready' | 'error';
-  url: string; // relative /visual-media/<file>
+  url: string; // relative /visual-media/<file> — the ORIGINAL bytes
+  // Derived WebP tiers (worker/src/lib/images.js). Absent on video gens, and on
+  // any record written before the pipe existed — always fall back to `url`.
+  thumb?: string; // ~400px, the grid
+  display?: string; // ~1600px, the lightbox
   prompt: string;
   model?: string;
   aspectRatio?: string;
@@ -185,7 +189,7 @@ function GenerationCell({
             }}
           >
             <Image
-              source={{ uri: mediaUrl(gen.url) }}
+              source={{ uri: mediaUrl(gen.thumb || gen.url) }}
               accessibilityLabel={gen.prompt || 'generation'}
               style={styles.fullSize}
               contentFit="cover"
@@ -679,12 +683,14 @@ function Loaded({
             />
           </View>
         ) : (
-          // Full-res urls in grid order for READY cells only — Galeria.Image
+          // Lightbox urls in grid order for READY cells only — Galeria.Image
           // indexes into this array (processing/error cells aren't previewable).
+          // The ~1600px webp, not the original: the pinch-zoom view never needs
+          // the multi-MB source, which stays reserved for video generation.
           <Galeria
             urls={generations
               .filter((g) => g.status === 'ready' && g.url)
-              .map((g) => mediaUrl(g.url) ?? '')}
+              .map((g) => mediaUrl(g.display || g.url) ?? '')}
             theme={scheme}
           >
             <View style={styles.galleryGrid}>

@@ -65,7 +65,11 @@ export type AudioPayload = {
 
 export type StillTake = {
   file: string;
-  url: string;
+  url: string; // the ORIGINAL png — what a video generation is handed
+  // Derived WebP tiers (worker/src/lib/images.js). Absent on records written
+  // before the pipe existed, so always fall back to `url`.
+  thumb?: string; // ~400px, the grid
+  display?: string; // ~1600px, the viewer
   name?: string;
   angle?: string;
   selected?: boolean;

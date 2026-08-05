@@ -83,6 +83,11 @@ const DOT_SNAP = SNAP_GAP / 2;
 const snapToDots = (v) => Math.round(v / DOT_SNAP) * DOT_SNAP;
 
 const mediaUrl = (file) => `/moodboard-media/${encodeURIComponent(file)}`;
+// Image cards are small on the canvas, so they render the derived webp tier
+// rather than the original upload (which can be a many-MB PNG). Videos keep
+// mediaUrl — /img/ is images only.
+const imageCardUrl = (file) => `/img/display/moodboard-media/${encodeURIComponent(file)}`;
+const imageThumbUrl = (file) => `/img/thumb/moodboard-media/${encodeURIComponent(file)}`;
 
 // A card's on-canvas footprint, by type. Post-its derive theirs from their text
 // (the square↔notepad morph), so it is never stored.
@@ -357,7 +362,7 @@ function Canvas() {
           height: card.height,
           draggable: true,
           data: {
-            src: mediaUrl(file),
+            src: card.type === "image" ? imageCardUrl(file) : mediaUrl(file),
             width: card.width ?? 0,
             height: card.height ?? 0,
             naturalWidth: card.naturalWidth ?? card.width ?? (card.type === "video" ? 16 : 1),
@@ -1116,7 +1121,7 @@ function Canvas() {
                   className="group flex aspect-square flex-col overflow-hidden rounded-md border bg-card text-left shadow-sm transition hover:ring-2 hover:ring-primary focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none"
                 >
                   {card.type === "image" && card.imageKey ? (
-                    <img src={mediaUrl(card.imageKey)} alt="" className="size-full object-cover" />
+                    <img src={imageThumbUrl(card.imageKey)} alt="" className="size-full object-cover" />
                   ) : card.type === "video" && card.videoKey ? (
                     <video
                       src={mediaUrl(card.videoKey)}

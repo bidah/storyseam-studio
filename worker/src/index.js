@@ -54,7 +54,8 @@ import { createAuth } from "./auth.js";
 import { broadcast } from "./lib/broadcast.js";
 import { normalizeProjectId } from "./lib/docs.js";
 import { kindForPrefix, mediaKey, proxyKey, streamKey } from "./lib/media.js";
-import { ensureProxy, ensureImageThumb } from "./lib/proxy.js";
+import { ensureProxy } from "./lib/proxy.js";
+import { ensureVariants, variantKey, IMAGE_TIERS, isDerivableImage } from "./lib/images.js";
 import {
   mintToken, verifyToken, proxySecret,
   PROXY_HEADER, AGENT_HEADER, AGENT_CHAT_HEADER, PROXY_ISSUER,
@@ -482,15 +483,62 @@ app.get("/asset/*", (c) => {
   });
 });
 
-// --- image thumbnails --------------------------------------------------------
-// `/thumb/<rel>` serves the small webp thumbnail if it exists, else the full-res
-// original short-lived while a thumb is generated lazily. Two namespaces are
-// checked: `asset` (library images — thumbs written at Higgsfield-import time or
-// batched by ensureAssetThumbs) and `visual` (Visual World generations attached
-// straight as character sheets, which live under media/<pid>/visual/, not the
-// asset library). A real webp thumb in either namespace wins; otherwise we serve
-// whichever original exists and kick off a one-file encode so the next hit is
-// the small webp.
+// --- tiered image derivatives ------------------------------------------------
+// Serve one tier (`thumb` ~400px / `display` ~1600px, both WebP) of an image.
+// The derivative if it exists; otherwise the ORIGINAL, short-lived, while the
+// encode runs in the background — so a first paint is never blocked and an
+// image that predates this pipe backfills itself the first time it's viewed.
+//
+// Originals remain reachable at their own prefixes (`/storyboard-media/…`,
+// `/visual-media/…`, `/asset/…`) and, absolutely, at `/files/<r2key>` — which is
+// what generation providers and the Remotion export read. Nothing here changes
+// what they see. See lib/images.js.
+function serveTier(c, { tier, kind, file }) {
+  const pid = c.get("projectId");
+  const range = c.req.header("range");
+  const ifNoneMatch = c.req.header("if-none-match");
+  return (async () => {
+    const vKey = variantKey(pid, tier, kind, file);
+    if (await c.env.BUCKET.head(vKey)) return streamKey(c.env, vKey, range, { ifNoneMatch });
+
+    const mKey = mediaKey(pid, kind, file);
+    if (!(await c.env.BUCKET.head(mKey))) return c.text("Not found", 404);
+    if (isDerivableImage(file)) {
+      c.executionCtx.waitUntil(ensureVariants(c.env, { pid, kind, file }));
+    }
+    return streamKey(c.env, mKey, range, {
+      ifNoneMatch,
+      // Short TTL so the next load picks up the real derivative. An image that
+      // can't be derived at all (svg, over the 20MB binding cap) keeps hitting
+      // this branch and keeps serving correctly, just unoptimized.
+      cacheControl: "public, max-age=60",
+      extraHeaders: { "x-image-tier": "fallback" },
+    });
+  })();
+}
+
+// `/img/<tier>/<prefix>/<file>` — the uniform form, mirroring `/proxy/<prefix>/…`
+// on the video side. The prefix names the kind explicitly, so this works for
+// every image family (storyboard stills, visual-world gens, moodboard cards,
+// grabbed stills, the asset library) rather than guessing a namespace.
+app.get("/img/:tier/:prefix/*", (c) => {
+  const tier = c.req.param("tier");
+  const prefix = c.req.param("prefix");
+  if (!IMAGE_TIERS[tier]) return c.text("Not found", 404);
+  const kind = prefix === "asset" ? "asset" : kindForPrefix(prefix);
+  if (!kind) return c.text("Not found", 404);
+  const file = decodeURIComponent(
+    new URL(c.req.url).pathname.slice(`/img/${tier}/${prefix}/`.length),
+  );
+  return serveTier(c, { tier, kind, file });
+});
+
+// `/thumb/<rel>` — the original, kind-less thumbnail URL. Kept verbatim because
+// it is persisted in documents (world character/location sheets store a `thumb`
+// alongside the rel) and hard-built by the mobile episode screen, so changing it
+// would strand saved records. It still has to guess between the two namespaces
+// it was written for; `/img/thumb/<prefix>/…` above is the form to reach for in
+// new code.
 app.get("/thumb/*", async (c) => {
   const rel = decodeURIComponent(new URL(c.req.url).pathname.slice("/thumb/".length));
   const pid = c.get("projectId");
@@ -503,7 +551,7 @@ app.get("/thumb/*", async (c) => {
   for (const kind of ["asset", "visual"]) {
     const mKey = mediaKey(pid, kind, rel);
     if (await c.env.BUCKET.head(mKey)) {
-      c.executionCtx.waitUntil(ensureImageThumb(c.env, { pid, kind, file: rel }));
+      c.executionCtx.waitUntil(ensureVariants(c.env, { pid, kind, file: rel }));
       return streamKey(c.env, mKey, range, {
         ifNoneMatch,
         cacheControl: "public, max-age=60",

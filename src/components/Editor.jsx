@@ -996,7 +996,7 @@ function StillCard({ still, onOpen }) {
         "cursor-pointer hover:border-primary/50 hover:shadow-sm",
       )}
     >
-      <img src={still.url} alt="" loading="lazy" className="aspect-video w-full bg-black object-cover" />
+      <img src={still.thumb || still.url} alt="" loading="lazy" className="aspect-video w-full bg-black object-cover" />
       <div className="flex items-center gap-1 px-1.5 py-1">
         <Camera size={10} className="shrink-0 text-amber-400" />
         <span className="truncate text-[10px] font-medium">{still.sourceBundle || still.sourceName || "Still"}</span>

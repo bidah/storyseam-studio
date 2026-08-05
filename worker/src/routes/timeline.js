@@ -21,6 +21,7 @@ import { readDoc, updateDoc } from "../lib/docs.js";
 import { validateBody } from "../lib/validate.js";
 import timelineSchema from "../schemas/timeline.json";
 import { listMedia, putMedia, mediaKey } from "../lib/media.js";
+import { putImageWithVariants, variantKey, IMAGE_TIER_NAMES } from "../lib/images.js";
 import { broadcast } from "../lib/broadcast.js";
 
 // ---------------------------------------------------------------------------
@@ -760,7 +761,14 @@ export function registerTimeline(app) {
     const files = new Set(await listMedia(c.env, pid, "stills"));
     const items = (doc.items || [])
       .filter((s) => s.file && files.has(s.file)) // hide records whose R2 object is gone
-      .map((s) => ({ ...s, url: "/stills/" + s.file }))
+      // `url` stays the original PNG — render.js absolutizes /stills/ into a
+      // `/files/` export source. `thumb` is what the grid should render.
+      .map((s) => ({
+        ...s,
+        url: "/stills/" + s.file,
+        thumb: "/img/thumb/stills/" + s.file,
+        display: "/img/display/stills/" + s.file,
+      }))
       .sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")));
     return c.json({ stills: items });
   });
@@ -782,12 +790,22 @@ export function registerTimeline(app) {
 
     const id = crypto.randomUUID();
     const file = `still-${id}.png`;
-    await putMedia(c.env, pid, "stills", file, bytes, "image/png");
+    await putImageWithVariants(c.env, c.executionCtx, {
+      pid, kind: "stills", file, bytes: bytes.buffer, contentType: "image/png",
+    });
 
     const record = { id, file, createdAt: new Date().toISOString(), ...meta };
     await editStills(c.env, pid, (doc) => { doc.items = [record, ...(doc.items || [])]; });
     // The generic post-mutation middleware broadcasts "data" for /api/* writes.
-    return c.json({ ok: true, still: { ...record, url: "/stills/" + file } });
+    return c.json({
+      ok: true,
+      still: {
+        ...record,
+        url: "/stills/" + file,
+        thumb: "/img/thumb/stills/" + file,
+        display: "/img/display/stills/" + file,
+      },
+    });
   });
 
   // Delete a still (its R2 object + its metadata record).
@@ -796,7 +814,12 @@ export function registerTimeline(app) {
     const id = c.req.param("id");
     const doc = await readStills(c.env, pid);
     const hit = (doc.items || []).find((s) => s.id === id);
-    if (hit?.file) await c.env.BUCKET.delete(mediaKey(pid, "stills", hit.file));
+    if (hit?.file) {
+      await c.env.BUCKET.delete(mediaKey(pid, "stills", hit.file));
+      await Promise.all(
+        IMAGE_TIER_NAMES.map((t) => c.env.BUCKET.delete(variantKey(pid, t, "stills", hit.file))),
+      );
+    }
     await editStills(c.env, pid, (d) => { d.items = (d.items || []).filter((s) => s.id !== id); });
     return c.json({ ok: true });
   });

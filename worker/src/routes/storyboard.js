@@ -30,6 +30,7 @@
 // last-writer-wins silently drops takes. Same reasoning as radio.js.
 import { readDoc, updateDoc } from "../lib/docs.js";
 import { listMediaSet, putMedia, mediaKey } from "../lib/media.js";
+import { putImageWithVariants } from "../lib/images.js";
 
 const DB_FALLBACK = { library: {}, episode: {} };
 const readDB = (env, pid) => readDoc(env, pid, "selections", DB_FALLBACK);
@@ -66,6 +67,11 @@ export function registerStoryboard(app) {
               ...v,
               name: v.name || `still ${list.length + 1}`,
               url: "/storyboard-media/" + v.file,
+              // Lighter webp renditions for the UI. `url` stays the original —
+              // it is what the timeline stores and what render.js absolutizes
+              // into a `/files/` export source, so it must not become a tier.
+              thumb: "/img/thumb/storyboard-media/" + v.file,
+              display: "/img/display/storyboard-media/" + v.file,
               refUrl: refUrlFor(v.file),
             });
           }
@@ -108,7 +114,14 @@ export function registerStoryboard(app) {
       const res = await fetch(url);
       if (res.ok) {
         const ct = res.headers.get("content-type") || "image/png";
-        await putMedia(c.env, pid, "storyboard", file, await res.arrayBuffer(), ct);
+        // Original + its webp derivatives in one pass. The original is awaited
+        // (the response below depends on it); the thumb/display encodes run
+        // under waitUntil so an agent filling a whole bundle isn't serialized
+        // behind them. See lib/images.js.
+        await putImageWithVariants(c.env, c.executionCtx, {
+          pid, kind: "storyboard", file,
+          bytes: await res.arrayBuffer(), contentType: ct,
+        });
         stored = true;
       }
     } catch { /* fall back to source URL */ }

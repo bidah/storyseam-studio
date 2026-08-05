@@ -100,7 +100,7 @@
     // Router client routes). The APIs live under "/api/*" (matched above).
     "run_worker_first": [
       "/api/*", "/files/*", "/gen/*", "/media/*", "/sound-media/*", "/final/*",
-      "/refs/*", "/multishot-media/*", "/stills/*", "/storyboard-media/*", "/visual-media/*", "/moodboard-media/*", "/proxy/*", "/asset/*", "/thumb/*", "/hf-thumb/*",
+      "/refs/*", "/multishot-media/*", "/stills/*", "/storyboard-media/*", "/visual-media/*", "/moodboard-media/*", "/proxy/*", "/asset/*", "/thumb/*", "/hf-thumb/*", "/img/*",
       "/ingest/*", "/ingest-mpu/*", "/eve/*", "/upload", "/uploads", "/healthz",
       "/desktop/updates/*"
     ]
@@ -108,6 +108,17 @@
   "r2_buckets": [
     { "binding": "BUCKET", "bucket_name": "shot-studio-uploads" }
   ],
+  // Cloudflare Images — resizes/re-encodes image bytes INSIDE the Worker, with
+  // no public URL for the source. That matters here: the bucket is private and
+  // every byte goes through the fail-closed ownership middleware, so the
+  // `/cdn-cgi/image/` and `cf: { image }` paths (which need a fetchable origin)
+  // don't apply. See src/lib/images.js for the tiers and why derivatives are
+  // materialized into R2 instead of transformed per request.
+  //
+  // Per-Worker config; needs no zone-level "enable transformations" toggle.
+  // NOTE: plain `wrangler dev` only emulates width/height/rotate/format — use
+  // `wrangler dev --remote` to exercise quality/fit for real.
+  "images": { "binding": "IMAGES" },
   // Workers AI — powers the /api/transcribe Whisper speech-to-text endpoint
   // (the mobile chat composer's voice-message mic).
   "ai": { "binding": "AI" },

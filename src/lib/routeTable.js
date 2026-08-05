@@ -33,6 +33,8 @@ export const ROUTE_TABLE = [
   { prefix: "/asset/", kind: "api" },
   { prefix: "/thumb", kind: "api" },
   { prefix: "/hf-thumb", kind: "api" },
+  // Tiered image derivatives — /img/<thumb|display>/<prefix>/<file>.
+  { prefix: "/img/", kind: "api" },
   { prefix: "/final", kind: "api" },
   { prefix: "/gen", kind: "api" },
   { prefix: "/sound-media", kind: "api" },

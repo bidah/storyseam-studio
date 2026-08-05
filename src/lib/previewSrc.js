@@ -21,3 +21,32 @@ export function toPreviewSrc(src) {
   }
   return src;
 }
+
+// The same idea for IMAGES: rewrite an original image path to one of the two
+// WebP tiers the Worker derives (`/img/<tier>/<prefix>/<file>` — see
+// worker/src/lib/images.js). `thumb` fits a 400px box, `display` a 1600px one;
+// both fall back to the original until the encode lands, so a fresh generation
+// is never a broken tile.
+//
+// Relative-only for exactly the reason above: the export path absolutizes to
+// "<worker>/files/…" and must keep the untouched original, and a generation
+// provider is handed `refUrl`, never one of these. Passing an absolute URL
+// through here is a deliberate no-op.
+const IMAGE_PREFIXES = [
+  "/storyboard-media/",
+  "/visual-media/",
+  "/moodboard-media/",
+  "/stills/",
+  "/asset/",
+];
+
+export function toImageSrc(src, tier = "thumb") {
+  if (!src || typeof src !== "string") return src;
+  for (const p of IMAGE_PREFIXES) {
+    if (src.startsWith(p)) return `/img/${tier}${p}${src.slice(p.length)}`;
+  }
+  return src;
+}
+
+export const toThumbSrc = (src) => toImageSrc(src, "thumb");
+export const toDisplaySrc = (src) => toImageSrc(src, "display");

@@ -81,6 +81,33 @@ export function toPreviewSrc(src: string | null | undefined) {
   return src;
 }
 
+// Derived WebP tiers for images (port of the web toImageSrc). `thumb` fits a
+// 400px box, `display` a 1600px one; both fall back to the original until the
+// Worker's encode lands. Mobile benefits most here — these grids were pulling
+// full-res generation PNGs over cellular.
+const IMAGE_PREFIXES = [
+  '/storyboard-media/',
+  '/visual-media/',
+  '/moodboard-media/',
+  '/stills/',
+  '/asset/',
+];
+
+export function toImageSrc(src: string | null | undefined, tier: 'thumb' | 'display' = 'thumb') {
+  if (!src || typeof src !== 'string') return src ?? undefined;
+  for (const p of IMAGE_PREFIXES) {
+    if (src.startsWith(p)) return `/img/${tier}${p}${src.slice(p.length)}`;
+  }
+  return src;
+}
+
+// Convenience: resolve straight to an absolute, project-scoped URL.
+export const imageUrl = (
+  rel: string | null | undefined,
+  tier: 'thumb' | 'display' = 'thumb',
+  version?: string | number,
+) => mediaUrl(toImageSrc(rel, tier), version);
+
 // Upload a local file (image-picker URI) to R2 via the Worker; returns its
 // public URL — used by chat image attachments and any future imports.
 export async function uploadFile(uri: string, name: string, mime: string) {

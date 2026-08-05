@@ -19,6 +19,7 @@
 // the project the document row belongs to.
 import { readDoc, updateDoc } from "../lib/docs.js";
 import { mediaKey, putMedia } from "../lib/media.js";
+import { putImageWithVariants, deriveInBackground } from "../lib/images.js";
 import { emptyBoard, applyOp, validateOp } from "../lib/moodboard-document.js";
 import { unfurl } from "../lib/unfurl.js";
 
@@ -104,8 +105,15 @@ export function registerMoodboard(app) {
     if (buf.byteLength > MAX_IMAGE_BYTES) return c.json({ error: "image too large" }, 413);
 
     const file = `${crypto.randomUUID()}.${ext}`;
-    await putMedia(c.env, c.get("projectId"), "moodboard", file, buf, contentType);
-    return c.json({ ok: true, file, url: `/moodboard-media/${file}` }, 201);
+    await putImageWithVariants(c.env, c.executionCtx, {
+      pid: c.get("projectId"), kind: "moodboard", file, bytes: buf, contentType,
+    });
+    return c.json({
+      ok: true, file,
+      url: `/moodboard-media/${file}`,
+      thumb: `/img/thumb/moodboard-media/${file}`,
+      display: `/img/display/moodboard-media/${file}`,
+    }, 201);
   });
 
   // --- store a video from a pasted URL --------------------------------------
@@ -284,6 +292,13 @@ async function storeRemoteMedia(c, url, kind) {
   if (obj.size > cap) {
     await c.env.BUCKET.delete(key).catch(() => {});
     return { error: `${kind} too large`, status: 413 };
+  }
+  // Streamed straight through, so the bytes were never in hand — derive the
+  // webp pair from R2 in the background. No-op for the video branch.
+  if (!isVideo) {
+    deriveInBackground(c.env, c.executionCtx, {
+      pid: c.get("projectId"), kind: "moodboard", file,
+    });
   }
   return { file };
 }

@@ -269,7 +269,18 @@ export function registerAnimatic(app) {
         location: e.shot.location,
         characters: e.shot.characters,
         bundle: e.bundle,
-        still: e.still ? { file: e.still.file, url: "/storyboard-media/" + e.still.file } : null,
+        // `url` is the original; `thumb`/`display` are the webp tiers the grid
+        // and the viewer render (worker/src/lib/images.js). The TIMELINE item's
+        // `src` above deliberately stays the original — render.js absolutizes it
+        // into the export source.
+        still: e.still
+          ? {
+              file: e.still.file,
+              url: "/storyboard-media/" + e.still.file,
+              thumb: "/img/thumb/storyboard-media/" + e.still.file,
+              display: "/img/display/storyboard-media/" + e.still.file,
+            }
+          : null,
         voiced: !!e.take,
         seconds: e.durationInFrames / TL_FPS,
         refs: resolveShotRefs(e.shot, roster),

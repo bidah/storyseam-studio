@@ -207,7 +207,7 @@ function StillThumb({
     >
       <Pressable accessibilityRole="button" onPress={() => onView(still)}>
         <Image
-          source={{ uri: mediaUrl(still.url) }}
+          source={{ uri: mediaUrl(still.thumb || still.url) }}
           style={{ width: 150, height: 84 }}
           contentFit="cover"
         />

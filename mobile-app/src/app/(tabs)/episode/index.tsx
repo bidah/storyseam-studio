@@ -41,7 +41,7 @@ function BundleThumb({ still, takes }: { still: StillTake | null; takes: VideoTa
   if (still) {
     return (
       <Image
-        source={{ uri: mediaUrl(still.url) }}
+        source={{ uri: mediaUrl(still.thumb || still.url) }}
         style={{ width: 92, height: 60, borderRadius: 10 }}
         contentFit="cover"
       />

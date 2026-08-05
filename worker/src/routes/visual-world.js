@@ -17,7 +17,7 @@
 // card is processing (mirrors idea-mural's VideoGenView).
 import { readDoc, updateDoc, normalizeProjectId } from "../lib/docs.js";
 import { putMedia, mediaKey, filesUrl } from "../lib/media.js";
-import { ensureImageThumb } from "../lib/proxy.js";
+import { putImageWithVariants, deriveInBackground } from "../lib/images.js";
 import {
   VIDEO_MODELS,
   DEFAULT_VIDEO_MODEL,
@@ -437,10 +437,17 @@ const updateVW = (env, pid, mutate) => updateDoc(env, pid, "visual-world", FALLB
 //              so the flue agent can pass a prior generation back as an
 //              `image_references` media (via Higgsfield `media_import_url`). The
 //              relative `url` is not fetchable by an anonymous MCP call.
+//   `thumb` / `display` — lighter webp renditions for the grid and the detail
+//              view (images only; a video generation has neither). `url` and
+//              `refUrl` keep pointing at the ORIGINAL, which is what a
+//              downstream image-to-video job must receive.
 function withUrls(env, pid, gen) {
+  const isImage = gen.file && gen.kind !== "video";
   return {
     ...gen,
     url: gen.file ? `/visual-media/${gen.file}` : "",
+    thumb: isImage ? `/img/thumb/visual-media/${gen.file}` : "",
+    display: isImage ? `/img/display/visual-media/${gen.file}` : "",
     refUrl: gen.file ? filesUrl(env, mediaKey(pid, "visual", gen.file)) : "",
   };
 }
@@ -1242,10 +1249,15 @@ export function registerVisualWorld(app) {
       ? (/webm/.test(ct) ? "webm" : /quicktime|mov/.test(ct) ? "mov" : "mp4")
       : (/webp/.test(ct) ? "webp" : /jpe?g/.test(ct) ? "jpg" : "png");
     const file = `${g.id}.${ext}`;
-    await putMedia(c.env, pid, "visual", file, await res.arrayBuffer(), ct);
-    // Generate the thumbnail in the same pass (images only) so a gen
-    // attached straight as a character sheet renders a real thumb.
-    if (!isVideo) c.executionCtx.waitUntil(ensureImageThumb(c.env, { pid, kind: "visual", file }));
+    const bytes = await res.arrayBuffer();
+    if (isVideo) {
+      await putMedia(c.env, pid, "visual", file, bytes, ct);
+    } else {
+      // Original + its thumb/display webp derivatives in one pass, so a gen
+      // attached straight as a character sheet renders a real thumb and the
+      // Image Studio grid never has to pull the full-res PNG.
+      await putImageWithVariants(c.env, c.executionCtx, { pid, kind: "visual", file, bytes, contentType: ct });
+    }
     updates[g.id] = { status: "ready", file, source: rawUrl };
   }
 
@@ -1444,10 +1456,11 @@ export function registerVisualWorld(app) {
           } else {
             const ext = /webp/i.test(ct) ? "webp" : /jpe?g/i.test(ct) ? "jpg" : /gif/i.test(ct) ? "gif" : "png";
             file = `${id}.${ext}`;
-            await putMedia(c.env, pid, "visual", file, await res.arrayBuffer(), ct);
-            // Thumbnail in the same pass — see /poll. This is the agent's attach
-            // route, the exact path that produced the broken-thumb sheets.
-            c.executionCtx.waitUntil(ensureImageThumb(c.env, { pid, kind: "visual", file }));
+            // Derivatives in the same pass — see /poll. This is the agent's
+            // attach route, the exact path that produced the broken-thumb sheets.
+            await putImageWithVariants(c.env, c.executionCtx, {
+              pid, kind: "visual", file, bytes: await res.arrayBuffer(), contentType: ct,
+            });
           }
         }
       } catch (e) {
@@ -1625,6 +1638,11 @@ export function registerVisualWorld(app) {
     await c.env.BUCKET.put(`media/${safePid}/asset/${rel}`, obj.body, {
       httpMetadata: { contentType: obj.httpMetadata?.contentType || "image/png" },
     });
+    // The generation's own derivatives live under the `visual` kind and are
+    // keyed by its filename, so the library copy needs its own pair rather than
+    // a rename. (The old code left this gap: a promoted gen showed a full-res
+    // original in the library grid until the batch backfill happened to run.)
+    deriveInBackground(c.env, c.executionCtx, { pid, kind: "asset", file: rel });
     // Remember the library rel on the generation so the tab renders a persistent
     // "Saved to library" state (and broadcasts it live to other clients).
     await updateVW(c.env, pid, (v) => {

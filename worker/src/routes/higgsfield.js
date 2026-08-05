@@ -3,13 +3,17 @@
 // ones into the project's asset library in R2.
 //
 //   GET  /api/higgsfield/images?cursor=&size=  — gallery page {items, nextCursor}
-//   POST /api/higgsfield/import                — { rawUrl, minUrl, folder, name? }
+//   POST /api/higgsfield/import                — { rawUrl, folder, name? }
 //
-// Import writes the full-res image to `media/<pid>/asset/<folder>/<file>` (so
-// it shows up in /api/library) and Higgsfield's ready-made `_min.webp` to the
-// thumb key `media/<pid>/proxy/asset/<folder>/<file>` — no encode needed.
-import { proxyKey, streamKey } from "../lib/media.js";
-import { ensureHfThumbs } from "../lib/proxy.js";
+// Import writes the full-res image to `media/<pid>/asset/<folder>/<file>` (so it
+// shows up in /api/library) and then derives its thumb/display webp pair through
+// the Images binding (lib/images.js), same as every other image ingest path.
+//
+// It used to copy Higgsfield's `_min.webp` straight to the thumb key instead.
+// That looked free but wasn't: `_min` is compressed at FULL resolution (~250KB),
+// so the "thumbnail" a 24-tile gallery loaded was several MB in total.
+import { streamKey } from "../lib/media.js";
+import { deriveInBackground, ensureHostedThumbs } from "../lib/images.js";
 import {
   getHiggsfieldToken,
   forceRefreshHiggsfieldToken,
@@ -113,7 +117,7 @@ export function registerHiggsfield(app) {
     return c.json({ token, expiresAt: stored ? Math.min(stored, cap) : cap });
   });
 
-  // Gallery thumbnail: the cached 640px webp if the encode has landed, else a
+  // Gallery thumbnail: the cached ~400px webp if the encode has landed, else a
   // short-lived 302 to the (full-res) CloudFront minUrl passed as ?src=. The
   // redirect is what makes fresh pages paint instantly; the cache is what makes
   // revisits cheap.
@@ -170,14 +174,14 @@ export function registerHiggsfield(app) {
             height: g.params?.height || null,
             rawUrl: g.results.rawUrl,
             minUrl,
-            // Grid src: cached 640px webp once encoded, 302 → minUrl until then.
+            // Grid src: cached ~400px webp once encoded, 302 → minUrl until then.
             thumb: `/hf-thumb/${g.id}?src=${encodeURIComponent(minUrl)}`,
             createdAt: g.createdAt || null,
           };
         });
       // Batch-encode any of this page's thumbs we don't have yet (background).
       c.executionCtx.waitUntil(
-        ensureHfThumbs(c.env, items.map(({ id, minUrl }) => ({ id, minUrl }))),
+        ensureHostedThumbs(c.env, items.map(({ id, minUrl }) => ({ id, minUrl }))),
       );
       return c.json({ items, nextCursor: data?.next_cursor ?? null });
     } catch (e) {
@@ -192,7 +196,9 @@ export function registerHiggsfield(app) {
     const pid = c.get("projectId");
     let body;
     try { body = await c.req.json(); } catch { body = {}; }
-    const { rawUrl, minUrl, folder, name } = body || {};
+    // `minUrl` is accepted (older clients still send it) but no longer used:
+    // it is full-resolution, so the thumb is derived from our own copy instead.
+    const { rawUrl, folder, name } = body || {};
     if (!isAllowedMediaUrl(rawUrl)) return c.json({ error: "Bad image URL" }, 400);
 
     const dir = cleanFolder(folder);
@@ -213,18 +219,13 @@ export function registerHiggsfield(app) {
       httpMetadata: { contentType: src.headers.get("content-type") || "image/png" },
     });
 
-    // Thumb straight from Higgsfield's `_min.webp` — best-effort; the batched
-    // ffmpeg backfill (ensureAssetThumbs) covers it if this fails.
-    if (isAllowedMediaUrl(minUrl) && minUrl !== rawUrl) {
-      try {
-        const mn = await fetch(minUrl);
-        if (mn.ok) {
-          await c.env.BUCKET.put(proxyKey(pid, "asset", rel), mn.body, {
-            httpMetadata: { contentType: mn.headers.get("content-type") || "image/webp" },
-          });
-        }
-      } catch { /* fall back to generated thumb */ }
-    }
+    // Derive the thumb/display webp pair from the original we just stored.
+    //
+    // Higgsfield's own `_min.webp` is NOT a thumbnail — it is compressed but
+    // FULL-resolution (~250KB), so using it as the grid image was the reason a
+    // 24-tile library page weighed several MB. Deriving locally gives a real
+    // ~400px thumb instead.
+    deriveInBackground(c.env, c.executionCtx, { pid, kind: "asset", file: rel });
 
     return c.json({ ok: true, rel, name: base, folder: dir || ".", url: `/asset/${rel}` });
   });
