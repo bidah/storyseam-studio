@@ -18,6 +18,7 @@ import { Renderer } from "@openuidev/react-lang";
 import { AlertTriangle } from "lucide-react";
 import { buildStudioLibrary } from "./contract";
 import { AnsweredContext } from "./answered";
+import { ensureConfirm } from "./ensure-confirm";
 import { webRenderers } from "./renderers";
 
 export const studioLibrary = buildStudioLibrary(webRenderers);
@@ -89,7 +90,10 @@ export function isReferenceUpload(message) {
  */
 export function StudioUI({ lang, answerable, answer, onRespond }) {
   const [errors, setErrors] = useState(EMPTY_ERRORS);
-  const program = cleanLang(lang);
+  // A param card the model shipped with no button is a dead end — its turn is
+  // already over. `ensureConfirm` synthesizes the go-ahead so the author taps
+  // instead of typing "confirm"; a card that's already answerable is untouched.
+  const program = ensureConfirm(cleanLang(lang));
 
   // `onError` fires on EVERY parse pass, and — per its contract — is "called
   // with [] when all errors are resolved". So the argument has to be inspected:
