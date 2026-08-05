@@ -1,8 +1,11 @@
 ---
 name: shot-list
 description: >-
-  Turn the signed screenplay into the granular Shot list — the flat, ordered list
-  of every ~2-3s shot with its camera, action, dialogue and a Seedance prompt.
+  Turn the signed screenplay into the granular Shot list for a 2D or 3D-PIXAR
+  project — the flat, ordered list of every ~2-3s shot with its camera, action,
+  dialogue and a one-paragraph Seedance prompt. Check get_world first: if
+  productionType is "live-action" use the shot-list-live-action skill instead,
+  because that project's prompts are block documents, not paragraphs.
   This is the middle stage of the pipeline (Script → SHOT LIST → auto-packed <=15s
   multishots → Episode render). Use ONLY when the user explicitly asks for it —
   "generate the shot list", "break the script into shots", "make the shots from
@@ -22,6 +25,11 @@ Episode tab from those packs. No media is generated in this skill.
 
 ## Preconditions
 
+- **`get_world` reports `productionType: "2d"` or `"3d-pixar"`** (an absent field
+  means `2d`). If it reports `"live-action"`, STOP and use the
+  **shot-list-live-action** skill instead: a live-action shot's render prompt is a
+  block document (`promptBlocks`), not the one paragraph this skill writes, and
+  `save_shotlist` will warn that the wrong form was saved.
 - **The author asked for the shot list, in their own words, in this conversation.** Not
   "the script is done so shots are next" — that's the pipeline order, not permission.
   When you've just written or applied a script, the turn ends by *offering* the shot list;

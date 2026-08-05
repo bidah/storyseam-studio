@@ -14,6 +14,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Empty, Eyebrow, Panel, Spinner, ErrorNote, ConfirmModal } from "@/components/shared";
+import { ProductionTypeBadge, ProductionTypePicker } from "@/components/ProductionType";
 import DocHistory from "@/components/DocHistory";
 import MediaPicker from "@/components/MediaPicker";
 import { useT, t as staticT } from "@/lib/i18n";
@@ -592,20 +593,23 @@ function World() {
 
       {error && <ErrorNote>{error}</ErrorNote>}
 
-      {/* Title + logline */}
+      {/* Title + logline + production type */}
       <Panel
         title={<span className="flex items-center gap-2"><Sparkles size={15} className="text-primary" /> {t("The series")}</span>}
         meta={
-          <ExpandSection title={t("The series")} icon={<Sparkles size={18} className="text-primary" />}>
-            <div className="space-y-1">
-              <Eyebrow className="text-sm normal-case tracking-normal text-foreground/80">{t("Title")}</Eyebrow>
-              <WorldField value={world.title} onCommit={(v) => patchWorld({ title: v })} placeholder={t("Untitled world")} big autoGrow />
-            </div>
-            <div className="space-y-1">
-              <Eyebrow className="text-sm normal-case tracking-normal text-foreground/80">{t("Logline")}</Eyebrow>
-              <WorldField value={world.logline} onCommit={(v) => patchWorld({ logline: v })} placeholder={t("One sentence that captures the series.")} big autoGrow />
-            </div>
-          </ExpandSection>
+          <div className="flex items-center gap-2">
+            <ProductionTypeBadge value={world.productionType} long />
+            <ExpandSection title={t("The series")} icon={<Sparkles size={18} className="text-primary" />}>
+              <div className="space-y-1">
+                <Eyebrow className="text-sm normal-case tracking-normal text-foreground/80">{t("Title")}</Eyebrow>
+                <WorldField value={world.title} onCommit={(v) => patchWorld({ title: v })} placeholder={t("Untitled world")} big autoGrow />
+              </div>
+              <div className="space-y-1">
+                <Eyebrow className="text-sm normal-case tracking-normal text-foreground/80">{t("Logline")}</Eyebrow>
+                <WorldField value={world.logline} onCommit={(v) => patchWorld({ logline: v })} placeholder={t("One sentence that captures the series.")} big autoGrow />
+              </div>
+            </ExpandSection>
+          </div>
         }
       >
         <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
@@ -617,6 +621,19 @@ function World() {
             <Eyebrow className="normal-case tracking-normal text-foreground/80">{t("Logline")}</Eyebrow>
             <WorldField value={world.logline} onCommit={(v) => patchWorld({ logline: v })} placeholder={t("One sentence that captures the series.")} rows={2} />
           </div>
+        </div>
+        {/* Production type — the fork in the pipeline. It picks which shot-list
+            skill the agent runs and, with it, the whole shape of every shot's
+            Seedance prompt, so it is set here once before the script. */}
+        <div className="mt-3 space-y-1.5 border-t pt-3">
+          <Eyebrow className="normal-case tracking-normal text-foreground/80">{t("Production type")}</Eyebrow>
+          <ProductionTypePicker
+            value={world.productionType}
+            onChange={(id) => patchWorld({ productionType: id })}
+          />
+          <p className="text-xs text-muted-foreground">
+            {t("2D and 3D-Pixar shots get a one-paragraph Seedance prompt plus the Episode tab's style preset. Live action instead writes each shot as a full block prompt (scene context, optics, lighting, locks) — a different generation run entirely.")}
+          </p>
         </div>
       </Panel>
 

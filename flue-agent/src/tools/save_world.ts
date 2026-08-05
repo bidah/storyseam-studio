@@ -13,6 +13,12 @@ export const saveWorld = (api: Api) =>
     input: v.object({
       title: v.optional(d(v.string(), "The series / world title.")),
       logline: v.optional(d(v.string(), "One sentence that captures the series.")),
+      productionType: v.optional(
+        d(
+          v.picklist(["2d", "3d-pixar", "live-action"]),
+          'What KIND of film this is: "2d" (2D animation, the default), "3d-pixar" (3D, Pixar-like) or "live-action". It decides which shot-list skill runs and therefore the shape of every shot\'s Seedance prompt, so only send it when the AUTHOR has said which kind of production they are making — never infer it from the script. Omitting it keeps whatever is stored.',
+        ),
+      ),
       map: v.optional(
         v.object({
           world: v.optional(d(v.string(), "Q1: What is the world of your story? Where does it take place?")),

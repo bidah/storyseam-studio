@@ -15,6 +15,7 @@ import { listMedia, listMediaSet, mediaKey, filesUrl, putMedia } from "../lib/me
 import { ensureProxy } from "../lib/proxy.js";
 import { buildBundles, charKey, bundleSpeakers } from "../lib/pack.js";
 import { normalizeShot } from "../lib/shots.js";
+import { isLiveAction } from "../lib/production-type.js";
 import { SEED_PROMPTS } from "./visual-world.js";
 
 // The de-facto selections DB (library picks + per-bundle episode selections).
@@ -211,11 +212,27 @@ const resolveStyleId = (db, bundleId) => {
 // Insert (or drop) the STYLE line of a composed skill prompt. Pre-selector
 // manifests baked the house style into skillPrompt at rebuild time — strip any
 // existing STYLE line first so those compose cleanly without a rebuild.
-function applyStyle(prompt, styleText) {
+//
+// WHERE the line goes depends on the production type, because the two prompt
+// systems disagree about it. A 2D/3D-Pixar prompt wants the style up top, as the
+// art-direction header the whole clip inherits. A LIVE-ACTION prompt is written
+// by the shot-list-live-action skill, whose first rule is that nothing
+// style-related opens the prompt — style is distributed into the block that
+// governs it, and the technical suffix (STYLE, OUTPUT SETTINGS) sits at the END,
+// just before POSITIVE LOCKS. Prefixing a live-action prompt would put a style
+// header above SCENE CONTEXT and fight the structure the skill just produced, so
+// there the line is appended instead.
+function applyStyle(prompt, styleText, productionType) {
   const lines = String(prompt || "")
     .split("\n")
     .filter((l) => !/^STYLE:/i.test(l));
-  if (styleText) lines.splice(1, 0, "STYLE: " + styleText.replace(/^STYLE:\s*/i, ""));
+  if (!styleText) return lines.join("\n");
+  const line = "STYLE: " + styleText.replace(/^STYLE:\s*/i, "");
+  if (isLiveAction(productionType)) {
+    lines.push("", line);
+    return lines.join("\n");
+  }
+  lines.splice(1, 0, line);
   return lines.join("\n");
 }
 
@@ -378,12 +395,20 @@ export async function buildEpisodeView(env, pid) {
   // through this view, so they all see the styled prompt. `styleId` rides on
   // each bundle so clients can show which preset is in effect.
   const presets = stylePresetsOf(vw);
+  const productionType = world.productionType;
   const bundles = (manifest.bundles || []).map((b) => {
     const styleId = resolveStyleId(db, b.id);
-    return { ...b, styleId, skillPrompt: applyStyle(b.skillPrompt, styleTextOf(presets, styleId)) };
+    return {
+      ...b,
+      styleId,
+      skillPrompt: applyStyle(b.skillPrompt, styleTextOf(presets, styleId), productionType),
+    };
   });
   return {
     episode: { ...manifest, bundles },
+    // Which kind of film this is — the Episode tab badges its bundle cards with
+    // it, and it is why the STYLE line above landed where it did.
+    productionType,
     video,
     prompts: db.prompt || {},
     signoffs: db.signoffs || {},

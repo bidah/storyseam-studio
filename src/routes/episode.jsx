@@ -17,6 +17,7 @@ import { Slider } from "@/components/ui/slider";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Empty, Chip, ErrorNote, ConfirmModal, IconSwap } from "@/components/shared";
+import { ProductionTypeBadge } from "@/components/ProductionType";
 import MediaPicker from "@/components/MediaPicker";
 import { useShell } from "@/lib/shellContext";
 
@@ -970,7 +971,7 @@ function AudioRefPlayer({ a }) {
   );
 }
 
-function EpisodeBundle({ b, flat, picked, onOpenPicker, onRemove, onView, audioMap, audioPicked, onOpenAudio, vids, allVideos, reloadKey, onToggleVideo, stills, onToggleStill, firstFrame, onSetFirstFrame, refVideo, onSetRefVideo, override, onEditPrompt, onResetPrompt, signoff, onSign, needsState, onLinkNeed, style, onSetStyle }) {
+function EpisodeBundle({ b, flat, picked, onOpenPicker, onRemove, onView, audioMap, audioPicked, onOpenAudio, vids, allVideos, reloadKey, onToggleVideo, stills, onToggleStill, firstFrame, onSetFirstFrame, refVideo, onSetRefVideo, override, onEditPrompt, onResetPrompt, signoff, onSign, needsState, onLinkNeed, style, onSetStyle, productionType }) {
   const t = useT();
   const [open, setOpen] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
@@ -1082,6 +1083,7 @@ function EpisodeBundle({ b, flat, picked, onOpenPicker, onRemove, onView, audioM
           <span className="font-semibold">{b.beatTitle}</span>
         </div>
         <div className="flex flex-wrap items-center gap-1.5">
+          <ProductionTypeBadge value={productionType} />
           <Badge variant="outline">{b.shots.length} {t("shots")}</Badge>
           <Badge variant={b.durationEst > 15 ? "warning" : "muted"}>~{b.durationEst}s → {b.duration}s</Badge>
           {assigned.length > 0 && <Badge variant="success">{assigned.length} {t("refs")}</Badge>}
@@ -1468,6 +1470,9 @@ function Episode({ reloadKey, onView }) {
   const [refVideos, setRefVideos] = useState(payload.ep.refVideos || {}); // { bundle: { from, file } }
   const [needsMap, setNeedsMap] = useState(payload.ep.needs || {}); // { bundle: scene-needs state }
   const [style, setStyle] = useState(payload.ep.style || { episode: "", scenes: {}, presets: [] });
+  // A project property, not a manifest one, so it sits beside `episode` in the
+  // response rather than inside it.
+  const [productionType, setProductionType] = useState(payload.ep.productionType);
   const promptTimers = useRef({});
   const agent = useAgent();
 
@@ -1482,6 +1487,7 @@ function Episode({ reloadKey, onView }) {
     setRefVideos(ep.refVideos || {});
     setNeedsMap(ep.needs || {});
     setStyle(ep.style || { episode: "", scenes: {}, presets: [] });
+    setProductionType(ep.productionType);
     setFolders(lib.folders || []);
     const m = {};
     for (const [k, v] of Object.entries(fn.episode || {})) m[k] = new Set(v);
@@ -1839,6 +1845,7 @@ function Episode({ reloadKey, onView }) {
         <div className="flex flex-wrap items-center justify-between gap-3">
           <h2 className="text-xl font-semibold tracking-tight">{data.title}</h2>
           <div className="flex items-center gap-2">
+            <ProductionTypeBadge value={productionType} long />
             <Select
               value={style.episode || NO_STYLE}
               onValueChange={(v) => onSetStyle(null, v === NO_STYLE ? "" : v)}
@@ -1898,6 +1905,7 @@ function Episode({ reloadKey, onView }) {
               <EpisodeBundle
                 key={b.id}
                 b={b}
+                productionType={productionType}
                 flat={flat}
                 picked={picks[b.id] || new Set()}
                 onOpenPicker={setPickerBundle}

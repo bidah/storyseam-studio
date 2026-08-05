@@ -86,6 +86,10 @@ export async function buildStatus(env, pid) {
     exists: !!(String(world.title || "").trim() || String(world.logline || "").trim() || mapFilled.length || characters.length),
     title: String(world.title || ""),
     hasLogline: !!String(world.logline || "").trim(),
+    // Which kind of film this is — "2d" | "3d-pixar" | "live-action". It decides
+    // which shot-list skill the agent runs, so it belongs in the digest the
+    // agent grounds on rather than behind a separate get_world.
+    productionType: world.productionType,
     map: { filled: mapFilled.length, total: MAP_FIELDS.length, missing: missing(world.map, MAP_FIELDS) },
     depth: { filled: depthFilled.length, total: DEPTH_FIELDS.length, missing: missing(world.depth, DEPTH_FIELDS) },
     characters: {

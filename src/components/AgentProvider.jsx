@@ -27,6 +27,7 @@ import { engineForChatId } from "@/lib/chatEngine";
 import { generateChatTitle } from "@/lib/agentTitle";
 import { dropTranscript, loadTranscript, saveTranscript } from "@/lib/transcript-cache";
 import { getProjectId, onProjectChange } from "@/lib/projectFetch";
+import { isLiveAction } from "@/lib/productionType";
 
 // ---------------------------------------------------------------------------
 // A single shared flue agent conversation for the whole app, backed by a
@@ -833,18 +834,36 @@ export function createVisualWorldMessage(hint) {
 }
 
 // Build the chat turn that generates the granular shot list from the signed
-// script. Routed through the agent (the shot-list skill) like the Render buttons.
-export function generateShotListMessage() {
+// script. Routed through the agent like the Render buttons — but through WHICH
+// skill depends on the project's production type, so the button names it
+// explicitly rather than leaving the model to infer it. A live-action shot list
+// is a different run producing a different prompt document, and the two skills'
+// trigger phrases overlap almost completely ("generate the shot list"), so
+// relying on description-matching alone would route by coin flip.
+export function generateShotListMessage(productionType) {
+  const tail =
+    ` Do NOT render any video and do NOT pack the bundles yourself —` +
+    ` the app auto-packs into <=15s multishots. When done, tell me how many shots you wrote` +
+    ` and how many <=15s multishots they pack into. Then reconcile speakers with the World` +
+    ` roster per the skill: if save_shotlist reports newSpeakers, surface them and offer to` +
+    ` promote the recurring ones into the World with add_world_character.`;
+  if (isLiveAction(productionType)) {
+    return [
+      `Generate the shot list from the script now — the pinned draft is signed.`,
+      `This is a LIVE-ACTION production. Load the shot-list-live-action skill (NOT the` +
+        ` shot-list skill) and follow it: call get_script, break the screenplay into an` +
+        ` ordered list of short (~2-4s) shots, each with beat/location, camera, action,` +
+        ` dialogue and an audio-sync note, and write every shot's Seedance prompt as` +
+        ` promptBlocks — the block document the skill specifies, not one paragraph —` +
+        ` then call save_shotlist.` + tail,
+    ].join("\n");
+  }
   return [
     `Generate the shot list from the script now — the pinned draft is signed.`,
     `Load the shot-list skill and follow it: call get_script, break the screenplay into an` +
       ` ordered list of short (~2-4s) shots, each with beat/location, camera, action,` +
       ` dialogue, an audio-sync note, and a Seedance prompt, then` +
-      ` call save_shotlist. Do NOT render any video and do NOT pack the bundles yourself —` +
-      ` the app auto-packs into <=15s multishots. When done, tell me how many shots you wrote` +
-      ` and how many <=15s multishots they pack into. Then reconcile speakers with the World` +
-      ` roster per the skill: if save_shotlist reports newSpeakers, surface them and offer to` +
-      ` promote the recurring ones into the World with add_world_character.`,
+      ` call save_shotlist.` + tail,
   ].join("\n");
 }
 

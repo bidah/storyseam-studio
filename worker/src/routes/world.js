@@ -6,6 +6,9 @@
 // field-by-field from the World tab.
 import { readDoc, updateDoc } from "../lib/docs.js";
 import { assetRefUrl } from "../lib/media.js";
+import {
+  normalizeProductionType, DEFAULT_PRODUCTION_TYPE, PRODUCTION_TYPE_IDS,
+} from "../lib/production-type.js";
 
 // The story map — the 5 questions that shape the story (see the World tab).
 export const MAP_FIELDS = ["world", "protagonist", "antagonist", "stakes", "theme"];
@@ -25,6 +28,13 @@ function emptyWorld() {
     source: null,
     title: "",
     logline: "",
+    // What kind of film this is (see lib/production-type.js). It lives on the
+    // world bible because it is a property of the SERIES, decided before the
+    // script, and everything downstream branches on it — most visibly which
+    // shot-list skill the agent runs and which prompt editor the Shot list tab
+    // renders. Absent = "2d", so every project that predates this keeps its
+    // exact previous behaviour.
+    productionType: DEFAULT_PRODUCTION_TYPE,
     map: emptySection(MAP_FIELDS),
     depth: emptySection(DEPTH_FIELDS),
     characters: [],
@@ -98,6 +108,11 @@ const keep = (incoming, prev) => {
   return s.trim() ? s : prev;
 };
 
+// `keep` for the production-type enum: only a RECOGNISED id overwrites, so a
+// partial save or a model typo can never flip the project's type.
+const keepProductionType = (incoming, prev) =>
+  PRODUCTION_TYPE_IDS.includes(String(incoming || "")) ? String(incoming) : prev;
+
 const mergeSection = (fields, incoming, prev) =>
   Object.fromEntries(fields.map((f) => [f, keep(incoming?.[f], prev?.[f])]));
 
@@ -152,6 +167,7 @@ function normalizeWorld(raw) {
   const w = raw || {};
   base.title = str(w.title);
   base.logline = str(w.logline);
+  base.productionType = normalizeProductionType(w.productionType);
   base.generatedAt = w.generatedAt ?? null;
   base.source = w.source ?? null;
   for (const f of MAP_FIELDS) base.map[f] = str(w.map?.[f]);
@@ -239,6 +255,11 @@ export function registerWorld(app) {
       const merged = normalizeWorld({
         title: keep(incoming?.title, prev.title),
         logline: keep(incoming?.logline, prev.logline),
+        // Same merge rule as every other field, but checked against the enum
+        // FIRST: `normalizeWorld` coerces anything unrecognised to "2d", so
+        // passing a typo straight through would silently demote a live-action
+        // project. An omitted or invalid value keeps what's stored.
+        productionType: keepProductionType(incoming?.productionType, prev.productionType),
         map: mergeSection(MAP_FIELDS, incoming?.map, prev.map),
         depth: mergeSection(DEPTH_FIELDS, incoming?.depth, prev.depth),
         characters: mergeRoster(CHAR_FIELDS, incoming?.characters, prev.characters, normalizeChar),
@@ -261,6 +282,12 @@ export function registerWorld(app) {
     const { world } = await editWorld(c.env, pid, (world) => {
       if (typeof patch.title === "string") world.title = patch.title;
       if (typeof patch.logline === "string") world.logline = patch.logline;
+      // The World tab's production-type selector. Unlike the free-text fields
+      // this one is an enum, so an unrecognised id is rejected rather than
+      // written — there is no "clear it" state to honour here.
+      if (PRODUCTION_TYPE_IDS.includes(String(patch.productionType || ""))) {
+        world.productionType = String(patch.productionType);
+      }
       if (patch.map && typeof patch.map === "object") {
         for (const f of MAP_FIELDS) if (f in patch.map) world.map[f] = str(patch.map[f]);
       }

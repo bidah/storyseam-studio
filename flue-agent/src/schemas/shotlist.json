@@ -2,7 +2,7 @@
   "capability": "shotlist.save",
   "route": "POST /api/shotlist",
   "tool": "save_shotlist",
-  "description": "Write the Shot list on the Shot list tab (the granular per-shot breakdown that auto-packs into <=15s multishot bundles). Two modes via `mode`: \"replace\" (default) OVERWRITES all shots; \"append\" adds `shots` to the END of the current list. For a full episode, DO NOT emit the whole list in one \"replace\" call — that single tool call can exceed the model output limit and fail the turn. Instead build it beat by beat: call once with mode \"replace\" carrying only the FIRST beat, then call again with mode \"append\" for each subsequent beat. Each call is bounded and the list is durably saved after every batch (a crash mid-generation leaves resumable partial progress). ALWAYS carry each existing shot's `id` through unchanged: shot ids key generated media that lives elsewhere (storyboard stills, the animatic's picture track), so inventing new ids for existing shots orphans that media. Only omit `id` for a genuinely NEW shot. Each shot's `beat`/`beatTitle` and `location` drive the packing (a bundle never crosses a beat or location and never exceeds 15s), so keep consecutive same-location shots grouped and give a realistic `dur`. `prompt` is the Seedance prompt (fold any 2D-directing intent directly into it). Returns the shot count (running total), the write mode, how many ids were preserved vs auto-numbered (replace only), any warnings, `newSpeakers` (speaking characters in the shot list with NO World roster record yet — each with its line count and the shots/beats it appears in, so you can offer to promote the recurring ones into the World with add_world_character and leave one-off bit-parts off), and the resulting <=15s pack preview.",
+  "description": "Write the Shot list on the Shot list tab (the granular per-shot breakdown that auto-packs into <=15s multishot bundles). Two modes via `mode`: \"replace\" (default) OVERWRITES all shots; \"append\" adds `shots` to the END of the current list. For a full episode, DO NOT emit the whole list in one \"replace\" call — that single tool call can exceed the model output limit and fail the turn. Instead build it beat by beat: call once with mode \"replace\" carrying only the FIRST beat, then call again with mode \"append\" for each subsequent beat. Each call is bounded and the list is durably saved after every batch (a crash mid-generation leaves resumable partial progress). ALWAYS carry each existing shot's `id` through unchanged: shot ids key generated media that lives elsewhere (storyboard stills, the animatic's picture track), so inventing new ids for existing shots orphans that media. Only omit `id` for a genuinely NEW shot. Each shot's `beat`/`beatTitle` and `location` drive the packing (a bundle never crosses a beat or location and never exceeds 15s), so keep consecutive same-location shots grouped and give a realistic `dur`. The render prompt is written ONE of two ways, decided by the project's `productionType` (read it with get_world): a `2d` or `3d-pixar` project sends `prompt`, one vivid paragraph with the 2D-directing intent folded in; a `live-action` project sends `promptBlocks` instead and the server composes `prompt` from them. Do not send both — `promptBlocks` wins. Returns the shot count (running total), the write mode, how many ids were preserved vs auto-numbered (replace only), any warnings, `newSpeakers` (speaking characters in the shot list with NO World roster record yet — each with its line count and the shots/beats it appears in, so you can offer to promote the recurring ones into the World with add_world_character and leave one-off bit-parts off), and the resulting <=15s pack preview.",
   "input": {
     "type": "object",
     "fields": {
@@ -67,7 +67,117 @@
             },
             "prompt": {
               "type": "string",
-              "description": "The Seedance prompt for this shot."
+              "optional": true,
+              "description": "The Seedance prompt for this shot, as ONE paragraph. This is the 2D / 3D-Pixar form (see the shot-list skill). For a LIVE-ACTION project send `promptBlocks` instead and omit this — the server composes `prompt` from the blocks, and anything sent here is overwritten. A shot with neither is saved with an empty render prompt and warned about."
+            },
+            "promptBlocks": {
+              "type": "object",
+              "optional": true,
+              "description": "The LIVE-ACTION Seedance prompt, written as the block structure of the shot-list-live-action skill instead of one paragraph. Send ONLY the blocks this shot actually needs — an omitted or empty block is dropped, never emitted as an empty heading. The server composes them, in the fixed order below, into the shot's `prompt` (each block as its heading line then its text), so `prompt` stays the single thing the renderer reads. Nothing style-related opens the prompt: descriptive style lives in the block it governs, and the technical STYLE / OUTPUT SETTINGS suffix sits just before POSITIVE LOCKS.",
+              "fields": {
+                "sceneContext": {
+                  "type": "string",
+                  "optional": true,
+                  "label": "SCENE CONTEXT",
+                  "description": "1-2 sentences: what happens, where, when, and the geo-positions of the characters."
+                },
+                "activeReferences": {
+                  "type": "string",
+                  "optional": true,
+                  "label": "ACTIVE REFERENCES",
+                  "description": "@tag + a MINIMAL anchor of the action-critical details + \"100% matches the reference\". Long appearance text fights the reference image and degrades it. Never name a @tag in a shot where that person/object is not present."
+                },
+                "locationMap": {
+                  "type": "string",
+                  "optional": true,
+                  "label": "LOCATION MAP",
+                  "description": "Foreground / midground / background as separate layers, where the camera sits, where the light comes from, the movement paths. Naturalistic colour can live here instead of a COLOR GRADE block."
+                },
+                "firstFrame": {
+                  "type": "string",
+                  "optional": true,
+                  "label": "FIRST FRAME / BLOCKING",
+                  "description": "Who is where in the FIRST frame: positions, orientation, gaze, plus the composition rule for this scene. The first frame is never empty and everybody is already moving."
+                },
+                "formatMode": {
+                  "type": "string",
+                  "optional": true,
+                  "label": "FORMAT MODE",
+                  "description": "The level of cut control this shot needs: a single continuous shot (\"one continuous shot, the camera does not cut on its own\"), sequential CUT 1 / CUT 2 with no timecodes, or a timed multishot with explicit HARD CUTs at stated seconds. When you specify cuts, lock that the camera adds none of its own."
+                },
+                "optics": {
+                  "type": "string",
+                  "optional": true,
+                  "label": "OPTICS",
+                  "description": "Shot size (ECU/CU/MCU/MS/WS/EWS) + FOV in DEGREES from the anchor table (180/107/84/63/47/29/18/12/8 only — never millimetres, never an off-table value) + lens character. Multishot: FOV per segment plus \"no drift mid-segment\"."
+                },
+                "camera": {
+                  "type": "string",
+                  "optional": true,
+                  "label": "CAMERA",
+                  "description": "Operator behaviour: height, distance, movement, focus, the operator axis, and the camera-body tonal character described as a look (never a make or model name). Keep this block in 3rd position — moved to the end its FOV gets ignored."
+                },
+                "action": {
+                  "type": "string",
+                  "optional": true,
+                  "label": "ACTION",
+                  "description": "The events, at the precision this shot needs. State CAMERA motion and SUBJECT motion separately. Speeds in km/h, atmosphere in % / metres, scale by human-height comparison, left/right from the camera."
+                },
+                "performance": {
+                  "type": "string",
+                  "optional": true,
+                  "label": "PERFORMANCE",
+                  "description": "When acting matters: emotion as muscle movement (not labels), micro-pauses, precise eye-line, restraint — plus skin micro-realism (pore-level detail, capillary flush, catch-lights, living eyes, visible breath)."
+                },
+                "physics": {
+                  "type": "string",
+                  "optional": true,
+                  "label": "PHYSICS",
+                  "description": "Mass, inertia, contact shadows, fluids, particles — and how the environment interacts physically (snow melting on skin, rain running down hair, wind moving fabric)."
+                },
+                "lighting": {
+                  "type": "string",
+                  "optional": true,
+                  "label": "LIGHTING",
+                  "description": "The priority block: source, direction, exposure, key/fill, haze for THIS scene, and white balance in Kelvin (3200K / 4000K / 5600K / 8500K) fixed across the scene."
+                },
+                "colorGrade": {
+                  "type": "string",
+                  "optional": true,
+                  "label": "COLOR GRADE",
+                  "description": "Only when the grade is strong or stylised. Palette as material + light beam + compositional role, never a flat list of colours. Omit for a naturalistic look and fold colour into LOCATION MAP / LIGHTING."
+                },
+                "wardrobe": {
+                  "type": "string",
+                  "optional": true,
+                  "label": "WARDROBE",
+                  "description": "Only when costume matters: material + condition, scene-logical."
+                },
+                "audio": {
+                  "type": "string",
+                  "optional": true,
+                  "label": "AUDIO",
+                  "description": "Only the sound or spoken line this shot actually needs."
+                },
+                "style": {
+                  "type": "string",
+                  "optional": true,
+                  "label": "STYLE",
+                  "description": "The technical-style suffix: the overall look in words, photoreal, format, grain. No director names, no signature-work references, no equipment names."
+                },
+                "outputSettings": {
+                  "type": "string",
+                  "optional": true,
+                  "label": "OUTPUT SETTINGS",
+                  "description": "Only when the format must be pinned: resolution, anamorphic, real-time vs slow-mo per segment."
+                },
+                "positiveLocks": {
+                  "type": "string",
+                  "optional": true,
+                  "label": "POSITIVE LOCKS",
+                  "description": "Short hard fixers against the likely failures, in POSITIVE form, restating the critical info once. Continuity across cuts lives here (same character set, geometry, screen direction, gaze, light, wardrobe, prop state)."
+                }
+              }
             }
           }
         }

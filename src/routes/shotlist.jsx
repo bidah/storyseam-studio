@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useLoaderData, useRevalidator } from "react-router";
-import { X, RefreshCw, Loader2, Layers, Film } from "lucide-react";
+import { X, RefreshCw, Loader2, Layers, Film, Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useT } from "@/lib/i18n";
 import { invalidateTabCache } from "@/lib/tabCache";
@@ -13,6 +13,8 @@ import { Command, CommandGroup, CommandItem, CommandList } from "@/components/ui
 import { Popover, PopoverAnchor, PopoverContent } from "@/components/ui/popover";
 import { Empty, Panel, ErrorNote, fmtTime } from "@/components/shared";
 import { CAMERA_FRAMINGS, CAMERA_MOVES } from "@/lib/cameraOptions";
+import { ProductionTypeBadge } from "@/components/ProductionType";
+import { PROMPT_BLOCKS, isLiveAction } from "@/lib/productionType";
 
 // PUT one field of shot :n; returns the fresh shot list + pack preview (or null).
 async function saveShotField(n, body) {
@@ -35,16 +37,22 @@ const fieldCls = (mono) => cn(
 
 // One inline-editable shot field. Saves on blur (only when changed) via
 // PUT /api/shotlist/shot/:n and hands the fresh pack preview back up.
-function ShotField({ n, field, value, onSaved, multiline, mono, placeholder, rows = 2 }) {
+//
+// `block` switches it to editing ONE live-action prompt block: the patch carries
+// just that key under `promptBlocks` and the route merges it onto the stored
+// blocks, so the other sixteen survive an edit to this one.
+function ShotField({ n, field, block, value, onSaved, multiline, mono, placeholder, rows = 2 }) {
   const [v, setV] = useState(value ?? "");
   useEffect(() => { setV(value ?? ""); }, [value]);
   const commit = async () => {
     if ((v ?? "") === (value ?? "")) return;
-    const body = field === "characters"
-      ? { characters: v.split(",").map((x) => x.trim()).filter(Boolean) }
-      : field === "dur"
-        ? { dur: Number(v) || 0 }
-        : { [field]: v };
+    const body = block
+      ? { promptBlocks: { [block]: v } }
+      : field === "characters"
+        ? { characters: v.split(",").map((x) => x.trim()).filter(Boolean) }
+        : field === "dur"
+          ? { dur: Number(v) || 0 }
+          : { [field]: v };
     const json = await saveShotField(n, body);
     if (json) onSaved?.(json);
   };
@@ -139,6 +147,70 @@ function CameraField({ n, value, onSaved }) {
   );
 }
 
+// The LIVE-ACTION render prompt, edited block by block instead of as one
+// paragraph. The sections, their order and their guidance all come from
+// `shared/schemas/shotlist.json` — the same contract the agent's
+// shot-list-live-action skill fills in — so what the author edits here is
+// exactly what the model was asked to write, section for section.
+//
+// Blocks are optional by design: the skill says to use only the ones the shot
+// needs, so an unfilled block is a legitimate answer, not a blank to chase. The
+// filled ones render open; the rest collapse behind a single "add a section"
+// row so a naturalistic oner isn't seventeen empty textareas.
+function PromptBlocks({ shot, onSaved }) {
+  const t = useT();
+  const blocks = shot.promptBlocks || {};
+  const [revealed, setRevealed] = useState([]);
+  const filled = PROMPT_BLOCKS.filter((b) => String(blocks[b.key] || "").trim());
+  const shown = PROMPT_BLOCKS.filter(
+    (b) => String(blocks[b.key] || "").trim() || revealed.includes(b.key),
+  );
+  const hidden = PROMPT_BLOCKS.filter((b) => !shown.includes(b));
+
+  return (
+    <div className="sm:col-span-2 space-y-2 rounded-md border border-dashed p-2">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+          {t("Seedance prompt — live action")}
+        </span>
+        <Badge variant="outline">{filled.length}/{PROMPT_BLOCKS.length} {t("blocks")}</Badge>
+      </div>
+      {shown.map((b) => (
+        <label key={b.key} className="block">
+          <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground" title={b.description}>
+            {b.label}
+          </span>
+          <ShotField
+            n={shot.n}
+            block={b.key}
+            value={blocks[b.key] || ""}
+            onSaved={onSaved}
+            placeholder={b.description}
+            multiline
+            rows={2}
+          />
+        </label>
+      ))}
+      {hidden.length > 0 && (
+        <div className="flex flex-wrap items-center gap-1 pt-1">
+          <span className="text-[10px] uppercase tracking-wide text-muted-foreground">{t("add a section")}</span>
+          {hidden.map((b) => (
+            <button
+              key={b.key}
+              type="button"
+              title={b.description}
+              onClick={() => setRevealed((cur) => [...cur, b.key])}
+              className="rounded border border-dashed px-1.5 py-0.5 text-[10px] text-muted-foreground transition-colors hover:bg-accent"
+            >
+              <Plus size={9} className="inline" /> {b.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ShotList() {
   const t = useT();
   const agent = useAgent();
@@ -183,6 +255,7 @@ function ShotList() {
 
   const shots = data.shots || [];
   const packs = data.packs || [];
+  const liveAction = isLiveAction(data.productionType);
   const runtime = shots.reduce((a, s) => a + (Number(s.dur) || 0), 0);
   const packById = new Map();
   packs.forEach((p) => p.shotIds.forEach((id) => packById.set(id, p.id)));
@@ -207,6 +280,7 @@ function ShotList() {
         <div className="flex flex-wrap items-center justify-between gap-3">
           <h2 className="text-xl font-semibold tracking-tight">Shot list</h2>
           <div className="flex flex-wrap items-center gap-2">
+            <ProductionTypeBadge value={data.productionType} long />
             <Button variant="outline" onClick={rebuild} disabled={rebuilding}>
               {rebuilding ? <><Loader2 size={13} className="animate-spin" /> rebuilding…</> : <><RefreshCw size={13} /> rebuild from current episode</>}
             </Button>
@@ -235,7 +309,12 @@ function ShotList() {
               <Panel
                 key={b.beat + b.shots[0].id}
                 title={<span className="flex items-center gap-2"><Film size={15} className="text-primary" /> {b.beatTitle || b.beat}</span>}
-                meta={<Badge variant="outline">{b.shots.length} shots</Badge>}
+                meta={
+                  <div className="flex items-center gap-2">
+                    <Badge variant="outline">{b.shots.length} shots</Badge>
+                    <ProductionTypeBadge value={data.productionType} />
+                  </div>
+                }
               >
                 <div className="space-y-3">
                   {b.shots.map((s) => (
@@ -261,8 +340,16 @@ function ShotList() {
                           <ShotField n={s.n} field="dialogue" value={s.dialogue} onSaved={onSaved} multiline /></label>
                         <label className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Audio sync
                           <ShotField n={s.n} field="audioSync" value={s.audioSync} onSaved={onSaved} multiline /></label>
-                        <label className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground sm:col-span-2">Seedance prompt
-                          <ShotField n={s.n} field="prompt" value={s.prompt} onSaved={onSaved} multiline rows={4} /></label>
+                        {/* The render prompt takes one of two forms, and which
+                            one is the project's production type, not a per-shot
+                            choice: a paragraph for 2D / 3D-Pixar, the block
+                            document for live action. */}
+                        {liveAction ? (
+                          <PromptBlocks shot={s} onSaved={onSaved} />
+                        ) : (
+                          <label className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground sm:col-span-2">Seedance prompt
+                            <ShotField n={s.n} field="prompt" value={s.prompt} onSaved={onSaved} multiline rows={4} /></label>
+                        )}
                       </div>
                     </div>
                   ))}

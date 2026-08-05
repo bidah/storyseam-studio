@@ -1,7 +1,16 @@
 // One shot's canonical field set (ported verbatim from server/index.js
 // normalizeShot). `i` is the shot's zero-based position; `n` is 1-based.
+import { normalizePromptBlocks, composePromptBlocks } from "./production-type.js";
+
 export function normalizeShot(s, i) {
   const n = i + 1;
+  // A LIVE-ACTION shot is authored as `promptBlocks` (the block structure of the
+  // shot-list-live-action skill) rather than as one paragraph. `prompt` stays the
+  // single field the renderer reads — pack.js splices it into the bundle's
+  // skillPrompt and knows nothing about blocks — so it is DERIVED here whenever
+  // blocks exist. One source of truth: edit a block on the Shot list tab and the
+  // composed prompt follows, with no second copy to keep in sync.
+  const promptBlocks = normalizePromptBlocks(s.promptBlocks);
   return {
     n,
     id: s.id || String(n).padStart(2, "0"),
@@ -15,6 +24,7 @@ export function normalizeShot(s, i) {
     action: s.action || s.summary || "",
     dialogue: s.dialogue || "",
     audioSync: s.audioSync || "",
-    prompt: s.prompt || "",
+    ...(promptBlocks ? { promptBlocks } : {}),
+    prompt: promptBlocks ? composePromptBlocks(promptBlocks) : (s.prompt || ""),
   };
 }

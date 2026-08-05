@@ -585,8 +585,16 @@ function ShotlistGate({ draftId, signed, shotlistExists, onSignedChange }) {
     }
   }, [onSignedChange]);
 
-  const generate = useCallback(() => {
-    agent.send({ message: generateShotListMessage() }).catch(() => {});
+  // Which shot-list skill the turn asks for depends on the project's production
+  // type, which lives on the world bible — read it here rather than threading it
+  // through the Script route's loader for one button. A failed read falls back to
+  // the default (2D), which is the pre-existing behaviour.
+  const generate = useCallback(async () => {
+    let productionType;
+    try {
+      productionType = (await fetch("/api/world").then((r) => r.json()))?.productionType;
+    } catch { /* fall back to the 2D wording */ }
+    agent.send({ message: generateShotListMessage(productionType) }).catch(() => {});
   }, [agent]);
 
   const genDisabled = agentBusy || !signed || shotlistExists;

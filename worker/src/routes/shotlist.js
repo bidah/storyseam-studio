@@ -16,6 +16,7 @@ import { validateBody } from "../lib/validate.js";
 import shotlistSchema from "../schemas/shotlist.json";
 import { normalizeShot } from "../lib/shots.js";
 import { packPreview } from "../lib/pack.js";
+import { normalizeProductionType, isLiveAction } from "../lib/production-type.js";
 
 // Carry stored shot ids onto an incoming bulk save that omitted them.
 //
@@ -170,6 +171,39 @@ function newSpeakersNotInWorld(shots, worldNames) {
     .sort((a, b) => b.lines - a.lines);
 }
 
+// Warn when the render prompts a batch carries don't match the shape the
+// project's production type calls for. Neither case is an error — the shots save
+// either way — but both produce a render prompt the author didn't intend, and
+// silently is how you find out three bundles later:
+//   - a live-action project sent paragraph `prompt`s: the shot renders, but
+//     without the block structure the live-action skill exists to produce.
+//   - a 2D/3D project sent `promptBlocks`: the blocks compose into `prompt`
+//     fine, so this is only worth saying when it looks like the wrong skill ran.
+//   - a shot with NEITHER renders from an empty prompt.
+function promptShapeWarnings(shots, productionType) {
+  const w = [];
+  const empty = shots.filter((s) => !s.promptBlocks && !String(s.prompt || "").trim());
+  if (empty.length) {
+    w.push(
+      `${empty.length} shot(s) have no render prompt at all (neither \`prompt\` nor \`promptBlocks\`) — they will render from an empty prompt.`,
+    );
+  }
+  const live = isLiveAction(productionType);
+  const blocked = shots.filter((s) => s.promptBlocks).length;
+  const paragraph = shots.length - blocked - empty.length;
+  if (live && paragraph > 0) {
+    w.push(
+      `This is a LIVE-ACTION project but ${paragraph} shot(s) carry a one-paragraph \`prompt\` instead of \`promptBlocks\`. Live-action shots are written with the shot-list-live-action skill's block structure — rewrite them with promptBlocks.`,
+    );
+  }
+  if (!live && blocked > 0) {
+    w.push(
+      `This is a ${normalizeProductionType(productionType)} project but ${blocked} shot(s) carry \`promptBlocks\` (the live-action form). Those blocks were composed into \`prompt\`, but a 2D/3D-Pixar shot is written as one vivid paragraph by the shot-list skill.`,
+    );
+  }
+  return w;
+}
+
 // Human-readable warnings for a canonicalization pass (empty when nothing moved).
 function nameWarnings(remaps, ambiguous) {
   const w = [];
@@ -231,7 +265,16 @@ export async function buildShotlistView(env, pid) {
     const rebuilt = await rebuildShotlistFromEpisode(env, pid);
     if (rebuilt) sl = rebuilt;
   }
-  return { ...sl, packs: packPreview(sl.shots) };
+  // The project's production type rides along on the read. It lives on the world
+  // doc, but every consumer of the shot list needs it to know which form a shot's
+  // render prompt takes — the Shot list tab picks its prompt editor from it, and
+  // the agent gets it without a second get_world.
+  const world = await readDoc(env, pid, "world", null);
+  return {
+    ...sl,
+    productionType: normalizeProductionType(world?.productionType),
+    packs: packPreview(sl.shots),
+  };
 }
 
 // Replace the whole shot list, or append a batch to the end (`mode:"append"`).
@@ -258,8 +301,9 @@ export async function saveShotlist(env, pid, body) {
   // no World match are left untouched; ambiguous ones are surfaced.
   const world = await readDoc(env, pid, "world", { characters: [] });
   const worldNames = (world.characters || []).map((ch) => String(ch?.name || "").trim()).filter(Boolean);
+  const productionType = normalizeProductionType(world?.productionType);
   const { shots, remaps, ambiguous } = canonicalizeShotNames(rawShots, worldNames);
-  const nameWarns = nameWarnings(remaps, ambiguous);
+  const nameWarns = [...nameWarnings(remaps, ambiguous), ...promptShapeWarnings(shots, productionType)];
 
   // COMPARE-AND-SWAP, not read-then-write. Three writers share this document —
   // the author's bulk save on the Shot list tab, the agent appending a beat at a
@@ -285,6 +329,7 @@ export async function saveShotlist(env, pid, body) {
       const newSpeakers = newSpeakersNotInWorld(doc.shots, worldNames);
       return {
         ok: true, mode: "append", appended: shots.length, count: doc.shots.length,
+        productionType,
         ...(nameWarns.length ? { warnings: nameWarns } : {}),
         ...(newSpeakers.length ? { newSpeakers } : {}),
         packs: packPreview(doc.shots),
@@ -307,6 +352,7 @@ export async function saveShotlist(env, pid, body) {
     return {
       ok: true,
       count: doc.shots.length,
+      productionType,
       idsPreserved: inherited,
       idsInvented: invented,
       ...(warnings.length ? { warnings } : {}),
@@ -349,11 +395,31 @@ export function registerShotlist(app) {
       const shots = (doc.shots || []).map(normalizeShot);
       const idx = shots.findIndex((s) => s.n === n);
       if (idx < 0) return { abort: true, missing: true };
-      shots[idx] = normalizeShot({ ...shots[idx], ...patch }, idx);
+      // On a shot that has blocks, `prompt` is DERIVED — normalizeShot would
+      // recompose it and throw this edit away. Silently accepting the write and
+      // showing the old text back is the worst version of that, so say no. (Any
+      // client still offering a single prompt box for a live-action shot — the
+      // mobile app does — lands here rather than losing the author's typing.)
+      if ("prompt" in patch && shots[idx].promptBlocks) {
+        return { abort: true, derived: true };
+      }
+      // `promptBlocks` merges rather than replaces: the Shot list tab edits ONE
+      // live-action block at a time and sends just that block, so a spread would
+      // wipe the other sixteen. Clearing a block is sending it as "".
+      const next = { ...shots[idx], ...patch };
+      if (patch.promptBlocks && typeof patch.promptBlocks === "object") {
+        next.promptBlocks = { ...(shots[idx].promptBlocks || {}), ...patch.promptBlocks };
+      }
+      shots[idx] = normalizeShot(next, idx);
       doc.shots = shots;
       return { shot: shots[idx], packs: packPreview(shots) };
     });
     if (res.missing) return c.json({ error: `no shot ${n}` }, 404);
+    if (res.derived) {
+      return c.json({
+        error: `Shot ${n} is a live-action shot: its \`prompt\` is composed from \`promptBlocks\` and cannot be edited directly. Patch the block you mean instead, e.g. { "promptBlocks": { "lighting": "…" } }.`,
+      }, 409);
+    }
     return c.json({ ok: true, shot: res.shot, packs: res.packs });
   });
 
