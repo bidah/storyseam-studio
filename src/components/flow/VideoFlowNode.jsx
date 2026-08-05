@@ -6,8 +6,10 @@ import PromptEditor from "./PromptEditor";
 import NodeSettingsBar from "./NodeSettingsBar";
 import { modelLabel } from "./model-label";
 import { useFlowMeta } from "./flow-context";
+import { useT } from "@/lib/i18n";
 
 function VideoFlowNode({ data }) {
+  const t = useT();
   const { node, status, generation, readOnly } = data;
   const { videoModels } = useFlowMeta();
   const settings = node.settings || {};
@@ -22,7 +24,7 @@ function VideoFlowNode({ data }) {
       <TargetHandle id="text-input" top="72%" />
 
       <FlowNodeShell
-        title="Video"
+        title={t("Video")}
         icon={<Clapperboard size={16} />}
         modelName={modelLabel(videoModels, settings.model, "Seedance")}
         status={status}
@@ -45,7 +47,7 @@ function VideoFlowNode({ data }) {
         <PromptEditor
           value={node.prompt}
           readOnly={readOnly}
-          placeholder="Describe the motion. Wire an image into the frame handle to set the first frame."
+          placeholder={t("Describe the motion. Wire an image into the frame handle to set the first frame.")}
           onChange={onPromptChange}
           inheritedText={data.inheritedText}
         />

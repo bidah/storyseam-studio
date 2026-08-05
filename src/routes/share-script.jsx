@@ -26,6 +26,7 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
 } from "@/components/ui/dropdown-menu";
+import { useT } from "@/lib/i18n";
 
 export async function loader({ params }) {
   const res = await fetch(`/api/share/script/${params.token}`);
@@ -43,6 +44,7 @@ const fmtDate = (iso) =>
   iso ? new Date(iso).toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" }) : "";
 
 export function Component() {
+  const t = useT();
   const initial = useLoaderData();
   const { drafts = [], token } = initial;
 
@@ -103,11 +105,13 @@ export function Component() {
       <div className="mx-auto max-w-3xl space-y-4 px-4 py-10 sm:py-14">
         <header className="space-y-1.5">
           <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            <ScrollText size={13} /> Shared script · read-only
+            <ScrollText size={13} /> {t("Shared script · read-only")}
           </p>
-          <h1 className="text-3xl font-bold tracking-tight">{current.title || "Untitled script"}</h1>
+          <h1 className="text-3xl font-bold tracking-tight">{current.title || t("Untitled script")}</h1>
           {current.updatedAt ? (
-            <p className="text-xs text-muted-foreground">Last updated {fmtDate(current.updatedAt)}</p>
+            <p className="text-xs text-muted-foreground">
+              {t("Last updated {date}", { date: fmtDate(current.updatedAt) })}
+            </p>
           ) : null}
         </header>
 
@@ -156,7 +160,9 @@ export function Component() {
           <EditorContent editor={editor} />
         </div>
 
-        <footer className="pt-2 text-center text-xs text-muted-foreground">Shared from StorySeam</footer>
+        <footer className="pt-2 text-center text-xs text-muted-foreground">
+          {t("Shared from StorySeam")}
+        </footer>
       </div>
     </div>
   );

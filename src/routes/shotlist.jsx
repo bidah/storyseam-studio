@@ -767,7 +767,7 @@ function ShotList() {
               scrollable on its own (the list gets long). Click a pack to filter
               the body to just its shots; click again to show all. */}
           <aside className="shrink-0 md:order-first md:sticky md:top-[73px] md:w-[260px] md:self-start md:max-h-[calc(100dvh-92px)] md:overflow-y-auto lg:w-[300px]">
-            <Panel title={<span className="flex items-center gap-2"><Layers size={15} className="text-primary" /> Multishot packs</span>} meta={<Badge variant="outline">{packs.length}</Badge>}>
+            <Panel title={<span className="flex items-center gap-2"><Layers size={15} className="text-primary" /> {t("Multishot packs")}</span>} meta={<Badge variant="outline">{packs.length}</Badge>}>
               {effPack && (
                 <button
                   type="button"

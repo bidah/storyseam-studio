@@ -22,6 +22,7 @@ import { invalidateTabCache } from "@/lib/tabCache";
 import { swr, useRevalidateOnMount, useRevalidateOnAgentIdle } from "@/lib/swr";
 import { useAgent } from "@/components/AgentProvider";
 import { Button } from "@/components/ui/button";
+import { useT } from "@/lib/i18n";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import {
   ContextMenu, ContextMenuContent, ContextMenuTrigger,
@@ -47,6 +48,7 @@ function nodeStatus(run, node) {
 }
 
 function Canvas() {
+  const t = useT();
   const world = useLoaderData();
   const agent = useAgent();
   const revalidator = useRevalidator();
@@ -253,7 +255,10 @@ function Canvas() {
       if (e.targetHandle === "text-input") {
         cur.inheritedText = cur.inheritedText || (src ? src.prompt : "");
       } else if ((e.targetHandle === "image-input" || e.targetHandle === "start-frame") && g?.url) {
-        cur.refThumbs.push({ label: e.targetHandle === "start-frame" ? "Start frame" : `Image ${cur.refThumbs.length + 1}`, url: g.url, thumb: g.thumb });
+        cur.refThumbs.push({
+          label: e.targetHandle === "start-frame" ? t("Start frame") : t("Image {n}", { n: cur.refThumbs.length + 1 }),
+          url: g.url, thumb: g.thumb,
+        });
       }
       out.set(e.target, cur);
     }
@@ -498,7 +503,7 @@ function Canvas() {
               <FlowPanel position="top-center" className="pointer-events-none mt-16 text-center">
                 <div className="pointer-events-auto rounded-xl border border-dashed bg-card/90 p-6 shadow-sm backdrop-blur">
                   <Sparkles size={20} className="mx-auto mb-2 text-primary" />
-                  <Empty>right-click the canvas to add an Image, Video, Text or Source node — then wire them up and Run.</Empty>
+                  <Empty>{t("right-click the canvas to add an Image, Video, Text or Source node — then wire them up and Run.")}</Empty>
                 </div>
               </FlowPanel>
             )}
@@ -519,24 +524,24 @@ function Canvas() {
       <div className="space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
-            <h2 className="text-xl font-semibold tracking-tight">Visual nodes</h2>
+            <h2 className="text-xl font-semibold tracking-tight">{t("Visual nodes")}</h2>
             <p className="text-sm text-muted-foreground">
-              Build a generation graph — wire images and prompts into nodes, then Run to generate images and video along the lineage.
+              {t("Build a generation graph — wire images and prompts into nodes, then Run to generate images and video along the lineage.")}
             </p>
           </div>
           <div className="flex items-center gap-2">
             {run?.active && (
               <span className="inline-flex items-center gap-1.5 rounded-md bg-primary/10 px-2 py-1 text-xs font-medium text-primary">
-                <Loader2 size={12} className="animate-spin" /> running {run.ready.length + run.errored.length}/{run.runSet.length}
+                <Loader2 size={12} className="animate-spin" /> {t("running {done}/{total}", { done: run.ready.length + run.errored.length, total: run.runSet.length })}
               </span>
             )}
             <Button variant="outline" size="sm" onClick={() => { filesTarget.current = null; setFilesOpen(true); }}>
-              <FolderOpen size={14} /> Files
+              <FolderOpen size={14} /> {t("Files")}
             </Button>
             <Button
               variant="outline"
               size="icon"
-              aria-label="Expand canvas to fullscreen"
+              aria-label={t("Expand canvas to fullscreen")}
               onClick={() => setExpanded(true)}
             >
               <Expand size={15} />
@@ -553,7 +558,7 @@ function Canvas() {
               onClick={() => setExpanded(true)}
               className="flex h-full w-full items-center justify-center text-muted-foreground"
             >
-              <Empty>Canvas open in fullscreen — close it to edit here.</Empty>
+              <Empty>{t("Canvas open in fullscreen — close it to edit here.")}</Empty>
             </button>
           ) : (
             canvas
@@ -565,7 +570,7 @@ function Canvas() {
           onClose={() => { setFilesOpen(false); filesTarget.current = null; }}
           generations={generations}
           onPick={onPickFile}
-          title={filesTarget.current ? "Pick a source" : "Files"}
+          title={filesTarget.current ? t("Pick a source") : t("Files")}
         />
         <GenerationStackModal
           open={!!stackNodeId}
@@ -578,7 +583,7 @@ function Canvas() {
         {/* Fullscreen canvas — near-full viewport so the graph gets all the room. */}
         <Dialog open={expanded} onOpenChange={setExpanded}>
           <DialogContent className="flex h-[96vh] w-[97vw] max-w-none flex-col gap-0 overflow-hidden p-0 sm:max-w-none">
-            <DialogTitle className="sr-only">Visual nodes canvas</DialogTitle>
+            <DialogTitle className="sr-only">{t("Visual nodes canvas")}</DialogTitle>
             <div className="min-h-0 flex-1">
               {expanded ? canvas : null}
             </div>

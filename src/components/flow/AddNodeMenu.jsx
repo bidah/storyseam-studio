@@ -4,6 +4,7 @@
 // to the node types that source handle may legally wire into.
 import { Image, Video, Type, Upload, ArrowUpCircle, ScanFace, AudioLines, Music, Layers } from "lucide-react";
 import { ContextMenuItem, ContextMenuSeparator } from "@/components/ui/context-menu";
+import { useT } from "@/lib/i18n";
 
 const LIVE_ENTRIES = [
   { type: "image", label: "Image", icon: Image },
@@ -21,21 +22,22 @@ const COMING_SOON = [
 ];
 
 export function AddNodeMenu({ allowedTypes, onAdd }) {
+  const t = useT();
   const live = allowedTypes ? LIVE_ENTRIES.filter((e) => allowedTypes.includes(e.type)) : LIVE_ENTRIES;
   return (
     <>
-      <div className="px-2 py-1.5 text-xs font-medium text-muted-foreground">Add a node</div>
+      <div className="px-2 py-1.5 text-xs font-medium text-muted-foreground">{t("Add a node")}</div>
       {live.map(({ type, label, icon: Icon }) => (
         <ContextMenuItem key={type} onSelect={() => onAdd(type)}>
-          <Icon size={14} /> {label}
+          <Icon size={14} /> {t(label)}
         </ContextMenuItem>
       ))}
       <ContextMenuSeparator />
       {COMING_SOON.map(({ label, icon: Icon }) => (
         <ContextMenuItem key={label} disabled>
           <Icon size={14} />
-          <span>{label}</span>
-          <span className="ml-auto text-xs text-muted-foreground">Coming soon</span>
+          <span>{t(label)}</span>
+          <span className="ml-auto text-xs text-muted-foreground">{t("Coming soon")}</span>
         </ContextMenuItem>
       ))}
     </>

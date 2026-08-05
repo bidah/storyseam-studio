@@ -4,16 +4,18 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
 import { Empty } from "@/components/shared";
+import { useT } from "@/lib/i18n";
 
 export default function GenerationStackModal({ open, onClose, generations, currentGenId, onSelect }) {
+  const t = useT();
   const list = (generations || []).filter((g) => g.status !== "error");
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="sm:max-w-2xl">
-        <DialogHeader><DialogTitle>Generations</DialogTitle></DialogHeader>
+        <DialogHeader><DialogTitle>{t("Generations")}</DialogTitle></DialogHeader>
         {list.length === 0 ? (
           <div className="rounded-lg border border-dashed p-8 text-center">
-            <Empty>this node hasn't produced any generations yet.</Empty>
+            <Empty>{t("this node hasn't produced any generations yet.")}</Empty>
           </div>
         ) : (
           <div className="grid max-h-[70vh] grid-cols-3 gap-3 overflow-y-auto pr-1 sm:grid-cols-4">
@@ -29,7 +31,7 @@ export default function GenerationStackModal({ open, onClose, generations, curre
                   }`}
                 >
                   {g.status === "processing" ? (
-                    <div className="flex h-full items-center justify-center text-[10px] text-muted-foreground">generating…</div>
+                    <div className="flex h-full items-center justify-center text-[10px] text-muted-foreground">{t("generating…")}</div>
                   ) : g.kind === "video" ? (
                     <video src={g.url} className="h-full w-full object-cover" muted />
                   ) : (

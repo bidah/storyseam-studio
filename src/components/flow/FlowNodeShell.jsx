@@ -4,15 +4,17 @@
 // here → this node + everything downstream).
 import { ChevronDown, Loader2, Play, Layers } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useT } from "@/lib/i18n";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 
 function StatusBadge({ status }) {
+  const t = useT();
   if (status === "idle" || status === "ready") return null;
   const cls = status === "error" ? "bg-destructive/10 text-destructive" : "bg-primary/10 text-primary";
   return (
-    <span className={`rounded px-1.5 py-0.5 text-[10px] font-medium capitalize ${cls}`}>{status}</span>
+    <span className={`rounded px-1.5 py-0.5 text-[10px] font-medium capitalize ${cls}`}>{t(status)}</span>
   );
 }
 
@@ -20,6 +22,7 @@ export default function FlowNodeShell({
   title, icon, modelName, status = "idle", preview, children, history,
   running, onRun, onRunFromHere, readOnly, onOpenStack, stackCount = 0,
 }) {
+  const t = useT();
   return (
     <div className="flex w-[320px] flex-col overflow-hidden rounded-xl border border-border bg-background shadow-md">
       <div className="flex items-center gap-2 border-b border-border px-3 py-2">
@@ -37,7 +40,7 @@ export default function FlowNodeShell({
           <button
             type="button"
             onClick={onOpenStack}
-            title={`${stackCount} generations — pick one`}
+            title={t("{stackCount} generations — pick one", { stackCount })}
             className="nodrag relative inline-flex size-7 shrink-0 items-center justify-center rounded-md border border-border text-muted-foreground transition-colors hover:bg-muted hover:text-foreground [&_svg]:size-3.5"
           >
             <Layers size={14} />
@@ -58,20 +61,20 @@ export default function FlowNodeShell({
 
       {!readOnly && (
         <div className="nodrag flex items-stretch gap-px border-t border-border p-2">
-          <Button className="flex-1 rounded-r-none" disabled={running} onClick={onRun} title="Run this node">
+          <Button className="flex-1 rounded-r-none" disabled={running} onClick={onRun} title={t("Run this node")}>
             {running ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />}
-            Run
+            {t("Run")}
           </Button>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button className="rounded-l-none px-2" disabled={running} title="Run options">
+              <Button className="rounded-l-none px-2" disabled={running} title={t("Run options")}>
                 <ChevronDown size={14} />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               <DropdownMenuItem onClick={onRunFromHere}>
-                Run from here
-                <span className="ml-2 text-xs text-muted-foreground">this node + downstream</span>
+                {t("Run from here")}
+                <span className="ml-2 text-xs text-muted-foreground">{t("this node + downstream")}</span>
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>

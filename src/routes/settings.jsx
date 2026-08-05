@@ -67,6 +67,7 @@ async function send(path, method, body) {
 // One BYOK key editor row (fal.ai / Atlas Cloud). The key is client-side only —
 // localStorage, sent per-request as a header, never saved on our servers.
 function ByokKeyEditor({ label, keyValue, save, clear, placeholder, keysUrl }) {
+  const t = useT();
   const [draft, setDraft] = useState("");
   const plausible = /^[\w:.-]{10,200}$/.test(draft.trim());
   const masked = keyValue ? `••••••••${keyValue.slice(-4)}` : "";
@@ -80,14 +81,14 @@ function ByokKeyEditor({ label, keyValue, save, clear, placeholder, keysUrl }) {
         onChange={(e) => setDraft(e.target.value)}
         placeholder={masked || placeholder}
         className="h-8 w-[260px] font-mono text-xs"
-        aria-label={`${label} API key`}
+        aria-label={t("{label} API key", { label })}
       />
       <Button size="sm" disabled={!plausible} onClick={() => { save(draft); setDraft(""); }}>
-        {keyValue ? "Replace key" : "Save key"}
+        {keyValue ? t("Replace key") : t("Save key")}
       </Button>
       {keyValue ? (
         <Button size="sm" variant="ghost" className="text-destructive hover:text-destructive" onClick={clear}>
-          Remove
+          {t("Remove")}
         </Button>
       ) : null}
       <a
@@ -96,7 +97,7 @@ function ByokKeyEditor({ label, keyValue, save, clear, placeholder, keysUrl }) {
         rel="noreferrer"
         className="inline-flex items-center gap-1 text-xs text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
       >
-        Get a key <ExternalLink size={11} />
+        {t("Get a key")} <ExternalLink size={11} />
       </a>
     </div>
   );
@@ -114,6 +115,7 @@ function ByokKeyEditor({ label, keyValue, save, clear, placeholder, keysUrl }) {
 // and gated on a worker key, which /eve/health reports. The choice rides no
 // header of its own — the selected model's specifier already names its provider.
 function ChatProviderPanel() {
+  const t = useT();
   const active = useChatProvider();
   const [providers, setProviders] = useState(null); // { anthropic, cerebras } | null
 
@@ -127,12 +129,13 @@ function ChatProviderPanel() {
   }, []);
 
   return (
-    <Panel title={<span className="flex items-center gap-2"><Cpu size={15} className="text-primary" /> Chat provider</span>}>
+    <Panel title={<span className="flex items-center gap-2"><Cpu size={15} className="text-primary" /> {t("Chat provider")}</span>}>
       <p className="mb-3 text-sm text-muted-foreground">
-        Which models the chat agent's model picker offers. <b>One provider is in use at a time</b> —
-        switching snaps the picker, and the next message, to that provider's models. <b>Cerebras</b>
-        serves Gemma 4 31B, Z.AI GLM-4.7 and GPT-OSS 120B on ultra-fast inference through Cloudflare
-        AI Gateway, and needs a Cerebras key configured on the agent worker.
+        {t("Which models the chat agent's model picker offers. ")}
+        <b>{t("One provider is in use at a time")}</b>
+        {t(" — switching snaps the picker, and the next message, to that provider's models. ")}
+        <b>{t("Cerebras")}</b>
+        {t(" serves Gemma 4 31B, Z.AI GLM-4.7 and GPT-OSS 120B on ultra-fast inference through Cloudflare AI Gateway, and needs a Cerebras key configured on the agent worker.")}
       </p>
       <div className="space-y-3">
         {CHAT_PROVIDERS.map((p) => {
@@ -145,16 +148,16 @@ function ChatProviderPanel() {
             <div key={p.id} className={`rounded-lg border p-3 ${isActive ? "border-primary/40" : "opacity-70"}`}>
               <div className="flex items-center gap-2">
                 <span className="text-sm font-medium">{p.label}</span>
-                {isActive ? <Badge variant="success">In use</Badge> : null}
-                {p.id === "cloudflare" ? <Badge variant="muted">Default</Badge> : null}
-                {gated && available ? <Badge variant="muted">Ready</Badge> : null}
-                {gated && available === false ? <Badge variant="warning">Needs a key</Badge> : null}
+                {isActive ? <Badge variant="success">{t("In use")}</Badge> : null}
+                {p.id === "cloudflare" ? <Badge variant="muted">{t("Default")}</Badge> : null}
+                {gated && available ? <Badge variant="muted">{t("Ready")}</Badge> : null}
+                {gated && available === false ? <Badge variant="warning">{t("Needs a key")}</Badge> : null}
                 <div className="ml-auto">
                   <Switch
                     checked={isActive}
                     disabled={!available}
                     onCheckedChange={(on) => { if (on && available) setChatProvider(p.id); }}
-                    aria-label={`Use ${p.label} for chat`}
+                    aria-label={t("Use {provider} for chat", { provider: p.label })}
                   />
                 </div>
               </div>
@@ -172,6 +175,7 @@ function ChatProviderPanel() {
 // use, so connecting stores the per-user Higgsfield token server-side and
 // unlocks rendering + the library's "Import from Higgsfield".
 function ConnectorsPanel() {
+  const t = useT();
   const linked = useHiggsfieldLinked(); // null loading | "error" | boolean
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState(null);
@@ -184,19 +188,19 @@ function ConnectorsPanel() {
   };
 
   return (
-    <Panel title={<span className="flex items-center gap-2"><Cable size={15} className="text-primary" /> Connectors</span>}>
+    <Panel title={<span className="flex items-center gap-2"><Cable size={15} className="text-primary" /> {t("Connectors")}</span>}>
       <p className="mb-3 text-sm text-muted-foreground">
-        External accounts linked to your sign-in. Connecting <b>Higgsfield</b> runs a
-        one-tap OAuth flow and lets StorySeam render images, video &amp; audio on your
-        Higgsfield account — and browse your past generations in the library.
+        {t("External accounts linked to your sign-in. Connecting ")}
+        <b>{t("Higgsfield")}</b>
+        {t(" runs a one-tap OAuth flow and lets StorySeam render images, video &amp; audio on your Higgsfield account — and browse your past generations in the library.")}
       </p>
       <div className="rounded-lg border p-3">
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-sm font-medium">Higgsfield</span>
-          {linked === true ? <Badge variant="success">Connected</Badge> : null}
-          {linked === false ? <Badge variant="warning">Not connected</Badge> : null}
-          {linked === null ? <Badge variant="muted">Checking…</Badge> : null}
-          {linked === "error" ? <Badge variant="warning">Status unknown</Badge> : null}
+          {linked === true ? <Badge variant="success">{t("Connected")}</Badge> : null}
+          {linked === false ? <Badge variant="warning">{t("Not connected")}</Badge> : null}
+          {linked === null ? <Badge variant="muted">{t("Checking…")}</Badge> : null}
+          {linked === "error" ? <Badge variant="warning">{t("Status unknown")}</Badge> : null}
           <div className="ml-auto flex items-center gap-2">
             {linked === true ? (
               <Button
@@ -204,20 +208,20 @@ function ConnectorsPanel() {
                 className="text-destructive hover:text-destructive"
                 onClick={() => run(disconnectHiggsfield)}
               >
-                Disconnect
+                {t("Disconnect")}
               </Button>
             ) : (
               <Button size="sm" disabled={busy || linked === null} onClick={() => run(() => connectHiggsfield("/settings"))}>
                 {busy ? <Loader2 size={14} className="animate-spin" /> : null}
-                Connect
+                {t("Connect")}
               </Button>
             )}
           </div>
         </div>
         <p className="mt-1 text-xs text-muted-foreground">
           {linked === true
-            ? "Renders and imports use this account's credits. Disconnecting stops Higgsfield renders until you reconnect."
-            : "You'll be sent to Higgsfield to approve access, then straight back here."}
+            ? t("Renders and imports use this account's credits. Disconnecting stops Higgsfield renders until you reconnect.")
+            : t("You'll be sent to Higgsfield to approve access, then straight back here.")}
         </p>
         {err ? <p className="mt-2 text-xs text-destructive">{err}</p> : null}
       </div>
@@ -324,6 +328,7 @@ function McpConnectorPanel() {
 }
 
 function ProvidersPanel() {
+  const t = useT();
   const prefs = useProviderPrefs();
   const falKey = useFalKey();
   const atlasKey = useAtlasKey();
@@ -334,8 +339,8 @@ function ProvidersPanel() {
       status: (
         <span className="text-xs text-muted-foreground">
           {hfLinked === true
-            ? "Connected through your linked Higgsfield account — no key needed."
-            : "Not connected — link your Higgsfield account in the Connectors panel above."}
+            ? t("Connected through your linked Higgsfield account — no key needed.")
+            : t("Not connected — link your Higgsfield account in the Connectors panel above.")}
         </span>
       ),
       hasCred: hfLinked === true,
@@ -361,12 +366,13 @@ function ProvidersPanel() {
   };
 
   return (
-    <Panel title={<span className="flex items-center gap-2"><KeyRound size={15} className="text-primary" /> Render providers</span>}>
+    <Panel title={<span className="flex items-center gap-2"><KeyRound size={15} className="text-primary" /> {t("Render providers")}</span>}>
       <p className="mb-3 text-sm text-muted-foreground">
-        Renders bill <b>your</b> accounts. Keys are stored only in this browser (localStorage)
-        and sent per-request to the generators — never saved on our servers. You can keep
-        credentials for all three, but <b>one provider is in use at a time</b> — switching
-        one on switches the others off. Jobs already running on another provider still finish.
+        {t("Renders bill ")}
+        <b>{t("your")}</b>
+        {t(" accounts. Keys are stored only in this browser (localStorage) and sent per-request to the generators — never saved on our servers. You can keep credentials for all three, but ")}
+        <b>{t("one provider is in use at a time")}</b>
+        {t(" — switching one on switches the others off. Jobs already running on another provider still finish.")}
       </p>
       <div className="space-y-3">
         {PROVIDERS.map((p) => {
@@ -376,12 +382,12 @@ function ProvidersPanel() {
             <div key={p.id} className={`rounded-lg border p-3 ${isActive ? "border-primary/40" : "opacity-70"}`}>
               <div className="flex items-center gap-2">
                 <span className="text-sm font-medium">{p.label}</span>
-                {isActive ? <Badge variant="success">In use</Badge> : null}
+                {isActive ? <Badge variant="success">{t("In use")}</Badge> : null}
                 <div className="ml-auto">
                   <Switch
                     checked={isActive}
                     onCheckedChange={(on) => { if (on) setActiveProvider(p.id); }}
-                    aria-label={`Use ${p.label}`}
+                    aria-label={t("Use {provider}", { provider: p.label })}
                   />
                 </div>
               </div>
@@ -401,6 +407,7 @@ function ProvidersPanel() {
 // the flue worker carries operator keys, and /eve/health reports which, so we
 // can tell the user a provider already works without one.
 function SearchPanel() {
+  const t = useT();
   const active = useSearchProvider();
   const exaKey = useExaKey();
   const firecrawlKey = useFirecrawlKey();
@@ -421,12 +428,11 @@ function SearchPanel() {
   };
 
   return (
-    <Panel title={<span className="flex items-center gap-2"><Globe size={15} className="text-primary" /> Web search</span>}>
+    <Panel title={<span className="flex items-center gap-2"><Globe size={15} className="text-primary" /> {t("Web search")}</span>}>
       <p className="mb-3 text-sm text-muted-foreground">
-        How the agent reaches the open web — for research, fact-checking, and reading links
-        you paste. <b>One provider is in use at a time</b>; the agent's tools are named the
-        same either way, so switching changes nothing else. Your own key is optional and
-        takes precedence when set; keys stay in this browser and are never saved on our servers.
+        {t("How the agent reaches the open web — for research, fact-checking, and reading links you paste. ")}
+        <b>{t("One provider is in use at a time")}</b>
+        {t("; the agent's tools are named the same either way, so switching changes nothing else. Your own key is optional and takes precedence when set; keys stay in this browser and are never saved on our servers.")}
       </p>
       <div className="space-y-3">
         {SEARCH_PROVIDERS.map((p) => {
@@ -437,14 +443,14 @@ function SearchPanel() {
             <div key={p.id} className={`rounded-lg border p-3 ${isActive ? "border-primary/40" : "opacity-70"}`}>
               <div className="flex items-center gap-2">
                 <span className="text-sm font-medium">{p.label}</span>
-                {isActive ? <Badge variant="success">In use</Badge> : null}
-                {!k.value && hasOperatorKey ? <Badge variant="muted">Built-in key</Badge> : null}
-                {!k.value && hasOperatorKey === false ? <Badge variant="warning">Needs a key</Badge> : null}
+                {isActive ? <Badge variant="success">{t("In use")}</Badge> : null}
+                {!k.value && hasOperatorKey ? <Badge variant="muted">{t("Built-in key")}</Badge> : null}
+                {!k.value && hasOperatorKey === false ? <Badge variant="warning">{t("Needs a key")}</Badge> : null}
                 <div className="ml-auto">
                   <Switch
                     checked={isActive}
                     onCheckedChange={(on) => { if (on) setSearchProvider(p.id); }}
-                    aria-label={`Use ${p.label} for web search`}
+                    aria-label={t("Use {provider} for web search", { provider: p.label })}
                   />
                 </div>
               </div>
@@ -469,14 +475,16 @@ function SearchPanel() {
 // in-memory on purpose: a container is billed per conversation, so we only start
 // one for a chat the user deliberately switched over.
 function SandboxPanel() {
+  const t = useT();
   const active = useSandboxMode();
   return (
-    <Panel title={<span className="flex items-center gap-2"><TerminalSquare size={15} className="text-primary" /> Sandbox</span>}>
+    <Panel title={<span className="flex items-center gap-2"><TerminalSquare size={15} className="text-primary" /> {t("Sandbox")}</span>}>
       <p className="mb-3 text-sm text-muted-foreground">
-        Where the agent runs shell commands and multi-step skills. <b>In-memory resets
-        between messages</b> — files the agent writes in one reply are gone by the next.
-        Switch to a container when a job has to write something now and read it back
-        later. Applies to <b>new messages in every chat</b>, and takes effect immediately.
+        {t("Where the agent runs shell commands and multi-step skills. ")}
+        <b>{t("In-memory resets between messages")}</b>
+        {t(" — files the agent writes in one reply are gone by the next. Switch to a container when a job has to write something now and read it back later. Applies to ")}
+        <b>{t("new messages in every chat")}</b>
+        {t(", and takes effect immediately.")}
       </p>
       <div className="space-y-3">
         {SANDBOX_MODES.map((m) => {
@@ -485,14 +493,14 @@ function SandboxPanel() {
             <div key={m.id} className={`rounded-lg border p-3 ${isActive ? "border-primary/40" : "opacity-70"}`}>
               <div className="flex items-center gap-2">
                 <span className="text-sm font-medium">{m.label}</span>
-                {isActive ? <Badge variant="success">In use</Badge> : null}
-                {m.id === "memory" ? <Badge variant="muted">Default</Badge> : null}
-                {m.id === "daytona" ? <Badge variant="warning">Billed</Badge> : null}
+                {isActive ? <Badge variant="success">{t("In use")}</Badge> : null}
+                {m.id === "memory" ? <Badge variant="muted">{t("Default")}</Badge> : null}
+                {m.id === "daytona" ? <Badge variant="warning">{t("Billed")}</Badge> : null}
                 <div className="ml-auto">
                   <Switch
                     checked={isActive}
                     onCheckedChange={(on) => { if (on) setSandboxMode(m.id); }}
-                    aria-label={`Run the agent's shell on ${m.label}`}
+                    aria-label={t("Run the agent's shell on {mode}", { mode: m.label })}
                   />
                 </div>
               </div>
@@ -794,6 +802,7 @@ function DirectorPanel() {
 
 // Save button with a transient "Saved" confirmation.
 function SaveButton({ onSave, children = "Save" }) {
+  const t = useT();
   const [state, setState] = useState("idle"); // idle | saving | saved
   const click = async () => {
     setState("saving");
@@ -810,12 +819,13 @@ function SaveButton({ onSave, children = "Save" }) {
       {state === "saving" ? <Loader2 size={14} className="animate-spin" />
         : state === "saved" ? <Check size={14} />
         : <Save size={14} />}
-      {state === "saved" ? "Saved" : children}
+      {state === "saved" ? t("Saved") : children}
     </Button>
   );
 }
 
 function SettingsPage() {
+  const t = useT();
   const world = useLoaderData();
   const revalidator = useRevalidator();
   useRevalidateOnMount("visual-world");
@@ -933,11 +943,9 @@ function SettingsPage() {
   return (
     <div className="mx-auto max-w-3xl space-y-4">
       <div>
-        <h2 className="text-xl font-semibold tracking-tight">Settings</h2>
+        <h2 className="text-xl font-semibold tracking-tight">{t("Settings")}</h2>
         <p className="text-sm text-muted-foreground">
-          Project-wide prompts — the shot director your shot list is written with, the house
-          style for image generation, and the sheet prompts layered on top when a generation is
-          tagged as a character, location, or prop sheet.
+          {t("Project-wide prompts — the shot director your shot list is written with, the house style for image generation, and the sheet prompts layered on top when a generation is tagged as a character, location, or prop sheet.")}
         </p>
       </div>
 
@@ -959,32 +967,32 @@ function SettingsPage() {
 
       <SandboxPanel />
 
-      <Panel title={<span className="flex items-center gap-2"><SlidersHorizontal size={15} className="text-primary" /> Generation defaults</span>}>
+      <Panel title={<span className="flex items-center gap-2"><SlidersHorizontal size={15} className="text-primary" /> {t("Generation defaults")}</span>}>
         <p className="mb-3 text-sm text-muted-foreground">
-          The image model, aspect ratio and resolution used by default — by the World › Visual
-          composer <b>and by the agent</b> whenever it generates images (concept art, character
-          sheets, location sheets), unless you override them for a specific generation.
+          {t("The image model, aspect ratio and resolution used by default — by the World › Visual composer ")}
+          <b>{t("and by the agent")}</b>
+          {t(" whenever it generates images (concept art, character sheets, location sheets), unless you override them for a specific generation.")}
         </p>
         <div className="flex flex-wrap items-center gap-2">
           <div>
-            <Eyebrow className="normal-case tracking-normal text-foreground/70">Image model</Eyebrow>
+            <Eyebrow className="normal-case tracking-normal text-foreground/70">{t("Image model")}</Eyebrow>
             <Select value={gen.model || DEFAULT_MODEL} onValueChange={(v) => pickGenModel(v === DEFAULT_MODEL ? "" : v)}>
               <SelectTrigger size="sm" className="w-[220px] text-xs"><SelectValue placeholder="Nano Banana Pro" /></SelectTrigger>
               <SelectContent>
-                <SelectItem value={DEFAULT_MODEL}>Nano Banana Pro (default)</SelectItem>
+                <SelectItem value={DEFAULT_MODEL}>{t("Nano Banana Pro (default)")}</SelectItem>
                 {models.filter((m) => m.id).map((m) => <SelectItem key={m.id} value={m.id}>{m.label}</SelectItem>)}
               </SelectContent>
             </Select>
           </div>
           <div>
-            <Eyebrow className="normal-case tracking-normal text-foreground/70">Aspect ratio</Eyebrow>
+            <Eyebrow className="normal-case tracking-normal text-foreground/70">{t("Aspect ratio")}</Eyebrow>
             <Select value={gen.aspectRatio} onValueChange={(v) => setGen((s) => ({ ...s, aspectRatio: v }))}>
               <SelectTrigger size="sm" className="w-[110px] text-xs"><SelectValue /></SelectTrigger>
               <SelectContent>{ASPECTS.map((a) => <SelectItem key={a} value={a}>{a}</SelectItem>)}</SelectContent>
             </Select>
           </div>
           <div>
-            <Eyebrow className="normal-case tracking-normal text-foreground/70">Resolution</Eyebrow>
+            <Eyebrow className="normal-case tracking-normal text-foreground/70">{t("Resolution")}</Eyebrow>
             {genResolutions.length ? (
               <Select value={gen.resolution} onValueChange={(v) => setGen((s) => ({ ...s, resolution: v }))}>
                 <SelectTrigger size="sm" className="w-[90px] text-xs"><SelectValue /></SelectTrigger>
@@ -993,12 +1001,12 @@ function SettingsPage() {
             ) : (
               <Select value="none" disabled>
                 <SelectTrigger size="sm" className="w-[130px] text-xs"><SelectValue /></SelectTrigger>
-                <SelectContent><SelectItem value="none">Model default</SelectItem></SelectContent>
+                <SelectContent><SelectItem value="none">{t("Model default")}</SelectItem></SelectContent>
               </Select>
             )}
           </div>
           <div className="ml-auto self-end">
-            <SaveButton onSave={saveGen}>Save defaults</SaveButton>
+            <SaveButton onSave={saveGen}>{t("Save defaults")}</SaveButton>
           </div>
         </div>
       </Panel>
@@ -1007,16 +1015,15 @@ function SettingsPage() {
           returns no `videoModels`, and a picker with no options is worse than
           no picker. */}
       {videoModels.length ? (
-        <Panel title={<span className="flex items-center gap-2"><Clapperboard size={15} className="text-primary" /> Video defaults</span>}>
+        <Panel title={<span className="flex items-center gap-2"><Clapperboard size={15} className="text-primary" /> {t("Video defaults")}</span>}>
           <p className="mb-3 text-sm text-muted-foreground">
-            The Seedance model and resolution the <b>render skills</b> use by default — the
-            episode multishot renders, shot continuations, and the agent's video generations —
-            unless you name different ones for a specific render. Each model carries its own
-            resolution list, so picking one narrows what's on offer.
+            {t("The Seedance model and resolution the ")}
+            <b>{t("render skills")}</b>
+            {t(" use by default — the episode multishot renders, shot continuations, and the agent's video generations — unless you name different ones for a specific render. Each model carries its own resolution list, so picking one narrows what's on offer.")}
           </p>
           <div className="flex flex-wrap items-center gap-2">
             <div>
-              <Eyebrow className="normal-case tracking-normal text-foreground/70">Video model</Eyebrow>
+              <Eyebrow className="normal-case tracking-normal text-foreground/70">{t("Video model")}</Eyebrow>
               <Select value={video.videoModel} onValueChange={pickVideoModel}>
                 <SelectTrigger size="sm" className="w-[220px] text-xs"><SelectValue /></SelectTrigger>
                 <SelectContent>
@@ -1025,7 +1032,7 @@ function SettingsPage() {
               </Select>
             </div>
             <div>
-              <Eyebrow className="normal-case tracking-normal text-foreground/70">Resolution</Eyebrow>
+              <Eyebrow className="normal-case tracking-normal text-foreground/70">{t("Resolution")}</Eyebrow>
               <Select
                 value={video.videoResolution}
                 onValueChange={(v) => setVideo((s) => ({ ...s, videoResolution: v }))}
@@ -1037,92 +1044,97 @@ function SettingsPage() {
               </Select>
             </div>
             <div className="ml-auto self-end">
-              <SaveButton onSave={saveVideo}>Save video defaults</SaveButton>
+              <SaveButton onSave={saveVideo}>{t("Save video defaults")}</SaveButton>
             </div>
           </div>
           {videoEntry ? (
             <p className="mt-2 text-xs text-muted-foreground">
-              {videoEntry.blurb} Offers {videoEntry.resolutions.join(" · ")}.
+              {videoEntry.blurb} {t("Offers {resolutions}.", { resolutions: videoEntry.resolutions.join(" · ") })}
             </p>
           ) : null}
         </Panel>
       ) : null}
 
-      <Panel title={<span className="flex items-center gap-2"><Palette size={15} className="text-primary" /> Style prompts</span>}>
+      <Panel title={<span className="flex items-center gap-2"><Palette size={15} className="text-primary" /> {t("Style prompts")}</span>}>
         <p className="mb-3 text-sm text-muted-foreground">
-          The reusable style presets of the visual world generator. The <b>image</b> block
-          is prepended to every scene as the house style; the <b>video</b> block is kept
-          for later Seedance renders.
+          {t("The reusable style presets of the visual world generator. The ")}
+          <b>{t("image")}</b>
+          {t(" block is prepended to every scene as the house style; the ")}
+          <b>{t("video")}</b>
+          {t(" block is kept for later Seedance renders.")}
         </p>
         <div className="space-y-4">
           {prompts.map((p) => (
             <div key={p.id} className="space-y-2 rounded-lg border p-3">
               <div className="flex items-center gap-2">
-                <Input value={p.name} onChange={(e) => editPrompt(p.id, "name", e.target.value)} className="h-8 flex-1 text-sm font-medium" placeholder="Preset name" />
-                {p.builtin && <Badge variant="muted">seed</Badge>}
-                <Button variant="ghost" size="icon-sm" aria-label="Delete preset" onClick={() => removePrompt(p.id)} className="text-muted-foreground hover:text-destructive">
+                <Input value={p.name} onChange={(e) => editPrompt(p.id, "name", e.target.value)} className="h-8 flex-1 text-sm font-medium" placeholder={t("Preset name")} />
+                {p.builtin && <Badge variant="muted">{t("seed")}</Badge>}
+                <Button variant="ghost" size="icon-sm" aria-label={t("Delete preset")} onClick={() => removePrompt(p.id)} className="text-muted-foreground hover:text-destructive">
                   <Trash2 size={14} />
                 </Button>
               </div>
               <div>
-                <Eyebrow className="normal-case tracking-normal text-foreground/70">Image style</Eyebrow>
-                <Textarea value={p.image} onChange={(e) => editPrompt(p.id, "image", e.target.value)} rows={5} className="text-sm" placeholder="Style, palette, composition…" />
+                <Eyebrow className="normal-case tracking-normal text-foreground/70">{t("Image style")}</Eyebrow>
+                <Textarea value={p.image} onChange={(e) => editPrompt(p.id, "image", e.target.value)} rows={5} className="text-sm" placeholder={t("Style, palette, composition…")} />
               </div>
               <div>
-                <Eyebrow className="normal-case tracking-normal text-foreground/70">Video / motion (optional)</Eyebrow>
-                <Textarea value={p.video} onChange={(e) => editPrompt(p.id, "video", e.target.value)} rows={2} className="text-sm" placeholder="Camera & motion clauses for Seedance…" />
+                <Eyebrow className="normal-case tracking-normal text-foreground/70">{t("Video / motion (optional)")}</Eyebrow>
+                <Textarea value={p.video} onChange={(e) => editPrompt(p.id, "video", e.target.value)} rows={2} className="text-sm" placeholder={t("Camera & motion clauses for Seedance…")} />
               </div>
             </div>
           ))}
           <div className="flex items-center justify-between">
-            <Button variant="outline" size="sm" onClick={addPrompt}><Plus size={13} /> Add preset</Button>
-            <SaveButton onSave={savePrompts}>Save style prompts</SaveButton>
+            <Button variant="outline" size="sm" onClick={addPrompt}><Plus size={13} /> {t("Add preset")}</Button>
+            <SaveButton onSave={savePrompts}>{t("Save style prompts")}</SaveButton>
           </div>
         </div>
       </Panel>
 
-      <Panel title={<span className="flex items-center gap-2"><IdCard size={15} className="text-primary" /> Character sheet prompt</span>}>
+      <Panel title={<span className="flex items-center gap-2"><IdCard size={15} className="text-primary" /> {t("Character sheet prompt")}</span>}>
         <p className="mb-2 text-sm text-muted-foreground">
-          Added on top of the style prompt when a generation is tagged as a <b>character sheet</b> —
-          via the checkbox on World › Visual, or when you ask the agent for one.
+          {t("Added on top of the style prompt when a generation is tagged as a ")}
+          <b>{t("character sheet")}</b>
+          {t(" — via the checkbox on World › Visual, or when you ask the agent for one.")}
         </p>
         <Textarea
           value={sheets.character}
           onChange={(e) => setSheets((s) => ({ ...s, character: e.target.value }))}
           rows={5}
           className="text-sm"
-          placeholder="Turnaround views, neutral background, consistent proportions…"
+          placeholder={t("Turnaround views, neutral background, consistent proportions…")}
         />
       </Panel>
 
-      <Panel title={<span className="flex items-center gap-2"><MapPin size={15} className="text-primary" /> Location sheet prompt</span>}>
+      <Panel title={<span className="flex items-center gap-2"><MapPin size={15} className="text-primary" /> {t("Location sheet prompt")}</span>}>
         <p className="mb-2 text-sm text-muted-foreground">
-          Added on top of the style prompt when a generation is tagged as a <b>location sheet</b>.
+          {t("Added on top of the style prompt when a generation is tagged as a ")}
+          <b>{t("location sheet")}</b>
+          {t(".")}
         </p>
         <Textarea
           value={sheets.location}
           onChange={(e) => setSheets((s) => ({ ...s, location: e.target.value }))}
           rows={5}
           className="text-sm"
-          placeholder="Establishing wide view plus key-angle vignettes, no characters…"
+          placeholder={t("Establishing wide view plus key-angle vignettes, no characters…")}
         />
       </Panel>
 
-      <Panel title={<span className="flex items-center gap-2"><Package size={15} className="text-primary" /> Prop sheet prompt</span>}>
+      <Panel title={<span className="flex items-center gap-2"><Package size={15} className="text-primary" /> {t("Prop sheet prompt")}</span>}>
         <p className="mb-2 text-sm text-muted-foreground">
-          Added on top of the style prompt when a generation is tagged as a <b>prop sheet</b> —
-          the objects characters carry and handle, rendered as multi-view reference art the
-          video models can lock onto.
+          {t("Added on top of the style prompt when a generation is tagged as a ")}
+          <b>{t("prop sheet")}</b>
+          {t(" — the objects characters carry and handle, rendered as multi-view reference art the video models can lock onto.")}
         </p>
         <Textarea
           value={sheets.prop}
           onChange={(e) => setSheets((s) => ({ ...s, prop: e.target.value }))}
           rows={5}
           className="text-sm"
-          placeholder="Front, three-quarter and side views of the same object, no hands, neutral backdrop…"
+          placeholder={t("Front, three-quarter and side views of the same object, no hands, neutral backdrop…")}
         />
         <div className="mt-3 flex justify-end">
-          <SaveButton onSave={saveSheets}>Save sheet prompts</SaveButton>
+          <SaveButton onSave={saveSheets}>{t("Save sheet prompts")}</SaveButton>
         </div>
       </Panel>
     </div>

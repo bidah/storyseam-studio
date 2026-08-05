@@ -12,12 +12,14 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { cn } from "@/lib/utils";
 import { useFlowMeta } from "./flow-context";
 import { ASPECTS, VIDEO_DURATIONS } from "./flow-config";
+import { useT } from "@/lib/i18n";
 
 // Radix Select forbids empty-string item values — sentinels map back to "".
 const DEFAULT_MODEL = "__default__";
 const NO_PRESET = "__none__";
 
 export default function NodeSettingsBar({ type, settings, onChange, readOnly }) {
+  const t = useT();
   const { imageModels, videoModels, prompts } = useFlowMeta();
   const isVideo = type === "video";
   const models = isVideo ? videoModels : imageModels;
@@ -32,12 +34,12 @@ export default function NodeSettingsBar({ type, settings, onChange, readOnly }) 
         onChange={(v) => patch({ model: v === DEFAULT_MODEL ? "" : v })}
         readOnly={readOnly}
         options={[
-          { value: DEFAULT_MODEL, label: isVideo ? "Seedance (default)" : "Nano Banana Pro (default)" },
+          { value: DEFAULT_MODEL, label: isVideo ? t("Seedance (default)") : t("Nano Banana Pro (default)") },
           ...models.filter((m) => m.id).map((m) => ({ value: m.id, label: m.label })),
         ]}
       />
       <MiniSelect
-        label="Aspect"
+        label={t("Aspect")}
         value={settings.aspectRatio}
         onChange={(v) => patch({ aspectRatio: v })}
         readOnly={readOnly}
@@ -45,7 +47,7 @@ export default function NodeSettingsBar({ type, settings, onChange, readOnly }) 
       />
       {isVideo && (
         <MiniSelect
-          label="Duration"
+          label={t("Duration")}
           value={String(settings.duration)}
           onChange={(v) => patch({ duration: Number(v) })}
           readOnly={readOnly}
@@ -58,26 +60,26 @@ export default function NodeSettingsBar({ type, settings, onChange, readOnly }) 
             "inline-flex h-7 items-center gap-1.5 rounded-md border border-input bg-card px-2 text-xs text-muted-foreground shadow-xs",
             readOnly && "pointer-events-none opacity-60",
           )}
-          title="Generate audio with the clip"
+          title={t("Generate audio with the clip")}
         >
           <Volume2 size={13} />
-          <span>Audio</span>
+          <span>{t("Audio")}</span>
           <Checkbox
             checked={!!settings.generateAudio}
             onCheckedChange={(v) => patch({ generateAudio: !!v })}
             disabled={readOnly}
-            aria-label="Generate audio"
+            aria-label={t("Generate audio")}
           />
         </label>
       )}
       <MiniSelect
-        label="Style"
+        label={t("Style")}
         width="w-[120px]"
         value={settings.presetId || NO_PRESET}
         onChange={(v) => patch({ presetId: v === NO_PRESET ? "" : v })}
         readOnly={readOnly}
         options={[
-          { value: NO_PRESET, label: "No style" },
+          { value: NO_PRESET, label: t("No style") },
           ...prompts.map((p) => ({ value: p.id, label: p.name })),
         ]}
       />

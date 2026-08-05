@@ -11,8 +11,10 @@
 // So they carry their own minimal header rather than the app's.
 import { Link } from "react-router";
 import { Clapperboard, ArrowLeft } from "lucide-react";
+import { useT } from "@/lib/i18n";
 
 export function LegalPage({ title, updated, children }) {
+  const t = useT();
   return (
     <div className="min-h-dvh bg-background">
       <header className="border-b">
@@ -27,14 +29,14 @@ export function LegalPage({ title, updated, children }) {
             to="/"
             className="inline-flex items-center gap-1.5 text-xs text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
           >
-            <ArrowLeft size={12} /> Back to StorySeam
+            <ArrowLeft size={12} /> {t("Back to StorySeam")}
           </Link>
         </div>
       </header>
 
       <main className="mx-auto max-w-3xl px-6 py-12">
         <h1 className="text-3xl font-semibold tracking-tight">{title}</h1>
-        <p className="mt-2 text-xs text-muted-foreground">Last updated {updated}</p>
+        <p className="mt-2 text-xs text-muted-foreground">{t("Last updated {updated}", { updated })}</p>
         <div className="mt-10 space-y-10">{children}</div>
       </main>
 
@@ -42,10 +44,10 @@ export function LegalPage({ title, updated, children }) {
         <div className="mx-auto flex max-w-3xl flex-wrap items-center gap-x-4 gap-y-2 px-6 py-6 text-xs text-muted-foreground">
           <span>StorySeam</span>
           <Link to="/privacy" className="underline-offset-4 hover:text-foreground hover:underline">
-            Privacy
+            {t("Privacy")}
           </Link>
           <Link to="/terms" className="underline-offset-4 hover:text-foreground hover:underline">
-            Terms
+            {t("Terms")}
           </Link>
           <a
             href="mailto:privacy@storyseam.app"

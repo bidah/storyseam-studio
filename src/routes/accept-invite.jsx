@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Panel, ErrorNote, Spinner } from "@/components/shared";
 import { useProjects } from "@/components/ProjectProvider";
 import { clearPendingInvite } from "@/lib/pendingInvite";
+import { useT } from "@/lib/i18n";
 
 async function apiJson(path, method = "GET", body) {
   const res = await fetch(path, {
@@ -23,6 +24,7 @@ async function apiJson(path, method = "GET", body) {
 }
 
 export function Component() {
+  const t = useT();
   const { id } = useParams();
   const [params] = useSearchParams();
   const token = params.get("token") || "";
@@ -68,27 +70,27 @@ export function Component() {
           <Users size={22} />
         </div>
         {error && <ErrorNote>{error}</ErrorNote>}
-        {!preview && !error && <p className="text-sm text-muted-foreground">This invitation could not be found.</p>}
+        {!preview && !error && <p className="text-sm text-muted-foreground">{t("This invitation could not be found.")}</p>}
         {preview && (
           <>
             <h1 className="text-lg font-semibold">
-              Join {preview.organizationName}
+              {t("Join {organizationName}", { organizationName: preview.organizationName })}
             </h1>
             <p className="mt-1 text-sm text-muted-foreground">
-              You’re invited as {preview.role === "admin" ? "an admin" : "a member"}
+              {t("You're invited as ")}{preview.role === "admin" ? t("an admin") : t("a member")}
               {preview.role !== "admin" && (
-                <> with access to{" "}
+                <> {t("with access to")}{" "}
                   {preview.scopeMode === "all"
-                    ? <span className="inline-flex items-center gap-1 font-medium text-foreground"><Globe size={13} /> all projects</span>
-                    : <span className="inline-flex items-center gap-1 font-medium text-foreground"><FolderClosed size={13} /> selected projects</span>}
+                    ? <span className="inline-flex items-center gap-1 font-medium text-foreground"><Globe size={13} /> {t("all projects")}</span>
+                    : <span className="inline-flex items-center gap-1 font-medium text-foreground"><FolderClosed size={13} /> {t("selected projects")}</span>}
                 </>
               )}.
             </p>
             {dead ? (
-              <p className="mt-4 text-sm text-muted-foreground">This invitation is {preview.status}.</p>
+              <p className="mt-4 text-sm text-muted-foreground">{t("This invitation is {status}.", { status: preview.status })}</p>
             ) : (
               <Button className="mt-5 w-full" onClick={accept} disabled={accepting}>
-                {accepting ? <Loader2 size={15} className="animate-spin" /> : <Check size={15} />} Accept invitation
+                {accepting ? <Loader2 size={15} className="animate-spin" /> : <Check size={15} />} {t("Accept invitation")}
               </Button>
             )}
           </>

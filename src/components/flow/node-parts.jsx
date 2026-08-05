@@ -4,6 +4,7 @@
 import { Handle, Position } from "@xyflow/react";
 import { Image as ImageIcon, Type as TypeIcon, Clapperboard, Frame, Loader2 } from "lucide-react";
 import { FLOW_CONNECT_RULES } from "./flow-config";
+import { useT } from "@/lib/i18n";
 
 // Larger, self-describing hit-areas colored by the data they carry
 // (image = sky, text = slate, video = violet).
@@ -70,11 +71,12 @@ export function TargetHandle({ id, top }) {
 // A "Reference images" row of thumbnails for the images wired into a node's
 // image-input / start-frame handles — mirrors what's sent to the generation.
 export function RefChips({ refs }) {
+  const t = useT();
   if (!refs || refs.length === 0) return null;
   return (
     <div className="flex flex-col gap-1">
       <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-        Reference images
+        {t("Reference images")}
       </span>
       <div className="nowheel flex gap-1.5 overflow-x-auto">
         {refs.map((r, i) => (
@@ -93,14 +95,16 @@ export function RefChips({ refs }) {
 
 // The node's current generation media, a processing spinner, an error, or the
 // empty-state placeholder. `bust` cache-busts the media url after a re-render.
-export function NodePreview({ generation, emptyLabel = "Your generation will appear here" }) {
+export function NodePreview({ generation, emptyLabel }) {
+  const t = useT();
+  const resolvedEmpty = emptyLabel || t("Your generation will appear here");
   if (!generation) {
-    return <span className="px-4 text-center text-xs text-muted-foreground">{emptyLabel}</span>;
+    return <span className="px-4 text-center text-xs text-muted-foreground">{resolvedEmpty}</span>;
   }
   if (generation.status === "error") {
     return (
       <span className="px-4 text-center text-xs text-destructive">
-        {generation.error || "Generation failed"}
+        {generation.error || t("Generation failed")}
       </span>
     );
   }
@@ -108,7 +112,7 @@ export function NodePreview({ generation, emptyLabel = "Your generation will app
     return (
       <div className="flex flex-col items-center gap-2 text-muted-foreground">
         <Loader2 size={18} className="animate-spin" />
-        <span className="text-xs">Generating…</span>
+        <span className="text-xs">{t("Generating…")}</span>
       </div>
     );
   }
@@ -132,6 +136,7 @@ export function NodePreview({ generation, emptyLabel = "Your generation will app
 // The node's ready retries (newest last). Clicking one selects it as the node's
 // currentGenId via onPick.
 export function HistoryStrip({ generations, currentGenId, onPick }) {
+  const t = useT();
   const ready = (generations || []).filter((g) => g.status === "ready" && g.url);
   if (ready.length < 2) return null;
   return (
@@ -143,7 +148,7 @@ export function HistoryStrip({ generations, currentGenId, onPick }) {
             key={g.id}
             type="button"
             onClick={() => onPick(g.id)}
-            title={g.prompt || "Generation"}
+            title={g.prompt || t("Generation")}
             className={`relative size-11 shrink-0 overflow-hidden rounded-md border transition-colors ${
               active ? "border-primary ring-1 ring-primary" : "border-border hover:border-foreground/40"
             }`}

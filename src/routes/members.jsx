@@ -50,6 +50,7 @@ function scopeSummary(m, t) {
 
 // One copy-to-clipboard row for a freshly created invite link.
 function InviteLink({ url }) {
+  const t = useT();
   const [copied, setCopied] = useState(false);
   return (
     <div className="mt-3 flex items-center gap-2 rounded-md border bg-muted/40 p-2">
@@ -62,7 +63,7 @@ function InviteLink({ url }) {
           try { await navigator.clipboard.writeText(url); setCopied(true); setTimeout(() => setCopied(false), 1500); } catch { /* ignore */ }
         }}
       >
-        {copied ? <Check size={14} /> : <Copy size={14} />} {copied ? "Copied" : "Copy link"}
+        {copied ? <Check size={14} /> : <Copy size={14} />} {copied ? t("Copied") : t("Copy link")}
       </Button>
     </div>
   );
@@ -130,9 +131,9 @@ export function Component() {
 
   const submitInvite = async () => {
     setFormError(null); setLastInvite(null);
-    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email.trim())) { setFormError("Enter a valid email address."); return; }
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email.trim())) { setFormError(t("Enter a valid email address.")); return; }
     if (!asAdmin && scopeMode === "selection" && pickedProjects.size === 0) {
-      setFormError("Pick at least one project, or choose “All projects”."); return;
+      setFormError(t("Pick at least one project, or choose “All projects”.")); return;
     }
     setInviting(true);
     try {
@@ -179,7 +180,7 @@ export function Component() {
       <div className="mb-6 flex items-center justify-between gap-3">
         <div className="flex items-center gap-2">
           <Users size={20} className="text-primary" />
-          <h1 className="text-xl font-semibold">Team &amp; access</h1>
+          <h1 className="text-xl font-semibold">{t("Team &amp; access")}</h1>
         </div>
         {orgs.length > 1 && (
           <Select value={orgId || ""} onValueChange={setOrgId}>
@@ -187,7 +188,7 @@ export function Component() {
             <SelectContent>
               {orgs.map((o) => (
                 <SelectItem key={o.id} value={o.id}>
-                  {o.name}{o.personal ? " (personal)" : ""}
+                  {o.name}{o.personal ? t(" (personal)") : ""}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -200,13 +201,13 @@ export function Component() {
       {/* Invite */}
       {canManage && (
         <Panel className="mb-6">
-          <Eyebrow>Invite someone</Eyebrow>
+          <Eyebrow>{t("Invite someone")}</Eyebrow>
           <p className="mb-3 text-sm text-muted-foreground">
-            They join <span className="font-medium text-foreground">{org?.name}</span>. Choose how much of it they can see.
+            {t("They join ")}<span className="font-medium text-foreground">{org?.name}</span>{t(". Choose how much of it they can see.")}
           </p>
           <div className="flex flex-wrap items-end gap-3">
             <div className="flex-1 min-w-[220px]">
-              <Label htmlFor="invite-email" className="mb-1 block text-xs">Email</Label>
+              <Label htmlFor="invite-email" className="mb-1 block text-xs">{t("Email")}</Label>
               <Input
                 id="invite-email"
                 type="email"
@@ -217,7 +218,7 @@ export function Component() {
             </div>
             <label className="flex items-center gap-2 pb-2 text-sm">
               <Checkbox checked={asAdmin} onCheckedChange={(v) => setAsAdmin(!!v)} />
-              <span className="flex items-center gap-1"><ShieldCheck size={14} /> Make admin (full access)</span>
+              <span className="flex items-center gap-1"><ShieldCheck size={14} /> {t("Make admin (full access)")}</span>
             </label>
           </div>
 
@@ -230,7 +231,7 @@ export function Component() {
                   variant={scopeMode === "all" ? "default" : "outline"}
                   onClick={() => setScopeMode("all")}
                 >
-                  <Globe size={14} /> All projects
+                  <Globe size={14} /> {t("All projects")}
                 </Button>
                 <Button
                   type="button"
@@ -238,24 +239,24 @@ export function Component() {
                   variant={scopeMode === "selection" ? "default" : "outline"}
                   onClick={() => setScopeMode("selection")}
                 >
-                  <FolderClosed size={14} /> Selected projects
+                  <FolderClosed size={14} /> {t("Selected projects")}
                 </Button>
               </div>
 
               {scopeMode === "selection" && (
                 <div className="mt-3 rounded-md border p-3">
                   <div className="mb-2 flex items-center justify-between">
-                    <span className="text-xs text-muted-foreground">Pick the projects they can open</span>
+                    <span className="text-xs text-muted-foreground">{t("Pick the projects they can open")}</span>
                     <Select value={projectRole} onValueChange={setProjectRole}>
                       <SelectTrigger className="h-7 w-[130px] text-xs"><SelectValue /></SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="editor">Editor</SelectItem>
-                        <SelectItem value="viewer">Viewer</SelectItem>
+                        <SelectItem value="editor">{t("Editor")}</SelectItem>
+                        <SelectItem value="viewer">{t("Viewer")}</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
                   <div className="grid max-h-56 grid-cols-1 gap-1 overflow-auto sm:grid-cols-2">
-                    {projects.length === 0 && <span className="text-xs text-muted-foreground">No projects in this workspace yet.</span>}
+                    {projects.length === 0 && <span className="text-xs text-muted-foreground">{t("No projects in this workspace yet.")}</span>}
                     {projects.map((p) => (
                       <label key={p.id} className="flex items-center gap-2 rounded px-2 py-1 text-sm hover:bg-muted/50">
                         <Checkbox checked={pickedProjects.has(p.id)} onCheckedChange={() => toggleProject(p.id)} />
@@ -271,7 +272,7 @@ export function Component() {
           {formError && <ErrorNote>{formError}</ErrorNote>}
           <div className="mt-4">
             <Button onClick={submitInvite} disabled={inviting}>
-              {inviting ? <Loader2 size={14} className="animate-spin" /> : <Mail size={14} />} Create invite
+              {inviting ? <Loader2 size={14} className="animate-spin" /> : <Mail size={14} />} {t("Create invite")}
             </Button>
           </div>
           {lastInvite?.inviteUrl && <InviteLink url={lastInvite.inviteUrl} />}
@@ -280,7 +281,7 @@ export function Component() {
 
       {/* Members */}
       <Panel className="mb-6">
-        <Eyebrow>Members</Eyebrow>
+        <Eyebrow>{t("Members")}</Eyebrow>
         <div className="mt-2 divide-y">
           {members.map((m) => (
             <div key={m.userId} className="flex flex-wrap items-center gap-3 py-3">
@@ -290,8 +291,8 @@ export function Component() {
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">
                   <span className="truncate text-sm font-medium">{m.name || m.email || m.userId}</span>
-                  {m.role === "owner" && <Badge variant="muted"><Shield size={11} /> Owner</Badge>}
-                  {m.role === "admin" && <Badge variant="info"><ShieldCheck size={11} /> Admin</Badge>}
+                  {m.role === "owner" && <Badge variant="muted"><Shield size={11} /> {t("Owner")}</Badge>}
+                  {m.role === "admin" && <Badge variant="info"><ShieldCheck size={11} /> {t("Admin")}</Badge>}
                 </div>
                 <div className="truncate text-xs text-muted-foreground">{m.email} · {scopeSummary(m, t)}</div>
               </div>
@@ -299,13 +300,13 @@ export function Component() {
               {canManage && m.role === "member" && (
                 <div className="flex items-center gap-3">
                   <label className="flex items-center gap-2 text-xs text-muted-foreground">
-                    <Globe size={13} /> All projects
+                    <Globe size={13} /> {t("All projects")}
                     <Switch
                       checked={m.allProjects}
                       onCheckedChange={(v) => setScope(m.userId, { allProjects: !!v })}
                     />
                   </label>
-                  <Button size="icon" variant="ghost" aria-label="Remove member" onClick={() => removeMember(m.userId)}>
+                  <Button size="icon" variant="ghost" aria-label={t("Remove member")} onClick={() => removeMember(m.userId)}>
                     <Trash2 size={15} />
                   </Button>
                 </div>
@@ -318,9 +319,9 @@ export function Component() {
         {canManage && members.some((m) => m.role === "member" && !m.allProjects) && projects.length > 0 && (
           <>
             <Separator className="my-4" />
-            <Eyebrow>Project access</Eyebrow>
+            <Eyebrow>{t("Project access")}</Eyebrow>
             <p className="mb-2 text-xs text-muted-foreground">
-              Give a member specific projects (they don’t have “All projects”).
+              {t("Give a member specific projects (they don’t have “All projects”).")}
             </p>
             <div className="space-y-3">
               {members.filter((m) => m.role === "member" && !m.allProjects).map((m) => {
@@ -348,9 +349,9 @@ export function Component() {
                                 type="button"
                                 className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
                                 onClick={() => setScope(m.userId, { grants: [{ projectId: p.id, role: role === "viewer" ? "editor" : "viewer" }] })}
-                                title="Toggle editor / viewer"
+                                title={t("Toggle editor / viewer")}
                               >
-                                {role === "viewer" ? <><Eye size={12} /> Viewer</> : <><Pencil size={12} /> Editor</>}
+                                {role === "viewer" ? <><Eye size={12} /> {t("Viewer")}</> : <><Pencil size={12} /> {t("Editor")}</>}
                               </button>
                             )}
                           </div>
@@ -368,7 +369,7 @@ export function Component() {
       {/* Pending invitations */}
       {canManage && invites.length > 0 && (
         <Panel>
-          <Eyebrow>Pending invitations</Eyebrow>
+          <Eyebrow>{t("Pending invitations")}</Eyebrow>
           <div className="mt-2 divide-y">
             {invites.map((i) => (
               <div key={i.id} className="flex items-center gap-3 py-2">
@@ -376,10 +377,10 @@ export function Component() {
                 <div className="min-w-0 flex-1">
                   <div className="truncate text-sm">{i.email}</div>
                   <div className="text-xs text-muted-foreground">
-                    {i.role === "admin" ? "Admin" : i.scope_mode === "all" ? "All projects" : "Selected projects"}
+                    {i.role === "admin" ? t("Admin") : i.scope_mode === "all" ? t("All projects") : t("Selected projects")}
                   </div>
                 </div>
-                <Button size="sm" variant="ghost" onClick={() => revokeInvite(i.id)}>Revoke</Button>
+                <Button size="sm" variant="ghost" onClick={() => revokeInvite(i.id)}>{t("Revoke")}</Button>
               </div>
             ))}
           </div>

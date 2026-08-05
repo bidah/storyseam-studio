@@ -7,19 +7,22 @@ import {
   Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription,
 } from "@/components/ui/sheet";
 import { Empty } from "@/components/shared";
+import { useT } from "@/lib/i18n";
 
-export default function FilesPanel({ open, onClose, generations, onPick, title = "Files" }) {
+export default function FilesPanel({ open, onClose, generations, onPick, title }) {
+  const t = useT();
+  const resolvedTitle = title || t("Files");
   const ready = (generations || []).filter((g) => g.status === "ready" && g.url);
   return (
     <Sheet open={open} onOpenChange={(o) => !o && onClose()}>
       <SheetContent side="right" className="flex w-[380px] flex-col gap-3 sm:max-w-[380px]">
         <SheetHeader className="p-0">
-          <SheetTitle>{title}</SheetTitle>
-          <SheetDescription>Click a generation to drop it on the canvas as a source.</SheetDescription>
+          <SheetTitle>{resolvedTitle}</SheetTitle>
+          <SheetDescription>{t("Click a generation to drop it on the canvas as a source.")}</SheetDescription>
         </SheetHeader>
         {ready.length === 0 ? (
           <div className="rounded-lg border border-dashed p-8 text-center">
-            <Empty>no ready generations yet — make some on the Visual tab or run a node.</Empty>
+            <Empty>{t("no ready generations yet — make some on the Visual tab or run a node.")}</Empty>
           </div>
         ) : (
           <div className="grid grid-cols-3 gap-2 overflow-y-auto pr-1">

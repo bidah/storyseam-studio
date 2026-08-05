@@ -6,8 +6,10 @@ import PromptEditor from "./PromptEditor";
 import NodeSettingsBar from "./NodeSettingsBar";
 import { modelLabel } from "./model-label";
 import { useFlowMeta } from "./flow-context";
+import { useT } from "@/lib/i18n";
 
 function ImageFlowNode({ data }) {
+  const t = useT();
   const { node, status, generation, readOnly } = data;
   const { imageModels } = useFlowMeta();
   const settings = node.settings || {};
@@ -21,7 +23,7 @@ function ImageFlowNode({ data }) {
       <TargetHandle id="text-input" top="62%" />
 
       <FlowNodeShell
-        title="Image"
+        title={t("Image")}
         icon={<ImageIcon size={16} />}
         modelName={modelLabel(imageModels, settings.model, "Nano Banana Pro")}
         status={status}
@@ -44,7 +46,7 @@ function ImageFlowNode({ data }) {
         <PromptEditor
           value={node.prompt}
           readOnly={readOnly}
-          placeholder="Describe the image. Wire images into the blue handle to use them as references."
+          placeholder={t("Describe the image. Wire images into the blue handle to use them as references.")}
           onChange={onPromptChange}
           inheritedText={data.inheritedText}
         />
