@@ -64,7 +64,7 @@ export default function ProjectSwitcher() {
             <ChevronsUpDown size={14} className="shrink-0 text-muted-foreground" />
           </button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="start" className="w-64">
+        <DropdownMenuContent align="start" className="header-menu w-64">
           <DropdownMenuLabel>Projects</DropdownMenuLabel>
           <DropdownMenuSeparator />
           {projects.map((p) => (

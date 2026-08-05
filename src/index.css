@@ -136,6 +136,35 @@
   --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas,
     monospace;
 }
+/* Header dropdown menus (ProjectSwitcher, UserMenu). Radix portais menu
+   content into <body>, so these are scoped to the portaled content via the
+   .header-menu class placed on DropdownMenuContent. Default highlight uses the
+   pale accent tint with dark text (`accent`/`accent-foreground`) which reads as
+   "green with black text" on light surfaces; instead render the selection as a
+   solid primary-green pill with near-white text (and icons) for legibility.
+   Follows the active theme: light gets the deep green, dark keeps the brand
+   lime. */
+.header-menu [data-slot="dropdown-menu-item"]:focus,
+.header-menu [data-slot="dropdown-menu-item"][data-highlighted] {
+  background-color: var(--primary);
+  color: var(--primary-foreground);
+}
+.header-menu [data-slot="dropdown-menu-item"]:focus svg,
+.header-menu [data-slot="dropdown-menu-item"][data-highlighted] svg {
+  color: var(--primary-foreground);
+}
+/* Match the open (active) state of the submenu trigger too. */
+.header-menu [data-slot="dropdown-menu-sub-trigger"]:focus,
+.header-menu [data-slot="dropdown-menu-sub-trigger"][data-highlighted],
+.header-menu [data-slot="dropdown-menu-sub-trigger"][data-state="open"] {
+  background-color: var(--primary);
+  color: var(--primary-foreground);
+}
+.header-menu [data-slot="dropdown-menu-sub-trigger"]:focus svg,
+.header-menu [data-slot="dropdown-menu-sub-trigger"][data-highlighted] svg,
+.header-menu [data-slot="dropdown-menu-sub-trigger"][data-state="open"] svg {
+  color: var(--primary-foreground);
+}
 
 @layer base {
   * {

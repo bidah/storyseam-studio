@@ -137,7 +137,7 @@ function UserMenu() {
           </Avatar>
         </button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-52">
+      <DropdownMenuContent align="end" className="header-menu w-52">
         <DropdownMenuLabel>{t("Higgsfield account")}</DropdownMenuLabel>
         <DropdownMenuSeparator />
         <DropdownMenuItem asChild>
