@@ -23,6 +23,8 @@ import { saveVisualPrompt } from "./save_visual_prompt.js";
 import { getMoodboard } from "./get_moodboard.js";
 import { addMoodboardCard, removeMoodboardCard } from "./add_moodboard_card.js";
 import { getScript } from "./get_script.js";
+import { getScriptReviews } from "./get_script_reviews.js";
+import { lintScript } from "./lint_script.js";
 import { appendScript } from "./append_script.js";
 import { saveScript } from "./save_script.js";
 import { applyScriptProposal } from "./apply_script_proposal.js";
@@ -118,6 +120,8 @@ export function createTools(api: Api): ToolDefinition[] {
     addMoodboardCard(api),
     removeMoodboardCard(api),
     getScript(api),
+    getScriptReviews(api),
+    lintScript(api),
     appendScript(api),
     saveScript(api),
     applyScriptProposal(api),
@@ -206,6 +210,8 @@ export function createReadTools(api: Api): ToolDefinition[] {
     getVisualWorld(api),
     getMoodboard(api),
     getScript(api),
+    getScriptReviews(api),
+    lintScript(api),
     listDrafts(api),
     // Shotlist / Episode
     getShotlist(api),

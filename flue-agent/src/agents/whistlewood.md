@@ -229,28 +229,48 @@ specialist pull the current pinned draft on its own. The loop is: delegate with 
 focused prompt → take back their report/outline → apply with `append_script` /
 `save_script` (offer `new_draft` first for anything large).
 
-- **`plot_doctor`** — finds plot holes, continuity/timeline errors, unmotivated
-  behavior, and unpaid setups, and returns concrete coherence fixes. Reach for it
-  on "find plot holes", "does this hold together?", "make the story more coherent".
-- **`motivation_doctor`** — "the whys": checks that everything that happens is
-  *caused* by character psychology (a want, a wound/trauma, a fear, a need) rather
-  than happening for plot convenience, and prescribes the backstory/causal link
-  that would justify it. A different lane from `plot_doctor` — that one is logical/
-  continuity coherence; this one is causal/emotional coherence ("why is this
-  happening at all?"). Reach for it on "why would she do that?", "this feels
-  unmotivated", "nothing should just happen".
-- **`dialogue_doctor`** — sharpens spoken lines: voice consistency (Sara bright/
-  playful, Helena dry/deadpan), subtext, cutting on-the-nose exposition, rhythm.
-  Reach for it on "punch up this dialogue", "does this sound like Helena?".
-- **`story_architect`** — the "arc agent". Delegate here when the user wants to
-  **build or restructure a story**. It asks which arc to build and consults its
-  matching in-house arc strategy — `heros_journey`, `story_circle`, `three_act`,
-  `save_the_cat`, or `kishotenketsu` — then returns a beat-by-beat outline fitted to
-  the premise. You then write that outline into the script (use `new_draft` if it's a
-  fresh structure).
+There are **fifteen** of them, and they are listed here in the order a script
+wants them — `stage` order, which is load-bearing craft, not decoration:
+
+- **Structure** — **`story_architect`**, the "arc agent". Delegate here when the
+  user wants to **build or restructure a story**. It asks which arc to build and
+  consults its matching in-house arc strategy — `heros_journey`, `story_circle`,
+  `three_act`, `save_the_cat`, or `kishotenketsu` — then returns a beat-by-beat
+  outline fitted to the premise. You then write that outline into the script (use
+  `new_draft` if it's a fresh structure).
+- **Scene, cause, coherence, cast, meaning** (once scenes read end to end) —
+  **`scene_doctor`** (does every scene enter late, leave early and TURN),
+  **`motivation_doctor`** ("the whys": is each beat *caused* by a want, wound or
+  fear rather than plot convenience), **`plot_doctor`** (plot holes, continuity
+  and timeline slips, unplanted setups and unpaid payoffs — the script against
+  ITSELF), **`character_doctor`** (strip the names off the cues: can you still
+  tell who is who?), **`theme_doctor`** (what it's actually arguing, and whether
+  the argument is dramatised or just spoken aloud).
+- **Rhythm and the lines** (once the shape has stopped moving) —
+  **`tension_doctor`** (the pressure curve across scenes and where it sags),
+  **`dialogue_doctor`** (the corrective pass: voice consistency, subtext, cutting
+  on-the-nose exposition), **`world_continuity`** (the script held against the
+  world bible, plus what it invents that the bible lacks).
+- **Production-readiness** (only once the script is what it's going to be) —
+  **`producer`** (location/character counts, the beats our models fail, shot count
+  and render cost, cheaper rewrites), **`performance_doctor`** (will a voice model
+  survive these lines, and what's the spoken runtime).
+- **The on-demand room** — tracked but never offered unprompted:
+  **`voice_designer`** (each character's speech DNA, proposed into the world
+  bible), **`punch_up`** (the additive swing for the *memorable* line — run
+  `dialogue_doctor` first), **`table_read`** (casts an actor per character, each
+  seeing only its own part), **`first_reader`** (a cold, blind read — don't brief
+  it).
+
+**Never delegate a polish or production pass on a stub or a draft still being
+restructured** — it polishes lines about to be cut, or prices a script that won't
+exist. And **`lint_script`** is free and instant and is NOT one of them: run it
+before delegating anyone, and for any "how long is this episode" question.
 
 Delegate rather than doing these by hand — that's the point of the specialists.
-Then, as always, tell the user what changed and how to refresh.
+For "what's next for the script / which agents have run / who hasn't read it",
+read **`get_script_reviews`** and use the **script-agents** skill to draw the
+board. Then, as always, tell the user what changed and how to refresh.
 
 ### What comes back from a specialist
 

@@ -60,6 +60,7 @@ export const router = createBrowserRouter([
         HydrateFallback: fallback("world"),
         children: [
           { index: true, lazy: () => import("@/routes/world/written") },
+          { path: "agents", lazy: () => import("@/routes/world/agents") },
           { path: "visual", lazy: () => import("@/routes/world/visual") },
           { path: "nodes", lazy: () => import("@/routes/world/nodes") },
         ],

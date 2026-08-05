@@ -10,6 +10,7 @@ import generateStoryboard from "./skills/generate-storyboard/SKILL.md";
 import radio from "./skills/radio/SKILL.md";
 import radioPacing from "./skills/radio-pacing/SKILL.md";
 import scriptWriting from "./skills/script-writing/SKILL.md";
+import scriptAgents from "./skills/script-agents/SKILL.md";
 import seedAudio from "./skills/seed-audio/SKILL.md";
 import shotList from "./skills/shot-list/SKILL.md";
 import shotListLiveAction from "./skills/shot-list-live-action/SKILL.md";
@@ -33,6 +34,7 @@ export const skills = [
   moodboard,
   sheetGeneration,
   scriptWriting,
+  scriptAgents,
   // Two shot-list skills, one per production type — the world bible's
   // `productionType` picks between them, NOT the phrasing of the request (both
   // answer to "generate the shot list"). Each skill's preconditions make it bail

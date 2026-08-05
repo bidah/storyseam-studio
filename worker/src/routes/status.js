@@ -19,7 +19,7 @@ import { readDoc } from "../lib/docs.js";
 import { readCompletedSuggestions } from "../lib/suggestion-ledger.js";
 import { readWorld, MAP_FIELDS, DEPTH_FIELDS } from "./world.js";
 import { readStore, pinnedDraft, countLines } from "../lib/script-store.js";
-import { readReviews, reviewState } from "../lib/reviews.js";
+import { readReviews, reviewState, digestReviews } from "../lib/reviews.js";
 import { normalizeShot } from "../lib/shots.js";
 
 const filled = (section, fields) => fields.filter((f) => String(section?.[f] || "").trim());
@@ -33,6 +33,7 @@ const names = (list) => list.slice(0, NAME_CAP).map((x) => String(x?.name || "")
 // A stills entry is `db.stills[bundle][shotId]` and may be a single object, an
 // array of takes, or missing — mirror routes/storyboard.js's tolerance.
 const hasTake = (entry) => (Array.isArray(entry) ? entry.length > 0 : !!entry);
+
 
 // The single word for "what should happen next", so a caller doesn't have to
 // re-derive the pipeline order. Ordered by dependency: nothing downstream is
@@ -120,7 +121,9 @@ export async function buildStatus(env, pid) {
     updatedAt: draft.updatedAt || null,
     signed,
     hasProposal: !!draft.proposal,
-    reviews: reviewState(reviewDoc, { pinnedId: draft.id, scriptUpdatedAt: draft.updatedAt }),
+    reviews: digestReviews(
+      reviewState(reviewDoc, { pinnedId: draft.id, scriptUpdatedAt: draft.updatedAt }),
+    ),
   };
 
   // --- Visual world -----------------------------------------------------

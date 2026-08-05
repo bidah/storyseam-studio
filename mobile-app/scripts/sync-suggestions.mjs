@@ -37,6 +37,7 @@ const ROOT = path.resolve(__dirname, "..", "..");
 const web = (file) => path.resolve(ROOT, "src", "lib", file);
 const mobile = (file) => path.resolve(ROOT, "mobile-app", "src", "lib", file);
 const worker = (file) => path.resolve(ROOT, "worker", "src", "lib", file);
+const flue = (file) => path.resolve(ROOT, "flue-agent", "src", "lib", file);
 
 // [source file, [[label, destination], …]]
 const FILES = [
@@ -48,6 +49,18 @@ const FILES = [
     ],
   ],
   ["card-art.ts", [["mobile", mobile("card-art.ts")]]],
+  // The script-specialist roster. Travels one hop further than the deck does,
+  // because the flue agent needs the same list to validate which specialist is
+  // stamping a pass — a doctor that isn't on the roster must not be able to
+  // write one, and the roster it checks against has to be THE roster.
+  [
+    "specialists.ts",
+    [
+      ["mobile", mobile("specialists.ts")],
+      ["worker", worker("specialists.ts")],
+      ["flue", flue("specialists.ts")],
+    ],
+  ],
 ];
 
 const banner = (file) =>

@@ -20,7 +20,15 @@
 //
 // This file is PURE — status in, cards out. No fetching, no React, no platform
 // imports (which is what makes vendoring a straight copy), so the whole deck can
-// be reasoned about, and tested, by feeding it a status shape.
+// be reasoned about, and tested, by feeding it a status shape. Its ONE import is
+// the specialist roster, which is pure and vendored to the same three places.
+import {
+  CORE_SPECIALISTS,
+  SPECIALIST_BY_ID,
+  scriptStage,
+  stageRank,
+  type Specialist,
+} from './specialists';
 
 /**
  * What a card is ABOUT, for the icon each platform draws (lucide-react on web,
@@ -172,6 +180,12 @@ export type Status = {
 // --- The specialists --------------------------------------------------------
 // Ids match the flue agent's subagent profile names and the worker's whitelist
 // (worker/src/lib/reviews.js SPECIALISTS), in the order a script wants them.
+//
+// This used to be an inline table of four, which meant adding a doctor took an
+// edit here AND in every surface that named one. It is now DERIVED from the
+// shared roster (src/lib/specialists.ts), and deliberately from the CORE lane
+// only: an `ondemand` specialist is always runnable from the Script Agents
+// board, but must never turn up as a landing card the author didn't ask for.
 
 type Doctor = {
   id: string;
@@ -187,58 +201,40 @@ type Doctor = {
   brief: string;
 };
 
-export const DOCTORS: Doctor[] = [
-  {
-    id: 'story_architect',
-    chip: 'Structure',
-    label: 'the story architect',
-    title: 'Shape the arc',
-    does: 'maps the episode onto a narrative structure',
-    brief:
-      'take the pinned draft to the story-architect: ask me which arc I want (hero’s journey, story circle, three-act, save the cat, kishōtenketsu), map what I have onto it, and come back with a beat-by-beat outline plus what to cut, move or add',
-  },
-  {
-    id: 'motivation_doctor',
-    chip: 'Whys',
-    label: 'the motivation doctor',
-    title: 'Find the whys',
-    does: 'checks every beat is caused by character, not convenience',
-    brief:
-      'run the motivation-doctor over the pinned draft: find the beats that happen for plot convenience instead of being caused by what someone wants, fears or is wounded by, and prescribe the setup or wound that would justify each one',
-  },
-  {
-    id: 'plot_doctor',
-    chip: 'Plot holes',
-    label: 'the plot doctor',
-    title: 'Hunt the plot holes',
-    does: 'audits continuity, setups and payoffs',
-    brief:
-      'run the plot-doctor over the pinned draft: audit it for plot holes, continuity and timeline slips, unplanted setups and unpaid payoffs, and give me the smallest fix for each — most story-breaking first',
-  },
-  {
-    id: 'dialogue_doctor',
-    chip: 'Dialogue',
-    label: 'the dialogue doctor',
-    title: 'Punch up the lines',
-    does: 'sharpens voice, subtext and rhythm',
-    brief:
-      'run the dialogue-doctor over the pinned draft: keep each character’s voice distinct, cut the on-the-nose exposition, put the weight in subtext, and give me before → after rewrites for the flat exchanges',
-  },
-];
+// The roster carries more than a card needs (lane, stage, icon, writes); the
+// deck's shape stays narrow so its consumers keep compiling unchanged.
+const asDoctor = (s: Specialist): Doctor => ({
+  id: s.id,
+  label: s.label,
+  chip: s.chip,
+  title: s.title,
+  does: s.does,
+  brief: s.brief,
+});
 
+export const DOCTORS: Doctor[] = CORE_SPECIALISTS.map(asDoctor);
+
+// Core-lane only — this map is what `deriveCards` filters the worker's
+// pending/stale lists through, and those lists cover all fifteen specialists.
+// An id that misses here is an on-demand specialist, and skipping it is the
+// point.
 const DOCTOR_BY_ID = new Map(DOCTORS.map((d) => [d.id, d]));
 
 /**
  * The turn that sends the script to one specialist. Shared by the suggestion
- * cards and the Script tab's review chips, so both ask for the same thing.
- * `stale` (the doctor read an older revision) asks it to reconcile its own
- * previous notes instead of repeating them.
+ * cards, the Script tab's review chips and the Script Agents board, so all
+ * three ask for the same thing. `stale` (the doctor read an older revision)
+ * asks it to reconcile its own previous notes instead of repeating them.
+ *
+ * Resolved against the FULL roster, not `DOCTORS`: the board can run an
+ * on-demand specialist, and it must get that specialist's real brief rather
+ * than the generic fallback.
  */
 export function reviewMessage(
   id: string,
   { stale = false, lines = 0 }: { stale?: boolean; lines?: number } = {},
 ): string {
-  const d = DOCTOR_BY_ID.get(id);
+  const d = SPECIALIST_BY_ID.get(id);
   if (!d) {
     return "Let's make the script better — pick the specialist that fits and run it over the pinned draft.";
   }
@@ -463,10 +459,33 @@ function deriveCards(
     const stale = reviews.stale ?? [];
     const lines = s.lines ?? 0;
 
+    // STAGE GATE. Sequencing is craft, not decoration: a producibility pass on
+    // a twelve-line stub prices a script that doesn't exist yet, and punching up
+    // dialogue before the structure settles polishes lines about to be cut. So
+    // the deck only offers a specialist whose `stage` the script has actually
+    // reached (`scriptStage` reads that off the line count).
+    //
+    // Applied to the OFFERED deck only — the uncapped list (`capReviews:false`)
+    // feeds the worker's completion sweep, which asks "is this card's work still
+    // outstanding?". A pass that's merely too early to offer is still
+    // outstanding, and gating it there would let the sweep badge it Completed.
+    //
+    // Note `scriptStage` tops out at `polish`, so a `lock`-stage specialist
+    // (producer, performance doctor) is never AUTO-offered. It stays one tap
+    // away on the Script Agents board, which offers the whole room.
+    const reached = stageRank(scriptStage(lines));
+    const offerable = (id: string) => {
+      if (!capReviews) return true;
+      const spec = SPECIALIST_BY_ID.get(id);
+      return !!spec && stageRank(spec.stage) <= reached;
+    };
+
     // `pending`/`stale` arrive in the canonical specialist order (the worker
     // iterates SPECIALISTS), so taking the head takes the ones a script wants
     // first — structure before dialogue polish.
-    for (const id of capReviews ? pending.slice(0, MAX_PENDING_REVIEWS) : pending) {
+    for (const id of capReviews
+      ? pending.filter(offerable).slice(0, MAX_PENDING_REVIEWS)
+      : pending) {
       const d = DOCTOR_BY_ID.get(id);
       if (!d) continue;
       cards.push({
@@ -480,7 +499,9 @@ function deriveCards(
       });
     }
     // Re-runs come after every never-run doctor: a stale pass is still a pass.
-    for (const id of capReviews ? stale.slice(0, MAX_STALE_REVIEWS) : stale) {
+    for (const id of capReviews
+      ? stale.filter(offerable).slice(0, MAX_STALE_REVIEWS)
+      : stale) {
       const d = DOCTOR_BY_ID.get(id);
       if (!d) continue;
       const last = reviews.latest?.[id];

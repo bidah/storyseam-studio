@@ -8,7 +8,12 @@ import { readDoc, updateDoc } from "../lib/docs.js";
 import { broadcast } from "../lib/broadcast.js";
 import { makeShareToken } from "../lib/share-token.js";
 import { SHARE_DOC } from "./share.js";
-import { SPECIALISTS, isSpecialist, readReviews, recordReview, reviewState } from "../lib/reviews.js";
+import { SPECIALISTS, isSpecialist, cleanNotes, readReviews, recordReview, reviewState, digestReviews } from "../lib/reviews.js";
+// The roster itself (ids + how each specialist is named, what lane and stage it
+// belongs to) ships to the client with the review state, so no surface has to
+// keep its own copy of the names — see lib/specialists.ts.
+import { SPECIALISTS as SPECIALIST_ROSTER } from "../lib/specialists.ts";
+import { lintScript, elementsFromDoc } from "../lib/script-lint.js";
 import {
   nowIso,
   makeDraft,
@@ -16,6 +21,7 @@ import {
   pinnedDraft,
   draftMeta,
   metaList,
+  countLines,
   readStore,
   updateStore,
 } from "../lib/script-store.js";
@@ -47,10 +53,12 @@ export async function buildScriptView(env, pid) {
   const db = await readDB(env, pid);
   const sign = db.scriptSignoff?.[d.id] || null;
   const shotlist = await readDoc(env, pid, "shotlist", null);
-  const reviews = reviewState(await readReviews(env, pid), {
-    pinnedId: d.id,
-    scriptUpdatedAt: d.updatedAt,
-  });
+  const reviews = digestReviews(
+    reviewState(await readReviews(env, pid), {
+      pinnedId: d.id,
+      scriptUpdatedAt: d.updatedAt,
+    }),
+  );
   return {
     title: d.title,
     doc: d.doc,
@@ -358,10 +366,40 @@ export function registerScript(app) {
       });
       return c.json({
         specialists: SPECIALISTS,
+        // The full roster definitions, so the Script Agents board renders every
+        // name, label, lane, stage and icon from the shared source of truth
+        // instead of hardcoding a table that drifts the next time a doctor is
+        // added. `specialists` (ids only) stays for existing callers.
+        roster: SPECIALIST_ROSTER,
         draftId: d.id,
         draftName: d.name,
         scriptUpdatedAt: d.updatedAt,
+        // How big the draft is, in the same non-empty-block count the drafts
+        // index reports — the board uses it to decide which stage of pass is
+        // worth offering yet (scriptStage() in lib/specialists.ts).
+        lines: countLines(d.doc),
         ...state,
+      });
+    } catch (e) {
+      return c.json({ error: String(e.message || e) }, 500);
+    }
+  });
+
+  // Deterministic screenplay lint over the pinned draft: the mechanical faults
+  // (orphan dialogue, malformed sluglines, drifting character names) plus a
+  // runtime estimate. Read-only and free — see lib/script-lint.js for why these
+  // are a function rather than a sixteenth specialist. No broadcast: nothing
+  // changed.
+  app.get("/api/script/lint", async (c) => {
+    try {
+      const store = await readStore(c.env, c.get("projectId"));
+      const d = pinnedDraft(store);
+      return c.json({
+        ok: true,
+        draftId: d.id,
+        draftName: d.name,
+        scriptUpdatedAt: d.updatedAt,
+        ...lintScript(elementsFromDoc(d.doc)),
       });
     } catch (e) {
       return c.json({ error: String(e.message || e) }, 500);
@@ -378,13 +416,19 @@ export function registerScript(app) {
     try {
       let body;
       try { body = await c.req.json(); } catch { body = {}; }
-      const { specialist, summary, findings } = body || {};
+      const { specialist, summary, findings, notes } = body || {};
       if (!isSpecialist(specialist)) {
         return c.json({ error: `unknown specialist "${specialist}" — expected one of ${SPECIALISTS.join(", ")}` }, 400);
       }
       const store = await readStore(c.env, pid);
       const d = pinnedDraft(store);
       const n = Number(findings);
+      // The pass's findings as STRUCTURE, so a surface can list the actual
+      // problems instead of only a count. Clamped by the same `cleanNotes` the
+      // ledger normalizes with (24 max, severity coerced, strings clipped), and
+      // a malformed member is DROPPED rather than 400-ing the call: a doctor
+      // that formats one note badly should still get its pass logged.
+      const cleaned = cleanNotes(notes);
       const entry = {
         at: nowIso(),
         draftId: d.id,
@@ -392,6 +436,7 @@ export function registerScript(app) {
         scriptUpdatedAt: d.updatedAt,
         summary: typeof summary === "string" ? summary.slice(0, 600) : "",
         findings: Number.isFinite(n) ? Math.max(0, Math.round(n)) : null,
+        notes: cleaned,
       };
       await recordReview(c.env, pid, specialist, entry);
       // The /api/* firehose skips /api/script (those writes get their own

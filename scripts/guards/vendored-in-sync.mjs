@@ -29,6 +29,14 @@ const PAIRS = [
   ["src/genui/detect-options.ts", "mobile-app/src/genui/detect-options.ts", "npm run genui:sync"],
   ["src/lib/suggestions.ts", "mobile-app/src/lib/suggestions.ts", "npm --prefix mobile-app run sync:suggestions"],
   ["src/lib/suggestions.ts", "worker/src/lib/suggestions.ts", "npm --prefix mobile-app run sync:suggestions"],
+  // The script-specialist roster. Three copies, because the ledger's whitelist
+  // (worker), the Chat deck (mobile) and record_script_review's own guard
+  // (flue-agent) must all agree on who the specialists are — a drifted copy
+  // means a doctor whose pass the worker rejects, or a card for an agent that
+  // no longer exists.
+  ["src/lib/specialists.ts", "mobile-app/src/lib/specialists.ts", "npm --prefix mobile-app run sync:suggestions"],
+  ["src/lib/specialists.ts", "worker/src/lib/specialists.ts", "npm --prefix mobile-app run sync:suggestions"],
+  ["src/lib/specialists.ts", "flue-agent/src/lib/specialists.ts", "npm --prefix mobile-app run sync:suggestions"],
   ["src/lib/routeTable.js", "desktop/main/routeTable.js", "npm --prefix desktop run sync"],
   // The moodboard op reducer. Applied optimistically on the client AND
   // authoritatively inside the Worker's updateDoc CAS — a drifted copy means

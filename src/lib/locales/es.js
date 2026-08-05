@@ -159,4 +159,141 @@ export const es = {
     "Aún no hay voces favoritas: genera una voz en la pestaña Sonidos y toca el corazón para marcar una toma como favorita.",
   "Select": "Seleccionar",
   "Untitled voice": "Voz sin título",
+
+  // ── Script agents (World › Script agents board) ────────────────────
+  "Script agents": "Agentes de guion",
+  "The writers' room: who has read your script, what they said, and what you haven't run yet.":
+    "La sala de guionistas: quién ha leído tu guion, qué dijo y qué te falta por lanzar.",
+  "Open the script": "Abrir el guion",
+  "Go to the Script tab": "Ir a la pestaña Guion",
+  "{n} of {total} have read this revision": "{n} de {total} han leído esta revisión",
+  "{n} lines": "{n} líneas",
+  "{n} stale": "{n} desactualizados",
+  "{n} never run": "{n} sin ejecutar",
+  "{n} passes in total": "{n} pasadas en total",
+  "there's no script yet — write one on the Script tab and the room can start reading it.":
+    "Aún no hay guion: escribe uno en la pestaña Guion y la sala podrá empezar a leerlo.",
+  "the review ledger couldn't be read, so nobody's passes can be shown.":
+    "No se pudo leer el registro de revisiones, así que no se pueden mostrar las pasadas de nadie.",
+
+  // Card states + disclosures
+  "Read this revision": "Ha leído esta revisión",
+  "Script changed since": "El guion cambió desde entonces",
+  "Never run": "Nunca ejecutado",
+  "on request": "bajo petición",
+  "On request — never offered unprompted":
+    "Bajo petición: nunca se ofrece sin pedirlo",
+  "{n} findings": "{n} hallazgos",
+  "{n} passes": "{n} pasadas",
+  "no summary recorded for that pass.": "no se registró resumen de esa pasada.",
+  "What it found": "Lo que encontró",
+  "Earlier passes": "Pasadas anteriores",
+  "Fix": "Solución",
+  "Run": "Ejecutar",
+  "Run again": "Ejecutar de nuevo",
+  "can propose into the world bible": "puede proponer cambios en la biblia del mundo",
+  "the agent is busy — wait for the current turn to finish":
+    "el agente está ocupado: espera a que termine el turno actual",
+  "there is no script to read yet": "todavía no hay guion que leer",
+
+  // Stages — the ordering is the craft advice, so the notes travel with it
+  "Outline": "Esquema",
+  "There's a premise and beats, maybe no scenes yet. Shape first — everything below is cheaper once this is settled.":
+    "Hay una premisa y unos latidos, quizá aún sin escenas. Primero la forma: todo lo de abajo sale más barato cuando esto está resuelto.",
+  "Draft": "Borrador",
+  "Scenes exist and can be read end to end. This is where cause, coherence and character get audited.":
+    "Las escenas existen y pueden leerse de principio a fin. Aquí se auditan la causalidad, la coherencia y los personajes.",
+  "Polish": "Pulido",
+  "The shape is settled; the work is now line- and beat-level. Punching up before this point polishes lines that are about to be cut.":
+    "La forma ya está fijada; el trabajo es de línea y de latido. Pulir antes de este punto es afinar líneas que están a punto de cortarse.",
+  "Locked": "Bloqueado",
+  "The script is what it's going to be. These passes price the shoot and check the lines survive being spoken.":
+    "El guion ya es lo que va a ser. Estas pasadas presupuestan el rodaje y comprueban que las líneas sobreviven al ser habladas.",
+
+  // Format check (the deterministic lint)
+  "Format check": "Revisión de formato",
+  "Instant and free — a mechanical read of the pinned draft (sluglines, orphan dialogue, drifting character names). It is not a specialist pass and nothing here is a story note.":
+    "Instantánea y gratuita: una lectura mecánica del borrador fijado (encabezados de escena, diálogos huérfanos, nombres de personaje que derivan). No es una pasada de especialista y nada de esto es una nota de historia.",
+  "{n} issues": "{n} problemas",
+  "Clean": "Sin problemas",
+  "high": "alta",
+  "medium": "media",
+  "low": "baja",
+  "{n} scenes": "{n} escenas",
+  "{n} dialogue lines": "{n} líneas de diálogo",
+  "{n} words": "{n} palabras",
+  "~{time} runtime": "~{time} de duración",
+  "and {n} more — the Script tab is where they get fixed.":
+    "y {n} más: se corrigen en la pestaña Guion.",
+  "Who speaks": "Quién habla",
+
+  // Relative time (shared shape with the Script tab's drafts list)
+  "just now": "ahora mismo",
+  "{m}m ago": "hace {m} min",
+  "{h}h ago": "hace {h} h",
+  "{d}d ago": "hace {d} d",
+
+  // ── The specialist roster (src/lib/specialists.ts) ─────────────────
+  // Chips, titles and one-line descriptions. The briefs stay in English: they
+  // are prompts sent to the agent, not interface copy.
+  "Structure": "Estructura",
+  "Shape the arc": "Dar forma al arco",
+  "maps the episode onto a narrative structure":
+    "mapea el episodio sobre una estructura narrativa",
+  "Scenes": "Escenas",
+  "Make every scene turn": "Que cada escena gire",
+  "checks each scene enters late, leaves early and turns":
+    "comprueba que cada escena entra tarde, sale pronto y gira",
+  "Whys": "Porqués",
+  "Find the whys": "Encontrar los porqués",
+  "checks every beat is caused by character, not convenience":
+    "comprueba que cada latido lo causa el personaje, no la conveniencia",
+  "Plot holes": "Agujeros de trama",
+  "Hunt the plot holes": "Cazar los agujeros de trama",
+  "audits continuity, setups and payoffs":
+    "audita la continuidad, los planteamientos y sus pagos",
+  "Character": "Personaje",
+  "Make the cast legible": "Hacer legible al reparto",
+  "checks each personality reads from behaviour alone":
+    "comprueba que cada personalidad se lee solo por su comportamiento",
+  "Theme": "Tema",
+  "Say what it’s about": "Decir de qué va",
+  "checks the theme is argued, not stated":
+    "comprueba que el tema se argumenta, no se enuncia",
+  "Tension": "Tensión",
+  "Chart the tension": "Trazar la tensión",
+  "graphs the pressure scene by scene and finds the sag":
+    "grafica la presión escena a escena y encuentra el bajón",
+  "Dialogue": "Diálogo",
+  "Punch up the lines": "Afilar las líneas",
+  "sharpens voice, subtext and rhythm": "afina la voz, el subtexto y el ritmo",
+  // ("World" — the roster's world-continuity chip — is already translated at the
+  // top of this file as the app-shell tab label, and the word is the same.)
+  "Match the world bible": "Cuadrar con la biblia del mundo",
+  "checks the script against the world you wrote":
+    "contrasta el guion con el mundo que escribiste",
+  "Producible": "Producible",
+  "Price the shoot": "Presupuestar el rodaje",
+  "checks the script can actually be rendered":
+    "comprueba que el guion se puede renderizar de verdad",
+  "Speakable": "Decible",
+  "Make it speakable": "Hacerlo decible",
+  "checks the lines survive being spoken by a voice model":
+    "comprueba que las líneas sobreviven al ser habladas por un modelo de voz",
+  "Voices": "Voces",
+  "Design the voices": "Diseñar las voces",
+  "writes each character’s speech DNA into the bible":
+    "escribe el ADN del habla de cada personaje en la biblia",
+  "Punch-up": "Chispa",
+  "Make it sparkle": "Que brille",
+  "swings for the memorable line, not the correct one":
+    "va a por la línea memorable, no por la correcta",
+  "Table read": "Lectura de mesa",
+  "Hold a table read": "Hacer una lectura de mesa",
+  "casts an actor per character and collects their notes":
+    "asigna un actor por personaje y recoge sus notas",
+  "Cold read": "Lectura en frío",
+  "Get a cold read": "Conseguir una lectura en frío",
+  "reads it blind and says where it lost them":
+    "lo lee a ciegas y dice dónde le perdió",
 };

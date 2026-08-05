@@ -10,10 +10,11 @@ description: >-
   turn. Edits apply ONLY to the pinned draft (list_drafts / new_draft /
   pin_draft). New material starts as a BEAT OUTLINE the author approves in chat
   before any line is written, and apply_script_proposal runs ONLY after they
-  explicitly say to apply it — never in the same turn as the proposal, never
-  rolling on into shots after. To improve a script, delegate to the specialists
-  (story-architect / plot-doctor / motivation-doctor / dialogue-doctor),
-  preferring one get_script's `reviews` calls `pending` over one it calls `fresh`.
+  say to apply it — never in the same turn as the proposal, never rolling on
+  into shots after. To IMPROVE a script never do the craft by hand: delegate to
+  one of the 15 specialists in stage order (structure, then scenes and cause,
+  then lines, then producibility). For "what's next / which agents have run",
+  load script-agents.
 ---
 
 # Script writing (Shot Studio Script tab)
@@ -158,38 +159,106 @@ append_script(elements: [
 
 ## Specialists — delegate the hard scriptwriting
 
-You have a team of focused script subagents. Don't do their jobs by hand. Each
-one reads the script itself with `get_script` — so **don't paste the script into
-the delegation prompt** (long pastes get truncated and the doctor sees only the
-opening). Delegate with a short prompt naming the task and any scenes to focus on,
-then apply what they return (offer `new_draft` before a big change):
+You have a room of fifteen focused script subagents. **Don't do their jobs by
+hand.** Each reads the script itself with `get_script` — so **don't paste the
+script into the delegation prompt** (long pastes get truncated and the doctor
+sees only the opening). Delegate with a short prompt naming the task and any
+scenes to focus on, then apply what they return (offer `new_draft` before a big
+change).
 
-- **`story-architect`** (the "arc agent") — for building or restructuring a story.
-  It asks which arc to build (Hero's Journey, Story Circle, Three-Act, Save the
-  Cat, Kishōtenketsu, …) and returns a beat outline you then write out.
-- **`plot-doctor`** — audit for plot holes / continuity and get coherence fixes.
-- **`motivation-doctor`** ("the whys") — checks every beat is *caused* by
-  character (want / wound / trauma / fear), not authorial convenience; a different
-  lane from `plot-doctor`'s logical coherence.
-- **`dialogue-doctor`** — voice consistency, subtext, and punch-up on the lines.
+They are listed here in **stage order**, which is the order a script wants them.
+Sequencing is load-bearing craft, not decoration.
+
+**Structure — `outline`, before anything else exists**
+
+- **`story_architect`** (the "arc agent") — building or restructuring a story. It
+  asks which arc to build (Hero's Journey, Story Circle, Three-Act, Save the Cat,
+  Kishōtenketsu, …) and returns a beat outline you then write out.
+
+**Scene, cause, coherence, cast and meaning — `draft`, once scenes read end to end**
+
+- **`scene_doctor`** — does every scene enter late, leave early, and TURN. Works
+  *inside* each scene.
+- **`motivation_doctor`** ("the whys") — is each beat *caused* by character (want
+  / wound / fear) rather than authorial convenience.
+- **`plot_doctor`** — plot holes, continuity and timeline slips, unplanted setups
+  and unpaid payoffs. Checks the script against ITSELF; `motivation_doctor` asks
+  why, this one asks whether it adds up.
+- **`character_doctor`** — strip the names off the cues: can you still tell who is
+  who? Finds the one-adjective characters and the traits asserted in dialogue
+  instead of shown. ("She'd never do that" is here; "nothing made her do it" is
+  `motivation_doctor`.)
+- **`theme_doctor`** — what the episode is actually arguing, whether the opposing
+  view can win, and every place the theme is spoken aloud instead of dramatised.
+
+**Rhythm and the lines — `polish`, once the shape has stopped moving**
+
+- **`tension_doctor`** — scores the pressure scene by scene and finds the sag.
+  Reads the SEQUENCE (`scene_doctor` judges a scene on its own terms).
+- **`dialogue_doctor`** — the corrective pass on the lines: voice consistency,
+  subtext, cutting on-the-nose exposition, rhythm. Makes the lines *right*.
+- **`world_continuity`** — the script held against the world bible: contradicted
+  names, places, rules and geography, plus what the script invents that the bible
+  doesn't have yet.
+
+**Production-readiness — `lock`, only once the script is what it's going to be**
+
+- **`producer`** — location/character counts, the beats our image and video models
+  reliably fail, shot count and render cost, and cheaper rewrites that read the
+  same.
+- **`performance_doctor`** — will a voice model survive these lines (homographs,
+  numerals, abbreviations, run-ons, names) and what's the spoken runtime.
+
+**The on-demand room — tracked, but never offered unprompted**
+
+- **`voice_designer`** — each character's speech DNA, proposed into the world
+  bible's `voice` field. Designs the instrument; `dialogue_doctor` plays it.
+- **`punch_up`** — the additive swing for the *memorable* line, not the correct
+  one. Run `dialogue_doctor` FIRST; punching up a line about to be rewritten (or
+  cut) is wasted work.
+- **`table_read`** — casts one actor per character, each seeing only its own part,
+  and brings back what the room says.
+- **`first_reader`** — a cold, blind read: what it understood, what confused it,
+  and the exact line where it stopped watching. Don't brief it.
+
+**Never delegate a `polish` or `lock` pass on a stub or a draft still being
+restructured** — polishing lines before the structure is settled polishes lines
+that are about to be cut, and pricing a shoot from a moving draft prices a script
+that won't exist.
+
+`lint_script` is free and instant and is NOT one of them: run it before
+delegating anyone (mechanical faults shouldn't cost a doctor's pass) and for any
+"how long is this episode" question.
 
 ### Which doctors have already run
 
-`get_script` (and `get_status`) return a **`reviews`** block bucketing all four
-specialists against the pinned draft's current revision:
+`get_script` and `get_status` return a small **`reviews`** block bucketing the
+whole roster against the pinned draft's current revision; **`get_script_reviews`**
+returns the detailed one (structured notes, pass counts, per-specialist history).
 
-- **`pending`** — never run on this script. Offer these first.
+- **`pending`** — never run on this script. Offer these first, in roster order.
 - **`stale`** — they ran, but the script has been edited since (or on another
-  draft), so their findings are against text that no longer exists. Worth a
-  re-run after a big change.
+  draft), so their findings point at text that no longer exists. Report it as
+  what it is ("the tension doctor read Draft 2, before your rewrite") and offer
+  the re-run rather than repeating dead findings.
 - **`fresh`** — they read this exact revision; `latest[<id>]` carries the pass's
-  `summary`, `findings` count and time. **Don't re-run a fresh one** unless the
-  user asks — say what it already found instead.
+  `summary`, `findings` count, structured `notes` and time, and `passes[<id>]`
+  how many times it has ever run.
+
+**A re-run is normal, not a mistake.** Every pass is kept as history, so running
+a specialist again is a first-class move — a different swing, or a check after
+the author revised by hand. Don't talk them out of it; just say it already
+cleared this revision and what it found, then go. What you must never do is
+re-run a fresh specialist *silently*, or claim a pass the ledger doesn't show.
 
 Read that before suggesting a review, so "let's make the script better" reaches
 for the doctor that hasn't looked yet rather than the one that just cleared it.
 Each specialist logs its own pass (`record_script_review`) as its last act — you
 never call that tool yourself; you just read the result.
+
+For the full board — every specialist grouped by state, with a tappable action
+per pass — load the **`script-agents`** skill. That's the answer to "what do I do
+next with the script".
 
 ## Style
 
