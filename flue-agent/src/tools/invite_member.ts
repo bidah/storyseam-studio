@@ -7,7 +7,7 @@ export const inviteMember = (api: Api) =>
   defineTool({
     name: "invite_member",
     description:
-      "Invite someone by email into an organization, choosing HOW MUCH of it they see. scopeMode 'all' → every current and future project in the org. scopeMode 'selection' → only the projectIds you pass (get them from list_orgs/the project list). role 'member' (default) or 'admin' (an admin manages the whole org and its members). projectRole 'editor' (default) or 'viewer' (read-only) applies to the selected projects. Returns an `inviteUrl` — share that link with the person; they accept it while signed in. No email is sent automatically.",
+      "Invite someone by email into an organization, choosing HOW MUCH of it they see. scopeMode 'all' → every current and future project in the org. scopeMode 'selection' → only the projectIds you pass (get them from list_orgs/the project list). role 'member' (default) or 'admin' (an admin manages the whole org and its members). projectRole 'editor' (default) or 'viewer' (read-only) applies to the selected projects. The invitee receives an email at their address with the accept link; the response also returns `inviteUrl` as a fallback you can share manually.",
     input: v.object({
       organizationId: d(v.pipe(v.string(), v.minLength(1)), "Org id from list_orgs."),
       email: d(v.pipe(v.string(), v.email()), "Invitee's email address."),

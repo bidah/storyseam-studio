@@ -6,10 +6,11 @@
 // active-project gate in index.js (an invitee accepting their first invite has
 // no project yet — the gate would 400 them).
 //
-// Invites are delivered as a COPY-LINK: no email provider is wired, so creating
-// an invitation returns a URL ( /accept-invite/:id?token=… ) the inviter shares.
-// When email lands it sends this same link. The token is the credential.
+// Invites are delivered via email (storyseam.app Email Sending binding). The
+// route also returns the `inviteUrl` in the response so the creator can copy it
+// as a fallback. The token is the credential.
 
+import { sendInviteEmail } from "../lib/email.js";
 import {
   listUserOrgs,
   listOrgMembers,
@@ -98,7 +99,15 @@ export function registerOrgs(app) {
     const inv = await createInvitation(c.env, {
       orgId, email, role, scopeMode, projectIds, projectRole, invitedBy: userId,
     });
-    return c.json({ id: inv.id, inviteUrl: inviteUrl(c, inv.id, inv.token), email, scopeMode });
+    const url = inviteUrl(c, inv.id, inv.token);
+    // Fire-and-forget the email — the route already returns the fallback link.
+    c.executionCtx.waitUntil(
+      (async () => {
+        const org = await c.env.DB.prepare("SELECT name FROM organizations WHERE id = ?").bind(orgId).first();
+        await sendInviteEmail(c.env, { email, orgName: org?.name || "a team", inviteUrl: url });
+      })(),
+    );
+    return c.json({ id: inv.id, inviteUrl: url, email, scopeMode });
   });
 
   // Revoke a pending invitation (managers only).

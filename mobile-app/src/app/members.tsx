@@ -22,8 +22,9 @@ import { useColors } from '@/lib/colors';
 // hand-picked SELECTION as editor or viewer. Account-scoped (not tied to the
 // active project), presented as a formSheet from the header menu.
 //
-// Invites are copy-LINK (no email sender wired): creating one returns an
-// inviteUrl we hand to the OS Share sheet — the mobile idiom for "send this".
+// Invites are delivered by email automatically (worker/lib/email.js); the
+// route also returns an inviteUrl which we hand to the OS Share sheet as a
+// fallback for the creator.
 
 type ScopeMode = 'all' | 'selection';
 type ProjRole = 'editor' | 'viewer';
