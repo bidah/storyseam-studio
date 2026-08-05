@@ -225,7 +225,7 @@ function buildBundles(shots, world, genSettings) {
       NOFX + "\n" +
       `Use the generate-multishot skill to render ${id}.\n` +
       `Single location only — do NOT cross locations within this clip.\n` +
-      `NO audio reference — set generate_audio: true so Seedance generates its own audio from the prompt.\n` +
+      `Audio: pass each VOICE / SOUND REFERENCE listed above as the matching character's voice — encode the clip to a black-screen MP4 and send it as a video_references entry (the generate-multishot skill's voice path), generate_audio: true, dialogue from the SHOT lines below. With no voice references listed, set generate_audio: true so Seedance generates its own audio from the prompt.\n` +
       `Pass each image listed under IMAGE REFERENCES above as an image_references entry; apply it to the matching character/location wherever it appears in the shots.\n` +
       bibleNote +
       `Params: ${videoParams}, duration ${dur}s (<=15), aspect 16:9.\n` +

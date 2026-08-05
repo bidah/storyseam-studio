@@ -36,4 +36,11 @@ export const es = {
   "Interface language": "Idioma de la interfaz",
   "English": "Inglés",
   "Spanish": "Español",
+
+  // ── Members / Team & access (scopeSummary + roster) ─────────────────
+  "Owner · full access": "Propietario · acceso total",
+  "Admin · all projects": "Admin · todos los proyectos",
+  "All projects": "Todos los proyectos",
+  "{n} projects": "{n} proyectos",
+  "No projects yet": "Aún sin proyectos",
 };

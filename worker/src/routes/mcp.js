@@ -185,7 +185,7 @@ const TOOLS = [
   {
     name: "get_episode",
     description:
-      "Get the episode plan: the multishot bundles (MS-01 …) packed from the shot list, their rendered video generations, per-bundle prompt overrides, sign-off state, chosen first frames and style-reference videos, and the per-bundle scene-needs checklist (which image and voice references are still missing before a bundle can render). Returns { episode: null } when no plan has been built yet. This is the full plan, so it is a large payload — use get_status first if you only need to know how far along the renders are.",
+      "Get the episode plan: the multishot bundles (MS-01 …) packed from the shot list, their rendered video generations, per-bundle prompt overrides, sign-off state, chosen first frames and style-reference videos, the per-bundle scene-needs checklist (which image and voice references are still missing before a bundle can render), and the voice/sound reference pool plus each bundle's attached voice picks (with agent-fetchable refUrls). Returns { episode: null } when no plan has been built yet. This is the full plan, so it is a large payload — use get_status first if you only need to know how far along the renders are.",
     inputSchema: NO_INPUT,
     run: (c) => buildEpisodeView(c.env, c.get("mcpProjectId")),
   },

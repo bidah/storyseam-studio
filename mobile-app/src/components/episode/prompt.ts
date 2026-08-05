@@ -55,6 +55,7 @@ export type AudioRef = {
   label: string;
   order?: string[];
   url: string;
+  refUrl?: string; // ungated absolute /files URL — what the agent actually fetches
   exists?: boolean;
 };
 
@@ -172,7 +173,7 @@ export function composeAudioBlock(refs: AudioRef[]): string {
         refs
           .map(
             (a) =>
-              `- ${a.label}: ${a.rel}` +
+              `- ${a.label}: ${a.refUrl || a.url || a.rel}` +
               (a.order && a.order.length > 1
                 ? ` — voices appear in this order: ${a.order.map((n, i) => `${i + 1}=${n}`).join(', ')}`
                 : ''),

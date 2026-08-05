@@ -327,10 +327,11 @@ export { rosterMaps, needsStateFor };
 // gets the same joined view — reading the bare `episode-manifest` doc instead
 // would report bundles as unrendered whose media is sitting right there in R2.
 export async function buildEpisodeView(env, pid) {
-  const [manifest, world, vw] = await Promise.all([
+  const [manifest, world, vw, legacy] = await Promise.all([
     readManifest(env, pid),
     readWorld(env, pid),
     readDoc(env, pid, "visual-world", null),
+    legacyAudioPool(env, pid),
   ]);
   if (!manifest) return { episode: null };
   const db = await readDB(env, pid);
@@ -389,6 +390,11 @@ export async function buildEpisodeView(env, pid) {
     firstFrames: db.episodeFirstFrame || {},
     refVideos: db.episodeRefVideo || {},
     needs,
+    // Voice/sound reference pool + per-bundle picks, so a caller (the agent's
+    // get_episode, the MCP server) can see the voices attached to a bundle and
+    // fetch their `refUrl` — the same data `/api/audio` serves the GUI.
+    audio: [...worldVoicePool(env, pid, world), ...legacy],
+    audioPicks: db.episodeAudio || {},
     style: {
       episode: db.episodeStyle || "",
       scenes: db.sceneStyle || {},

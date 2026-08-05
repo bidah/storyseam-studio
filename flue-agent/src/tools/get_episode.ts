@@ -33,6 +33,21 @@ type Bundle = {
   [k: string]: unknown;
 };
 type Take = { name?: string; selected?: boolean; [k: string]: unknown };
+// One entry of the voice/sound reference pool (`/api/audio`), the same shape the
+// Episode tab's audio rail works with. `refUrl` is the ungated absolute /files
+// URL an anonymous fetcher (the render agent / Higgsfield import) can pull.
+type AudioRef = {
+  rel?: string;
+  label?: string;
+  order?: string[];
+  character?: string;
+  url?: string;
+  refUrl?: string;
+  source?: string;
+  trackId?: string | null;
+  v?: number | null;
+  exists?: boolean;
+};
 type EpisodePayload = {
   episode: {
     title?: string;
@@ -48,6 +63,8 @@ type EpisodePayload = {
   firstFrames?: Record<string, unknown>;
   refVideos?: Record<string, unknown>;
   needs?: Record<string, unknown>;
+  audio?: AudioRef[];
+  audioPicks?: Record<string, string[]>;
 };
 
 // Per-bundle state folded in from the payload's top-level maps.
@@ -74,7 +91,7 @@ export const getEpisode = (api: Api) =>
   defineTool({
     name: "get_episode",
     description:
-      "Get the episode plan: the multishot bundles (MS-01 …), their rendered video generations, per-bundle prompt overrides, and sign-off state. With no arguments returns a COMPACT overview of every bundle (no prompts). Pass `bundle` (e.g. \"MS-01\") or `beat` (e.g. \"B1\") to get full detail — per-shot summaries and Seedance prompts, the composed skillPrompt, prompt-override text, and video take URLs — for just that slice. Always scope when working on specific bundles.",
+      "Get the episode plan: the multishot bundles (MS-01 …), their rendered video generations, per-bundle prompt overrides, and sign-off state. With no arguments returns a COMPACT overview of every bundle (no prompts). Pass `bundle` (e.g. \"MS-01\") or `beat` (e.g. \"B1\") to get full detail — per-shot summaries and Seedance prompts, the composed skillPrompt, prompt-override text, the bundle's attached VOICE / SOUND references (with their agent-fetchable `refUrl`), and video take URLs — for just that slice. Always scope when working on specific bundles.",
     input: v.object({
       bundle: v.optional(
         d(
@@ -129,6 +146,11 @@ export const getEpisode = (api: Api) =>
               promptOverride: data.prompts?.[String(b.id)] ?? null,
               video: data.video?.[String(b.id)] ?? [],
               sceneNeeds: data.needs?.[String(b.id)] ?? null,
+              // The voices attached to this bundle, resolved from the pool —
+              // pass their `refUrl` to the render (black-MP4 voice path).
+              audioRefs: (data.audioPicks?.[String(b.id)] ?? [])
+                .map((rel) => data.audio?.find((a) => a.rel === rel))
+                .filter((a): a is AudioRef => Boolean(a)) as Json,
             })),
           } as Json,
         };

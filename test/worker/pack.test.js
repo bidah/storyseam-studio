@@ -69,8 +69,16 @@ describe("buildBundles", () => {
     const [b] = buildBundles([shot({ id: "01", characters: ["Sara"] })]);
     expect(b.id).toBe("MS-01");
     expect(b.skillPrompt).toContain("Use the generate-multishot skill to render MS-01");
-    expect(b.skillPrompt).toContain("STYLE:");
+    // Style is no longer baked in here — routes/episode.js prepends the episode/
+    // scene style selection at read time (applyStyle), so buildBundles ships the
+    // style-free prompt.
+    expect(b.skillPrompt).not.toContain("STYLE:");
     expect(b.skillPrompt).toContain("NO VISUAL EFFECTS AND NO BACKGROUND MUSIC.");
+    // The audio line must NOT tell the model to skip voice references — the
+    // episode tab's VOICE / SOUND REFERENCES block relies on it.
+    expect(b.skillPrompt).not.toContain("NO audio reference");
+    expect(b.skillPrompt).toMatch(/VOICE \/ SOUND REFERENCE listed above/);
+    expect(b.skillPrompt).toMatch(/black-screen MP4/);
     expect(b.duration).toBeLessThanOrEqual(MAX);
   });
 

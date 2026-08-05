@@ -69,6 +69,7 @@ function InviteLink({ url }) {
 }
 
 export function Component() {
+  const t = useT();
   const [orgs, setOrgs] = useState([]);
   const [orgId, setOrgId] = useState(null);
   const [members, setMembers] = useState([]);
@@ -292,7 +293,7 @@ export function Component() {
                   {m.role === "owner" && <Badge variant="muted"><Shield size={11} /> Owner</Badge>}
                   {m.role === "admin" && <Badge variant="info"><ShieldCheck size={11} /> Admin</Badge>}
                 </div>
-                <div className="truncate text-xs text-muted-foreground">{m.email} · {scopeSummary(m)}</div>
+                <div className="truncate text-xs text-muted-foreground">{m.email} · {scopeSummary(m, t)}</div>
               </div>
 
               {canManage && m.role === "member" && (
