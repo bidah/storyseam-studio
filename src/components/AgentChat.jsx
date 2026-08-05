@@ -26,6 +26,8 @@ import {
   ExternalLink,
   PanelRightClose,
   PanelRightOpen,
+  Maximize2,
+  Minimize2,
 } from "lucide-react";
 import { useDropzone } from "react-dropzone";
 import { toast } from "sonner";
@@ -1517,6 +1519,24 @@ export default function AgentChat() {
     (next) => setRailedByTab((m) => ({ ...m, [tab]: next })),
     [tab],
   );
+
+  // Full view: promote the whole panel into a centred modal that floats over the
+  // GUI, for when the author is driving the pipeline from the chat and the tab
+  // behind it is a second thought. Session-only and NOT per tab — it's a global
+  // overlay, so it stays on as the author moves between tabs and a reload clears
+  // it. Escape closes it (matching the shadcn Dialog behaviour it lives beside).
+  const [fullView, setFullView] = useState(false);
+  useEffect(() => {
+    if (!fullView) return;
+    const onKey = (e) => {
+      if (e.key === "Escape") setFullView(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [fullView]);
+  // In full view the panel is always shown at full size — the rail is a
+  // side-column affordance that makes no sense for a centred modal.
+  const showRail = railed && !fullView;
   // The shell's data-change nonce (bumped by the /api/data/events firehose, a
   // project switch, and the Refresh button). The landing screen re-reads the
   // pipeline digest on it, so finishing a stage anywhere retires its card here.
@@ -2069,12 +2089,24 @@ export default function AgentChat() {
   };
 
   return (
+    <>
+      {/* Full view: a dimmed backdrop over the GUI behind the floating panel.
+          Clicking it drops back to the docked column. */}
+      {fullView ? (
+        <div
+          className="fixed inset-0 z-40 bg-background/70 backdrop-blur-sm"
+          onClick={() => setFullView(false)}
+          aria-hidden="true"
+        />
+      ) : null}
     <aside
       {...getDropRootProps({
-        className: cn(
-          "relative flex h-full shrink-0 flex-col border-l bg-card transition-[width] duration-200",
-          railed ? "w-12" : "w-[495px]",
-        ),
+        className: fullView
+          ? "fixed inset-y-4 left-1/2 z-50 flex w-[min(1100px,94vw)] -translate-x-1/2 flex-col overflow-hidden rounded-xl border bg-card shadow-2xl"
+          : cn(
+              "relative flex h-full shrink-0 flex-col border-l bg-card transition-[width] duration-200",
+              railed ? "w-12" : "w-[495px]",
+            ),
       })}
     >
       {/* The file dialog's input, opened by the attach menu. `noClick` keeps it
@@ -2084,7 +2116,7 @@ export default function AgentChat() {
       {/* Railed: a thin strip that gives the width back to the tab. The panel
           below is HIDDEN, not unmounted — a half-typed message, a pending
           upload and the live transcript all survive a collapse. */}
-      {railed ? (
+      {showRail ? (
         <div className="flex h-full w-full flex-col items-center gap-2 py-3">
           <Button
             size="icon"
@@ -2125,7 +2157,7 @@ export default function AgentChat() {
       {/* `hidden` rather than a conditional render: unmounting would throw away
           the composer's draft, any in-flight attachment upload, and the
           transcript's scroll position every time the panel is railed. */}
-      <div className={cn("flex min-h-0 flex-1 flex-col", railed && "hidden")}>
+      <div className={cn("flex min-h-0 flex-1 flex-col", showRail && "hidden")}>
       <div className="relative min-h-0 flex-1">
         {/* New chat + previous-chats controls, floating over the top-right of the
             transcript, each in its own rounded wrapper so they read over the
@@ -2149,12 +2181,26 @@ export default function AgentChat() {
             size="icon"
             variant="ghost"
             className="size-8 rounded-full border bg-card/80 text-muted-foreground shadow-sm backdrop-blur hover:bg-accent hover:text-foreground"
-            aria-label={t("Collapse the studio agent")}
-            title={t("Collapse the studio agent")}
-            onClick={() => setRailed(true)}
+            aria-label={fullView ? t("Exit full view") : t("Full view")}
+            title={fullView ? t("Exit full view") : t("Full view")}
+            onClick={() => setFullView((v) => !v)}
           >
-            <PanelRightClose size={16} />
+            {fullView ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
           </Button>
+          {/* The rail is a docked-column affordance — no place in a centred
+              modal, so it steps aside for the full-view toggle above. */}
+          {fullView ? null : (
+            <Button
+              size="icon"
+              variant="ghost"
+              className="size-8 rounded-full border bg-card/80 text-muted-foreground shadow-sm backdrop-blur hover:bg-accent hover:text-foreground"
+              aria-label={t("Collapse the studio agent")}
+              title={t("Collapse the studio agent")}
+              onClick={() => setRailed(true)}
+            >
+              <PanelRightClose size={16} />
+            </Button>
+          )}
         </div>
         <div
           ref={scrollRef}
@@ -2477,5 +2523,6 @@ export default function AgentChat() {
         </DialogContent>
       </Dialog>
     </aside>
+    </>
   );
 }
