@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLoaderData, useRevalidator } from "react-router";
 import { X, Check, Plus, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, RotateCcw, Maximize2, Volume2, Speech, Play, Copy, Pencil, Sparkles, PenLine, FileText, Film, Image as ImageIcon, Loader2, Wand2, Scissors, Boxes, CircleAlert, MapPin, User, Palette } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useT } from "@/lib/i18n";
 import { swr, useRevalidateOnMount, useRevalidateOnAgentIdle } from "@/lib/swr";
 import { invalidateTabCache } from "@/lib/tabCache";
 import { useAgent, agentIsBusy, renderEpisodeMessage, renderStoryboardMessage, renderStoryboardAllMessage, trimMessage } from "@/components/AgentProvider";
@@ -26,21 +27,22 @@ import { useShell } from "@/lib/shellContext";
 function refLabel(rel) {
   const base = rel.split("/").pop().toLowerCase();
   const night = base.includes("night");
-  const t = (n) => (night ? `${n} (night)` : n);
+  const fmtLabel = (n) => (night ? `${n} (night)` : n);
   if (base.includes("kids")) return "Elf kids";
   if (base.includes("king") && base.includes("house")) return "King's house";
-  if (base.includes("king")) return t("Forest King");
-  if (base.includes("sara")) return t("Sara");
-  if (base.includes("helena")) return t("Helena");
-  if (base.includes("mote") || base.includes("glow")) return t("Mote");
-  if (base.includes("deep") && base.includes("forest")) return t("deep wood");
+  if (base.includes("king")) return fmtLabel("Forest King");
+  if (base.includes("sara")) return fmtLabel("Sara");
+  if (base.includes("helena")) return fmtLabel("Helena");
+  if (base.includes("mote") || base.includes("glow")) return fmtLabel("Mote");
+  if (base.includes("deep") && base.includes("forest")) return fmtLabel("deep wood");
   if (base.includes("school")) return "school";
   if (base.includes("classroom")) return "classroom";
-  if (base.includes("forest")) return t("forest");
+  if (base.includes("forest")) return fmtLabel("forest");
   return base.replace(/\.[a-z0-9]+$/, "");
 }
 
 function CopyButton({ text, label = "copy prompt" }) {
+  const t = useT();
   const [copied, setCopied] = useState(false);
   const onCopy = useCallback(async () => {
     try {
@@ -58,7 +60,7 @@ function CopyButton({ text, label = "copy prompt" }) {
   }, [text]);
   return (
     <Button variant={copied ? "secondary" : "outline"} size="sm" onClick={onCopy}>
-      <IconSwap active={copied} on={<Check size={13} />} off={<Copy size={13} />} /> {copied ? "copied" : label}
+      <IconSwap active={copied} on={<Check size={13} />} off={<Copy size={13} />} /> {copied ? t("copied") : t(label)}
     </Button>
   );
 }
@@ -98,12 +100,13 @@ function computeNeeds(state, picked, audioPicked, audioMap) {
 const roleIcon = { location: MapPin, character: User, voice: Volume2 };
 
 function NeedChip({ role, label, fulfilled, title }) {
+  const t = useT();
   const Icon = roleIcon[role] || User;
   return (
     <Badge variant={fulfilled ? "success" : "warning"} className="gap-1" title={title}>
       {fulfilled ? <Check size={11} /> : <Icon size={11} />}
       {label}
-      {role === "voice" && <span className="opacity-70">(voice)</span>}
+      {role === "voice" && <span className="opacity-70">{t("(voice)")}</span>}
     </Badge>
   );
 }
@@ -112,12 +115,13 @@ function NeedChip({ role, label, fulfilled, title }) {
 // pickers): every location/character/voice the scene requires, green when a
 // chosen reference covers it.
 function NeedsChecklist({ ns }) {
+  const t = useT();
   if (!ns) return null;
   const total = ns.needs.length + ns.voice.length;
-  if (!total) return <Empty>no scene needs detected — rebuild the plan after writing the shot list</Empty>;
+  if (!total) return <Empty>{t("no scene needs detected — rebuild the plan after writing the shot list")}</Empty>;
   return (
     <div className="flex flex-wrap items-center gap-1.5 text-xs">
-      <span className="font-semibold uppercase tracking-wide text-muted-foreground">scene needs</span>
+      <span className="font-semibold uppercase tracking-wide text-muted-foreground">{t("scene needs")}</span>
       {ns.needs.map((n) => (
         <NeedChip
           key={n.id}
@@ -126,10 +130,10 @@ function NeedsChecklist({ ns }) {
           fulfilled={n.fulfilled}
           title={
             n.fulfilled
-              ? `covered by ${n.via}`
+              ? t("covered by {via}", { via: n.via })
               : n.sheetRel
-              ? "not covered yet — choose its World sheet as a reference (or auto-assign)"
-              : "no World sheet linked — choose any reference and link it to this need"
+              ? t("not covered yet — choose its World sheet as a reference (or auto-assign)")
+              : t("no World sheet linked — choose any reference and link it to this need")
           }
         />
       ))}
@@ -139,7 +143,7 @@ function NeedsChecklist({ ns }) {
           role="voice"
           label={v.name}
           fulfilled={v.fulfilled}
-          title={v.fulfilled ? "voice reference chosen" : "no voice reference chosen for this speaker yet"}
+          title={v.fulfilled ? t("voice reference chosen") : t("no voice reference chosen for this speaker yet")}
         />
       ))}
     </div>
@@ -157,6 +161,7 @@ const SIGN_SECTIONS = [
 ];
 
 function SigningModal({ bundle, signoff, ns, open, onSign, onClose }) {
+  const t = useT();
   const [signedBy, setSignedBy] = useState(() => {
     try { return localStorage.getItem("shotStudioSigner") || ""; } catch { return ""; }
   });
@@ -186,17 +191,17 @@ function SigningModal({ bundle, signoff, ns, open, onSign, onClose }) {
       <DialogContent className="sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle className="flex flex-wrap items-center gap-2">
-            <PenLine size={16} className="shrink-0" /> Revision signing
+            <PenLine size={16} className="shrink-0" /> {t("Revision signing")}
             <Badge variant="secondary" className="shrink-0 font-mono">{bundle.id}</Badge>
             <span className="font-normal text-muted-foreground">{bundle.beatTitle}</span>
           </DialogTitle>
         </DialogHeader>
         <div className="space-y-1.5">
-          <Label htmlFor="signed-by">Signed by</Label>
+          <Label htmlFor="signed-by">{t("Signed by")}</Label>
           <Input
             id="signed-by"
             value={signedBy}
-            placeholder="your name"
+            placeholder={t("your name")}
             onChange={(e) => setSignedBy(e.target.value)}
           />
         </div>
@@ -217,7 +222,7 @@ function SigningModal({ bundle, signoff, ns, open, onSign, onClose }) {
                   checked={on}
                   disabled={!on && (!name || !!unmet)}
                   onCheckedChange={(c) => toggle(key, !!c)}
-                  aria-label={on ? `unsign ${label}` : `sign ${label}`}
+                  aria-label={on ? t("unsign {label}", { label }) : t("sign {label}", { label })}
                   className="size-5"
                 />
                 <div className="min-w-0">
@@ -225,12 +230,12 @@ function SigningModal({ bundle, signoff, ns, open, onSign, onClose }) {
                     <Icon size={13} /> {label}
                   </div>
                   <div className="text-xs text-muted-foreground">
-                    {on ? `signed by ${sig.by} · ${fmt(sig.at)}` : hint}
+                    {on ? t("signed by {by} · {at}", { by: sig.by, at: fmt(sig.at) }) : hint}
                   </div>
                   {!on && unmet && (
                     <div className="mt-0.5 flex items-start gap-1 text-xs text-amber-500">
                       <CircleAlert size={12} className="mt-0.5 shrink-0" />
-                      <span>can't sign yet — uncovered scene needs: {unmet.join(", ")}</span>
+                      <span>{t("can't sign yet — uncovered scene needs: {unmet}", { unmet: unmet.join(", ") })}</span>
                     </div>
                   )}
                 </div>
@@ -240,7 +245,7 @@ function SigningModal({ bundle, signoff, ns, open, onSign, onClose }) {
         </div>
         {err && <ErrorNote>{err}</ErrorNote>}
         <DialogFooter>
-          <Button variant="outline" onClick={onClose}>Done</Button>
+          <Button variant="outline" onClick={onClose}>{t("Done")}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -260,6 +265,7 @@ const fmtDur = (s) => {
 };
 
 function EpVideoRail({ bundleId, vids, reloadKey, onToggleVideo }) {
+  const t = useT();
   // Prefer the selected take so a picked video is never hidden behind a later
   // unselected one; fall back to the last render when nothing is selected.
   const selFile = vids.find((v) => v.selected)?.file;
@@ -335,9 +341,9 @@ function EpVideoRail({ bundleId, vids, reloadKey, onToggleVideo }) {
     <div className="rounded-xl border bg-muted/30 p-3">
       <div className="mb-2 flex items-center justify-between gap-2">
         <span className="flex min-w-0 items-center gap-2 text-xs font-medium">
-          <span className="truncate">{bundleId} · {g.name || `gen ${idx + 1}`}</span>
+          <span className="truncate">{bundleId} · {g.name || t("gen {n}", { n: idx + 1 })}</span>
           {selCount > 0 && (
-            <Badge variant="success" className="shrink-0">{selCount} <Check size={11} /> stitch</Badge>
+            <Badge variant="success" className="shrink-0">{selCount} <Check size={11} /> {t("stitch")}</Badge>
           )}
         </span>
         <div className="flex shrink-0 items-center gap-1.5">
@@ -345,14 +351,14 @@ function EpVideoRail({ bundleId, vids, reloadKey, onToggleVideo }) {
             variant={trimOpen ? "default" : "outline"}
             size="icon-xs"
             onClick={() => setTrimOpen((o) => !o)}
-            aria-label={trimOpen ? "Close trim" : "Trim this take"}
-            title="Trim this take"
+            aria-label={trimOpen ? t("Close trim") : t("Trim this take")}
+            title={t("Trim this take")}
           >
             <Scissors size={14} />
           </Button>
-          <Button variant="outline" size="icon-xs" onClick={prev} disabled={vids.length < 2} aria-label="Previous"><ChevronLeft size={14} /></Button>
+          <Button variant="outline" size="icon-xs" onClick={prev} disabled={vids.length < 2} aria-label={t("Previous")}><ChevronLeft size={14} /></Button>
           <span className="text-xs tabular-nums text-muted-foreground">{idx + 1} / {vids.length}</span>
-          <Button variant="outline" size="icon-xs" onClick={next} disabled={vids.length < 2} aria-label="Next"><ChevronRight size={14} /></Button>
+          <Button variant="outline" size="icon-xs" onClick={next} disabled={vids.length < 2} aria-label={t("Next")}><ChevronRight size={14} /></Button>
         </div>
       </div>
       <div className={cn("relative overflow-hidden rounded-lg", g.selected && "ring-2 ring-primary")}>
@@ -364,25 +370,25 @@ function EpVideoRail({ bundleId, vids, reloadKey, onToggleVideo }) {
             "absolute left-2 top-2 flex size-6 items-center justify-center rounded-full border-2 border-white/80 shadow transition-colors",
             g.selected ? "bg-primary text-primary-foreground" : "bg-black/50 text-transparent hover:bg-black/70"
           )}
-          title={g.selected ? "selected for stitching — click to unselect" : "select this take for stitching"}
+          title={g.selected ? t("selected for stitching — click to unselect") : t("select this take for stitching")}
           onClick={() => onToggleVideo(bundleId, g.file, !g.selected)}
         >
           <Check size={14} />
         </button>
         {isTrim && (
           <Badge variant="warning" className="absolute left-1/2 top-2 -translate-x-1/2 shrink-0 gap-1">
-            <Scissors size={11} /> trim version
+            <Scissors size={11} /> {t("trim version")}
           </Badge>
         )}
         {g.selected && (
-          <Badge className="absolute right-2 top-2">selected</Badge>
+          <Badge className="absolute right-2 top-2">{t("selected")}</Badge>
         )}
       </div>
 
       {trimOpen && (
         <div className="mt-3 rounded-lg border bg-background/60 p-3">
           <div className="mb-2 flex items-center justify-between gap-2 text-xs">
-            <span className="flex items-center gap-1.5 font-medium"><Scissors size={12} /> Trim</span>
+            <span className="flex items-center gap-1.5 font-medium"><Scissors size={12} /> {t("Trim")}</span>
             <span className="tabular-nums text-muted-foreground">
               {fmtDur(range[0])} <span className="text-muted-foreground/60">–</span> {fmtDur(range[1])}
               <span className="ml-1.5 text-primary">({trimLen.toFixed(1)}s)</span>
@@ -395,17 +401,17 @@ function EpVideoRail({ bundleId, vids, reloadKey, onToggleVideo }) {
             value={range}
             onValueChange={onScrub}
             disabled={!dur}
-            aria-label="Trim in and out points"
+            aria-label={t("Trim in and out points")}
             className="my-3"
           />
           <p className="mb-2 text-[11px] leading-snug text-muted-foreground">
-            Drag the handles to set the start and end — the video scrubs to that frame. Creating a trim keeps the original and adds a new selectable version.
+            {t("Drag the handles to set the start and end — the video scrubs to that frame. Creating a trim keeps the original and adds a new selectable version.")}
           </p>
           {trimErr && <ErrorNote>{trimErr}</ErrorNote>}
           <div className="flex items-center justify-end gap-2">
-            <Button variant="ghost" size="sm" onClick={() => setTrimOpen(false)}>Cancel</Button>
+            <Button variant="ghost" size="sm" onClick={() => setTrimOpen(false)}>{t("Cancel")}</Button>
             <Button size="sm" onClick={doTrim} disabled={!canTrim}>
-              {agentBusy ? <><Loader2 size={13} className="animate-spin" /> Trimming…</> : <><Scissors size={13} /> Create trim</>}
+              {agentBusy ? <><Loader2 size={13} className="animate-spin" /> {t("Trimming…")}</> : <><Scissors size={13} /> {t("Create trim")}</>}
             </Button>
           </div>
         </div>
@@ -422,8 +428,8 @@ function EpVideoRail({ bundleId, vids, reloadKey, onToggleVideo }) {
                 k === idx ? "bg-primary" : v.selected ? "bg-primary/50" : "bg-muted-foreground/30 hover:bg-muted-foreground/60"
               )}
               onClick={() => setI(k)}
-              title={`${v.name || `gen ${k + 1}`}${v.kind === "trim" ? " (trim)" : ""}${v.selected ? " — selected" : ""}`}
-              aria-label={v.name || `gen ${k + 1}`}
+              title={`${v.name || t("gen {n}", { n: k + 1 })}${v.kind === "trim" ? t(" (trim)") : ""}${v.selected ? t(" — selected") : ""}`}
+              aria-label={v.name || t("gen {n}", { n: k + 1 })}
             />
           ))}
         </div>
@@ -475,6 +481,7 @@ function serializePrompt({ restrictionLine, styleLine, directives, shots }) {
 }
 
 function PromptModal({ bundle, body, fullPrefix, assigned, audioAssigned, edited, open, onView, onChange, onReset, onClose }) {
+  const t = useT();
   const [sec, setSec] = useState(() => parsePrompt(body));
   const restr = useMemo(() => restrictionsFromLine(sec.restrictionLine), [sec.restrictionLine]);
 
@@ -500,17 +507,17 @@ function PromptModal({ bundle, body, fullPrefix, assigned, audioAssigned, edited
         <DialogHeader className="flex flex-row items-center justify-between gap-3 border-b px-5 py-4">
           <DialogTitle className="flex items-center gap-2">
             <Badge variant="secondary" className="font-mono">{bundle.id}</Badge>
-            <span className="font-normal">{bundle.beatTitle} — edit prompt</span>
+            <span className="font-normal">{bundle.beatTitle} — {t("edit prompt")}</span>
             {edited ? (
-              <Badge variant="warning"><Pencil size={11} /> edited</Badge>
+              <Badge variant="warning"><Pencil size={11} /> {t("edited")}</Badge>
             ) : (
-              <Badge variant="success">live</Badge>
+              <Badge variant="success">{t("live")}</Badge>
             )}
           </DialogTitle>
           <div className="flex items-center gap-2 pr-8">
             {edited && (
-              <Button variant="outline" size="sm" onClick={onReset} title="discard edits, return to the auto-composed prompt">
-                <RotateCcw size={13} /> reset to live
+              <Button variant="outline" size="sm" onClick={onReset} title={t("discard edits, return to the auto-composed prompt")}>
+                <RotateCcw size={13} /> {t("reset to live")}
               </Button>
             )}
             <CopyButton text={fullPrefix + serializePrompt(sec)} />
@@ -519,29 +526,29 @@ function PromptModal({ bundle, body, fullPrefix, assigned, audioAssigned, edited
 
         <div className="min-h-0 flex-1 space-y-5 overflow-y-auto p-5">
           <section className="space-y-2">
-            <Label>Audio / VFX restrictions</Label>
+            <Label>{t("Audio / VFX restrictions")}</Label>
             <div className="flex flex-wrap gap-2">
               {RESTRICTIONS.map((r) => (
                 <Chip key={r.key} on={restr[r.key]} onClick={() => toggleRestriction(r.key)}>
                   {restr[r.key] && <Check size={13} />}
-                  {r.label}
+                  {t(r.label)}
                 </Chip>
               ))}
             </div>
             <div className="rounded-md bg-muted/50 px-3 py-2 font-mono text-xs text-muted-foreground">
-              {sec.restrictionLine || "(no restrictions — Seedance may add music, VFX & sound)"}
+              {sec.restrictionLine || t("(no restrictions — Seedance may add music, VFX & sound)")}
             </div>
           </section>
 
           <section className="space-y-2">
             <Label className="flex items-center gap-2">
-              References
+              {t("References")}
               <span className="text-xs font-normal text-muted-foreground">
-                managed with the pickers behind this modal · click a thumbnail to preview
+                {t("managed with the pickers behind this modal · click a thumbnail to preview")}
               </span>
             </Label>
             {assigned.length === 0 && audioAssigned.length === 0 ? (
-              <Empty>no references chosen</Empty>
+              <Empty>{t("no references chosen")}</Empty>
             ) : (
               <div className="flex flex-wrap items-start gap-3">
                 {assigned.map((im) => (
@@ -550,7 +557,7 @@ function PromptModal({ bundle, body, fullPrefix, assigned, audioAssigned, edited
                       type="button"
                       className="block w-full overflow-hidden rounded-md border bg-muted"
                       onClick={() => onView({ url: im.display || im.url, name: im.rel, role: "reference" })}
-                      title="click to view full image"
+                      title={t("click to view full image")}
                     >
                       <img src={im.thumb || im.url} loading="lazy" alt={im.name} className="aspect-square w-full object-cover" />
                     </button>
@@ -565,21 +572,21 @@ function PromptModal({ bundle, body, fullPrefix, assigned, audioAssigned, edited
           </section>
 
           <section className="space-y-2">
-            <Label>Style</Label>
+            <Label>{t("Style")}</Label>
             <Textarea rows={6} className="font-mono text-xs" value={sec.styleLine} onChange={(e) => setField("styleLine", e.target.value)} />
           </section>
 
           <section className="space-y-2">
-            <Label>Directives</Label>
+            <Label>{t("Directives")}</Label>
             <Textarea rows={7} className="font-mono text-xs" value={sec.directives} onChange={(e) => setField("directives", e.target.value)} />
           </section>
 
           <section className="space-y-2">
-            <Label>Shots ({sec.shots.length})</Label>
+            <Label>{t("Shots ({n})", { n: sec.shots.length })}</Label>
             <div className="space-y-3">
               {sec.shots.map((s, i) => (
                 <div key={i} className="space-y-1.5 rounded-lg border bg-muted/30 p-3">
-                  <div className="text-xs font-semibold text-muted-foreground">Shot {i + 1}</div>
+                  <div className="text-xs font-semibold text-muted-foreground">{t("Shot {n}", { n: i + 1 })}</div>
                   <Textarea rows={5} className="font-mono text-xs" value={s} onChange={(e) => setShot(i, e.target.value)} />
                 </div>
               ))}
@@ -598,6 +605,7 @@ function PromptModal({ bundle, body, fullPrefix, assigned, audioAssigned, edited
 // A carousel of the generated stills for ONE shot (multiple angle takes), with
 // select + preview. The image counterpart of EpVideoRail (no trim/scrub).
 function EpStillRail({ stills, reloadKey, onView, onToggle }) {
+  const t = useT();
   const selFile = stills.find((v) => v.selected)?.file;
   const [i, setI] = useState(() => {
     const s = stills.findIndex((v) => v.selected);
@@ -622,9 +630,9 @@ function EpStillRail({ stills, reloadKey, onView, onToggle }) {
           {g.angle ? <span className="text-muted-foreground"> · {g.angle}</span> : null}
         </span>
         <div className="flex shrink-0 items-center gap-1">
-          <Button variant="outline" size="icon-xs" onClick={prev} disabled={stills.length < 2} aria-label="Previous"><ChevronLeft size={13} /></Button>
+          <Button variant="outline" size="icon-xs" onClick={prev} disabled={stills.length < 2} aria-label={t("Previous")}><ChevronLeft size={13} /></Button>
           <span className="text-[11px] tabular-nums text-muted-foreground">{idx + 1} / {stills.length}</span>
-          <Button variant="outline" size="icon-xs" onClick={next} disabled={stills.length < 2} aria-label="Next"><ChevronRight size={13} /></Button>
+          <Button variant="outline" size="icon-xs" onClick={next} disabled={stills.length < 2} aria-label={t("Next")}><ChevronRight size={13} /></Button>
         </div>
       </div>
       <div className={cn("relative overflow-hidden rounded-lg", g.selected && "ring-2 ring-primary")}>
@@ -636,12 +644,12 @@ function EpStillRail({ stills, reloadKey, onView, onToggle }) {
             "absolute left-2 top-2 flex size-6 items-center justify-center rounded-full border-2 border-white/80 shadow transition-colors",
             g.selected ? "bg-primary text-primary-foreground" : "bg-black/50 text-transparent hover:bg-black/70"
           )}
-          title={g.selected ? "selected still — click to unselect" : "select this still"}
+          title={g.selected ? t("selected still — click to unselect") : t("select this still")}
           onClick={() => onToggle(g.file, !g.selected)}
         >
           <Check size={14} />
         </button>
-        {g.selected && <Badge className="absolute right-2 top-2">selected</Badge>}
+        {g.selected && <Badge className="absolute right-2 top-2">{t("selected")}</Badge>}
       </div>
       {stills.length > 1 && (
         <div className="mt-1.5 flex flex-wrap justify-center gap-1.5">
@@ -653,7 +661,7 @@ function EpStillRail({ stills, reloadKey, onView, onToggle }) {
                 k === idx ? "bg-primary" : v.selected ? "bg-primary/50" : "bg-muted-foreground/30 hover:bg-muted-foreground/60"
               )}
               onClick={() => setI(k)}
-              title={`${v.name}${v.angle ? ` — ${v.angle}` : ""}${v.selected ? " (selected)" : ""}`}
+              title={`${v.name}${v.angle ? t(" — {angle}", { angle: v.angle }) : ""}${v.selected ? t(" (selected)") : ""}`}
               aria-label={v.name}
             />
           ))}
@@ -666,6 +674,7 @@ function EpStillRail({ stills, reloadKey, onView, onToggle }) {
 // One shot row in Images mode: the shot details + an optional angle hint + the
 // render control ("Render still" / "New angle") and this shot's stills carousel.
 function StoryboardShot({ s, stills, reloadKey, onView, onToggleStill, onRender, agentBusy }) {
+  const t = useT();
   const [angle, setAngle] = useState("");
   const hasStills = stills.length > 0;
   const dlg = s.dialogue && !/\(no dialogue\)/i.test(s.dialogue) ? s.dialogue : null;
@@ -693,17 +702,17 @@ function StoryboardShot({ s, stills, reloadKey, onView, onToggleStill, onRender,
               value={angle}
               onChange={(e) => setAngle(e.target.value)}
               onKeyDown={(e) => { if (e.key === "Enter" && !agentBusy) doRender(); }}
-              placeholder={hasStills ? "new angle / variation…" : "angle (optional)"}
+              placeholder={hasStills ? t("new angle / variation…") : t("angle (optional)")}
               className="h-8 max-w-[220px] text-xs"
             />
             <Button
               size="sm"
               onClick={doRender}
               disabled={agentBusy}
-              title={agentBusy ? "Agent is busy — wait for the current turn to finish" : hasStills ? "Generate another take (e.g. a different angle)" : "Generate a storyboard still for this shot with Nano Banana Pro"}
+              title={agentBusy ? t("Agent is busy — wait for the current turn to finish") : hasStills ? t("Generate another take (e.g. a different angle)") : t("Generate a storyboard still for this shot with Nano Banana Pro")}
             >
               {agentBusy ? <Loader2 size={13} className="animate-spin" /> : hasStills ? <RotateCcw size={13} /> : <ImageIcon size={13} />}
-              {hasStills ? "New angle" : "Render still"}
+              {hasStills ? t("New angle") : t("Render still")}
             </Button>
           </div>
         </div>
@@ -727,34 +736,35 @@ function StoryboardShot({ s, stills, reloadKey, onView, onToggleStill, onRender,
 // Pick the still the Seedance clip opens on (start_image), from any of the
 // bundle's shot stills. Selecting the current one clears it (toggle).
 function FirstFrameModal({ bundle, open, stills, reloadKey, current, onPick, onClose }) {
+  const t = useT();
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-2xl">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2"><ImageIcon size={16} className="text-primary" /> First frame — {bundle.id}</DialogTitle>
+          <DialogTitle className="flex items-center gap-2"><ImageIcon size={16} className="text-primary" /> {t("First frame — {id}", { id: bundle.id })}</DialogTitle>
         </DialogHeader>
         <p className="text-sm text-muted-foreground">
-          Choose the still the clip should open on. Seedance uses it as the start image, then animates into the rest of the bundle.
+          {t("Choose the still the clip should open on. Seedance uses it as the start image, then animates into the rest of the bundle.")}
         </p>
         {stills.length === 0 ? (
-          <Empty>no stills yet — render some in Images mode first.</Empty>
+          <Empty>{t("no stills yet — render some in Images mode first.")}</Empty>
         ) : (
           <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
-            {stills.map((t) => {
-              const sel = t.file === current;
+            {stills.map((st) => {
+              const sel = st.file === current;
               return (
                 <button
-                  key={t.file}
+                  key={st.file}
                   type="button"
-                  onClick={() => onPick(sel ? null : t)}
+                  onClick={() => onPick(sel ? null : st)}
                   className={cn(
                     "group relative aspect-video overflow-hidden rounded-md border transition-colors",
                     sel ? "border-primary ring-2 ring-primary/40" : "hover:border-primary/60",
                   )}
-                  title={sel ? "Click to clear" : `Open on ${t.shotId}`}
+                  title={sel ? t("Click to clear") : t("Open on {shotId}", { shotId: st.shotId })}
                 >
-                  <img src={(t.thumb || t.url) + (reloadKey ? `?v=${reloadKey}` : "")} alt={t.shotId} className="h-full w-full object-cover" />
-                  <span className="absolute left-1 top-1 rounded bg-background/80 px-1 font-mono text-[9px]">{t.shotId}</span>
+                  <img src={(st.thumb || st.url) + (reloadKey ? `?v=${reloadKey}` : "")} alt={st.shotId} className="h-full w-full object-cover" />
+                  <span className="absolute left-1 top-1 rounded bg-background/80 px-1 font-mono text-[9px]">{st.shotId}</span>
                   {sel && <span className="absolute right-1 top-1 rounded-full bg-primary p-0.5 text-primary-foreground"><Check size={10} /></span>}
                 </button>
               );
@@ -762,8 +772,8 @@ function FirstFrameModal({ bundle, open, stills, reloadKey, current, onPick, onC
           </div>
         )}
         <DialogFooter>
-          {current && <Button variant="ghost" onClick={() => onPick(null)}>Clear first frame</Button>}
-          <Button variant="outline" onClick={onClose}>Done</Button>
+          {current && <Button variant="ghost" onClick={() => onPick(null)}>{t("Clear first frame")}</Button>}
+          <Button variant="outline" onClick={onClose}>{t("Done")}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -774,34 +784,35 @@ function FirstFrameModal({ bundle, open, stills, reloadKey, current, onPick, onC
 // rendered generation (from any bundle) whose style/colors/feeling the new clip
 // should continue. Selecting the current one clears it (toggle).
 function RefVideoModal({ bundle, open, takes, reloadKey, current, onPick, onClose }) {
+  const t = useT();
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-2xl">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2"><Film size={16} className="text-primary" /> Video style continuity reference — {bundle.id}</DialogTitle>
+          <DialogTitle className="flex items-center gap-2"><Film size={16} className="text-primary" /> {t("Video style continuity reference — {id}", { id: bundle.id })}</DialogTitle>
         </DialogHeader>
         <p className="text-sm text-muted-foreground">
-          Choose an already-generated video whose style, colors, and feeling the new render should continue. It is passed to Seedance as a video reference alongside the image references.
+          {t("Choose an already-generated video whose style, colors, and feeling the new render should continue. It is passed to Seedance as a video reference alongside the image references.")}
         </p>
         {takes.length === 0 ? (
-          <Empty>no rendered videos yet — render a bundle first.</Empty>
+          <Empty>{t("no rendered videos yet — render a bundle first.")}</Empty>
         ) : (
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-            {takes.map((t) => {
-              const sel = t.file === current;
+            {takes.map((tk) => {
+              const sel = tk.file === current;
               return (
                 <button
-                  key={t.file}
+                  key={tk.file}
                   type="button"
-                  onClick={() => onPick(sel ? null : t)}
+                  onClick={() => onPick(sel ? null : tk)}
                   className={cn(
                     "group relative aspect-video overflow-hidden rounded-md border transition-colors",
                     sel ? "border-primary ring-2 ring-primary/40" : "hover:border-primary/60",
                   )}
-                  title={sel ? "Click to clear" : `Use ${t.fromBundle} · ${t.name} as the style reference`}
+                  title={sel ? t("Click to clear") : t("Use {from} · {name} as the style reference", { from: tk.fromBundle, name: tk.name })}
                 >
-                  <video src={t.url + (reloadKey ? `?v=${reloadKey}` : "")} muted playsInline preload="metadata" className="h-full w-full object-cover" />
-                  <span className="absolute left-1 top-1 rounded bg-background/80 px-1 font-mono text-[9px]">{t.fromBundle} · {t.name}</span>
+                  <video src={tk.url + (reloadKey ? `?v=${reloadKey}` : "")} muted playsInline preload="metadata" className="h-full w-full object-cover" />
+                  <span className="absolute left-1 top-1 rounded bg-background/80 px-1 font-mono text-[9px]">{tk.fromBundle} · {tk.name}</span>
                   {sel && <span className="absolute right-1 top-1 rounded-full bg-primary p-0.5 text-primary-foreground"><Check size={10} /></span>}
                 </button>
               );
@@ -809,8 +820,8 @@ function RefVideoModal({ bundle, open, takes, reloadKey, current, onPick, onClos
           </div>
         )}
         <DialogFooter>
-          {current && <Button variant="ghost" onClick={() => onPick(null)}>Clear style reference</Button>}
-          <Button variant="outline" onClick={onClose}>Done</Button>
+          {current && <Button variant="ghost" onClick={() => onPick(null)}>{t("Clear style reference")}</Button>}
+          <Button variant="outline" onClick={onClose}>{t("Done")}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -830,6 +841,7 @@ const EPISODE_STYLE = "__episode";
 // Per-scene style pick: defaults to the episode-wide choice, overridable to a
 // specific preset or to explicitly no style.
 function SceneStyleSelect({ bundleId, style, onSetStyle }) {
+  const t = useT();
   const override = style.scenes?.[bundleId] || "";
   const value = override === "none" ? NO_STYLE : override || EPISODE_STYLE;
   const epName = style.presets.find((p) => p.id === style.episode)?.name;
@@ -843,14 +855,14 @@ function SceneStyleSelect({ bundleId, style, onSetStyle }) {
       <SelectTrigger
         size="sm"
         className={cn("h-7 gap-1.5 px-2 text-xs", value === EPISODE_STYLE && "text-muted-foreground")}
-        title="Render style for this scene — follows the episode style unless overridden"
+        title={t("Render style for this scene — follows the episode style unless overridden")}
       >
         <Palette size={12} />
         <SelectValue />
       </SelectTrigger>
       <SelectContent>
-        <SelectItem value={EPISODE_STYLE}>Episode style{epName ? ` (${epName})` : " (none)"}</SelectItem>
-        <SelectItem value={NO_STYLE}>No style — references only</SelectItem>
+        <SelectItem value={EPISODE_STYLE}>{t("Episode style")}{epName ? ` (${epName})` : t(" (none)")}</SelectItem>
+        <SelectItem value={NO_STYLE}>{t("No style — references only")}</SelectItem>
         {style.presets.map((p) => (
           <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
         ))}
@@ -860,6 +872,7 @@ function SceneStyleSelect({ bundleId, style, onSetStyle }) {
 }
 
 function EpisodeBundle({ b, flat, picked, onOpenPicker, onRemove, onView, audioMap, audioPicked, onOpenAudio, vids, allVideos, reloadKey, onToggleVideo, stills, onToggleStill, firstFrame, onSetFirstFrame, refVideo, onSetRefVideo, override, onEditPrompt, onResetPrompt, signoff, onSign, needsState, onLinkNeed, style, onSetStyle }) {
+  const t = useT();
   const [open, setOpen] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
   const [signOpen, setSignOpen] = useState(false);
@@ -970,22 +983,22 @@ function EpisodeBundle({ b, flat, picked, onOpenPicker, onRemove, onView, audioM
           <span className="font-semibold">{b.beatTitle}</span>
         </div>
         <div className="flex flex-wrap items-center gap-1.5">
-          <Badge variant="outline">{b.shots.length} shots</Badge>
+          <Badge variant="outline">{b.shots.length} {t("shots")}</Badge>
           <Badge variant={b.durationEst > 15 ? "warning" : "muted"}>~{b.durationEst}s → {b.duration}s</Badge>
-          {assigned.length > 0 && <Badge variant="success">{assigned.length} refs</Badge>}
+          {assigned.length > 0 && <Badge variant="success">{assigned.length} {t("refs")}</Badge>}
           {isImg
-            ? stillCount > 0 && <Badge variant="success"><ImageIcon size={11} /> {stillCount} stills</Badge>
-            : hasVid && <Badge variant="success"><Play size={11} fill="currentColor" /> {vids.length} rendered</Badge>}
+            ? stillCount > 0 && <Badge variant="success"><ImageIcon size={11} /> {stillCount} {t("stills")}</Badge>
+            : hasVid && <Badge variant="success"><Play size={11} fill="currentColor" /> {vids.length} {t("rendered")}</Badge>}
 
           <SceneStyleSelect bundleId={b.id} style={style} onSetStyle={onSetStyle} />
 
           {/* Images (storyboard) vs Video (Seedance) mode for this bundle */}
           <div className="flex items-center rounded-md border p-0.5">
-            <Button variant={isImg ? "default" : "ghost"} size="sm" className="h-7 gap-1.5 px-2.5" onClick={() => setMode("images")} title="Storyboard stills (Nano Banana Pro)">
-              <ImageIcon size={13} /> Images
+            <Button variant={isImg ? "default" : "ghost"} size="sm" className="h-7 gap-1.5 px-2.5" onClick={() => setMode("images")} title={t("Storyboard stills (Nano Banana Pro)")}>
+              <ImageIcon size={13} /> {t("Images")}
             </Button>
-            <Button variant={!isImg ? "default" : "ghost"} size="sm" className="h-7 gap-1.5 px-2.5" onClick={() => setMode("video")} title="Seedance video render">
-              <Play size={11} fill="currentColor" /> Video
+            <Button variant={!isImg ? "default" : "ghost"} size="sm" className="h-7 gap-1.5 px-2.5" onClick={() => setMode("video")} title={t("Seedance video render")}>
+              <Play size={11} fill="currentColor" /> {t("Video")}
             </Button>
           </div>
 
@@ -994,51 +1007,51 @@ function EpisodeBundle({ b, flat, picked, onOpenPicker, onRemove, onView, audioM
               size="sm"
               onClick={requestAllStills}
               disabled={agentBusy}
-              title={agentBusy ? "Agent is busy — wait for the current turn to finish" : "Generate a storyboard still for every shot in this bundle"}
+              title={agentBusy ? t("Agent is busy — wait for the current turn to finish") : t("Generate a storyboard still for every shot in this bundle")}
             >
-              {agentBusy ? <Loader2 size={13} className="animate-spin" /> : <ImageIcon size={13} />} Render all stills
+              {agentBusy ? <Loader2 size={13} className="animate-spin" /> : <ImageIcon size={13} />} {t("Render all stills")}
             </Button>
           ) : (
             <>
               {ns && ns.enforced && needAll.length > 0 && (
                 <Badge
                   variant={needsComplete ? "success" : "warning"}
-                  title={needsComplete ? "every scene need is covered by a reference" : "signing unlocks when every scene need is covered"}
+                  title={needsComplete ? t("every scene need is covered by a reference") : t("signing unlocks when every scene need is covered")}
                 >
-                  {needsComplete && <Check size={11} />} needs {needDone}/{needAll.length}
+                  {needsComplete && <Check size={11} />} {t("needs {done}/{total}", { done: needDone, total: needAll.length })}
                 </Badge>
               )}
               {signedCount === 3 ? (
-                <Badge variant="success"><Check size={11} /> signed</Badge>
+                <Badge variant="success"><Check size={11} /> {t("signed")}</Badge>
               ) : signedCount > 0 ? (
-                <Badge variant="warning">{signedCount}/3 signed</Badge>
+                <Badge variant="warning">{signedCount}/3 {t("signed")}</Badge>
               ) : null}
               <Button
                 variant="outline"
                 size="sm"
                 onClick={() => setFfOpen(true)}
                 disabled={allStills.length === 0}
-                title={allStills.length === 0 ? "Render some stills first — a first frame is one of them" : "Choose the frame the clip opens on (Seedance start_image)"}
+                title={allStills.length === 0 ? t("Render some stills first — a first frame is one of them") : t("Choose the frame the clip opens on (Seedance start_image)")}
               >
                 {firstFrameTake ? (
-                  <img src={(firstFrameTake.thumb || firstFrameTake.url) + (reloadKey ? `?v=${reloadKey}` : "")} alt="first frame" className="h-4 w-7 rounded-sm border object-cover" />
+                  <img src={(firstFrameTake.thumb || firstFrameTake.url) + (reloadKey ? `?v=${reloadKey}` : "")} alt={t("first frame")} className="h-4 w-7 rounded-sm border object-cover" />
                 ) : (
                   <ImageIcon size={13} />
                 )}
-                First frame
+                {t("First frame")}
               </Button>
               <Button
                 variant="outline"
                 size="sm"
                 onClick={() => setRvOpen(true)}
                 disabled={allTakes.length === 0}
-                title={allTakes.length === 0 ? "Render a bundle first — the style reference is one of the generated videos" : "Choose a generated video whose style, colors, and feeling this render should continue (video reference)"}
+                title={allTakes.length === 0 ? t("Render a bundle first — the style reference is one of the generated videos") : t("Choose a generated video whose style, colors, and feeling this render should continue (video reference)")}
               >
                 {refVideoTake ? <Check size={13} className="text-primary" /> : <Film size={13} />}
-                Style ref
+                {t("Style ref")}
               </Button>
-              <Button variant="outline" size="sm" onClick={() => setSignOpen(true)} title="revision signing">
-                <PenLine size={13} /> revision signing
+              <Button variant="outline" size="sm" onClick={() => setSignOpen(true)} title={t("revision signing")}>
+                <PenLine size={13} /> {t("revision signing")}
               </Button>
               <Button
                 size="sm"
@@ -1046,13 +1059,13 @@ function EpisodeBundle({ b, flat, picked, onOpenPicker, onRemove, onView, audioM
                 disabled={!fullySigned || agentBusy}
                 title={
                   !fullySigned
-                    ? "Sign off images, prompt, and audio before rendering"
+                    ? t("Sign off images, prompt, and audio before rendering")
                     : agentBusy
-                    ? "Agent is busy — wait for the current turn to finish"
-                    : "Render this bundle with Seedance via the studio agent"
+                    ? t("Agent is busy — wait for the current turn to finish")
+                    : t("Render this bundle with Seedance via the studio agent")
                 }
               >
-                {agentBusy ? <Loader2 size={13} className="animate-spin" /> : <Wand2 size={13} />} Render
+                {agentBusy ? <Loader2 size={13} className="animate-spin" /> : <Wand2 size={13} />} {t("Render")}
               </Button>
             </>
           )}
@@ -1066,17 +1079,17 @@ function EpisodeBundle({ b, flat, picked, onOpenPicker, onRemove, onView, audioM
             <NeedsChecklist ns={ns} />
           ) : (
             <div className="text-xs text-muted-foreground">
-              <span className="font-semibold uppercase tracking-wide">scene needs:</span>{" "}
+              <span className="font-semibold uppercase tracking-wide">{t("scene needs:")}</span>{" "}
               {[
                 ...(b.images || []).map((im) => im.key),
-                ...(b.speakers || []).map((n) => `${n} (voice)`),
-              ].join(" · ") || "nothing detected — rebuild the plan after writing the shot list"}
+                ...(b.speakers || []).map((n) => `${n} ${t("(voice)")}`),
+              ].join(" · ") || t("nothing detected — rebuild the plan after writing the shot list")}
             </div>
           )}
 
           <div className="space-y-3">
             {assigned.length === 0 ? (
-              <Empty>no references chosen for this shot</Empty>
+              <Empty>{t("no references chosen for this shot")}</Empty>
             ) : (
               <div className="grid grid-cols-3 gap-3 sm:grid-cols-4 md:grid-cols-6">
                 {assigned.map((im) => {
@@ -1092,28 +1105,28 @@ function EpisodeBundle({ b, flat, picked, onOpenPicker, onRemove, onView, audioM
                       <Button
                         variant="destructive" size="icon-xs"
                         className="absolute right-1.5 top-1.5 rounded-full opacity-90"
-                        title="remove from this shot" aria-label="remove from this shot"
+                        title={t("remove from this shot")} aria-label={t("remove from this shot")}
                         onClick={() => onRemove(b.id, im)}
                       >
                         <X size={13} />
                       </Button>
                       {ns?.enforced && (autoNeed ? (
-                        <div className="flex items-center gap-1 truncate px-2 pt-1 text-[11px] text-emerald-500" title="This is the World sheet for this need">
+                        <div className="flex items-center gap-1 truncate px-2 pt-1 text-[11px] text-emerald-500" title={t("This is the World sheet for this need")}>
                           <Check size={11} className="shrink-0" /> {autoNeed.key}
                         </div>
                       ) : (
                         <select
                           className="mx-1.5 mt-1 h-6 w-[calc(100%-12px)] truncate rounded border bg-background px-1 text-[11px] text-muted-foreground"
                           value={linkedNeed?.id || ""}
-                          aria-label={`Scene need covered by ${im.name}`}
-                          title="Link this reference to the scene need it covers"
+                          aria-label={t("Scene need covered by {name}", { name: im.name })}
+                          title={t("Link this reference to the scene need it covers")}
                           onChange={(e) => {
                             const next = e.target.value || null;
                             if (linkedNeed && linkedNeed.id !== next) onLinkNeed(b.id, linkedNeed.id, null);
                             if (next) onLinkNeed(b.id, next, im.rel);
                           }}
                         >
-                          <option value="">covers…</option>
+                          <option value="">{t("covers…")}</option>
                           {ns.needs.map((n) => (
                             <option key={n.id} value={n.id}>{n.key}</option>
                           ))}
@@ -1126,14 +1139,14 @@ function EpisodeBundle({ b, flat, picked, onOpenPicker, onRemove, onView, audioM
               </div>
             )}
             <Button variant="outline" size="sm" onClick={() => onOpenPicker(b)}>
-              <Plus size={14} /> choose references
+              <Plus size={14} /> {t("choose references")}
             </Button>
           </div>
 
           {!isImg && (
             <div className="flex flex-wrap items-center gap-2">
               {audioAssigned.length === 0 ? (
-                <Empty>no voice reference chosen</Empty>
+                <Empty>{t("no voice reference chosen")}</Empty>
               ) : (
                 audioAssigned.map((a) => (
                   <Badge key={a.rel} variant="secondary" className="h-7" title={a.rel}>
@@ -1145,7 +1158,7 @@ function EpisodeBundle({ b, flat, picked, onOpenPicker, onRemove, onView, audioM
                 ))
               )}
               <Button variant="outline" size="sm" onClick={() => onOpenAudio(b)}>
-                <Volume2 size={14} /> choose audio references
+                <Volume2 size={14} /> {t("choose audio references")}
               </Button>
             </div>
           )}
@@ -1190,21 +1203,21 @@ function EpisodeBundle({ b, flat, picked, onOpenPicker, onRemove, onView, audioM
             <div className="space-y-2">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <span className="flex items-center gap-2 text-xs text-muted-foreground">
-                  skill prompt — click to edit, auto-saves
+                  {t("skill prompt — click to edit, auto-saves")}
                   {edited ? (
-                    <Badge variant="warning"><Pencil size={11} /> edited</Badge>
+                    <Badge variant="warning"><Pencil size={11} /> {t("edited")}</Badge>
                   ) : (
-                    <Badge variant="success">live</Badge>
+                    <Badge variant="success">{t("live")}</Badge>
                   )}
                 </span>
                 <div className="flex items-center gap-2">
                   {edited && (
-                    <Button variant="outline" size="sm" onClick={() => onResetPrompt(b.id)} title="discard edits, return to the auto-composed prompt">
-                      <RotateCcw size={13} /> reset to live
+                    <Button variant="outline" size="sm" onClick={() => onResetPrompt(b.id)} title={t("discard edits, return to the auto-composed prompt")}>
+                      <RotateCcw size={13} /> {t("reset to live")}
                     </Button>
                   )}
-                  <Button variant="outline" size="sm" onClick={() => setModalOpen(true)} title="open the full-screen prompt editor">
-                    <Maximize2 size={13} /> edit
+                  <Button variant="outline" size="sm" onClick={() => setModalOpen(true)} title={t("open the full-screen prompt editor")}>
+                    <Maximize2 size={13} /> {t("edit")}
                   </Button>
                   <CopyButton text={displayPrompt} />
                 </div>
@@ -1217,10 +1230,10 @@ function EpisodeBundle({ b, flat, picked, onOpenPicker, onRemove, onView, audioM
                 value={displayPrompt}
                 readOnly
                 onClick={() => setModalOpen(true)}
-                title="click to open the full-screen editor"
+                title={t("click to open the full-screen editor")}
               />
               <Button variant="ghost" size="sm" className="text-muted-foreground" onClick={() => setOpen((o) => !o)}>
-                {open ? <><ChevronUp size={13} /> collapse</> : <><ChevronDown size={13} /> expand prompt</>}
+                {open ? <><ChevronUp size={13} /> {t("collapse")}</> : <><ChevronDown size={13} /> {t("expand prompt")}</>}
               </Button>
             </div>
           )}
@@ -1260,7 +1273,7 @@ function EpisodeBundle({ b, flat, picked, onOpenPicker, onRemove, onView, audioM
         stills={allStills}
         reloadKey={reloadKey}
         current={firstFrame?.file || null}
-        onPick={(t) => { onSetFirstFrame(b.id, t?.shotId || null, t?.file || null); setFfOpen(false); }}
+        onPick={(tk) => { onSetFirstFrame(b.id, tk?.shotId || null, tk?.file || null); setFfOpen(false); }}
         onClose={() => setFfOpen(false)}
       />
       <RefVideoModal
@@ -1269,7 +1282,7 @@ function EpisodeBundle({ b, flat, picked, onOpenPicker, onRemove, onView, audioM
         takes={allTakes}
         reloadKey={reloadKey}
         current={refVideo?.file || null}
-        onPick={(t) => { onSetRefVideo(b.id, t?.fromBundle || null, t?.file || null); setRvOpen(false); }}
+        onPick={(tk) => { onSetRefVideo(b.id, tk?.fromBundle || null, tk?.file || null); setRvOpen(false); }}
         onClose={() => setRvOpen(false)}
       />
     </Card>
@@ -1277,21 +1290,22 @@ function EpisodeBundle({ b, flat, picked, onOpenPicker, onRemove, onView, audioM
 }
 
 function AudioPickerModal({ bundle, audioRefs, picked, voiceNeeds, open, onToggle, onClose }) {
+  const t = useT();
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="flex max-h-[88vh] max-w-[min(94vw,640px)] flex-col gap-0 overflow-hidden p-0">
         <DialogHeader className="border-b px-5 py-4">
           <DialogTitle className="flex items-center gap-2">
-            Voice / sound references
+            {t("Voice / sound references")}
             <Badge variant="secondary" className="font-mono">{bundle.id}</Badge>
             <span className="font-normal text-muted-foreground">{bundle.beatTitle}</span>
           </DialogTitle>
           {voiceNeeds && voiceNeeds.length > 0 && (
             <div className="flex flex-wrap items-center gap-1.5 pt-1 text-xs">
-              <span className="font-semibold uppercase tracking-wide text-muted-foreground">speakers</span>
+              <span className="font-semibold uppercase tracking-wide text-muted-foreground">{t("speakers")}</span>
               {voiceNeeds.map((v) => (
                 <NeedChip key={v.id} role="voice" label={v.name} fulfilled={v.fulfilled}
-                  title={v.fulfilled ? "voice reference chosen" : "pick a reference below that covers this speaker"} />
+                  title={v.fulfilled ? t("voice reference chosen") : t("pick a reference below that covers this speaker")} />
               ))}
             </div>
           )}
@@ -1310,7 +1324,7 @@ function AudioPickerModal({ bundle, audioRefs, picked, voiceNeeds, open, onToggl
                 <Button
                   variant={on ? "default" : "outline"} size="icon-sm"
                   className="mt-0.5 shrink-0 rounded-full"
-                  title={on ? "remove from this shot" : "use in this shot"}
+                  title={on ? t("remove from this shot") : t("use in this shot")}
                   onClick={() => onToggle(bundle.id, a.rel, !on)}
                 >
                   <IconSwap active={on} on={<Check size={14} />} off={<Plus size={14} />} />
@@ -1318,10 +1332,10 @@ function AudioPickerModal({ bundle, audioRefs, picked, voiceNeeds, open, onToggl
                 <div className="min-w-0 flex-1 space-y-1.5">
                   <div className="flex items-center gap-2 text-sm font-medium">
                     {a.label}
-                    {!a.exists && <Badge variant="destructive">missing file</Badge>}
+                    {!a.exists && <Badge variant="destructive">{t("missing file")}</Badge>}
                   </div>
                   {a.order && a.order.length > 1 && (
-                    <div className="text-xs text-muted-foreground">voice order: {a.order.map((n, i) => `${i + 1}=${n}`).join(", ")}</div>
+                    <div className="text-xs text-muted-foreground">{t("voice order:")} {a.order.map((n, i) => `${i + 1}=${n}`).join(", ")}</div>
                   )}
                   <audio controls preload="none" src={a.url} />
                 </div>
@@ -1335,6 +1349,7 @@ function AudioPickerModal({ bundle, audioRefs, picked, voiceNeeds, open, onToggl
 }
 
 function Episode({ reloadKey, onView }) {
+  const t = useT();
   // The 4-endpoint payload comes from the loader (swr paints the cache instantly
   // on a revisit). We mirror it into local slices so the many optimistic
   // mutations below can update the UI immediately; a following revalidate
@@ -1717,9 +1732,9 @@ function Episode({ reloadKey, onView }) {
   if (!data)
     return (
       <div className="flex flex-col items-center gap-3 py-16 text-center">
-        <Empty>No episode plan yet — pack the current shot list into ≤15s bundles to begin.</Empty>
+        <Empty>{t("No episode plan yet — pack the current shot list into ≤15s bundles to begin.")}</Empty>
         <Button onClick={rebuild} disabled={rebuilding}>
-          {rebuilding ? <><Loader2 size={14} className="animate-spin" /> building…</> : <><Boxes size={14} /> Build episode plan</>}
+          {rebuilding ? <><Loader2 size={14} className="animate-spin" /> {t("building…")}</> : <><Boxes size={14} /> {t("Build episode plan")}</>}
         </Button>
       </div>
     );
@@ -1736,31 +1751,31 @@ function Episode({ reloadKey, onView }) {
             >
               <SelectTrigger
                 size="sm"
-                title="Render style prepended to every scene's prompt — each scene can override it on its card"
+                title={t("Render style prepended to every scene's prompt — each scene can override it on its card")}
               >
                 <Palette size={14} />
-                <SelectValue placeholder="Style" />
+                <SelectValue placeholder={t("Style")} />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value={NO_STYLE}>No style — references only</SelectItem>
+                <SelectItem value={NO_STYLE}>{t("No style — references only")}</SelectItem>
                 {style.presets.map((p) => (
                   <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
-            <Button variant="outline" onClick={rebuild} disabled={rebuilding} title="Re-pack the current shot list into bundles (stills & renders are preserved; re-packed bundles need re-review)">
-              {rebuilding ? <><Loader2 size={14} className="animate-spin" /> rebuilding…</> : <><Boxes size={14} /> rebuild plan</>}
+            <Button variant="outline" onClick={rebuild} disabled={rebuilding} title={t("Re-pack the current shot list into bundles (stills & renders are preserved; re-packed bundles need re-review)")}>
+              {rebuilding ? <><Loader2 size={14} className="animate-spin" /> {t("rebuilding…")}</> : <><Boxes size={14} /> {t("rebuild plan")}</>}
             </Button>
             <Button onClick={() => autoAssign()} disabled={!!assigning || selCount === 0}>
-              {assigning === "all" ? <><Loader2 size={14} className="animate-spin" /> assigning…</> : <><Sparkles size={14} /> auto-assign references</>}
+              {assigning === "all" ? <><Loader2 size={14} className="animate-spin" /> {t("assigning…")}</> : <><Sparkles size={14} /> {t("auto-assign references")}</>}
             </Button>
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-          <Badge variant="outline">{data.bundles.length} multishot bundles</Badge>
-          <Badge variant="outline">{data.totalShots} shots total</Badge>
-          <Badge variant="success">{selCount} library-selected refs</Badge>
-          <span>auto-assign matches your library picks to each shot by character + location</span>
+          <Badge variant="outline">{data.bundles.length} {t("multishot bundles")}</Badge>
+          <Badge variant="outline">{data.totalShots} {t("shots total")}</Badge>
+          <Badge variant="success">{selCount} {t("library-selected refs")}</Badge>
+          <span>{t("auto-assign matches your library picks to each shot by character + location")}</span>
         </div>
       </div>
 
@@ -1772,7 +1787,7 @@ function Episode({ reloadKey, onView }) {
                 <Badge variant="outline" className="font-mono">{g.beat}</Badge>
                 <span className="text-sm font-medium">{g.beatTitle}</span>
                 <span className="text-xs text-muted-foreground">
-                  {g.bundles.length} {g.bundles.length === 1 ? "bundle" : "bundles"}
+                  {g.bundles.length} {g.bundles.length === 1 ? t("bundle") : t("bundles")}
                 </span>
               </div>
               <Button
@@ -1780,9 +1795,9 @@ function Episode({ reloadKey, onView }) {
                 size="sm"
                 onClick={() => autoAssign(g.beat)}
                 disabled={!!assigning || selCount === 0}
-                title={`Auto-assign references + voice picks for ${g.beat} only — other beats keep their picks`}
+                title={t("Auto-assign references + voice picks for {beat} only — other beats keep their picks", { beat: g.beat })}
               >
-                {assigning === g.beat ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />} auto-assign {g.beat}
+                {assigning === g.beat ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />} {t("auto-assign {beat}", { beat: g.beat })}
               </Button>
             </div>
             {g.bundles.map((b) => (
@@ -1860,9 +1875,9 @@ function Episode({ reloadKey, onView }) {
 
       <ConfirmModal
         open={!!confirm}
-        title="Remove reference from this shot?"
-        message={confirm ? `"${confirm.f.name}" will no longer be used to generate ${confirm.bundle}.` : ""}
-        confirmLabel="Remove from shot"
+        title={t("Remove reference from this shot?")}
+        message={confirm ? t("\"{name}\" will no longer be used to generate {bundle}.", { name: confirm.f.name, bundle: confirm.bundle }) : ""}
+        confirmLabel={t("Remove from shot")}
         onCancel={() => setConfirm(null)}
         onConfirm={() => {
           setPick(confirm.bundle, confirm.f.rel, false);

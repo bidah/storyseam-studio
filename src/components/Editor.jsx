@@ -49,6 +49,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 
 import { IconSwap } from "@/components/shared";
+import { useT, t as staticT } from "@/lib/i18n";
 import EditorComposition from "@/editor/Composition";
 import {
   timelineDuration, framesToSec, isImageItem, isSlateItem, normalizeItemKind,
@@ -62,13 +63,15 @@ import { prefetchMedia, prefetchedUrl } from "@/lib/mediaPrefetch";
 
 /* ---- tiny shared bits (kept local so this file is self-contained) ---- */
 function Spinner({ label }) {
+  const t = useT();
   return (
     <div className="flex items-center gap-2 p-6 text-sm text-muted-foreground">
-      <Loader2 size={16} className="animate-spin" /> {label}
+      <Loader2 size={16} className="animate-spin" /> {label ? t(label) : null}
     </div>
   );
 }
 function ErrorNote({ children }) {
+  const t = useT();
   return (
     <div className="flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
       <TriangleAlert size={15} className="mt-0.5 shrink-0" /> <span>{children}</span>
@@ -77,7 +80,7 @@ function ErrorNote({ children }) {
 }
 
 const fmtTime = (sec) => {
-  if (!Number.isFinite(sec)) return "0:00";
+  if (!Number.isFinite(sec)) return staticT("0:00");
   const m = Math.floor(sec / 60);
   const s = sec - m * 60;
   return `${m}:${s.toFixed(1).padStart(4, "0")}`;
@@ -92,9 +95,9 @@ const fmtElapsed = (sec) => {
 
 const fmtBytes = (b) => {
   if (!Number.isFinite(b)) return "";
-  if (b < 1024) return `${b} B`;
-  if (b < 1024 * 1024) return `${(b / 1024).toFixed(0)} KB`;
-  return `${(b / 1024 / 1024).toFixed(1)} MB`;
+  if (b < 1024) return staticT("{n} B", { n: b });
+  if (b < 1024 * 1024) return staticT("{n} KB", { n: (b / 1024).toFixed(0) });
+  return staticT("{n} MB", { n: (b / 1024 / 1024).toFixed(1) });
 };
 
 // Grab the currently-painted frame of a <video> as a small JPEG data URL, used
@@ -631,6 +634,7 @@ function TimelineItem({
   const winStart = srcDur ? Math.min(1, (item.offsetFrames || 0) / srcDur) : 0;
   const winEnd = srcDur ? Math.min(1, ((item.offsetFrames || 0) + sourceSpanOf(item)) / srcDur) : 1;
   const hasArt = isAudio ? !!peaks : !!thumb;
+  const t = useT();
   return (
     <ContextMenu>
       <ContextMenuTrigger asChild>
@@ -666,8 +670,8 @@ function TimelineItem({
           // BEFORE its own and skips opening if the default was prevented, which
           // would kill this clip's own menu instead.
           onContextMenu={(e) => e.stopPropagation()}
-          title={item.name}
-        >
+title={t(item.name)}
+          >
           {/* filmstrip: the clip's first frame tiled across the card. For a
               still this IS the correct filmstrip — every frame is that frame. */}
           {!isAudio && thumb && !disabled && (
@@ -719,7 +723,7 @@ function TimelineItem({
               }}
               className="group/vol absolute inset-x-0 z-[5] flex h-3 -translate-y-1/2 cursor-ns-resize items-center"
               style={{ top: `${Math.max(0, Math.min(100, (1 - vol / VOLUME_MAX) * 100))}%` }}
-              title={`Volume ${Math.round(vol * 100)}% — drag up / down to change (Alt to pass unity)`}
+              title={t("Volume {pct}% — drag up / down to change (Alt to pass unity)", { pct: Math.round(vol * 100) })}
             >
               <div
                 className={cn(
@@ -764,7 +768,7 @@ function TimelineItem({
                   {fmtSpeed(speed)}
                 </span>
               )}
-              {item.linkId && <Link2 size={10} className="opacity-70" aria-label="Linked clip" />}
+              {item.linkId && <Link2 size={10} className="opacity-70" aria-label={t("Linked clip")} />}
             </span>
           </div>
           {/* fade handles — the classic dots at the card's top corners; drag
@@ -779,7 +783,7 @@ function TimelineItem({
                   selected || item.fadeInFrames ? "opacity-100" : "opacity-0 group-hover:opacity-100",
                 )}
                 style={{ left: Math.min(Math.max(fadeInPx, 6), Math.max(6, width / 2)) }}
-                title="Drag to set fade in"
+                title={t("Drag to set fade in")}
               />
               <div
                 data-handle="fade-out"
@@ -789,7 +793,7 @@ function TimelineItem({
                   selected || item.fadeOutFrames ? "opacity-100" : "opacity-0 group-hover:opacity-100",
                 )}
                 style={{ left: Math.max(Math.min(width - fadeOutPx, width - 6), Math.min(width - 6, width / 2)) }}
-                title="Drag to set fade out"
+                title={t("Drag to set fade out")}
               />
             </>
           )}
@@ -798,14 +802,14 @@ function TimelineItem({
             data-handle="resize-start"
             onPointerDown={(e) => { e.stopPropagation(); onSelect(item.id); onDragStart(e, item, track, "resize-start"); }}
             className="absolute inset-y-0 left-0 w-2 cursor-ew-resize bg-black/25 opacity-0 transition-opacity group-hover:opacity-100"
-            title="Drag to trim the start"
+            title={t("Drag to trim the start")}
           />
           {/* right-edge resize handle */}
           <div
             data-handle="resize"
             onPointerDown={(e) => { e.stopPropagation(); onSelect(item.id); onDragStart(e, item, track, "resize"); }}
             className="absolute inset-y-0 right-0 w-2 cursor-ew-resize bg-black/25 opacity-0 transition-opacity group-hover:opacity-100"
-            title="Drag to trim the end"
+            title={t("Drag to trim the end")}
           />
         </div>
       </ContextMenuTrigger>
@@ -820,13 +824,13 @@ function TimelineItem({
             <ContextMenuItem onSelect={() => onNewStill?.(item.id)}>
               <span className="flex items-center gap-2">
                 <Sparkles size={14} />
-                {isSlate ? "Generate still…" : isImage ? "New still…" : "New still from this shot…"}
+                {isSlate ? t("Generate still…") : isImage ? t("New still…") : t("New still from this shot…")}
               </span>
             </ContextMenuItem>
             {isImage && takes?.length > 1 && (
               <ContextMenuSub>
                 <ContextMenuSubTrigger>
-                  <span className="flex items-center gap-2"><RefreshCcwDot size={14} /> Swap take</span>
+                  <span className="flex items-center gap-2"><RefreshCcwDot size={14} /> {t("Swap take")}</span>
                 </ContextMenuSubTrigger>
                 <ContextMenuSubContent>
                   {takes.map((t) => (
@@ -844,7 +848,7 @@ function TimelineItem({
           </>
         )}
         <ContextMenuItem onSelect={() => onSplit(item.id)} disabled={!canSplit}>
-          <span className="flex items-center gap-2"><Scissors size={14} /> Split at playhead</span>
+          <span className="flex items-center gap-2"><Scissors size={14} /> {t("Split at playhead")}</span>
           <ContextMenuShortcut>S</ContextMenuShortcut>
         </ContextMenuItem>
         <ContextMenuSeparator />
@@ -853,14 +857,14 @@ function TimelineItem({
         {!isImage && (
           <ContextMenuSub>
             <ContextMenuSubTrigger>
-              <span className="flex items-center gap-2"><Gauge size={14} /> Speed</span>
+              <span className="flex items-center gap-2"><Gauge size={14} /> {t("Speed")}</span>
               {speed !== 1 && <ContextMenuShortcut>{fmtSpeed(speed)}</ContextMenuShortcut>}
             </ContextMenuSubTrigger>
             <ContextMenuSubContent>
               {SPEED_PRESETS.map((s) => (
                 <ContextMenuItem key={s} onSelect={() => onSpeed?.(item.id, s)}>
                   <span className="flex items-center gap-2">
-                    {s === 1 ? "Normal" : s < 1 ? "Slow" : "Fast"} {fmtSpeed(s)}
+                    {s === 1 ? t("Normal") : s < 1 ? t("Slow") : t("Fast")} {fmtSpeed(s)}
                   </span>
                   {speed === s && <ContextMenuShortcut><Check size={14} /></ContextMenuShortcut>}
                 </ContextMenuItem>
@@ -873,11 +877,11 @@ function TimelineItem({
         {!isAudio && !isSlate && (
           <>
             <ContextMenuItem onSelect={() => onFlip?.(item.id, "h")}>
-              <span className="flex items-center gap-2"><FlipHorizontal2 size={14} /> Flip horizontal</span>
+              <span className="flex items-center gap-2"><FlipHorizontal2 size={14} /> {t("Flip horizontal")}</span>
               {item.flipH && <ContextMenuShortcut><Check size={14} /></ContextMenuShortcut>}
             </ContextMenuItem>
             <ContextMenuItem onSelect={() => onFlip?.(item.id, "v")}>
-              <span className="flex items-center gap-2"><FlipVertical2 size={14} /> Flip vertical</span>
+              <span className="flex items-center gap-2"><FlipVertical2 size={14} /> {t("Flip vertical")}</span>
               {item.flipV && <ContextMenuShortcut><Check size={14} /></ContextMenuShortcut>}
             </ContextMenuItem>
           </>
@@ -886,7 +890,7 @@ function TimelineItem({
         <ContextMenuItem onSelect={() => onToggleDisable(item.id)}>
           <span className="flex items-center gap-2">
             {disabled ? <Eye size={14} /> : <EyeOff size={14} />}
-            {disabled ? "Enable clip" : "Disable clip"}
+            {disabled ? t("Enable clip") : t("Disable clip")}
           </span>
           <ContextMenuShortcut>D</ContextMenuShortcut>
         </ContextMenuItem>
@@ -895,12 +899,12 @@ function TimelineItem({
             for a slate, `null`) onto an audio lane, which <Audio> rejects. */}
         {!isAudio && !isImage && !item.linkId && (
           <ContextMenuItem onSelect={() => onDetachAudio(item.id)}>
-            <span className="flex items-center gap-2"><AudioLines size={14} /> Detach audio</span>
+            <span className="flex items-center gap-2"><AudioLines size={14} /> {t("Detach audio")}</span>
           </ContextMenuItem>
         )}
         {multiCount >= 2 && (
           <ContextMenuItem onSelect={onLinkSelected}>
-            <span className="flex items-center gap-2"><Link2 size={14} /> Link selected clips ({multiCount})</span>
+            <span className="flex items-center gap-2"><Link2 size={14} /> {t("Link selected clips ({n})", { n: multiCount })}</span>
           </ContextMenuItem>
         )}
         {item.linkId && (

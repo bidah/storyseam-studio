@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useLoaderData, useRevalidator } from "react-router";
 import { X, RefreshCw, Loader2, Layers, Film } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useT } from "@/lib/i18n";
 import { invalidateTabCache } from "@/lib/tabCache";
 import { swr, useRevalidateOnMount, useRevalidateOnAgentIdle, useRevalidateOnAgentTool } from "@/lib/swr";
 import { useAgent, agentIsBusy } from "@/components/AgentProvider";
@@ -63,6 +64,7 @@ function ShotField({ n, field, value, onSaved, multiline, mono, placeholder, row
 // close-up, slo" completes to "Medium close-up, slow push-in". Free text
 // still works; the pick just edits the input, and blur commits as usual.
 function CameraField({ n, value, onSaved }) {
+  const t = useT();
   const [v, setV] = useState(value ?? "");
   const [open, setOpen] = useState(false);
   const inputRef = useRef(null);
@@ -100,8 +102,8 @@ function CameraField({ n, value, onSaved }) {
             ref={inputRef}
             className={fieldCls(false)}
             value={v}
-            placeholder="Medium close-up, slow push-in"
-            aria-label="Camera"
+            placeholder={t("Medium close-up, slow push-in")}
+            aria-label={t("Camera")}
             onValueChange={(nv) => { setV(nv); setOpen(true); }}
             onFocus={() => setOpen(true)}
             onBlur={() => { setOpen(false); commit(); }}
@@ -116,7 +118,7 @@ function CameraField({ n, value, onSaved }) {
         >
           <CommandList>
             {groups.map(([heading, opts]) => opts.length > 0 && (
-              <CommandGroup key={heading} heading={heading}>
+              <CommandGroup key={heading} heading={t(heading)}>
                 {opts.map((opt) => (
                   <CommandItem
                     key={opt}
@@ -138,6 +140,7 @@ function CameraField({ n, value, onSaved }) {
 }
 
 function ShotList() {
+  const t = useT();
   const agent = useAgent();
   const agentBusy = agentIsBusy(agent);
   const data = useLoaderData();

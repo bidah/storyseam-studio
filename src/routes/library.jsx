@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useLoaderData, useRevalidator } from "react-router";
 import { X, Check, Plus, ChevronLeft, ImageDown, KeyRound, Loader2, Folder, FolderPlus, Pencil, Trash2 } from "lucide-react";
 import { connectHiggsfield } from "@/lib/higgsfieldAccount";
+import { useT } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 import { invalidateTabCache } from "@/lib/tabCache";
 import { swr, useRevalidateOnMount } from "@/lib/swr";
@@ -32,6 +33,7 @@ export function loader() {
 }
 
 function Library({ onView }) {
+  const t = useT();
   const folders = useLoaderData();
   const revalidator = useRevalidator();
   useRevalidateOnMount("library");
@@ -82,11 +84,11 @@ function Library({ onView }) {
       <div className="space-y-4">
         <div className="flex flex-wrap items-center gap-3">
           <Button variant="outline" size="sm" onClick={() => setActive(null)}>
-            <ChevronLeft size={14} /> all folders
+            <ChevronLeft size={14} /> {t("all folders")}
           </Button>
           <h2 className="text-xl font-semibold tracking-tight">{af.folder}</h2>
-          <Badge variant="outline">{af.count} images</Badge>
-          {selCount > 0 && <Badge variant="success">{selCount} selected</Badge>}
+          <Badge variant="outline">{t("{n} images", { n: af.count })}</Badge>
+          {selCount > 0 && <Badge variant="success">{t("{n} selected", { n: selCount })}</Badge>}
         </div>
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
           {af.images.map((im) => (
@@ -107,7 +109,7 @@ function Library({ onView }) {
                   <Button
                     variant="destructive" size="icon-xs"
                     className="rounded-full opacity-90"
-                    title="remove from final_selection" aria-label="remove from final_selection"
+                    title={t("remove from final_selection")} aria-label={t("remove from final_selection")}
                     onClick={() => setConfirm({ type: "deselect", im })}
                   >
                     <X size={13} />
@@ -116,7 +118,7 @@ function Library({ onView }) {
                   <Button
                     size="icon-xs"
                     className="rounded-full opacity-0 transition-opacity group-hover:opacity-90"
-                    title="add to final_selection" aria-label="add to final_selection"
+                    title={t("add to final_selection")} aria-label={t("add to final_selection")}
                     onClick={() => toggle(im)}
                   >
                     <Plus size={14} />
@@ -125,7 +127,7 @@ function Library({ onView }) {
                 <Button
                   variant="secondary" size="icon-xs"
                   className="rounded-full opacity-0 transition-opacity group-hover:opacity-90"
-                  title="rename" aria-label="rename"
+                  title={t("rename")} aria-label={t("rename")}
                   onClick={() => setRename(im)}
                 >
                   <Pencil size={12} />
@@ -133,13 +135,13 @@ function Library({ onView }) {
                 <Button
                   variant="destructive" size="icon-xs"
                   className="rounded-full opacity-0 transition-opacity group-hover:opacity-90"
-                  title="delete from library" aria-label="delete from library"
+                  title={t("delete from library")} aria-label={t("delete from library")}
                   onClick={() => setConfirm({ type: "delete", im })}
                 >
                   <Trash2 size={12} />
                 </Button>
               </div>
-              {im.selected && <Badge className="absolute left-1.5 top-1.5">selected</Badge>}
+              {im.selected && <Badge className="absolute left-1.5 top-1.5">{t("selected")}</Badge>}
               <figcaption className="truncate px-2 py-1 text-[11px] text-muted-foreground">{im.name}</figcaption>
             </figure>
           ))}
@@ -147,13 +149,15 @@ function Library({ onView }) {
 
         <ConfirmModal
           open={!!confirm}
-          title={confirm?.type === "delete" ? "Delete from library?" : "Remove from selection?"}
+          title={confirm?.type === "delete" ? t("Delete from library?") : t("Remove from selection?")}
           message={
             !confirm ? "" : confirm.type === "delete"
-              ? `"${confirm.im.name}" will be permanently deleted from the asset library${confirm.im.selected ? ", final_selection, and any shots it was assigned to" : ""}.`
-              : `"${confirm.im.name}" will be removed from final_selection (and any shots it was assigned to).`
+              ? (confirm.im.selected
+                  ? t('"{name}" will be permanently deleted from the asset library, final_selection, and any shots it was assigned to.', { name: confirm.im.name })
+                  : t('"{name}" will be permanently deleted from the asset library.', { name: confirm.im.name }))
+              : t('"{name}" will be removed from final_selection (and any shots it was assigned to).', { name: confirm.im.name })
           }
-          confirmLabel={confirm?.type === "delete" ? "Delete" : "Remove"}
+          confirmLabel={confirm?.type === "delete" ? t("Delete") : t("Remove")}
           onCancel={() => setConfirm(null)}
           onConfirm={() => {
             if (confirm.type === "delete") removeAsset(confirm.im);

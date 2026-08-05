@@ -24,6 +24,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { Eyebrow, Panel, ErrorNote, Spinner } from "@/components/shared";
+import { useT } from "@/lib/i18n";
 
 async function apiJson(path, method = "GET", body) {
   const res = await fetch(path, {
@@ -39,12 +40,12 @@ async function apiJson(path, method = "GET", body) {
 const initials = (m) => (m.name || m.email || "?").trim().charAt(0).toUpperCase();
 
 // A short human summary of what one member can reach.
-function scopeSummary(m) {
-  if (m.role === "owner") return "Owner · full access";
-  if (m.role === "admin") return "Admin · all projects";
-  if (m.allProjects) return "All projects";
+function scopeSummary(m, t) {
+  if (m.role === "owner") return t("Owner · full access");
+  if (m.role === "admin") return t("Admin · all projects");
+  if (m.allProjects) return t("All projects");
   const n = m.grants?.length || 0;
-  return n ? `${n} project${n === 1 ? "" : "s"}` : "No projects yet";
+  return n ? t("{n} projects", { n }) : t("No projects yet");
 }
 
 // One copy-to-clipboard row for a freshly created invite link.

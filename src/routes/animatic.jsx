@@ -16,6 +16,7 @@ import {
   MapPin, CircleAlert, Sparkles, Users, ExternalLink, ImagePlus,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useT } from "@/lib/i18n";
 import { invalidateTabCache } from "@/lib/tabCache";
 import { swr, useRevalidateOnMount, useRevalidateOnAgentIdle } from "@/lib/swr";
 import { useAgent, agentIsBusy, renderAnimaticSceneMessage, renderLocationSheetsMessage } from "@/components/AgentProvider";
@@ -30,6 +31,7 @@ import { Empty, Panel, ErrorNote } from "@/components/shared";
  * ---------------------------------------------------------------- */
 
 function ShotCell({ shot, reloadKey, onView }) {
+  const t = useT();
   const loc = shot.refs?.location;
   const still = shot.still;
   return (
@@ -39,7 +41,7 @@ function ShotCell({ shot, reloadKey, onView }) {
           type="button"
           onClick={() => onView({ url: (still.display || still.url) + (reloadKey ? `?v=${reloadKey}` : ""), name: `${shot.id} · ${shot.action || ""}`, role: "storyboard" })}
           className="group relative aspect-video overflow-hidden rounded-md border bg-muted transition-colors hover:border-primary/60"
-          title="View full still"
+          title={t("View full still")}
         >
           <img
             src={(still.thumb || still.url) + (reloadKey ? `?v=${reloadKey}` : "")}
@@ -51,22 +53,22 @@ function ShotCell({ shot, reloadKey, onView }) {
       ) : (
         <div className="flex aspect-video flex-col items-center justify-center gap-1 rounded-md border border-dashed bg-muted/40 text-muted-foreground">
           <Clapperboard size={16} />
-          <span className="text-[10px]">no still yet</span>
+          <span className="text-[10px]">{t("no still yet")}</span>
         </div>
       )}
       <div className="flex items-center gap-1.5">
         <Badge variant="outline" className="font-mono text-[10px]">{shot.id}</Badge>
         {shot.voiced ? (
-          <span title="Line voiced" className="text-primary"><AudioLines size={12} /></span>
+          <span title={t("Line voiced")} className="text-primary"><AudioLines size={12} /></span>
         ) : shot.dialogue && !/\(no dialogue\)/i.test(shot.dialogue) ? (
-          <span title="Has dialogue, not voiced yet" className="text-muted-foreground/60"><AudioLines size={12} /></span>
+          <span title={t("Has dialogue, not voiced yet")} className="text-muted-foreground/60"><AudioLines size={12} /></span>
         ) : null}
         {!shot.bundle && (
-          <span title="This shot is in no bundle — rebuild the episode plan" className="text-amber-500"><CircleAlert size={12} /></span>
+          <span title={t("This shot is in no bundle — rebuild the episode plan")} className="text-amber-500"><CircleAlert size={12} /></span>
         )}
       </div>
       {loc && (
-        <div className="flex items-center gap-1 text-[10px] text-muted-foreground" title={loc.known ? (loc.hasSheet ? "Location has reference art" : "Location has no reference sheet") : "Location not in the World roster"}>
+        <div className="flex items-center gap-1 text-[10px] text-muted-foreground" title={loc.known ? (loc.hasSheet ? t("Location has reference art") : t("Location has no reference sheet")) : t("Location not in the World roster")}>
           <span className={cn("h-1.5 w-1.5 shrink-0 rounded-full", loc.hasSheet ? "bg-emerald-500" : loc.known ? "bg-amber-500" : "bg-muted-foreground/40")} />
           <span className="truncate font-mono">{loc.slug}</span>
         </div>

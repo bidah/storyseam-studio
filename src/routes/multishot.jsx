@@ -8,12 +8,14 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Empty, Eyebrow, Panel, ImageModal } from "@/components/shared";
 import { useShell } from "@/lib/shellContext";
+import { useT, t as staticT } from "@/lib/i18n";
 
 /* ---------------------------------------------------------------- *
  * MultiShot experiment — generation slideshow + summaries          *
  * ---------------------------------------------------------------- */
 
 function GenerationSlideshow({ generations, reloadKey }) {
+  const t = useT();
   const list = Array.isArray(generations) ? generations : [];
   const [i, setI] = useState(0);
   useEffect(() => {
@@ -22,10 +24,10 @@ function GenerationSlideshow({ generations, reloadKey }) {
 
   if (list.length === 0) {
     return (
-      <Panel title="Generations">
+      <Panel title={t("Generations")}>
         <Empty>
-          no generations yet — submit the Seedance multishot job, then{" "}
-          <RefreshCw size={12} className="inline" /> Refresh
+          {t("no generations yet — submit the Seedance multishot job, then")}{" "}
+          <RefreshCw size={12} className="inline" /> {t("Refresh")}
         </Empty>
       </Panel>
     );
@@ -38,10 +40,10 @@ function GenerationSlideshow({ generations, reloadKey }) {
 
   return (
     <Panel
-      title="Generations"
+      title={t("Generations")}
       meta={
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="icon-sm" onClick={prev} disabled={list.length < 2} aria-label="Previous">
+          <Button variant="outline" size="icon-sm" onClick={prev} disabled={list.length < 2} aria-label={t("Previous")}>
             <ChevronLeft size={16} />
           </Button>
           <div className="flex items-center gap-1.5">
@@ -53,12 +55,12 @@ function GenerationSlideshow({ generations, reloadKey }) {
                   idx === i ? "bg-primary" : "bg-muted-foreground/30 hover:bg-muted-foreground/60"
                 )}
                 onClick={() => setI(idx)}
-                title={gen.label || `Take ${idx + 1}`}
-                aria-label={gen.label || `Take ${idx + 1}`}
+                title={gen.label || t("Take {n}", { n: idx + 1 })}
+                aria-label={gen.label || t("Take {n}", { n: idx + 1 })}
               />
             ))}
           </div>
-          <Button variant="outline" size="icon-sm" onClick={next} disabled={list.length < 2} aria-label="Next">
+          <Button variant="outline" size="icon-sm" onClick={next} disabled={list.length < 2} aria-label={t("Next")}>
             <ChevronRight size={16} />
           </Button>
           <span className="ml-1 text-xs tabular-nums text-muted-foreground">
@@ -70,9 +72,9 @@ function GenerationSlideshow({ generations, reloadKey }) {
       <div className="grid gap-4 lg:grid-cols-[1.4fr_1fr]">
         <div className="space-y-2">
           <div className="flex flex-wrap items-center gap-2">
-            <strong className="text-sm">{g.label || `Take ${i + 1}`}</strong>
+            <strong className="text-sm">{g.label || t("Take {n}", { n: i + 1 })}</strong>
             <Badge variant={g.hasAudio ? "success" : "muted"}>
-              {g.hasAudio ? <><Volume2 size={12} /> has audio</> : <><VolumeX size={12} /> silent</>}
+              {g.hasAudio ? <><Volume2 size={12} /> {t("has audio")}</> : <><VolumeX size={12} /> {t("silent")}</>}
             </Badge>
             {g.createdAt && <span className="text-xs text-muted-foreground">{g.createdAt}</span>}
           </div>
@@ -81,7 +83,7 @@ function GenerationSlideshow({ generations, reloadKey }) {
               <source src={`${g.videoUrl}?v=${reloadKey}`} type="video/mp4" />
             </video>
           ) : (
-            <Empty>video file missing</Empty>
+            <Empty>{t("video file missing")}</Empty>
           )}
           {g.resultUrl && (
             <a
@@ -90,14 +92,14 @@ function GenerationSlideshow({ generations, reloadKey }) {
               target="_blank"
               rel="noreferrer"
             >
-              result URL <ExternalLink size={12} />
+              {t("result URL")} <ExternalLink size={12} />
             </a>
           )}
         </div>
 
         <div className="space-y-4">
           <div>
-            <Eyebrow className="mb-1.5">Params</Eyebrow>
+            <Eyebrow className="mb-1.5">{t("Params")}</Eyebrow>
             <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
               {Object.entries(params).map(([k, v]) => (
                 <div className="flex items-center justify-between gap-2 rounded bg-muted/50 px-2 py-1" key={k}>
@@ -114,7 +116,7 @@ function GenerationSlideshow({ generations, reloadKey }) {
               ))}
               {g.id && (
                 <div className="col-span-2 flex items-center justify-between gap-2 rounded bg-muted/50 px-2 py-1">
-                  <span className="text-muted-foreground">job id</span>
+                  <span className="text-muted-foreground">{t("job id")}</span>
                   <span className="truncate font-mono text-[11px]">{g.id}</span>
                 </div>
               )}
@@ -123,7 +125,7 @@ function GenerationSlideshow({ generations, reloadKey }) {
 
           {Array.isArray(g.mediaInputs) && g.mediaInputs.length > 0 && (
             <div>
-              <Eyebrow className="mb-1.5">Media inputs</Eyebrow>
+              <Eyebrow className="mb-1.5">{t("Media inputs")}</Eyebrow>
               <ul className="space-y-1 text-xs text-muted-foreground">
                 {g.mediaInputs.map((m, idx) => (
                   <li key={idx} className="truncate font-mono">{m}</li>
@@ -133,7 +135,7 @@ function GenerationSlideshow({ generations, reloadKey }) {
           )}
 
           <div>
-            <Eyebrow className="mb-1.5">Prompt</Eyebrow>
+            <Eyebrow className="mb-1.5">{t("Prompt")}</Eyebrow>
             <pre className="max-h-52 overflow-auto whitespace-pre-wrap rounded-md bg-muted/50 p-2.5 font-mono text-[11px] leading-relaxed">
               {g.prompt}
             </pre>
@@ -145,11 +147,12 @@ function GenerationSlideshow({ generations, reloadKey }) {
 }
 
 function MultiShot({ reloadKey }) {
+  const t = useT();
   const data = useLoaderData(); // the multishot experiment, or null if none
   useRevalidateOnMount("multishot");
   const [modalImage, setModalImage] = useState(null);
 
-  if (!data) return <Empty>No multishot experiment found.</Empty>;
+  if (!data) return <Empty>{t("No multishot experiment found.")}</Empty>;
 
   return (
     <div className="space-y-4">
@@ -157,8 +160,7 @@ function MultiShot({ reloadKey }) {
         <h2 className="text-xl font-semibold tracking-tight">{data.title}</h2>
         <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
           <Badge variant="success">
-            {(data.generations || []).length} generation
-            {(data.generations || []).length === 1 ? "" : "s"}
+            {t("{n} generation(s)", { n: (data.generations || []).length })}
           </Badge>
           <span>{data.model}</span>
           <Separator orientation="vertical" className="!h-3" />
@@ -169,12 +171,12 @@ function MultiShot({ reloadKey }) {
       <GenerationSlideshow generations={data.generations} reloadKey={reloadKey} />
 
       <div className="grid gap-4 lg:grid-cols-3">
-        <Panel title={`Shots used (${data.shots.length})`}>
+        <Panel title={t("Shots used ({n})", { n: data.shots.length })}>
           <ol className="space-y-3">
             {data.shots.map((s) => (
               <li key={s.id} className="rounded-lg border bg-muted/30 p-3">
                 <div className="mb-1 flex flex-wrap items-center gap-2 text-xs">
-                  <Badge variant="secondary" className="font-mono">shot{s.id}</Badge>
+                  <Badge variant="secondary" className="font-mono">{t("shot")}{s.id}</Badge>
                   <span className="text-muted-foreground">{s.time}</span>
                   <span className="text-muted-foreground">{s.camera}</span>
                 </div>
@@ -187,7 +189,7 @@ function MultiShot({ reloadKey }) {
           </ol>
         </Panel>
 
-        <Panel title={`Images used (${data.images.length})`}>
+        <Panel title={t("Images used ({n})", { n: data.images.length })}>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
             {data.images.map((im) => (
               <figure key={im.file} className="space-y-1">
@@ -195,7 +197,7 @@ function MultiShot({ reloadKey }) {
                   type="button"
                   className="block w-full overflow-hidden rounded-lg border bg-muted transition-transform hover:scale-[1.02]"
                   onClick={() => setModalImage({ ...im, url: `${im.display || im.url}?v=${reloadKey}` })}
-                  title="Click to view full image"
+                  title={t("Click to view full image")}
                 >
                   <img src={`${im.thumb || im.url}?v=${reloadKey}`} alt={im.name} className="aspect-square w-full object-cover" />
                 </button>
@@ -208,7 +210,7 @@ function MultiShot({ reloadKey }) {
           </div>
         </Panel>
 
-        <Panel title={`Audio used (${data.audio.length})`}>
+        <Panel title={t("Audio used ({n})", { n: data.audio.length })}>
           <ul className="space-y-3">
             {data.audio.map((a) => (
               <li key={a.file} className="space-y-1.5">
@@ -235,7 +237,7 @@ export function loader() {
   return swr("multishot", async () => {
     const res = await fetch("/api/multishot");
     const json = await res.json();
-    if (!res.ok) throw new Error(json.error || "Failed to load");
+    if (!res.ok) throw new Error(json.error || staticT("Failed to load"));
     return json.multishot ?? null;
   });
 }

@@ -33,6 +33,7 @@ import { desktop, isDesktop } from "@/lib/desktop";
 import { useFalKey, setFalKey } from "@/lib/falKey";
 import { useAtlasKey, setAtlasKey } from "@/lib/atlasKey";
 import { useProviderPrefs, setActiveProvider } from "@/lib/providers";
+import { useT } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
@@ -48,6 +49,7 @@ const FEATURES = [
 function Homepage() {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState(null);
+  const t = useT();
 
   const signIn = async () => {
     setBusy(true);
@@ -99,12 +101,10 @@ function Homepage() {
           </div>
 
           <h1 className="mt-8 max-w-xl text-balance text-3xl font-semibold tracking-tight sm:text-4xl">
-            Write, storyboard, render and cut an <span className="text-primary">episode</span> in one place
+            {t("Write, storyboard, render and cut an")} <span className="text-primary">{t("episode")}</span> {t("in one place")}
           </h1>
           <p className="mt-3 max-w-lg text-sm text-muted-foreground">
-            StorySeam is a workspace for making short animated episodes. Draft the script,
-            build the shot list, generate the images, video and sound, then assemble the cut
-            on a timeline — with a chat agent that can drive any step for you.
+            {t("StorySeam is a workspace for making short animated episodes. Draft the script, build the shot list, generate the images, video and sound, then assemble the cut on a timeline — with a chat agent that can drive any step for you.")}
           </p>
 
           <div className="mt-8 grid w-full grid-cols-2 gap-2.5 sm:grid-cols-3">
@@ -114,8 +114,8 @@ function Homepage() {
                   <f.icon size={16} />
                 </span>
                 <div className="min-w-0 leading-tight">
-                  <div className="text-sm font-medium">{f.label}</div>
-                  <div className="truncate text-[11px] text-muted-foreground">{f.note}</div>
+                  <div className="text-sm font-medium">{t(f.label)}</div>
+                  <div className="truncate text-[11px] text-muted-foreground">{t(f.note)}</div>
                 </div>
               </div>
             ))}
@@ -124,25 +124,20 @@ function Homepage() {
           <div className="mt-9 flex w-full flex-col items-center gap-3">
             <Button size="lg" className="w-full max-w-xs gap-2 font-medium" disabled={busy} onClick={signIn}>
               {busy ? <Loader2 size={16} className="animate-spin" /> : null}
-              Sign in with Google
+              {t("Sign in with Google")}
               {!busy ? <ArrowRight size={16} /> : null}
             </Button>
             {/* State the scope plainly. These are exactly the scopes the
                 authorize URL asks for (email + profile + openid) — if that ever
                 changes, change this sentence with it. */}
             <p className="max-w-sm text-xs text-muted-foreground">
-              Google sign-in is only used to create your StorySeam account — it shares your
-              name, email address and profile picture. StorySeam never posts on your behalf
-              and reads nothing else from your Google account.
+              {t("Google sign-in is only used to create your StorySeam account — it shares your name, email address and profile picture. StorySeam never posts on your behalf and reads nothing else from your Google account.")}
             </p>
             {err ? <p className="max-w-sm text-center text-xs text-destructive">{err}</p> : null}
           </div>
 
           <p className="mt-6 max-w-lg border-t pt-6 text-xs leading-relaxed text-muted-foreground">
-            Generation runs on a rendering account you connect yourself — Higgsfield, fal.ai
-            or Atlas Cloud — so images, video and audio bill to you. StorySeam is not
-            affiliated with those services. API keys you paste are kept in this browser only
-            and are never stored on our servers.
+            {t("Generation runs on a rendering account you connect yourself — Higgsfield, fal.ai or Atlas Cloud — so images, video and audio bill to you. StorySeam is not affiliated with those services. API keys you paste are kept in this browser only and are never stored on our servers.")}
           </p>
 
           {/* Reachable WITHOUT signing in — /privacy and /terms are routed as
@@ -150,16 +145,16 @@ function Homepage() {
               visitor. See router.jsx. */}
           <div className="mt-6 flex flex-wrap items-center justify-center gap-x-4 gap-y-2 text-xs text-muted-foreground">
             <Link to="/privacy" className="underline-offset-4 hover:text-foreground hover:underline">
-              Privacy
+              {t("Privacy")}
             </Link>
             <Link to="/terms" className="underline-offset-4 hover:text-foreground hover:underline">
-              Terms
+              {t("Terms")}
             </Link>
             <a
               href="mailto:privacy@storyseam.app"
               className="underline-offset-4 hover:text-foreground hover:underline"
             >
-              Contact
+              {t("Contact")}
             </a>
           </div>
         </div>
@@ -189,6 +184,7 @@ function ProviderKeyScreen({ userEmail }) {
   const [pick, setPick] = useState(KEY_PROVIDERS[0]);
   const [draft, setDraft] = useState("");
   const plausible = /^[\w:.-]{10,200}$/.test(draft.trim());
+  const t = useT();
 
   return (
     <div className="relative flex min-h-dvh items-center justify-center overflow-hidden bg-background px-6 py-12">
@@ -199,15 +195,13 @@ function ProviderKeyScreen({ userEmail }) {
             <KeyRound size={22} />
           </span>
           <h1 className="mt-6 text-balance text-2xl font-semibold tracking-tight">
-            Connect a <span className="text-primary">render key</span>
+            {t("Connect a")} <span className="text-primary">{t("render key")}</span>
           </h1>
           <p className="mt-2 text-sm text-muted-foreground">
-            StorySeam renders images and video with your own account — paste a fal.ai
-            or Atlas Cloud API key to continue. It is stored <b>only in this browser</b>,
-            never on our servers, and you can add the other provider later in Settings.
+            {t("StorySeam renders images and video with your own account — paste a fal.ai or Atlas Cloud API key to continue. It is stored")} <b>{t("only in this browser")}</b>{t(", never on our servers, and you can add the other provider later in Settings.")}
           </p>
 
-          <div className="mt-6 flex gap-1 rounded-lg border bg-card/60 p-1" role="tablist" aria-label="Key provider">
+          <div className="mt-6 flex gap-1 rounded-lg border bg-card/60 p-1" role="tablist" aria-label={t("Key provider")}>
             {KEY_PROVIDERS.map((p) => (
               <Button
                 key={p.id}
@@ -241,12 +235,12 @@ function ProviderKeyScreen({ userEmail }) {
               autoFocus
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
-              placeholder={pick.placeholder}
+              placeholder={t(pick.placeholder)}
               className="h-10 font-mono text-sm"
               aria-label={`${pick.label} API key`}
             />
             <Button type="submit" size="lg" className="w-full gap-2 font-medium" disabled={!plausible}>
-              Save &amp; continue
+              {t("Save & continue")}
               <ArrowRight size={16} />
             </Button>
           </form>
@@ -257,7 +251,7 @@ function ProviderKeyScreen({ userEmail }) {
             rel="noreferrer"
             className="mt-4 inline-flex items-center gap-1.5 text-xs text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
           >
-            Create a key on {pick.label} <ExternalLink size={12} />
+            {t("Create a key on")} {pick.label} <ExternalLink size={12} />
           </a>
 
           {/* This screen only shows when the selected BYOK provider has no key —
@@ -268,7 +262,7 @@ function ProviderKeyScreen({ userEmail }) {
             onClick={() => setActiveProvider("higgsfield")}
             className="mt-3 text-xs text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
           >
-            Or render with a Higgsfield account instead
+            {t("Or render with a Higgsfield account instead")}
           </button>
 
           <SignedInFooter userEmail={userEmail} />
@@ -279,15 +273,16 @@ function ProviderKeyScreen({ userEmail }) {
 }
 
 function SignedInFooter({ userEmail }) {
+  const t = useT();
   return (
     <div className="mt-8 flex items-center gap-2 text-xs text-muted-foreground">
-      {userEmail ? <span>Signed in as {userEmail}</span> : null}
+      {userEmail ? <span>{t("Signed in as")} {userEmail}</span> : null}
       <button
         type="button"
         onClick={() => signOut()}
         className="inline-flex items-center gap-1 underline-offset-4 hover:text-foreground hover:underline"
       >
-        <LogOut size={12} /> Sign out
+        <LogOut size={12} /> {t("Sign out")}
       </button>
     </div>
   );
@@ -301,6 +296,7 @@ function SignedInFooter({ userEmail }) {
 function HiggsfieldConnectScreen({ userEmail }) {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState(null);
+  const t = useT();
 
   const connect = async () => {
     setBusy(true);
@@ -325,17 +321,15 @@ function HiggsfieldConnectScreen({ userEmail }) {
             <Cable size={22} />
           </span>
           <h1 className="mt-6 text-balance text-2xl font-semibold tracking-tight">
-            Connect <span className="text-primary">Higgsfield</span>
+            {t("Connect")} <span className="text-primary">Higgsfield</span>
           </h1>
           <p className="mt-2 text-sm text-muted-foreground">
-            StorySeam is set to render with Higgsfield, but this account isn't linked
-            yet. Connect your Higgsfield account once and every image, video &amp; audio
-            generation bills it — you can manage the connection later in Settings.
+            {t("StorySeam is set to render with Higgsfield, but this account isn't linked yet. Connect your Higgsfield account once and every image, video & audio generation bills it — you can manage the connection later in Settings.")}
           </p>
 
           <Button size="lg" className="mt-6 w-full max-w-xs gap-2 font-medium" disabled={busy} onClick={connect}>
             {busy ? <Loader2 size={16} className="animate-spin" /> : null}
-            Connect Higgsfield
+            {t("Connect Higgsfield")}
             {!busy ? <ArrowRight size={16} /> : null}
           </Button>
           {err ? <p className="mt-2 max-w-sm text-center text-xs text-destructive">{err}</p> : null}
@@ -345,7 +339,7 @@ function HiggsfieldConnectScreen({ userEmail }) {
             onClick={() => setActiveProvider("fal")}
             className="mt-4 text-xs text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
           >
-            Or render with your own fal.ai / Atlas Cloud key instead
+            {t("Or render with your own fal.ai / Atlas Cloud key instead")}
           </button>
 
           <SignedInFooter userEmail={userEmail} />

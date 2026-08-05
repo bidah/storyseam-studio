@@ -34,6 +34,8 @@ import {
 } from "@/components/ui/select";
 import { Eyebrow, Panel, ErrorNote } from "@/components/shared";
 import { ASPECTS } from "@/components/ImageStudio";
+import { useLocale, useT } from "@/lib/i18n";
+import { Languages } from "lucide-react";
 
 // Radix Select forbids empty-string item values — sentinel maps back to ""
 // (empty model = the server default, Nano Banana Pro).
@@ -393,6 +395,34 @@ function SandboxPanel() {
   );
 }
 
+// Interface language: which locale the studio UI renders in. A per-browser
+// preference (localStorage), like the theme toggle — it changes UI copy only,
+// takes effect immediately, and doesn't touch project data.
+function LanguagePanel() {
+  const t = useT();
+  const { locale, setLocale, locales } = useLocale();
+  return (
+    <Panel title={<span className="flex items-center gap-2"><Languages size={15} className="text-primary" /> {t("Language")}</span>}>
+      <p className="mb-3 text-sm text-muted-foreground">
+        {t("Choose the language for the studio interface. Your choice is saved in this browser.")}
+      </p>
+      <div>
+        <Eyebrow className="normal-case tracking-normal text-foreground/70">{t("Interface language")}</Eyebrow>
+        <Select value={locale} onValueChange={setLocale}>
+          <SelectTrigger size="sm" className="w-[220px] text-xs"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            {locales.map((l) => (
+              <SelectItem key={l.id} value={l.id}>
+                {t(l.label)} — {l.nativeLabel}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+    </Panel>
+  );
+}
+
 // Save button with a transient "Saved" confirmation.
 function SaveButton({ onSave, children = "Save" }) {
   const [state, setState] = useState("idle"); // idle | saving | saved
@@ -542,6 +572,8 @@ function SettingsPage() {
       </div>
 
       {error && <ErrorNote>{error}</ErrorNote>}
+
+      <LanguagePanel />
 
       <ChatProviderPanel />
 

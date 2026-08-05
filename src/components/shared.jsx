@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
+import { useT, t } from "@/lib/i18n";
 
 // Shadcn tooltip around a single control (replaces `title=` attributes).
 // A disabled element swallows pointer events, so a disabled child is wrapped
@@ -101,6 +102,7 @@ function ErrorNote({ children }) {
  * ---------------------------------------------------------------- */
 
 function ImageModal({ image, onClose }) {
+  const tHook = useT();
   return (
     <Dialog open={!!image} onOpenChange={(o) => !o && onClose()}>
       <DialogContent
@@ -108,7 +110,7 @@ function ImageModal({ image, onClose }) {
         className="flex h-[94vh] w-[96vw] max-w-[96vw] flex-col gap-0 overflow-hidden bg-card p-0 sm:max-w-[96vw]"
       >
         <DialogHeader className="sr-only">
-          <DialogTitle>{image?.name || "Image"}</DialogTitle>
+          <DialogTitle>{image?.name || tHook("Image")}</DialogTitle>
         </DialogHeader>
         {image && (
           <>
@@ -120,7 +122,7 @@ function ImageModal({ image, onClose }) {
               />
               <button
                 onClick={onClose}
-                aria-label="Close"
+                aria-label={tHook("Close")}
                 className="absolute right-3 top-3 flex size-9 items-center justify-center rounded-full bg-black/60 text-white ring-1 ring-white/25 backdrop-blur transition-colors hover:bg-black/85 focus-visible:ring-2 focus-visible:ring-white/70 focus-visible:outline-none"
               >
                 <X size={18} />
@@ -141,7 +143,8 @@ function ImageModal({ image, onClose }) {
  * Confirm dialog                                                   *
  * ---------------------------------------------------------------- */
 
-function ConfirmModal({ open, title, message, confirmLabel = "Remove", onConfirm, onCancel }) {
+function ConfirmModal({ open, title, message, confirmLabel = t("Remove"), onConfirm, onCancel }) {
+  const tHook = useT();
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onCancel()}>
       <DialogContent className="sm:max-w-md">
@@ -150,7 +153,7 @@ function ConfirmModal({ open, title, message, confirmLabel = "Remove", onConfirm
         </DialogHeader>
         <p className="text-sm text-muted-foreground">{message}</p>
         <DialogFooter>
-          <Button variant="outline" onClick={onCancel}>Cancel</Button>
+          <Button variant="outline" onClick={onCancel}>{tHook("Cancel")}</Button>
           <Button variant="destructive" onClick={onConfirm}>{confirmLabel}</Button>
         </DialogFooter>
       </DialogContent>
@@ -181,6 +184,7 @@ const isChunkLoadError = (err) =>
 // Styled like ErrorNote so a failed tab load reads the same as an inline error.
 function RouteError() {
   const err = useRouteError();
+  const tHook = useT();
 
   // Auto-recover from a stale-client chunk 404 by reloading once. The timestamp
   // guard blocks an infinite loop when the fetch fails for a real reason (offline,
@@ -196,7 +200,7 @@ function RouteError() {
     }
   }
 
-  return <ErrorNote>{String(err?.message || err || "Failed to load")}</ErrorNote>;
+  return <ErrorNote>{String(err?.message || err || tHook("Failed to load"))}</ErrorNote>;
 }
 
 // Cross-fades between two icons on a state change. Both icons stay mounted

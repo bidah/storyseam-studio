@@ -37,6 +37,7 @@ import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger,
 } from "@/components/ui/dialog";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { useT, t as st } from "@/lib/i18n";
 import {
   Screenplay, SlashCommand, buildInitialContent, elementsToDoc,
   SP_TYPES, SP_LABELS, SP_PLACEHOLDERS,
@@ -51,12 +52,12 @@ function relTime(iso) {
   const then = new Date(iso).getTime();
   if (Number.isNaN(then)) return "";
   const s = Math.round((Date.now() - then) / 1000);
-  if (s < 45) return "just now";
+  if (s < 45) return st("just now");
   const m = Math.round(s / 60);
-  if (m < 60) return `${m}m ago`;
+  if (m < 60) return st("{m}m ago", { m });
   const h = Math.round(m / 60);
-  if (h < 24) return `${h}h ago`;
-  return `${Math.round(h / 24)}d ago`;
+  if (h < 24) return st("{h}h ago", { h });
+  return st("{d}d ago", { d: Math.round(h / 24) });
 }
 
 /* ---------------------------------------------------------------- *
@@ -64,6 +65,7 @@ function relTime(iso) {
  * ---------------------------------------------------------------- */
 
 function TitleField({ value, onCommit }) {
+  const t = useT();
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(value);
   const inputRef = useRef(null);
@@ -91,7 +93,7 @@ function TitleField({ value, onCommit }) {
         type="button"
         onClick={() => setEditing(true)}
         className="group flex w-full items-center gap-2 rounded-md px-1 py-1 text-left transition-colors hover:bg-accent/40"
-        title="Click to edit the title"
+        title={t("Click to edit the title")}
       >
         <h1
           className={cn(
@@ -99,7 +101,7 @@ function TitleField({ value, onCommit }) {
             !value && "text-muted-foreground/50"
           )}
         >
-          {value || "Untitled script"}
+          {value || t("Untitled script")}
         </h1>
         <Pencil
           size={15}
@@ -124,11 +126,11 @@ function TitleField({ value, onCommit }) {
             cancel();
           }
         }}
-        placeholder="Untitled script"
+        placeholder={t("Untitled script")}
         className="flex-1 border-b border-input bg-transparent px-1 py-1 text-3xl font-extrabold tracking-tight outline-none placeholder:text-muted-foreground/40 focus:border-ring"
       />
       <Button size="sm" onClick={commit}>
-        <Save size={14} /> Save
+        <Save size={14} /> {t("Save")}
       </Button>
     </div>
   );
@@ -153,6 +155,7 @@ async function draftsApi(path, method, body) {
 }
 
 function DraftControls({ drafts, pinnedId, currentName, flush, reload }) {
+  const t = useT();
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
   const [busy, setBusy] = useState(false);
@@ -190,19 +193,17 @@ function DraftControls({ drafts, pinnedId, currentName, flush, reload }) {
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
         <Button variant="outline" size="sm" className="h-7 gap-1.5 text-xs">
-          <GitBranch size={13} /> Version control draft
+          <GitBranch size={13} /> {t("Version control draft")}
           <Badge variant="secondary" className="ml-1 font-normal">{currentName}</Badge>
         </Button>
       </DialogTrigger>
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <GitBranch size={16} /> Version control — drafts
+            <GitBranch size={16} /> {t("Version control — drafts")}
           </DialogTitle>
           <DialogDescription>
-            Create a new draft to save the current version and keep writing on a fresh
-            one. The <strong>pinned</strong> draft is the active version — both this
-            editor and the chat agent read and write only the pinned draft.
+            {t("Create a new draft to save the current version and keep writing on a fresh one. The pinned draft is the active version — both this editor and the chat agent read and write only the pinned draft.")}
           </DialogDescription>
         </DialogHeader>
 
@@ -215,30 +216,30 @@ function DraftControls({ drafts, pinnedId, currentName, flush, reload }) {
         {/* Create a new draft */}
         <div className="rounded-lg border bg-muted/30 p-3">
           <div className="mb-2 text-xs font-semibold text-muted-foreground">
-            Create a new draft
+            {t("Create a new draft")}
           </div>
           <div className="flex items-center gap-2">
             <Input
               value={name}
               onChange={(e) => setName(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && !busy && createDraft()}
-              placeholder={`Draft ${drafts.length + 1}`}
+              placeholder={t("Draft {n}", { n: drafts.length + 1 })}
               className="h-8"
             />
             <Button size="sm" className="h-8 shrink-0 gap-1.5" disabled={busy} onClick={createDraft}>
               {busy ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
-              Create draft
+              {t("Create draft")}
             </Button>
           </div>
           <p className="mt-1.5 text-[11px] text-muted-foreground">
-            Clones the current pinned draft, then pins the new one.
+            {t("Clones the current pinned draft, then pins the new one.")}
           </p>
         </div>
 
         {/* Existing drafts — switch the pin or delete */}
         <div className="space-y-1">
           <div className="px-1 text-xs font-semibold text-muted-foreground">
-            Drafts ({drafts.length})
+            {t("Drafts ({n})", { n: drafts.length })}
           </div>
           <div className="max-h-64 space-y-1 overflow-y-auto">
             {[...drafts]
@@ -258,7 +259,7 @@ function DraftControls({ drafts, pinnedId, currentName, flush, reload }) {
                       disabled={busy || isPinned}
                       onClick={() => pin(d.id)}
                       className="flex min-w-0 flex-1 items-center gap-2 text-left disabled:cursor-default"
-                      title={isPinned ? "Pinned (active)" : "Pin this draft"}
+                      title={isPinned ? t("Pinned (active)") : t("Pin this draft")}
                     >
                       <Pin
                         size={13}
@@ -269,10 +270,10 @@ function DraftControls({ drafts, pinnedId, currentName, flush, reload }) {
                       />
                       <span className="truncate font-medium">{d.name}</span>
                       {isPinned && (
-                        <Badge variant="secondary" className="shrink-0 text-[10px]">pinned</Badge>
+                        <Badge variant="secondary" className="shrink-0 text-[10px]">{t("pinned")}</Badge>
                       )}
                       <span className="ml-auto shrink-0 pl-2 text-[11px] text-muted-foreground">
-                        {d.lineCount} lines · {relTime(d.updatedAt)}
+                        {d.lineCount} {t("lines")} · {relTime(d.updatedAt)}
                       </span>
                     </button>
                     <Button
@@ -281,8 +282,8 @@ function DraftControls({ drafts, pinnedId, currentName, flush, reload }) {
                       className="size-6 shrink-0 text-muted-foreground hover:text-destructive"
                       disabled={busy || drafts.length <= 1}
                       onClick={() => remove(d.id)}
-                      aria-label={`Delete ${d.name}`}
-                      title={drafts.length <= 1 ? "Can't delete the only draft" : "Delete draft"}
+                      aria-label={t("Delete {name}", { name: d.name })}
+                      title={drafts.length <= 1 ? t("Can't delete the only draft") : t("Delete draft")}
                     >
                       <Trash2 size={13} />
                     </Button>
@@ -305,9 +306,10 @@ function DraftControls({ drafts, pinnedId, currentName, flush, reload }) {
 
 // Filename → a tidy draft name, e.g. "whistlewood.fountain" → "whistlewood (imported)".
 const importDraftName = (filename) =>
-  `${filename.replace(/\.[^./]+$/, "").trim() || "Untitled"} (imported)`.slice(0, 80);
+  `${filename.replace(/\.[^./]+$/, "").trim() || st("Untitled")} (${st("imported")})`.slice(0, 80);
 
 function ImportControls({ flush, reload }) {
+  const t = useT();
   const inputRef = useRef(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState(null);
@@ -323,7 +325,7 @@ function ImportControls({ flush, reload }) {
       const text = await file.text();
       const { title, elements } = parseFountain(text);
       if (!elements.length) {
-        throw new Error("No screenplay content found — is this a Fountain file?");
+        throw new Error(st("No screenplay content found — is this a Fountain file?"));
       }
       // Seed a brand-new draft with the converted doc; it becomes pinned server-side.
       await draftsApi("/api/script/drafts", "POST", {
@@ -354,10 +356,10 @@ function ImportControls({ flush, reload }) {
         className="h-7 gap-1.5 text-xs"
         disabled={busy}
         onClick={() => inputRef.current?.click()}
-        title="Import a Fountain (.fountain) screenplay as a new draft"
+        title={t("Import a Fountain (.fountain) screenplay as a new draft")}
       >
         {busy ? <Loader2 size={13} className="animate-spin" /> : <FileUp size={13} />}
-        Import
+        {t("Import")}
       </Button>
       {err && (
         <span className="max-w-[16rem] truncate text-[11px] text-destructive" role="alert" title={err}>
@@ -374,6 +376,7 @@ function ImportControls({ flush, reload }) {
 // once and returns the same link on every subsequent open. "Stop sharing"
 // revokes the token, killing every copy of the link.
 function ShareControls() {
+  const t = useT();
   const [open, setOpen] = useState(false);
   const [info, setInfo] = useState(null); // null = minting, { url } = live
   const [err, setErr] = useState(null);
@@ -389,7 +392,7 @@ function ShareControls() {
       .then((r) => r.json())
       .then((d) => {
         if (!alive) return;
-        if (d.error || !d.url) throw new Error(d.error || "No share link returned");
+        if (d.error || !d.url) throw new Error(d.error || st("No share link returned"));
         setInfo(d);
       })
       .catch((e) => alive && setErr(String(e.message || e)));
@@ -422,40 +425,39 @@ function ShareControls() {
           variant="outline"
           size="sm"
           className="h-7 gap-1.5 text-xs"
-          title="Share a public read-only view of this script"
+          title={t("Share a public read-only view of this script")}
         >
           <Share2 size={13} />
-          Share
+          {t("Share")}
         </Button>
       </DialogTrigger>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <Share2 size={16} /> Share script
+            <Share2 size={16} /> {t("Share script")}
           </DialogTitle>
           <DialogDescription>
-            Anyone with this link can read the current script — formatted, no editing.
-            The link always shows the latest saved version.
+            {t("Anyone with this link can read the current script — formatted, no editing. The link always shows the latest saved version.")}
           </DialogDescription>
         </DialogHeader>
         {err ? (
           <p className="text-sm text-destructive" role="alert">{err}</p>
         ) : !info ? (
           <p className="flex items-center gap-2 text-sm text-muted-foreground">
-            <Loader2 size={14} className="animate-spin" /> Creating share link…
+            <Loader2 size={14} className="animate-spin" /> {t("Creating share link…")}
           </p>
         ) : (
           <div className="flex items-center gap-2">
             <Input readOnly value={info.url} className="h-8 text-xs" onFocus={(e) => e.target.select()} />
             <Button variant="outline" size="sm" className="h-8 gap-1.5 shrink-0" onClick={copy}>
               {copied ? <Check size={13} className="text-primary" /> : <Copy size={13} />}
-              {copied ? "Copied" : "Copy"}
+              {copied ? t("Copied") : t("Copy")}
             </Button>
             <Button
               variant="outline"
               size="sm"
               className="h-8 shrink-0"
-              aria-label="Open the shared view in a new tab"
+              aria-label={t("Open the shared view in a new tab")}
               onClick={() => window.open(info.url, "_blank", "noopener")}
             >
               <ExternalLink size={13} />
@@ -464,10 +466,10 @@ function ShareControls() {
         )}
         <DialogFooter className="sm:justify-between">
           <Button variant="ghost" size="sm" className="text-destructive" disabled={!info} onClick={stopSharing}>
-            Stop sharing
+            {t("Stop sharing")}
           </Button>
           <Button variant="secondary" size="sm" onClick={() => setOpen(false)}>
-            Done
+            {t("Done")}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -491,6 +493,7 @@ function ShareControls() {
 // things — never run (outline, the invitation), read this revision (filled, with
 // its verdict on hover), or read an older one (outline + re-run icon).
 function ReviewChips({ reviews }) {
+  const t = useT();
   const agent = useAgent();
   const agentBusy = agentIsBusy(agent);
   const fresh = new Set(reviews?.fresh || []);
@@ -503,17 +506,17 @@ function ReviewChips({ reviews }) {
   return (
     <div className="flex flex-wrap items-center gap-1">
       <span className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground">
-        <Stethoscope size={13} /> Doctors
+        <Stethoscope size={13} /> {t("Doctors")}
       </span>
       {DOCTORS.map((d) => {
         const isFresh = fresh.has(d.id);
         const isStale = stale.has(d.id);
         const last = reviews?.latest?.[d.id] || null;
         const tip = isFresh
-          ? `${last?.summary || "No issues reported"}${last?.at ? ` · ${relTime(last.at)}` : ""}`
+          ? `${last?.summary || t("No issues reported")}${last?.at ? ` · ${relTime(last.at)}` : ""}`
           : isStale
-            ? `Read an older revision${last?.at ? ` ${relTime(last.at)}` : ""} — run it again on this one`
-            : `Never run on this draft — ${d.does}`;
+            ? `${t("Read an older revision")}${last?.at ? ` ${relTime(last.at)}` : ""}${t(" — run it again on this one")}`
+            : t("Never run on this draft — {does}", { does: d.does });
         return (
           <Tooltip key={d.id}>
             <TooltipTrigger asChild>
@@ -548,6 +551,7 @@ function ReviewChips({ reviews }) {
 // exists, Generate is locked (no destructive re-run). `signed` is driven from
 // the parent so an autosave (which clears the server-side sign-off) drops it.
 function ShotlistGate({ draftId, signed, shotlistExists, onSignedChange }) {
+  const t = useT();
   const agent = useAgent();
   const agentBusy = agentIsBusy(agent);
   const [busy, setBusy] = useState(false);
@@ -587,26 +591,26 @@ function ShotlistGate({ draftId, signed, shotlistExists, onSignedChange }) {
 
   const genDisabled = agentBusy || !signed || shotlistExists;
   const genTitle = agentBusy
-    ? "agent is busy"
+    ? t("agent is busy")
     : !signed
-      ? "sign the script first"
+      ? t("sign the script first")
       : shotlistExists
-        ? "a shot list already exists — edit it on the Shot list tab, or regenerate via chat"
-        : "ask the agent to break the script into a shot list";
+        ? t("a shot list already exists — edit it on the Shot list tab, or regenerate via chat")
+        : t("ask the agent to break the script into a shot list");
 
   return (
     <div className="flex flex-wrap items-center gap-1.5">
       {signed ? (
-        <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => toggleSign(false)} disabled={busy} title="Unsign to keep editing">
-          <CircleCheck size={13} className="text-primary" /> Signed
+        <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => toggleSign(false)} disabled={busy} title={t("Unsign to keep editing")}>
+          <CircleCheck size={13} className="text-primary" /> {t("Signed")}
         </Button>
       ) : (
-        <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => setSignOpen(true)} disabled={busy || !draftId} title="Sign this draft to unlock the shot list">
-          {busy ? <Loader2 size={13} className="animate-spin" /> : <CircleCheck size={13} />} Sign script
+        <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => setSignOpen(true)} disabled={busy || !draftId} title={t("Sign this draft to unlock the shot list")}>
+          {busy ? <Loader2 size={13} className="animate-spin" /> : <CircleCheck size={13} />} {t("Sign script")}
         </Button>
       )}
       <Button size="sm" className="h-7 text-xs" onClick={generate} disabled={genDisabled} title={genTitle}>
-        {agentBusy ? <Loader2 size={13} className="animate-spin" /> : shotlistExists ? <Lock size={13} /> : <ListChecks size={13} />} Generate shot list
+        {agentBusy ? <Loader2 size={13} className="animate-spin" /> : shotlistExists ? <Lock size={13} /> : <ListChecks size={13} />} {t("Generate shot list")}
       </Button>
 
       <ScriptSignModal
@@ -626,11 +630,12 @@ const SCRIPT_SIGN_CHECKS = [
   "The screenplay is final — structure, scenes, and dialogue are locked.",
   "Signing closes the script; editing it afterward unsigns it and requires re-signing.",
   "I accept authorship of this revision and acknowledge the script is closed.",
-];
+].map(st);
 
 // Confirmation modal for closing (signing) the script. Gates on a signer name +
 // every acknowledgement checked, then calls onConfirm(name) → the sign request.
 function ScriptSignModal({ open, onOpenChange, busy, onConfirm }) {
+  const t = useT();
   const [signedBy, setSignedBy] = useState(() => {
     try { return localStorage.getItem("shotStudioSigner") || ""; } catch { return ""; }
   });
@@ -656,20 +661,19 @@ function ScriptSignModal({ open, onOpenChange, busy, onConfirm }) {
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <CircleCheck size={16} className="text-primary" /> Sign &amp; close script
+            <CircleCheck size={16} className="text-primary" /> {t("Sign & close script")}
           </DialogTitle>
           <DialogDescription>
-            Signing locks this draft as the closed screenplay and unlocks shot-list
-            generation. Editing the script afterward unsigns it and requires re-signing.
+            {t("Signing locks this draft as the closed screenplay and unlocks shot-list generation. Editing the script afterward unsigns it and requires re-signing.")}
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-1.5">
-          <Label htmlFor="script-signed-by">Signed by</Label>
+          <Label htmlFor="script-signed-by">{t("Signed by")}</Label>
           <Input
             id="script-signed-by"
             value={signedBy}
-            placeholder="your name"
+            placeholder={t("your name")}
             onChange={(e) => setSignedBy(e.target.value)}
           />
         </div>
@@ -700,9 +704,9 @@ function ScriptSignModal({ open, onOpenChange, busy, onConfirm }) {
         </div>
 
         <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={busy}>Cancel</Button>
+          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={busy}>{t("Cancel")}</Button>
           <Button onClick={submit} disabled={!canSign}>
-            {busy ? <><Loader2 size={13} className="animate-spin" /> signing…</> : <><CircleCheck size={13} /> Sign &amp; close script</>}
+            {busy ? <><Loader2 size={13} className="animate-spin" /> {t("signing…")}</> : <><CircleCheck size={13} /> {t("Sign & close script")}</>}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -711,6 +715,7 @@ function ScriptSignModal({ open, onOpenChange, busy, onConfirm }) {
 }
 
 function Editor({ initial, drafts, pinnedId, currentName, reload, signed: signedInit, shotlistExists, draftId, reviews }) {
+  const t = useT();
   const [saveState, setSaveState] = useState("saved"); // "saved" | "saving" | "error"
   // Local sign-off mirror: editing clears the server-side sign-off, so drop it
   // whenever we autosave; the Sign button sets it back.
@@ -769,10 +774,10 @@ function Editor({ initial, drafts, pinnedId, currentName, reload, signed: signed
       Placeholder.configure({
         includeChildren: true,
         placeholder: ({ node }) => {
-          if (node.type.name === "heading") return "Heading";
+          if (node.type.name === "heading") return t("Heading");
           if (node.type.name === "screenplay")
             return SP_PLACEHOLDERS[node.attrs.spType] || "";
-          return "Write, or press '/' for commands…";
+          return t("Write, or press '/' for commands…");
         },
       }),
       SlashCommand,
@@ -839,7 +844,7 @@ function Editor({ initial, drafts, pinnedId, currentName, reload, signed: signed
         <ReviewChips reviews={reviews} />
         <span className="mx-0.5 h-5 w-px bg-border" aria-hidden />
         <span className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground">
-          <PenLine size={13} /> Screenplay
+          <PenLine size={13} /> {t("Screenplay")}
         </span>
         <div className="flex flex-wrap items-center gap-1">
           {SP_TYPES.map((t) => (
@@ -849,7 +854,7 @@ function Editor({ initial, drafts, pinnedId, currentName, reload, signed: signed
               size="sm"
               className="h-7 text-xs"
               onClick={() => setType(t)}
-              title={`Format as ${SP_LABELS[t]}`}
+              title={t("Format as {label}", { label: SP_LABELS[t] })}
             >
               {SP_LABELS[t]}
             </Button>
@@ -857,11 +862,11 @@ function Editor({ initial, drafts, pinnedId, currentName, reload, signed: signed
         </div>
         <span className="ml-auto flex items-center gap-1.5 text-xs text-muted-foreground">
           {saveState === "saving" ? (
-            <><Loader2 size={13} className="animate-spin" /> Saving…</>
+            <><Loader2 size={13} className="animate-spin" /> {t("Saving…")}</>
           ) : saveState === "error" ? (
-            <span className="text-destructive">save failed</span>
+            <span className="text-destructive">{t("save failed")}</span>
           ) : (
-            <><Check size={13} className="text-primary" /> Saved</>
+            <><Check size={13} className="text-primary" /> {t("Saved")}</>
           )}
         </span>
       </div>
@@ -870,10 +875,11 @@ function Editor({ initial, drafts, pinnedId, currentName, reload, signed: signed
       <TitleField value={title} onCommit={onCommitTitle} />
 
       <p className="px-1 text-xs text-muted-foreground">
-        Press <kbd className="rounded border bg-muted px-1 font-mono">/</kbd> for screenplay
-        elements · <kbd className="rounded border bg-muted px-1 font-mono">Tab</kbd> cycles element
-        type · <kbd className="rounded border bg-muted px-1 font-mono">Enter</kbd> follows the flow
-        (Character → Dialogue).
+        {t("Press {slash} for screenplay elements", { slash: "/" })}
+        &nbsp;· <kbd className="rounded border bg-muted px-1 font-mono">Tab</kbd>
+        {" "}{t("cycles element type")}
+        &nbsp;· <kbd className="rounded border bg-muted px-1 font-mono">Enter</kbd>
+        {" "}{t("follows the flow (Character → Dialogue)")}
       </p>
 
       <div className="notes-editor rounded-xl border bg-card px-6 py-8 sm:px-10">
@@ -891,6 +897,7 @@ function Editor({ initial, drafts, pinnedId, currentName, reload, signed: signed
  * ---------------------------------------------------------------- */
 
 export default function ScriptEditor({ reloadKey = 0, liveKey = 0 }) {
+  const t = useT();
   // Seed from cache (undefined = loading) so a tab remount paints the last script
   // instantly instead of flashing the "loading script…" spinner; still revalidates.
   const [stored, setStored] = useState(() => readTabCache("script")); // undefined = loading
@@ -924,14 +931,14 @@ export default function ScriptEditor({ reloadKey = 0, liveKey = 0 }) {
   if (error) {
     return (
       <div className="flex items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-        <Cloud size={15} /> could not load the script: {error}
+        <Cloud size={15} /> {t("could not load the script:")} {error}
       </div>
     );
   }
   if (stored === undefined || !initial) {
     return (
       <div className="flex items-center gap-2 p-6 text-sm text-muted-foreground">
-        <Loader2 size={16} className="animate-spin" /> loading script…
+        <Loader2 size={16} className="animate-spin" /> {t("loading script…")}
       </div>
     );
   }
@@ -956,7 +963,7 @@ export default function ScriptEditor({ reloadKey = 0, liveKey = 0 }) {
       initial={initial}
       drafts={stored.drafts || []}
       pinnedId={stored.pinnedId}
-      currentName={stored.draftName || "Draft"}
+      currentName={stored.draftName || t("Draft")}
       reload={reload}
       signed={stored.signed}
       shotlistExists={stored.shotlistExists}

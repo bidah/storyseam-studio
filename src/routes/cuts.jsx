@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Check, Play, RefreshCw, ExternalLink, TriangleAlert, Music, Download, Clapperboard, Loader2, History } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { swr, useRevalidateOnMount, useRevalidateOnAgentIdle } from "@/lib/swr";
+import { useT, t as _t } from "@/lib/i18n";
 import { useAgent, agentIsBusy, stitchCutMessage, scoreCutMessage } from "@/components/AgentProvider";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -16,14 +17,15 @@ import { toPreviewSrc } from "@/lib/previewSrc";
 // timecodes the server computed for each segment. Clicking a chip jumps to that
 // card in the Episode / Sound-studio tab (see App's navigateTo).
 function NowPlayingCut({ src, segs, music, withMusic, navigateTo }) {
+  const t = useT();
   const videoRef = useRef(null);
-  const [t, setT] = useState(0);
+  const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const usable = useMemo(() => (segs || []).filter((s) => s.file), [segs]);
   const seg =
-    usable.find((s) => t >= s.start && t < s.end) ||
-    (usable.length ? usable[t > 0 ? usable.length - 1 : 0] : null);
-  const cue = withMusic ? (music || []).find((m) => t >= m.start && t < m.beatEnd) : null;
+    usable.find((s) => currentTime >= s.start && currentTime < s.end) ||
+    (usable.length ? usable[currentTime > 0 ? usable.length - 1 : 0] : null);
+  const cue = withMusic ? (music || []).find((m) => currentTime >= m.start && currentTime < m.beatEnd) : null;
 
   const chip =
     "pointer-events-auto flex items-center gap-1.5 rounded-md bg-black/70 px-2.5 py-1.5 " +
@@ -83,8 +85,8 @@ function NowPlayingCut({ src, segs, music, withMusic, navigateTo }) {
           playsInline
           className="w-full rounded-lg bg-black"
           onLoadedMetadata={(e) => setDuration(e.currentTarget.duration || 0)}
-          onTimeUpdate={(e) => setT(e.currentTarget.currentTime)}
-          onSeeked={(e) => setT(e.currentTarget.currentTime)}
+          onTimeUpdate={(e) => setCurrentTime(e.currentTarget.currentTime)}
+          onSeeked={(e) => setCurrentTime(e.currentTarget.currentTime)}
         >
           <source src={src} type="video/mp4" />
         </video>
@@ -95,7 +97,7 @@ function NowPlayingCut({ src, segs, music, withMusic, navigateTo }) {
               type="button"
               className={chip}
               onClick={() => navigateTo({ view: "episode", anchor: `ep-${seg.id}` })}
-              title={`Jump to ${seg.id} in the Episode tab`}
+              title={t("Jump to {id} in the Episode tab", { id: seg.id })}
             >
               <Clapperboard size={13} className="shrink-0 text-primary" />
               <span className="font-mono">{seg.id}</span>
@@ -108,7 +110,7 @@ function NowPlayingCut({ src, segs, music, withMusic, navigateTo }) {
               type="button"
               className={chip}
               onClick={() => navigateTo({ view: "sounds", anchor: `snd-${cue.track}` })}
-              title={`Jump to “${cue.name || cue.label}” in the Sound studio`}
+              title={t('Jump to "{label}" in the Sound studio', { label: cue.name || cue.label })}
             >
               <Music size={13} className="shrink-0 text-primary" />
               <span className="max-w-[24ch] truncate">{cue.label}</span>
@@ -127,22 +129,22 @@ function NowPlayingCut({ src, segs, music, withMusic, navigateTo }) {
             className="group/strip relative h-6 cursor-pointer"
             onClick={seekToFraction}
             role="slider"
-            aria-label="cut timeline — click to seek"
+            aria-label={t("cut timeline — click to seek")}
             aria-valuemin={0}
             aria-valuemax={Math.round(dur)}
-            aria-valuenow={Math.round(t)}
+            aria-valuenow={Math.round(currentTime)}
           >
             {/* track */}
             <div className="absolute inset-x-0 top-1/2 h-1 -translate-y-1/2 rounded-full bg-muted" />
             {/* progress fill */}
             <div
               className="absolute left-0 top-1/2 h-1 -translate-y-1/2 rounded-full bg-primary/50"
-              style={{ width: `${Math.min(1, Math.max(0, t / dur)) * 100}%` }}
+              style={{ width: `${Math.min(1, Math.max(0, currentTime / dur)) * 100}%` }}
             />
             {/* playhead */}
             <div
               className="absolute top-1/2 h-3 w-0.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-primary"
-              style={{ left: `${Math.min(1, Math.max(0, t / dur)) * 100}%` }}
+              style={{ left: `${Math.min(1, Math.max(0, currentTime / dur)) * 100}%` }}
             />
             {markers.map((mk) => {
               const isShot = mk.kind === "shot";
@@ -157,8 +159,8 @@ function NowPlayingCut({ src, segs, music, withMusic, navigateTo }) {
                     type="button"
                     aria-label={
                       isShot
-                        ? `${mk.seg.id} ${mk.seg.name || ""} — seek to scene`
-                        : `${mk.cue.label} — seek to cue`
+                        ? t("{id} {name} — seek to scene", { id: mk.seg.id, name: mk.seg.name || "" })
+                        : t("{label} — seek to cue", { label: mk.cue.label })
                     }
                     onClick={(e) => {
                       e.stopPropagation();
@@ -186,7 +188,7 @@ function NowPlayingCut({ src, segs, music, withMusic, navigateTo }) {
                           e.stopPropagation();
                           navigateTo({ view: "episode", anchor: `ep-${mk.seg.id}` });
                         }}
-                        title={`Jump to ${mk.seg.id} in the Episode tab`}
+                        title={t("Jump to {id} in the Episode tab", { id: mk.seg.id })}
                       >
                         <Clapperboard size={12} className="shrink-0 text-primary" />
                         <span className="font-mono">{mk.seg.id}</span>
@@ -204,7 +206,7 @@ function NowPlayingCut({ src, segs, music, withMusic, navigateTo }) {
                           e.stopPropagation();
                           navigateTo({ view: "sounds", anchor: `snd-${mk.cue.track}` });
                         }}
-                        title={`Jump to “${mk.cue.name || mk.cue.label}” in the Sound studio`}
+                        title={t('Jump to "{label}" in the Sound studio', { label: mk.cue.name || mk.cue.label })}
                       >
                         <Music size={12} className="shrink-0 text-sky-400" />
                         <span className="max-w-[24ch] truncate">{mk.cue.label}</span>
@@ -231,6 +233,7 @@ function NowPlayingCut({ src, segs, music, withMusic, navigateTo }) {
 // and keeps its own object setup, so an old version always plays exactly as it
 // was rendered.
 function CutVersionCard({ gen, bump, navigateTo, latest, compact, olderCount, onOpenHistory }) {
+  const t = useT();
   const scored = gen.kind === "scored";
   const when = gen.at ? new Date(gen.at).toLocaleString() : null;
   const scenes = (gen.segments || []).filter((s) => s.file).length;
@@ -248,15 +251,15 @@ function CutVersionCard({ gen, bump, navigateTo, latest, compact, olderCount, on
           {scored ? <Music size={15} className="text-primary" /> : <Play size={15} className="text-primary" fill="currentColor" />}
           <span className="font-mono">v{gen.v}</span>
           <span className="text-muted-foreground">·</span>
-          {scored ? "with background music" : "stitched — no music"}
+          {scored ? t("with background music") : t("stitched — no music")}
         </span>
       }
       meta={
         <div className="flex items-center gap-1.5">
-          {latest && <Badge variant="info">latest</Badge>}
+          {latest && <Badge variant="info">{t("latest")}</Badge>}
           {scored
-            ? <Badge variant="success">{Math.abs(gen.gainDb ?? -22)} dB bed · {gen.music?.length || 0} cues</Badge>
-            : <Badge variant="outline">{scenes} scenes · {fmtTime(gen.totalDuration)}</Badge>}
+            ? <Badge variant="success">{Math.abs(gen.gainDb ?? -22)} {t("dB bed")} · {gen.music?.length || 0} {t("cues")}</Badge>
+            : <Badge variant="outline">{scenes} {t("scenes")} · {fmtTime(gen.totalDuration)}</Badge>}
         </div>
       }
     >
@@ -272,14 +275,14 @@ function CutVersionCard({ gen, bump, navigateTo, latest, compact, olderCount, on
           <span>
             {gen.range?.from} → {gen.range?.to}
             {scored
-              ? <> · {gen.music?.length || 0} cues ~{Math.abs(gen.gainDb ?? -22)} dB under dialogue &amp; SFX{when && <> · mixed {when}</>}</>
-              : <>{when && <> · stitched {when}</>}</>}
+              ? <> · {gen.music?.length || 0} {t("cues")} ~{Math.abs(gen.gainDb ?? -22)} {t("dB under dialogue & SFX")}{when && <> · {t("mixed")} {when}</>}</>
+              : <>{when && <> · {t("stitched")} {when}</>}</>}
           </span>
           <a
             className="inline-flex items-center gap-1 text-primary hover:underline"
             href={src} target="_blank" rel="noreferrer" download
           >
-            <Download size={13} /> download mp4 <ExternalLink size={12} />
+            <Download size={13} /> {t("download mp4")} <ExternalLink size={12} />
           </a>
         </div>
         {latest && !compact && olderCount > 0 && (
@@ -288,7 +291,7 @@ function CutVersionCard({ gen, bump, navigateTo, latest, compact, olderCount, on
             onClick={onOpenHistory}
             className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
           >
-            <History size={12} /> {olderCount} older version{olderCount === 1 ? "" : "s"} in history
+            <History size={12} /> {olderCount} {t("older version")}{olderCount === 1 ? "" : "s"} {t("in history")}
           </button>
         )}
       </div>
@@ -299,18 +302,19 @@ function CutVersionCard({ gen, bump, navigateTo, latest, compact, olderCount, on
 // Modal archive of every complete-cut generation, newest first. Each keeps its
 // own preserved setup (takes, timecodes, music cues) so you can A/B any version.
 function CutHistoryDialog({ open, onOpenChange, history, bump, navigateTo }) {
+  const t = useT();
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent side="right" className="flex w-[495px] max-w-none flex-col gap-0 p-0 sm:max-w-none">
         <SheetHeader className="border-b pr-14">
           <SheetTitle className="flex flex-wrap items-center gap-2">
-            <History size={16} /> Complete-cut history
-            <Badge variant="secondary">{history.length} version{history.length === 1 ? "" : "s"}</Badge>
+            <History size={16} /> {t("Complete-cut history")}
+            <Badge variant="secondary">{history.length} {t("version")}{history.length === 1 ? "" : "s"}</Badge>
           </SheetTitle>
         </SheetHeader>
         <div className="min-h-0 flex-1 overflow-y-auto p-4">
           {history.length === 0 ? (
-            <Empty>no versions rendered yet.</Empty>
+            <Empty>{t("no versions rendered yet.")}</Empty>
           ) : (
             <div className="space-y-4">
               {history.map((gen, idx) => (
@@ -332,6 +336,7 @@ function CutHistoryDialog({ open, onOpenChange, history, bump, navigateTo }) {
 }
 
 function CompleteCuts({ navigateTo }) {
+  const t = useT();
   const agent = useAgent();
   const agentBusy = agentIsBusy(agent);
   const data = useLoaderData();
@@ -399,25 +404,25 @@ function CompleteCuts({ navigateTo }) {
     <div className="space-y-4">
       <div className="flex flex-col gap-3">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <h2 className="text-xl font-semibold tracking-tight">Complete cut · {data.range.from} → {data.range.to}</h2>
+          <h2 className="text-xl font-semibold tracking-tight">{t("Complete cut")} · {data.range.from} → {data.range.to}</h2>
           <div className="flex flex-wrap items-center gap-2">
-            <Button variant="ghost" onClick={() => setHistoryOpen(true)} disabled={history.length === 0} title={history.length === 0 ? "no versions yet" : `${history.length} version${history.length === 1 ? "" : "s"} rendered`}>
-              <History size={13} /> history{history.length > 0 && <Badge variant="secondary" className="ml-1">{history.length}</Badge>}
+            <Button variant="ghost" onClick={() => setHistoryOpen(true)} disabled={history.length === 0} title={history.length === 0 ? t("no versions yet") : t("{n} version(s) rendered", { n: history.length })}>
+              <History size={13} /> {t("history")}{history.length > 0 && <Badge variant="secondary" className="ml-1">{history.length}</Badge>}
             </Button>
-            <Button onClick={stitch} disabled={agentBusy || usable.length === 0} title={agentBusy ? "agent is busy — finishing the current turn" : usable.length === 0 ? "no rendered takes to stitch" : "asks the agent to (re)build the complete cut as a new version"}>
-              {agentBusy ? <><Loader2 size={13} className="animate-spin" /> agent working…</> : out ? <><RefreshCw size={13} /> re-stitch</> : <><Play size={13} fill="currentColor" /> stitch selected takes</>}
+            <Button onClick={stitch} disabled={agentBusy || usable.length === 0} title={agentBusy ? t("agent is busy — finishing the current turn") : usable.length === 0 ? t("no rendered takes to stitch") : t("asks the agent to (re)build the complete cut as a new version")}>
+              {agentBusy ? <><Loader2 size={13} className="animate-spin" /> {t("agent working…")}</> : out ? <><RefreshCw size={13} /> {t("re-stitch")}</> : <><Play size={13} fill="currentColor" /> {t("stitch selected takes")}</>}
             </Button>
-            <Button variant="outline" onClick={score} disabled={agentBusy || !out || music.length === 0} title={agentBusy ? "agent is busy — finishing the current turn" : !out ? "stitch the cut first" : music.length === 0 ? "no rendered music cues" : "mix the background music under the cut as a new version"}>
-              {agentBusy ? <><Loader2 size={13} className="animate-spin" /> agent working…</> : <><Music size={13} /> {history.some((g) => g.kind === "scored") ? "add music version" : "add background music"}</>}
+            <Button variant="outline" onClick={score} disabled={agentBusy || !out || music.length === 0} title={agentBusy ? t("agent is busy — finishing the current turn") : !out ? t("stitch the cut first") : music.length === 0 ? t("no rendered music cues") : t("mix the background music under the cut as a new version")}>
+              {agentBusy ? <><Loader2 size={13} className="animate-spin" /> {t("agent working…")}</> : <><Music size={13} /> {history.some((g) => g.kind === "scored") ? t("add music version") : t("add background music")}</>}
             </Button>
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-          <Badge variant="outline">{usable.length} scenes</Badge>
-          <Badge variant="success">~{fmtTime(total)} total</Badge>
-          {fallbacks.length > 0 && <Badge variant="warning">{fallbacks.length} fallback (no take selected)</Badge>}
-          {missing.length > 0 && <Badge variant="warning">{missing.length} missing</Badge>}
-          <span className="flex items-center gap-1">concatenates the <Check size={11} /> selected take of each scene, in order, into one mp4</span>
+          <Badge variant="outline">{usable.length} {t("scenes")}</Badge>
+          <Badge variant="success">~{fmtTime(total)} {t("total")}</Badge>
+          {fallbacks.length > 0 && <Badge variant="warning">{fallbacks.length} {t("fallback (no take selected)")}</Badge>}
+          {missing.length > 0 && <Badge variant="warning">{missing.length} {t("missing")}</Badge>}
+          <span className="flex items-center gap-1">{t("concatenates the")} <Check size={11} /> {t("selected take of each scene, in order, into one mp4")}</span>
         </div>
       </div>
 
@@ -427,21 +432,21 @@ function CompleteCuts({ navigateTo }) {
         <CutVersionCard gen={out} bump={bump} navigateTo={navigateTo} latest olderCount={olderCount} onOpenHistory={() => setHistoryOpen(true)} />
       ) : (
         <div className="rounded-xl border border-dashed p-6 text-center">
-          <Empty>not stitched yet — press “stitch selected takes” to build the {data.range.from} → {data.range.to} cut.</Empty>
+          <Empty>{t("not stitched yet — press")} “{t("stitch selected takes")}” {t("to build the {from} → {to} cut", { from: data.range.from, to: data.range.to })}</Empty>
         </div>
       )}
 
       {out && out.kind !== "scored" && music.length > 0 && (
         <div className="rounded-xl border border-dashed p-4 text-center text-sm text-muted-foreground">
           <span className="flex items-center justify-center gap-1.5">
-            <Music size={13} /> {music.length} background-music cues ready — press <strong className="text-foreground">add background music</strong> to render a scored version (it becomes the new latest version).
+            <Music size={13} /> {music.length} {t("background-music cues ready — press")} <strong className="text-foreground">{t("add background music")}</strong> {t("to render a scored version (it becomes the new latest version)")}.
           </span>
         </div>
       )}
 
       <CutHistoryDialog open={historyOpen} onOpenChange={setHistoryOpen} history={history} bump={bump} navigateTo={navigateTo} />
 
-      <Panel title={`Stitch order (${usable.length} scenes)`}>
+      <Panel title={`${t("Stitch order")} (${usable.length} ${t("scenes")})`}>
         <ol className="space-y-1.5">
           {segs.map((s) => (
             <li
@@ -454,25 +459,25 @@ function CompleteCuts({ navigateTo }) {
             >
               <Badge variant="secondary" className="font-mono">{s.id}</Badge>
               {s.missing ? (
-                <Empty>no rendered take</Empty>
+                <Empty>{t("no rendered take")}</Empty>
               ) : (
                 <>
                   <span className="flex flex-wrap items-center gap-2">
                     {s.name}
                     {s.fallback ? (
-                      <Badge variant="warning"><TriangleAlert size={11} /> no take selected — using first</Badge>
+                      <Badge variant="warning"><TriangleAlert size={11} /> {t("no take selected — using first")}</Badge>
                     ) : (
-                      <Badge variant="success"><Check size={11} /> selected</Badge>
+                      <Badge variant="success"><Check size={11} /> {t("selected")}</Badge>
                     )}
                     {s.musicCue && (
-                      <Badge variant="info" title="background music cue over this scene">
+                      <Badge variant="info" title={t("background music cue over this scene")}>
                         <Music size={11} /> {s.musicCue.label}
                       </Badge>
                     )}
                   </span>
                   <span className="ml-auto text-xs tabular-nums text-muted-foreground">
                     {fmtTime(s.start)} → {fmtTime(s.end)}
-                    <em className="not-italic"> ({s.duration.toFixed(1)}s)</em>
+                    <em className="not-italic"> ({s.duration.toFixed(1)}{t("s")})</em>
                   </span>
                 </>
               )}
@@ -489,7 +494,7 @@ export function loader() {
   return swr("cuts", async () => {
     const res = await fetch("/api/episode/cuts");
     const json = await res.json();
-    if (!res.ok) throw new Error(json.error || "Failed to load");
+    if (!res.ok) throw new Error(json.error || _t("Failed to load"));
     return json;
   });
 }

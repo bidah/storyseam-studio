@@ -1,6 +1,7 @@
 import { Outlet, useLocation, useNavigate } from "react-router";
 import { BookOpenText, Images, Workflow } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useT } from "@/lib/i18n";
 
 // The World tab's sub-menu: the written world bible, the visual explorer (chat
 // image generator), and the reference-lineage canvas. Driven off the URL segment
@@ -19,17 +20,18 @@ function subFromPath(pathname) {
 }
 
 export function Component() {
+  const t = useT();
   const location = useLocation();
   const navigate = useNavigate();
   const active = subFromPath(location.pathname);
 
   return (
     <div className="space-y-5">
-      <Tabs value={active} onValueChange={(v) => navigate(SUBTABS.find((t) => t.value === v).to)}>
+      <Tabs value={active} onValueChange={(v) => navigate(SUBTABS.find((tab) => tab.value === v).to)}>
         <TabsList>
-          {SUBTABS.map((t) => (
-            <TabsTrigger key={t.value} value={t.value} className="text-xs">
-              <t.icon size={14} /> {t.label}
+          {SUBTABS.map((tab) => (
+            <TabsTrigger key={tab.value} value={tab.value} className="text-xs">
+              <tab.icon size={14} /> {t(tab.label)}
             </TabsTrigger>
           ))}
         </TabsList>

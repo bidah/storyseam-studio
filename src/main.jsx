@@ -4,6 +4,7 @@ import { RouterProvider } from "react-router";
 import { router } from "./router.jsx";
 import { installProjectScope } from "./lib/projectFetch.js";
 import { initDesktop } from "./lib/desktop-bootstrap.js";
+import { I18nProvider } from "./lib/i18n.jsx";
 import "./index.css";
 
 // Inject the active project id into every same-origin request. Must run before
@@ -28,7 +29,9 @@ import "glowing/dist/index.css";
 initDesktop(router).then(() => {
   ReactDOM.createRoot(document.getElementById("root")).render(
     <React.StrictMode>
-      <RouterProvider router={router} />
+      <I18nProvider>
+        <RouterProvider router={router} />
+      </I18nProvider>
     </React.StrictMode>
   );
 });

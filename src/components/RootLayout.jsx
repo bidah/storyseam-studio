@@ -25,6 +25,7 @@ import {
 import { ImageModal } from "@/components/shared";
 import { RouteSkeleton } from "@/components/skeletons";
 import { ShellContext } from "@/lib/shellContext";
+import { useT } from "@/lib/i18n";
 
 /* ---------------------------------------------------------------- *
  * App shell                                                        *
@@ -95,6 +96,7 @@ function useSettled(on, ms = 150) {
 // the Higgsfield credential and re-gates the app (reload → LoginGate re-checks
 // → homepage).
 function UserMenu() {
+  const t = useT();
   const [dark, setDark] = useState(() =>
     typeof document !== "undefined" ? document.documentElement.classList.contains("dark") : true
   );
@@ -125,7 +127,7 @@ function UserMenu() {
       <DropdownMenuTrigger asChild>
         <button
           type="button"
-          aria-label="Account menu"
+          aria-label={t("Account menu")}
           className="rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
         >
           <Avatar className="size-8">
@@ -136,29 +138,29 @@ function UserMenu() {
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-52">
-        <DropdownMenuLabel>Higgsfield account</DropdownMenuLabel>
+        <DropdownMenuLabel>{t("Higgsfield account")}</DropdownMenuLabel>
         <DropdownMenuSeparator />
         <DropdownMenuItem asChild>
           <Link to="/settings">
-            <Settings size={14} /> Settings
+            <Settings size={14} /> {t("Settings")}
           </Link>
         </DropdownMenuItem>
         <DropdownMenuItem asChild>
           <Link to="/members">
-            <Users size={14} /> Team &amp; access
+            <Users size={14} /> {t("Team & access")}
           </Link>
         </DropdownMenuItem>
         <DropdownMenuItem onSelect={(e) => { e.preventDefault(); toggleTheme(); }}>
-          {dark ? <Sun size={14} /> : <Moon size={14} />} {dark ? "Light mode" : "Dark mode"}
+          {dark ? <Sun size={14} /> : <Moon size={14} />} {dark ? t("Light mode") : t("Dark mode")}
         </DropdownMenuItem>
         <DropdownMenuItem asChild>
           <a href="https://higgsfield.ai" target="_blank" rel="noopener noreferrer">
-            <ExternalLink size={14} /> Visit higgsfield.ai
+            <ExternalLink size={14} /> {t("Visit higgsfield.ai")}
           </a>
         </DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem variant="destructive" onClick={signOut}>
-          <LogOut size={14} /> Sign out
+          <LogOut size={14} /> {t("Sign out")}
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
@@ -170,6 +172,7 @@ function UserMenu() {
 // for which tab renders (see src/router.jsx). Per-tab data still flows via the
 // ShellContext shim (reloadKey etc.); Phase 3 swaps that for loader revalidation.
 export default function RootLayout() {
+  const t = useT();
   const location = useLocation();
   const navigate = useNavigate();
   const view = location.pathname.slice(1).split("/")[0] || "script";
@@ -399,21 +402,21 @@ export default function RootLayout() {
             <ProjectSwitcher />
 
             <TabsList className="h-9">
-              {TABS.filter((t) => !t.hidden).map((t) => (
+              {TABS.filter((tab) => !tab.hidden).map((tab) => (
                 <TabsTrigger
-                  key={t.value}
-                  value={t.value}
+                  key={tab.value}
+                  value={tab.value}
                   className="text-xs"
-                  {...(t.value === "script" ? { "data-script-tab": "true" } : {})}
+                  {...(tab.value === "script" ? { "data-script-tab": "true" } : {})}
                 >
-                  {t.label}
+                  {t(tab.label)}
                 </TabsTrigger>
               ))}
             </TabsList>
 
             <div className="ml-auto flex items-center gap-2">
               <Button variant="outline" size="sm" onClick={refresh} disabled={loading}>
-                <RefreshCw size={13} className={cn(loading && "animate-spin")} /> Refresh
+                <RefreshCw size={13} className={cn(loading && "animate-spin")} /> {t("Refresh")}
               </Button>
               <UserMenu />
             </div>

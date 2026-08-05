@@ -4,6 +4,7 @@ import { Check, Plus, ChevronDown, ChevronRight, RotateCcw, Volume2, Speech, Cop
 import { cn } from "@/lib/utils";
 import { invalidateTabCache } from "@/lib/tabCache";
 import { swr, useRevalidateOnMount } from "@/lib/swr";
+import { useT } from "@/lib/i18n";
 import { useAgent, agentIsBusy, renderSoundMessage, renderAllPendingMessage } from "@/components/AgentProvider";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -30,6 +31,7 @@ async function soundApi(url, opts) {
 }
 
 function SoundVersion({ track, ver, onChanged }) {
+  const t = useT();
   const [prompt, setPrompt] = useState(ver.prompt);
   const [vname, setVname] = useState("");
   const [busy, setBusy] = useState(false);
@@ -83,7 +85,7 @@ function SoundVersion({ track, ver, onChanged }) {
   const toggleLike = () =>
     run(() => soundApi(`/api/sounds/${track.id}/version/${ver.v}/like`, { method: "POST" }));
   const del = () => {
-    if (window.confirm(`Delete v${ver.v}?`))
+    if (window.confirm(t("Delete v{v}?", { v: ver.v })))
       run(() => soundApi(`/api/sounds/${track.id}/version/${ver.v}`, { method: "DELETE" }));
   };
 
@@ -93,9 +95,9 @@ function SoundVersion({ track, ver, onChanged }) {
         <Badge variant="secondary" className="font-mono">v{ver.v}</Badge>
         {ver.name && <span className="text-sm font-medium">{ver.name}</span>}
         {ver.status === "ready" ? (
-          <Badge variant="success">ready</Badge>
+          <Badge variant="success">{t("ready")}</Badge>
         ) : (
-          <Badge variant="warning"><Clock size={11} /> needs render</Badge>
+          <Badge variant="warning"><Clock size={11} /> {t("needs render")}</Badge>
         )}
         {ver.duration ? <span className="text-xs text-muted-foreground">{ver.duration.toFixed(1)}s</span> : null}
         <span className="flex-1" />
@@ -104,19 +106,19 @@ function SoundVersion({ track, ver, onChanged }) {
             size="sm"
             onClick={requestRender}
             disabled={agentBusy}
-            title={agentBusy ? "Agent is busy — wait for the current turn to finish" : "Render this version with Seed Audio via the studio agent"}
+            title={agentBusy ? t("Agent is busy — wait for the current turn to finish") : t("Render this version with Seed Audio via the studio agent")}
           >
-            {agentBusy ? <Loader2 size={13} className="animate-spin" /> : <Wand2 size={13} />} Render
+            {agentBusy ? <Loader2 size={13} className="animate-spin" /> : <Wand2 size={13} />} {t("Render")}
           </Button>
         )}
         <Button
           variant="ghost" size="icon-sm"
-          aria-label={ver.liked ? "Unlike this version" : "Like this version"}
-          onClick={toggleLike} disabled={busy} title="Like"
+          aria-label={ver.liked ? t("Unlike this version") : t("Like this version")}
+          onClick={toggleLike} disabled={busy} title={t("Like")}
         >
           <Heart size={16} fill={ver.liked ? "#e11d48" : "none"} color={ver.liked ? "#e11d48" : "currentColor"} />
         </Button>
-        <Button variant="ghost" size="icon-sm" aria-label="Delete this version" onClick={del} disabled={busy} title="Delete version">
+        <Button variant="ghost" size="icon-sm" aria-label={t("Delete this version")} onClick={del} disabled={busy} title={t("Delete version")}>
           <Trash2 size={15} />
         </Button>
       </div>
@@ -131,24 +133,24 @@ function SoundVersion({ track, ver, onChanged }) {
       <div className="flex flex-wrap items-center gap-2">
         <Input
           className="h-8 w-52"
-          placeholder="new version name (optional)"
+          placeholder={t("new version name (optional)")}
           value={vname}
           onChange={(e) => setVname(e.target.value)}
         />
-        <Button size="sm" onClick={saveNewVersion} disabled={busy || !prompt.trim()} title="Save the edited prompt as a new version (starts pending)">
-          <Plus size={13} /> Save as new version
+        <Button size="sm" onClick={saveNewVersion} disabled={busy || !prompt.trim()} title={t("Save the edited prompt as a new version (starts pending)")}>
+          <Plus size={13} /> {t("Save as new version")}
         </Button>
         {dirty && (
           <>
-            <Button variant="outline" size="sm" onClick={saveInPlace} disabled={busy} title="Overwrite this version's prompt (no new version)">
-              <Save size={13} /> Update v{ver.v}
+            <Button variant="outline" size="sm" onClick={saveInPlace} disabled={busy} title={t("Overwrite this version's prompt (no new version)")}>
+              <Save size={13} /> {t("Update v{v}", { v: ver.v })}
             </Button>
             <Button variant="outline" size="sm" onClick={() => setPrompt(ver.prompt)} disabled={busy}>
-              <RotateCcw size={13} /> Reset
+              <RotateCcw size={13} /> {t("Reset")}
             </Button>
           </>
         )}
-        <span className="text-xs text-muted-foreground">{prompt.length} chars</span>
+        <span className="text-xs text-muted-foreground">{t("{n} chars", { n: prompt.length })}</span>
         {err && <span className="text-xs text-destructive">{err}</span>}
       </div>
 
@@ -156,18 +158,17 @@ function SoundVersion({ track, ver, onChanged }) {
         <div className="flex items-center gap-3">
           <audio controls src={ver.url} preload="none" className="flex-1" />
           <a className="inline-flex items-center gap-1 text-xs text-primary hover:underline" href={ver.url} download>
-            <Download size={13} /> download
+            <Download size={13} /> {t("download")}
           </a>
         </div>
       ) : (
         <div className="flex items-center gap-2 rounded-md bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
           <Clock size={13} className="shrink-0" />
           <span className="flex-1">
-            Pending — hit <span className="font-medium text-foreground">Render</span> and the studio agent runs Seed
-            Audio via Higgsfield, then attaches the result here.
+            {t("Pending — hit")} <span className="font-medium text-foreground">{t("Render")}</span> {t("and the studio agent runs Seed Audio via Higgsfield, then attaches the result here.")}
           </span>
           <Button size="sm" onClick={requestRender} disabled={agentBusy}>
-            {agentBusy ? <Loader2 size={13} className="animate-spin" /> : <Wand2 size={13} />} Render
+            {agentBusy ? <Loader2 size={13} className="animate-spin" /> : <Wand2 size={13} />} {t("Render")}
           </Button>
         </div>
       )}

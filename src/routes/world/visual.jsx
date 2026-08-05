@@ -11,8 +11,10 @@ import { swr, useRevalidateOnMount, useRevalidateOnAgentIdle } from "@/lib/swr";
 import { useAgent, agentIsBusy, createVisualWorldMessage } from "@/components/AgentProvider";
 import { Button } from "@/components/ui/button";
 import ImageStudio from "@/components/ImageStudio";
+import { useT } from "@/lib/i18n";
 
 function Visual() {
+  const t = useT();
   const agent = useAgent();
   const agentBusy = agentIsBusy(agent);
   const world = useLoaderData();
@@ -115,16 +117,16 @@ function Visual() {
 
   return (
     <ImageStudio
-      title="Visual world"
-      subtitle="Explore how the world looks — generate concept images to find your characters and places."
+      title={t("Visual world")}
+      subtitle={t("Explore how the world looks — generate concept images to find your characters and places.")}
       headerExtra={({ prompt }) => (
         <Button
           variant="outline"
           onClick={() => agent.send({ message: createVisualWorldMessage(prompt?.trim() || undefined) }).catch(() => {})}
           disabled={agentBusy}
-          title={agentBusy ? "Agent is busy — wait for the current turn" : "Let the agent explore the look for you"}
+          title={agentBusy ? t("Agent is busy — wait for the current turn") : t("Let the agent explore the look for you")}
         >
-          {agentBusy ? <><Loader2 size={14} className="animate-spin" /> agent working…</> : <><Wand2 size={14} /> Let the agent explore</>}
+          {agentBusy ? <><Loader2 size={14} className="animate-spin" /> {t("agent working…")}</> : <><Wand2 size={14} /> {t("Let the agent explore")}</>}
         </Button>
       )}
       generations={generations}

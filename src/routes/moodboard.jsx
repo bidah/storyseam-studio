@@ -27,6 +27,7 @@ import {
   Loader2, SendToBack, StickyNote, Trash2, Undo2, Redo2,
 } from "lucide-react";
 import { swr, useRevalidateOnMount } from "@/lib/swr";
+import { useT } from "@/lib/i18n";
 import { invalidateTabCache } from "@/lib/tabCache";
 import { getProjectId } from "@/lib/projectFetch";
 import { useShell } from "@/lib/shellContext";
@@ -112,7 +113,7 @@ function readImageSize(file) {
     };
     img.onerror = () => {
       URL.revokeObjectURL(url);
-      reject(new Error("Could not read image"));
+      reject(new Error(t("Could not read image")));
     };
     img.src = url;
   });
@@ -231,6 +232,7 @@ function saveViewport(pid, v) {
 }
 
 function Canvas() {
+  const t = useT();
   const loaded = useLoaderData();
   useRevalidateOnMount("moodboard");
   const { setModalImage } = useShell();
@@ -297,7 +299,7 @@ function Canvas() {
   });
 
   const openImage = useCallback(
-    (url) => setModalImage({ url, name: "Moodboard image", role: "reference" }),
+    (url) => setModalImage({ url, name: t("Moodboard image"), role: "reference" }),
     [setModalImage],
   );
 
@@ -561,10 +563,10 @@ function Canvas() {
   const addImageFromFile = useCallback(
     async (file, center) => {
       if (!file.type.startsWith("image/")) {
-        toast.error("Only images can be dropped on the moodboard.");
+        toast.error(t("Only images can be dropped on the moodboard."));
         return;
       }
-      const toastId = toast.loading("Uploading image…");
+      const toastId = toast.loading(t("Uploading image…"));
       setBusy((n) => n + 1);
       try {
         const { w, h } = await readImageSize(file);
@@ -577,7 +579,7 @@ function Canvas() {
           body: file,
         });
         const json = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(json.error || "Upload failed");
+        if (!res.ok) throw new Error(json.error || t("Upload failed"));
         syncRef.current.addImage({
           x: center.x - width / 2,
           y: center.y - height / 2,
@@ -587,7 +589,7 @@ function Canvas() {
           naturalWidth: w,
           naturalHeight: h,
         });
-        toast.success("Image added", { id: toastId });
+        toast.success(t("Image added"), { id: toastId });
       } catch (err) {
         toast.error(String(err.message || err), { id: toastId });
       } finally {
@@ -601,7 +603,7 @@ function Canvas() {
   // playable video card. The dimension probe runs in parallel with the upload so
   // the card lands at the right aspect; it falls back to 16:9 if blocked.
   const addVideoFromUrl = useCallback(async (url, center) => {
-    const toastId = toast.loading("Fetching video…");
+    const toastId = toast.loading(t("Fetching video…"));
     setBusy((n) => n + 1);
     try {
       const [json, { w, h }] = await Promise.all([
@@ -611,7 +613,7 @@ function Canvas() {
           body: JSON.stringify({ url }),
         }).then(async (res) => {
           const j = await res.json().catch(() => ({}));
-          if (!res.ok) throw new Error(j.error || "Could not fetch video");
+          if (!res.ok) throw new Error(j.error || t("Could not fetch video"));
           return j;
         }),
         readVideoSize(url),
@@ -628,7 +630,7 @@ function Canvas() {
         naturalWidth: w,
         naturalHeight: h,
       });
-      toast.success("Video added", { id: toastId });
+      toast.success(t("Video added"), { id: toastId });
     } catch (err) {
       toast.error(String(err.message || err), { id: toastId });
     } finally {
@@ -710,7 +712,10 @@ function Canvas() {
         const skipped = cards.length - usable.length;
         if (skipped) {
           toast(
-            `${skipped} image/video card${skipped > 1 ? "s" : ""} skipped — those paste only on their original project.`,
+            t("{skipped} image/video card{suffix} skipped — those paste only on their original project.", {
+              skipped,
+              suffix: skipped > 1 ? "s" : "",
+            }),
           );
         }
         cards = usable;
@@ -938,30 +943,29 @@ function Canvas() {
     <div className="flex h-full min-h-0 flex-col gap-3">
       <div className="flex shrink-0 flex-wrap items-center justify-between gap-2">
         <div>
-          <h2 className="text-xl font-semibold tracking-tight">Moodboard</h2>
+          <h2 className="text-xl font-semibold tracking-tight">{t("Moodboard")}</h2>
           <p className="text-sm text-muted-foreground">
-            The episode's reference wall — drop images, paste links or notes, and arrange the look
-            before anything gets generated.
+            {t("The episode's reference wall — drop images, paste links or notes, and arrange the look before anything gets generated.")}
           </p>
         </div>
         <div className="flex items-center gap-2">
           {(busy > 0 || sync.saving) && (
             <span className="inline-flex items-center gap-1.5 rounded-md bg-primary/10 px-2 py-1 text-xs font-medium text-primary">
               <Loader2 size={12} className="animate-spin" />
-              {busy > 0 ? "importing" : "saving"}
+              {busy > 0 ? t("importing") : t("saving")}
             </span>
           )}
           <Button variant="outline" size="sm" onClick={() => sync.undo()}>
-            <Undo2 size={14} /> Undo
+            <Undo2 size={14} /> {t("Undo")}
           </Button>
           <Button variant="outline" size="sm" onClick={() => sync.redo()}>
-            <Redo2 size={14} /> Redo
+            <Redo2 size={14} /> {t("Redo")}
           </Button>
           <Button variant="outline" size="sm" onClick={() => addNoteAt(viewportCenter())}>
-            <StickyNote size={14} /> Note
+            <StickyNote size={14} /> {t("Note")}
           </Button>
           <Button variant="outline" size="sm" onClick={openFilePicker}>
-            <ImageUp size={14} /> Add images
+            <ImageUp size={14} /> {t("Add images")}
           </Button>
         </div>
       </div>
@@ -1016,15 +1020,14 @@ function Canvas() {
               <div className="pointer-events-auto rounded-xl border border-dashed bg-card/90 p-6 shadow-sm backdrop-blur">
                 <StickyNote size={20} className="mx-auto mb-2 text-primary" />
                 <Empty>
-                  drag images in from anywhere, paste an image or a link, or double-click the canvas
-                  for a note.
+                  {t("drag images in from anywhere, paste an image or a link, or double-click the canvas for a note.")}
                 </Empty>
               </div>
             </FlowPanel>
           )}
           <FlowPanel position="bottom-center">
             <div className="rounded-lg border bg-card/90 px-4 py-1.5 text-xs text-muted-foreground shadow-sm backdrop-blur">
-              Double-click to add a note · paste an image or URL · right-click for more
+              {t("Double-click to add a note · paste an image or URL · right-click for more")}
             </div>
           </FlowPanel>
         </ReactFlow>
@@ -1033,7 +1036,7 @@ function Canvas() {
           <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center bg-background/80 backdrop-blur-sm">
             <div className="rounded-xl border-2 border-dashed border-primary px-8 py-6 text-center">
               <ImageUp size={28} className="mx-auto mb-2 text-primary" />
-              <p className="text-sm font-medium">Drop images onto the board</p>
+              <p className="text-sm font-medium">{t("Drop images onto the board")}</p>
             </div>
           </div>
         )}
@@ -1054,21 +1057,21 @@ function Canvas() {
           {menu?.cardId ? (
             <>
               <DropdownMenuItem onSelect={() => duplicateCard(menu.cardId)}>
-                <CopyPlus size={14} /> Duplicate
+                <CopyPlus size={14} /> {t("Duplicate")}
                 <DropdownMenuShortcut>⌘D</DropdownMenuShortcut>
               </DropdownMenuItem>
               <DropdownMenuItem onSelect={() => copySelection()}>
-                <Copy size={14} /> Copy
+                <Copy size={14} /> {t("Copy")}
                 <DropdownMenuShortcut>⌘C</DropdownMenuShortcut>
               </DropdownMenuItem>
               {canStack && (
                 <DropdownMenuItem onSelect={() => setStackPicker({ ids: [...selectedIds] })}>
-                  <Layers size={14} /> Stack cards
+                  <Layers size={14} /> {t("Stack cards")}
                 </DropdownMenuItem>
               )}
               {menuCard?.bundleId && (
                 <DropdownMenuItem onSelect={() => sync.unstack(menuCard.bundleId)}>
-                  <Layers2 size={14} /> Unstack
+                  <Layers2 size={14} /> {t("Unstack")}
                 </DropdownMenuItem>
               )}
               {/* Layer order is only for a LOOSE card — a stacked card's draw
@@ -1076,22 +1079,22 @@ function Canvas() {
               {menuCard && !menuCard.bundleId && (
                 <>
                   <DropdownMenuItem onSelect={() => sync.bringToFront(menu.cardId)}>
-                    <BringToFront size={14} /> Bring to front
+                    <BringToFront size={14} /> {t("Bring to front")}
                   </DropdownMenuItem>
                   <DropdownMenuItem onSelect={() => sync.sendToBack(menu.cardId)}>
-                    <SendToBack size={14} /> Send to back
+                    <SendToBack size={14} /> {t("Send to back")}
                   </DropdownMenuItem>
                 </>
               )}
               <DropdownMenuSeparator />
               <DropdownMenuItem variant="destructive" onSelect={() => deleteSelection()}>
-                <Trash2 size={14} /> Delete
+                <Trash2 size={14} /> {t("Delete")}
                 <DropdownMenuShortcut>⌫</DropdownMenuShortcut>
               </DropdownMenuItem>
             </>
           ) : (
             <DropdownMenuItem onSelect={() => menu && pasteFromMenu({ x: menu.x, y: menu.y })}>
-              <ClipboardPaste size={14} /> Paste here
+              <ClipboardPaste size={14} /> {t("Paste here")}
               <DropdownMenuShortcut>⌘V</DropdownMenuShortcut>
             </DropdownMenuItem>
           )}
@@ -1103,10 +1106,9 @@ function Canvas() {
       <Dialog open={!!stackPicker} onOpenChange={(open) => !open && setStackPicker(null)}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle>Choose the front card</DialogTitle>
+            <DialogTitle>{t("Choose the front card")}</DialogTitle>
             <DialogDescription>
-              Pick the card to show on top. The others stack behind it, and dragging any one of them
-              moves the whole stack.
+              {t("Pick the card to show on top. The others stack behind it, and dragging any one of them moves the whole stack.")}
             </DialogDescription>
           </DialogHeader>
           <div className="grid grid-cols-3 gap-3">
@@ -1138,7 +1140,7 @@ function Canvas() {
                       className="line-clamp-5 size-full p-2 text-xs text-neutral-900"
                       style={{ backgroundColor: card.color }}
                     >
-                      {stripHtml(card.content) || "Empty note"}
+                      {stripHtml(card.content) || t("Empty note")}
                     </span>
                   )}
                 </button>
@@ -1155,7 +1157,7 @@ export function loader() {
   return swr("moodboard", async () => {
     const res = await fetch("/api/moodboard");
     const json = await res.json();
-    if (!res.ok) throw new Error(json.error || "Failed to load the moodboard");
+    if (!res.ok) throw new Error(json.error || t("Failed to load the moodboard"));
     return json;
   });
 }

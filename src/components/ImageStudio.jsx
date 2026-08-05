@@ -34,6 +34,7 @@ import { Empty, Eyebrow, Panel, ErrorNote, ConfirmModal } from "@/components/sha
 import MediaPicker from "@/components/MediaPicker";
 import PromptEditor from "@/components/mention/PromptEditor";
 import { refTagLabel, withImageRefNote } from "@/lib/refTags";
+import { useT } from "@/lib/i18n";
 
 export const ASPECTS = ["16:9", "9:16", "1:1", "4:3", "3:4", "21:9"];
 const COUNTS = [1, 2, 3, 4];
@@ -70,6 +71,7 @@ const fmtRevDate = (ts) => {
 // (house look) and the character/location SHEET prompts (also on Settings).
 // Every save is confirmed and stored server-side as a numbered, dated revision.
 function PromptLibraryDialog({ open, onOpenChange, prompts, sheetPrompts, revisions = [], onSave }) {
+  const t = useT();
   const [list, setList] = useState(prompts);
   const [sheets, setSheets] = useState({ character: "", location: "", prop: "" });
   const [saving, setSaving] = useState(false);
@@ -89,7 +91,7 @@ function PromptLibraryDialog({ open, onOpenChange, prompts, sheetPrompts, revisi
   const nextRev = (latest?.rev || 0) + 1;
 
   const edit = (id, key, val) => setList((l) => l.map((p) => (p.id === id ? { ...p, [key]: val } : p)));
-  const add = () => setList((l) => [...l, { id: `prompt-${Date.now().toString(36)}`, name: "New prompt", image: "", video: "", builtin: false }]);
+  const add = () => setList((l) => [...l, { id: `prompt-${Date.now().toString(36)}`, name: t("New prompt"), image: "", video: "", builtin: false }]);
   const remove = (id) => setList((l) => l.filter((p) => p.id !== id));
   const commit = async () => {
     setSaving(true);
@@ -102,75 +104,73 @@ function PromptLibraryDialog({ open, onOpenChange, prompts, sheetPrompts, revisi
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-3xl">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <Library size={18} className="text-primary" /> Prompt library
-            {latest && <Badge variant="muted">rev {latest.rev} · {fmtRevDate(latest.ts)}</Badge>}
+            <Library size={18} className="text-primary" /> {t("Prompt library")}
+            {latest && <Badge variant="muted">{t("rev")} {latest.rev} · {fmtRevDate(latest.ts)}</Badge>}
           </DialogTitle>
         </DialogHeader>
 
         {/* Style presets */}
         <div className="space-y-1">
-          <h3 className="flex items-center gap-2 text-sm font-semibold"><Sparkles size={14} className="text-primary" /> Style prompts</h3>
+          <h3 className="flex items-center gap-2 text-sm font-semibold"><Sparkles size={14} className="text-primary" /> {t("Style prompts")}</h3>
           <p className="text-sm text-muted-foreground">
-            Reusable style prompts. The <b>image</b> block is prepended to your scene as the house style; the
-            <b> video</b> block is kept for later Seedance renders.
+            {t("Reusable style prompts. The image block is prepended to your scene as the house style; the video block is kept for later Seedance renders.")}
           </p>
         </div>
         <div className="space-y-4">
           {list.map((p) => (
             <div key={p.id} className="space-y-2 rounded-lg border p-3">
               <div className="flex items-center gap-2">
-                <Input value={p.name} onChange={(e) => edit(p.id, "name", e.target.value)} className="h-8 flex-1 text-sm font-medium" placeholder="Preset name" />
-                {p.builtin && <Badge variant="muted">seed</Badge>}
-                <Button variant="ghost" size="icon-sm" aria-label="Delete preset" onClick={() => remove(p.id)} className="text-muted-foreground hover:text-destructive">
+                <Input value={p.name} onChange={(e) => edit(p.id, "name", e.target.value)} className="h-8 flex-1 text-sm font-medium" placeholder={t("Preset name")} />
+                {p.builtin && <Badge variant="muted">{t("seed")}</Badge>}
+                <Button variant="ghost" size="icon-sm" aria-label={t("Delete preset")} onClick={() => remove(p.id)} className="text-muted-foreground hover:text-destructive">
                   <Trash2 size={14} />
                 </Button>
               </div>
               <div>
-                <Eyebrow className="normal-case tracking-normal text-foreground/70">Image style</Eyebrow>
-                <Textarea value={p.image} onChange={(e) => edit(p.id, "image", e.target.value)} rows={4} className="text-sm" placeholder="Style, palette, composition…" />
+                <Eyebrow className="normal-case tracking-normal text-foreground/70">{t("Image style")}</Eyebrow>
+                <Textarea value={p.image} onChange={(e) => edit(p.id, "image", e.target.value)} rows={4} className="text-sm" placeholder={t("Style, palette, composition…")} />
               </div>
               <div>
-                <Eyebrow className="normal-case tracking-normal text-foreground/70">Video / motion (optional)</Eyebrow>
-                <Textarea value={p.video} onChange={(e) => edit(p.id, "video", e.target.value)} rows={2} className="text-sm" placeholder="Camera & motion clauses for Seedance…" />
+                <Eyebrow className="normal-case tracking-normal text-foreground/70">{t("Video / motion (optional)")}</Eyebrow>
+                <Textarea value={p.video} onChange={(e) => edit(p.id, "video", e.target.value)} rows={2} className="text-sm" placeholder={t("Camera & motion clauses for Seedance…")} />
               </div>
             </div>
           ))}
-          <Button variant="outline" size="sm" onClick={add}><Plus size={13} /> Add preset</Button>
+          <Button variant="outline" size="sm" onClick={add}><Plus size={13} /> {t("Add preset")}</Button>
         </div>
 
         {/* Sheet prompts — same data Settings edits, surfaced here too. */}
         <div className="space-y-1 pt-2">
-          <h3 className="flex items-center gap-2 text-sm font-semibold"><IdCard size={14} className="text-primary" /> Sheet prompts</h3>
+          <h3 className="flex items-center gap-2 text-sm font-semibold"><IdCard size={14} className="text-primary" /> {t("Sheet prompts")}</h3>
           <p className="text-sm text-muted-foreground">
-            Layered on top of the style when a generation is tagged as a character, location, or prop sheet.
-            Also editable in Settings.
+            {t("Layered on top of the style when a generation is tagged as a character, location, or prop sheet. Also editable in Settings.")}
           </p>
         </div>
         <div className="space-y-3">
           <div>
-            <Eyebrow className="normal-case tracking-normal text-foreground/70">Character sheet prompt</Eyebrow>
-            <Textarea value={sheets.character} onChange={(e) => setSheets((s) => ({ ...s, character: e.target.value }))} rows={4} className="text-sm" placeholder="Contact-sheet instructions for characters…" />
+            <Eyebrow className="normal-case tracking-normal text-foreground/70">{t("Character sheet prompt")}</Eyebrow>
+            <Textarea value={sheets.character} onChange={(e) => setSheets((s) => ({ ...s, character: e.target.value }))} rows={4} className="text-sm" placeholder={t("Contact-sheet instructions for characters…")} />
           </div>
           <div>
-            <Eyebrow className="normal-case tracking-normal text-foreground/70">Location sheet prompt</Eyebrow>
-            <Textarea value={sheets.location} onChange={(e) => setSheets((s) => ({ ...s, location: e.target.value }))} rows={4} className="text-sm" placeholder="Contact-sheet instructions for locations…" />
+            <Eyebrow className="normal-case tracking-normal text-foreground/70">{t("Location sheet prompt")}</Eyebrow>
+            <Textarea value={sheets.location} onChange={(e) => setSheets((s) => ({ ...s, location: e.target.value }))} rows={4} className="text-sm" placeholder={t("Contact-sheet instructions for locations…")} />
           </div>
           <div>
-            <Eyebrow className="normal-case tracking-normal text-foreground/70">Prop sheet prompt</Eyebrow>
-            <Textarea value={sheets.prop} onChange={(e) => setSheets((s) => ({ ...s, prop: e.target.value }))} rows={4} className="text-sm" placeholder="Multi-view instructions for props — no hands, consistent scale…" />
+            <Eyebrow className="normal-case tracking-normal text-foreground/70">{t("Prop sheet prompt")}</Eyebrow>
+            <Textarea value={sheets.prop} onChange={(e) => setSheets((s) => ({ ...s, prop: e.target.value }))} rows={4} className="text-sm" placeholder={t("Multi-view instructions for props — no hands, consistent scale…")} />
           </div>
         </div>
 
         {/* Revision history — number + date as a reference. */}
         {revisions.length > 0 && (
           <div className="space-y-2 pt-2">
-            <h3 className="flex items-center gap-2 text-sm font-semibold"><Layers size={14} className="text-primary" /> Revisions</h3>
+            <h3 className="flex items-center gap-2 text-sm font-semibold"><Layers size={14} className="text-primary" /> {t("Revisions")}</h3>
             <ul className="space-y-1">
               {[...revisions].reverse().map((r) => (
                 <li key={r.rev} className="flex items-center gap-2 text-xs text-muted-foreground">
-                  <Badge variant={r.rev === latest.rev ? "info" : "muted"}>rev {r.rev}</Badge>
+                  <Badge variant={r.rev === latest.rev ? "info" : "muted"}>{t("rev")} {r.rev}</Badge>
                   {fmtRevDate(r.ts)}
-                  {r.rev === latest.rev && <span className="text-foreground/70">current</span>}
+                  {r.rev === latest.rev && <span className="text-foreground/70">{t("current")}</span>}
                 </li>
               ))}
             </ul>
@@ -180,16 +180,16 @@ function PromptLibraryDialog({ open, onOpenChange, prompts, sheetPrompts, revisi
         <DialogFooter>
           {confirming ? (
             <div className="flex flex-wrap items-center justify-end gap-2">
-              <span className="text-sm text-muted-foreground">Save these prompts as <b className="text-foreground">rev {nextRev}</b>?</span>
-              <Button variant="ghost" onClick={() => setConfirming(false)} disabled={saving}>Back</Button>
+              <span className="text-sm text-muted-foreground">{t("Save these prompts as rev {n}?", { n: nextRev })}</span>
+              <Button variant="ghost" onClick={() => setConfirming(false)} disabled={saving}>{t("Back")}</Button>
               <Button onClick={commit} disabled={saving}>
-                {saving ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />} Save revision {nextRev}
+                {saving ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />} {t("Save revision {n}", { n: nextRev })}
               </Button>
             </div>
           ) : (
             <>
-              <Button variant="ghost" onClick={() => onOpenChange(false)}>Cancel</Button>
-              <Button onClick={() => setConfirming(true)}>Save prompts</Button>
+              <Button variant="ghost" onClick={() => onOpenChange(false)}>{t("Cancel")}</Button>
+              <Button onClick={() => setConfirming(true)}>{t("Save prompts")}</Button>
             </>
           )}
         </DialogFooter>
@@ -203,6 +203,7 @@ function PromptLibraryDialog({ open, onOpenChange, prompts, sheetPrompts, revisi
  * ---------------------------------------------------------------- */
 
 export function GenerationCard({ gen, onOpen }) {
+  const t = useT();
   return (
     <button
       onClick={() => gen.status === "ready" && onOpen(gen)}
@@ -215,7 +216,7 @@ export function GenerationCard({ gen, onOpen }) {
       {gen.sheetType && SHEET_TYPES[gen.sheetType] && gen.status === "ready" && (
         <Badge variant="info" className="pointer-events-none absolute left-1.5 top-1.5 z-10">
           {(() => { const TagIcon = SHEET_TYPES[gen.sheetType].icon; return <TagIcon size={11} />; })()}
-          {SHEET_TYPES[gen.sheetType].short}
+          {t(SHEET_TYPES[gen.sheetType].short)}
         </Badge>
       )}
       {gen.status === "ready" && gen.url ? (
@@ -225,12 +226,12 @@ export function GenerationCard({ gen, onOpen }) {
       ) : gen.status === "error" ? (
         <div className="flex h-full flex-col items-center justify-center gap-1 p-3 text-center text-destructive">
           <AlertCircle size={18} />
-          <span className="text-[10px] leading-tight">{gen.error || "Failed"}</span>
+          <span className="text-[10px] leading-tight">{gen.error || t("Failed")}</span>
         </div>
       ) : (
         <div className="flex h-full flex-col items-center justify-center gap-2 text-muted-foreground">
           <Loader2 size={20} className="animate-spin" />
-          <span className="text-[10px]">generating…</span>
+          <span className="text-[10px]">{t("generating…")}</span>
         </div>
       )}
     </button>
@@ -251,6 +252,7 @@ function DetailRow({ label, children }) {
 
 function GenerationDetail({ gen, onClose, onRecreate, onUseAsRef, onEdit, onAddToCanvas, onSaveToLibrary, onDelete, detailActions }) {
   const { setModalImage } = useShell();
+  const t = useT();
   const [savedRel, setSavedRel] = useState(gen?.savedRel || null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [promptExpanded, setPromptExpanded] = useState(false);
@@ -281,12 +283,12 @@ function GenerationDetail({ gen, onClose, onRecreate, onUseAsRef, onEdit, onAddT
 
   // Secondary (outline) actions for the two-column row under the CTA.
   const secondaries = [
-    onEdit && { key: "edit", icon: Pencil, label: "Edit", onClick: () => onEdit(gen) },
-    onUseAsRef && { key: "ref", icon: ImagePlus, label: "Reference", title: "Use as generation reference", onClick: () => onUseAsRef(gen) },
-    onAddToCanvas && { key: "canvas", icon: Layers, label: "Add to canvas", onClick: () => onAddToCanvas(gen) },
+    onEdit && { key: "edit", icon: Pencil, label: t("Edit"), onClick: () => onEdit(gen) },
+    onUseAsRef && { key: "ref", icon: ImagePlus, label: t("Reference"), title: t("Use as generation reference"), onClick: () => onUseAsRef(gen) },
+    onAddToCanvas && { key: "canvas", icon: Layers, label: t("Add to canvas"), onClick: () => onAddToCanvas(gen) },
     onSaveToLibrary && {
       key: "library", icon: Library,
-      label: savedRel ? "Saved to library" : "Save to library",
+      label: savedRel ? t("Saved to library") : t("Save to library"),
       disabled: !!savedRel,
       onClick: async () => { const rel = await onSaveToLibrary(gen); if (rel) setSavedRel(rel); },
     },
@@ -295,13 +297,13 @@ function GenerationDetail({ gen, onClose, onRecreate, onUseAsRef, onEdit, onAddT
   return (
     <Dialog open={!!gen} onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="flex h-[95vh] max-h-[95vh] w-[96vw] max-w-[96vw] flex-col overflow-hidden sm:max-w-[96vw]">
-        <DialogHeader><DialogTitle className="text-sm font-medium text-muted-foreground">Generation</DialogTitle></DialogHeader>
+        <DialogHeader><DialogTitle className="text-sm font-medium text-muted-foreground">{t("Generation")}</DialogTitle></DialogHeader>
         <div className="grid min-h-0 flex-1 gap-4 md:grid-cols-[minmax(0,3fr)_minmax(0,1fr)]">
           <button
             type="button"
-            onClick={() => setModalImage({ url: gen.url, name: gen.prompt || "generation", role: "asset" })}
+            onClick={() => setModalImage({ url: gen.url, name: gen.prompt || t("generation"), role: "asset" })}
             className="flex min-h-0 items-center justify-center overflow-hidden rounded-lg border bg-muted"
-            title="View full image"
+            title={t("View full image")}
           >
             <img src={gen.display || gen.url} alt={gen.prompt} className="max-h-full max-w-full object-contain" />
           </button>
@@ -312,20 +314,20 @@ function GenerationDetail({ gen, onClose, onRecreate, onUseAsRef, onEdit, onAddT
               {/* PROMPT */}
               <section className="rounded-xl border bg-muted/30 p-3">
                 <div className="mb-2 flex items-center justify-between gap-2">
-                  <Eyebrow className="flex items-center gap-1.5"><Sparkles size={12} /> Prompt</Eyebrow>
+                  <Eyebrow className="flex items-center gap-1.5"><Sparkles size={12} /> {t("Prompt")}</Eyebrow>
                   <Button variant="ghost" size="sm" className="h-7 gap-1.5 px-2 text-xs" onClick={copyPrompt}>
-                    {copied ? <Check size={13} /> : <Copy size={13} />} {copied ? "Copied" : "Copy"}
+                    {copied ? <Check size={13} /> : <Copy size={13} />} {copied ? t("Copied") : t("Copy")}
                   </Button>
                 </div>
                 {refThumbs.length > 0 && (
                   <div className="mb-2.5 flex flex-wrap gap-1.5">
                     {refThumbs.map((r, i) => (
-                      <img
-                        key={`${r.rel || r.genId || i}`}
-                        src={r.thumb || r.url}
-                        alt="reference"
-                        className="h-12 w-12 rounded-md border object-cover"
-                      />
+<img
+                          key={`${r.rel || r.genId || i}`}
+                          src={r.thumb || r.url}
+                          alt={t("reference")}
+                          className="h-12 w-12 rounded-md border object-cover"
+                        />
                     ))}
                   </div>
                 )}
@@ -342,24 +344,24 @@ function GenerationDetail({ gen, onClose, onRecreate, onUseAsRef, onEdit, onAddT
                     className="mt-1.5 flex items-center gap-1 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
                   >
                     {promptExpanded
-                      ? <>Show less <ChevronUp size={13} /></>
-                      : <>See all <ChevronDown size={13} /></>}
+                      ? <>{t("Show less")} <ChevronUp size={13} /></>
+                      : <>{t("See all")} <ChevronDown size={13} /></>}
                   </button>
                 )}
               </section>
 
               {/* DETAILS */}
               <section>
-                <Eyebrow className="mb-1.5 flex items-center gap-1.5 px-1"><Info size={12} /> Details</Eyebrow>
+                <Eyebrow className="mb-1.5 flex items-center gap-1.5 px-1"><Info size={12} /> {t("Details")}</Eyebrow>
                 <dl className="space-y-2 rounded-xl border bg-muted/30 p-3">
-                  <DetailRow label="Model">{gen.model || "Default"}</DetailRow>
+                  <DetailRow label={t("Model")}>{gen.model || t("Default")}</DetailRow>
                   {gen.sheetType && SHEET_TYPES[gen.sheetType] && (
-                    <DetailRow label="Sheet">{SHEET_TYPES[gen.sheetType].label}</DetailRow>
+                    <DetailRow label={t("Sheet")}>{t(SHEET_TYPES[gen.sheetType].label)}</DetailRow>
                   )}
-                  {gen.aspectRatio && <DetailRow label="Aspect">{gen.aspectRatio}</DetailRow>}
-                  {gen.refs?.length > 0 && <DetailRow label="References">{gen.refs.length}</DetailRow>}
-                  {createdLabel && <DetailRow label="Created">{createdLabel}</DetailRow>}
-                  {savedRel && <DetailRow label="Library">{savedRel}</DetailRow>}
+                  {gen.aspectRatio && <DetailRow label={t("Aspect")}>{gen.aspectRatio}</DetailRow>}
+                  {gen.refs?.length > 0 && <DetailRow label={t("References")}>{gen.refs.length}</DetailRow>}
+                  {createdLabel && <DetailRow label={t("Created")}>{createdLabel}</DetailRow>}
+                  {savedRel && <DetailRow label={t("Library")}>{savedRel}</DetailRow>}
                 </dl>
               </section>
             </div>
@@ -368,7 +370,7 @@ function GenerationDetail({ gen, onClose, onRecreate, onUseAsRef, onEdit, onAddT
             <div className="mt-3 space-y-2 border-t pt-3">
               {onRecreate && (
                 <Button className="w-full" onClick={() => onRecreate(gen)}>
-                  <RefreshCw size={14} /> Recreate
+                  <RefreshCw size={14} /> {t("Recreate")}
                 </Button>
               )}
               {/* Surface-specific extra actions (e.g. "Use as first frame", "Select take"). */}
@@ -395,7 +397,7 @@ function GenerationDetail({ gen, onClose, onRecreate, onUseAsRef, onEdit, onAddT
               {onDelete && (
                 <div className="flex justify-end">
                   <Button size="sm" variant="ghost" className="text-muted-foreground hover:text-destructive" onClick={() => setConfirmDelete(true)}>
-                    <Trash2 size={13} /> Delete
+                    <Trash2 size={13} /> {t("Delete")}
                   </Button>
                 </div>
               )}
@@ -406,9 +408,9 @@ function GenerationDetail({ gen, onClose, onRecreate, onUseAsRef, onEdit, onAddT
 
       <ConfirmModal
         open={confirmDelete}
-        title="Delete this generation?"
-        message="This image will be permanently deleted, along with its stored file and anything referencing it."
-        confirmLabel="Delete"
+        title={t("Delete this generation?")}
+        message={t("This image will be permanently deleted, along with its stored file and anything referencing it.")}
+        confirmLabel={t("Delete")}
         onCancel={() => setConfirmDelete(false)}
         onConfirm={() => { setConfirmDelete(false); onDelete(gen); onClose(); }}
       />
@@ -451,6 +453,7 @@ export default function ImageStudio({
   onEditImage,         // if set, the detail modal shows an "Edit" button (edit-existing mode)
 }) {
   const [open, setOpen] = useState(null); // generation open in the detail modal
+  const t = useT();
   const [pickRef, setPickRef] = useState(false);
   const [editPrompts, setEditPrompts] = useState(false);
   const [localBusy, setLocalBusy] = useState(false);
@@ -525,7 +528,7 @@ export default function ImageStudio({
             {subtitle && <p className="text-sm text-muted-foreground">{subtitle}</p>}
           </div>
           <div className="flex items-center gap-2">
-            {pending > 0 && <Badge variant="warning"><Loader2 size={11} className="animate-spin" /> {pending} generating</Badge>}
+            {pending > 0 && <Badge variant="warning"><Loader2 size={11} className="animate-spin" /> {t("{n} generating", { n: pending })}</Badge>}
             {typeof headerExtra === "function" ? headerExtra({ prompt }) : headerExtra}
           </div>
         </div>
@@ -534,10 +537,10 @@ export default function ImageStudio({
       {error && <ErrorNote>{error}</ErrorNote>}
 
       {/* Results grid */}
-      <Panel title={<span className="flex items-center gap-2"><Sparkles size={15} className="text-primary" /> Generations</span>}>
+      <Panel title={<span className="flex items-center gap-2"><Sparkles size={15} className="text-primary" /> {t("Generations")}</span>}>
         {generations.length === 0 ? (
           <div className="rounded-lg border border-dashed p-8 text-center">
-            <Empty>{emptyLabel}</Empty>
+            <Empty>{t(emptyLabel)}</Empty>
           </div>
         ) : (
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
@@ -551,9 +554,9 @@ export default function ImageStudio({
         {/* Mode banner when working from a base image (variation / edit). */}
         {mode !== "new" && base && (
           <div className="mb-2 flex items-center gap-2 text-xs text-muted-foreground">
-            <Badge variant="info">{mode === "edit" ? "Editing" : "Variation of"}</Badge>
-            <span className="truncate">this image — describe the change, then Generate.</span>
-            <Button variant="ghost" size="icon-sm" aria-label="Cancel" onClick={() => { setMode("new"); setBase(null); }} className="ml-auto">
+            <Badge variant="info">{mode === "edit" ? t("Editing") : t("Variation of")}</Badge>
+            <span className="truncate">{t("this image — describe the change, then Generate.")}</span>
+            <Button variant="ghost" size="icon-sm" aria-label={t("Cancel")} onClick={() => { setMode("new"); setBase(null); }} className="ml-auto">
               <X size={13} />
             </Button>
           </div>
@@ -570,7 +573,7 @@ export default function ImageStudio({
                 </span>
                 <button
                   onClick={() => setRefs((cur) => cur.filter((_, j) => j !== i))}
-                  aria-label="Remove reference"
+                  aria-label={t("Remove reference")}
                   className="absolute -right-1.5 -top-1.5 rounded-full border bg-background p-0.5 text-muted-foreground shadow-sm hover:text-destructive"
                 >
                   <X size={11} />
@@ -584,19 +587,19 @@ export default function ImageStudio({
         <PromptEditor
           ref={promptEd}
           refs={refs}
-          placeholder={composerPlaceholder}
+          placeholder={t(composerPlaceholder)}
           onChange={setPrompt}
           onSubmit={doGenerate}
           className="mb-2 max-h-40 min-h-16 w-full overflow-y-auto rounded-md border border-input bg-transparent px-3 py-2 shadow-xs transition-[color,box-shadow] focus-within:border-ring focus-within:ring-[3px] focus-within:ring-ring/50 dark:bg-input/30"
         />
         <div className="flex flex-wrap items-center gap-2">
-          <Button variant="outline" size="sm" onClick={() => setPickRef(true)}><ImagePlus size={13} /> Reference</Button>
+          <Button variant="outline" size="sm" onClick={() => setPickRef(true)}><ImagePlus size={13} /> {t("Reference")}</Button>
 
           {/* Model */}
           <Select value={model || DEFAULT_MODEL} onValueChange={(v) => setModel(v === DEFAULT_MODEL ? "" : v)}>
-            <SelectTrigger size="sm" className="w-[180px] text-xs"><SelectValue placeholder="Nano Banana Pro" /></SelectTrigger>
+            <SelectTrigger size="sm" className="w-[180px] text-xs"><SelectValue placeholder={t("Nano Banana Pro")} /></SelectTrigger>
             <SelectContent>
-              <SelectItem value={DEFAULT_MODEL}>Nano Banana Pro (default)</SelectItem>
+              <SelectItem value={DEFAULT_MODEL}>{t("Nano Banana Pro (default)")}</SelectItem>
               {models.filter((m) => m.id).map((m) => <SelectItem key={m.id} value={m.id}>{m.label}</SelectItem>)}
             </SelectContent>
           </Select>
@@ -604,7 +607,7 @@ export default function ImageStudio({
           {/* Count */}
           <Select value={count} onValueChange={setCount}>
             <SelectTrigger size="sm" className="w-[92px] text-xs"><SelectValue /></SelectTrigger>
-            <SelectContent>{countOptions.map((n) => <SelectItem key={n} value={String(n)}>{n} image{n > 1 ? "s" : ""}</SelectItem>)}</SelectContent>
+            <SelectContent>{countOptions.map((n) => <SelectItem key={n} value={String(n)}>{n} {n > 1 ? t("images") : t("image")}</SelectItem>)}</SelectContent>
           </Select>
 
           {/* Aspect */}
@@ -616,9 +619,9 @@ export default function ImageStudio({
           {/* Prompt preset (only when the surface manages presets) */}
           {onSavePrompts && (
             <Select value={presetId || NO_PRESET} onValueChange={(v) => setPresetId(v === NO_PRESET ? "" : v)}>
-              <SelectTrigger size="sm" className="w-[190px] text-xs"><SelectValue placeholder="Prompt style" /></SelectTrigger>
+              <SelectTrigger size="sm" className="w-[190px] text-xs"><SelectValue placeholder={t("Prompt style")} /></SelectTrigger>
               <SelectContent>
-                <SelectItem value={NO_PRESET}>No style preset</SelectItem>
+                <SelectItem value={NO_PRESET}>{t("No style preset")}</SelectItem>
                 {prompts.map((p) => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
               </SelectContent>
             </Select>
@@ -633,9 +636,9 @@ export default function ImageStudio({
                   <Checkbox
                     checked={sheetType === key}
                     onCheckedChange={(v) => setSheetType(v ? key : "")}
-                    aria-label={label}
+                    aria-label={t(label)}
                   />
-                  <TagIcon size={13} /> {label}
+                  <TagIcon size={13} /> {t(label)}
                 </label>
               ))}
               {onSavePrompts && (
@@ -643,8 +646,8 @@ export default function ImageStudio({
                   variant="ghost"
                   size="icon-xs"
                   onClick={() => setEditPrompts(true)}
-                  aria-label="Edit prompt library"
-                  title="Edit prompt library"
+                  aria-label={t("Edit prompt library")}
+                  title={t("Edit prompt library")}
                   className="-mr-1 text-muted-foreground hover:text-foreground"
                 >
                   <Pencil size={13} />
@@ -657,8 +660,8 @@ export default function ImageStudio({
               variant="ghost"
               size="icon-sm"
               onClick={() => setEditPrompts(true)}
-              aria-label="Edit prompt library"
-              title="Edit prompt library"
+              aria-label={t("Edit prompt library")}
+              title={t("Edit prompt library")}
             >
               <Pencil size={13} />
             </Button>
@@ -669,7 +672,7 @@ export default function ImageStudio({
               onClick={() => setPickRef(true)}
               className="flex items-center gap-1.5 text-xs text-amber-500 hover:underline"
             >
-              <AlertCircle size={13} /> Location sheets need a reference image — add one
+              <AlertCircle size={13} /> {t("Location sheets need a reference image — add one")}
             </button>
           )}
 
@@ -678,9 +681,9 @@ export default function ImageStudio({
             className="ml-auto"
             onClick={doGenerate}
             disabled={isBusy || !prompt.trim() || needsRef}
-            title={needsRef ? "Location sheets need a reference image — add one first" : undefined}
+            title={needsRef ? t("Location sheets need a reference image — add one first") : undefined}
           >
-            {isBusy ? <><Loader2 size={14} className="animate-spin" /> generating…</> : <><Wand2 size={14} /> Generate</>}
+            {isBusy ? <><Loader2 size={14} className="animate-spin" /> {t("generating…")}</> : <><Wand2 size={14} /> {t("Generate")}</>}
           </Button>
         </div>
       </div>

@@ -83,6 +83,7 @@ import { StudioUI, isReferenceUpload } from "@/genui/StudioUI";
 import { detectOptions } from "@/genui/detect-options";
 import PromptEditor from "@/components/mention/PromptEditor";
 import { refTagLabel, splitRefTags } from "@/lib/refTags";
+import { useT, t as st } from "@/lib/i18n";
 import {
   ATTACH_ACCEPT,
   MAX_ATTACHMENT_BYTES,
@@ -309,6 +310,7 @@ function prettySize(n) {
 // cap and the run failed). Rendering that as still-pending is a lie that reads
 // as "saving…" forever; call it interrupted and say how to recover.
 function ToolChip({ part, tail }) {
+  const t = useT();
   const name = part.toolName || "tool";
   const errored = part.state === "output-error";
   const finished = part.state === "output-available";
@@ -331,13 +333,13 @@ function ToolChip({ part, tail }) {
         )}
       >
         <Wrench size={11} /> {name}
-        {errored ? " · failed" : interrupted ? " · interrupted" : null}
+        {errored ? t(" · failed") : interrupted ? t(" · interrupted") : null}
       </span>
       {errored && part.errorText ? (
         <span className="max-w-full break-words text-[11px] text-destructive">{part.errorText}</span>
       ) : interrupted ? (
         <span className="max-w-full text-[11px] text-muted-foreground">
-          The turn ended before this tool finished — nothing was saved. Ask again to retry.
+          {t("The turn ended before this tool finished — nothing was saved. Ask again to retry.")}
         </span>
       ) : null}
     </span>
@@ -408,6 +410,7 @@ function hostOf(url) {
 // link, so it opens in a new tab (and middle-click / cmd-click work) rather than
 // being a div with an onClick.
 function SourcesCard({ data }) {
+  const t = useT();
   const [open, setOpen] = useState(false);
   const { sources, query } = data;
   return (
@@ -419,7 +422,7 @@ function SourcesCard({ data }) {
         className="flex w-full items-center gap-1.5 px-2 py-1.5 text-left text-xs text-muted-foreground hover:bg-muted/60"
       >
         <Globe size={12} className="text-primary" />
-        <span className="font-medium text-foreground">Sources</span>
+        <span className="font-medium text-foreground">{t("Sources")}</span>
         <span>· {sources.length}</span>
         {query ? <span className="truncate italic">“{query}”</span> : null}
         <ChevronDown
@@ -479,6 +482,7 @@ function isUploadOption(opt) {
 }
 
 function QuestionCard({ part, pending, answer, canRespond, onRespond, onRequestReference }) {
+  const t = useT();
   const input = part.input || {};
   const question = typeof input.question === "string" ? input.question : "";
   const options = Array.isArray(input.options) ? input.options : [];
@@ -488,7 +492,7 @@ function QuestionCard({ part, pending, answer, canRespond, onRespond, onRequestR
     <div className="space-y-2 rounded-lg border border-amber-500/30 bg-amber-500/5 p-3">
       {question ? <Markdown text={question} className="text-muted-foreground" /> : null}
       {answer ? (
-        <p className="text-sm font-medium">Responded: {answer}</p>
+        <p className="text-sm font-medium">{t("Responded: {answer}", { answer })}</p>
       ) : options.length ? (
         <div className="flex flex-wrap gap-1.5">
           {options.map((opt) =>
@@ -520,7 +524,7 @@ function QuestionCard({ part, pending, answer, canRespond, onRespond, onRequestR
           )}
         </div>
       ) : (
-        <p className="text-xs text-muted-foreground">Type your answer below to continue.</p>
+        <p className="text-xs text-muted-foreground">{t("Type your answer below to continue.")}</p>
       )}
     </div>
   );
@@ -530,24 +534,26 @@ function QuestionCard({ part, pending, answer, canRespond, onRespond, onRequestR
 // aren't served, but a durably-recorded attachment (or an optimistic local echo)
 // carries a `url` we can render; images inline, everything else as a chip.
 function FilePart({ part }) {
+  const t = useT();
   const isImage = part.mediaType?.startsWith("image/");
   if (part.url && isImage) {
     return (
       <img
         src={part.url}
-        alt={part.filename || "attachment"}
+        alt={part.filename || t("attachment")}
         className="max-h-48 w-fit rounded-md border object-contain"
       />
     );
   }
   return (
     <span className="inline-flex w-fit items-center gap-1 rounded-md border border-border bg-muted/50 px-1.5 py-0.5 text-[11px] text-muted-foreground">
-      <FileText size={11} /> {part.filename || part.mediaType || "attachment"}
+      <FileText size={11} /> {part.filename || part.mediaType || t("attachment")}
     </span>
   );
 }
 
 function MessagePart({ part, qa, canRespond, onRespond, onRequestReference, offerOptions, tail }) {
+  const t = useT();
   switch (part.type) {
     case "text": {
       if (!part.text) return null;
@@ -569,7 +575,7 @@ function MessagePart({ part, qa, canRespond, onRespond, onRequestReference, offe
     case "reasoning":
       return part.text ? (
         <details className="rounded-md border bg-muted/30 px-2 py-1 text-xs text-muted-foreground">
-          <summary className="cursor-pointer select-none">Reasoning</summary>
+          <summary className="cursor-pointer select-none">{t("Reasoning")}</summary>
           <div className="mt-1 whitespace-pre-wrap break-words">{part.text}</div>
         </details>
       ) : null;
@@ -732,6 +738,7 @@ function userMessageText(message) {
 // chip — there's nothing to look at, but the turn should still show what it
 // carried.
 function SentAttachments({ atts }) {
+  const t = useT();
   if (!atts?.length) return null;
   return (
     <AttachmentGroup className="mt-1.5 max-w-[92%] justify-end">
@@ -742,10 +749,10 @@ function SentAttachments({ atts }) {
               <FileText />
             </AttachmentMedia>
             <AttachmentContent>
-              <AttachmentTitle>{a.name || "document"}</AttachmentTitle>
+              <AttachmentTitle>{a.name || t("document")}</AttachmentTitle>
               {a.chars ? (
                 <AttachmentDescription>
-                  {a.chars.toLocaleString()} chars
+                  {t("{n} chars", { n: a.chars.toLocaleString() })}
                 </AttachmentDescription>
               ) : null}
             </AttachmentContent>
@@ -753,7 +760,7 @@ function SentAttachments({ atts }) {
         ) : (
           <Attachment key={i} size="sm" orientation="vertical" className="w-20">
             <AttachmentMedia variant="image">
-              <img src={a.url} alt={a.name || "attachment"} />
+              <img src={a.url} alt={a.name || t("attachment")} />
             </AttachmentMedia>
           </Attachment>
         ),
@@ -939,6 +946,7 @@ function relTime(ts) {
 // Rows are plain buttons (not menu items), so a mouse click reliably switches
 // conversations; the trash button is a sibling, not a nested button.
 function ChatHistorySheet({ conv, triggerClassName }) {
+  const t = useT();
   const [open, setOpen] = useState(false);
   // Stale-while-revalidate: the cached list renders instantly; opening the
   // sheet re-pulls the server registry so chats started on another device
@@ -957,19 +965,19 @@ function ChatHistorySheet({ conv, triggerClassName }) {
           size="icon"
           variant="ghost"
           className={cn("size-8", triggerClassName)}
-          aria-label="Previous chats"
-          title="Previous chats"
+          aria-label={t("Previous chats")}
+          title={t("Previous chats")}
         >
           <History size={16} />
         </Button>
       </SheetTrigger>
       <SheetContent side="right" className="w-[495px] max-w-none gap-0 p-0 sm:max-w-none">
         <SheetHeader className="border-b pr-14">
-          <SheetTitle>Chats</SheetTitle>
+          <SheetTitle>{t("Chats")}</SheetTitle>
         </SheetHeader>
         <div className="min-h-0 flex-1 overflow-y-auto p-2">
           {conv.list.length === 0 ? (
-            <div className="px-2 py-10 text-center text-sm text-muted-foreground">No chats yet</div>
+            <div className="px-2 py-10 text-center text-sm text-muted-foreground">{t("No chats yet")}</div>
           ) : (
             <ul className="space-y-1">
               {conv.list.map((c) => {
@@ -991,14 +999,14 @@ function ChatHistorySheet({ conv, triggerClassName }) {
                       ) : (
                         <MessageSquare size={15} className="shrink-0 text-muted-foreground" />
                       )}
-                      <span className="min-w-0 flex-1 truncate text-sm">{c.title || "New chat"}</span>
+                      <span className="min-w-0 flex-1 truncate text-sm">{c.title || t("New chat")}</span>
                       <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground">
                         {relTime(c.updatedAt)}
                       </span>
                     </button>
                     <button
                       type="button"
-                      aria-label={`Delete chat: ${c.title || "New chat"}`}
+                      aria-label={t("Delete chat: {name}", { name: c.title || t("New chat") })}
                       onClick={() => conv.deleteChat(c.id)}
                       className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-muted-foreground opacity-0 transition-opacity hover:text-destructive focus:opacity-100 group-hover:opacity-100"
                     >
@@ -1134,6 +1142,7 @@ function PosterArt({ src }) {
 // strength under a dark scrim with a Completed badge, and the button is
 // genuinely disabled rather than merely styled that way.
 function LandingPoster({ suggestion: s, onClick }) {
+  const t = useT();
   const seed = meshSeed(s.id);
   const art = cardArtPath(s.id);
   const done = !!s.done;
@@ -1142,7 +1151,7 @@ function LandingPoster({ suggestion: s, onClick }) {
       type="button"
       onClick={done ? undefined : onClick}
       disabled={done}
-      aria-label={done ? `${s.title} — completed` : s.subtitle ? `${s.title} — ${s.subtitle}` : s.title}
+      aria-label={done ? t("{title} — completed", { title: s.title }) : s.subtitle ? t("{title} — {subtitle}", { title: s.title, subtitle: s.subtitle }) : s.title}
       style={{ width: POSTER_W, height: POSTER_H }}
       className={cn(
         "group relative flex shrink-0 snap-start flex-col overflow-hidden rounded-xl border bg-card text-left shadow-sm transition-colors",
@@ -1178,7 +1187,7 @@ function LandingPoster({ suggestion: s, onClick }) {
                 both light and dark mode, so a token that flips with the theme
                 would vanish in one of them. */}
             <Check size={12} strokeWidth={3} />
-            Completed
+            {t("Completed")}
           </span>
         </span>
       ) : null}
@@ -1287,9 +1296,9 @@ function LandingSection({ title, loading, children }) {
 // "12m ago", but "just now" for the last minute — relTime's own answer there is
 // "now", and "now ago" reads like a typo.
 function recapWhen(ts) {
-  const t = relTime(ts);
-  if (!t) return null;
-  return t === "now" ? "just now" : `${t} ago`;
+  const rt = relTime(ts);
+  if (!rt) return null;
+  return rt === "now" ? st("just now") : st("{time} ago", { time: rt });
 }
 
 // The empty chat. Two sections, centered in the transcript: Recaps (the chats you
@@ -1301,6 +1310,7 @@ function recapWhen(ts) {
 // margins), so a day-one project gets a calm centered pair of cards and a
 // mid-pipeline one just grows downward instead of being clipped.
 function ChatLanding({ conv, onSuggest, reloadKey }) {
+  const t = useT();
   // undefined = still reading, null = we couldn't read it. Those are different
   // decks: unknown state must NOT render the day-one "build your story world"
   // card at someone whose episode is finished.
@@ -1394,18 +1404,18 @@ function ChatLanding({ conv, onSuggest, reloadKey }) {
             over left-aligned eyebrows reads as a misalignment, not a flourish.
             The BLOCK is what's centered in the panel. */}
         <p className="text-sm text-muted-foreground">
-          Ask me anything to create or talk about your story
+          {t("Ask me anything to create or talk about your story")}
         </p>
 
         {recaps.length ? (
-          <LandingSection title="Recaps">
+          <LandingSection title={t("Recaps")}>
             {recaps.map((c) => (
               <LandingCard
                 key={c.id}
                 icon={MessageSquare}
                 title={c.title}
                 eyebrow={recapWhen(c.updatedAt)}
-                label={`Open chat: ${c.title}`}
+                label={t("Open chat: {title}", { title: c.title })}
                 onClick={() => conv.switchChat(c.id)}
               />
             ))}
@@ -1413,7 +1423,7 @@ function ChatLanding({ conv, onSuggest, reloadKey }) {
         ) : null}
 
         <section className="space-y-2">
-          <Eyebrow>Continue building your story</Eyebrow>
+          <Eyebrow>{t("Continue building your story")}</Eyebrow>
           {status === undefined ? (
             <PosterSkeleton />
           ) : (
@@ -1436,6 +1446,7 @@ function ChatLanding({ conv, onSuggest, reloadKey }) {
 // attach a per-message model, so this picker is currently a no-op — the agent
 // runs on its single server-side default model regardless of the selection.
 function ModelPicker({ disabled }) {
+  const t = useT();
   const modelId = useAgentModel();
   // Only models whose provider key is actually configured on the flue worker
   // (Cloudflare models are always available; Claude only when a key is present).
@@ -1453,7 +1464,7 @@ function ModelPicker({ disabled }) {
           variant="ghost"
           disabled={disabled}
           className="h-7 gap-1 px-2 text-xs text-muted-foreground hover:text-foreground"
-          aria-label={`Model: ${active.label}`}
+          aria-label={t("Model: {name}", { name: active.label })}
         >
           <Cpu size={13} />
           <span className="font-medium">{active.label}</span>
@@ -1487,6 +1498,7 @@ const RAILED_BY_DEFAULT = new Set(["moodboard"]);
 const tabOf = (pathname) => pathname.split("/")[1] || "";
 
 export default function AgentChat() {
+  const t = useT();
   // Shared session: the same instance the sound-studio Render buttons drive.
   const agent = useAgent();
   const conv = useConversations();
@@ -1530,7 +1542,7 @@ export default function AgentChat() {
   const onTranscriptClick = (e) => {
     const img = e.target.closest?.("img");
     if (img && (img.currentSrc || img.getAttribute("src"))) {
-      setLightbox({ src: img.currentSrc || img.src, alt: img.alt || "image" });
+      setLightbox({ src: img.currentSrc || img.src, alt: img.alt || t("image") });
     }
   };
   // The reference images each user turn was sent with, so they re-render in the
@@ -1700,15 +1712,15 @@ export default function AgentChat() {
     for (const f of incoming) {
       const kind = classifyFile(f);
       if (!kind) {
-        rejected.push(`${f.name} isn't a supported type`);
+        rejected.push(t("{name} isn't a supported type", { name: f.name }));
       } else if (f.size > MAX_ATTACHMENT_BYTES) {
-        rejected.push(`${f.name} is over ${Math.round(MAX_ATTACHMENT_BYTES / 1024 / 1024)}MB`);
+        rejected.push(t("{name} is over {max}MB", { name: f.name, max: Math.round(MAX_ATTACHMENT_BYTES / 1024 / 1024) }));
       } else {
         accepted.push({ file: f, kind });
       }
     }
     if (rejected.length) {
-      toast.error(rejected.length === 1 ? rejected[0] : `${rejected.length} files skipped`, {
+      toast.error(rejected.length === 1 ? rejected[0] : t("{n} files skipped", { n: rejected.length }), {
         description: rejected.length > 1 ? rejected.join(" · ") : undefined,
       });
     }
@@ -1831,7 +1843,7 @@ export default function AgentChat() {
     try {
       await rec.start();
     } catch (e) {
-      setVoiceError(e?.message || "Couldn't start recording.");
+      setVoiceError(e?.message || t("Couldn't start recording."));
     }
   };
 
@@ -1848,10 +1860,10 @@ export default function AgentChat() {
     setVoiceError(null);
     try {
       const blob = await rec.stop();
-      if (!blob || blob.size < 100) throw new Error("No audio captured — try again.");
+      if (!blob || blob.size < 100) throw new Error(t("No audio captured — try again."));
       const { text: heard } = await transcribeAudio(blob);
       if (!heard) {
-        setVoiceError("Didn't catch that — try again.");
+        setVoiceError(t("Didn't catch that — try again."));
         return;
       }
       promptEd.current?.appendText(heard);
@@ -1859,7 +1871,7 @@ export default function AgentChat() {
       // has yielded the row again — the editor can't take focus while hidden.
       setTimeout(() => promptEd.current?.focus(), 0);
     } catch (e) {
-      setVoiceError(e?.message || "Transcription failed.");
+      setVoiceError(e?.message || t("Transcription failed."));
     } finally {
       setTranscribing(false);
     }
@@ -2078,8 +2090,8 @@ export default function AgentChat() {
             size="icon"
             variant="ghost"
             className="size-8 text-muted-foreground hover:text-foreground"
-            aria-label="Expand the studio agent"
-            title="Expand the studio agent"
+            aria-label={t("Expand the studio agent")}
+            title={t("Expand the studio agent")}
             onClick={() => setRailed(false)}
           >
             <PanelRightOpen size={16} />
@@ -2088,15 +2100,15 @@ export default function AgentChat() {
               then collapsed — so the author needs to see the turn is still
               running, or the rail looks like the agent stopped. */}
           {isBusy ? (
-            <Loader2 size={14} className="animate-spin text-primary" aria-label="The agent is working" />
+            <Loader2 size={14} className="animate-spin text-primary" aria-label={t("The agent is working")} />
           ) : null}
           <button
             type="button"
             onClick={() => setRailed(false)}
-            title="Expand the studio agent"
+            title={t("Expand the studio agent")}
             className="mt-1 cursor-pointer rotate-180 text-xs tracking-wide text-muted-foreground transition-colors [writing-mode:vertical-rl] hover:text-foreground"
           >
-            Studio agent
+            {t("Studio agent")}
           </button>
         </div>
       ) : null}
@@ -2106,7 +2118,7 @@ export default function AgentChat() {
         <div className="pointer-events-none absolute inset-2 z-30 flex items-center justify-center rounded-xl border-2 border-dashed border-primary bg-background/85 text-sm font-medium text-primary">
           <span className="flex items-center gap-2">
             <Upload size={16} />
-            Drop images or documents to attach
+            {t("Drop images or documents to attach")}
           </span>
         </div>
       ) : null}
@@ -2123,8 +2135,8 @@ export default function AgentChat() {
             size="icon"
             variant="ghost"
             className="size-8 rounded-full border bg-card/80 text-muted-foreground shadow-sm backdrop-blur hover:bg-accent hover:text-foreground"
-            aria-label="New chat"
-            title="New chat"
+            aria-label={t("New chat")}
+            title={t("New chat")}
             onClick={() => conv.newChat()}
           >
             <SquarePen size={16} />
@@ -2137,8 +2149,8 @@ export default function AgentChat() {
             size="icon"
             variant="ghost"
             className="size-8 rounded-full border bg-card/80 text-muted-foreground shadow-sm backdrop-blur hover:bg-accent hover:text-foreground"
-            aria-label="Collapse the studio agent"
-            title="Collapse the studio agent"
+            aria-label={t("Collapse the studio agent")}
+            title={t("Collapse the studio agent")}
             onClick={() => setRailed(true)}
           >
             <PanelRightClose size={16} />
@@ -2153,7 +2165,7 @@ export default function AgentChat() {
           {loadingHistory ? (
             <div className="flex h-full flex-col items-center justify-center gap-2 text-center text-muted-foreground">
               <Loader2 size={22} className="animate-spin" />
-              <p className="text-sm">Loading up your latest chat…</p>
+              <p className="text-sm">{t("Loading up your latest chat…")}</p>
             </div>
           ) : messages.length === 0 ? (
             <ChatLanding conv={conv} onSuggest={sendQuick} reloadKey={reloadKey} />
@@ -2180,21 +2192,21 @@ export default function AgentChat() {
               <MarkerIcon>
                 <Loader2 className="animate-spin" />
               </MarkerIcon>
-              <MarkerContent className="shimmer">Thinking…</MarkerContent>
+              <MarkerContent className="shimmer">{t("Thinking…")}</MarkerContent>
             </Marker>
           ) : working ? (
             <Marker>
               <MarkerIcon>
                 <Loader2 className="animate-spin" />
               </MarkerIcon>
-              <MarkerContent className="shimmer">Agent is working…</MarkerContent>
+              <MarkerContent className="shimmer">{t("Agent is working…")}</MarkerContent>
             </Marker>
           ) : reasoning ? (
             <Marker>
               <MarkerIcon>
                 <Loader2 className="animate-spin" />
               </MarkerIcon>
-              <MarkerContent className="shimmer">Reasoning…</MarkerContent>
+              <MarkerContent className="shimmer">{t("Reasoning…")}</MarkerContent>
             </Marker>
           ) : isBusy ? (
             // Catch-all: the turn is still in flight but its trailing content is
@@ -2207,7 +2219,7 @@ export default function AgentChat() {
               <MarkerIcon>
                 <Loader2 className="animate-spin" />
               </MarkerIcon>
-              <MarkerContent className="shimmer">Working…</MarkerContent>
+              <MarkerContent className="shimmer">{t("Working…")}</MarkerContent>
             </Marker>
           ) : null}
 
@@ -2215,7 +2227,7 @@ export default function AgentChat() {
             <div className="flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/5 p-2.5 text-sm">
               <AlertCircle size={15} className="mt-0.5 shrink-0 text-destructive" />
               <div className="min-w-0">
-                <div className="font-medium">Agent error</div>
+                <div className="font-medium">{t("Agent error")}</div>
                 <div className="break-words text-xs text-muted-foreground">
                   {settledError.message}
                 </div>
@@ -2229,7 +2241,7 @@ export default function AgentChat() {
             size="icon"
             variant="secondary"
             onClick={jumpToLatest}
-            aria-label="Jump to latest"
+            aria-label={t("Jump to latest")}
             className="absolute bottom-3 left-1/2 size-8 -translate-x-1/2 rounded-full border shadow-md"
           >
             <ArrowDown size={15} />
@@ -2242,7 +2254,7 @@ export default function AgentChat() {
           <div className="mb-2 flex items-center gap-2 rounded-lg border bg-muted/40 p-2.5 text-xs text-muted-foreground">
             <History size={14} className="shrink-0" />
             <span className="min-w-0">
-              This chat ran on the previous agent engine and is read-only.
+              {t("This chat ran on the previous agent engine and is read-only.")}
             </span>
             <Button
               size="sm"
@@ -2250,7 +2262,7 @@ export default function AgentChat() {
               className="ml-auto h-7 shrink-0"
               onClick={() => conv.newChat()}
             >
-              Start a new chat
+              {t("Start a new chat")}
             </Button>
           </div>
         ) : null}
@@ -2274,19 +2286,19 @@ export default function AgentChat() {
                   </AttachmentTitle>
                   <AttachmentDescription>
                     {a.state === "uploading"
-                      ? "Uploading…"
+                      ? t("Uploading…")
                       : a.state === "processing"
-                        ? "Reading…"
+                        ? t("Reading…")
                         : a.state === "error"
-                          ? a.error || "Upload failed"
+                          ? a.error || t("Upload failed")
                           : a.kind === "doc"
-                            ? `${(a.chars || 0).toLocaleString()} chars · ${prettySize(a.size)}`
+                            ? t("{n} chars · {size}", { n: (a.chars || 0).toLocaleString(), size: prettySize(a.size) })
                             : prettySize(a.size)}
                   </AttachmentDescription>
                 </AttachmentContent>
                 <AttachmentActions>
                   <AttachmentAction
-                    aria-label={`Remove ${a.name}`}
+                    aria-label={t("Remove {name}", { name: a.name })}
                     onClick={() => removeAttachment(a.id)}
                   >
                     <X size={14} />
@@ -2316,8 +2328,8 @@ export default function AgentChat() {
               variant="ghost"
               onClick={cancelRecording}
               disabled={transcribing}
-              aria-label="Cancel recording"
-              title="Cancel"
+              aria-label={t("Cancel recording")}
+              title={t("Cancel")}
             >
               <X size={16} />
             </Button>
@@ -2328,7 +2340,7 @@ export default function AgentChat() {
                 <span className="size-2.5 animate-pulse rounded-full bg-red-500" />
               )}
               <span className="text-muted-foreground">
-                {transcribing ? "Transcribing…" : "Recording…"}
+                {transcribing ? t("Transcribing…") : t("Recording…")}
               </span>
               <span className="tabular-nums text-muted-foreground">
                 {formatDuration(rec.duration)}
@@ -2338,8 +2350,8 @@ export default function AgentChat() {
               size="icon"
               onClick={confirmRecording}
               disabled={transcribing}
-              aria-label="Stop and transcribe"
-              title="Stop and transcribe"
+              aria-label={t("Stop and transcribe")}
+              title={t("Stop and transcribe")}
             >
               {transcribing ? (
                 <Loader2 size={15} className="animate-spin" />
@@ -2361,8 +2373,8 @@ export default function AgentChat() {
               <Button
                 size="icon"
                 variant="ghost"
-                aria-label="Attach a file"
-                title="Attach — reference images, or a PDF / text file to read"
+                aria-label={t("Attach a file")}
+                title={t("Attach — reference images, or a PDF / text file to read")}
               >
                 <Paperclip size={16} />
               </Button>
@@ -2373,18 +2385,18 @@ export default function AgentChat() {
               >
                 <Images size={15} />
                 <div className="flex flex-col">
-                  <span>Reference images…</span>
+                  <span>{t("Reference images…")}</span>
                   <span className="text-[11px] text-muted-foreground">
-                    Gallery, Visual world, or your computer
+                    {t("Gallery, Visual world, or your computer")}
                   </span>
                 </div>
               </DropdownMenuItem>
               <DropdownMenuItem onSelect={() => openFileDialog()}>
                 <Upload size={15} />
                 <div className="flex flex-col">
-                  <span>Upload a file…</span>
+                  <span>{t("Upload a file…")}</span>
                   <span className="text-[11px] text-muted-foreground">
-                    PDF, text, Markdown, Word, or an image
+                    {t("PDF, text, Markdown, Word, or an image")}
                   </span>
                 </div>
               </DropdownMenuItem>
@@ -2395,7 +2407,7 @@ export default function AgentChat() {
           <PromptEditor
             ref={promptEd}
             refs={mentionRefs}
-            placeholder="Message the studio agent…"
+            placeholder={t("Message the studio agent…")}
             onChange={setText}
             onSubmit={submit}
             submitOnEnter
@@ -2407,7 +2419,7 @@ export default function AgentChat() {
               to Send so you can dictate into an empty draft OR keep appending
               more voice to what's already typed. */}
           {isBusy ? (
-            <Button size="icon" variant="secondary" onClick={agent.stop} aria-label="Stop">
+            <Button size="icon" variant="secondary" onClick={agent.stop} aria-label={t("Stop")}>
               <Square size={15} />
             </Button>
           ) : (
@@ -2416,8 +2428,8 @@ export default function AgentChat() {
                 size="icon"
                 variant={hasDraft ? "ghost" : "default"}
                 onClick={startRecording}
-                aria-label="Record voice message"
-                title={hasDraft ? "Add more with voice" : "Record voice message"}
+                aria-label={t("Record voice message")}
+                title={hasDraft ? t("Add more with voice") : t("Record voice message")}
               >
                 <Mic size={16} />
               </Button>
@@ -2426,8 +2438,8 @@ export default function AgentChat() {
                   size="icon"
                   onClick={submit}
                   disabled={!canSend}
-                  aria-label="Send"
-                  title={uploading ? "Waiting for upload…" : "Send"}
+                  aria-label={t("Send")}
+                  title={uploading ? t("Waiting for upload…") : t("Send")}
                 >
                   {uploading ? <Loader2 size={15} className="animate-spin" /> : <Send size={15} />}
                 </Button>
@@ -2446,7 +2458,7 @@ export default function AgentChat() {
         open={pickerOpen}
         onOpenChange={setPickerOpen}
         onAdd={pickerFor === "question" ? respondWithPicked : addPickedItems}
-        title={pickerFor === "question" ? "Pick the reference image" : "Attach reference images"}
+        title={pickerFor === "question" ? t("Pick the reference image") : t("Attach reference images")}
       />
 
       <Dialog open={!!lightbox} onOpenChange={(o) => !o && setLightbox(null)}>
@@ -2454,7 +2466,7 @@ export default function AgentChat() {
           showCloseButton
           className="w-fit max-w-[92vw] border-0 bg-transparent p-0 shadow-none sm:max-w-[92vw]"
         >
-          <DialogTitle className="sr-only">Image preview</DialogTitle>
+          <DialogTitle className="sr-only">{t("Image preview")}</DialogTitle>
           {lightbox ? (
             <img
               src={lightbox.src}

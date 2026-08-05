@@ -15,6 +15,7 @@ import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import { Tip, Empty, Panel, Spinner, ErrorNote } from "@/components/shared";
+import { useT, t as staticT } from "@/lib/i18n";
 
 /* ---------------------------------------------------------------- *
  * Casting dialog — one character's casting surface. Opened from its  *
@@ -33,6 +34,7 @@ function isVoiceTrack(t) {
 
 function CastingDialog({ open, onOpenChange, onCast, onAgentCast, agentBusy, entry }) {
   const navigate = useNavigate();
+  const t = useT();
   const [tracks, setTracks] = useState(null);
   const [error, setError] = useState(null);
   const [q, setQ] = useState("");
@@ -55,11 +57,11 @@ function CastingDialog({ open, onOpenChange, onCast, onAgentCast, agentBusy, ent
       .flatMap((t) =>
         (t.versions || [])
           .filter((v) => v.liked && v.url)
-          .map((v) => ({ trackId: t.id, v: v.v, name: t.name || v.name || "Untitled voice", url: v.url })),
+          .map((v) => ({ trackId: t.id, v: v.v, name: t.name || v.name || t("Untitled voice"), url: v.url })),
       );
     const term = q.trim().toLowerCase();
     return term ? all.filter((o) => o.name.toLowerCase().includes(term)) : all;
-  }, [tracks, q]);
+  }, [tracks, q, t]);
 
   const pick = (o) => { onCast(character, { trackId: o.trackId, v: o.v, name: o.name, url: o.url }); onOpenChange(false); };
 
@@ -68,50 +70,49 @@ function CastingDialog({ open, onOpenChange, onCast, onAgentCast, agentBusy, ent
       <DialogContent className="sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            Cast a voice for <Badge variant="secondary" className="font-mono">{character}</Badge>
+            {t("Cast a voice for ")}<Badge variant="secondary" className="font-mono">{character}</Badge>
           </DialogTitle>
         </DialogHeader>
 
-        {/* Currently cast voice — audio + clear live here, off the compact card. */}
         {voiceRef && (
           <div className="flex flex-wrap items-center gap-3 rounded-lg border bg-muted/30 p-2.5">
-            <Badge variant="success" className="gap-1"><Check size={11} /> Casted</Badge>
-            <span className="text-sm font-medium">{voiceRef.name || "Voice"}{voiceRef.v != null && <span className="text-muted-foreground"> · v{voiceRef.v}</span>}</span>
-            {source === "world" && <Badge variant="muted" className="text-[10px]">from World</Badge>}
+            <Badge variant="success" className="gap-1"><Check size={11} /> {t("Casted")}</Badge>
+            <span className="text-sm font-medium">{voiceRef.name || t("Voice")}{voiceRef.v != null && <span className="text-muted-foreground">{t(" · v{version}", { version: voiceRef.v })}</span>}</span>
+            {source === "world" && <Badge variant="muted" className="text-[10px]">{t("from World")}</Badge>}
             {voiceRef.url && <audio controls src={voiceRef.url} preload="none" className="h-8 max-w-[220px]" />}
             <Button variant="ghost" size="sm" className="ml-auto text-muted-foreground hover:text-destructive" onClick={() => onCast(character, null)}>
-              <X size={14} /> Clear
+              <X size={14} /> {t("Clear")}
             </Button>
           </div>
         )}
 
         <div className="flex flex-wrap items-center justify-between gap-2">
           <p className="text-xs text-muted-foreground">
-            Your liked voices from the Sound Studio — like a voice take on the Sounds tab to see it here.
+            {t("Your liked voices from the Sound Studio — like a voice take on the Sounds tab to see it here.")}
           </p>
           <div className="flex shrink-0 items-center gap-2">
-            <Tip content={agentBusy ? "The agent is busy — wait for it to finish" : `Ask the agent to design, render, and cast a voice for ${character}`}>
+            <Tip content={agentBusy ? t("The agent is busy — wait for it to finish") : t("Ask the agent to design, render, and cast a voice for {character}", { character })}>
               <Button
                 variant="secondary"
                 size="sm"
                 disabled={agentBusy}
                 onClick={() => { onAgentCast(character); onOpenChange(false); }}
               >
-                <Bot size={13} /> Voice with agent
+                <Bot size={13} /> {t("Voice with agent")}
               </Button>
             </Tip>
             <Button variant="outline" size="sm" onClick={() => navigate("/sounds?new=voice")}>
-              <Plus size={13} /> Create voice
+              <Plus size={13} /> {t("Create voice")}
             </Button>
           </div>
         </div>
-        <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search liked voices…" className="h-8 text-sm" />
+        <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder={t("Search liked voices…")} className="h-8 text-sm" />
         {error && <ErrorNote>{error}</ErrorNote>}
         {tracks === null && !error ? (
           <div className="py-10"><Spinner /></div>
         ) : voices.length === 0 && !error ? (
           <div className="rounded-lg border border-dashed p-8 text-center">
-            <Empty>no liked voices yet — generate a voice on the Sounds tab and tap the heart to like a take, or create one now.</Empty>
+            <Empty>{t("no liked voices yet — generate a voice on the Sounds tab and tap the heart to like a take, or create one now.")}</Empty>
           </div>
         ) : (
           <div className="max-h-[50vh] space-y-2 overflow-y-auto pr-1">
@@ -125,7 +126,7 @@ function CastingDialog({ open, onOpenChange, onCast, onAgentCast, agentBusy, ent
                     <audio controls src={o.url} preload="none" className="mt-1 h-8 w-full" />
                   </div>
                   <Button size="sm" variant={active ? "outline" : "default"} className="shrink-0" onClick={() => pick(o)}>
-                    {active ? <><Check size={13} /> Cast</> : "Select"}
+                    {active ? <><Check size={13} /> {t("Cast")}</> : t("Select")}
                   </Button>
                 </div>
               );
@@ -146,10 +147,11 @@ function CastingDialog({ open, onOpenChange, onCast, onAgentCast, agentBusy, ent
 
 function CastingCard({ entry, onCast, onAgentCast, agentBusy }) {
   const [open, setOpen] = useState(false);
+  const t = useT();
   const { character, voiceRef } = entry;
   return (
     <>
-      <Tip content={voiceRef ? `${voiceRef.name || "Voice"}${voiceRef.v != null ? ` · v${voiceRef.v}` : ""}` : "No voice cast — click to cast"}>
+      <Tip content={voiceRef ? `${voiceRef.name || t("Voice")}${voiceRef.v != null ? t(" · v{version}", { version: voiceRef.v }) : ""}` : t("No voice cast — click to cast")}>
       <button
         type="button"
         onClick={() => setOpen(true)}
@@ -157,9 +159,9 @@ function CastingCard({ entry, onCast, onAgentCast, agentBusy }) {
       >
         <Badge variant="secondary" className="min-w-0 max-w-full truncate font-mono">{character}</Badge>
         {voiceRef ? (
-          <Badge variant="success" className="ml-auto shrink-0 gap-1"><Check size={11} /> Casted</Badge>
+          <Badge variant="success" className="ml-auto shrink-0 gap-1"><Check size={11} /> {t("Casted")}</Badge>
         ) : (
-          <Badge variant="warning" className="ml-auto shrink-0 gap-1"><Mic size={11} /> Cast</Badge>
+          <Badge variant="warning" className="ml-auto shrink-0 gap-1"><Mic size={11} /> {t("Cast")}</Badge>
         )}
       </button>
       </Tip>
@@ -173,6 +175,7 @@ function CastingCard({ entry, onCast, onAgentCast, agentBusy }) {
  * ---------------------------------------------------------------- */
 
 function RadioLine({ line, onSaveLine, onRecreate, onSelectVersion, agentBusy }) {
+  const t = useT();
   const [speaker, setSpeaker] = useState(line.character || "");
   const [text, setText] = useState(line.text || "");
   useEffect(() => { setSpeaker(line.character || ""); }, [line.character]);
@@ -182,23 +185,23 @@ function RadioLine({ line, onSaveLine, onRecreate, onSelectVersion, agentBusy })
 
   const commit = (patch) => onSaveLine(line.id, patch);
   const field = "rounded-md border border-transparent bg-transparent px-2 py-1 text-sm hover:border-border focus:border-primary focus:bg-background focus:outline-none";
-  const recreateLabel = takes.length ? "Recreate take" : "Render take";
+  const recreateLabel = takes.length ? t("Recreate take") : t("Render take");
 
   return (
     <div className="rounded-lg border p-2.5">
       <div className="flex flex-wrap items-center gap-2">
-        <Badge variant="outline" className="font-mono text-[10px]">shot {line.shotId}</Badge>
+        <Badge variant="outline" className="font-mono text-[10px]">{t("shot {id}", { id: line.shotId })}</Badge>
         <input
           className={cn(field, "w-32 font-semibold")}
           value={speaker}
-          placeholder="Speaker"
+          placeholder={t("Speaker")}
           onChange={(e) => setSpeaker(e.target.value)}
           onBlur={() => speaker !== (line.character || "") && commit({ character: speaker })}
         />
         {line.voiceRef ? (
-          <Badge variant="success" className="gap-1 text-[10px]"><Mic size={10} /> {line.voiceRef.name || "voice"}</Badge>
+          <Badge variant="success" className="gap-1 text-[10px]"><Mic size={10} /> {line.voiceRef.name || t("voice")}</Badge>
         ) : (
-          <Badge variant="warning" className="gap-1 text-[10px]"><CircleAlert size={10} /> no voice</Badge>
+          <Badge variant="warning" className="gap-1 text-[10px]"><CircleAlert size={10} /> {t("no voice")}</Badge>
         )}
         <div className="ml-auto flex items-center gap-1.5">
           {take?.ready ? (
@@ -206,12 +209,12 @@ function RadioLine({ line, onSaveLine, onRecreate, onSelectVersion, agentBusy })
           ) : take && take.status !== "missing" ? (
             <Badge variant="info" className="gap-1"><Loader2 size={10} className="animate-spin" /> {take.status}</Badge>
           ) : (
-            <Badge variant="muted">not rendered</Badge>
+            <Badge variant="muted">{t("not rendered")}</Badge>
           )}
           <DropdownMenu>
-            <Tip content="Line actions">
+            <Tip content={t("Line actions")}>
               <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0 text-muted-foreground" aria-label="Line actions">
+                <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0 text-muted-foreground" aria-label={t("Line actions")}>
                   <MoreVertical size={15} />
                 </Button>
               </DropdownMenuTrigger>
@@ -220,7 +223,7 @@ function RadioLine({ line, onSaveLine, onRecreate, onSelectVersion, agentBusy })
               <DropdownMenuItem
                 disabled={agentBusy || !line.voiceRef}
                 onClick={() => onRecreate?.()}
-                title={!line.voiceRef ? "Cast a voice for this speaker first" : agentBusy ? "The agent is busy" : undefined}
+                title={!line.voiceRef ? t("Cast a voice for this speaker first") : agentBusy ? t("The agent is busy") : undefined}
               >
                 <RotateCcw size={14} /> {recreateLabel}
               </DropdownMenuItem>
@@ -232,38 +235,36 @@ function RadioLine({ line, onSaveLine, onRecreate, onSelectVersion, agentBusy })
         rows={2}
         className={cn(field, "mt-1.5 w-full resize-y")}
         value={text}
-        placeholder="Dialogue line"
+        placeholder={t("Dialogue line")}
         onChange={(e) => setText(e.target.value)}
         onBlur={() => text !== (line.text || "") && commit({ text })}
       />
-      {/* Version pills: pick which rendered take is active (plays here + flows to
-          Send to editor / pacing). Only shown once there's more than one take. */}
       {takes.length > 1 && (
         <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-          <span className="text-[10px] uppercase tracking-wide text-muted-foreground">takes</span>
-          {takes.map((t, i) => (
+          <span className="text-[10px] uppercase tracking-wide text-muted-foreground">{t("takes")}</span>
+          {takes.map((tk, i) => (
             <Tip
-              key={`${t.trackId}:${t.v}`}
+              key={`${tk.trackId}:${tk.v}`}
               content={
-                t.status === "missing" ? "This take's audio is gone"
-                  : t.selected ? "The active take"
-                  : t.ready ? `Use take ${i + 1}`
-                  : `take ${i + 1} — ${t.status}`
+                tk.status === "missing" ? t("This take's audio is gone")
+                  : tk.selected ? t("The active take")
+                  : tk.ready ? t("Use take {n}", { n: i + 1 })
+                  : t("take {n} — {status}", { n: i + 1, status: tk.status })
               }
             >
             <button
               type="button"
-              disabled={t.selected || t.status === "missing"}
-              onClick={() => onSelectVersion?.(t)}
+              disabled={tk.selected || tk.status === "missing"}
+              onClick={() => onSelectVersion?.(tk)}
               className={cn(
                 "inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-[11px] font-medium transition-colors",
-                t.selected ? "border-primary bg-primary/10 text-primary" : "hover:border-primary/40 hover:bg-accent/40",
-                t.status === "missing" && "text-muted-foreground line-through",
-                !t.ready && t.status !== "missing" && "opacity-70",
+                tk.selected && "border-primary bg-primary/10 text-primary",
+                tk.status === "missing" && "text-muted-foreground line-through",
+                !tk.ready && tk.status !== "missing" && "opacity-70",
               )}
             >
-              {t.selected && <Check size={11} />}
-              {!t.ready && t.status !== "missing" && <Loader2 size={10} className="animate-spin" />}
+              {tk.selected && <Check size={11} />}
+              {!tk.ready && tk.status !== "missing" && <Loader2 size={10} className="animate-spin" />}
               v{i + 1}
             </button>
             </Tip>
@@ -280,6 +281,7 @@ function RadioLine({ line, onSaveLine, onRecreate, onSelectVersion, agentBusy })
 
 function RadioStudio() {
   const agent = useAgent();
+  const t = useT();
   const agentBusy = agentIsBusy(agent);
   const data = useLoaderData();
   const navigate = useNavigate();
@@ -288,8 +290,6 @@ function RadioStudio() {
   const [error, setError] = useState(null);
   const [sending, setSending] = useState(false);
   const [pacing, setPacing] = useState(false);
-  // "Send to editor" honors this toggle: when on, the agent paces the timeline.
-  // Persisted in localStorage so it survives reloads; defaults to on.
   const [pacingOn, setPacingOnState] = useState(() => {
     try { return localStorage.getItem("radioAgentPacing") !== "off"; } catch { return true; }
   });
@@ -297,10 +297,6 @@ function RadioStudio() {
     setPacingOnState(on);
     try { localStorage.setItem("radioAgentPacing", on ? "on" : "off"); } catch { /* ignore */ }
   };
-  // Which scene's "Render scene" was actually launched — so only THAT button
-  // shows "working…". Without this, the global agentBusy flag flips every
-  // scene's button to "working…" (even for a single-line recreate), which reads
-  // as "Beat 2 started rendering" when it didn't. Cleared when the agent idles.
   const [renderingScene, setRenderingScene] = useState(null);
   useEffect(() => { if (!agentBusy) setRenderingScene(null); }, [agentBusy]);
   const sceneKey = (s) => `${s.beat}:${s.lines[0].id}`;
@@ -311,24 +307,20 @@ function RadioStudio() {
     revalidate();
   }, [revalidate]);
 
-  // The agent just rendered/attached takes → refresh when its turn ends.
   useRevalidateOnAgentIdle("radio", agent.status);
 
   const mutate = useCallback(async (path, body) => {
     setError(null);
     try {
       const res = await fetch(path, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "Save failed");
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || t("Save failed"));
       refetch();
     } catch (e) { setError(String(e.message || e)); }
-  }, [refetch]);
+  }, [refetch, t]);
 
   const cast = (character, voiceRef) => mutate("/api/radio/casting", { character, voiceRef });
   const saveLine = (id, patch) => mutate(`/api/radio/line/${encodeURIComponent(id)}`, patch);
 
-  // Pick which rendered take is active for a line (the version pills). POSTs the
-  // selection; buildRadioView resolves it as line.take, so Send to editor / pacing
-  // / the animatic all follow the pick.
   const selectVersion = useCallback(async (id, take) => {
     setError(null);
     try {
@@ -336,23 +328,18 @@ function RadioStudio() {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ trackId: take.trackId, v: take.v, selected: true }),
       });
-      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "Select failed");
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || t("Select failed"));
       refetch();
     } catch (e) { setError(String(e.message || e)); }
-  }, [refetch]);
+  }, [refetch, t]);
 
   const renderScene = (scene) => {
     setRenderingScene(sceneKey(scene));
     agent.send({ message: renderRadioSceneMessage(scene, scene.lines) }).catch(() => setRenderingScene(null));
   };
 
-  // Re-voice ONE line — the kebab "Recreate". The new take is appended as another
-  // version and auto-selected (worker side); the tab refreshes when the agent idles.
   const recreateLine = (scene, line) => agent.send({ message: recreateRadioLineMessage(scene, line) }).catch(() => {});
 
-  // Delegate casting to the agent: it designs, renders, and casts a voice for
-  // one or more speakers, picking the right tool per name (attach_character_voice
-  // for a World character, cast_radio_voice for a background speaker).
   const voiceWithAgent = useCallback(
     (characters) => { agent.send({ message: castVoiceMessage(characters) }).catch(() => {}); },
     [agent],
@@ -363,22 +350,18 @@ function RadioStudio() {
     try {
       const res = await fetch("/api/radio/to-editor", { method: "POST" });
       const json = await res.json();
-      if (!res.ok) throw new Error(json.error || "Send failed");
+      if (!res.ok) throw new Error(json.error || t("Send failed"));
       navigate("/editor");
     } catch (e) { setError(String(e.message || e)); }
     finally { setSending(false); }
   };
 
-  // "Send to editor" + the editorial second pass: build the same gapless
-  // timeline first (deterministic, exactly what the plain button does), then
-  // hand the agent the pacing brief (radio-pacing skill) and jump to the
-  // Editor — the re-timed gaps land live when the agent's turn ends.
   const sendToEditorPaced = async () => {
     setPacing(true); setError(null);
     try {
       const res = await fetch("/api/radio/to-editor", { method: "POST" });
       const json = await res.json();
-      if (!res.ok) throw new Error(json.error || "Send failed");
+      if (!res.ok) throw new Error(json.error || t("Send failed"));
       agent.send({ message: paceRadioTimelineMessage() }).catch(() => {});
       navigate("/editor");
     } catch (e) { setError(String(e.message || e)); }
@@ -396,41 +379,39 @@ function RadioStudio() {
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h2 className="flex items-center gap-2 text-xl font-semibold tracking-tight">
-              <RadioIcon size={18} className="text-primary" /> Radio version
+              <RadioIcon size={18} className="text-primary" /> {t("Radio version")}
             </h2>
             <p className="text-sm text-muted-foreground">
-              The audio-only pass — every scene's dialogue voiced with each character's cast voice, then sent to the Editor as its own timeline.
+              {t("The audio-only pass — every line is voiced here, rendered, and sent to the Editor.")}
             </p>
           </div>
-          <div className="flex items-center gap-2 rounded-lg border bg-muted/50 p-1.5">
+          <div className="flex items-center gap-2">
             <Tip content={pacingOn
               ? (agentBusy
-                  ? "The agent is busy — wait for it to finish"
-                  : "Send to the Editor, then have the agent pace it: space the lines from the shot timings so the story breathes")
-              : "Send just the voiced dialogue to the Editor as an audio-only timeline (lines laid back-to-back)"}>
+                  ? t("The agent is busy — wait for it to finish")
+                  : t("Send to the Editor, then have the agent pace it: space the lines from the shot timings so the story breathes"))
+              : t("Send just the voiced dialogue to the Editor as an audio-only timeline (lines laid back-to-back)")}>
               <Button variant="outline" onClick={pacingOn ? sendToEditorPaced : sendToEditor}
                 disabled={sending || pacing || (pacingOn && agentBusy) || !data.readyLines}>
                 {(sending || pacing)
-                  ? <><Loader2 size={14} className="animate-spin" /> sending…</>
-                  : <><Send size={14} /> Send to editor</>}
+                  ? <><Loader2 size={14} className="animate-spin" /> {t("sending…")}</>
+                  : <><Send size={14} /> {t("Send to editor")}</>}
               </Button>
             </Tip>
-            {/* Tooltip lives on the label, not the Switch: TooltipTrigger overwrites
-                its child's data-state, which breaks the Switch's checked styling. */}
-            <Tip content="When on, the agent paces the timeline from the shot timings after sending">
+            <Tip content={t("When on, the agent paces the timeline from the shot timings after sending")}>
               <label className="flex cursor-pointer items-center gap-2 pl-1 pr-2 text-sm select-none">
-                <span className="text-muted-foreground">Agent pacing</span>
+                <span className="text-muted-foreground">{t("Agent pacing")}</span>
                 <Switch checked={pacingOn} onCheckedChange={setPacingOn} disabled={sending || pacing} />
               </label>
             </Tip>
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-          <Badge variant="outline">{scenes.length} scenes</Badge>
-          <Badge variant="info"><AudioLines size={11} /> {data.readyLines || 0}/{data.totalLines || 0} lines rendered</Badge>
-          {uncast > 0 && <Badge variant="warning"><CircleAlert size={11} /> {uncast} character{uncast > 1 ? "s" : ""} without a voice</Badge>}
-          {agentBusy && <Badge variant="warning"><Loader2 size={11} className="animate-spin" /> agent working…</Badge>}
-          <span>scenes come from the Shot list; cast a favorited voice per character, render a scene, then send the whole thing to the Editor.</span>
+          <Badge variant="outline">{t("{n} scenes", { n: scenes.length })}</Badge>
+          <Badge variant="info"><AudioLines size={11} /> {t("{ready}/{total} lines rendered", { ready: data.readyLines || 0, total: data.totalLines || 0 })}</Badge>
+          {uncast > 0 && <Badge variant="warning"><CircleAlert size={11} /> {t("{n} characters without a voice", { n: uncast })}</Badge>}
+          {agentBusy && <Badge variant="warning"><Loader2 size={11} className="animate-spin" /> {t("agent working…")}</Badge>}
+          <span>{t("scenes come from the Shot list; cast a favorited voice per character, render a scene, then send the whole thing to the Editor.")}</span>
         </div>
       </div>
 
@@ -438,17 +419,14 @@ function RadioStudio() {
 
       {scenes.length === 0 ? (
         <div className="rounded-xl border border-dashed p-6 text-center">
-          <Empty>no dialogue yet — generate a Shot list with spoken lines first, then cast voices and render here.</Empty>
+          <Empty>{t("no dialogue yet — generate a Shot list with spoken lines first, then cast voices and render here.")}</Empty>
         </div>
       ) : (
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
-          {/* Scenes */}
           <div className="min-w-0 flex-1 space-y-4">
             {scenes.map((scene) => {
               const sceneUncast = scene.lines.some((l) => !l.voiceRef);
               const rendering = agentBusy && renderingScene === sceneKey(scene);
-              // Every line has a rendered take → the scene is done. Disable the
-              // button and flip it to "Rendered" so it can't be re-launched.
               const sceneRendered = scene.lines.every((l) => l.take);
               return (
                 <Panel
@@ -456,17 +434,17 @@ function RadioStudio() {
                   title={<span className="flex items-center gap-2"><Film size={15} className="text-primary" /> {scene.beatTitle || scene.beat}</span>}
                   meta={
                     <div className="flex items-center gap-2">
-                      <Badge variant="outline">{scene.lines.length} lines</Badge>
+                      <Badge variant="outline">{t("{n} lines", { n: scene.lines.length })}</Badge>
                       <Tip content={
-                        sceneRendered && !rendering ? "Every line in this scene is rendered"
-                          : sceneUncast ? "Cast a voice for every speaker in this scene first"
-                          : agentBusy ? "The agent is busy — wait for it to finish"
-                          : "Render this scene's dialogue"
+                        sceneRendered && !rendering ? t("Every line in this scene is rendered")
+                          : sceneUncast ? t("Cast a voice for every speaker in this scene first")
+                          : agentBusy ? t("The agent is busy — wait for it to finish")
+                          : t("Render this scene's dialogue")
                       }>
                         <Button size="sm" onClick={() => renderScene(scene)} disabled={agentBusy || sceneUncast || (sceneRendered && !rendering)}>
-                          {rendering ? <><Loader2 size={13} className="animate-spin" /> working…</>
-                            : sceneRendered ? <><Check size={13} /> Rendered</>
-                            : <><Mic size={13} /> Render scene</>}
+                          {rendering ? <><Loader2 size={13} className="animate-spin" /> {t("working…")}</>
+                            : sceneRendered ? <><Check size={13} /> {t("Rendered")}</>
+                            : <><Mic size={13} /> {t("Render scene")}</>}
                         </Button>
                       </Tip>
                     </div>
@@ -489,11 +467,10 @@ function RadioStudio() {
             })}
           </div>
 
-          {/* Casting rail */}
           <aside className="shrink-0 lg:sticky lg:top-5 lg:w-[340px] lg:self-start lg:max-h-[calc(100dvh-40px)] lg:overflow-y-auto">
-            <Panel title={<span className="flex items-center gap-2"><Mic size={15} className="text-primary" /> Casting</span>} meta={<Badge variant="outline">{casting.length}</Badge>}>
+            <Panel title={<span className="flex items-center gap-2"><Mic size={15} className="text-primary" /> {t("Casting")}</span>} meta={<Badge variant="outline">{casting.length}</Badge>}>
               {casting.length === 0 ? (
-                <Empty>no speaking characters yet — add a voice on the World tab, or write a shot list with spoken lines.</Empty>
+                <Empty>{t("no speaking characters yet — add a voice on the World tab, or write a shot list with spoken lines.")}</Empty>
               ) : (
                 <div className="space-y-1.5">
                   {casting.map((entry) => <CastingCard key={entry.character} entry={entry} onCast={cast} onAgentCast={voiceWithAgent} agentBusy={agentBusy} />)}
@@ -503,7 +480,7 @@ function RadioStudio() {
                 <div className="mt-2">
                   <Tip
                     wrapClassName="w-full"
-                    content={agentBusy ? "The agent is busy — wait for it to finish" : `Ask the agent to design, render, and cast a voice for all ${uncast} uncast speaker${uncast > 1 ? "s" : ""}`}
+                    content={agentBusy ? t("The agent is busy — wait for it to finish") : t("Ask the agent to design, render, and cast a voice for all {n} uncast speakers", { n: uncast })}
                   >
                     <Button
                       variant="secondary"
@@ -512,13 +489,13 @@ function RadioStudio() {
                       disabled={agentBusy}
                       onClick={() => voiceWithAgent(uncastNames)}
                     >
-                      {agentBusy ? <><Loader2 size={13} className="animate-spin" /> agent working…</> : <><Bot size={13} /> Voice {uncast} uncast with agent</>}
+                      {agentBusy ? <><Loader2 size={13} className="animate-spin" /> {t("agent working…")}</> : <><Bot size={13} /> {t("Voice {n} uncast with agent", { n: uncast })}</>}
                     </Button>
                   </Tip>
                 </div>
               )}
               <p className="mt-2 px-1 text-[11px] text-muted-foreground">
-                every speaker plus every character with a voice on the World tab. A voice cast here is shared with the World tab — the two never diverge. Cast from your liked Sound Studio voice takes, or let the agent design and cast one.
+                {t("every speaker plus every character with a voice on the World tab. A voice cast here is shared with the World tab — the two never diverge. Cast from your liked Sound Studio voice takes, or let the agent design and cast one.")}
               </p>
             </Panel>
           </aside>
@@ -528,13 +505,11 @@ function RadioStudio() {
   );
 }
 
-// Loader: the derived radio view (scenes from the shot list + casting + takes).
-// The animatic (radio + storyboard stills on a picture track) now has its own tab.
 export function loader() {
   return swr("radio", async () => {
     const res = await fetch("/api/radio");
     const json = await res.json();
-    if (!res.ok) throw new Error(json.error || "Failed to load");
+    if (!res.ok) throw new Error(json.error || staticT("Failed to load"));
     return json;
   });
 }
