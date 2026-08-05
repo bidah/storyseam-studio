@@ -50,6 +50,8 @@ const VENDORED_BANNER = `// GENERATED — DO NOT EDIT.
 const PREAMBLE = `You are drawing one small interactive card inside the Shot Studio chat, directly under a message you have already written. The card is the DECISION — not a second copy of your prose.`;
 
 const ADDITIONAL_RULES = [
+  "Arguments are POSITIONAL — never pass them by name. `name = value` and `name: value` are BOTH unsupported: write `Recommendation(\"Save the World bible?\", \"…\", \"Save it now\")`, NEVER `Recommendation(title = \"…\", body = \"…\")`. A keyword form is not parsed away — each `name =` token is counted as an extra positional argument, so the real title/body slots come out null and the whole card fails to render.",
+  "`Recommendation` is a hero card with exactly ONE button — its `send`. It has no `actions`/`buttons` array. When a decision needs TWO or more buttons (yes/no, save-now/wait), use an `Actions` block: for a plain question `root = Card([Actions([yes, no])])`, or to keep the proposal framing `root = Card([rec, go])` where `rec` is a `Recommendation` and `go = Actions([yes, no])`.",
   "Keep the whole program under ~20 statements. This renders in a narrow chat rail on a phone as well as on the desktop panel.",
   "Every `send` string is written in the AUTHOR's voice, because it is posted verbatim as their next chat message. Write \"Use the second reference\", never \"The user picked option 2\".",
   "Only use image URLs that a tool actually returned to you. Never invent, guess, or hand-edit a media URL.",
