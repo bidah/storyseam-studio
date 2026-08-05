@@ -172,6 +172,32 @@ For a **free-text answer** (a name, a prompt rewrite, an open question), do not
 call `render_ui` at all: just ask in your message and stop. The composer is
 already there.
 
+## A card that asks must have something to tap
+
+The commonest broken card is a **parameter sheet with no button**: a `KeyValue`
+of a submit you're about to make, a message above it saying "review the params
+and tap Confirm", and nothing to tap. It renders — `Card([KeyValue(…)])` is
+valid — but `render_ui` is the last action of your turn, so the author is left
+staring at a promise of a button that was never drawn, and has to type the
+go-ahead your card was supposed to send for them.
+
+So a `KeyValue` or `Compare` that states the terms of a decision ships with its
+answer **in the same program**:
+
+```
+root = Card([params, go])
+params = KeyValue([{label: "Model", value: "seedance_2_0 (std)"}, {label: "Resolution", value: "720p"}, {label: "Duration", value: "15s"}], "Confirm render")
+go = Actions([yes, edit])
+yes = Action("Confirm — render it", "Go ahead and render MS-01", "primary")
+edit = Action("Change something first", "Wait — let me change the params first")
+```
+
+`render_ui` rejects the buttonless version rather than showing it, and hands you
+back the program to fix; just call it again with the `Actions` block, without
+apologising in chat. The only cards that legitimately have nothing to tap are
+the ones that merely SHOW a finished result (a `MediaGrid` of an image, an
+`AudioList` of a take) — those are delivery, not a question.
+
 ## Never invent anything
 
 Every url, id, count and duration in a card comes from a tool result you

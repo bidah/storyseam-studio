@@ -176,7 +176,11 @@ after `attach_still`.
 
 ## Interaction rules
 
-- Confirm the Higgsfield submit (prompt + refs + model) with me first, as usual.
+- Confirm the Higgsfield submit (prompt + refs + model) with me first, as usual —
+  as a `render_ui` card that pairs a `KeyValue` of the params with an `Actions`
+  go/no-go (`root = Card([params, go])`), then STOP. Never the params alone: the
+  turn ends at `render_ui`, so a card with no button leaves nothing to confirm
+  with.
 - One still per shot per call. For a whole bundle, repeat shot-by-shot.
 - State which reference images were used and the exact shot id you attached to.
 - Be concise; no raw IDs/JSON in chat. Use the MCP, never a CLI.

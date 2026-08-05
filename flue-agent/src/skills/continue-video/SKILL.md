@@ -19,7 +19,7 @@ the agent — call them directly, no loading step needed.
 
 ## Flags
 
-- `--confirm` — **preview-and-confirm gate.** When present in the skill args, do NOT submit immediately. After building everything (Step 5), show the user the exact `generate_video` call (model + every param + each media role/value) and the media summary, then call `AskUserQuestion` with options to **Submit as-is** or **Edit before sending** ("Other" = type corrections in chat). Apply corrections, re-show, and only submit once confirmed. See "Confirmation gate".
+- `--confirm` — **preview-and-confirm gate.** When present in the skill args, do NOT submit immediately. After building everything (Step 5), show the user the exact `generate_video` call (model + every param + each media role/value) and the media summary, then draw a `render_ui` card pairing a `KeyValue` of the params with an `Actions` go/no-go (**Submit as-is** / **Edit before sending**) and STOP. Apply corrections, re-show, and only submit once they tap. See "Confirmation gate".
 
 ## Seedance media roles (the important part)
 
@@ -100,7 +100,11 @@ Ask the user for one sound file per character (voice reference). For **each**:
    ffmpeg -y -i "SOUND_SRC" -c:a libmp3lame -q:a 2 "<char>_sound.mp3"
    ```
    (For a multi-speaker shot, build ONE combined, properly-timed `dialogue.mp3` — that single track is the `audio_references`.)
-2. **Confirm the sound↔character match with a selector** — `AskUserQuestion`, one question per sound file, header `"Character"`, options = the character tags gathered so far plus a way to name a new one. Record `tag → sound.mp3`.
+2. **Confirm the sound↔character match with a card** — ONE `render_ui`
+   `OptionList` with `select: "one-per-group"`, a group per sound file and the
+   character tags gathered so far as its options (plus a "name a new one" way
+   out). One card, not one per file: the first tap ends the turn, so a card per
+   sound strands every sound after the first. Record `tag → sound.mp3`.
 3. Upload the chosen track → media_id for `audio_references`.
 
 | Character tag | Sound file |
@@ -129,10 +133,25 @@ So character sheets (Step 3) + `@` references (Step 4) all become `image_referen
 Between building the call (end of Step 4) and submitting (Step 5):
 
 1. **Show the exact `generate_video` call** — model, prompt (resolved), all params, and each `medias[]` entry as `role → file (media_id)`, plus a one-line media summary (start frame, voice track, image refs, resolution, duration).
-2. **Ask for confirmation** with `AskUserQuestion`, header `"Send?"`: `Submit as-is` / `Edit before sending` (Other = corrections in chat).
-3. **Apply corrections**, re-show, loop until confirmed. Only then submit.
+2. **Ask for the go-ahead with `render_ui`** — a `KeyValue` of the params **and
+   an `Actions` block in the SAME program**. The buttons ARE the gate: flue
+   cannot suspend a turn, so a params card with nothing to tap strands the
+   author, and `render_ui` rejects it.
 
-Without `--confirm`, submit directly.
+   ```
+   root = Card([params, go])
+   params = KeyValue([{label: "Model", value: "seedance_2_0 (std)"}, {label: "Start frame", value: "last frame of shot 12"}, {label: "Voice track", value: "captain_sound.mp3"}, {label: "Resolution", value: "720p"}, {label: "Duration", value: "10s"}], "Confirm render")
+   go = Actions([yes, edit])
+   yes = Action("Confirm — send it", "Submit it as-is", "primary")
+   edit = Action("Edit before sending", "Wait — let me change the params first")
+   ```
+
+3. **STOP after the card** — it is the final action of the turn. Their tap
+   arrives as the next user message; submit (or apply corrections, re-show, and
+   loop) from there.
+
+Without `--confirm`, submit directly. Load the **generative-ui** skill for the
+openui-lang syntax before writing the program.
 
 ## Step 5 — Submit (MCP `generate_video`)
 
@@ -201,7 +220,7 @@ Fill in real values (no placeholders). Print the result URL + a one-line summary
 ## Interaction rules
 
 - Be concise. No raw IDs or JSON in chat. One question per phase — don't batch-ask video + sounds + sheets + prompt at once.
-- Always use a selector (`AskUserQuestion`) for the sound↔character confirmation in Step 2.
+- Always ask with a `render_ui` card, never prose: one `one-per-group` `OptionList` for the sound↔character match (Step 2), `KeyValue` + `Actions` for the submit gate. A card that asks for something always carries something to tap.
 - Save persistent artifacts (frames, converted audio, downloads) to the working folder, never `/tmp`, and never an `assets` folder unless asked.
 - Confirm which track was used as the voice/lipsync source when multiple characters exist.
 - Every generation lands in its own `gen_<timestamp>_<slug>/` folder with `video.mp4` + `prompt.txt` (Step 6).

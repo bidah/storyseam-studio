@@ -1,20 +1,20 @@
 ---
 name: generate-multishot
 description: >-
-  Generate ONE multi-shot Seedance 2.0 video (several scripted shots in a single
-  <15s clip) via the Higgsfield MCP, driven by a DIALOG-ONLY audio stem plus
-  character voice references, character sheets, and a location image. Use when
-  the user wants a "multishot" / "multi-shot" Seedance generation, asks to
-  generate/render an Episode bundle or shot by id ("generate MS-01"), to combine
-  shots 1–N into one clip, or to render a scene beat from character + location
-  references with lip-synced dialogue. Enforces the -dialog/-vfx naming check:
-  only the clean dialogue stem, never the SFX/VFX stem, feeds the video.
-  Higgsfield-ONLY — never substitute fal_generate_video or atlas_generate_video
-  here; their Seedance takes one start image and no driving audio stem, so they
-  can't do the multi-reference lip-synced flow (even when fal or Atlas is the
-  active render provider). Model/resolution come from the project Video defaults
-  (get_visual_world); audio_references force mode "std", so a Fast default falls
-  back to seedance_2_0.
+  Generate ONE multi-shot Seedance 2.0 video (several shots in one <15s clip)
+  via the Higgsfield MCP, driven by a DIALOG-ONLY audio stem plus character
+  sheets and a location image. Use when the user wants a "multishot" /
+  "multi-shot" Seedance generation, asks to generate/render an Episode bundle or
+  shot by id ("generate MS-01"), to combine shots 1–N into one clip, or to
+  render a scene beat from character + location refs. Only the clean -dialog
+  stem, never the -vfx stem, feeds the video. Higgsfield-ONLY — never substitute
+  fal_generate_video or atlas_generate_video: their Seedance takes one start
+  image and no audio stem, so it can't do this lip-synced multi-reference flow,
+  even when fal or Atlas is active. Model/resolution come from the project Video
+  defaults (get_visual_world); audio_references force mode "std", so a Fast
+  default falls back to seedance_2_0. Credits burn on submit, so the params go
+  to the author FIRST as a render_ui KeyValue + Actions card — never params
+  alone, which leaves nothing to tap.
 ---
 
 # generate-multishot (Higgsfield Seedance 2.0 — via the Higgsfield MCP)
@@ -105,6 +105,32 @@ the agent — call them directly, no loading step needed.
 
 One prompt describing the shots as ordered beats, under 15s total. Per shot give: camera, action, and the spoken line (or "no dialogue"). When a composed bundle prompt is handed to you, its `STYLE:` line (or absence of one) reflects the project's Episode style selection — keep it verbatim, never invent your own style clause; with no STYLE line, the reference images alone define the look. Then "Match the attached reference images for the location and the characters … Lip-sync all dialogue to the attached audio track, and embed that dialogue as the video's audio." Keep total runtime ≤ the dialogue stem length and ≤ 15s.
 
+## Step 3½ — Confirm the submit with a CARD, not a paragraph (`render_ui`)
+
+A Seedance render costs real credits, so the author sees the exact params before
+it goes. Draw them with **`render_ui`**: a `KeyValue` of the terms **and an
+`Actions` block in the SAME program**. There is no other confirm channel — flue
+cannot suspend a turn, so the buttons ARE the gate.
+
+```
+root = Card([params, go])
+params = KeyValue([{label: "Bundle", value: "MS-01 — Teaser — The Collapse"}, {label: "Model", value: "seedance_2_0 (std)"}, {label: "Resolution", value: "720p"}, {label: "Duration", value: "15s"}, {label: "Dialogue stem", value: "ms-01-dialog.mp3"}, {label: "Image refs", value: "Noah Chen sheet, Mrs. Kim sheet, Alley location"}], "Confirm render")
+go = Actions([yes, edit])
+yes = Action("Confirm — render it", "Go ahead and render MS-01", "primary")
+edit = Action("Change something first", "Wait — let me change the render params first")
+```
+
+- **Never draw the `KeyValue` on its own.** A params card with no button is a
+  dead end: your turn ends at `render_ui`, so "tap Confirm" points at nothing and
+  the author has to type the go-ahead themselves. `render_ui` now rejects such a
+  program — fix it and call again rather than explaining the miss in chat.
+- Write each `send` in the AUTHOR's voice; it is posted verbatim as their next
+  message. Load the **generative-ui** skill for the syntax.
+- `render_ui` is the LAST action of the turn. STOP after it — the actual
+  `generate_video` submit happens on the NEXT turn, once their tap arrives.
+- Skip the card only when the author has already said "just render it" /
+  "don't ask again" for this take.
+
 ## Step 4 — Preflight, then submit (MCP `generate_video`)
 
 Preflight cost (`get_cost:true`) if useful, then:
@@ -185,6 +211,7 @@ curl -fsSL -o "$GEN_DIR/<slug>_<res>.mp4" "RESULT_URL"
 ## Interaction rules
 
 - Always run the check net and **state the exact dialogue file** used as `audio_references`.
+- Confirm the submit with a `render_ui` card (Step 3½) — `KeyValue` **plus** `Actions`, never the params alone — and stop the turn there.
 - Never feed a `*-vfx.*` stem (or an unverified flat mix) to the video.
 - Be concise; no raw IDs/JSON in chat. Use the MCP, never the CLI.
 - See also: `video-from-audio-vfx` (produces the two stems), `seed-audio` (Seed Audio params + the `-dialog`/`-vfx` naming), `continue-video` (continue-from-last-frame variant).
