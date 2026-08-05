@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLoaderData, useRevalidator } from "react-router";
-import { X, Check, Plus, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, RotateCcw, Maximize2, Volume2, Speech, Play, Copy, Pencil, Sparkles, PenLine, FileText, Film, Image as ImageIcon, Loader2, Wand2, Scissors, Boxes, CircleAlert, MapPin, User, Palette } from "lucide-react";
+import { X, Check, Plus, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, RotateCcw, Maximize2, Volume2, VolumeX, Speech, Play, Pause, Copy, Pencil, Sparkles, PenLine, FileText, Film, Image as ImageIcon, Loader2, Wand2, Scissors, Boxes, CircleAlert, MapPin, User, Palette } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useT } from "@/lib/i18n";
 import { swr, useRevalidateOnMount, useRevalidateOnAgentIdle } from "@/lib/swr";
@@ -871,6 +871,105 @@ function SceneStyleSelect({ bundleId, style, onSetStyle }) {
   );
 }
 
+/* ---------------------------------------------------------------- *
+ * Audio reference preview                                          *
+ * ---------------------------------------------------------------- */
+
+// One-playing-at-a-time across every preview pill on the page, same rule as
+// the genui AudioItem's shared activeClip (a row of voice refs should never
+// overlap). The <audio> element is only built on the first tap.
+let activePreview = null;
+
+function useAudioPreview(src) {
+  const ref = useRef(null);
+  const [playing, setPlaying] = useState(false);
+  const [progress, setProgress] = useState(0);
+
+  useEffect(
+    () => () => {
+      const el = ref.current;
+      if (!el) return;
+      el.pause();
+      if (activePreview === el) activePreview = null;
+    },
+    []
+  );
+
+  const toggle = () => {
+    let el = ref.current;
+    if (!el) {
+      el = new Audio(src);
+      el.preload = "auto";
+      el.addEventListener("timeupdate", () => {
+        if (el.duration) setProgress(el.currentTime / el.duration);
+      });
+      el.addEventListener("play", () => {
+        if (activePreview && activePreview !== el) activePreview.pause();
+        activePreview = el;
+        setPlaying(true);
+      });
+      el.addEventListener("pause", () => setPlaying(false));
+      el.addEventListener("ended", () => {
+        el.currentTime = 0;
+        setProgress(0);
+      });
+      ref.current = el;
+    }
+    if (el.paused) el.play().catch(() => setPlaying(false));
+    else el.pause();
+  };
+
+  return { playing, progress, toggle };
+}
+
+// A compact play/pause pill for one selected voice reference — the "simple
+// play button" gesture, so the author can preview a voice before rendering.
+function AudioRefPlayer({ a }) {
+  const t = useT();
+  const src = a.url || a.refUrl;
+  const { playing, progress, toggle } = useAudioPreview(src);
+  if (!src) {
+    return (
+      <Badge variant="destructive" className="h-7" title={a.rel}>
+        <VolumeX size={12} /> {a.label}
+      </Badge>
+    );
+  }
+  return (
+    <span
+      className="relative flex h-7 items-center gap-1.5 overflow-hidden rounded-full border bg-secondary pl-1 pr-2 text-secondary-foreground"
+      title={a.rel}
+    >
+      <span
+        className={cn(
+          "absolute inset-y-0 left-0 bg-primary/20 transition-[width] duration-200",
+          playing ? "block" : "hidden"
+        )}
+        style={{ width: `${Math.round(progress * 100)}%` }}
+      />
+      <button
+        type="button"
+        onClick={toggle}
+        aria-label={`${playing ? "Pause" : "Play"} ${a.label}`}
+        className={cn(
+          "relative z-10 flex size-5 shrink-0 items-center justify-center rounded-full border transition-colors",
+          playing
+            ? "border-primary bg-primary text-primary-foreground"
+            : "bg-card text-foreground hover:bg-accent/60"
+        )}
+      >
+        {playing ? <Pause size={10} /> : <Play size={10} className="translate-x-px" />}
+      </button>
+      <span className="relative z-10 flex min-w-0 items-center gap-1 text-xs">
+        <span className="truncate">{a.label}</span>
+        {a.order && a.order.length > 1 && (
+          <em className="shrink-0 not-italic text-muted-foreground">({a.order.map((n, i) => `${i + 1}=${n}`).join(", ")})</em>
+        )}
+      </span>
+    </span>
+  );
+}
+
 function EpisodeBundle({ b, flat, picked, onOpenPicker, onRemove, onView, audioMap, audioPicked, onOpenAudio, vids, allVideos, reloadKey, onToggleVideo, stills, onToggleStill, firstFrame, onSetFirstFrame, refVideo, onSetRefVideo, override, onEditPrompt, onResetPrompt, signoff, onSign, needsState, onLinkNeed, style, onSetStyle }) {
   const t = useT();
   const [open, setOpen] = useState(false);
@@ -904,7 +1003,7 @@ function EpisodeBundle({ b, flat, picked, onOpenPicker, onRemove, onView, audioM
   const refBlock = assigned.length
     ? "IMAGE REFERENCES (pass each file as an image_references entry):\n" +
       assigned.map((im) => `- ${refLabel(im.rel)}: ${im.abs || im.rel}`).join("\n")
-    : "IMAGE REFERENCES: (none selected yet — use “choose references” above)";
+    : "IMAGE REFERENCES: (none selected yet — use “choose character and location refs” above)";
   const audioBlock = audioAssigned.length
     ? "\n\nVOICE / SOUND REFERENCES (pass as the audio reference — voice identity, NOT dialogue):\n" +
       audioAssigned
@@ -1139,7 +1238,7 @@ function EpisodeBundle({ b, flat, picked, onOpenPicker, onRemove, onView, audioM
               </div>
             )}
             <Button variant="outline" size="sm" onClick={() => onOpenPicker(b)}>
-              <Plus size={14} /> {t("choose references")}
+              <Plus size={14} /> {t("choose character and location refs")}
             </Button>
           </div>
 
@@ -1149,12 +1248,7 @@ function EpisodeBundle({ b, flat, picked, onOpenPicker, onRemove, onView, audioM
                 <Empty>{t("no voice reference chosen")}</Empty>
               ) : (
                 audioAssigned.map((a) => (
-                  <Badge key={a.rel} variant="secondary" className="h-7" title={a.rel}>
-                    <Volume2 size={12} /> {a.label}
-                    {a.order && a.order.length > 1 && (
-                      <em className="ml-1 not-italic text-muted-foreground">({a.order.map((n, i) => `${i + 1}=${n}`).join(", ")})</em>
-                    )}
-                  </Badge>
+                  <AudioRefPlayer key={a.rel} a={a} />
                 ))
               )}
               <Button variant="outline" size="sm" onClick={() => onOpenAudio(b)}>

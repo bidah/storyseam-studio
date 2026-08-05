@@ -164,7 +164,7 @@ export function composeRefBlock(rels: string[]): string {
   return rels.length
     ? 'IMAGE REFERENCES (pass each file as an image_references entry):\n' +
         rels.map((rel) => `- ${refLabel(rel)}: ${rel}`).join('\n')
-    : 'IMAGE REFERENCES: (none selected yet — use “choose references” above)';
+    : 'IMAGE REFERENCES: (none selected yet — use “choose character and location refs” above)';
 }
 
 export function composeAudioBlock(refs: AudioRef[]): string {
