@@ -33,7 +33,7 @@ export default function GenerationStackModal({ open, onClose, generations, curre
                   ) : g.kind === "video" ? (
                     <video src={g.url} className="h-full w-full object-cover" muted />
                   ) : (
-                    <img src={g.url} alt={g.prompt} className="h-full w-full object-cover" />
+                    <img src={g.thumb || g.url} alt={g.prompt} className="h-full w-full object-cover" />
                   )}
                 </button>
               );

@@ -3,8 +3,11 @@
 
 export type LibraryImage = {
   rel: string;
-  url: string;
-  thumb?: string | null;
+  url: string; // the ORIGINAL bytes — what a generation reference is handed
+  // Derived WebP tiers (worker/src/lib/images.js). Fall back to `url`: an image
+  // whose encode hasn't landed yet has the field but serves the original.
+  thumb?: string | null; // ~400px, the grid
+  display?: string | null; // ~1600px, the viewer
   name: string;
   selected?: boolean;
 };

@@ -303,7 +303,7 @@ function GenerationDetail({ gen, onClose, onRecreate, onUseAsRef, onEdit, onAddT
             className="flex min-h-0 items-center justify-center overflow-hidden rounded-lg border bg-muted"
             title="View full image"
           >
-            <img src={gen.url} alt={gen.prompt} className="max-h-full max-w-full object-contain" />
+            <img src={gen.display || gen.url} alt={gen.prompt} className="max-h-full max-w-full object-contain" />
           </button>
 
           {/* Info panel — sectioned cards on top, actions pinned to the bottom. */}
@@ -322,7 +322,7 @@ function GenerationDetail({ gen, onClose, onRecreate, onUseAsRef, onEdit, onAddT
                     {refThumbs.map((r, i) => (
                       <img
                         key={`${r.rel || r.genId || i}`}
-                        src={r.url || r.thumb}
+                        src={r.thumb || r.url}
                         alt="reference"
                         className="h-12 w-12 rounded-md border object-cover"
                       />

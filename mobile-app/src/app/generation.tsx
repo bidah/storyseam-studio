@@ -130,10 +130,10 @@ export default function GenerationSheet() {
 
       {/* Tap = the Galeria full-screen preview (pinch-zoom, shared-element
           transition) — the same viewer the assets grid uses. */}
-      <Galeria urls={[mediaUrl(gen.url) ?? '']} theme={scheme}>
+      <Galeria urls={[mediaUrl(gen.display || gen.url) ?? '']} theme={scheme}>
         <Galeria.Image index={0} style={{ width: imgW, height: imgW * 0.75 }}>
           <Image
-            source={{ uri: mediaUrl(gen.url) }}
+            source={{ uri: mediaUrl(gen.display || gen.url) }}
             accessibilityLabel="View full image"
             style={{ width: imgW, height: imgW * 0.75, borderRadius: 14, backgroundColor: colors.surface }}
             contentFit="contain"

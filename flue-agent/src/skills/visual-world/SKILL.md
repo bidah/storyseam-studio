@@ -112,9 +112,17 @@ Two ways to lock identity as the exploration converges:
   absolute HTTPS URLs. Treat each exactly like a `refUrl`: `media_import_url` it,
   then add it as the model's reference role. This is how "edit this attached image
   and give me one back" works — generate only the count the user asked for.
-- **Never pass a relative path** (`/asset/...`, `/visual-media/...`, `/thumb/...`)
-  or the `url`/`rel`/`thumb` field to `media_import_url` — Higgsfield can't fetch
-  those and rejects them ("needs an absolute HTTPS URL"). Only `refUrl` works.
+- **Never pass a relative path** (`/asset/...`, `/visual-media/...`, `/thumb/...`,
+  `/img/...`) or the `url`/`rel`/`thumb`/`display` field to `media_import_url` —
+  Higgsfield can't fetch those and rejects them ("needs an absolute HTTPS URL").
+  Only `refUrl` works.
+- **`thumb` and `display` are DOWNSCALED WEBP, for looking at — never for
+  generating from.** Every image the tools return now carries three forms: the
+  full-resolution original (reachable only as `refUrl`), a ~1600px `display`, and
+  a ~400px `thumb`. Feeding a tier to a generation would hand the model a
+  shrunken copy and quietly cost you detail. `refUrl` is always the original.
+  The one place to prefer `thumb` is a `render_ui` MediaGrid tile, which is just
+  a picture in the chat.
 - Nano Banana Pro accepts **many** references.
 
 ## Step 4 — Generate (batch when asked)

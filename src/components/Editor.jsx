@@ -832,7 +832,7 @@ function TimelineItem({
                   {takes.map((t) => (
                     <ContextMenuItem key={t.file} onSelect={() => onSwapTake?.(item.id, t)} disabled={t.file === item.stillFile}>
                       <span className="flex items-center gap-2">
-                        <img src={t.url} alt="" className="h-6 w-10 rounded-sm bg-black object-cover" />
+                        <img src={t.thumb || t.url} alt="" className="h-6 w-10 rounded-sm bg-black object-cover" />
                         {t.angle || t.name}
                       </span>
                     </ContextMenuItem>
@@ -1573,7 +1573,7 @@ function SceneDialog({ open, target, onOpenChange, onGenerate, busy }) {
                         t.file === target?.stillFile && "ring-1 ring-sky-500/60",
                       )}
                     >
-                      <img src={t.url} alt="" className="h-16 w-28 bg-black object-cover" />
+                      <img src={t.thumb || t.url} alt="" className="h-16 w-28 bg-black object-cover" />
                       <span className="absolute inset-x-0 bottom-0 truncate bg-black/60 px-1 text-[9px] text-white">
                         {t.angle || t.name}
                       </span>
@@ -5344,7 +5344,7 @@ export default function Editor({ reloadKey }) {
           </DialogHeader>
           {stillModal && (
             <div className="space-y-3">
-              <img src={stillModal.url} alt="" className="w-full rounded-md border bg-black" />
+              <img src={stillModal.display || stillModal.url} alt="" className="w-full rounded-md border bg-black" />
               <dl className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
                 <StillMeta label="Source clip" value={stillModal.sourceName} />
                 <StillMeta label="Bundle" value={stillModal.sourceBundle} />

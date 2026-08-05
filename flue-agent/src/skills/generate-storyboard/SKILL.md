@@ -77,6 +77,14 @@ the model, re-run `models_explore` and retry with the current id.
 
 (Web URL → `media_import_url`; Apps UI local picker → `media_upload_widget`.)
 
+**Always import the `refUrl`.** Character sheets, location sheets and library
+images come back with `refUrl` (the absolute, FULL-RESOLUTION original), plus
+`display` (~1600px webp) and `thumb` (~400px webp). The tiers are for SHOWING a
+picture cheaply — in the app's grids and in a `render_ui` MediaGrid tile. Import
+one as a reference and the model matches a downscaled copy, losing exactly the
+facial and texture detail the sheet exists to lock. `refUrl` is the only field
+that resolves to the original.
+
 ## Step 3 — Write the still prompt
 
 One prompt describing a SINGLE framed moment of the shot (a storyboard keyframe),

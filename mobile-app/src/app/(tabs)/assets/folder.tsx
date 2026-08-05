@@ -169,9 +169,10 @@ export default function AssetFolderScreen() {
   }
 
   const selCount = current.images.filter((i) => i.selected).length;
-  // Full-res URLs (grid order) for the Galeria viewer — tapping a tile opens a
-  // native, swipeable full-screen gallery with a shared-element transition.
-  const galleryUrls = current.images.map((im) => mediaUrl(im.url) ?? '');
+  // Viewer URLs (grid order) — tapping a tile opens a native, swipeable
+  // full-screen gallery with a shared-element transition. The ~1600px webp is
+  // plenty for pinch-zoom and a fraction of the original's bytes over cellular.
+  const galleryUrls = current.images.map((im) => mediaUrl(im.display || im.url) ?? '');
 
   return (
     <Galeria urls={galleryUrls} theme={scheme}>

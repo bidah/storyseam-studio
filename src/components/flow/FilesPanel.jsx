@@ -33,7 +33,7 @@ export default function FilesPanel({ open, onClose, generations, onPick, title =
                 {g.kind === "video" ? (
                   <video src={g.url} className="h-full w-full object-cover" muted />
                 ) : (
-                  <img src={g.url} alt={g.prompt} loading="lazy" className="h-full w-full object-cover" />
+                  <img src={g.thumb || g.url} alt={g.prompt} loading="lazy" className="h-full w-full object-cover" />
                 )}
                 <span className="absolute right-1 top-1 rounded bg-background/80 p-0.5 text-muted-foreground">
                   {g.kind === "video" ? <Clapperboard size={11} /> : <ImageIcon size={11} />}

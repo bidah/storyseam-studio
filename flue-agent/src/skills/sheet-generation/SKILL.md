@@ -131,6 +131,10 @@ If the character/place already has a `sheetImage` or a liked generation, import
 its `refUrl` with `media_import_url` and pass it in `medias[]` (role from Step 2)
 — the sheet then formalizes the EXISTING design instead of re-rolling it.
 
+The `refUrl`, never the `thumb` or `display` beside it: those are downscaled webp
+copies for showing the author, and referencing one would have the model match a
+blurred version of the design you are trying to hold constant.
+
 - **Character sheet** — a reference is strongly preferred when any exists; skip
   it only for a brand-new character with no art yet.
 - **Prop sheet** — a reference image is **MANDATORY, and the USER picks it** —

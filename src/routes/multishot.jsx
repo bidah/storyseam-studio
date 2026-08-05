@@ -194,10 +194,10 @@ function MultiShot({ reloadKey }) {
                 <button
                   type="button"
                   className="block w-full overflow-hidden rounded-lg border bg-muted transition-transform hover:scale-[1.02]"
-                  onClick={() => setModalImage({ ...im, url: `${im.url}?v=${reloadKey}` })}
+                  onClick={() => setModalImage({ ...im, url: `${im.display || im.url}?v=${reloadKey}` })}
                   title="Click to view full image"
                 >
-                  <img src={`${im.url}?v=${reloadKey}`} alt={im.name} className="aspect-square w-full object-cover" />
+                  <img src={`${im.thumb || im.url}?v=${reloadKey}`} alt={im.name} className="aspect-square w-full object-cover" />
                 </button>
                 <figcaption className="truncate text-[11px] text-muted-foreground">
                   <span className="mr-1 font-medium text-primary">{im.role}</span>

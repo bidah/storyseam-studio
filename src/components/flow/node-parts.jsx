@@ -83,7 +83,7 @@ export function RefChips({ refs }) {
             title={r.label}
             className="size-10 shrink-0 overflow-hidden rounded-md border border-border"
           >
-            <img src={r.url} alt={r.label} className="h-full w-full object-cover" />
+            <img src={r.thumb || r.url} alt={r.label} className="h-full w-full object-cover" />
           </div>
         ))}
       </div>
@@ -125,7 +125,7 @@ export function NodePreview({ generation, emptyLabel = "Your generation will app
     );
   }
   return (
-    <img src={generation.url} alt="" className="h-full w-full select-none object-contain" draggable={false} />
+    <img src={generation.display || generation.url} alt="" className="h-full w-full select-none object-contain" draggable={false} />
   );
 }
 
@@ -151,7 +151,7 @@ export function HistoryStrip({ generations, currentGenId, onPick }) {
             {g.kind === "video" ? (
               <video src={g.url} className="h-full w-full object-cover" muted />
             ) : (
-              <img src={g.url} alt="" className="h-full w-full object-cover" />
+              <img src={g.thumb || g.url} alt="" className="h-full w-full object-cover" />
             )}
           </button>
         );

@@ -114,7 +114,7 @@ function ImageModal({ image, onClose }) {
           <>
             <div className="relative flex min-h-0 flex-1 items-center justify-center bg-black">
               <img
-                src={image.url}
+                src={image.display || image.url}
                 alt={image.name}
                 className="h-full w-full object-contain"
               />

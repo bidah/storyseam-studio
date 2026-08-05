@@ -329,14 +329,14 @@ export default function MediaPicker({
                   {genImages.map((g) => (
                     <Tile
                       key={g.id}
-                      url={g.url}
+                      url={g.thumb || g.url}
                       name={g.prompt || "generation"}
                       caption={g.prompt}
                       picked={isPicked(`gen:${g.id}`)}
                       onClick={() => choose({
                         id: `gen:${g.id}`, source: "generation",
                         genId: g.id, url: g.url, refUrl: g.refUrl,
-                        thumb: g.url, name: g.prompt || "generation",
+                        thumb: g.thumb || g.url, name: g.prompt || "generation",
                       })}
                     />
                   ))}

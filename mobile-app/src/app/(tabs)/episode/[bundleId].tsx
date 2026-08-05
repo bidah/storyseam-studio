@@ -689,7 +689,7 @@ export default function BundleDetail() {
                               router.push({
                                 pathname: '/viewer',
                                 params: {
-                                  url: mediaUrl(still.url) as string,
+                                  url: mediaUrl(still.display || still.url) as string,
                                   kind: 'image',
                                   title: `${id} · ${s.id}${still.angle ? ` · ${still.angle}` : ''}`,
                                 },

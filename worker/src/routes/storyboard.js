@@ -39,6 +39,19 @@ const updateDB = (env, pid, mutate) => updateDoc(env, pid, "selections", DB_FALL
 // Normalize a per-shot entry (array | single object | missing) to an array.
 const asArray = (entry) => (Array.isArray(entry) ? entry : entry ? [entry] : []);
 
+// `url` is the project-scoped `/storyboard-media/<file>` path, which resolves
+// via the request's project header — an image model fetching it sends none, so
+// it would silently read p_default (or 404) instead of this project. `refUrl` is
+// the absolute, un-gated `/files/<r2key>` form that encodes the project in the
+// key, so it's the one to hand a generator as a reference, and the only one that
+// resolves to the FULL-RESOLUTION original (see worker/src/lib/images.js — the
+// `thumb`/`display` fields are downscaled webp, for showing the author).
+// Same trick, same reason as radio.js's voiceRef.refUrl.
+const stillRefUrl = (env, pid, file) => {
+  const base = String(env.WORKER_PUBLIC_URL || "").replace(/\/+$/, "");
+  return base ? `${base}/files/${mediaKey(pid, "storyboard", file)}` : null;
+};
+
 export function registerStoryboard(app) {
   // All storyboard stills for the project, grouped bundle → shot → takes.
   // Filtered against ONE R2 listing so a stale record (image gone) never shows.
@@ -47,14 +60,7 @@ export function registerStoryboard(app) {
     const db = await readDB(c.env, pid);
     const stillSet = await listMediaSet(c.env, pid, "storyboard");
 
-    // `url` is the project-scoped `/storyboard-media/<file>` path, which resolves
-    // via the request's project header — an image model fetching it sends none,
-    // so it would silently read p_default (or 404) instead of this project.
-    // `refUrl` is the absolute, un-gated `/files/<r2key>` form that encodes the
-    // project in the key, so it's the one to hand a generator as a reference.
-    // Same trick, same reason as radio.js's voiceRef.refUrl.
-    const publicBase = String(c.env.WORKER_PUBLIC_URL || "").replace(/\/+$/, "");
-    const refUrlFor = (file) => (publicBase ? `${publicBase}/files/${mediaKey(pid, "storyboard", file)}` : null);
+    const refUrlFor = (file) => stillRefUrl(c.env, pid, file);
 
     const out = {};
     for (const [bundle, shots] of Object.entries(db.stills || {})) {
@@ -167,6 +173,12 @@ export function registerStoryboard(app) {
     return c.json({
       ok: true, bundle, shot, file, name: `still ${count}`, count, stored,
       url: "/storyboard-media/" + file,
+      // For the chat card the agent draws next — a ~400px webp instead of the
+      // multi-MB original. `url` stays the original: it is what edit_timeline
+      // puts on the picture track and what a first-frame video job is handed.
+      thumb: "/img/thumb/storyboard-media/" + file,
+      display: "/img/display/storyboard-media/" + file,
+      refUrl: stillRefUrl(c.env, pid, file),
     });
   });
 

@@ -253,7 +253,7 @@ function Canvas() {
       if (e.targetHandle === "text-input") {
         cur.inheritedText = cur.inheritedText || (src ? src.prompt : "");
       } else if ((e.targetHandle === "image-input" || e.targetHandle === "start-frame") && g?.url) {
-        cur.refThumbs.push({ label: e.targetHandle === "start-frame" ? "Start frame" : `Image ${cur.refThumbs.length + 1}`, url: g.url });
+        cur.refThumbs.push({ label: e.targetHandle === "start-frame" ? "Start frame" : `Image ${cur.refThumbs.length + 1}`, url: g.url, thumb: g.thumb });
       }
       out.set(e.target, cur);
     }

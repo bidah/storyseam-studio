@@ -493,13 +493,20 @@ app.get("/asset/*", (c) => {
 // `/visual-media/…`, `/asset/…`) and, absolutely, at `/files/<r2key>` — which is
 // what generation providers and the Remotion export read. Nothing here changes
 // what they see. See lib/images.js.
+// Everything ever written to a variant key is WebP — today's binding encodes,
+// and the ffmpeg-era thumbs before them (`-c:v libwebp`). Those older ones were
+// PUT through `/ingest`, which never set a content type, so they come back out of
+// R2 as `application/octet-stream`; browsers sniff and render them anyway, but
+// stating the truth is free and keeps the header honest.
+const WEBP = { extraHeaders: { "content-type": "image/webp" } };
+
 function serveTier(c, { tier, kind, file }) {
   const pid = c.get("projectId");
   const range = c.req.header("range");
   const ifNoneMatch = c.req.header("if-none-match");
   return (async () => {
     const vKey = variantKey(pid, tier, kind, file);
-    if (await c.env.BUCKET.head(vKey)) return streamKey(c.env, vKey, range, { ifNoneMatch });
+    if (await c.env.BUCKET.head(vKey)) return streamKey(c.env, vKey, range, { ifNoneMatch, ...WEBP });
 
     const mKey = mediaKey(pid, kind, file);
     if (!(await c.env.BUCKET.head(mKey))) return c.text("Not found", 404);
@@ -546,7 +553,7 @@ app.get("/thumb/*", async (c) => {
   const ifNoneMatch = c.req.header("if-none-match");
   for (const kind of ["asset", "visual"]) {
     const tKey = proxyKey(pid, kind, rel);
-    if (await c.env.BUCKET.head(tKey)) return streamKey(c.env, tKey, range, { ifNoneMatch });
+    if (await c.env.BUCKET.head(tKey)) return streamKey(c.env, tKey, range, { ifNoneMatch, ...WEBP });
   }
   for (const kind of ["asset", "visual"]) {
     const mKey = mediaKey(pid, kind, rel);

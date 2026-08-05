@@ -146,6 +146,8 @@ If — and ONLY if — the turn explicitly hands you a **first-frame image** (th
 
 Upload the provided first-frame URL to a `media_id` (`media_import_url` / `media_upload`) just like any other reference. Without an explicit first frame, omit `start_image` entirely (the default behaviour above).
 
+**Use the `refUrl`, never `thumb` or `display`.** Storyboard stills and library images now come back in three forms: `refUrl` (the absolute, FULL-RESOLUTION original), `display` (~1600px webp) and `thumb` (~400px webp). The tiers exist so the app and the chat can show a picture cheaply — feeding one to `media_import_url` would open your clip on a downscaled frame, and the loss is invisible until the render is done. The same rule covers every `image_references` and `audio_references` entry: always the `refUrl`.
+
 ### Optional video style continuity reference (video_references)
 
 If — and ONLY if — the turn hands you a **video style continuity reference** (a previously-rendered clip the new generation should match in style — the prompt will carry a `VIDEO STYLE CONTINUITY REFERENCE` block and/or the turn a `VIDEO STYLE CONTINUITY:` line with its URL), pass it as `video_references` **in addition to** the `image_references` above:

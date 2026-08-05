@@ -473,7 +473,14 @@ export function registerLibrary(app) {
 
     // Rewrite media file names to served URLs (`/multishot-media/<file>`).
     const toUrl = (file) => (file ? `/multishot-media/${file}` : null);
-    const images = (manifest.images || []).map((m) => ({ ...m, url: toUrl(m.file) }));
+    // `url` stays the original (it is what a render reads); the tiers are for the
+    // reference grid and its lightbox. See worker/src/lib/images.js.
+    const images = (manifest.images || []).map((m) => ({
+      ...m,
+      url: toUrl(m.file),
+      thumb: m.file ? `/img/thumb/multishot-media/${m.file}` : null,
+      display: m.file ? `/img/display/multishot-media/${m.file}` : null,
+    }));
     const audio = (manifest.audio || []).map((m) => ({ ...m, url: toUrl(m.file) }));
 
     // Each generation's video → served URL; drop entries whose video file is gone
