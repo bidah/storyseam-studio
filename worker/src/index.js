@@ -299,8 +299,25 @@ app.get("/healthz", (c) => c.json({ ok: true, service: "shot-studio-uploads" }))
 // Served on BOTH /upload (the historical absolute-URL endpoint,
 // VITE_UPLOAD_URL) and /api/upload (the SPA's same-origin default fallback —
 // rides the /api proxy in web dev and the desktop origin bridge).
+//
+// It must check identity ITSELF. The ownership middleware above only guards
+// `/api/*` (see `isData`), so the bare `/upload` mount bypassed it entirely:
+// anyone on the internet could POST arbitrary bytes here — no session, no
+// token, no content-type limit — and get back a public /files/<key> URL on our
+// own domain. That is precisely the shape scanners look for to host malware on
+// a reputable host, and it gets the domain flagged by Safe Browsing.
+//
+// There is no project to scope to (chat-uploads/ is not per-project), so a
+// resolved identity — a browser session OR a signed agent assertion — is the
+// whole check.
 const storeUpload = async (c) => {
   const env = c.env;
+  if (!c.get("userId")) {
+    return c.json(
+      { error: "Sign in required (or, for agent tools, a valid x-flue-agent-user token)" },
+      401,
+    );
+  }
   const url = new URL(c.req.url);
   const contentType = c.req.header("content-type") || "application/octet-stream";
   const name = safeName(c.req.header("x-filename"));
@@ -325,12 +342,13 @@ app.post("/upload", storeUpload);
 app.post("/api/upload", storeUpload);
 
 // --- recent uploads --------------------------------------------------------
-app.get("/uploads", async (c) => {
-  const { results } = await c.env.DB.prepare(
-    "SELECT id, key, name, content_type, size, created_at FROM uploads ORDER BY created_at DESC LIMIT 100",
-  ).all();
-  return c.json({ uploads: results });
-});
+// REMOVED. `GET /uploads` listed the 100 most recent uploads across EVERY
+// tenant, unauthenticated — it sat outside the `/api/*` ownership gate, so any
+// stranger could enumerate every filename this deployment had ever taken. It
+// could not be scoped per-user either: the `uploads` table has no owner column
+// (worker/schema.sql), only (id, key, name, content_type, size, created_at).
+// Nothing in the repo called it. If a "recent uploads" surface is ever wanted,
+// it needs an owner column first, then a mount under /api/ so the gate applies.
 
 // NOTE: the legacy top-level `/projects*` and `/script` routes were removed to
 // free those URL namespaces for the React Router SPA (a client route like
