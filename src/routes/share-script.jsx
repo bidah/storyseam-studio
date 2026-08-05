@@ -57,7 +57,7 @@ export function Component() {
         </div>
 
         <footer className="pt-2 text-center text-xs text-muted-foreground">
-          Shared from Shot Studio
+          Shared from StorySeam
         </footer>
       </div>
     </div>

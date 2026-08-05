@@ -1,8 +1,19 @@
-// App login gate — the branded Shot Studio homepage with "Sign in with
+// App login gate — the branded StorySeam homepage with "Sign in with
 // Google" (Better Auth social provider). Gated on the Better Auth session; the
 // signed-in user owns their own projects. Higgsfield is no longer the front
 // door: it's a CONNECTOR linked to the session afterwards (Settings ›
 // Connectors, lib/higgsfieldAccount.js).
+//
+// COPY RULES — this page is what Google Safe Browsing scores, and in Aug 2026 it
+// scored it as a deceptive page and put a "Dangerous site" interstitial on the
+// whole domain. A signed-out page whose only action is a Google sign-in button
+// is already a phishing-shaped thing; these three rules keep it from reading
+// like one, so don't undo them without a reason:
+//   1. The name here MUST match <title> and the domain (StorySeam / storyseam.app).
+//      Claiming an unrelated brand on an unknown host is the strongest signal.
+//   2. Don't claim affiliation with a third party ("powered by X"). Higgsfield,
+//      fal.ai and Atlas Cloud are render accounts the USER connects; say that.
+//   3. Say plainly what the site is, and what signing in does, above the fold.
 //
 // After the session exists a SECOND gate may block on the selected render
 // provider's credential: Higgsfield selected but not yet linked shows the
@@ -11,6 +22,7 @@
 // lib/atlasKey.js) and ride per-request to the workers — never stored
 // server-side. Keys, connectors and provider toggles stay editable in Settings.
 import { useState } from "react";
+import { Link } from "react-router";
 import {
   Clapperboard, Bot, PenLine, Workflow, Film, ListVideo, AudioLines, Loader2, ArrowRight,
   KeyRound, ExternalLink, LogOut, Cable,
@@ -81,18 +93,18 @@ function Homepage() {
               <Clapperboard size={24} />
             </div>
             <div className="text-left leading-tight">
-              <div className="text-xl font-semibold tracking-tight">Shot Studio</div>
-              <div className="text-xs text-muted-foreground">
-                powered by <span className="font-medium text-foreground">Higgsfield</span>
-              </div>
+              <div className="text-xl font-semibold tracking-tight">StorySeam</div>
+              <div className="text-xs text-muted-foreground">storyseam.app</div>
             </div>
           </div>
 
           <h1 className="mt-8 max-w-xl text-balance text-3xl font-semibold tracking-tight sm:text-4xl">
-            The missing <span className="text-primary">agent-driven UI</span> to create visual masterpieces
+            Write, storyboard, render and cut an <span className="text-primary">episode</span> in one place
           </h1>
-          <p className="mt-3 text-sm text-muted-foreground">
-            Chat agent, script writing, nodes, episodes, shotlist and sound studio — all in one.
+          <p className="mt-3 max-w-lg text-sm text-muted-foreground">
+            StorySeam is a workspace for making short animated episodes. Draft the script,
+            build the shot list, generate the images, video and sound, then assemble the cut
+            on a timeline — with a chat agent that can drive any step for you.
           </p>
 
           <div className="mt-8 grid w-full grid-cols-2 gap-2.5 sm:grid-cols-3">
@@ -115,11 +127,40 @@ function Homepage() {
               Sign in with Google
               {!busy ? <ArrowRight size={16} /> : null}
             </Button>
-            <p className="text-xs text-muted-foreground">
-              Sign in with Google, then connect Higgsfield (or a render key) in Settings
-              to unlock image, video &amp; audio generation.
+            {/* State the scope plainly. These are exactly the scopes the
+                authorize URL asks for (email + profile + openid) — if that ever
+                changes, change this sentence with it. */}
+            <p className="max-w-sm text-xs text-muted-foreground">
+              Google sign-in is only used to create your StorySeam account — it shares your
+              name, email address and profile picture. StorySeam never posts on your behalf
+              and reads nothing else from your Google account.
             </p>
             {err ? <p className="max-w-sm text-center text-xs text-destructive">{err}</p> : null}
+          </div>
+
+          <p className="mt-6 max-w-lg border-t pt-6 text-xs leading-relaxed text-muted-foreground">
+            Generation runs on a rendering account you connect yourself — Higgsfield, fal.ai
+            or Atlas Cloud — so images, video and audio bill to you. StorySeam is not
+            affiliated with those services. API keys you paste are kept in this browser only
+            and are never stored on our servers.
+          </p>
+
+          {/* Reachable WITHOUT signing in — /privacy and /terms are routed as
+              siblings of RootLayout so this link works for a signed-out
+              visitor. See router.jsx. */}
+          <div className="mt-6 flex flex-wrap items-center justify-center gap-x-4 gap-y-2 text-xs text-muted-foreground">
+            <Link to="/privacy" className="underline-offset-4 hover:text-foreground hover:underline">
+              Privacy
+            </Link>
+            <Link to="/terms" className="underline-offset-4 hover:text-foreground hover:underline">
+              Terms
+            </Link>
+            <a
+              href="mailto:privacy@storyseam.app"
+              className="underline-offset-4 hover:text-foreground hover:underline"
+            >
+              Contact
+            </a>
           </div>
         </div>
       </div>
@@ -161,7 +202,7 @@ function ProviderKeyScreen({ userEmail }) {
             Connect a <span className="text-primary">render key</span>
           </h1>
           <p className="mt-2 text-sm text-muted-foreground">
-            Shot Studio renders images and video with your own account — paste a fal.ai
+            StorySeam renders images and video with your own account — paste a fal.ai
             or Atlas Cloud API key to continue. It is stored <b>only in this browser</b>,
             never on our servers, and you can add the other provider later in Settings.
           </p>
@@ -287,7 +328,7 @@ function HiggsfieldConnectScreen({ userEmail }) {
             Connect <span className="text-primary">Higgsfield</span>
           </h1>
           <p className="mt-2 text-sm text-muted-foreground">
-            Shot Studio is set to render with Higgsfield, but this account isn't linked
+            StorySeam is set to render with Higgsfield, but this account isn't linked
             yet. Connect your Higgsfield account once and every image, video &amp; audio
             generation bills it — you can manage the connection later in Settings.
           </p>

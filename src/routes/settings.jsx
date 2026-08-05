@@ -173,7 +173,7 @@ function ConnectorsPanel() {
     <Panel title={<span className="flex items-center gap-2"><Cable size={15} className="text-primary" /> Connectors</span>}>
       <p className="mb-3 text-sm text-muted-foreground">
         External accounts linked to your sign-in. Connecting <b>Higgsfield</b> runs a
-        one-tap OAuth flow and lets Shot Studio render images, video &amp; audio on your
+        one-tap OAuth flow and lets StorySeam render images, video &amp; audio on your
         Higgsfield account — and browse your past generations in the library.
       </p>
       <div className="rounded-lg border p-3">

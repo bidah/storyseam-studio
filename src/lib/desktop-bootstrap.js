@@ -82,7 +82,7 @@ function watchPipelineEvents() {
         if (lastAt[data.resource] && now - lastAt[data.resource] < NOTIFY_DEBOUNCE_MS) return;
         lastAt[data.resource] = now;
         desktop.notify({
-          title: "Shot Studio",
+          title: "StorySeam",
           body: `${hit.label} finished`,
           navigateTo: hit.to,
         });
@@ -102,7 +102,7 @@ function watchUpdates() {
     if (state !== "ready") return;
     toast.success("Update ready", {
       id: "desktop-update",
-      description: `Shot Studio ${version || ""} installs when you quit.`,
+      description: `StorySeam ${version || ""} installs when you quit.`,
       duration: Infinity,
       action: { label: "Restart now", onClick: () => desktop.updates.install() },
     });

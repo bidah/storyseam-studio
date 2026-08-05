@@ -31,6 +31,21 @@ export const router = createBrowserRouter([
     lazy: () => import("@/routes/share-script"),
     ErrorBoundary: RouteError,
   },
+  // PUBLIC legal pages — siblings for the same reason as the share view above.
+  // A privacy policy behind LoginGate could only be read by someone who had
+  // already signed in, which is precisely the wrong audience: the visitor
+  // deciding whether to trust the sign-in button can't reach it, and neither
+  // can a Safe Browsing reviewer. Keep them out of RootLayout.
+  {
+    path: "/privacy",
+    lazy: () => import("@/routes/privacy"),
+    ErrorBoundary: RouteError,
+  },
+  {
+    path: "/terms",
+    lazy: () => import("@/routes/terms"),
+    ErrorBoundary: RouteError,
+  },
   {
     path: "/",
     Component: RootLayout,
