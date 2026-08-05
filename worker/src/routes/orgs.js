@@ -100,14 +100,19 @@ export function registerOrgs(app) {
       orgId, email, role, scopeMode, projectIds, projectRole, invitedBy: userId,
     });
     const url = inviteUrl(c, inv.id, inv.token);
-    // Fire-and-forget the email — the route already returns the fallback link.
-    c.executionCtx.waitUntil(
-      (async () => {
-        const org = await c.env.DB.prepare("SELECT name FROM organizations WHERE id = ?").bind(orgId).first();
-        await sendInviteEmail(c.env, { email, orgName: org?.name || "a team", inviteUrl: url });
-      })(),
-    );
-    return c.json({ id: inv.id, inviteUrl: url, email, scopeMode });
+    // Send the email inline — if it fails the invite still exists in D1 and the
+    // inviteUrl is returned as a fallback, but the creator gets to know.
+    let emailResult = null;
+    try {
+      const org = await c.env.DB.prepare("SELECT name FROM organizations WHERE id = ?").bind(orgId).first();
+      emailResult = await sendInviteEmail(c.env, { email, orgName: org?.name || "a team", inviteUrl: url });
+    } catch (e) {
+      emailResult = { sent: false, reason: e?.message || "unknown" };
+    }
+    if (emailResult?.sent === false) {
+      console.error("invite email not sent:", emailResult?.reason);
+    }
+    return c.json({ id: inv.id, inviteUrl: url, email, scopeMode, emailSent: emailResult?.sent === true });
   });
 
   // Revoke a pending invitation (managers only).

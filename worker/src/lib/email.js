@@ -10,7 +10,7 @@
 // failed invite. Callers may await (request-time) or fire-and-forget
 // (ctx.waitUntil) — the helpers never throw past the caller.
 
-const FROM = { email: "team@storyseam.app", name: "Storyseam" };
+const FROM = "team@storyseam.app";
 
 // Escape a plain string for safe use inside HTML so a user-supplied org name
 // can't inject markup into the invite mail.
