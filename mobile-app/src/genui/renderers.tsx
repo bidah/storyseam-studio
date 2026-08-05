@@ -589,8 +589,13 @@ export function MediaGrid({ props, renderNode }: Render<MediaGridProps>) {
     const list: string[] = [];
     const map = new Map<string, number>();
     for (const item of items) {
-      const src = (item as { props?: MediaItemProps })?.props?.src;
-      const uri = mediaUri(src);
+      const p = (item as { props?: MediaItemProps })?.props;
+      const src = p?.src;
+      // The tile paints from `src` (the small thumb), but tapping opens the
+      // full-screen preview — which should be the larger `display` webp, not the
+      // thumb blown up. Key the index by `src` (what the tile knows itself as),
+      // point Galeria's url at `display ?? src`.
+      const uri = mediaUri(p?.display || src);
       if (!src || !uri || map.has(src)) continue;
       map.set(src, list.length);
       list.push(uri);

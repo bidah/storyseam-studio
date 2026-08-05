@@ -395,6 +395,16 @@
         "src": {
           "type": "string"
         },
+        "display": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "send": {
           "anyOf": [
             {
@@ -443,7 +453,7 @@
         "src"
       ],
       "additionalProperties": false,
-      "description": "One image in a MediaGrid. src: the image URL (a /storyboard-media, /library or generation URL from the tools — never invent one). PREFER the tool's `thumb` field when it has one: it is a ~400px webp of the same picture, so the card paints immediately instead of pulling a multi-megabyte original into the chat. Tapping the tile still opens the full-size image. (`thumb` and `display` are for LOOKING at — never pass either to a generation; that always takes the `refUrl`.) send: OPTIONAL — give it only when picking this image is a real decision; then it follows the usual rules (the message sent AS THE USER when this is picked — write it as the user would ('Use the second reference'), never as an instruction to yourself. It MUST OPEN WITH the words shown on the control itself (its title/label), because this message is the author's ONLY confirmation that the row they hit is the row they meant; put any extra brief AFTER that opening — title 'Punch up the dialogue' ⇒ send 'Punch up the dialogue — sharpen the voices in the audition scene', never send 'Let me tighten those lines'; in a 'many' or 'one-per-group' grid a NOUN PHRASE instead, because the picks are joined into one sentence). OMIT send entirely when the card is just showing the author a picture you made — the tile is then look-only, with no \"Use this\" button under it. label: a short name under the thumbnail. caption: one extra line of context. selected: marks the current pick. group: ONLY for a list whose select is 'one-per-group': which sub-question this item answers, e.g. the character whose portrait this is (\"Miles Okonkwo\"). Items sharing a group are drawn together under it as a heading and are mutually exclusive. Groups appear in the order their first item does. Omit it in every other mode."
+      "description": "One image in a MediaGrid. src: the URL PAINTED ON THE TILE — pass the tool's `thumb` field whenever it has one (a ~400px webp of the same picture), so the card paints immediately instead of pulling a multi-megabyte original into the chat; fall back to the plain image URL only when there is no thumb. display: the URL OPENED FULL-SCREEN when the tile is tapped — pass the tool's `display` field (a ~1600px webp), so the author gets a sharp look without downloading the full original; OMIT it and the tile just re-opens `src`. (`thumb` and `display` are for LOOKING at — never pass either to a generation; that always takes the `refUrl`.) send: OPTIONAL — give it only when picking this image is a real decision; then it follows the usual rules (the message sent AS THE USER when this is picked — write it as the user would ('Use the second reference'), never as an instruction to yourself. It MUST OPEN WITH the words shown on the control itself (its title/label), because this message is the author's ONLY confirmation that the row they hit is the row they meant; put any extra brief AFTER that opening — title 'Punch up the dialogue' ⇒ send 'Punch up the dialogue — sharpen the voices in the audition scene', never send 'Let me tighten those lines'; in a 'many' or 'one-per-group' grid a NOUN PHRASE instead, because the picks are joined into one sentence). OMIT send entirely when the card is just showing the author a picture you made — the tile is then look-only, with no \"Use this\" button under it. label: a short name under the thumbnail. caption: one extra line of context. selected: marks the current pick. group: ONLY for a list whose select is 'one-per-group': which sub-question this item answers, e.g. the character whose portrait this is (\"Miles Okonkwo\"). Items sharing a group are drawn together under it as a heading and are mutually exclusive. Groups appear in the order their first item does. Omit it in every other mode."
     },
     "AudioList": {
       "type": "object",

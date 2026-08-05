@@ -86,12 +86,12 @@ third of the question and the card died.
 root = Card([intro, casting])
 intro = Text("Six portraits up — pick your favorite for each and I'll lock them in.", "body")
 casting = MediaGrid([m1, m2, s1, s2, r1, r2], null, 2, "one-per-group", "Lock these portraits", "Lock them in")
-m1 = MediaItem("<url>", "Miles 1", "Miles 1", null, false, "Miles Okonkwo")
-m2 = MediaItem("<url>", "Miles 2", "Miles 2", null, false, "Miles Okonkwo")
-s1 = MediaItem("<url>", "Saskia 1", "Saskia 1", null, false, "Saskia Voss")
-s2 = MediaItem("<url>", "Saskia 2", "Saskia 2", null, false, "Saskia Voss")
-r1 = MediaItem("<url>", "Rudy 1", "Rudy 1", null, false, "Rudy Tanaka")
-r2 = MediaItem("<url>", "Rudy 2", "Rudy 2", null, false, "Rudy Tanaka")
+m1 = MediaItem("<thumb>", "<display>", "Miles 1", "Miles 1", null, false, "Miles Okonkwo")
+m2 = MediaItem("<thumb>", "<display>", "Miles 2", "Miles 2", null, false, "Miles Okonkwo")
+s1 = MediaItem("<thumb>", "<display>", "Saskia 1", "Saskia 1", null, false, "Saskia Voss")
+s2 = MediaItem("<thumb>", "<display>", "Saskia 2", "Saskia 2", null, false, "Saskia Voss")
+r1 = MediaItem("<thumb>", "<display>", "Rudy 1", "Rudy 1", null, false, "Rudy Tanaka")
+r2 = MediaItem("<thumb>", "<display>", "Rudy 2", "Rudy 2", null, false, "Rudy Tanaka")
 ```
 
 Picking Miles 2, Saskia 1 and Rudy 2 posts *"Lock these portraits: Miles 2,
@@ -103,8 +103,8 @@ answers rather than one, it's `"one-per-group"`.
 
 `group` is the LAST argument of `MediaItem` / `Option` / `AudioItem`, and
 arguments are positional — so count the `null`s carefully (`MediaItem` is `src,
-send, label, caption, selected, group`). `group: "Miles Okonkwo"` is not syntax
-this parser has; a colon silently slides every prop one slot over.
+display, send, label, caption, selected, group`). `group: "Miles Okonkwo"` is not
+syntax this parser has; a colon silently slides every prop one slot over.
 
 ## Images open full-screen
 
@@ -234,17 +234,25 @@ picture ("Use this as Noah's sheet", "Iterate on this one"):
 root = Card([intro, shots])
 intro = Text("Noah Chen — first pass, Analog Glitch.", "body")
 shots = MediaGrid([g1, g2], "Noah Chen")
-g1 = MediaItem("<url from attach_visual_generation>", null, "Frayed, hollow-eyed")
-g2 = MediaItem("<url from attach_visual_generation>", null, "Tighter on the scar")
+g1 = MediaItem("<thumb>", "<display>", null, "Frayed, hollow-eyed")
+g2 = MediaItem("<thumb>", "<display>", null, "Tighter on the scar")
 ```
+
+Each `MediaItem` carries TWO image URLs the tools hand back together: `src` is
+the `thumb` (~400px webp) painted on the tile, so the card appears at once; the
+second arg is the `display` (~1600px webp) that opens when the tile is tapped, so
+the full-screen look is sharp without pulling the multi-megabyte original. Pass
+BOTH — thumb on the tile, display for the zoom. If a tool only gives you one URL,
+use it for `src` and leave `display` `null` (the tile just re-opens `src`).
 
 One image is still a card — a single tile in a `MediaGrid` is the normal way to
 hand back one generation, not an over-reaction.
 
-Only use image URLs a tool returned (`attach_visual_generation`'s
-`generation.url`, `list_library`, `get_visual_world`, `get_episode`, …). A job
-that hasn't reached `completed` has no URL — don't card it, and don't card the
-raw provider `result_url` when the attached `/visual-media/…` path exists.
+Only use image URLs a tool returned (`attach_visual_generation`'s `thumb` /
+`display`, `list_library`, `get_visual_world`, `get_episode`, …). A job that
+hasn't reached `completed` has no URL — don't card it, and never pass `refUrl` or
+the raw provider `result_url` to a tile; those are for generation input, not for
+looking at.
 
 ## Sound comes back playable
 
@@ -280,9 +288,9 @@ or attaching a reference into a media-picker button:
 root = Card([intro, refs, upload])
 intro = Text("Pick the reference for the clearing sheet.", "body")
 refs = MediaGrid([r1, r2, r3], "From the library", 3)
-r1 = MediaItem("<url from list_library>", "Use the dawn clearing reference", "Dawn")
-r2 = MediaItem("<url from list_library>", "Use the dusk clearing reference", "Dusk")
-r3 = MediaItem("<url from list_library>", "Use the foggy clearing reference", "Fog")
+r1 = MediaItem("<thumb>", "<display>", "Use the dawn clearing reference", "Dawn")
+r2 = MediaItem("<thumb>", "<display>", "Use the dusk clearing reference", "Dusk")
+r3 = MediaItem("<thumb>", "<display>", "Use the foggy clearing reference", "Fog")
 upload = Actions([pick])
 pick = Action("Upload a reference image", "I'll attach a reference image")
 ```
@@ -330,7 +338,7 @@ NEVER put two single-select lists on one card. The first tap sends and ends the 
 
 ### Picking media
 MediaGrid(items: MediaItem[], header?: string, columns?: number, select?: "one" | "many" | "one-per-group", send?: string, confirm?: string) — A grid of image thumbnails. It does TWO jobs. (1) SHOWING finished pictures: the moment an image generation you started completes, draw this card with the result — that is how the author SEES it. Never answer an image job with prose alone ("it's on the Visual board", "saved to the library") and never paste the URL as markdown; the picture belongs in the chat, next to the words. Rows you are only showing get NO `send`, so there is no pick control under them. (2) ASKING which reference, still, take or character sheet to use — then each tile carries a `send`. Tapping a thumbnail always opens it FULL-SCREEN for a proper look; picking, when offered, is a separate explicit control so the author can inspect before committing. columns: 2 (default) or 3; use 3 only for six or more small thumbnails. A single image is fine — one tile, columns 2. select: 'one' (default) — a tap picks that item and sends immediately. 'many' — taps toggle and nothing is sent until the confirm button. 'one-per-group' — the items are split into sub-questions by their `group` prop, each group takes exactly ONE pick, and the confirm button unlocks only once every group is answered. Reach for 'many' when several images are legitimately wanted (a multi-reference generation), and 'one-per-group' for the very common CANDIDATES-PER-SUBJECT card: several portraits for each of several characters, several looks for each of several locations. One grid, one `group` per subject, one confirm. send: REQUIRED when select is 'many' or 'one-per-group': the lead of the composed message, to which the picked items' `send` values are appended after a colon — e.g. send "Add these characters to the World" + picks "Miles", "Vera" posts "Add these characters to the World: Miles, Vera". Ignored when select is 'one'. confirm: the confirm button's label when select is 'many' or 'one-per-group' (default "Continue"). Ignored when select is 'one'.
-MediaItem(src: string, send?: string, label?: string, caption?: string, selected?: boolean, group?: string) — One image in a MediaGrid. src: the image URL (a /storyboard-media, /library or generation URL from the tools — never invent one). PREFER the tool's `thumb` field when it has one: it is a ~400px webp of the same picture, so the card paints immediately instead of pulling a multi-megabyte original into the chat. Tapping the tile still opens the full-size image. (`thumb` and `display` are for LOOKING at — never pass either to a generation; that always takes the `refUrl`.) send: OPTIONAL — give it only when picking this image is a real decision; then it follows the usual rules (the message sent AS THE USER when this is picked — write it as the user would ('Use the second reference'), never as an instruction to yourself. It MUST OPEN WITH the words shown on the control itself (its title/label), because this message is the author's ONLY confirmation that the row they hit is the row they meant; put any extra brief AFTER that opening — title 'Punch up the dialogue' ⇒ send 'Punch up the dialogue — sharpen the voices in the audition scene', never send 'Let me tighten those lines'; in a 'many' or 'one-per-group' grid a NOUN PHRASE instead, because the picks are joined into one sentence). OMIT send entirely when the card is just showing the author a picture you made — the tile is then look-only, with no "Use this" button under it. label: a short name under the thumbnail. caption: one extra line of context. selected: marks the current pick. group: ONLY for a list whose select is 'one-per-group': which sub-question this item answers, e.g. the character whose portrait this is ("Miles Okonkwo"). Items sharing a group are drawn together under it as a heading and are mutually exclusive. Groups appear in the order their first item does. Omit it in every other mode.
+MediaItem(src: string, display?: string, send?: string, label?: string, caption?: string, selected?: boolean, group?: string) — One image in a MediaGrid. src: the URL PAINTED ON THE TILE — pass the tool's `thumb` field whenever it has one (a ~400px webp of the same picture), so the card paints immediately instead of pulling a multi-megabyte original into the chat; fall back to the plain image URL only when there is no thumb. display: the URL OPENED FULL-SCREEN when the tile is tapped — pass the tool's `display` field (a ~1600px webp), so the author gets a sharp look without downloading the full original; OMIT it and the tile just re-opens `src`. (`thumb` and `display` are for LOOKING at — never pass either to a generation; that always takes the `refUrl`.) send: OPTIONAL — give it only when picking this image is a real decision; then it follows the usual rules (the message sent AS THE USER when this is picked — write it as the user would ('Use the second reference'), never as an instruction to yourself. It MUST OPEN WITH the words shown on the control itself (its title/label), because this message is the author's ONLY confirmation that the row they hit is the row they meant; put any extra brief AFTER that opening — title 'Punch up the dialogue' ⇒ send 'Punch up the dialogue — sharpen the voices in the audition scene', never send 'Let me tighten those lines'; in a 'many' or 'one-per-group' grid a NOUN PHRASE instead, because the picks are joined into one sentence). OMIT send entirely when the card is just showing the author a picture you made — the tile is then look-only, with no "Use this" button under it. label: a short name under the thumbnail. caption: one extra line of context. selected: marks the current pick. group: ONLY for a list whose select is 'one-per-group': which sub-question this item answers, e.g. the character whose portrait this is ("Miles Okonkwo"). Items sharing a group are drawn together under it as a heading and are mutually exclusive. Groups appear in the order their first item does. Omit it in every other mode.
 Reference-image, still, take and character-sheet picks ALWAYS go through MediaGrid — never as markdown image links in your message text.
 Candidates for SEVERAL subjects (two portraits each for three characters) are ONE MediaGrid with select 'one-per-group' and a `group` per subject — never a grid per character, which would let only the first pick through.
 Only use URLs the tools gave you (list_library, get_visual_world, get_episode, …). Never invent or guess an image URL.
@@ -378,9 +386,9 @@ Always write the root = Card(...) statement first so the UI shell appears immedi
 root = Card([intro, refs])
 intro = Text("Which reference should I build the Whistlewood clearing from?", "body")
 refs = MediaGrid([r1, r2, r3], "Candidates", 3)
-r1 = MediaItem("/library/clearing-dawn.png", "Use the dawn clearing reference", "Dawn")
-r2 = MediaItem("/library/clearing-dusk.png", "Use the dusk clearing reference", "Dusk")
-r3 = MediaItem("/library/clearing-fog.png", "Use the foggy clearing reference", "Fog")
+r1 = MediaItem("/library/clearing-dawn_thumb.webp", "/library/clearing-dawn_display.webp", "Use the dawn clearing reference", "Dawn")
+r2 = MediaItem("/library/clearing-dusk_thumb.webp", "/library/clearing-dusk_display.webp", "Use the dusk clearing reference", "Dusk")
+r3 = MediaItem("/library/clearing-fog_thumb.webp", "/library/clearing-fog_display.webp", "Use the foggy clearing reference", "Fog")
 
 root = Card([models])
 models = OptionList([fast, best], "Render model", "Or tell me a different model.")
@@ -396,10 +404,10 @@ t2 = AudioItem("/sound-media/trk_2-v2.mp3", "Take 2 — heavier rain", "Keep tak
 root = Card([intro, casting])
 intro = Text("Six portraits up — pick your favorite for each and I'll lock them in.", "body")
 casting = MediaGrid([m1, m2, s1, s2], null, 2, "one-per-group", "Lock these portraits", "Lock them in")
-m1 = MediaItem("/storyboard-media/miles-1.png", "Miles 1", "Miles 1", null, false, "Miles Okonkwo")
-m2 = MediaItem("/storyboard-media/miles-2.png", "Miles 2", "Miles 2", null, false, "Miles Okonkwo")
-s1 = MediaItem("/storyboard-media/saskia-1.png", "Saskia 1", "Saskia 1", null, false, "Saskia Voss")
-s2 = MediaItem("/storyboard-media/saskia-2.png", "Saskia 2", "Saskia 2", null, false, "Saskia Voss")
+m1 = MediaItem("/storyboard-media/miles-1_thumb.webp", "/storyboard-media/miles-1_display.webp", "Miles 1", "Miles 1", null, false, "Miles Okonkwo")
+m2 = MediaItem("/storyboard-media/miles-2_thumb.webp", "/storyboard-media/miles-2_display.webp", "Miles 2", "Miles 2", null, false, "Miles Okonkwo")
+s1 = MediaItem("/storyboard-media/saskia-1_thumb.webp", "/storyboard-media/saskia-1_display.webp", "Saskia 1", "Saskia 1", null, false, "Saskia Voss")
+s2 = MediaItem("/storyboard-media/saskia-2_thumb.webp", "/storyboard-media/saskia-2_display.webp", "Saskia 2", "Saskia 2", null, false, "Saskia Voss")
 
 root = Card([params, go])
 params = KeyValue([{label: "Model", value: "nano_banana_pro"}, {label: "Aspect", value: "16:9"}, {label: "References", value: "Sara sheet, clearing dawn"}], "About to submit")

@@ -86,12 +86,12 @@ third of the question and the card died.
 root = Card([intro, casting])
 intro = Text("Six portraits up — pick your favorite for each and I'll lock them in.", "body")
 casting = MediaGrid([m1, m2, s1, s2, r1, r2], null, 2, "one-per-group", "Lock these portraits", "Lock them in")
-m1 = MediaItem("<url>", "Miles 1", "Miles 1", null, false, "Miles Okonkwo")
-m2 = MediaItem("<url>", "Miles 2", "Miles 2", null, false, "Miles Okonkwo")
-s1 = MediaItem("<url>", "Saskia 1", "Saskia 1", null, false, "Saskia Voss")
-s2 = MediaItem("<url>", "Saskia 2", "Saskia 2", null, false, "Saskia Voss")
-r1 = MediaItem("<url>", "Rudy 1", "Rudy 1", null, false, "Rudy Tanaka")
-r2 = MediaItem("<url>", "Rudy 2", "Rudy 2", null, false, "Rudy Tanaka")
+m1 = MediaItem("<thumb>", "<display>", "Miles 1", "Miles 1", null, false, "Miles Okonkwo")
+m2 = MediaItem("<thumb>", "<display>", "Miles 2", "Miles 2", null, false, "Miles Okonkwo")
+s1 = MediaItem("<thumb>", "<display>", "Saskia 1", "Saskia 1", null, false, "Saskia Voss")
+s2 = MediaItem("<thumb>", "<display>", "Saskia 2", "Saskia 2", null, false, "Saskia Voss")
+r1 = MediaItem("<thumb>", "<display>", "Rudy 1", "Rudy 1", null, false, "Rudy Tanaka")
+r2 = MediaItem("<thumb>", "<display>", "Rudy 2", "Rudy 2", null, false, "Rudy Tanaka")
 ```
 
 Picking Miles 2, Saskia 1 and Rudy 2 posts *"Lock these portraits: Miles 2,
@@ -103,8 +103,8 @@ answers rather than one, it's `"one-per-group"`.
 
 `group` is the LAST argument of `MediaItem` / `Option` / `AudioItem`, and
 arguments are positional — so count the `null`s carefully (`MediaItem` is `src,
-send, label, caption, selected, group`). `group: "Miles Okonkwo"` is not syntax
-this parser has; a colon silently slides every prop one slot over.
+display, send, label, caption, selected, group`). `group: "Miles Okonkwo"` is not
+syntax this parser has; a colon silently slides every prop one slot over.
 
 ## Images open full-screen
 
@@ -234,17 +234,25 @@ picture ("Use this as Noah's sheet", "Iterate on this one"):
 root = Card([intro, shots])
 intro = Text("Noah Chen — first pass, Analog Glitch.", "body")
 shots = MediaGrid([g1, g2], "Noah Chen")
-g1 = MediaItem("<url from attach_visual_generation>", null, "Frayed, hollow-eyed")
-g2 = MediaItem("<url from attach_visual_generation>", null, "Tighter on the scar")
+g1 = MediaItem("<thumb>", "<display>", null, "Frayed, hollow-eyed")
+g2 = MediaItem("<thumb>", "<display>", null, "Tighter on the scar")
 ```
+
+Each `MediaItem` carries TWO image URLs the tools hand back together: `src` is
+the `thumb` (~400px webp) painted on the tile, so the card appears at once; the
+second arg is the `display` (~1600px webp) that opens when the tile is tapped, so
+the full-screen look is sharp without pulling the multi-megabyte original. Pass
+BOTH — thumb on the tile, display for the zoom. If a tool only gives you one URL,
+use it for `src` and leave `display` `null` (the tile just re-opens `src`).
 
 One image is still a card — a single tile in a `MediaGrid` is the normal way to
 hand back one generation, not an over-reaction.
 
-Only use image URLs a tool returned (`attach_visual_generation`'s
-`generation.url`, `list_library`, `get_visual_world`, `get_episode`, …). A job
-that hasn't reached `completed` has no URL — don't card it, and don't card the
-raw provider `result_url` when the attached `/visual-media/…` path exists.
+Only use image URLs a tool returned (`attach_visual_generation`'s `thumb` /
+`display`, `list_library`, `get_visual_world`, `get_episode`, …). A job that
+hasn't reached `completed` has no URL — don't card it, and never pass `refUrl` or
+the raw provider `result_url` to a tile; those are for generation input, not for
+looking at.
 
 ## Sound comes back playable
 
@@ -280,9 +288,9 @@ or attaching a reference into a media-picker button:
 root = Card([intro, refs, upload])
 intro = Text("Pick the reference for the clearing sheet.", "body")
 refs = MediaGrid([r1, r2, r3], "From the library", 3)
-r1 = MediaItem("<url from list_library>", "Use the dawn clearing reference", "Dawn")
-r2 = MediaItem("<url from list_library>", "Use the dusk clearing reference", "Dusk")
-r3 = MediaItem("<url from list_library>", "Use the foggy clearing reference", "Fog")
+r1 = MediaItem("<thumb>", "<display>", "Use the dawn clearing reference", "Dawn")
+r2 = MediaItem("<thumb>", "<display>", "Use the dusk clearing reference", "Dusk")
+r3 = MediaItem("<thumb>", "<display>", "Use the foggy clearing reference", "Fog")
 upload = Actions([pick])
 pick = Action("Upload a reference image", "I'll attach a reference image")
 ```

@@ -94,6 +94,7 @@ export interface OptionListProps {
 }
 export interface MediaItemProps {
   src: string;
+  display?: string | null;
   send?: string | null;
   label?: string | null;
   caption?: string | null;
@@ -315,13 +316,14 @@ export function buildStudioLibrary(renderers: StudioRenderers): Library {
     name: "MediaItem",
     props: z.object({
       src: z.string(),
+      display: z.string().optional().nullable(),
       send: z.string().optional().nullable(),
       label: z.string().optional().nullable(),
       caption: z.string().optional().nullable(),
       selected: z.boolean().optional(),
       group: z.string().optional().nullable(),
     }),
-    description: `One image in a MediaGrid. src: the image URL (a /storyboard-media, /library or generation URL from the tools — never invent one). PREFER the tool's \`thumb\` field when it has one: it is a ~400px webp of the same picture, so the card paints immediately instead of pulling a multi-megabyte original into the chat. Tapping the tile still opens the full-size image. (\`thumb\` and \`display\` are for LOOKING at — never pass either to a generation; that always takes the \`refUrl\`.) send: OPTIONAL — give it only when picking this image is a real decision; then it follows the usual rules (${SEND}; in a 'many' or 'one-per-group' grid a NOUN PHRASE instead, because the picks are joined into one sentence). OMIT send entirely when the card is just showing the author a picture you made — the tile is then look-only, with no "Use this" button under it. label: a short name under the thumbnail. caption: one extra line of context. selected: marks the current pick. group: ${GROUP}.`,
+    description: `One image in a MediaGrid. src: the URL PAINTED ON THE TILE — pass the tool's \`thumb\` field whenever it has one (a ~400px webp of the same picture), so the card paints immediately instead of pulling a multi-megabyte original into the chat; fall back to the plain image URL only when there is no thumb. display: the URL OPENED FULL-SCREEN when the tile is tapped — pass the tool's \`display\` field (a ~1600px webp), so the author gets a sharp look without downloading the full original; OMIT it and the tile just re-opens \`src\`. (\`thumb\` and \`display\` are for LOOKING at — never pass either to a generation; that always takes the \`refUrl\`.) send: OPTIONAL — give it only when picking this image is a real decision; then it follows the usual rules (${SEND}; in a 'many' or 'one-per-group' grid a NOUN PHRASE instead, because the picks are joined into one sentence). OMIT send entirely when the card is just showing the author a picture you made — the tile is then look-only, with no "Use this" button under it. label: a short name under the thumbnail. caption: one extra line of context. selected: marks the current pick. group: ${GROUP}.`,
     component: r(renderers.MediaItem),
   });
 

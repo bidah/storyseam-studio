@@ -482,7 +482,7 @@ export function MediaItem({ props }) {
         </Button>
       ) : null}
       <Lightbox
-        src={props.src}
+        src={props.display || props.src}
         alt={props.label}
         open={preview}
         onOpenChange={setPreview}
