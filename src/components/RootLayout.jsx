@@ -107,6 +107,8 @@ function UserMenu() {
     } catch {
       /* ignore storage failures — the class toggle still applies for this session */
     }
+    const meta = document.querySelector('meta[name="theme-color"]');
+    if (meta) meta.setAttribute("content", next ? "#0f0f11" : "#ffffff");
   };
 
   const signOut = async () => {

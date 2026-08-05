@@ -25,8 +25,12 @@ export default function HelperLines({ horizontal, vertical }) {
     ctx.clearRect(0, 0, width, height);
 
     const [tx, ty, zoom] = transform;
-    // The brand lime — same accent the selected-card border uses.
-    ctx.strokeStyle = "#cbf74e";
+    // Use the theme primary so the guide matches the selected-card border in
+    // both light (deep green) and dark (brand lime) modes.
+    const primary = getComputedStyle(document.documentElement)
+      .getPropertyValue("--primary")
+      .trim();
+    ctx.strokeStyle = primary || "#cbf74e";
     ctx.lineWidth = 1;
 
     if (typeof vertical === "number") {
