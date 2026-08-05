@@ -54,6 +54,14 @@ function Homepage() {
   const signIn = async () => {
     setBusy(true);
     setErr(null);
+    // If we're gating an invite landing (LoginGate renders this page in place of
+    // /accept-invite/:id, so the URL is still the invite), return the user THERE
+    // after OAuth instead of the app root — otherwise the invite id + token are
+    // lost across the redirect and a brand-new user lands on an empty project.
+    // Same-origin path only, so there's nothing to open-redirect to.
+    const callbackURL = window.location.pathname.startsWith("/accept-invite/")
+      ? window.location.pathname + window.location.search
+      : "/";
     try {
       if (isDesktop) {
         // Desktop (TOO-21): ask Better Auth for the authorize URL without
@@ -63,7 +71,7 @@ function Homepage() {
         // the Electron cookie jar. Then reload to pick the session up.
         const { data, error } = await authClient.signIn.social({
           provider: "google",
-          callbackURL: "/",
+          callbackURL,
           disableRedirect: true,
         });
         if (error) throw new Error(error.message || "Sign-in failed");
@@ -77,7 +85,7 @@ function Homepage() {
       }
       // Web: redirects to Google and back to /api/auth/callback/google;
       // Better Auth creates the session, then returns to callbackURL ("/").
-      await authClient.signIn.social({ provider: "google", callbackURL: "/" });
+      await authClient.signIn.social({ provider: "google", callbackURL });
     } catch (e) {
       setErr(String(e?.message || e));
       setBusy(false);

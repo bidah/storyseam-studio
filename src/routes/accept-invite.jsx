@@ -26,7 +26,7 @@ export function Component() {
   const [params] = useSearchParams();
   const token = params.get("token") || "";
   const navigate = useNavigate();
-  const { refresh } = useProjects();
+  const { refresh, switchTo } = useProjects();
 
   const [preview, setPreview] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -45,11 +45,15 @@ export function Component() {
   const accept = useCallback(async () => {
     setAccepting(true); setError(null);
     try {
-      await apiJson(`/api/orgs/invitations/${id}/accept`, "POST", { token });
+      const res = await apiJson(`/api/orgs/invitations/${id}/accept`, "POST", { token });
       await refresh();
+      // Drop the invitee onto the project they were just granted, not the empty
+      // personal project they were parked on — switchTo also persists the pick so
+      // a reload stays there. `/world` reads the newly-active project.
+      if (res.landingProjectId) await switchTo(res.landingProjectId);
       navigate("/world");
     } catch (e) { setError(String(e.message || e)); setAccepting(false); }
-  }, [id, token, refresh, navigate]);
+  }, [id, token, refresh, switchTo, navigate]);
 
   if (loading) return <div className="flex h-full items-center justify-center py-24"><Spinner /></div>;
 

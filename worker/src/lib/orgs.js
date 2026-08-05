@@ -350,6 +350,27 @@ export async function acceptInvitation(env, inv, userId) {
     }
   }
   await env.DB.batch(stmts);
+  return { landingProjectId: await inviteLandingProject(env, inv) };
+}
+
+// Which project should an accepting invitee be dropped onto? For a scoped invite,
+// the most-recently-updated project they were actually granted; for an "all"
+// invite (no explicit grants), the org's most-recently-updated project. Null if
+// the org has nothing to show — the caller falls back to the default landing.
+async function inviteLandingProject(env, inv) {
+  if (inv.scope_mode === "all") {
+    const row = await env.DB.prepare(
+      "SELECT id FROM projects WHERE organization_id = ? AND archived = 0 ORDER BY updated_at DESC LIMIT 1",
+    ).bind(inv.organization_id).first();
+    return row?.id || null;
+  }
+  let ids = [];
+  try { ids = JSON.parse(inv.scope_project_ids || "[]"); } catch { ids = []; }
+  if (!ids.length) return null;
+  const row = await env.DB.prepare(
+    `SELECT id FROM projects WHERE organization_id = ? AND archived = 0 AND id IN (${ids.map(() => "?").join(",")}) ORDER BY updated_at DESC LIMIT 1`,
+  ).bind(inv.organization_id, ...ids).first();
+  return row?.id || null;
 }
 
 // Grant / update / revoke a single member's access to a single project — the

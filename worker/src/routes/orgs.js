@@ -202,7 +202,7 @@ export function registerOrgs(app) {
     if (!inv || !(await tokensMatch(body?.token, inv.token))) return c.json({ error: "Invalid invitation" }, 404);
     if (inv.status !== "pending") return c.json({ error: `Invitation already ${inv.status}` }, 409);
     if (inv.expires_at && inv.expires_at < new Date().toISOString()) return c.json({ error: "Invitation expired" }, 410);
-    await acceptInvitation(c.env, inv, userId);
-    return c.json({ ok: true, organizationId: inv.organization_id });
+    const { landingProjectId } = await acceptInvitation(c.env, inv, userId);
+    return c.json({ ok: true, organizationId: inv.organization_id, landingProjectId });
   });
 }
