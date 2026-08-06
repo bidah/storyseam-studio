@@ -49,6 +49,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 
 import { IconSwap } from "@/components/shared";
+import { EditorSkeleton } from "@/components/skeletons";
 import { useT, t as staticT } from "@/lib/i18n";
 import EditorComposition from "@/editor/Composition";
 import {
@@ -4363,7 +4364,7 @@ export default function Editor({ reloadKey }) {
     finally { setCommittingPacing(false); }
   };
 
-  if (loading && !timeline) return <Spinner label="loading editor…" />;
+  if (loading && !timeline) return <EditorSkeleton />;
 
   // "New project" — the way into the editor that ISN'T derived from a cut. The
   // modal names it and doubles as the confirm, since starting fresh replaces

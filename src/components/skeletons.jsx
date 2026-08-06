@@ -480,6 +480,90 @@ function MoodboardSkeleton() {
   );
 }
 
+// Editor.jsx:4780-5110 — "Editor" header with a row of right-aligned actions,
+// then the fixed top section (media pool ~1/4 beside the aspect-video player),
+// a toolbar row, and the timeline panel (a w-24 label rail beside a ruler + a
+// stack of lanes). Rendered by the component itself while its timeline loads
+// (it is effect-driven, not loaderized), so it fills the same box the real
+// editor will.
+function EditorSkeleton() {
+  return (
+    <div className="w-full min-w-0 space-y-4">
+      {/* header: title + badge on the left, action buttons on the right */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-2">
+          <Skeleton className="h-7 w-20" />
+          <Skeleton className="h-5 w-28 rounded-full" />
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          {["w-32", "w-24", "w-24", "w-40"].map((w, i) => (
+            <Skeleton key={i} className={cn("h-8 rounded-md", w)} />
+          ))}
+        </div>
+      </div>
+
+      {/* fixed top: media pool (left) + player (right) */}
+      <div className="flex items-start gap-4">
+        <div className="hidden w-1/4 min-w-[170px] max-w-[300px] shrink-0 space-y-2 rounded-xl border bg-muted/20 p-2.5 sm:block">
+          <Skeleton className="h-4 w-24" />
+          {Array.from({ length: 6 }, (_, i) => (
+            <div key={i} className="flex items-center gap-2">
+              <Skeleton className="h-10 w-16 shrink-0 rounded-md" />
+              <div className="min-w-0 flex-1 space-y-1.5">
+                <Skeleton className="h-3 w-full" />
+                <Skeleton className="h-2.5 w-1/2" />
+              </div>
+            </div>
+          ))}
+        </div>
+        <Skeleton className="aspect-video min-w-0 flex-1 rounded-xl" />
+      </div>
+
+      {/* toolbar row */}
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          {["w-20", "w-16", "w-16"].map((w, i) => (
+            <Skeleton key={i} className={cn("h-8 rounded-md", w)} />
+          ))}
+        </div>
+        <div className="flex items-center gap-2">
+          <Skeleton className="h-4 w-10" />
+          <Skeleton className="h-7 w-7 rounded-md" />
+          <Skeleton className="h-2 w-28 rounded-full" />
+          <Skeleton className="h-7 w-7 rounded-md" />
+        </div>
+      </div>
+
+      {/* timeline: w-24 label rail beside the ruler + lanes */}
+      <div className="overflow-hidden rounded-xl border bg-muted/20">
+        <div className="flex">
+          <div className="w-24 shrink-0 space-y-1 border-r bg-card p-2">
+            <Skeleton className="h-5 w-full" />
+            {Array.from({ length: 4 }, (_, i) => (
+              <Skeleton key={i} className="h-8 w-full rounded-md" />
+            ))}
+          </div>
+          <div className="min-w-0 flex-1 space-y-2 p-2">
+            <Skeleton className="h-5 w-full" />
+            {[
+              ["w-2/3", "w-1/4"],
+              ["w-1/3", "w-1/5", "w-1/4"],
+              ["w-1/2", "w-1/6"],
+              ["w-5/6"],
+            ].map((row, i) => (
+              <div key={i} className="flex items-center gap-2">
+                {row.map((w, j) => (
+                  <Skeleton key={j} className={cn("h-8 rounded-md", w)} />
+                ))}
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // Tab → skeleton. Keys match the route paths in src/router.jsx.
 const SKELETONS = {
   world: WorldSkeleton,
@@ -492,9 +576,14 @@ const SKELETONS = {
   cuts: CutsSkeleton,
   library: LibrarySkeleton,
   sounds: SoundsSkeleton,
+  editor: EditorSkeleton,
 };
 
-// The only export the app renders. Unknown / unloaderized tabs (script, editor)
+// The Editor tab isn't loaderized (it owns heavy local state), so it can't lean
+// on `HydrateFallback` — it renders this itself while its timeline loads.
+export { EditorSkeleton };
+
+// The only export the app renders. Unknown / unloaderized tabs (script)
 // fall back to a neutral panel stack rather than nothing.
 export function RouteSkeleton({ tab }) {
   const Variant = SKELETONS[tab];
