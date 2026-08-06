@@ -3,18 +3,18 @@ name: script-writing
 description: >-
   Write and revise the screenplay on the Script tab. Use when the user is on the
   Script screen (clientContext screen "script") or asks to "write the script",
-  "draft a scene", "add dialogue", "rewrite this line", "fix the screenplay",
-  "continue the script". Drives the screenplay elements via get_script /
-  save_script / append_script; a rewrite must be CHUNKED — save_script with the
-  first ~40 lines, then append_script per chunk, or the output limit fails the
-  turn. Edits apply ONLY to the pinned draft (list_drafts / new_draft /
-  pin_draft). New material starts as a BEAT OUTLINE the author approves in chat
-  before any line is written, and apply_script_proposal runs ONLY after they
-  say to apply it — never in the same turn as the proposal, never rolling on
-  into shots after. To IMPROVE a script never do the craft by hand: delegate to
-  one of the 15 specialists in stage order (structure, then scenes and cause,
-  then lines, then producibility). For "what's next / which agents have run",
-  load script-agents.
+  "draft a scene", "add dialogue", "rewrite this line", "continue the script".
+  For a TARGETED change — prepend a cold open, insert or
+  rewrite a scene or line, cut a beat — use edit_script (insert/replace/delete at
+  a line index from get_script): send only the changed lines, NEVER re-type the
+  script. append_script extends the end; save_script is only a full rewrite from
+  scratch and must be CHUNKED (first ~40 lines, then append_script per chunk).
+  Edits apply ONLY to the pinned draft (list_drafts / new_draft / pin_draft). New
+  material starts as a BEAT OUTLINE the author approves in chat first;
+  apply_script_proposal runs ONLY after they say to apply it — never in the same
+  turn as the proposal. To IMPROVE a script, delegate to the 15 specialists in
+  stage order rather than doing the craft by hand. For "what's next", load
+  script-agents.
 ---
 
 # Script writing (Shot Studio Script tab)
@@ -36,16 +36,25 @@ You never write ProseMirror/HTML — you work with a flat array of
 
 ## Tools
 
-- **`get_script`** — read the current title + `elements`. **Always call this
-  first** before revising, so you edit what's actually there. This returns the
-  COMMITTED content (not any still-pending proposal).
+- **`get_script`** — read the current title + `elements` (a flat, 0-based array of
+  `{ type, text }` lines). **Always call this first** before revising, so you edit
+  what's actually there and know the line index to target. Returns the COMMITTED
+  content (not any still-pending proposal).
+- **`edit_script`** — propose a TARGETED, positional change: `insert` lines before
+  a line index, `replace` a run of lines, or `delete` a run. You send ONLY the
+  changed lines + where (`op`, `at`, `count`, `elements`). **This is the tool for
+  any change to existing content** — prepend a cold open (`insert` at 0), add a
+  scene, rewrite a scene or a line (`replace`), cut a beat (`delete`). It never
+  re-types the untouched script, so it's fast and can't drift. Indices come from
+  `get_script`; they shift after each edit (the result returns a `context` window
+  to re-index from). Pass a short `summary`.
 - **`append_script`** — propose adding lines to the END without disturbing
   existing content. The safe default for "keep writing" / "add the next scene".
   Pass a short `summary` of what you added.
 - **`save_script`** — propose replacing the WHOLE document (optional new `title` +
-  full `elements`). Use only for a full rewrite or a restructure; when in doubt
-  read first and re-send the complete, corrected list. Pass a short `summary`.
-  **Never send a long script in one call — chunk it** (see below).
+  full `elements`). **Only for a genuine whole-document rewrite from scratch or an
+  import** — never to change part of a script (that's `edit_script`). When you do
+  use it, **never send a long script in one call — chunk it** (see below).
 - **`apply_script_proposal`** — commit the pending proposal in full (the same as
   the user hitting **Accept all** on the diff). Call it ONLY after the user has
   explicitly confirmed in chat that they want the change applied.
@@ -120,19 +129,31 @@ the outline — the request already is the plan. Propose it and ask to apply, as
 3. Keep text **plain** — do not add `INT.`/uppercase yourself where the editor
    already styles it, but DO write sluglines and transitions in their standard
    form (`INT. SCHOOLHOUSE - DAY`, `CUT TO:`) since that's the text content.
-4. Prefer **`append_script`** to extend; use **`save_script`** for a rewrite.
-   **Rewrite in chunks — never one giant call.** A full script is far too many
-   lines to emit in a single `save_script` call: that one tool call can blow
-   past the model turn's output limit, truncate mid-arguments, and fail the
-   whole turn (nothing gets saved). Instead:
-   - First chunk (~40 lines): `save_script({ title, summary, elements: <lines 1–40> })`
-     — this stages the proposal and replaces everything.
-   - Each further chunk: `append_script({ elements: <next ~40 lines> })` — one
-     call per chunk, in order. Appends stack onto the same pending proposal, so
-     the diff the user reviews is still one coherent before→after.
-   Work sequentially until the last line is in, then report the proposal as one
-   change. If a call fails, retry THAT chunk — the earlier chunks are already
-   staged.
+4. **Pick the tool by the shape of the change:**
+   - **Changing existing content → `edit_script`.** Prepend a cold open
+     (`insert` at 0), insert a scene, rewrite a scene or a line (`replace` the
+     line range), cut a beat (`delete`). Send ONLY the changed lines and the line
+     index — the untouched script stays as it is. This is the fast, drift-proof
+     default for revisions. **Do NOT re-type the whole script to change part of
+     it** — that (a `save_script` + a chain of `append_script` calls re-emitting
+     the existing lines) is the slow, error-prone anti-pattern `edit_script`
+     exists to kill. Read `get_script` for the current indices; after each edit
+     the positions shift, so use the returned `context` window or re-read before
+     the next one.
+   - **Adding to the end → `append_script`.**
+   - **Whole-document rewrite from scratch / import → `save_script`, in chunks —
+     never one giant call.** A full script is far too many lines to emit in a
+     single `save_script` call: that one tool call can blow past the model turn's
+     output limit, truncate mid-arguments, and fail the whole turn (nothing gets
+     saved). Instead:
+     - First chunk (~40 lines): `save_script({ title, summary, elements: <lines 1–40> })`
+       — this stages the proposal and replaces everything.
+     - Each further chunk: `append_script({ elements: <next ~40 lines> })` — one
+       call per chunk, in order. Appends stack onto the same pending proposal, so
+       the diff the user reviews is still one coherent before→after.
+     Work sequentially until the last line is in, then report the proposal as one
+     change. If a call fails, retry THAT chunk — the earlier chunks are already
+     staged.
 5. Report what you PROPOSED in one or two lines and **ask if they want it applied**
    (e.g. "proposed scene 3: 6 lines, Sara + Helena on the bridge — want me to
    apply it, or review the diff on the Script tab first?"). If they confirm, call
@@ -156,6 +177,29 @@ append_script(elements: [
   { "type": "transition",   "text": "CUT TO:" }
 ])
 ```
+
+### Example — a targeted edit (no re-typing)
+
+Prepend a two-line cold open to a 300-line script — `get_script` shows the
+current opening is at index 0, so `insert` there:
+
+```
+edit_script(op: "insert", at: 0, summary: "Prepended the Soho cold open", elements: [
+  { "type": "scene_heading", "text": "EXT. SOHO STREET - NIGHT" },
+  { "type": "action",        "text": "The city breathes. Noah bursts through the crowd and ducks into an alley." }
+])
+```
+
+Rewrite one line the author flagged (say it's line 42) — `replace` just that line:
+
+```
+edit_script(op: "replace", at: 42, count: 1, summary: "Tightened Sara's line", elements: [
+  { "type": "dialogue", "text": "You skipped the last three steps." }
+])
+```
+
+Both stage the same reviewable before→after diff as the other tools — the rest of
+the script is never touched or re-sent.
 
 ## Specialists — delegate the hard scriptwriting
 
@@ -267,4 +311,5 @@ next with the script".
 - Be interactive about creative choices (which character speaks, tone, how a
   scene ends) — ask rather than invent when it materially shapes the story.
 - Don't overwrite the user's existing lines unless they asked for a rewrite;
-  reach for `append_script` and targeted `save_script` re-sends instead.
+  reach for `append_script` (to extend) and `edit_script` (to change a specific
+  place) instead of re-sending the whole document.

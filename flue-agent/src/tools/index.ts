@@ -26,6 +26,7 @@ import { getScript } from "./get_script.js";
 import { getScriptReviews } from "./get_script_reviews.js";
 import { lintScript } from "./lint_script.js";
 import { appendScript } from "./append_script.js";
+import { editScript } from "./edit_script.js";
 import { saveScript } from "./save_script.js";
 import { applyScriptProposal } from "./apply_script_proposal.js";
 import { listDrafts } from "./list_drafts.js";
@@ -123,6 +124,7 @@ export function createTools(api: Api): ToolDefinition[] {
     getScriptReviews(api),
     lintScript(api),
     appendScript(api),
+    editScript(api),
     saveScript(api),
     applyScriptProposal(api),
     listDrafts(api),
