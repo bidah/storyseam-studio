@@ -14,6 +14,9 @@ import { navigate } from "./navigate.js";
 import { getWorld } from "./get_world.js";
 import { saveWorld } from "./save_world.js";
 import { addWorldCharacter } from "./add_world_character.js";
+import { listEpisodes } from "./list_episodes.js";
+import { createEpisode } from "./create_episode.js";
+import { setFormat } from "./set_format.js";
 import { addWorldLocation } from "./add_world_location.js";
 import { getVisualWorld } from "./get_visual_world.js";
 import { attachVisualGeneration } from "./attach_visual_generation.js";
@@ -113,6 +116,10 @@ export function createTools(api: Api): ToolDefinition[] {
     restoreVersion(api),
     addWorldCharacter(api),
     addWorldLocation(api),
+    // Series / episodes
+    listEpisodes(api),
+    createEpisode(api),
+    setFormat(api),
     getVisualWorld(api),
     attachVisualGeneration(api),
     saveGenerationToLibrary(api),
@@ -208,6 +215,7 @@ export function createReadTools(api: Api): ToolDefinition[] {
     viewScreen(api),
     // World / Script / Drafts
     getWorld(api),
+    listEpisodes(api),
     listHistory(api),
     getVisualWorld(api),
     getMoodboard(api),

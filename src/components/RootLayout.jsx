@@ -9,7 +9,9 @@ import LoginGate from "@/components/Login";
 import ProjectProvider from "@/components/ProjectProvider";
 import { ProviderGateProvider } from "@/components/ProviderGate";
 import ProjectSwitcher from "@/components/ProjectSwitcher";
-import { onProjectChange } from "@/lib/projectFetch";
+import EpisodeProvider from "@/components/EpisodeProvider";
+import EpisodeSwitcher from "@/components/EpisodeSwitcher";
+import { onProjectChange, onEpisodeChange } from "@/lib/projectFetch";
 import { useReportNavigation } from "@/lib/appState";
 import { clearTabCache, invalidateTabCache } from "@/lib/tabCache";
 import { signOut as authSignOut } from "@/lib/auth-client";
@@ -215,6 +217,7 @@ export default function RootLayout() {
   // side by side until every tab is on a loader.
   const [reloadKey, setReloadKey] = useState(0);
   const [projectKey, setProjectKey] = useState(0);
+  const [episodeKey, setEpisodeKey] = useState(0);
   const [modalImage, setModalImage] = useState(null);
 
   // A lightweight readiness ping that bumps `reloadKey` (the media cache-bust
@@ -247,6 +250,18 @@ export default function RootLayout() {
     setProjectKey((k) => k + 1);
     revalidator.revalidate(); // re-run the active route's loader with the new project
     load(); // header shot count belongs to the new project too
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }), []);
+
+  // Switching EPISODE (series only) re-points every downstream tab at the new
+  // episode's docs — same treatment as a project switch: drop the per-tab caches,
+  // bust media, remount the body, and refetch the active route + header count.
+  useEffect(() => onEpisodeChange(() => {
+    clearTabCache();
+    setReloadKey((k) => k + 1);
+    setEpisodeKey((k) => k + 1);
+    revalidator.revalidate();
+    load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }), []);
 
@@ -388,6 +403,7 @@ export default function RootLayout() {
       <AgentProvider>
       <LoginGate>
       <ProjectProvider>
+      <EpisodeProvider>
       <ProviderGateProvider>
       <ShellContext.Provider value={shell}>
       {/* Highlight the PENDING tab, not the committed one — otherwise a click
@@ -402,6 +418,7 @@ export default function RootLayout() {
             </div>
 
             <ProjectSwitcher />
+            <EpisodeSwitcher />
 
             <TabsList className="h-9">
               {TABS.filter((tab) => !tab.hidden).map((tab) => (
@@ -432,7 +449,7 @@ export default function RootLayout() {
                 the board can fill the remaining space instead of guessing a vh.
                 Every other tab is a document and keeps the measure. */}
             <main
-              key={projectKey}
+              key={`${projectKey}:${episodeKey}`}
               className={cn(
                 "mx-auto w-full px-4 py-6 md:px-6",
                 activeTab === "moodboard"
@@ -453,6 +470,7 @@ export default function RootLayout() {
       <Toaster position="bottom-right" />
       </ShellContext.Provider>
       </ProviderGateProvider>
+      </EpisodeProvider>
       </ProjectProvider>
       </LoginGate>
       </AgentProvider>

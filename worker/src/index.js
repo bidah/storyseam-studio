@@ -24,6 +24,7 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { registerWorld } from "./routes/world.js";
+import { registerEpisodes, getActiveEpisode } from "./routes/episodes.js";
 import { registerHistory, registerClone } from "./routes/history.js";
 import { registerShotlist } from "./routes/shotlist.js";
 import { registerRadio } from "./routes/radio.js";
@@ -54,7 +55,7 @@ import { registerStatus } from "./routes/status.js";
 import { registerSuggestions } from "./routes/suggestions.js";
 import { createAuth } from "./auth.js";
 import { broadcast } from "./lib/broadcast.js";
-import { normalizeProjectId } from "./lib/docs.js";
+import { normalizeProjectId, DEFAULT_EPISODE } from "./lib/docs.js";
 import { kindForPrefix, mediaKey, proxyKey, streamKey } from "./lib/media.js";
 import { ensureProxy } from "./lib/proxy.js";
 import { ensureVariants, variantKey, IMAGE_TIERS, isDerivableImage } from "./lib/images.js";
@@ -62,7 +63,7 @@ import {
   mintToken, verifyToken, proxySecret,
   PROXY_HEADER, AGENT_HEADER, AGENT_CHAT_HEADER, PROXY_ISSUER,
 } from "./lib/proxy-token.js";
-import { runWithContext } from "./lib/request-context.js";
+import { runWithContext, requestContext } from "./lib/request-context.js";
 import { registerAppState } from "./routes/appstate.js";
 import { registerNavigate } from "./routes/navigate.js";
 import { registerApprovals } from "./routes/approvals.js";
@@ -170,11 +171,25 @@ app.use("*", async (c, next) => {
       }
     }
   }
+  // Which series episode this request targets. It's a scoping dimension below
+  // the project (feature films / the first episode use DEFAULT_EPISODE, whose
+  // docs are unsuffixed — see lib/docs.js). Resolved here rather than in the
+  // project middleware because it depends only on the request, not on project
+  // resolution, and the identity store below must carry it so doc writes scope
+  // to the right episode without every call site passing it along.
+  const episodeId = c.req.header("x-episode-id") || c.req.query("episodeId") || DEFAULT_EPISODE;
+  c.set("episodeId", episodeId);
+
   // Everything downstream runs inside the request's identity store, so a doc
-  // write can be attributed without every call site passing an actor along.
-  // See lib/request-context.js.
+  // write can be attributed (and episode-scoped) without every call site passing
+  // an actor/episode along. See lib/request-context.js.
   return runWithContext(
-    { userId: c.get("userId"), caller: c.get("caller"), chatId: c.get("chatId") },
+    {
+      userId: c.get("userId"),
+      caller: c.get("caller"),
+      chatId: c.get("chatId"),
+      episodeId,
+    },
     () => next(),
   );
 });
@@ -188,6 +203,19 @@ app.use("*", async (c, next) => {
   const named = c.req.header("x-project-id") || c.req.query("projectId");
   const pid = named || (await getActiveProject(c.env, userId));
   c.set("projectId", pid);
+
+  // Episode fallback. A request WITH an explicit episode (the fetch shim sets
+  // x-episode-id on every same-origin fetch) already resolved it in the identity
+  // middleware. A header-less request — a media `<img>`/`<video>` load — resolves
+  // to the user's active episode for THIS project now that pid is known, exactly
+  // as it falls back to the active project. Update the async-context store too so
+  // lib/docs.js scopes the doc rows to the right episode.
+  if (pid && !c.req.header("x-episode-id") && !c.req.query("episodeId")) {
+    const eid = (await getActiveEpisode(c.env, userId, pid)) || DEFAULT_EPISODE;
+    c.set("episodeId", eid);
+    const store = requestContext();
+    if (store) store.episodeId = eid;
+  }
 
   // Three prefixes are exempt, each because it carries its OWN credential and
   // touches no project state — so scoping them to a project (or to the session
@@ -636,6 +664,7 @@ app.get("/proxy/:prefix/*", async (c) => {
 
 // --- ported API route groups (Stage 1+) ------------------------------------
 registerWorld(app);
+registerEpisodes(app);
 registerHistory(app);
 registerClone(app);
 registerShotlist(app);
@@ -736,7 +765,14 @@ app.all("/eve/*", async (c) => {
   // never address another user's conversation.
   if (userId && agentMatch) {
     const [, name, id, rest = ""] = agentMatch;
-    path = `/agents/${name}/${userId}~${id}${rest}`;
+    // Bind the conversation to the active episode of a series by folding it into
+    // the instance id (after the v2 check above, which read the raw client id).
+    // Only a NON-default episode is appended: a feature / the first episode keeps
+    // the original 3-part id so its durable object — and its whole transcript —
+    // is exactly the one it always was. See flue-agent/src/lib/instance-id.ts.
+    const eid = c.get("episodeId");
+    const epSuffix = eid && eid !== DEFAULT_EPISODE ? `~${eid}` : "";
+    path = `/agents/${name}/${userId}~${id}${epSuffix}${rest}`;
   }
   const target = new URL(path + url.search, origin);
   // Canonical Workers reverse-proxy: rebuilding the Request against the flue

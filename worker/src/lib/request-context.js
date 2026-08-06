@@ -26,10 +26,13 @@ const storage = new AsyncLocalStorage();
 /**
  * Run `fn` with the request's identity attached.
  *
- * `context` is `{ userId, caller, chatId }`:
- *   userId  the authenticated user (session cookie, or the agent's signed header)
- *   caller  "app" | "agent" — which credential answered
- *   chatId  the agent conversation a tool call belongs to, when there is one
+ * `context` is `{ userId, caller, chatId, episodeId }`:
+ *   userId    the authenticated user (session cookie, or the agent's signed header)
+ *   caller    "app" | "agent" — which credential answered
+ *   chatId    the agent conversation a tool call belongs to, when there is one
+ *   episodeId the active series episode; `lib/docs.js` reads it to scope the
+ *             per-episode document rows (a missing/default episode is unscoped —
+ *             the same back-compat key existing single-episode projects use).
  */
 export function runWithContext(context, fn) {
   return storage.run(context, fn);

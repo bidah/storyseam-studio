@@ -87,6 +87,19 @@
 /api/visual-world/sheet-prompts
 /api/suggestions/start            # "the author tapped this card" — there is no card for the agent to tap
 
+# --- [gui-only] series / episode management + character roster ---------------
+# The agent's series capabilities are set_format, list_episodes and
+# create_episode (flue-agent/src/tools/). The paths below are browser-side:
+# switching/renaming/deleting an episode is a header action that rebinds the open
+# conversation (the agent can't re-scope its own chat), and the roster picker +
+# anchor toggle are World-tab affordances the agent reaches through save_world /
+# add_world_character (both accept the roster and the `anchor` flag).
+/api/episodes/*                   # rename/delete an episode — header management UI
+/api/episodes/*/activate          # switching episode rebinds the chat; a client action
+/api/episode/roster               # "add previous character" picker; agent uses save_world
+/api/world/character/*/anchor     # anchor toggle; agent sets `anchor` via save_world
+/api/world/characters/library     # the roster picker's library list; agent has get_world
+
 # --- [gui-only] teams: the accept flow + management transport ----------------
 # Team CAPABILITIES the agent has: list_orgs, list_members, invite_member,
 # set_member_scope, remove_member (see flue-agent/src/tools/). The paths below

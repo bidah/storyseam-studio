@@ -188,7 +188,7 @@ export function Whistlewood({ id }: AgentProps): string {
   const projectId = decoded?.projectId ?? null;
   const userId = decoded?.userId ?? "";
 
-  const api = createApi(projectId, userId, decoded?.chatId ?? null);
+  const api = createApi(projectId, userId, decoded?.chatId ?? null, decoded?.episodeId ?? null);
 
   useModel(selectedModel());
 

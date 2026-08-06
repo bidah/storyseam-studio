@@ -12,14 +12,35 @@
 // The Worker streams these back (with HTTP range support for video/audio
 // seeking); writers (ffmpeg/remotion outputs, sound attach, uploads) put here.
 
-import { normalizeProjectId } from "./docs.js";
+import { normalizeProjectId, DEFAULT_EPISODE } from "./docs.js";
+import { requestContext } from "./request-context.js";
 
 const KINDS = new Set(["shots", "gen", "sound-media", "final", "refs", "multishot", "stills", "storyboard", "visual", "moodboard"]);
+
+// Media that belongs to ONE episode of a series. Everything not listed here is
+// series-level (visual, moodboard, and the `asset` library that character-sheet
+// images live under) and must stay at the unsuffixed key so it's shared across
+// episodes — mirroring EPISODE_SCOPED_DOCS on the document side. Two episodes
+// can both have a shot "MS-01", so their storyboard/gen/still bytes would collide
+// at one key without this.
+const EPISODE_SCOPED_KINDS = new Set([
+  "shots", "gen", "sound-media", "final", "refs", "multishot", "stills", "storyboard",
+]);
+
+// `<episodeId>/` to insert after the project id, or "" for series-level media and
+// the default/first episode (back-compat: existing bytes keep their bare keys).
+// `proxy/<kind>` follows the underlying kind's scoping.
+function episodeSegment(kind) {
+  const base = String(kind).startsWith("proxy/") ? String(kind).slice(6) : kind;
+  if (!EPISODE_SCOPED_KINDS.has(base)) return "";
+  const eid = requestContext().episodeId;
+  return !eid || eid === DEFAULT_EPISODE ? "" : `${eid}/`;
+}
 
 export function mediaKey(projectId, kind, file) {
   const pid = normalizeProjectId(projectId);
   const f = String(file || "").replace(/^\/+/, "").replace(/\.\.(\/|\\|$)/g, ""); // no traversal
-  return `media/${pid}/${kind}/${f}`;
+  return `media/${pid}/${episodeSegment(kind)}${kind}/${f}`;
 }
 
 // Absolute, ungated URL (`<WORKER_PUBLIC_URL>/files/<r2key>`) that an anonymous

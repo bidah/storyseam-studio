@@ -24,11 +24,13 @@ import assignRefs from "./skills/assign-refs/SKILL.md";
 import generativeUi from "./skills/generative-ui/SKILL.md";
 import destructiveApproval from "./skills/destructive-approval/SKILL.md";
 import teamAccess from "./skills/team-access/SKILL.md";
+import seriesEpisodes from "./skills/series-episodes/SKILL.md";
 
 export const skills = [
   generativeUi,
   destructiveApproval,
   teamAccess,
+  seriesEpisodes,
   worldCreation,
   visualWorld,
   moodboard,

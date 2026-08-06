@@ -20,11 +20,20 @@ import { getSearchProvider } from "@/lib/searchProviders";
 import { getSandboxMode } from "@/lib/sandboxMode";
 
 const STORAGE_KEY = "shot-studio:projectId";
+// The active episode is scoped PER PROJECT: switching project restores whatever
+// episode was last open there. A series project rides an `x-episode-id` header;
+// a feature film / the first episode leaves it unset (the server defaults to the
+// unsuffixed baseline). See worker/src/lib/docs.js.
+const EPISODE_KEY = (pid) => `shot-studio:episodeId:${pid || "_"}`;
 
 let currentProjectId = (() => {
   try { return localStorage.getItem(STORAGE_KEY) || null; } catch { return null; }
 })();
+let currentEpisodeId = (() => {
+  try { return currentProjectId ? localStorage.getItem(EPISODE_KEY(currentProjectId)) || null : null; } catch { return null; }
+})();
 const listeners = new Set();
+const episodeListeners = new Set();
 
 export function getProjectId() {
   return currentProjectId;
@@ -34,12 +43,35 @@ export function setProjectId(id) {
   if (!id || id === currentProjectId) return;
   currentProjectId = id;
   try { localStorage.setItem(STORAGE_KEY, id); } catch { /* ignore */ }
+  // Restore this project's last-open episode so the very next request (and any
+  // header-less media load) is already scoped correctly.
+  try { currentEpisodeId = localStorage.getItem(EPISODE_KEY(id)) || null; } catch { currentEpisodeId = null; }
   for (const fn of listeners) { try { fn(id); } catch { /* ignore */ } }
 }
 
 export function onProjectChange(fn) {
   listeners.add(fn);
   return () => listeners.delete(fn);
+}
+
+export function getEpisodeId() {
+  return currentEpisodeId;
+}
+
+export function setEpisodeId(id) {
+  const next = id || null;
+  if (next === currentEpisodeId) return;
+  currentEpisodeId = next;
+  try {
+    if (currentProjectId && next) localStorage.setItem(EPISODE_KEY(currentProjectId), next);
+    else if (currentProjectId) localStorage.removeItem(EPISODE_KEY(currentProjectId));
+  } catch { /* ignore */ }
+  for (const fn of episodeListeners) { try { fn(next); } catch { /* ignore */ } }
+}
+
+export function onEpisodeChange(fn) {
+  episodeListeners.add(fn);
+  return () => episodeListeners.delete(fn);
 }
 
 // A request is "local" (to our own server) if it's a root-relative path or
@@ -72,6 +104,10 @@ export function installProjectScope() {
       const base = init && init.headers ? init.headers : (typeof input !== "string" && input ? input.headers : undefined);
       const headers = new Headers(base || {});
       if (currentProjectId) headers.set("x-project-id", currentProjectId);
+      // Scope every same-origin request to the active episode of a series. Unset
+      // for a feature film / the first episode — the server treats absence as the
+      // unsuffixed default episode.
+      if (currentEpisodeId) headers.set("x-episode-id", currentEpisodeId);
       // Tag this tab's own writes so the live-sync firehose can tell them apart
       // from the chat agent's writes (only the latter trigger a refetch).
       headers.set("x-client-id", CLIENT_ID);
@@ -128,6 +164,8 @@ export function installProjectScope() {
       const pid = currentProjectId;
       if (pid && typeof url === "string" && isLocal(url)) {
         url += (url.includes("?") ? "&" : "?") + "projectId=" + encodeURIComponent(pid);
+        // EventSource can't set headers, so the episode rides the query string too.
+        if (currentEpisodeId) url += "&episodeId=" + encodeURIComponent(currentEpisodeId);
       }
       return new OrigES(url, config);
     };

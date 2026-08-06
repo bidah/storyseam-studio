@@ -1,14 +1,24 @@
 // World creation endpoints (/api/world*). The "world bible" that seeds the whole
-// series: the story map (the 5 shaping questions), the story-depth core elements,
-// and the character roster with type breakdowns. Backed by the D1 doc store
-// (`docs` row, name "world"), whole-document read-modify-write exactly like the
-// shot list. Written by the agent's world-creation skill (save_world) and edited
-// field-by-field from the World tab.
-import { readDoc, updateDoc } from "../lib/docs.js";
+// series: the story map (the 5 shaping questions), the character LIBRARY (every
+// character ever created, with type breakdowns), the locations, and the format.
+// Backed by the D1 doc store (`docs` row, name "world"), whole-document
+// read-modify-write exactly like the shot list.
+//
+// SERIES SPLIT: the world bible is shared across every episode of a series, but
+// two things are per-EPISODE and live in the `episode-bible` doc instead (which
+// lib/docs.js scopes to the active episode): the STORY DEPTH and the episode's
+// character ROSTER (a list of ids drawn from the shared library). `world.depth`
+// is kept only as the migration source for the first episode's bible — new depth
+// writes go to the bible, never back to the world doc. `buildWorldView` overlays
+// the active episode's bible onto the world so callers still see one `depth` and
+// one `characters` (the episode's cast). See lib/format.js for feature vs series.
+import { readDoc, updateDoc, DEFAULT_EPISODE } from "../lib/docs.js";
+import { requestContext } from "../lib/request-context.js";
 import { assetRefUrl } from "../lib/media.js";
 import {
   normalizeProductionType, DEFAULT_PRODUCTION_TYPE, PRODUCTION_TYPE_IDS,
 } from "../lib/production-type.js";
+import { normalizeFormat, DEFAULT_FORMAT, FORMAT_IDS } from "../lib/format.js";
 
 // The story map — the 5 questions that shape the story (see the World tab).
 export const MAP_FIELDS = ["world", "protagonist", "antagonist", "stakes", "theme"];
@@ -16,6 +26,8 @@ export const MAP_FIELDS = ["world", "protagonist", "antagonist", "stakes", "them
 export const DEPTH_FIELDS = ["premise", "wantVsNeed", "conflict", "obstacles", "structure"];
 // One character's type breakdown.
 const CHAR_FIELDS = ["name", "archetype", "role", "want", "need", "traits", "arc", "voice", "appearance"];
+// `depth` + `characterIds` shape of the per-episode bible.
+const emptyBible = () => ({ depth: emptySection(DEPTH_FIELDS), characterIds: [] });
 // One location's fields. `slug` is the KEY that a shot's `location` string resolves
 // to, so the Animatic can auto-supply this location's sheet as an image reference.
 const LOC_FIELDS = ["name", "slug", "description"];
@@ -35,8 +47,17 @@ function emptyWorld() {
     // renders. Absent = "2d", so every project that predates this keeps its
     // exact previous behaviour.
     productionType: DEFAULT_PRODUCTION_TYPE,
+    // Feature film vs episodic series (see lib/format.js). Absent = "feature", so
+    // a project that predates this stays a single-episode production.
+    format: DEFAULT_FORMAT,
     map: emptySection(MAP_FIELDS),
+    // Legacy field: story depth now lives per-episode in the `episode-bible` doc.
+    // Kept here as the migration source for the first episode's bible and never
+    // written again — see the header note and `seedBibleFor`.
     depth: emptySection(DEPTH_FIELDS),
+    // The character LIBRARY: every character in the series. Each episode picks a
+    // roster of these by id (in the episode bible); `anchor` characters are
+    // auto-added to every new episode.
     characters: [],
     locations: [],
   };
@@ -79,6 +100,9 @@ function normalizeChar(raw, i = 0) {
   for (const f of CHAR_FIELDS) out[f] = str(c[f]);
   out.sheetImage = normalizeSheetImage(c.sheetImage);
   out.voiceRef = normalizeVoiceRef(c.voiceRef);
+  // An anchor character prevails across the whole series: every new episode is
+  // seeded with the anchored cast (e.g. recurring judges). Library-level flag.
+  out.anchor = !!c.anchor;
   return out;
 }
 
@@ -113,6 +137,10 @@ const keep = (incoming, prev) => {
 const keepProductionType = (incoming, prev) =>
   PRODUCTION_TYPE_IDS.includes(String(incoming || "")) ? String(incoming) : prev;
 
+// Same guard for the feature/series format enum.
+const keepFormat = (incoming, prev) =>
+  FORMAT_IDS.includes(String(incoming || "")) ? String(incoming) : prev;
+
 const mergeSection = (fields, incoming, prev) =>
   Object.fromEntries(fields.map((f) => [f, keep(incoming?.[f], prev?.[f])]));
 
@@ -125,6 +153,7 @@ function mergeEntry(fields, raw, prev, i, normalize) {
   for (const f of fields) out[f] = keep(raw?.[f], prev[f]);
   if (raw && "sheetImage" in raw) out.sheetImage = normalizeSheetImage(raw.sheetImage);
   if (raw && "voiceRef" in raw) out.voiceRef = normalizeVoiceRef(raw.voiceRef);
+  if (raw && "anchor" in raw) out.anchor = !!raw.anchor;
   return normalize(out, i);
 }
 
@@ -168,6 +197,7 @@ function normalizeWorld(raw) {
   base.title = str(w.title);
   base.logline = str(w.logline);
   base.productionType = normalizeProductionType(w.productionType);
+  base.format = normalizeFormat(w.format);
   base.generatedAt = w.generatedAt ?? null;
   base.source = w.source ?? null;
   for (const f of MAP_FIELDS) base.map[f] = str(w.map?.[f]);
@@ -177,12 +207,69 @@ function normalizeWorld(raw) {
   return base;
 }
 
+// The world doc itself — the shared series bible with the FULL character library.
+// `depth` here is the frozen legacy value (the migration source); callers that
+// want the active episode's depth/cast use `buildWorldView`.
 export const readWorld = async (env, pid) => normalizeWorld(await readDoc(env, pid, "world", null));
 
-// The world exactly as `GET /api/world` serves it — the normalized bible with an
-// ungated absolute `refUrl` on every linked sheet. Extracted from the route so a
-// non-HTTP caller (the MCP server's `get_world`) reads the SAME shape the GUI
-// and the flue agent see, instead of re-deriving refUrls and drifting from them.
+// ── Per-episode bible (story depth + this episode's character roster) ──────────
+const normalizeBible = (raw) => {
+  const b = raw || {};
+  return {
+    depth: Object.fromEntries(DEPTH_FIELDS.map((f) => [f, str(b.depth?.[f])])),
+    characterIds: Array.isArray(b.characterIds) ? b.characterIds.map(str).filter(Boolean) : [],
+  };
+};
+
+const anchoredCharacterIds = (world) =>
+  (world.characters || []).filter((c) => c.anchor).map((c) => c.id);
+
+// The active episode for this request (from the identity store). Feature films
+// and the first episode of a series are DEFAULT_EPISODE, whose bible is unsuffixed.
+const activeEpisodeId = () => requestContext().episodeId || DEFAULT_EPISODE;
+
+// What a MISSING episode bible should contain. The first episode migrates the
+// single-episode past — it inherits the legacy `world.depth` and starts with the
+// whole existing cast, so nothing an old project had disappears. Every later
+// episode starts blank with only the anchored characters carried in.
+async function seedBibleFor(env, pid, episodeId, world) {
+  world = world || (await readWorld(env, pid));
+  if (episodeId === DEFAULT_EPISODE) {
+    return { depth: { ...world.depth }, characterIds: world.characters.map((c) => c.id) };
+  }
+  return { depth: emptySection(DEPTH_FIELDS), characterIds: anchoredCharacterIds(world) };
+}
+
+export async function readEpisodeBible(env, pid, episodeId = activeEpisodeId(), world) {
+  const raw = await readDoc(env, pid, "episode-bible", null, { episodeId });
+  return normalizeBible(raw || (await seedBibleFor(env, pid, episodeId, world)));
+}
+
+// Mutate the active episode's bible. Same CAS discipline as `editWorld`; the
+// fallback is the migrated/seeded shape so a first write to a missing bible
+// starts from the right place, not from blank.
+export async function editEpisodeBible(env, pid, mutate, episodeId = activeEpisodeId()) {
+  const seed = await seedBibleFor(env, pid, episodeId);
+  return updateDoc(
+    env, pid, "episode-bible", seed,
+    (raw) => {
+      const bible = normalizeBible(raw);
+      const result = mutate(bible) || {};
+      if (result.abort) return result;
+      for (const k of Object.keys(raw)) delete raw[k];
+      Object.assign(raw, bible);
+      return result;
+    },
+    { episodeId },
+  );
+}
+
+// The world exactly as `GET /api/world` serves it, with the active episode's
+// bible overlaid: `depth` and `characters` reflect THIS episode, while
+// `charactersLibrary` is the whole series cast (the "add previous character"
+// picker reads it). Every linked sheet gets an ungated absolute `refUrl` so a
+// non-HTTP caller (the MCP `get_world`, the flue agent) reads the SAME shape the
+// GUI sees. Extracted from the route so those callers never drift from it.
 export async function buildWorldView(env, pid) {
   const world = await readWorld(env, pid);
   for (const ch of world.characters) {
@@ -191,7 +278,17 @@ export async function buildWorldView(env, pid) {
   for (const loc of world.locations) {
     if (loc.sheetImage?.rel) loc.sheetImage.refUrl = assetRefUrl(env, pid, loc.sheetImage.rel);
   }
-  return world;
+  const episodeId = activeEpisodeId();
+  const bible = await readEpisodeBible(env, pid, episodeId, world);
+  const byId = new Map(world.characters.map((c) => [c.id, c]));
+  const roster = bible.characterIds.map((id) => byId.get(id)).filter(Boolean);
+  return {
+    ...world,
+    depth: bible.depth,
+    characters: roster,
+    charactersLibrary: world.characters,
+    episodeId,
+  };
 }
 
 // Every MUTATION goes through this, never a bare read-then-write. A plain
@@ -251,7 +348,8 @@ export function registerWorld(app) {
     let body;
     try { body = await c.req.json(); } catch { return c.json({ error: "Invalid JSON body" }, 400); }
     const incoming = body && typeof body === "object" && body.world ? body.world : body;
-    const { world } = await editWorld(c.env, pid, (prev) => {
+    const { addedIds } = await editWorld(c.env, pid, (prev) => {
+      const prevIds = new Set(prev.characters.map((x) => x.id));
       const merged = normalizeWorld({
         title: keep(incoming?.title, prev.title),
         logline: keep(incoming?.logline, prev.logline),
@@ -260,26 +358,44 @@ export function registerWorld(app) {
         // passing a typo straight through would silently demote a live-action
         // project. An omitted or invalid value keeps what's stored.
         productionType: keepProductionType(incoming?.productionType, prev.productionType),
+        format: keepFormat(incoming?.format, prev.format),
         map: mergeSection(MAP_FIELDS, incoming?.map, prev.map),
-        depth: mergeSection(DEPTH_FIELDS, incoming?.depth, prev.depth),
+        // `depth` is per-episode now — carried untouched on the world doc and
+        // folded into the active episode's bible below.
+        depth: prev.depth,
         characters: mergeRoster(CHAR_FIELDS, incoming?.characters, prev.characters, normalizeChar),
         locations: mergeRoster(LOC_FIELDS, incoming?.locations, prev.locations, normalizeLocation),
       });
       merged.generatedAt = new Date().toISOString();
       merged.source = str(body?.source) || "agent";
+      // Characters the merge just introduced to the library — they belong in the
+      // episode the agent is writing for, so they join its roster below.
+      const addedIds = merged.characters.map((x) => x.id).filter((id) => !prevIds.has(id));
       Object.assign(prev, merged);
-      return { world: prev };
+      return { addedIds };
     });
-    return c.json({ ok: true, world });
+    // Per-episode side of a bulk save: story depth and the new cast land in the
+    // active episode's bible, not on the shared world doc.
+    const incomingDepth = incoming?.depth && typeof incoming.depth === "object" ? incoming.depth : null;
+    if (incomingDepth || addedIds.length) {
+      await editEpisodeBible(c.env, pid, (bible) => {
+        if (incomingDepth) {
+          for (const f of DEPTH_FIELDS) bible.depth[f] = keep(incomingDepth[f], bible.depth[f]);
+        }
+        for (const id of addedIds) if (!bible.characterIds.includes(id)) bible.characterIds.push(id);
+      });
+    }
+    return c.json({ ok: true, world: await buildWorldView(c.env, pid) });
   });
 
-  // Merge-patch the top-level sections (inline UI edits to title/logline and the
-  // map/depth fields). Only known sections/fields are applied.
+  // Merge-patch the top-level sections (inline UI edits to title/logline, the
+  // production type, the format, and the story map). Only known sections/fields
+  // are applied. Story depth is per-episode and routed to the bible below.
   app.put("/api/world", async (c) => {
     const pid = c.get("projectId");
     let patch;
     try { patch = await c.req.json(); } catch { patch = {}; }
-    const { world } = await editWorld(c.env, pid, (world) => {
+    await editWorld(c.env, pid, (world) => {
       if (typeof patch.title === "string") world.title = patch.title;
       if (typeof patch.logline === "string") world.logline = patch.logline;
       // The World tab's production-type selector. Unlike the free-text fields
@@ -288,31 +404,59 @@ export function registerWorld(app) {
       if (PRODUCTION_TYPE_IDS.includes(String(patch.productionType || ""))) {
         world.productionType = String(patch.productionType);
       }
+      // Feature vs series — the sibling enum picked right after production type.
+      if (FORMAT_IDS.includes(String(patch.format || ""))) {
+        world.format = String(patch.format);
+      }
       if (patch.map && typeof patch.map === "object") {
         for (const f of MAP_FIELDS) if (f in patch.map) world.map[f] = str(patch.map[f]);
       }
-      if (patch.depth && typeof patch.depth === "object") {
-        for (const f of DEPTH_FIELDS) if (f in patch.depth) world.depth[f] = str(patch.depth[f]);
-      }
       return { world };
     });
-    return c.json({ ok: true, world });
+    // Story depth belongs to the active episode, so its inline editor writes the
+    // episode bible rather than the shared world doc.
+    if (patch.depth && typeof patch.depth === "object") {
+      await editEpisodeBible(c.env, pid, (bible) => {
+        for (const f of DEPTH_FIELDS) if (f in patch.depth) bible.depth[f] = str(patch.depth[f]);
+      });
+    }
+    return c.json({ ok: true, world: await buildWorldView(c.env, pid) });
   });
 
-  // Add a character to the roster.
+  // The full series character LIBRARY — every character across every episode,
+  // with ungated `refUrl`s. The "add previous character" picker reads this to
+  // pull a character created in another episode into the current one.
+  app.get("/api/world/characters/library", async (c) => {
+    const pid = c.get("projectId");
+    const world = await readWorld(c.env, pid);
+    for (const ch of world.characters) {
+      if (ch.sheetImage?.rel) ch.sheetImage.refUrl = assetRefUrl(c.env, pid, ch.sheetImage.rel);
+    }
+    return c.json({ characters: world.characters });
+  });
+
+  // Create a character: it joins the series LIBRARY and the ACTIVE episode's
+  // roster (you make a character while working on an episode, so it belongs to
+  // that episode).
   app.post("/api/world/character", async (c) => {
     const pid = c.get("projectId");
     let body;
     try { body = await c.req.json(); } catch { body = {}; }
-    const { character, world } = await editWorld(c.env, pid, (world) => {
+    const { character } = await editWorld(c.env, pid, (world) => {
       const char = normalizeChar({ name: "New character", ...body }, world.characters.length);
       world.characters.push(char);
-      return { character: char, world };
+      return { character: char };
     });
-    return c.json({ ok: true, character, world });
+    await editEpisodeBible(c.env, pid, (bible) => {
+      if (!bible.characterIds.includes(character.id)) bible.characterIds.push(character.id);
+    });
+    if (character.sheetImage?.rel) character.sheetImage.refUrl = assetRefUrl(c.env, pid, character.sheetImage.rel);
+    return c.json({ ok: true, character, world: await buildWorldView(c.env, pid) });
   });
 
-  // Edit one character in place.
+  // Edit one library character in place — the change propagates to every episode
+  // whose roster references it (single source of truth). `anchor` is accepted
+  // here too, though the dedicated toggle below is the usual path.
   app.put("/api/world/character/:id", async (c) => {
     const pid = c.get("projectId");
     const id = c.req.param("id");
@@ -322,24 +466,76 @@ export function registerWorld(app) {
       const idx = world.characters.findIndex((x) => x.id === id);
       if (idx < 0) return { abort: true, missing: true };
       world.characters[idx] = normalizeChar({ ...world.characters[idx], ...patch, id }, idx);
-      return { character: world.characters[idx], world };
+      return { character: world.characters[idx] };
     });
     if (res.missing) return c.json({ error: `no character ${id}` }, 404);
-    return c.json({ ok: true, character: res.character, world: res.world });
+    const character = res.character;
+    if (character.sheetImage?.rel) character.sheetImage.refUrl = assetRefUrl(c.env, pid, character.sheetImage.rel);
+    return c.json({ ok: true, character, world: await buildWorldView(c.env, pid) });
   });
 
-  // Remove a character.
+  // Toggle (or set) whether a character is an ANCHOR — a character every new
+  // episode is seeded with. Library-level flag; POST `{ anchor: true|false }`,
+  // or an empty body to flip it.
+  app.post("/api/world/character/:id/anchor", async (c) => {
+    const pid = c.get("projectId");
+    const id = c.req.param("id");
+    let body;
+    try { body = await c.req.json(); } catch { body = {}; }
+    const res = await editWorld(c.env, pid, (world) => {
+      const ch = world.characters.find((x) => x.id === id);
+      if (!ch) return { abort: true, missing: true };
+      ch.anchor = "anchor" in body ? !!body.anchor : !ch.anchor;
+      return { anchor: ch.anchor };
+    });
+    if (res.missing) return c.json({ error: `no character ${id}` }, 404);
+    return c.json({ ok: true, anchor: res.anchor, world: await buildWorldView(c.env, pid) });
+  });
+
+  // Remove a character. `?scope=episode` (the series default) drops it from THIS
+  // episode's roster but keeps it in the library; `?scope=library` deletes it
+  // from the library entirely (and from the active roster). Feature films have
+  // one implicit episode, so the library delete is the meaningful one there.
   app.delete("/api/world/character/:id", async (c) => {
     const pid = c.get("projectId");
     const id = c.req.param("id");
-    const res = await editWorld(c.env, pid, (world) => {
-      const before = world.characters.length;
-      world.characters = world.characters.filter((x) => x.id !== id);
-      if (world.characters.length === before) return { abort: true, missing: true };
-      return { world };
+    const scope = c.req.query("scope") === "episode" ? "episode" : "library";
+    if (scope === "episode") {
+      const res = await editEpisodeBible(c.env, pid, (bible) => {
+        const before = bible.characterIds.length;
+        bible.characterIds = bible.characterIds.filter((x) => x !== id);
+        if (bible.characterIds.length === before) return { abort: true, missing: true };
+      });
+      if (res.missing) return c.json({ error: `character ${id} not in this episode` }, 404);
+    } else {
+      const res = await editWorld(c.env, pid, (world) => {
+        const before = world.characters.length;
+        world.characters = world.characters.filter((x) => x.id !== id);
+        if (world.characters.length === before) return { abort: true, missing: true };
+      });
+      if (res.missing) return c.json({ error: `no character ${id}` }, 404);
+      // Drop the now-dead id from the active roster; other episodes' rosters lose
+      // it lazily (buildWorldView filters ids the library no longer has).
+      await editEpisodeBible(c.env, pid, (bible) => {
+        bible.characterIds = bible.characterIds.filter((x) => x !== id);
+      });
+    }
+    return c.json({ ok: true, world: await buildWorldView(c.env, pid) });
+  });
+
+  // Add already-existing library characters to the ACTIVE episode's roster (the
+  // "add previous character" action). Body: `{ characterIds: [...] }` or `{ id }`.
+  app.post("/api/episode/roster", async (c) => {
+    const pid = c.get("projectId");
+    let body;
+    try { body = await c.req.json(); } catch { body = {}; }
+    const ids = Array.isArray(body?.characterIds)
+      ? body.characterIds.map(str)
+      : body?.id ? [str(body.id)] : [];
+    await editEpisodeBible(c.env, pid, (bible) => {
+      for (const id of ids) if (id && !bible.characterIds.includes(id)) bible.characterIds.push(id);
     });
-    if (res.missing) return c.json({ error: `no character ${id}` }, 404);
-    return c.json({ ok: true, world: res.world });
+    return c.json({ ok: true, world: await buildWorldView(c.env, pid) });
   });
 
   // Add a location to the roster.

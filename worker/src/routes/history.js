@@ -4,7 +4,7 @@
 // let the World tab — and the agent — list those versions, read one, and put one
 // back. Restoring is itself an ordinary write, so the version you restore OVER
 // is parked too: a restore is always undoable.
-import { readDoc, writeDoc, normalizeProjectId } from "../lib/docs.js";
+import { readDoc, writeDoc, normalizeProjectId, scopedDocName } from "../lib/docs.js";
 import { listSnapshots, readSnapshot } from "../lib/history.js";
 
 // Which documents these routes will talk about.
@@ -40,10 +40,13 @@ async function knownDoc(env, projectId, name) {
 // guard or the forceSnapshot on restore. Both return `{ error }` instead of
 // throwing, so the caller picks its own status code / error envelope.
 
-// The stored versions of one doc, newest first.
+// The stored versions of one doc, newest first. `name` is the LOGICAL doc name
+// ("shotlist"); `scopedDocName` resolves it to the active episode's row
+// ("shotlist:ep2" in a series, "shotlist" for a feature / the first episode).
 export async function listDocHistory(env, projectId, name) {
-  if (!(await knownDoc(env, projectId, name))) return { error: `no history for "${name}"` };
-  return { name, snapshots: await listSnapshots(env, projectId, name) };
+  const stored = scopedDocName(name);
+  if (!(await knownDoc(env, projectId, stored))) return { error: `no history for "${name}"` };
+  return { name, snapshots: await listSnapshots(env, projectId, stored) };
 }
 
 // Put a stored version back. The current document is parked FIRST — that's what
@@ -51,8 +54,9 @@ export async function listDocHistory(env, projectId, name) {
 // snapshot and the restore becomes a one-way door, which is the opposite of
 // what "restore this version" should mean.
 export async function restoreDocVersion(env, projectId, name, ts) {
-  if (!(await knownDoc(env, projectId, name))) return { error: `no history for "${name}"` };
-  const value = await readSnapshot(env, projectId, name, ts);
+  const stored = scopedDocName(name);
+  if (!(await knownDoc(env, projectId, stored))) return { error: `no history for "${name}"` };
+  const value = await readSnapshot(env, projectId, stored, ts);
   if (value == null) return { error: "no such version" };
   // guard:allow-write-doc — a restore IS a whole-document replace. Merging it
   // with whatever else landed since would produce a document that never
@@ -85,9 +89,10 @@ export function registerHistory(app) {
   // Read one stored version (for a preview / diff before restoring).
   app.get("/api/history/:name/:ts", async (c) => {
     const name = c.req.param("name");
+    const stored = scopedDocName(name);
     const pid = c.get("projectId");
-    if (!(await knownDoc(c.env, pid, name))) return c.json({ error: `no history for "${name}"` }, 404);
-    const value = await readSnapshot(c.env, pid, name, c.req.param("ts"));
+    if (!(await knownDoc(c.env, pid, stored))) return c.json({ error: `no history for "${name}"` }, 404);
+    const value = await readSnapshot(c.env, pid, stored, c.req.param("ts"));
     if (value == null) return c.json({ error: "no such version" }, 404);
     return c.json({ name, ts: c.req.param("ts"), value });
   });

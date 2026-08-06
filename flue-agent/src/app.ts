@@ -73,7 +73,7 @@ function errText(error: unknown): string {
 async function sweepSuggestions(instanceId: string | undefined): Promise<void> {
   const decoded = decodeInstanceId(instanceId);
   if (!decoded?.projectId) return;
-  const api = createApi(decoded.projectId, decoded.userId, decoded.chatId);
+  const api = createApi(decoded.projectId, decoded.userId, decoded.chatId, decoded.episodeId);
   const { completed } = await api.post<{ completed?: string[] }>(
     "/api/suggestions/reconcile",
   );

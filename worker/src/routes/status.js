@@ -17,7 +17,7 @@
 // buildAnimaticView / buildCutSegments), which re-join the whole episode.
 import { readDoc } from "../lib/docs.js";
 import { readCompletedSuggestions } from "../lib/suggestion-ledger.js";
-import { readWorld, MAP_FIELDS, DEPTH_FIELDS } from "./world.js";
+import { buildWorldView, MAP_FIELDS, DEPTH_FIELDS } from "./world.js";
 import { readStore, pinnedDraft, countLines } from "../lib/script-store.js";
 import { readReviews, reviewState, digestReviews } from "../lib/reviews.js";
 import { normalizeShot } from "../lib/shots.js";
@@ -57,7 +57,9 @@ function pipelineStage(s) {
 export async function buildStatus(env, pid) {
   const [world, store, reviewDoc, db, shotlistDoc, vw, radio, sounds, manifest, completedCards] =
     await Promise.all([
-      readWorld(env, pid),
+      // The episode-merged view: `depth` and `characters` reflect the ACTIVE
+      // episode's bible/roster, so the digest describes the episode in play.
+      buildWorldView(env, pid),
       readStore(env, pid),
       readReviews(env, pid),
       readDoc(env, pid, "selections", {}),
@@ -91,6 +93,8 @@ export async function buildStatus(env, pid) {
     // which shot-list skill the agent runs, so it belongs in the digest the
     // agent grounds on rather than behind a separate get_world.
     productionType: world.productionType,
+    // Feature film vs series — governs whether the episode axis is in play.
+    format: world.format,
     map: { filled: mapFilled.length, total: MAP_FIELDS.length, missing: missing(world.map, MAP_FIELDS) },
     depth: { filled: depthFilled.length, total: DEPTH_FIELDS.length, missing: missing(world.depth, DEPTH_FIELDS) },
     characters: {

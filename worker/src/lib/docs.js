@@ -15,6 +15,7 @@
 // `POST /api/admin/purge-legacy-docs`): per-tenant state does not belong in a
 // blob bucket. There is no R2 read path left here.
 import { snapshotPrevious } from "./history.js";
+import { requestContext } from "./request-context.js";
 
 // Canonical project-key fallback. Storage, broadcast, and the SSE subscribe
 // route must all resolve a missing/invalid projectId to the SAME key —
@@ -22,6 +23,51 @@ import { snapshotPrevious } from "./history.js";
 // (or skipped) elsewhere and open tabs never hear about the change.
 export function normalizeProjectId(projectId) {
   return String(projectId || "p_default").replace(/[^a-zA-Z0-9._-]/g, "") || "p_default";
+}
+
+// ── Series / multi-episode scoping ────────────────────────────────────────────
+// A project can be a SERIES of episodes. Everything downstream of the script —
+// the shot list, the packed episode, the cuts, the timeline — is per-episode,
+// while the world bible (title, logline, story map, locations, the character
+// LIBRARY) is shared across the whole series. We give the per-episode documents
+// an episode dimension by folding the episode id into the doc `name`, exactly
+// as `appstate:<userId>` folds the user id in. Because `doc_history` also keys
+// off `name`, per-episode history comes for free — no schema migration.
+//
+// Back-compat is the whole reason for the `DEFAULT_EPISODE` carve-out: existing
+// single-episode projects have rows named `shotlist`, `selections`, … with NO
+// suffix. The first/default episode keeps those bare names; only episodes 2+ get
+// `:<episodeId>`. A feature-film project only ever uses the default episode, so
+// its keys never change.
+export const DEFAULT_EPISODE = "ep1";
+
+// The documents that live per-episode. Anything NOT in this set (world,
+// visual-world, moodboard, the `episodes` registry, appstate:*) is series- or
+// project-level and is never suffixed. This set is the single policy surface —
+// keep series-level docs OUT of it.
+export const EPISODE_SCOPED_DOCS = new Set([
+  "shotlist",
+  "selections",
+  "episode-manifest",
+  "episode-bible",
+  "sounds",
+  "radio",
+  "stills",
+  "shots",
+  "multishot",
+  "script",
+  "script-reviews",
+]);
+
+// Resolve the stored row name for a logical doc name. Episode-scoped docs get a
+// `:<episodeId>` suffix for non-default episodes; everything else is unchanged.
+// The episode comes from an explicit override (used by the create-episode route,
+// which must seed a NOT-yet-active episode) or from the request context store.
+export function scopedDocName(name, episodeId) {
+  if (!EPISODE_SCOPED_DOCS.has(name)) return name;
+  const eid = episodeId ?? requestContext().episodeId;
+  if (!eid || eid === DEFAULT_EPISODE) return name;
+  return `${name}:${eid}`;
 }
 
 const now = () => new Date().toISOString();
@@ -37,8 +83,8 @@ async function readRow(env, projectId, name) {
   return row ? { text: row.json, version: row.version } : null;
 }
 
-export async function readDoc(env, projectId, name, fallback = null) {
-  const row = await readRow(env, projectId, name);
+export async function readDoc(env, projectId, name, fallback = null, opts = {}) {
+  const row = await readRow(env, projectId, scopedDocName(name, opts.episodeId));
   if (!row) return fallback;
   try {
     return JSON.parse(row.text);
@@ -52,15 +98,16 @@ export async function readDoc(env, projectId, name, fallback = null) {
 // way back, notably restoring an old version.
 export async function writeDoc(env, projectId, name, value, opts = {}) {
   const pid = normalizeProjectId(projectId);
-  const prev = await readRow(env, projectId, name);
+  const scoped = scopedDocName(name, opts.episodeId);
+  const prev = await readRow(env, projectId, scoped);
   const nextText = JSON.stringify(value);
   await env.DB.prepare(
     `INSERT INTO docs (project_id, name, json, version, updated_at) VALUES (?, ?, ?, 1, ?)
      ON CONFLICT (project_id, name) DO UPDATE SET json = excluded.json, version = docs.version + 1, updated_at = excluded.updated_at`,
   )
-    .bind(pid, name, nextText, now())
+    .bind(pid, scoped, nextText, now())
     .run();
-  await snapshotPrevious(env, projectId, name, prev?.text ?? null, nextText, {
+  await snapshotPrevious(env, projectId, scoped, prev?.text ?? null, nextText, {
     force: !!opts.forceSnapshot,
   });
 }
@@ -113,10 +160,18 @@ const backoff = (attempt) =>
 // `episode-manifest`, written from the rebuild route and nowhere else.
 export async function updateDoc(env, projectId, name, fallback, mutate, opts = {}) {
   const pid = normalizeProjectId(projectId);
-  const also = Array.isArray(opts.also) ? opts.also : [];
+  // Resolve the episode ONCE so the primary row and every `also` row land in the
+  // same episode — the rebuild re-keys `selections` + `episode-manifest` together
+  // and they must not split across episodes.
+  const eid = opts.episodeId ?? requestContext().episodeId;
+  const scoped = scopedDocName(name, eid);
+  const also = (Array.isArray(opts.also) ? opts.also : []).map((d) => ({
+    name: scopedDocName(d.name, eid),
+    value: d.value,
+  }));
   for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
     if (attempt > 0) await backoff(attempt);
-    const row = await readRow(env, projectId, name);
+    const row = await readRow(env, projectId, scoped);
     let value = null;
     if (row) {
       try { value = JSON.parse(row.text); } catch { /* corrupt — treat as missing */ }
@@ -133,12 +188,12 @@ export async function updateDoc(env, projectId, name, fallback, mutate, opts = {
     const primary = row
       ? env.DB.prepare(
           "UPDATE docs SET json = ?, version = version + 1, updated_at = ?, write_token = ? WHERE project_id = ? AND name = ? AND version = ?",
-        ).bind(nextText, at, token, pid, name, row.version)
+        ).bind(nextText, at, token, pid, scoped, row.version)
       // First write on a fresh doc: DO NOTHING on conflict, so two racing
       // creators don't clobber each other — the loser re-reads and retries.
       : env.DB.prepare(
           "INSERT INTO docs (project_id, name, json, version, updated_at, write_token) VALUES (?, ?, ?, 1, ?, ?) ON CONFLICT (project_id, name) DO NOTHING",
-        ).bind(pid, name, nextText, at, token);
+        ).bind(pid, scoped, nextText, at, token);
 
     let written;
     let alsoPrev = [];
@@ -157,14 +212,14 @@ export async function updateDoc(env, projectId, name, fallback, mutate, opts = {
               WHERE EXISTS (SELECT 1 FROM docs WHERE project_id = ? AND name = ? AND write_token = ?)
              ON CONFLICT (project_id, name) DO UPDATE
                 SET json = excluded.json, version = docs.version + 1, updated_at = excluded.updated_at`,
-          ).bind(pid, d.name, JSON.stringify(d.value), at, pid, name, token),
+          ).bind(pid, d.name, JSON.stringify(d.value), at, pid, scoped, token),
         );
       }
       [written] = await env.DB.batch(stmts);
     }
 
     if (written?.meta?.changes > 0) {
-      await snapshotPrevious(env, projectId, name, row?.text ?? null, nextText);
+      await snapshotPrevious(env, projectId, scoped, row?.text ?? null, nextText);
       for (let i = 0; i < also.length; i++) {
         await snapshotPrevious(
           env, projectId, also[i].name,
@@ -174,5 +229,5 @@ export async function updateDoc(env, projectId, name, fallback, mutate, opts = {
       return result;
     }
   }
-  throw new Error(`updateDoc(${pid}/${name}): too many concurrent-write conflicts`);
+  throw new Error(`updateDoc(${pid}/${scoped}): too many concurrent-write conflicts`);
 }

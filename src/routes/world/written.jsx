@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useLoaderData, useRevalidator } from "react-router";
 import {
   Globe, Users, BookOpen, Sparkles, Wand2, UserPlus, Trash2, Loader2,
-  ImagePlus, X, Maximize2, Mic, MapPin, MapPinPlus,
+  ImagePlus, X, Maximize2, Mic, MapPin, MapPinPlus, Anchor, Library, Check,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { invalidateTabCache } from "@/lib/tabCache";
@@ -15,6 +15,8 @@ import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Empty, Eyebrow, Panel, Spinner, ErrorNote, ConfirmModal } from "@/components/shared";
 import { ProductionTypeBadge, ProductionTypePicker } from "@/components/ProductionType";
+import { useEpisodes } from "@/components/EpisodeProvider";
+import { FORMATS } from "@/lib/format";
 import DocHistory from "@/components/DocHistory";
 import MediaPicker from "@/components/MediaPicker";
 import { useT, t as staticT } from "@/lib/i18n";
@@ -254,7 +256,7 @@ function VoicePicker({ open, onOpenChange, onPick }) {
  * Character card                                                    *
  * ---------------------------------------------------------------- */
 
-function CharacterCard({ char, onField, onRemove, expanded }) {
+function CharacterCard({ char, onField, onRemove, onToggleAnchor, isSeries, expanded }) {
   const t = useT();
   const { setModalImage } = useShell();
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -262,7 +264,7 @@ function CharacterCard({ char, onField, onRemove, expanded }) {
   const sheet = char.sheetImage;
   const voiceRef = char.voiceRef;
   return (
-    <div className="rounded-lg border p-3">
+    <div className={cn("rounded-lg border p-3", isSeries && char.anchor && "border-primary/40 bg-primary/5")}>
       <div className="mb-2 flex items-center gap-2">
         <input
           defaultValue={char.name}
@@ -274,10 +276,24 @@ function CharacterCard({ char, onField, onRemove, expanded }) {
           )}
         />
         {char.archetype && <Badge variant="secondary" className="shrink-0">{char.archetype}</Badge>}
+        {/* Anchor: keep this character in every new episode of the series. */}
+        {isSeries && (
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label={char.anchor ? t("Unanchor {name}", { name: char.name || t("character") }) : t("Anchor {name} across episodes", { name: char.name || t("character") })}
+            title={char.anchor ? t("Anchored across episodes — carried into every new episode") : t("Anchor across episodes")}
+            onClick={() => onToggleAnchor(char)}
+            className={cn("shrink-0", char.anchor ? "text-primary" : "text-muted-foreground hover:text-primary")}
+          >
+            <Anchor size={14} className={char.anchor ? "fill-primary/20" : undefined} />
+          </Button>
+        )}
         <Button
           variant="ghost"
           size="icon-sm"
-          aria-label={t("Remove {name}", { name: char.name || t("character") })}
+          aria-label={isSeries ? t("Remove {name} from this episode", { name: char.name || t("character") }) : t("Remove {name}", { name: char.name || t("character") })}
+          title={isSeries ? t("Remove from this episode") : t("Delete character")}
           onClick={() => onRemove(char)}
           className="shrink-0 text-muted-foreground hover:text-destructive"
         >
@@ -503,6 +519,65 @@ function LocationCard({ loc, onField, onRemove }) {
 }
 
 /* ---------------------------------------------------------------- *
+ * "Add previous character" — the series character library picker     *
+ * ---------------------------------------------------------------- */
+
+function LibraryPicker({ open, onOpenChange, inRoster, onAdd }) {
+  const t = useT();
+  const [library, setLibrary] = useState([]);
+  const [loading, setLoading] = useState(false);
+  useEffect(() => {
+    if (!open) return;
+    setLoading(true);
+    fetch("/api/world/characters/library")
+      .then((r) => r.json())
+      .then((d) => setLibrary(Array.isArray(d.characters) ? d.characters : []))
+      .catch(() => setLibrary([]))
+      .finally(() => setLoading(false));
+  }, [open]);
+  const available = library.filter((c) => !inRoster.has(c.id));
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader><DialogTitle>{t("Add a previous character")}</DialogTitle></DialogHeader>
+        {loading ? (
+          <div className="py-8"><Spinner /></div>
+        ) : available.length === 0 ? (
+          <div className="rounded-lg border border-dashed p-6 text-center">
+            <Empty>{t("every character in the library is already in this episode.")}</Empty>
+          </div>
+        ) : (
+          <div className="max-h-[60vh] space-y-1.5 overflow-y-auto">
+            {available.map((c) => (
+              <button
+                key={c.id}
+                type="button"
+                onClick={() => { onAdd(c.id); onOpenChange(false); }}
+                className="flex w-full items-center gap-3 rounded-lg border p-2 text-left transition-colors hover:border-primary/60 hover:bg-accent"
+              >
+                {c.sheetImage ? (
+                  <img src={c.sheetImage.thumb || c.sheetImage.url} alt="" className="h-12 w-12 shrink-0 rounded object-cover" />
+                ) : (
+                  <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded bg-muted">
+                    <Users size={16} className="text-muted-foreground" />
+                  </div>
+                )}
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-sm font-semibold">{c.name || t("Unnamed")}</div>
+                  {c.archetype && <div className="truncate text-xs text-muted-foreground">{c.archetype}</div>}
+                </div>
+                {c.anchor && <Anchor size={13} className="shrink-0 text-primary" />}
+                <Check size={14} className="shrink-0 text-muted-foreground" />
+              </button>
+            ))}
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/* ---------------------------------------------------------------- *
  * Route                                                             *
  * ---------------------------------------------------------------- */
 
@@ -511,11 +586,13 @@ function World() {
   const agent = useAgent();
   const agentBusy = agentIsBusy(agent);
   const world = useLoaderData();
+  const { isSeries, active: activeEpisode, refresh: refreshEpisodes } = useEpisodes();
   const revalidator = useRevalidator();
   useRevalidateOnMount("world");
   const [error, setError] = useState(null);
   const [confirm, setConfirm] = useState(null); // character pending removal
   const [confirmLoc, setConfirmLoc] = useState(null); // location pending removal
+  const [libraryOpen, setLibraryOpen] = useState(false); // "add previous character" picker
 
   const revalidate = revalidator.revalidate;
   const refetch = useCallback(() => {
@@ -544,10 +621,23 @@ function World() {
   const patchWorld = (body) => mutate("/api/world", { method: "PUT", body: JSON.stringify(body) });
   const setMap = (key, val) => patchWorld({ map: { [key]: val } });
   const setDepth = (key, val) => patchWorld({ depth: { [key]: val } });
+  // Flipping feature ⇄ series also refreshes the episode provider so the header
+  // switcher appears/disappears immediately.
+  const setFormat = async (id) => { await patchWorld({ format: id }); refreshEpisodes(); };
   const setChar = (id, key, val) =>
     mutate(`/api/world/character/${id}`, { method: "PUT", body: JSON.stringify({ [key]: val }) });
   const addChar = () => mutate("/api/world/character", { method: "POST", body: JSON.stringify({}) });
-  const removeChar = (char) => { setConfirm(null); mutate(`/api/world/character/${char.id}`, { method: "DELETE" }); };
+  const toggleAnchor = (char) =>
+    mutate(`/api/world/character/${char.id}/anchor`, { method: "POST", body: JSON.stringify({ anchor: !char.anchor }) });
+  const addFromLibrary = (id) => mutate("/api/episode/roster", { method: "POST", body: JSON.stringify({ id }) });
+  // In a series the trash icon removes a character from THIS episode only; the
+  // library keeps it (add it back via the picker). A feature film has one
+  // implicit episode, so removal there is a full delete.
+  const removeChar = (char) => {
+    setConfirm(null);
+    const scope = isSeries ? "episode" : "library";
+    mutate(`/api/world/character/${char.id}?scope=${scope}`, { method: "DELETE" });
+  };
   const setLoc = (id, key, val) =>
     mutate(`/api/world/location/${id}`, { method: "PUT", body: JSON.stringify({ [key]: val }) });
   const addLoc = () => mutate("/api/world/location", { method: "POST", body: JSON.stringify({}) });
@@ -635,6 +725,33 @@ function World() {
             {t("2D and 3D-Pixar shots get a one-paragraph Seedance prompt plus the Episode tab's style preset. Live action instead writes each shot as a full block prompt (scene context, optics, lighting, locks) — a different generation run entirely.")}
           </p>
         </div>
+        {/* Format — one-off feature film, or an episodic series. A series unlocks
+            per-episode scripts/shot lists/cuts and the episode switcher in the
+            header; the world bible is shared across episodes. */}
+        <div className="mt-3 space-y-1.5 border-t pt-3">
+          <Eyebrow className="normal-case tracking-normal text-foreground/80">{t("Format")}</Eyebrow>
+          <div className="inline-flex rounded-md border p-0.5">
+            {FORMATS.map((f) => {
+              const activeFmt = (world.format || "feature") === f.id;
+              return (
+                <button
+                  key={f.id}
+                  type="button"
+                  onClick={() => setFormat(f.id)}
+                  className={cn(
+                    "rounded px-3 py-1 text-xs font-medium transition-colors",
+                    activeFmt ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground",
+                  )}
+                >
+                  {t(f.label)}
+                </button>
+              );
+            })}
+          </div>
+          <p className="text-xs text-muted-foreground">
+            {t("A series creates episodes, each with its own script, shot list, animatic and cut. The title, story map, locations and character library are shared; story depth and the cast are per episode, and anchored characters carry into every new episode.")}
+          </p>
+        </div>
       </Panel>
 
       <div className="grid gap-4 lg:grid-cols-2">
@@ -688,6 +805,11 @@ function World() {
         title={<span className="flex items-center gap-2"><Users size={15} className="text-primary" /> {t("Characters")}</span>}
         meta={
           <div className="flex items-center gap-2">
+            {isSeries && (
+              <Button variant="outline" size="sm" onClick={() => setLibraryOpen(true)}>
+                <Library size={13} /> {t("Add from library")}
+              </Button>
+            )}
             <Button variant="outline" size="sm" onClick={addChar}>
               <UserPlus size={13} /> {t("Add character")}
             </Button>
@@ -698,8 +820,10 @@ function World() {
                     key={char.id}
                     char={char}
                     expanded
+                    isSeries={isSeries}
                     onField={(key, val) => setChar(char.id, key, val)}
                     onRemove={setConfirm}
+                    onToggleAnchor={toggleAnchor}
                   />
                 ))}
               </ExpandSection>
@@ -707,6 +831,11 @@ function World() {
           </div>
         }
       >
+        {isSeries && activeEpisode && (
+          <p className="mb-3 text-xs text-muted-foreground">
+            {t("The cast for {ep}. Anchored characters carry into every new episode; use “Add from library” to bring back one created for another episode.", { ep: `Ep ${activeEpisode.number} · ${activeEpisode.title}` })}
+          </p>
+        )}
         {characters.length === 0 ? (
           <div className="rounded-lg border border-dashed p-6 text-center">
             <Empty>{t("no characters yet — add one, or let the agent build the roster.")}</Empty>
@@ -717,8 +846,10 @@ function World() {
               <CharacterCard
                 key={char.id}
                 char={char}
+                isSeries={isSeries}
                 onField={(key, val) => setChar(char.id, key, val)}
                 onRemove={setConfirm}
+                onToggleAnchor={toggleAnchor}
               />
             ))}
           </div>
@@ -759,10 +890,19 @@ function World() {
 
       <ConfirmModal
         open={!!confirm}
-        title={t("Remove character")}
-        message={t("Remove “{name}” from the world? This can't be undone.", { name: confirm?.name || t("this character") })}
+        title={isSeries ? t("Remove from episode") : t("Remove character")}
+        message={isSeries
+          ? t("Remove “{name}” from this episode? It stays in the series library — add it back any time.", { name: confirm?.name || t("this character") })
+          : t("Remove “{name}” from the world? This can't be undone.", { name: confirm?.name || t("this character") })}
         onConfirm={() => removeChar(confirm)}
         onCancel={() => setConfirm(null)}
+      />
+
+      <LibraryPicker
+        open={libraryOpen}
+        onOpenChange={setLibraryOpen}
+        inRoster={new Set(characters.map((c) => c.id))}
+        onAdd={addFromLibrary}
       />
 
       <ConfirmModal

@@ -34,6 +34,7 @@ export function createApi(
   projectId: string | null,
   userId?: string | null,
   chatId?: string | null,
+  episodeId?: string | null,
 ) {
   const base = process.env.SHOT_STUDIO_API ?? "http://localhost:3334";
 
@@ -61,6 +62,10 @@ export function createApi(
       init?.body ? { "content-type": "application/json" } : undefined,
     );
     if (projectId) headers.set("x-project-id", projectId);
+    // Scope every tool call to the conversation's episode (a series). Absent for a
+    // feature / the first episode — the worker treats absence as the unsuffixed
+    // baseline, so pre-series behaviour is unchanged.
+    if (episodeId) headers.set("x-episode-id", episodeId);
     const token = await identity();
     if (token) headers.set(AGENT_HEADER, token);
     // Correlation only — which conversation made this change, recorded in
