@@ -8,6 +8,7 @@ import { cn } from "@/lib/utils";
 import { invalidateTabCache } from "@/lib/tabCache";
 import { swr, useRevalidateOnMount, useRevalidateOnAgentIdle } from "@/lib/swr";
 import { useAgent, agentIsBusy, renderRadioSceneMessage, recreateRadioLineMessage, castVoiceMessage, paceRadioTimelineMessage } from "@/components/AgentProvider";
+import { useProviderGate } from "@/components/ProviderGate";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
@@ -281,6 +282,7 @@ function RadioLine({ line, onSaveLine, onRecreate, onSelectVersion, agentBusy })
 
 function RadioStudio() {
   const agent = useAgent();
+  const gate = useProviderGate();
   const t = useT();
   const agentBusy = agentIsBusy(agent);
   const data = useLoaderData();
@@ -334,11 +336,15 @@ function RadioStudio() {
   }, [refetch, t]);
 
   const renderScene = (scene) => {
+    if (!gate.ensure("audio")) return;
     setRenderingScene(sceneKey(scene));
     agent.send({ message: renderRadioSceneMessage(scene, scene.lines) }).catch(() => setRenderingScene(null));
   };
 
-  const recreateLine = (scene, line) => agent.send({ message: recreateRadioLineMessage(scene, line) }).catch(() => {});
+  const recreateLine = (scene, line) => {
+    if (!gate.ensure("audio")) return;
+    agent.send({ message: recreateRadioLineMessage(scene, line) }).catch(() => {});
+  };
 
   const voiceWithAgent = useCallback(
     (characters) => { agent.send({ message: castVoiceMessage(characters) }).catch(() => {}); },

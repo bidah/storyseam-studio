@@ -7,6 +7,7 @@ import { useProjectEvents } from "@/lib/useProjectEvents";
 import AgentChat from "@/components/AgentChat";
 import LoginGate from "@/components/Login";
 import ProjectProvider from "@/components/ProjectProvider";
+import { ProviderGateProvider } from "@/components/ProviderGate";
 import ProjectSwitcher from "@/components/ProjectSwitcher";
 import { onProjectChange } from "@/lib/projectFetch";
 import { useReportNavigation } from "@/lib/appState";
@@ -387,6 +388,7 @@ export default function RootLayout() {
       <AgentProvider>
       <LoginGate>
       <ProjectProvider>
+      <ProviderGateProvider>
       <ShellContext.Provider value={shell}>
       {/* Highlight the PENDING tab, not the committed one — otherwise a click
           leaves the old tab lit for the whole load. */}
@@ -450,6 +452,7 @@ export default function RootLayout() {
       {/* App-wide toasts (desktop update-ready affordance lives here too). */}
       <Toaster position="bottom-right" />
       </ShellContext.Provider>
+      </ProviderGateProvider>
       </ProjectProvider>
       </LoginGate>
       </AgentProvider>

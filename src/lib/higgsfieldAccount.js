@@ -53,6 +53,16 @@ export function useHiggsfieldLinked() {
   return s.accounts.length ? s.accounts.some((a) => a.providerId === "higgsfield") : null;
 }
 
+// Non-reactive read of the CURRENT link state, for callers outside React (the
+// projectFetch shim, which stamps a "render ready" bit on agent sends). Returns
+// true / false only once the account list has loaded; null while it's still
+// unknown, so callers can stay optimistic and not falsely report "not linked".
+export function higgsfieldLinkedNow() {
+  if (state.status === "ready") return state.accounts.some((a) => a.providerId === "higgsfield");
+  if (state.accounts.length) return state.accounts.some((a) => a.providerId === "higgsfield");
+  return null;
+}
+
 // Start the Higgsfield OAuth link flow for the CURRENT session. On the web the
 // Better Auth client redirects this tab to Higgsfield and back to callbackURL.
 // On desktop /oauth2/link has no disableRedirect, so ask the endpoint directly

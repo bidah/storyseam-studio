@@ -102,7 +102,7 @@ function storedRenderPrefs(): RenderPrefs {
   try {
     return readRenderPrefs(getCloudflareContext().storage.sql);
   } catch {
-    return { active: "", disabled: [] };
+    return { active: "", disabled: [], ready: true };
   }
 }
 
@@ -254,6 +254,18 @@ export function Whistlewood({ id }: AgentProps): string {
   for (const subagent of createSubagents(api, search.tools)) useSubagent(subagent);
 
   const prefs = storedRenderPrefs();
+
+  // No render provider connected (the browser told us — x-flue-render-ready).
+  // Setup is skippable now, so a user can reach the agent with nothing wired up;
+  // every generate_* tool / render skill would 401. Instead of letting the model
+  // discover that mid-render, tell it up front to draw a settings card. This
+  // note overrides the provider-steer note below (there is no usable provider to
+  // steer toward).
+  if (prefs.ready === false) {
+    const notReady = `\n\n## No render provider connected\n\nThe user has NOT connected a render provider — no Higgsfield account is linked and no fal.ai / Atlas Cloud API key is set. Image, video and audio generation WILL FAIL, so:\n\n- If the user asks to generate or render ANY media — an image, a storyboard still, a video, a shot, audio, a voice, a sound, a radio scene — do NOT call a generate tool or run a render skill. It cannot work yet.\n- Instead, call \`render_ui\` ONCE with a short Card that says they need to connect a render provider before they can generate, with an Actions row whose single Action is \`{ label: "Open settings", send: "Open settings" }\`. Keep it to one or two sentences: they connect Higgsfield or add a fal.ai / Atlas Cloud key in Settings › Providers.\n- When the user's next message is "Open settings", call the \`navigate\` tool with \`{ view: "settings" }\`.\n- Everything else works normally — chatting, writing and revising the script, planning, building the shot list, casting. Only actual media generation is blocked. Never claim you rendered something; there is no provider to render with.`;
+    return `${instructions}${notReady}`;
+  }
+
   const providerNote =
     prefs.active && PROVIDER_TOOLS[prefs.active]
       ? `\n\n## Render provider\n\nThe user has SELECTED **${prefs.active}** as their render provider — use ${PROVIDER_TOOLS[prefs.active]} for image/video renders. Only use another backend when a skill is hard-bound to it (multishot lip-sync and Seed Audio scenes are Higgsfield-only) or the user explicitly asks.`

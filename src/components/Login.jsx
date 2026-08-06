@@ -32,7 +32,7 @@ import { useHiggsfieldLinked, connectHiggsfield } from "@/lib/higgsfieldAccount"
 import { desktop, isDesktop } from "@/lib/desktop";
 import { useFalKey, setFalKey } from "@/lib/falKey";
 import { useAtlasKey, setAtlasKey } from "@/lib/atlasKey";
-import { useProviderPrefs, setActiveProvider } from "@/lib/providers";
+import { useProviderPrefs, setActiveProvider, useSetupSkipped, setSetupSkipped } from "@/lib/providers";
 import { useT } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -273,9 +273,34 @@ function ProviderKeyScreen({ userEmail }) {
             {t("Or render with a Higgsfield account instead")}
           </button>
 
+          <SkipForNow />
+
           <SignedInFooter userEmail={userEmail} />
         </div>
       </div>
+    </div>
+  );
+}
+
+// Dismiss the render-provider step and drop into the app. The app still nudges
+// to connect one at the point of generation (components/ProviderGate.jsx), and
+// it stays editable in Settings, so skipping is safe and reversible.
+function SkipForNow() {
+  const t = useT();
+  return (
+    <div className="mt-6 w-full border-t pt-5">
+      <Button
+        variant="ghost"
+        size="sm"
+        className="gap-1.5 text-muted-foreground"
+        onClick={() => setSetupSkipped(true)}
+      >
+        {t("Skip for now — I'll connect a provider later")}
+        <ArrowRight size={14} />
+      </Button>
+      <p className="mt-1.5 text-[11px] text-muted-foreground">
+        {t("You can write the script and use the chat agent right away; connect a provider in Settings when you're ready to generate.")}
+      </p>
     </div>
   );
 }
@@ -350,6 +375,8 @@ function HiggsfieldConnectScreen({ userEmail }) {
             {t("Or render with your own fal.ai / Atlas Cloud key instead")}
           </button>
 
+          <SkipForNow />
+
           <SignedInFooter userEmail={userEmail} />
         </div>
       </div>
@@ -363,9 +390,17 @@ export default function LoginGate({ children }) {
   const atlasKey = useAtlasKey();
   const prefs = useProviderPrefs();
   const hfLinked = useHiggsfieldLinked();
+  const skipped = useSetupSkipped();
   if (isPending) return <Splash />;
   if (!session) return <Homepage />;
-  // Exactly one provider is in use at a time, and the gate blocks on the
+  // Connecting a render provider is now a soft onboarding step, not a wall: a
+  // user who taps "I'll do this later" (setSetupSkipped) drops straight into the
+  // app to chat, write the script and plan. The nudge to connect one then moves
+  // to the point of use — a modal when they try to generate (components/
+  // ProviderGate.jsx) and a settings card the agent draws (whistlewood.ts). The
+  // provider stays fully editable in Settings.
+  if (skipped) return children;
+  // Exactly one provider is in use at a time, and the gate prompts for the
   // SELECTED provider's credential: Higgsfield needs its account linked (null =
   // the account list is still loading — hold the splash rather than flashing
   // the connect screen at someone who is connected; "error" = couldn't fetch

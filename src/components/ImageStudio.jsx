@@ -34,6 +34,7 @@ import { Empty, Eyebrow, Panel, ErrorNote, ConfirmModal } from "@/components/sha
 import MediaPicker from "@/components/MediaPicker";
 import PromptEditor from "@/components/mention/PromptEditor";
 import { refTagLabel, withImageRefNote } from "@/lib/refTags";
+import { useProviderGate } from "@/components/ProviderGate";
 import { useT } from "@/lib/i18n";
 
 export const ASPECTS = ["16:9", "9:16", "1:1", "4:3", "3:4", "21:9"];
@@ -454,6 +455,7 @@ export default function ImageStudio({
 }) {
   const [open, setOpen] = useState(null); // generation open in the detail modal
   const t = useT();
+  const gate = useProviderGate();
   const [pickRef, setPickRef] = useState(false);
   const [editPrompts, setEditPrompts] = useState(false);
   const [localBusy, setLocalBusy] = useState(false);
@@ -482,6 +484,9 @@ export default function ImageStudio({
 
   const doGenerate = async () => {
     if (!prompt.trim() || isBusy || !onGenerate || needsRef) return;
+    // No render provider connected yet → pop the setup modal instead of firing a
+    // request that would 401 (setup is skippable at login now).
+    if (!gate.ensure("image")) return;
     setLocalBusy(true);
     try {
       // "@imageN" chips serialize to plain tags; when any are present, prepend

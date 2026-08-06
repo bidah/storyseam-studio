@@ -14,6 +14,7 @@ import { getAgentModelSpecifier } from "@/lib/agentModel";
 import { getFalKey } from "@/lib/falKey";
 import { getAtlasKey } from "@/lib/atlasKey";
 import { getProviderPrefs, disabledProvidersCsv } from "@/lib/providers";
+import { getRenderReady } from "@/lib/providerReady";
 import { getExaKey, getFirecrawlKey } from "@/lib/searchKeys";
 import { getSearchProvider } from "@/lib/searchProviders";
 import { getSandboxMode } from "@/lib/sandboxMode";
@@ -101,6 +102,11 @@ export function installProjectScope() {
       // carries operator keys as a fallback). Both key headers are sent even
       // when empty so a Remove in Settings clears the stored key server-side.
       if (eve) {
+        // Whether the SELECTED provider actually has its credential. Setup is
+        // skippable now, so a user can reach the agent with no provider
+        // connected — this tells the agent to draw a "connect a provider in
+        // Settings" card instead of attempting (and failing) a render.
+        headers.set("x-flue-render-ready", getRenderReady() ? "1" : "0");
         headers.set("x-flue-search-provider", getSearchProvider());
         headers.set("x-flue-exa-key", getExaKey() || "");
         headers.set("x-flue-firecrawl-key", getFirecrawlKey() || "");

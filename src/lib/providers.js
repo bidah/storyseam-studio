@@ -70,3 +70,39 @@ export function useProviderPrefs() {
 export function disabledProvidersCsv() {
   return IDS.filter((id) => id !== current.active).join(",");
 }
+
+// ── Onboarding skip ──────────────────────────────────────────────────────────
+// The render-provider setup is no longer a hard wall: a new user can dismiss the
+// connect/key screen and jump straight into the app (chat, script, planning).
+// The nudge to connect a provider then moves to the point of use — a modal when
+// they try to generate in the GUI, and a settings card the agent draws when
+// asked to render. This flag (localStorage) remembers the dismissal so the gate
+// doesn't ask again; the provider is still fully editable in Settings.
+const SKIP_KEY = "shot-studio:setupSkipped";
+
+let skipped = (() => {
+  try { return localStorage.getItem(SKIP_KEY) === "1"; } catch { return false; }
+})();
+const skipListeners = new Set();
+
+export function getSetupSkipped() {
+  return skipped;
+}
+
+export function setSetupSkipped(v = true) {
+  const next = !!v;
+  if (next === skipped) return;
+  skipped = next;
+  try {
+    if (next) localStorage.setItem(SKIP_KEY, "1");
+    else localStorage.removeItem(SKIP_KEY);
+  } catch { /* private mode */ }
+  for (const fn of skipListeners) { try { fn(next); } catch { /* ignore */ } }
+}
+
+export function useSetupSkipped() {
+  return useSyncExternalStore(
+    (fn) => { skipListeners.add(fn); return () => skipListeners.delete(fn); },
+    getSetupSkipped,
+  );
+}

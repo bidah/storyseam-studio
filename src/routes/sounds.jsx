@@ -6,6 +6,7 @@ import { invalidateTabCache } from "@/lib/tabCache";
 import { swr, useRevalidateOnMount } from "@/lib/swr";
 import { useT } from "@/lib/i18n";
 import { useAgent, agentIsBusy, renderSoundMessage, renderAllPendingMessage } from "@/components/AgentProvider";
+import { useProviderGate } from "@/components/ProviderGate";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
@@ -45,8 +46,12 @@ function SoundVersion({ track, ver, onChanged }) {
   // (seed-audio skill → Higgsfield → attach_sound) — same as asking it in chat.
   const agent = useAgent();
   const agentBusy = agentIsBusy(agent);
+  const gate = useProviderGate();
   const requestRender = async () => {
     setErr(null);
+    // No render provider connected → pop the setup modal instead of asking the
+    // agent to render (which would fail with no credential).
+    if (!gate.ensure("audio")) return;
     try {
       await agent.send({ message: renderSoundMessage(track, ver) });
     } catch (e) {
@@ -835,6 +840,7 @@ function SoundStudio() {
   const [busy, setBusy] = useState(false);
   const agent = useAgent();
   const agentBusy = agentIsBusy(agent);
+  const gate = useProviderGate();
 
   // Consume the `?new=` param once it has seeded the initial tab/builder, so a
   // refresh or later navigation doesn't keep forcing the builder back open.
@@ -894,7 +900,7 @@ function SoundStudio() {
             <Badge variant="warning"><Clock size={11} /> {pending} pending render</Badge>
             <Button
               size="sm"
-              onClick={() => agent.send({ message: renderAllPendingMessage(tracks) }).catch(() => {})}
+              onClick={() => { if (gate.ensure("audio")) agent.send({ message: renderAllPendingMessage(tracks) }).catch(() => {}); }}
               disabled={agentBusy}
               title={agentBusy ? "Agent is busy — wait for the current turn to finish" : "Render every pending version via the studio agent"}
             >

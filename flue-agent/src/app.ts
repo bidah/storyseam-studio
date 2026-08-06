@@ -159,6 +159,11 @@ const ATLAS_KEY_HEADER = "x-flue-atlas-key";
 // and steers the agent toward the active one.
 const PROVIDER_HEADER = "x-flue-render-provider";
 const DISABLED_HEADER = "x-flue-disabled-providers";
+// Whether the selected provider actually has its credential (the browser knows;
+// see src/lib/providerReady.js). "1" ready, "0" not — an absent header is
+// treated as ready. Persisted with the render prefs; whistlewood.ts uses it to
+// draw a "connect a provider" card instead of a failed render.
+const RENDER_READY_HEADER = "x-flue-render-ready";
 // Settings › Web search: the DEFAULT search backend plus the user's BYOK keys
 // for each (same localStorage-only model as the render keys). Persisted via
 // setSearchPrefs; whistlewood.ts loads exactly one backend's web_search /
@@ -275,6 +280,7 @@ const applyModelSelection: MiddlewareHandler = async (c, next) => {
   const atlasKey = c.req.header(ATLAS_KEY_HEADER);
   const provider = c.req.header(PROVIDER_HEADER);
   const disabledCsv = c.req.header(DISABLED_HEADER);
+  const renderReady = c.req.header(RENDER_READY_HEADER);
   const searchProvider = c.req.header(SEARCH_PROVIDER_HEADER);
   const exaKey = c.req.header(EXA_KEY_HEADER);
   const firecrawlKey = c.req.header(FIRECRAWL_KEY_HEADER);
@@ -282,7 +288,8 @@ const applyModelSelection: MiddlewareHandler = async (c, next) => {
   const wantModel = isAllowedModel(requested);
   const wantFalKey = isPlausibleFalKey(falKey);
   const wantAtlasKey = isPlausibleAtlasKey(atlasKey);
-  const wantPrefs = provider !== undefined || disabledCsv !== undefined;
+  const wantPrefs =
+    provider !== undefined || disabledCsv !== undefined || renderReady !== undefined;
   // Any of the three search headers being present is enough — the DO merges
   // them over what's stored, so a partial set never clobbers the rest.
   const wantSearch =
@@ -307,7 +314,7 @@ const applyModelSelection: MiddlewareHandler = async (c, next) => {
         if (wantFalKey) await stub.setFalKey(falKey as string);
         if (wantAtlasKey) await stub.setAtlasKey(atlasKey as string);
         // Provider prefs are validated in parseRenderPrefs (unknown ids drop).
-        if (wantPrefs) await stub.setRenderPrefs(parseRenderPrefs(provider, disabledCsv));
+        if (wantPrefs) await stub.setRenderPrefs(parseRenderPrefs(provider, disabledCsv, renderReady));
         // Search prefs: only forward fields that were actually sent, and only
         // key values that look like keys — an empty/garbage header is a CLEAR
         // (Settings' Remove button), while an absent one leaves the stored key
