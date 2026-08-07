@@ -15,6 +15,7 @@ import scriptAgents from "./skills/script-agents/SKILL.md";
 import seedAudio from "./skills/seed-audio/SKILL.md";
 import shotList from "./skills/shot-list/SKILL.md";
 import shotListLiveAction from "./skills/shot-list-live-action/SKILL.md";
+import createNewShotsForShotlist from "./skills/create-new-shots-for-shotlist/SKILL.md";
 import trimVideo from "./skills/trim-video/SKILL.md";
 import videoFromAudioVfx from "./skills/video-from-audio-vfx/SKILL.md";
 import worldCreation from "./skills/world-creation/SKILL.md";
@@ -44,6 +45,9 @@ export const skills = [
   // out to the other when the type doesn't match.
   shotList,
   shotListLiveAction,
+  // Add a shot INTO an existing list (the "+" node between shot cards, or a
+  // chat request) — the surgical insert counterpart of the two build skills.
+  createNewShotsForShotlist,
   generateStoryboard,
   assignRefs,
   generateMultishot,

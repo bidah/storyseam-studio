@@ -288,8 +288,29 @@ export async function buildShotlistView(env, pid) {
 // tell the caller when either had to give up. A second entry point that skipped
 // them would silently orphan media, so the MCP server calls exactly this.
 // Returns `{ error }` on bad input (the caller decides the status code).
+// Mint a fresh, non-colliding id for each brand-new inserted shot. Existing ids
+// key media that lives in other documents (storyboard stills, the animatic's
+// picture track), so a new shot must never be handed an id already in use. An
+// id the caller supplied is honoured ONLY when it's genuinely new; otherwise a
+// zero-padded number is minted, continuing the list's positional style and
+// skipping anything already taken (by a stored shot OR an earlier shot in this
+// same batch).
+function mintInsertIds(shots, existingIds) {
+  const used = new Set(existingIds);
+  let k = used.size + 1;
+  return shots.map((s) => {
+    const src = s && typeof s === "object" ? s : {};
+    let id = src.id && !used.has(src.id) ? src.id : null;
+    if (!id) {
+      do { id = String(k++).padStart(2, "0"); } while (used.has(id));
+    }
+    used.add(id);
+    return { ...src, id };
+  });
+}
+
 export async function saveShotlist(env, pid, body) {
-  const { shots: rawShots, source, mode } = body || {};
+  const { shots: rawShots, source, mode, anchorId } = body || {};
   if (!Array.isArray(rawShots)) return { error: "shots[] required" };
 
   // The World roster is a different document and only read, so it stays outside
@@ -329,6 +350,39 @@ export async function saveShotlist(env, pid, body) {
       const newSpeakers = newSpeakersNotInWorld(doc.shots, worldNames);
       return {
         ok: true, mode: "append", appended: shots.length, count: doc.shots.length,
+        productionType,
+        ...(nameWarns.length ? { warnings: nameWarns } : {}),
+        ...(newSpeakers.length ? { newSpeakers } : {}),
+        packs: packPreview(doc.shots),
+      };
+    }
+
+    // Insert: splice these NEW shots into the middle of the list, right after
+    // the anchor shot (or at the very start when there's no anchor). Every stored
+    // shot keeps its id and its media; the inserted shots get fresh minted ids.
+    // This is the "add a shot between two existing ones" path — it never touches
+    // the shots around it, so unlike a "replace" it can't shrink or orphan.
+    if (mode === "insert") {
+      const existingIds = new Set(prevShots.map((s) => s.id).filter(Boolean));
+      const minted = mintInsertIds(shots, existingIds);
+      let at;
+      if (anchorId == null || anchorId === "") {
+        at = 0; // no anchor → insert at the very start of the list
+      } else {
+        const idx = prevShots.findIndex((s) => s.id === anchorId);
+        if (idx < 0) {
+          return { abort: true, error: `No shot "${anchorId}" to insert after — pass the id of an existing shot as anchorId, or omit it to insert at the start.` };
+        }
+        at = idx + 1; // immediately AFTER the anchor
+      }
+      doc.shots = [...prevShots.slice(0, at), ...minted, ...prevShots.slice(at)].map(normalizeShot);
+      doc.generatedAt = new Date().toISOString();
+      doc.source = source || doc.source || "agent";
+      const newSpeakers = newSpeakersNotInWorld(doc.shots, worldNames);
+      return {
+        ok: true, mode: "insert", inserted: minted.length,
+        insertedIds: minted.map((s) => s.id),
+        anchorId: anchorId || null, count: doc.shots.length,
         productionType,
         ...(nameWarns.length ? { warnings: nameWarns } : {}),
         ...(newSpeakers.length ? { newSpeakers } : {}),

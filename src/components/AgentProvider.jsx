@@ -891,6 +891,44 @@ export function generateShotListMessage(productionType) {
   ].join("\n");
 }
 
+// Build the chat turn behind the "+" insert node between two shot cards on the
+// Shot list tab: the author wants a NEW shot slotted in, and typed what the scene
+// should be. Routed through the agent (the create-new-shots-for-shotlist skill) so
+// it authors the shot to the same standard as the shot-list build, shows it as a
+// render_ui approve/reject card, and only writes it (save_shotlist mode:"insert")
+// once approved. `prev`/`next` are the shots ABOVE and BELOW the node (either may
+// be null at the ends of the list); `description` is the author's free text.
+function shotBrief(s) {
+  const dlg = s.dialogue && !/\(no dialogue\)/i.test(s.dialogue) ? ` — dialogue: "${s.dialogue}"` : "";
+  return `shot ${s.id} — ${s.beatTitle || s.beat || "?"}${s.location ? ` · ${s.location}` : ""}${s.camera ? ` · ${s.camera}` : ""}: ${s.action || ""}${dlg}`;
+}
+export function insertShotMessage({ prev, next, description }) {
+  const where = prev && next
+    ? `between shot ${prev.id} and shot ${next.id}`
+    : prev
+      ? `after shot ${prev.id} (the end of the shot list)`
+      : next
+        ? `before shot ${next.id} (the very start of the shot list)`
+        : `into the shot list`;
+  const anchorLine = prev
+    ? `Insert it AFTER shot ${prev.id} — call save_shotlist with mode:"insert" and anchorId:"${prev.id}".`
+    : `Insert it at the very START of the list — call save_shotlist with mode:"insert" and NO anchorId.`;
+  return [
+    `I want to add a new shot ${where} on the Shot list.`,
+    ``,
+    `What the new scene should be: ${description}`,
+    ``,
+    `Load the create-new-shots-for-shotlist skill and follow it. Author ONE new shot that fits` +
+      ` between these neighbours — match the surrounding beat, location and style unless my` +
+      ` description says otherwise — then DRAFT it and show it to me as a render_ui confirm card` +
+      ` (Approve / Reject). ${anchorLine} Only write it once I approve; if I reject, drop it.`,
+    ``,
+    `Neighbouring shots for context:`,
+    prev ? `- Previous: ${shotBrief(prev)}` : `- (this is the START of the shot list — no shot before it)`,
+    next ? `- Next: ${shotBrief(next)}` : `- (this is the END of the shot list — no shot after it)`,
+  ].join("\n");
+}
+
 // Build the chat turn for an inline "change this passage" request from the Script
 // tab: the user drag-selected a range of the screenplay and typed the change they
 // want. Routed through the agent (the script-writing skill) so it proposes the

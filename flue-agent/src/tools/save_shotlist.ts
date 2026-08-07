@@ -39,8 +39,9 @@ export const saveShotlist = (api: Api) =>
       },
     }),
     async run({ data: input, signal }) {
-      const { shots, source, mode, approval_token } = input;
-      const writeMode = mode === "append" ? "append" : "replace";
+      const { shots, source, mode, anchorId, approval_token } = input;
+      const writeMode =
+        mode === "append" ? "append" : mode === "insert" ? "insert" : "replace";
 
       // Phase two of the gate: the author confirmed. Burn the token and replay
       // the arguments THEY approved — not what the model re-typed on this call,
@@ -65,6 +66,11 @@ export const saveShotlist = (api: Api) =>
         shots: incoming,
         source: (source as string) || "agent",
         mode: writeMode,
+        // Only meaningful for "insert" — the id of the shot to splice these in
+        // after (null/omitted = the start of the list).
+        ...(writeMode === "insert" && anchorId != null
+          ? { anchorId: anchorId as string }
+          : {}),
       };
 
       // Exactly ONE shape of this call destroys work: a "replace" that lands a

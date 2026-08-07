@@ -1,12 +1,13 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import { useLoaderData, useRevalidator } from "react-router";
-import { X, RefreshCw, Loader2, Layers, Film, Plus } from "lucide-react";
+import { X, RefreshCw, Loader2, Layers, Film, Plus, Send, CornerDownRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useT } from "@/lib/i18n";
 import { invalidateTabCache } from "@/lib/tabCache";
 import { swr, useRevalidateOnMount, useRevalidateOnAgentIdle, useRevalidateOnAgentTool } from "@/lib/swr";
-import { useAgent, agentIsBusy } from "@/components/AgentProvider";
+import { useAgent, agentIsBusy, insertShotMessage } from "@/components/AgentProvider";
 import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Command as CommandPrimitive } from "cmdk";
 import { Command, CommandGroup, CommandItem, CommandList } from "@/components/ui/command";
@@ -211,6 +212,102 @@ function PromptBlocks({ shot, onSaved }) {
   );
 }
 
+// A shot label for the insert composer's context row.
+function shotChip(s) {
+  return `shot ${s.id}${s.location ? ` · ${s.location}` : ""}`;
+}
+
+// The "+" node that lives BETWEEN two shot cards (and before the first / after
+// the last). Collapsed it's a hairline with a centered plus button; opening it
+// reveals a small composer that shows the shots above/below the gap and a box to
+// describe the new scene. Sending hands the whole thing to the chat agent (the
+// create-new-shots-for-shotlist skill), which drafts the shot, shows an
+// approve/reject card, and only writes it on approval — so nothing is inserted
+// straight from here. `prev`/`next` are the neighbouring shots (either can be
+// null at the ends of the list).
+function InsertShot({ prev, next, disabled }) {
+  const t = useT();
+  const agent = useAgent();
+  const [open, setOpen] = useState(false);
+  const [text, setText] = useState("");
+  const [sending, setSending] = useState(false);
+
+  const close = () => { setOpen(false); setText(""); };
+
+  const send = async () => {
+    const description = text.trim();
+    if (!description || sending) return;
+    setSending(true);
+    try {
+      await agent.send({ message: insertShotMessage({ prev, next, description }) });
+      close();
+    } catch {
+      /* keep the composer open + the text so the author can retry */
+    } finally {
+      setSending(false);
+    }
+  };
+
+  if (!open) {
+    return (
+      <div className="group relative flex h-6 items-center justify-center">
+        <div className="absolute inset-x-0 top-1/2 h-px -translate-y-1/2 bg-border opacity-0 transition-opacity group-hover:opacity-100" />
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          aria-label={t("Add a shot here")}
+          title={t("Add a shot here")}
+          className="relative z-10 flex size-6 items-center justify-center rounded-full bg-muted text-muted-foreground opacity-0 shadow-sm transition-all hover:bg-primary hover:text-primary-foreground group-hover:opacity-100 focus:opacity-100 focus-visible:opacity-100"
+        >
+          <Plus size={14} />
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="rounded-lg border border-primary/40 bg-primary/5 p-3">
+      <div className="mb-2 flex items-center justify-between">
+        <span className="flex items-center gap-1.5 text-xs font-semibold text-primary">
+          <Plus size={13} /> {t("New shot here")}
+        </span>
+        <button type="button" onClick={close} aria-label={t("Cancel")} className="text-muted-foreground hover:text-foreground">
+          <X size={15} />
+        </button>
+      </div>
+      <div className="mb-2 flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">
+        <Badge variant="outline" className="font-mono">{prev ? shotChip(prev) : t("start of list")}</Badge>
+        <CornerDownRight size={12} />
+        <Badge variant="secondary" className="font-mono">{t("new shot")}</Badge>
+        <CornerDownRight size={12} />
+        <Badge variant="outline" className="font-mono">{next ? shotChip(next) : t("end of list")}</Badge>
+      </div>
+      <Textarea
+        autoFocus
+        rows={3}
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        placeholder={t("Write down what this new scene is supposed to be…")}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); send(); }
+          if (e.key === "Escape") { e.preventDefault(); close(); }
+        }}
+        className="text-sm"
+      />
+      <div className="mt-2 flex items-center justify-end gap-2">
+        <Button variant="ghost" size="sm" onClick={close}>{t("Cancel")}</Button>
+        <Button size="sm" onClick={send} disabled={disabled || sending || !text.trim()}>
+          {sending ? <><Loader2 size={13} className="animate-spin" /> {t("Sending…")}</>
+            : <><Send size={13} /> {t("Send to agent")}</>}
+        </Button>
+      </div>
+      {disabled && (
+        <p className="mt-1.5 text-[11px] text-muted-foreground">{t("Agent is busy — wait for the current turn to finish.")}</p>
+      )}
+    </div>
+  );
+}
+
 function ShotList() {
   const t = useT();
   const agent = useAgent();
@@ -274,6 +371,15 @@ function ShotList() {
     else last.shots.push(s);
   }
 
+  // The "+" insert nodes anchor against the FULL list, so they resolve to real
+  // ids regardless of grouping. They're hidden while a pack filter is active
+  // (the visible neighbours wouldn't be the true ones), and while there are no
+  // shots at all (the empty state owns that).
+  const shotOrder = new Map(shots.map((s, i) => [s.n, i]));
+  const prevInList = (s) => { const i = shotOrder.get(s.n); return i > 0 ? shots[i - 1] : null; };
+  const canInsert = !effPack;
+  const lastShot = shots[shots.length - 1] || null;
+
   return (
     <div className="space-y-4">
       <div className="flex flex-col gap-3">
@@ -318,7 +424,9 @@ function ShotList() {
               >
                 <div className="space-y-3">
                   {b.shots.map((s) => (
-                    <div key={s.n} className="rounded-lg border p-2.5">
+                    <Fragment key={s.n}>
+                      {canInsert && <InsertShot prev={prevInList(s)} next={s} disabled={agentBusy} />}
+                    <div className="rounded-lg border p-2.5">
                       <div className="mb-1.5 flex flex-wrap items-center gap-2 text-xs">
                         <Badge variant="secondary" className="font-mono">shot {s.id}</Badge>
                         {packById.get(s.id) && <Badge variant="info" className="font-mono">{packById.get(s.id)}</Badge>}
@@ -352,10 +460,15 @@ function ShotList() {
                         )}
                       </div>
                     </div>
+                    </Fragment>
                   ))}
                 </div>
               </Panel>
             ))}
+            {/* Append a shot at the very end of the list. */}
+            {canInsert && lastShot && (
+              <InsertShot prev={lastShot} next={null} disabled={agentBusy} />
+            )}
           </div>
 
           {/* ≤15s pack rail — pinned on the LEFT within the shot-list wrapper and
