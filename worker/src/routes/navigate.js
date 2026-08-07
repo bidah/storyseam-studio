@@ -22,7 +22,7 @@ import { broadcast } from "../lib/broadcast.js";
 // the caller still gets a useful error, rather than shipping a dead navigation.
 const VIEWS = new Set([
   "world", "script", "shotlist", "radio", "animatic", "shots", "multishot",
-  "episode", "cuts", "editor", "library", "sounds", "settings",
+  "episode", "cuts", "editor", "library", "sounds", "musical", "settings",
 ]);
 
 // Sub-routes that exist under a tab (`/world/visual`, `/world/nodes`).

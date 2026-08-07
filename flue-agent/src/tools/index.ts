@@ -63,6 +63,10 @@ import { editSoundVersion } from "./edit_sound_version.js";
 import { deleteSoundVersion } from "./delete_sound_version.js";
 import { likeSoundVersion } from "./like_sound_version.js";
 import { renameSound } from "./rename_sound.js";
+// Musical — song → audio shot bible
+import { getMusical } from "./get_musical.js";
+import { splitSong } from "./split_song.js";
+import { saveMusicalSegments } from "./save_musical_segments.js";
 // Teams / org access
 import { listOrgs } from "./list_orgs.js";
 import { listMembers } from "./list_members.js";
@@ -168,6 +172,10 @@ export function createTools(api: Api): ToolDefinition[] {
     renameSound(api),
     attachSound(api),
     saveAudioPrompt(api),
+    // Musical — song → audio shot bible
+    getMusical(api),
+    splitSong(api),
+    saveMusicalSegments(api),
     // Radio
     getRadio(api),
     castingSamplePrompt(),
@@ -231,6 +239,7 @@ export function createReadTools(api: Api): ToolDefinition[] {
     // References / Sound / Radio
     listAudioRefs(api),
     listSounds(api),
+    getMusical(api),
     getRadio(api),
     castingSamplePrompt(),
     // Cuts / Editor timeline

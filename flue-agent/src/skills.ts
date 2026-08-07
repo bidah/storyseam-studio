@@ -8,6 +8,7 @@ import editVideo from "./skills/edit-video/SKILL.md";
 import generateMultishot from "./skills/generate-multishot/SKILL.md";
 import generateStoryboard from "./skills/generate-storyboard/SKILL.md";
 import radio from "./skills/radio/SKILL.md";
+import musical from "./skills/musical/SKILL.md";
 import radioPacing from "./skills/radio-pacing/SKILL.md";
 import scriptWriting from "./skills/script-writing/SKILL.md";
 import scriptAgents from "./skills/script-agents/SKILL.md";
@@ -51,6 +52,7 @@ export const skills = [
   seedAudio,
   radio,
   radioPacing,
+  musical,
   trimVideo,
   completeCut,
   editVideo,

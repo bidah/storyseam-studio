@@ -104,6 +104,7 @@ function loaders(env, pid) {
     sounds: () => once("sounds", () => readDoc(env, pid, "sounds", { tracks: [] })),
     manifest: () => once("manifest", () => readDoc(env, pid, "episode-manifest", null)),
     radio: () => once("radio", () => readDoc(env, pid, "radio", {})),
+    musical: () => once("musical", () => readDoc(env, pid, "musical", { segments: [] })),
     script: () => once("script", () => readStore(env, pid)),
     moodboard: () => once("moodboard", () => readDoc(env, pid, "moodboard", null)),
   };
@@ -275,6 +276,28 @@ async function soundsScreen(L) {
   };
 }
 
+// What the author sees on the Musical tab: the uploaded song, how it split, and
+// which shots still need a lyric/prompt authored. Enough for "write the prompts"
+// or "the split looks wrong" to resolve without a round-trip.
+async function musicalScreen(L) {
+  const db = await L.musical();
+  const segments = Array.isArray(db?.segments) ? db.segments : [];
+  return {
+    tab: "Musical",
+    song: db?.song
+      ? { title: db.song.title || null, totalSec: db.song.totalSec || 0,
+          hasStem: !!db.song.voxFile, hasMix: !!db.song.mixFile, hasLyrics: !!(db.song.lyrics || "").trim() }
+      : null,
+    split: db?.split?.status || null,
+    shots: segments.length,
+    authored: segments.filter((s) => String(s.prompt || "").trim()).length,
+    segments: segments.slice(0, 40).map((s) => ({
+      label: s.label, t0: s.t0, t1: s.t1, dur: s.dur,
+      lyric: clip(s.lyric, 120), hasPrompt: !!String(s.prompt || "").trim(),
+    })),
+  };
+}
+
 async function radioScreen(L) {
   const [shots, radio] = await Promise.all([L.shots(), L.radio()]);
   const withDialogue = shots.filter((s) => String(s.dialogue || "").trim());
@@ -329,6 +352,8 @@ async function screenForView(nav, L) {
       return await cutsScreen(nav, L);
     case "sounds":
       return await soundsScreen(L);
+    case "musical":
+      return await musicalScreen(L);
     case "radio":
       return await radioScreen(L);
     case "animatic":

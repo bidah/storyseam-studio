@@ -50,6 +50,7 @@ const TABS = [
   { value: "editor", label: "Editor" },
   { value: "library", label: "Library" },
   { value: "sounds", label: "Sound studio" },
+  { value: "musical", label: "Musical" },
 ];
 
 // Brand-lime glow (matches the Higgsfield primary) for the "route being edited"

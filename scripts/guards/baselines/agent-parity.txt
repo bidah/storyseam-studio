@@ -109,3 +109,11 @@
 /api/orgs/*/invitations/*/revoke  # un-inviting is a manager click in the members UI
 /api/orgs/invitations/*/accept    # a human accepts their own invite in the browser while signed in —
                                   # not an agent operation (the agent isn't the invitee)
+
+# --- [gui-only] musical: the audio upload + a manual reset -------------------
+# The agent's musical CAPABILITIES: get_musical, split_song (starts the Daytona
+# cut job and polls /api/musical/job/*), save_musical_segments. The two below are
+# the browser-side of the tab the agent legitimately doesn't drive.
+/api/musical/song                 # multipart audio upload from a file input; the agent works from
+                                  # the uploaded stem/mix via the split, never raw file bytes
+/api/musical/reset                # the author's "start the shot bible over" button — a UI clear

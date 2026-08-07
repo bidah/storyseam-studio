@@ -78,6 +78,7 @@ export const router = createBrowserRouter([
       { path: "editor", lazy: () => import("@/routes/editor") }, // keeps Remotion out of the main chunk
       { path: "library", lazy: () => import("@/routes/library"), ErrorBoundary: RouteError, HydrateFallback: fallback("library") },
       { path: "sounds", lazy: () => import("@/routes/sounds"), ErrorBoundary: RouteError, HydrateFallback: fallback("sounds") },
+      { path: "musical", lazy: () => import("@/routes/musical"), ErrorBoundary: RouteError, HydrateFallback: fallback("musical") },
       // Not a top tab — opened from the header avatar menu.
       { path: "settings", lazy: () => import("@/routes/settings"), ErrorBoundary: RouteError },
       // Team & access management, and the invite-acceptance landing. Both live

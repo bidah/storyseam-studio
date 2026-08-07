@@ -583,6 +583,30 @@ export function renderSoundMessage(track, ver) {
     .join("\n");
 }
 
+// Build the chat turn that asks the agent to AUTHOR the shot bible on the
+// Musical tab: for each already-cut segment, write the exact sung lyric and a
+// Seedance/Kling director prompt (lip-sync to Audio 1, one global continuity
+// lock across all shots), then save them with save_musical_segments. The song
+// is already split into segments server-side; this is the creative pass. The
+// agent reads the segments and any pasted lyrics off get_musical / view_screen.
+export function renderMusicalMessage(song) {
+  return [
+    "Author the shot bible on the Musical tab now.",
+    "Load the musical skill. The song is already split into audio segments" +
+      " (each shot's vocal-only + full-mix cut). For EACH segment: write the exact" +
+      " sung lyric for that shot and a Seedance/Kling director prompt whose mouth" +
+      " movements match those words in Audio 1, plus one global continuity lock" +
+      " pasted across every shot. Call get_musical to read the segments and the" +
+      " pasted lyrics, then save_musical_segments (matched by label) with the lyric" +
+      " + prompt for each, and the continuity lock.",
+    "",
+    song?.title ? `Song: ${song.title}` : null,
+    song?.lyrics ? `\nLyrics the author pasted:\n${song.lyrics}` : "\n(No lyrics pasted — ask the author for them, or transcribe from the audio.)",
+  ]
+    .filter((l) => l !== null)
+    .join("\n");
+}
+
 // Build the chat turn that drives the render → attach loop for one episode
 // bundle, once its revision has been fully signed off. Mirrors the agent's own
 // instructions (load generate-multishot → render via Higgsfield → attach_episode_video)
