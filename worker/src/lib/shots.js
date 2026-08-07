@@ -24,6 +24,11 @@ export function normalizeShot(s, i) {
     action: s.action || s.summary || "",
     dialogue: s.dialogue || "",
     audioSync: s.audioSync || "",
+    // `extra` marks a shot INSERTED after the script was broken into shots (via
+    // the "+" node / save_shotlist mode:"insert"), so the UI can badge it as
+    // "extra shot". Preserved here because normalizeShot rebuilds the object from
+    // a fixed field set and would otherwise drop it on every read and edit.
+    ...(s.extra ? { extra: true } : {}),
     ...(promptBlocks ? { promptBlocks } : {}),
     prompt: promptBlocks ? composePromptBlocks(promptBlocks) : (s.prompt || ""),
   };

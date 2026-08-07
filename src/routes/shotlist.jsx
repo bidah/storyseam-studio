@@ -217,47 +217,69 @@ function shotChip(s) {
   return `shot ${s.id}${s.location ? ` · ${s.location}` : ""}`;
 }
 
-// The "+" node that lives BETWEEN two shot cards (and before the first / after
-// the last). Collapsed it's a hairline with a centered plus button; opening it
-// reveals a small composer that shows the shots above/below the gap and a box to
-// describe the new scene. Sending hands the whole thing to the chat agent (the
+// A shot INSERTED after the script was broken into shots. The worker stamps a
+// durable `extra: true` flag on every insert; the id pattern (`<anchor>-node-N`,
+// also minted by the worker) is a fallback for shots inserted before that flag
+// existed. Either marks the card with the "extra shot" badge.
+const isExtraShot = (s) => !!s?.extra || /-node-\d+$/.test(String(s?.id || ""));
+const escapeRe = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+// The node that lives BETWEEN two shot cards (and before the first / after the
+// last). It's ALWAYS visible — a short vertical connector with a "+" button on
+// it. Clicking opens a composer showing the shots above/below the gap and a box
+// to describe the new scene; Send hands it to the chat agent (the
 // create-new-shots-for-shotlist skill), which drafts the shot, shows an
-// approve/reject card, and only writes it on approval — so nothing is inserted
-// straight from here. `prev`/`next` are the neighbouring shots (either can be
-// null at the ends of the list).
-function InsertShot({ prev, next, disabled }) {
+// approve/reject card, and only writes it on approval. While the agent works this
+// SAME spot shows a "Creating new shot node…" spinner (`creating`), which the
+// parent clears once the new node lands in the list. `prev`/`next` are the
+// neighbouring shots (either can be null at the ends of the list).
+function InsertShot({ prev, next, creating, disabled, onSend, onCancel }) {
   const t = useT();
-  const agent = useAgent();
   const [open, setOpen] = useState(false);
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
 
   const close = () => { setOpen(false); setText(""); };
 
-  const send = async () => {
+  const submit = async () => {
     const description = text.trim();
     if (!description || sending) return;
     setSending(true);
     try {
-      await agent.send({ message: insertShotMessage({ prev, next, description }) });
+      await onSend({ prev, next, description });
       close();
-    } catch {
-      /* keep the composer open + the text so the author can retry */
     } finally {
       setSending(false);
     }
   };
 
+  // The agent is drafting / inserting the shot for THIS gap. Show progress in
+  // place of the "+"; the parent clears `creating` when the new node arrives.
+  if (creating) {
+    return (
+      <div className="relative flex items-center justify-center py-1.5">
+        <div className="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-primary/40" />
+        <div className="relative z-10 flex items-center gap-2 rounded-full border border-primary/40 bg-primary/10 px-3 py-1 text-xs font-medium text-primary shadow-sm">
+          <Loader2 size={13} className="animate-spin" />
+          {t("Creating new shot node…")}
+          <button type="button" onClick={onCancel} aria-label={t("Dismiss")} className="text-primary/70 transition-colors hover:text-primary">
+            <X size={12} />
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   if (!open) {
     return (
-      <div className="group relative flex h-6 items-center justify-center">
-        <div className="absolute inset-x-0 top-1/2 h-px -translate-y-1/2 bg-border opacity-0 transition-opacity group-hover:opacity-100" />
+      <div className="relative flex h-7 items-center justify-center">
+        <div className="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-border" />
         <button
           type="button"
           onClick={() => setOpen(true)}
           aria-label={t("Add a shot here")}
           title={t("Add a shot here")}
-          className="relative z-10 flex size-6 items-center justify-center rounded-full bg-muted text-muted-foreground opacity-0 shadow-sm transition-all hover:bg-primary hover:text-primary-foreground group-hover:opacity-100 focus:opacity-100 focus-visible:opacity-100"
+          className="relative z-10 flex size-6 items-center justify-center rounded-full border bg-background text-muted-foreground shadow-sm transition-colors hover:border-primary hover:bg-primary hover:text-primary-foreground"
         >
           <Plus size={14} />
         </button>
@@ -278,7 +300,7 @@ function InsertShot({ prev, next, disabled }) {
       <div className="mb-2 flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">
         <Badge variant="outline" className="font-mono">{prev ? shotChip(prev) : t("start of list")}</Badge>
         <CornerDownRight size={12} />
-        <Badge variant="secondary" className="font-mono">{t("new shot")}</Badge>
+        <Badge variant="secondary" className="font-mono">{t("extra shot")}</Badge>
         <CornerDownRight size={12} />
         <Badge variant="outline" className="font-mono">{next ? shotChip(next) : t("end of list")}</Badge>
       </div>
@@ -289,14 +311,14 @@ function InsertShot({ prev, next, disabled }) {
         onChange={(e) => setText(e.target.value)}
         placeholder={t("Write down what this new scene is supposed to be…")}
         onKeyDown={(e) => {
-          if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); send(); }
+          if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); submit(); }
           if (e.key === "Escape") { e.preventDefault(); close(); }
         }}
         className="text-sm"
       />
       <div className="mt-2 flex items-center justify-end gap-2">
         <Button variant="ghost" size="sm" onClick={close}>{t("Cancel")}</Button>
-        <Button size="sm" onClick={send} disabled={disabled || sending || !text.trim()}>
+        <Button size="sm" onClick={submit} disabled={disabled || sending || !text.trim()}>
           {sending ? <><Loader2 size={13} className="animate-spin" /> {t("Sending…")}</>
             : <><Send size={13} /> {t("Send to agent")}</>}
         </Button>
@@ -319,6 +341,11 @@ function ShotList() {
   const [rebuilding, setRebuilding] = useState(false);
   // Which pack the left rail is filtering the body by (null = show every shot).
   const [activePack, setActivePack] = useState(null);
+  // Insert nodes the agent is currently working on, keyed by the gap they sit in
+  // (the shot above's id, or "start"). Each remembers the `<anchor>-node-*` ids
+  // that already existed when we asked, so the spinner clears the moment a NEW
+  // one lands rather than the moment ANY matching node exists.
+  const [pending, setPending] = useState({});
 
   const revalidate = revalidator.revalidate;
   const refetch = useCallback(() => {
@@ -356,6 +383,54 @@ function ShotList() {
   const runtime = shots.reduce((a, s) => a + (Number(s.dur) || 0), 0);
   const packById = new Map();
   packs.forEach((p) => p.shotIds.forEach((id) => packById.set(id, p.id)));
+
+  // A gap's stable key — the shot above's id, or "start" at the very top.
+  const gapKey = (prev) => (prev ? prev.id : "start");
+
+  // Clear a pending spinner the instant its new node arrives — a shot whose id is
+  // `<base>-node-*` that wasn't already there when we asked. Keyed off `shots`, so
+  // it fires on the same revalidation that brings the node in.
+  useEffect(() => {
+    setPending((cur) => {
+      const keys = Object.keys(cur);
+      if (!keys.length) return cur;
+      let changed = false;
+      const next = { ...cur };
+      for (const key of keys) {
+        const { base, known } = cur[key];
+        const re = new RegExp(`^${escapeRe(base)}-node-\\d+$`);
+        const knownSet = new Set(known);
+        if (shots.some((s) => re.test(s.id) && !knownSet.has(s.id))) {
+          delete next[key];
+          changed = true;
+        }
+      }
+      return changed ? next : cur;
+    });
+  }, [shots]);
+
+  // Send an insert request for one gap and flip that node into its "creating"
+  // spinner. Snapshots the nodes already at this anchor so the spinner clears on
+  // the NEW one, not a pre-existing sibling.
+  const startInsert = useCallback(async ({ prev, next, description }) => {
+    const key = prev ? prev.id : "start";
+    const base = prev ? prev.id : "00";
+    const re = new RegExp(`^${escapeRe(base)}-node-\\d+$`);
+    const known = shots.filter((s) => re.test(s.id)).map((s) => s.id);
+    setPending((cur) => ({ ...cur, [key]: { base, known } }));
+    try {
+      await agent.send({ message: insertShotMessage({ prev, next, description }) });
+    } catch {
+      setPending((cur) => { const n = { ...cur }; delete n[key]; return n; });
+    }
+  }, [agent, shots]);
+
+  // Dismiss a spinner by hand — the escape hatch for a rejected draft or a turn
+  // that errored, so a node never spins forever.
+  const cancelInsert = useCallback((prev) => {
+    const key = prev ? prev.id : "start";
+    setPending((cur) => { const n = { ...cur }; delete n[key]; return n; });
+  }, []);
 
   // Clicking a pack in the left rail filters the body to just that pack's shots;
   // clicking it again shows all. Guard the selection so a pack that vanished
@@ -425,10 +500,20 @@ function ShotList() {
                 <div className="space-y-3">
                   {b.shots.map((s) => (
                     <Fragment key={s.n}>
-                      {canInsert && <InsertShot prev={prevInList(s)} next={s} disabled={agentBusy} />}
+                      {canInsert && (
+                        <InsertShot
+                          prev={prevInList(s)}
+                          next={s}
+                          creating={!!pending[gapKey(prevInList(s))]}
+                          disabled={agentBusy}
+                          onSend={startInsert}
+                          onCancel={() => cancelInsert(prevInList(s))}
+                        />
+                      )}
                     <div className="rounded-lg border p-2.5">
                       <div className="mb-1.5 flex flex-wrap items-center gap-2 text-xs">
                         <Badge variant="secondary" className="font-mono">shot {s.id}</Badge>
+                        {isExtraShot(s) && <Badge variant="warning">extra shot</Badge>}
                         {packById.get(s.id) && <Badge variant="info" className="font-mono">{packById.get(s.id)}</Badge>}
                         <span className="text-muted-foreground">{s.location}</span>
                         <span className="ml-auto flex items-center gap-1 text-muted-foreground">
@@ -467,7 +552,14 @@ function ShotList() {
             ))}
             {/* Append a shot at the very end of the list. */}
             {canInsert && lastShot && (
-              <InsertShot prev={lastShot} next={null} disabled={agentBusy} />
+              <InsertShot
+                prev={lastShot}
+                next={null}
+                creating={!!pending[gapKey(lastShot)]}
+                disabled={agentBusy}
+                onSend={startInsert}
+                onCancel={() => cancelInsert(lastShot)}
+              />
             )}
           </div>
 

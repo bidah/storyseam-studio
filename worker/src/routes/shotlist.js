@@ -290,22 +290,32 @@ export async function buildShotlistView(env, pid) {
 // Returns `{ error }` on bad input (the caller decides the status code).
 // Mint a fresh, non-colliding id for each brand-new inserted shot. Existing ids
 // key media that lives in other documents (storyboard stills, the animatic's
-// picture track), so a new shot must never be handed an id already in use. An
-// id the caller supplied is honoured ONLY when it's genuinely new; otherwise a
-// zero-padded number is minted, continuing the list's positional style and
-// skipping anything already taken (by a stored shot OR an earlier shot in this
-// same batch).
-function mintInsertIds(shots, existingIds) {
+// picture track), so a new shot must never be handed an id already in use.
+//
+// An inserted shot is named RELATIVE to the shot it sits after, so its id itself
+// reads as "a new node between the numbered shots": `<anchor>-node-1`, `-node-2`,
+// … (the very start of the list has no anchor, so the base is "00"). Numbering
+// continues past any node already minted at this anchor, and any collision (a
+// stored id, or an earlier shot in this same batch) is skipped.
+function mintInsertIds(shots, anchorId, existingIds) {
   const used = new Set(existingIds);
-  let k = used.size + 1;
+  const base = anchorId == null || anchorId === "" ? "00" : anchorId;
+  const prefix = `${base}-node-`;
+  let k = 1;
+  for (const id of used) {
+    if (typeof id === "string" && id.startsWith(prefix)) {
+      const num = Number(id.slice(prefix.length));
+      if (Number.isInteger(num) && num >= k) k = num + 1;
+    }
+  }
   return shots.map((s) => {
     const src = s && typeof s === "object" ? s : {};
-    let id = src.id && !used.has(src.id) ? src.id : null;
-    if (!id) {
-      do { id = String(k++).padStart(2, "0"); } while (used.has(id));
-    }
+    let id;
+    do { id = `${prefix}${k++}`; } while (used.has(id));
     used.add(id);
-    return { ...src, id };
+    // Stamp the durable "added after the script" flag so the UI badges it as an
+    // extra shot regardless of the id (which the author can later edit).
+    return { ...src, id, extra: true };
   });
 }
 
@@ -364,7 +374,7 @@ export async function saveShotlist(env, pid, body) {
     // the shots around it, so unlike a "replace" it can't shrink or orphan.
     if (mode === "insert") {
       const existingIds = new Set(prevShots.map((s) => s.id).filter(Boolean));
-      const minted = mintInsertIds(shots, existingIds);
+      const minted = mintInsertIds(shots, anchorId, existingIds);
       let at;
       if (anchorId == null || anchorId === "") {
         at = 0; // no anchor → insert at the very start of the list

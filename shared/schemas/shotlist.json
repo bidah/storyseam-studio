@@ -10,7 +10,7 @@
         "type": "enum",
         "values": ["replace", "append", "insert"],
         "optional": true,
-        "description": "Write mode. \"replace\" (default) overwrites the whole list. \"append\" adds these shots to the end — use it to build a long shot list one beat at a time so no single call carries the whole episode. Regenerate by calling \"replace\" with the first beat, then \"append\" for each later beat. \"insert\" splices these shots into the MIDDLE of the existing list at `anchorId` — use it to add a shot between two existing ones. Every stored shot's id and its media are preserved; the inserted shots get fresh minted ids."
+        "description": "Write mode. \"replace\" (default) overwrites the whole list. \"append\" adds these shots to the end — use it to build a long shot list one beat at a time so no single call carries the whole episode. Regenerate by calling \"replace\" with the first beat, then \"append\" for each later beat. \"insert\" splices these shots into the MIDDLE of the existing list at `anchorId` — use it to add a shot between two existing ones. Every stored shot's id and its media are preserved; the inserted shots get fresh ids that name them as new nodes between the numbered shots (e.g. `36-node-1`)."
       },
       "anchorId": {
         "type": "string",
