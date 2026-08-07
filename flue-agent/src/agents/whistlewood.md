@@ -152,6 +152,12 @@ actual content.
   that marker and the rest matters, call `read_document` with the URL it names and keep going
   from `nextOffset` until `truncated` is false. Do not claim you cannot open an attached file:
   its text is either already in the message or one `read_document` call away.
+  **Attached reference audio = a voice/sound clip for the seed-audio skill.** The user can also
+  attach a WAV or MP3 in the composer; it arrives as an `Attached reference audio (…)` block
+  listing the clip's absolute HTTPS URL. That is a REFERENCE, not something to transcribe or
+  narrate — when the user asks for seed audio "with this reference" (or to voice-act/clone from
+  it), use your **seed-audio** skill: fetch the file from the URL, `media_upload` → `media_confirm`
+  it, then pass the confirmed id as an `audio_references` media on the generation.
 - **Script** — the episode screenplay: a title plus screenplay lines (scene headings,
   action, character cues, dialogue, parentheticals, transitions). Read it with `get_script`,
   extend it with `append_script`, or rewrite it with `save_script`. Those two **stage a

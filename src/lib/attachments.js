@@ -12,9 +12,14 @@
 //           ingests the document with the turn. Oversized documents are
 //           inlined up to a budget and the agent is told to pull the rest with
 //           its `read_document` tool.
+//   audio → WAV/MP3 only. Uploaded for a durable URL, then surfaced in the
+//           message body as a "reference audio" the agent hands to the
+//           seed-audio skill (fetch → media_upload → media_confirm →
+//           audio_references). The model doesn't SEE or READ it — it's a
+//           handle to a voice/sound clip for a generation.
 //
-// Anything else (audio, video, archives) is refused at the composer — those
-// belong in the media pipeline, not the chat context.
+// Anything else (video, other audio, archives) is refused at the composer —
+// those belong in the media pipeline, not the chat context.
 
 // Where attachment uploads go. Mirrors AgentChat's endpoint resolution: the
 // Cloudflare Worker (VITE_UPLOAD_URL) when configured, else same-origin /api.
@@ -30,6 +35,9 @@ export const MAX_ATTACHMENT_BYTES = 40 * 1024 * 1024; // 40 MB
 // application/octet-stream for .md, .fountain and most code files.
 export const ATTACH_ACCEPT = {
   "image/*": [".png", ".jpg", ".jpeg", ".gif", ".webp", ".avif", ".bmp", ".svg"],
+  // Reference audio for the seed-audio skill — WAV/MP3 only (see classifyFile).
+  "audio/wav": [".wav"],
+  "audio/mpeg": [".mp3"],
   "application/pdf": [".pdf"],
   "text/plain": [".txt", ".text", ".log", ".fountain", ".ini", ".toml"],
   "text/markdown": [".md", ".markdown", ".mdx"],
@@ -68,15 +76,23 @@ const DOC_EXT =
   /\.(pdf|txt|text|log|md|markdown|mdx|csv|tsv|json|jsonl|ndjson|ya?ml|html?|xml|srt|vtt|fountain|ini|toml|docx?|xlsx?|pptx?|odt|ods|rtf|epub|js|jsx|ts|tsx|py|rb|go|rs|sh|css|sql)$/i;
 
 /**
- * "image" | "doc" for a file the composer accepts, null for one it doesn't.
- * MIME type first, extension as the fallback (see ATTACH_ACCEPT above).
+ * "image" | "doc" | "audio" for a file the composer accepts, null for one it
+ * doesn't. MIME type first, extension as the fallback (see ATTACH_ACCEPT above).
  */
 export function classifyFile(file) {
   const type = String(file?.type || "").split(";")[0].trim().toLowerCase();
   const name = String(file?.name || "");
   if (type.startsWith("image/")) return "image";
-  // Media belongs to the render pipeline, never the chat context — refuse it
-  // even when the extension would otherwise look readable.
+  // WAV/MP3 ride as reference audio for the seed-audio skill. Match by the
+  // narrow set of mime spellings browsers use, or the extension when the mime
+  // is missing (common for local files).
+  if (
+    ["audio/wav", "audio/x-wav", "audio/wave", "audio/vnd.wave", "audio/mpeg", "audio/mp3"].includes(type) ||
+    /\.(wav|mp3)$/i.test(name)
+  )
+    return "audio";
+  // Other media belongs to the render pipeline, never the chat context — refuse
+  // it even when the extension would otherwise look readable.
   if (type.startsWith("audio/") || type.startsWith("video/")) return null;
   if (type.startsWith("text/") || DOC_MIME.has(type)) return "doc";
   if (DOC_EXT.test(name)) return "doc";

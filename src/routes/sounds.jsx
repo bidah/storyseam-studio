@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useLoaderData, useRevalidator, useSearchParams } from "react-router";
-import { Check, Plus, ChevronDown, ChevronRight, RotateCcw, Volume2, Speech, Copy, Heart, Music, Save, Clock, Download, Trash2, FileText, Loader2, Wand2 } from "lucide-react";
+import { Check, Plus, ChevronDown, ChevronRight, RotateCcw, Volume2, Speech, Copy, Heart, Music, Save, Clock, Download, Trash2, FileText, Loader2, Wand2, Upload } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { invalidateTabCache } from "@/lib/tabCache";
 import { swr, useRevalidateOnMount } from "@/lib/swr";
@@ -218,6 +218,94 @@ function SoundVersion({ track, ver, onChanged }) {
   );
 }
 
+// A version that was UPLOADED rather than generated. The file is the
+// deliverable, so there's no prompt to edit and no render to run — just the
+// player, a download, like/delete, and an "uploaded" badge to set it apart
+// from the generated cards.
+function UploadedSoundVersion({ track, ver, onChanged }) {
+  const t = useT();
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState(null);
+
+  const run = async (fn) => {
+    setBusy(true);
+    setErr(null);
+    try {
+      await fn();
+      onChanged();
+    } catch (e) {
+      setErr(String(e.message || e));
+    } finally {
+      setBusy(false);
+    }
+  };
+  const toggleLike = () =>
+    run(() => soundApi(`/api/sounds/${track.id}/version/${ver.v}/like`, { method: "POST" }));
+  const del = () => {
+    if (window.confirm(t("Delete v{v}?", { v: ver.v })))
+      run(() => soundApi(`/api/sounds/${track.id}/version/${ver.v}`, { method: "DELETE" }));
+  };
+
+  return (
+    <div className={cn("space-y-2.5 rounded-lg border bg-muted/30 p-3", ver.liked && "border-primary/30")}>
+      <div className="flex flex-wrap items-center gap-2">
+        <Badge variant="secondary" className="font-mono">v{ver.v}</Badge>
+        {ver.name && <span className="text-sm font-medium">{ver.name}</span>}
+        <Badge variant="info"><Upload size={11} /> {t("uploaded")}</Badge>
+        {ver.duration ? <span className="text-xs text-muted-foreground">{ver.duration.toFixed(1)}s</span> : null}
+        <span className="flex-1" />
+        <Button
+          variant="ghost" size="icon-sm"
+          aria-label={ver.liked ? t("Unlike this version") : t("Like this version")}
+          onClick={toggleLike} disabled={busy} title={t("Like")}
+        >
+          <Heart size={16} fill={ver.liked ? "#e11d48" : "none"} color={ver.liked ? "#e11d48" : "currentColor"} />
+        </Button>
+        <Button variant="ghost" size="icon-sm" aria-label={t("Delete this version")} onClick={del} disabled={busy} title={t("Delete version")}>
+          <Trash2 size={15} />
+        </Button>
+      </div>
+
+      {ver.url ? (
+        <div className="flex items-center gap-3">
+          <audio controls src={ver.url} preload="none" className="flex-1" />
+          <a className="inline-flex items-center gap-1 text-xs text-primary hover:underline" href={ver.url} download>
+            <Download size={13} /> {t("download")}
+          </a>
+        </div>
+      ) : null}
+
+      {err && <span className="text-xs text-destructive">{err}</span>}
+    </div>
+  );
+}
+
+// "Upload" action next to each tab's "New …" button. Wraps a hidden file input
+// (audio only) and hands the picked File up to the studio to POST as a new
+// uploaded track in this tab's `kind`.
+function UploadSoundButton({ kind, busy, onPick }) {
+  const t = useT();
+  const inputRef = useRef(null);
+  return (
+    <>
+      <input
+        ref={inputRef}
+        type="file"
+        accept="audio/*,.wav,.mp3,.ogg,.opus,.m4a,.aac"
+        className="hidden"
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          e.target.value = ""; // allow re-picking the same file
+          if (file) onPick(file);
+        }}
+      />
+      <Button variant="outline" onClick={() => inputRef.current?.click()} disabled={busy}>
+        {busy ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />} {t("Upload")}
+      </Button>
+    </>
+  );
+}
+
 function SoundTrack({ track, onChanged }) {
   const [name, setName] = useState(track.name);
   const [busy, setBusy] = useState(false);
@@ -288,9 +376,13 @@ function SoundTrack({ track, onChanged }) {
         </div>
       }
     >
-      {versions.map((v) => (
-        <SoundVersion key={v.v} track={track} ver={v} onChanged={onChanged} />
-      ))}
+      {versions.map((v) =>
+        v.uploaded ? (
+          <UploadedSoundVersion key={v.v} track={track} ver={v} onChanged={onChanged} />
+        ) : (
+          <SoundVersion key={v.v} track={track} ver={v} onChanged={onChanged} />
+        )
+      )}
     </Panel>
   );
 }
@@ -878,6 +970,24 @@ function SoundStudio() {
     }
   };
 
+  const uploadSound = async (kind, file) => {
+    setBusy(true);
+    setError(null);
+    try {
+      const form = new FormData();
+      form.append("file", file);
+      form.append("kind", kind);
+      const res = await fetch("/api/sounds/upload", { method: "POST", body: form });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || `${res.status}`);
+      refetch();
+    } catch (e) {
+      setError(String(e.message || e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const music = useMemo(() => tracks.filter((t) => trackKind(t) === "music"), [tracks]);
   const sfx = useMemo(() => tracks.filter((t) => trackKind(t) === "sfx"), [tracks]);
   const voice = useMemo(() => tracks.filter((t) => trackKind(t) === "voice"), [tracks]);
@@ -920,7 +1030,8 @@ function SoundStudio() {
         </TabsList>
 
         <TabsContent value="music" className="mt-4 space-y-4">
-          <div className="flex justify-end">
+          <div className="flex justify-end gap-2">
+            <UploadSoundButton kind="music" busy={busy} onPick={(f) => uploadSound("music", f)} />
             <Button onClick={() => setShowNew((s) => !s)}>
               <Plus size={14} /> New background music
             </Button>
@@ -942,7 +1053,8 @@ function SoundStudio() {
         </TabsContent>
 
         <TabsContent value="sfx" className="mt-4 space-y-4">
-          <div className="flex justify-end">
+          <div className="flex justify-end gap-2">
+            <UploadSoundButton kind="sfx" busy={busy} onPick={(f) => uploadSound("sfx", f)} />
             <Button onClick={() => setShowNew((s) => !s)}>
               <Plus size={14} /> New sound effect
             </Button>
@@ -963,7 +1075,8 @@ function SoundStudio() {
         </TabsContent>
 
         <TabsContent value="voice" className="mt-4 space-y-4">
-          <div className="flex justify-end">
+          <div className="flex justify-end gap-2">
+            <UploadSoundButton kind="voice" busy={busy} onPick={(f) => uploadSound("voice", f)} />
             <Button onClick={() => setShowNew((s) => !s)}>
               <Plus size={14} /> New voice line
             </Button>

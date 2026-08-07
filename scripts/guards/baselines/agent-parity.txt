@@ -11,6 +11,7 @@
 
 # --- [gui-only] browser plumbing, transport, and session ---------------------
 /api/upload                       # multipart body from a file input; the agent attaches by URL
+/api/sounds/upload                # multipart body from a file input; the agent generates + attach_sound instead
 /api/data/events                  # SSE subscription — a stream, not an operation
 /api/script/events                # SSE subscription
 /api/timeline/events              # SSE subscription

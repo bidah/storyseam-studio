@@ -22,6 +22,7 @@ import {
   Mic,
   Images,
   Upload,
+  AudioLines,
   Globe,
   ExternalLink,
   PanelRightClose,
@@ -757,6 +758,16 @@ function SentAttachments({ atts }) {
                   {t("{n} chars", { n: a.chars.toLocaleString() })}
                 </AttachmentDescription>
               ) : null}
+            </AttachmentContent>
+          </Attachment>
+        ) : a.kind === "audio" ? (
+          <Attachment key={i} size="sm" className="min-w-0 max-w-52">
+            <AttachmentMedia>
+              <AudioLines />
+            </AttachmentMedia>
+            <AttachmentContent>
+              <AttachmentTitle>{a.name || t("audio")}</AttachmentTitle>
+              <AttachmentDescription>{t("ref audio")}</AttachmentDescription>
             </AttachmentContent>
           </Attachment>
         ) : (
@@ -1664,7 +1675,7 @@ export default function AgentChat() {
   const mentionRefs = useMemo(
     () =>
       attachments
-        .filter((a) => a.state !== "error" && a.kind !== "doc")
+        .filter((a) => a.state !== "error" && a.kind === "image")
         .map((a) => ({ id: a.id, thumb: a.previewUrl || a.url, url: a.url, name: a.name })),
     [attachments],
   );
@@ -1721,9 +1732,9 @@ export default function AgentChat() {
   }
 
   // The single entry point for every way a file arrives: drop, paste, or the
-  // file dialog. Images and documents are both welcome; anything else (audio,
-  // video, archives) is refused here with a reason rather than silently
-  // vanishing, which is what the old `image/`-only filter did.
+  // file dialog. Images, documents and WAV/MP3 reference audio are welcome;
+  // anything else (other audio, video, archives) is refused here with a reason
+  // rather than silently vanishing, which is what the old `image/`-only filter did.
   function addFiles(fileList) {
     const incoming = Array.from(fileList || []);
     if (!incoming.length) return;
@@ -1909,16 +1920,24 @@ export default function AgentChat() {
     // Capture the done attachments (with their retained `file`) before
     // clearing, each stamped with the imageN label the composer numbered it
     // with — the history renderer maps @imageN chips back through these.
-    // Images and documents part ways here: an image is something the model
-    // LOOKS at (base64 + a re-importable URL), a document is something it READS
-    // (extracted text inlined below).
-    const done = doneAttachments.filter((a) => a.kind !== "doc");
+    // The three kinds part ways here: an image is something the model LOOKS at
+    // (base64 + a re-importable URL), a document is something it READS
+    // (extracted text inlined below), and audio is a reference clip it USES via
+    // the seed-audio skill (URL only — never a vision or text input).
+    const imgs = doneAttachments.filter((a) => a.kind === "image");
+    const audios = doneAttachments.filter((a) => a.kind === "audio");
     const docs = doneAttachments.filter((a) => a.kind === "doc");
-    const sent = done.map((a) => ({
+    const sent = imgs.map((a) => ({
       url: a.url,
       name: a.name,
       contentType: a.contentType,
       label: attLabels.get(a.id),
+    }));
+    const sentAudio = audios.map((a) => ({
+      kind: "audio",
+      url: a.url,
+      name: a.name,
+      contentType: a.contentType,
     }));
 
     // Build the message body first — it doubles as the join key that maps this
@@ -1947,6 +1966,21 @@ export default function AgentChat() {
         `(absolute URL${refLines.length > 1 ? "s" : ""}, usable directly as a Higgsfield ` +
         `generation reference via media_import_url)${tagNote}:\n${refLines.join("\n")}`
       : "";
+    // Reference audio (WAV/MP3) rides as an absolute URL for the seed-audio
+    // skill: the agent fetches the file, then media_upload → media_confirm →
+    // passes it as an `audio_references` media (voice/sound cloning). It is NOT
+    // a vision or text input, so it never joins the base64 images below.
+    const audioLines = sentAudio
+      .filter((a) => a.url)
+      .map(
+        (a) =>
+          `- ${a.name}: ${/^https?:\/\//.test(a.url) ? a.url : new URL(a.url, window.location.origin).href}`,
+      );
+    const audioBlock = audioLines.length
+      ? `Attached reference audio (WAV/MP3 voice or sound reference${audioLines.length > 1 ? "s" : ""} — ` +
+        `use with the seed-audio skill: fetch the file, then media_upload → media_confirm → ` +
+        `attach as an "audio_references" media on the generation):\n${audioLines.join("\n")}`
+      : "";
     // Documents ride as extracted TEXT — a PDF can't go in an image slot, and
     // handing the agent a bare URL would leave it unable to open the thing.
     // buildDocumentBlock inlines up to its budget and points read_document at
@@ -1964,7 +1998,7 @@ export default function AgentChat() {
         text: a.text,
       })),
     );
-    const body = [t, imageBlock, docBlock].filter(Boolean).join("\n\n");
+    const body = [t, imageBlock, audioBlock, docBlock].filter(Boolean).join("\n\n");
 
     // Remember this batch until the correlation effect sees the flue user message
     // carrying `body` and keys the thumbnails to its id (survives reload; immune
@@ -1973,6 +2007,7 @@ export default function AgentChat() {
     // clear the composer.
     const record = [
       ...sent,
+      ...sentAudio,
       ...docs.map((a) => ({
         kind: "doc",
         url: a.url,
@@ -1985,11 +2020,13 @@ export default function AgentChat() {
     clearComposer();
 
     // flue takes images out-of-band as base64 `{ data, mimeType }`, not as
-    // message parts — convert the retained Files and hand them alongside the text.
+    // message parts — convert the retained Files and hand them alongside the
+    // text. Audio is a URL-only reference (handled in audioBlock above), so it
+    // never goes here.
     let images;
-    if (done.length) {
+    if (imgs.length) {
       images = await Promise.all(
-        done.map(async (a) => ({
+        imgs.map(async (a) => ({
           type: "image",
           data: await fileToBase64(a.file),
           mimeType: a.contentType || "image/png",
@@ -2316,9 +2353,11 @@ export default function AgentChat() {
           <AttachmentGroup className="mb-2">
             {attachments.map((a) => (
               <Attachment key={a.id} state={a.state} size="sm">
-                <AttachmentMedia variant={a.kind === "doc" ? "icon" : "image"}>
+                <AttachmentMedia variant={a.kind === "image" ? "image" : "icon"}>
                   {a.kind === "doc" ? (
                     <FileText />
+                  ) : a.kind === "audio" ? (
+                    <AudioLines />
                   ) : a.previewUrl || a.url ? (
                     <img src={a.previewUrl || a.url} alt={a.name} />
                   ) : (
@@ -2339,7 +2378,9 @@ export default function AgentChat() {
                           ? a.error || t("Upload failed")
                           : a.kind === "doc"
                             ? t("{n} chars · {size}", { n: (a.chars || 0).toLocaleString(), size: prettySize(a.size) })
-                            : prettySize(a.size)}
+                            : a.kind === "audio"
+                              ? t("ref audio · {size}", { size: prettySize(a.size) })
+                              : prettySize(a.size)}
                   </AttachmentDescription>
                 </AttachmentContent>
                 <AttachmentActions>

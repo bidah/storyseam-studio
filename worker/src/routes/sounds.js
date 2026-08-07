@@ -38,6 +38,12 @@ const updateSounds = (env, pid, mutate) => updateDoc(env, pid, "sounds", { track
 const findTrack = (db, id) => (db.tracks || []).find((t) => t.id === id) || null;
 const nextVersion = (t) => t.versions.reduce((m, v) => Math.max(m, v.v), 0) + 1;
 
+// Lowercased extension (with dot) from a filename, or "" if it has none.
+const extOf = (name) => {
+  const m = /(\.[A-Za-z0-9]+)$/.exec(String(name || ""));
+  return m ? m[1].toLowerCase() : "";
+};
+
 // Duration in seconds from a RIFF/WAVE header: data-chunk bytes / byte-rate.
 // Returns 0 when the buffer isn't parseable WAV (e.g. mp3) — the UI treats 0
 // as "unknown"; playback doesn't depend on it.
@@ -111,6 +117,59 @@ export function registerSounds(app) {
         versions: [{
           v: 1, prompt: prompt.trim(), name: null, file: null,
           status: "pending", liked: false, params: params || DEFAULT_SOUND_PARAMS, ts: now,
+        }],
+      };
+      db.tracks = db.tracks || [];
+      db.tracks.push(track);
+      return { track };
+    });
+    return c.json({ ok: true, track: soundView(res.track) });
+  });
+
+  // Upload a ready-made audio file as a new track (multipart). Unlike a
+  // generated track this skips the pending → render → attach loop: the file is
+  // the deliverable, so its v1 lands "ready" and is flagged `uploaded` so the
+  // client draws the simpler "uploaded" card (player only, no prompt/render).
+  app.post("/api/sounds/upload", async (c) => {
+    const pid = c.get("projectId");
+    let form;
+    try { form = await c.req.parseBody(); } catch { return c.json({ error: "Expected multipart form data" }, 400); }
+    const file = form.file;
+    const kind = typeof form.kind === "string" ? form.kind : "";
+    const name = typeof form.name === "string" ? form.name.trim() : "";
+    if (!(file instanceof File)) return c.json({ error: "Attach an audio `file`" }, 400);
+    if (!TRACK_KINDS.has(kind))
+      return c.json({ error: "Missing 'kind' — must be 'music', 'sfx', or 'voice' (picks the Sound Studio tab)" }, 400);
+    const ext = extOf(file.name);
+    if (!AUDIO_TYPES[ext])
+      return c.json({ error: `Unsupported audio type '${ext || file.name}' — use ${Object.keys(AUDIO_TYPES).join(", ")}` }, 400);
+
+    const buf = await file.arrayBuffer();
+    if (!buf.byteLength) return c.json({ error: "Uploaded file is empty" }, 400);
+    const duration = wavDuration(buf);
+
+    // Reserve the track id first so the R2 filename can namespace on it, then
+    // store the bytes BEFORE writing metadata — a version must never read
+    // "ready" while its media object is missing (same ordering as attach).
+    const reserved = await updateSounds(c.env, pid, (db) => {
+      db.seq = (db.seq || 0) + 1;
+      return { seq: db.seq };
+    });
+    const trackId = `trk_${reserved.seq}`;
+    const stored = `${trackId}_v1${ext}`;
+    await putMedia(c.env, pid, "sound-media", stored, buf, AUDIO_TYPES[ext] || "application/octet-stream");
+
+    const res = await updateSounds(c.env, pid, (db) => {
+      const now = new Date().toISOString();
+      const track = {
+        id: trackId,
+        name: name || file.name.replace(/\.[^.]+$/, "") || `sound ${reserved.seq}`,
+        kind,
+        createdAt: now,
+        versions: [{
+          v: 1, prompt: "", name: null, file: stored,
+          status: "ready", liked: false, uploaded: true, duration, source: "upload",
+          params: DEFAULT_SOUND_PARAMS, ts: now,
         }],
       };
       db.tracks = db.tracks || [];
