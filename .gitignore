@@ -19,3 +19,6 @@ playwright-report
 vitest-results.json
 .DS_Store
 .worktrees
+
+# Local MCP generation output (not committed)
+mcp results/
