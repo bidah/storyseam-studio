@@ -564,9 +564,80 @@ function EditorSkeleton() {
   );
 }
 
-// Tab → skeleton. Keys match the route paths in src/router.jsx.
+// world/agents.jsx — the Script Agents board: a header + a status badge row,
+// then stage Panels, each a 2-up grid of specialist cards.
+function WorldAgentsSkeleton() {
+  return (
+    <div className="space-y-4">
+      <StackedHeader titleWidth="w-40" subtitle actions={["w-40"]} badges={["w-56", "w-24", "w-28"]} />
+      {Array.from({ length: 2 }, (_, p) => (
+        <PanelSkeleton key={p} bodyClassName="grid gap-3 md:grid-cols-2">
+          {Array.from({ length: 4 }, (_, i) => (
+            <div key={i} className="space-y-2 rounded-lg border p-3">
+              <div className="flex items-start gap-2.5">
+                <Skeleton className="size-8 shrink-0 rounded-md" />
+                <div className="min-w-0 flex-1 space-y-2">
+                  <Skeleton className="h-4 w-32" />
+                  <Skeleton className="h-3 w-full" />
+                </div>
+              </div>
+              <Skeleton className="h-5 w-28 rounded-full" />
+              <Skeleton className="h-3.5 w-full" />
+              <Skeleton className="h-7 w-24 rounded-md" />
+            </div>
+          ))}
+        </PanelSkeleton>
+      ))}
+    </div>
+  );
+}
+
+// world/visual.jsx — the shared <ImageStudio>: a header, the composer (a prompt
+// box over a row of controls), then the results grid.
+function WorldVisualSkeleton() {
+  return (
+    <div className="space-y-4">
+      <StackedHeader titleWidth="w-40" subtitle actions={["w-44"]} />
+      <PanelSkeleton title={false} bodyClassName="space-y-3">
+        <Skeleton className="h-24 w-full rounded-md" />
+        <div className="flex flex-wrap items-center gap-2">
+          <Skeleton className="h-9 w-40 rounded-md" />
+          <Skeleton className="h-9 w-28 rounded-md" />
+          <Skeleton className="h-9 w-24 rounded-md" />
+          <Skeleton className="ml-auto h-9 w-32 rounded-md" />
+        </div>
+      </PanelSkeleton>
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
+        {Array.from({ length: 8 }, (_, i) => (
+          <Skeleton key={i} className="aspect-square w-full rounded-xl" />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// world/nodes.jsx — the React Flow canvas. A single opaque block (same reasoning
+// as the moodboard: no card shapes we can know before the graph loads) with a
+// small floating toolbar above it.
+function WorldNodesSkeleton() {
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center gap-2">
+        <Skeleton className="h-8 w-28 rounded-md" />
+        <Skeleton className="h-8 w-24 rounded-md" />
+      </div>
+      <Skeleton className="h-[72vh] w-full rounded-xl" />
+    </div>
+  );
+}
+
+// Tab → skeleton. Keys match the route paths in src/router.jsx (World sub-tabs
+// are keyed `world-<seg>`, resolved by src/routes/world/layout.jsx).
 const SKELETONS = {
   world: WorldSkeleton,
+  "world-agents": WorldAgentsSkeleton,
+  "world-visual": WorldVisualSkeleton,
+  "world-nodes": WorldNodesSkeleton,
   moodboard: MoodboardSkeleton,
   shotlist: ShotlistSkeleton,
   radio: RadioSkeleton,
