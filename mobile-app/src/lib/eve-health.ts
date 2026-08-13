@@ -6,9 +6,10 @@ import { apiJson } from './api';
 // the worker carries, so Settings can tell the user which backends already work
 // without one of their own:
 //
-//   providers.anthropic / providers.cerebras — key-gated MODEL providers. The
-//     Cloudflare Workers AI models need no key and are always available, so only
-//     the Cerebras row is gated in the chat-provider section.
+//   providers.anthropic / providers.cerebras / providers.openrouter — key-gated
+//     MODEL providers. The Cloudflare Workers AI models need no key and are
+//     always available, so only the Cerebras / OpenRouter rows are gated in the
+//     chat-provider section.
 //   search.exa / search.firecrawl — operator web-search keys. A user key simply
 //     takes precedence when set (lib/search-keys.ts).
 //
@@ -17,7 +18,7 @@ import { apiJson } from './api';
 
 export type EveHealth = {
   ok?: boolean;
-  providers?: { anthropic?: boolean; cerebras?: boolean };
+  providers?: { anthropic?: boolean; cerebras?: boolean; openrouter?: boolean };
   search?: { exa?: boolean; firecrawl?: boolean };
 };
 

@@ -45,6 +45,11 @@
   //                            Settings › Chat provider choice). Required for cerebras turns.
   //   CEREBRAS_GATEWAY_URL   - CF AI Gateway Cerebras endpoint (optional; enables gateway routing):
   //                            https://gateway.ai.cloudflare.com/v1/<account_id>/<gateway_id>/cerebras
+  //   OPENROUTER_API_KEY     - OpenRouter key (used by the openrouter/* models — the opt-in
+  //                            Settings › Chat provider choice, e.g. DeepSeek V4 Pro). Required
+  //                            for openrouter turns.
+  //   OPENROUTER_GATEWAY_URL - CF AI Gateway OpenRouter endpoint (optional; enables gateway routing):
+  //                            https://gateway.ai.cloudflare.com/v1/<account_id>/<gateway_id>/openrouter
   //   FLUE_PROXY_SECRET      - shared HMAC key with the shot-studio-uploads worker
   //   SHOT_STUDIO_API        - base URL of the shot-studio-uploads worker JSON API
   //   DAYTONA_API_KEY        - Daytona sandbox creds (optional; bash falls back to in-memory sandbox)

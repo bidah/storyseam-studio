@@ -31,6 +31,9 @@ export const AGENT_MODELS = [
   { id: "cerebras-gemma-4-31b", spec: "cerebras/gemma-4-31b", label: "Gemma 4 31B", hint: "Default · 131k ctx · vision", group: "cerebras" },
   { id: "cerebras-glm-4.7", spec: "cerebras/zai-glm-4.7", label: "GLM 4.7", hint: "Z.AI · reasoning", group: "cerebras" },
   { id: "cerebras-gpt-oss-120b", spec: "cerebras/gpt-oss-120b", label: "GPT-OSS 120B", hint: "Reasoning · fast", group: "cerebras" },
+  // OpenRouter (Settings › Chat provider = OpenRouter). Needs OPENROUTER_API_KEY
+  // on the flue worker (+ OPENROUTER_GATEWAY_URL for the gateway).
+  { id: "deepseek-v4-pro-0813", spec: "openrouter/deepseek/deepseek-v4-pro-0813", label: "DeepSeek V4 Pro", hint: "0813 · 1M ctx · reasoning", group: "openrouter" },
 ];
 
 // The default model per provider group is the FIRST entry tagged with it —

@@ -22,6 +22,7 @@ const STORAGE_KEY = 'shot-studio.chatProvider';
 export const CHAT_PROVIDERS = [
   { id: 'cloudflare', label: 'Cloudflare Workers AI' },
   { id: 'cerebras', label: 'Cerebras' },
+  { id: 'openrouter', label: 'OpenRouter' },
 ] as const;
 export type ChatProviderId = (typeof CHAT_PROVIDERS)[number]['id'];
 const IDS = CHAT_PROVIDERS.map((p) => p.id);

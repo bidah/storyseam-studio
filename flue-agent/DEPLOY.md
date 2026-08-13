@@ -43,6 +43,8 @@ npx wrangler secret put DAYTONA_API_KEY          # optional (persistent sandbox 
 npx wrangler secret put ANTHROPIC_API_KEY        # optional (no anthropic/* model is allowlisted today)
 npx wrangler secret put ANTHROPIC_GATEWAY_URL    # optional (step 2)
 npx wrangler secret put CEREBRAS_GATEWAY_URL     # optional
+npx wrangler secret put OPENROUTER_API_KEY       # required for any openrouter/* turn (DeepSeek V4 Pro)
+npx wrangler secret put OPENROUTER_GATEWAY_URL   # optional (CF AI Gateway .../openrouter endpoint)
 npx wrangler secret put FAL_KEY                  # optional operator fallback (primary path is BYOK)
 npx wrangler secret put ATLAS_KEY                # optional operator fallback
 npx wrangler secret put EXA_API_KEY              # optional operator fallback

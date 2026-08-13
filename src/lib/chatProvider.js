@@ -34,6 +34,12 @@ export const CHAT_PROVIDERS = [
     blurb:
       "Gemma 4 31B, Z.AI GLM-4.7 and GPT-OSS 120B on Cerebras' ultra-fast inference, served through Cloudflare AI Gateway. Needs a Cerebras key configured on the worker.",
   },
+  {
+    id: "openrouter",
+    label: "OpenRouter",
+    blurb:
+      "DeepSeek V4 Pro (0813) via OpenRouter, served through Cloudflare AI Gateway. Needs an OpenRouter key configured on the worker.",
+  },
 ];
 const IDS = CHAT_PROVIDERS.map((p) => p.id);
 

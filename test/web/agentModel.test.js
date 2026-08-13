@@ -33,8 +33,11 @@ describe("AGENT_MODELS catalog", () => {
     for (const m of AGENT_MODELS) {
       expect(m.id).toBeTruthy();
       expect(m.label).toBeTruthy();
-      expect(m.group).toMatch(/^(cloudflare|cerebras)$/);
-      expect(m.spec).toMatch(/^(cloudflare|anthropic|cerebras)\//);
+      expect(m.group).toMatch(/^(cloudflare|cerebras|openrouter)$/);
+      expect(m.spec).toMatch(/^(cloudflare|anthropic|cerebras|openrouter)\//);
+      // The spec's provider prefix must match the model's group so the
+      // x-flue-model header and Settings › Chat provider always agree.
+      expect(m.spec.startsWith(`${m.group}/`)).toBe(true);
     }
   });
 
@@ -45,6 +48,16 @@ describe("AGENT_MODELS catalog", () => {
     expect(defaultModelForProvider("cerebras")).toBe("cerebras-gemma-4-31b");
     expect(AGENT_MODELS.find((m) => m.id === "cerebras-gemma-4-31b").spec).toBe(
       "cerebras/gemma-4-31b",
+    );
+  });
+
+  it("groups the OpenRouter models with DeepSeek V4 Pro as their default", () => {
+    const or = AGENT_MODELS.filter((m) => m.group === "openrouter");
+    expect(or.length).toBeGreaterThanOrEqual(1);
+    expect(or.every((m) => m.spec.startsWith("openrouter/"))).toBe(true);
+    expect(defaultModelForProvider("openrouter")).toBe("deepseek-v4-pro-0813");
+    expect(AGENT_MODELS.find((m) => m.id === "deepseek-v4-pro-0813").spec).toBe(
+      "openrouter/deepseek/deepseek-v4-pro-0813",
     );
   });
 });

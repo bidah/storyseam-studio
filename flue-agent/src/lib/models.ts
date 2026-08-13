@@ -53,6 +53,14 @@ export const ALLOWED_MODELS = new Set<string>([
   "cerebras/gemma-4-31b",
   "cerebras/zai-glm-4.7",
   "cerebras/gpt-oss-120b",
+  // OpenRouter — pi-ai catalog provider (openai-completions), registered in
+  // app.ts and routed via CF AI Gateway when OPENROUTER_GATEWAY_URL is set.
+  // Needs OPENROUTER_API_KEY on this worker; opt-in on the client (Settings ›
+  // Chat provider = OpenRouter). The `-0813` snapshot is pinned in app.ts (the
+  // catalog ships the rolling `deepseek/deepseek-v4-pro`), so this specifier
+  // always resolves. Selecting it without the key errors on that turn — it does
+  // NOT wedge, because it resolves. Does tool calls.
+  "openrouter/deepseek/deepseek-v4-pro-0813",
 ]);
 
 export function isAllowedModel(model: unknown): model is string {

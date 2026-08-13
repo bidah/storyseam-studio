@@ -5,6 +5,7 @@ import { anthropicMessagesApi } from "@earendil-works/pi-ai/api/anthropic-messag
 import { openAICompletionsApi } from "@earendil-works/pi-ai/api/openai-completions.lazy";
 import { anthropicProvider } from "@earendil-works/pi-ai/providers/anthropic";
 import { cerebrasProvider } from "@earendil-works/pi-ai/providers/cerebras";
+import { openrouterProvider } from "@earendil-works/pi-ai/providers/openrouter";
 import { Hono, type MiddlewareHandler } from "hono";
 import { Whistlewood } from "./agents/whistlewood.js";
 import { verifyProxyUser, proxySecret, PROXY_HEADER } from "./lib/proxy-auth.js";
@@ -249,6 +250,51 @@ if (process.env.CEREBRAS_GATEWAY_URL) {
   );
 }
 
+// Route the built-in `openrouter/*` provider (OpenAI-compatible wire) through
+// Cloudflare AI Gateway when OPENROUTER_GATEWAY_URL is set — same override
+// pattern as cerebras/anthropic above, keeping clean `openrouter/…` specifiers.
+// OPENROUTER_GATEWAY_URL is the CF AI Gateway OpenRouter endpoint, e.g.
+//   https://gateway.ai.cloudflare.com/v1/<account_id>/<gateway_id>/openrouter
+// The gateway forwards OPENROUTER_API_KEY (the provider's own env auth) to
+// OpenRouter as the Bearer token. With the gateway URL unset the catalog default
+// (https://openrouter.ai/api/v1) is used — direct, no gateway — so setting only
+// OPENROUTER_API_KEY still works. The key is required for any openrouter/* turn;
+// without it that turn errors — it does NOT wedge, because the specifier still
+// resolves (a missing key is a normal terminal error, an UNRESOLVABLE specifier
+// is what wedges a conversation forever; see lib/models.ts).
+//
+// Registered UNCONDITIONALLY (unlike the cerebras/anthropic blocks, which only
+// override an already-registered built-in) so the selectable specifier always
+// resolves in the catalog. We also PIN the exact snapshot the picker offers: the
+// pi-ai catalog ships the rolling `deepseek/deepseek-v4-pro`, and OpenRouter also
+// serves the dated `deepseek-v4-pro-0813` build — we add that as its own model
+// (cloned from the rolling entry) so `openrouter/deepseek/deepseek-v4-pro-0813`
+// resolves regardless of what the pinned catalog version happens to carry.
+{
+  const base = openrouterProvider();
+  const baseUrl =
+    process.env.OPENROUTER_GATEWAY_URL || base.baseUrl || "https://openrouter.ai/api/v1";
+  const models = base.getModels().map((model) => ({ ...model, baseUrl }));
+  const rolling = models.find((m) => m.id === "deepseek/deepseek-v4-pro");
+  if (rolling) {
+    models.push({
+      ...rolling,
+      id: "deepseek/deepseek-v4-pro-0813",
+      name: "DeepSeek: DeepSeek V4 Pro (0813)",
+    });
+  }
+  setProvider(
+    createProvider({
+      id: base.id,
+      name: base.name,
+      // The built-in's own credential resolution (OPENROUTER_API_KEY), unchanged.
+      auth: base.auth,
+      models,
+      api: openAICompletionsApi(),
+    }),
+  );
+}
+
 // The single auth boundary. The shot-studio-uploads worker mints a short-lived
 // HMAC token on `x-flue-proxy-user`; we verify it AND that the authenticated
 // principal owns this conversation (its user id is the `userId~projectId~chatId`
@@ -353,6 +399,7 @@ app.get("/health", (c) =>
     providers: {
       anthropic: Boolean(process.env.ANTHROPIC_API_KEY),
       cerebras: Boolean(process.env.CEREBRAS_API_KEY),
+      openrouter: Boolean(process.env.OPENROUTER_API_KEY),
     },
     // Operator-side search keys. Reported (as booleans — never the key) so
     // Settings can tell the user a backend already works without their own key.

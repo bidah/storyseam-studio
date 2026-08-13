@@ -752,11 +752,18 @@ app.all("/eve/*", async (c) => {
   let path = url.pathname.replace(/^\/eve/, "") || "/";
   const userId = c.get("userId");
 
-  // Route by engine. A non-agent path (/health) has no conversation, so it goes
-  // to v1 — the deployment-wide capability probe, which both engines answer
-  // identically, and which is where the "mint v2 ids" flag is published.
+  // Route by engine. A non-agent path (/health) has no conversation, so it
+  // follows the engine NEW chats are minted on (FLUE_V2_NEW_CHATS): the probe is
+  // the deployment-wide capability report, and it must reflect the engine those
+  // chats will actually run on — the two no longer answer identically (v2 reports
+  // providers v1 doesn't, e.g. openrouter). It's also where the "mint v2 ids"
+  // flag is published, so keeping probe + flag on the same engine is consistent.
   const agentMatch = path.match(/^\/agents\/([^/]+)\/([^/]+)(\/.*)?$/);
-  const v2 = agentMatch ? isV2Instance(agentMatch[2]) : false;
+  const v2 = agentMatch
+    ? isV2Instance(agentMatch[2])
+    : path === "/health"
+      ? c.env.FLUE_V2_NEW_CHATS === "1"
+      : false;
   const origin = v2
     ? c.env.FLUE_V2_ORIGIN || DEFAULT_FLUE_V2_ORIGIN
     : c.env.FLUE_ORIGIN || c.env.EVE_ORIGIN || DEFAULT_FLUE_ORIGIN;

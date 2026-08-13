@@ -180,9 +180,17 @@ export default function SettingsSheet() {
       modelId={model}
       onModelChange={(id) => setModel(id as AgentModelId)}
       chatProviders={CHAT_PROVIDERS.map((p) => {
-        // Cloudflare Workers AI is keyless and always available; Cerebras is
-        // gated on CEREBRAS_API_KEY, which /eve/health reports.
-        const available = p.id === 'cloudflare' || health?.providers?.cerebras !== false;
+        // Cloudflare Workers AI is keyless and always available; Cerebras and
+        // OpenRouter are each gated on their own key, which /eve/health reports.
+        const available =
+          p.id === 'cloudflare' ||
+          health?.providers?.[p.id as 'cerebras' | 'openrouter'] !== false;
+        const models =
+          p.id === 'cloudflare'
+            ? 'Kimi, GPT-OSS, GLM, Claude'
+            : p.id === 'openrouter'
+              ? 'DeepSeek V4 Pro'
+              : 'Gemma, GLM, GPT-OSS · ultra-fast';
         return {
           id: p.id,
           label: p.label,
@@ -190,10 +198,10 @@ export default function SettingsSheet() {
           available,
           subtitle:
             p.id === 'cloudflare'
-              ? 'Default · Kimi, GPT-OSS, GLM, Claude'
+              ? `Default · ${models}`
               : available
-                ? 'Gemma, GLM, GPT-OSS · ultra-fast'
-                : 'Gemma, GLM, GPT-OSS · needs a worker key',
+                ? models
+                : `${models} · needs a worker key`,
         };
       })}
       onToggleChatProvider={toggleChatProvider}

@@ -135,7 +135,7 @@ export function Component() {
             provider you chose.
           </li>
           <li>
-            <span className="text-foreground">Anthropic, Cerebras and OpenAI</span> — the
+            <span className="text-foreground">Anthropic, Cerebras, OpenAI, DeepSeek and OpenRouter</span> — the
             language models behind the in-app agent, reached through Cloudflare's AI gateway.
             Your messages to the agent, and the project context it needs to answer, are sent to
             whichever model you have selected.

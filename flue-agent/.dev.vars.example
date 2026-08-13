@@ -10,6 +10,18 @@ ANTHROPIC_API_KEY=""
 #   https://gateway.ai.cloudflare.com/v1/<account_id>/<gateway_id>/anthropic
 ANTHROPIC_GATEWAY_URL=""
 
+# OpenRouter key used by the built-in `openrouter/*` provider (the opt-in
+# Settings › Chat provider = OpenRouter, e.g. DeepSeek V4 Pro). Required for any
+# openrouter/* turn; without it that turn errors.
+OPENROUTER_API_KEY=""
+
+# Cloudflare AI Gateway OpenRouter endpoint. When set, app.ts routes openrouter/*
+# through the gateway (caching/logging/limits); the gateway forwards
+# OPENROUTER_API_KEY to OpenRouter as the Bearer token. Leave empty to call
+# OpenRouter directly. Shape:
+#   https://gateway.ai.cloudflare.com/v1/<account_id>/<gateway_id>/openrouter
+OPENROUTER_GATEWAY_URL=""
+
 # Shared HMAC secret with the shot-studio-uploads worker. MUST match that
 # worker's FLUE_PROXY_SECRET (formerly EVE_PROXY_SECRET).
 FLUE_PROXY_SECRET=""
