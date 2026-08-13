@@ -1,0 +1,58 @@
+{
+  "capability": "shot-directors.save",
+  "route": "POST /api/shot-directors",
+  "tool": "save_shot_director",
+  "description": "Edit the project's SHOT DIRECTORS — the author-editable prompt system a shot's render prompt is written with. Each production type (2d / 3d-pixar / live-action) has ONE director in use; a director carries `instructions` (the brief the shot-list skills follow when writing a shot's prompt) and a `promptForm` that decides the SHAPE of every shot: \"paragraph\" (the whole prompt goes in the single `prompt` field, whatever internal structure the director asks for) or \"blocks\" (the shot carries `promptBlocks` under the contract's fixed keys and the server composes `prompt` from them). Read the current ones with get_shot_director first. Four things this call can do, decided by which fields you send: ACTIVATE an existing director for a production type (`id` + `activate: true`); EDIT one in place (`id` + `instructions`/`name`/`promptForm`); save a NEW VERSION derived from one (`id` + `instructions` + `newVersion: true` — the original is left untouched and the new version becomes active unless you pass `activate: false`); RESET an edited built-in back to its shipped text (`id` + `reset: true`). `delete: true` removes an author-created version (a built-in can only be reset, never deleted). Changing a director changes how the NEXT shots are written — it never rewrites shots that already exist. Returns the full director list, the active director per production type, and the one this project is writing with right now.",
+  "input": {
+    "type": "object",
+    "fields": {
+      "id": {
+        "type": "string",
+        "optional": true,
+        "description": "The director to act on, from get_shot_director (e.g. \"director-seedance\"). Required for activate / edit / newVersion / reset / delete. Omit it ONLY to create a director from scratch, in which case `name` and `instructions` are required."
+      },
+      "productionType": {
+        "type": "enum",
+        "values": ["2d", "3d-pixar", "live-action"],
+        "optional": true,
+        "description": "Which production type this director belongs to (and, with `activate`, which one it becomes the director FOR). Defaults to the project's current production type from get_world."
+      },
+      "name": {
+        "type": "string",
+        "optional": true,
+        "description": "Display name, e.g. \"Seedance director — handheld doc\". Required when creating a director with no `id`."
+      },
+      "promptForm": {
+        "type": "enum",
+        "values": ["paragraph", "blocks"],
+        "optional": true,
+        "description": "WHERE this director's render prompt is stored, which decides the shape of every shot you write. \"paragraph\" = the whole prompt goes in the single `prompt` field — one vivid paragraph for the 2D/3D directors, or the labelled single-shot document the Seedance 2.0 Pro director specifies. \"blocks\" = the prompt is sent as `promptBlocks`, whose keys are fixed by the shot contract, and the server composes `prompt` from them; only a director written to those exact keys can use this form. Defaults to the edited director's current form, or \"paragraph\" for a new one."
+      },
+      "instructions": {
+        "type": "string",
+        "optional": true,
+        "description": "The director's prompt system: the full brief a writer follows to produce one shot's render prompt (what to include, what to measure, what to never write). This is what the shot-list skills read back and obey, so write it as instructions to the writer, not as a description of them. Sending it REPLACES the whole text — read the current one with get_shot_director and edit from that rather than writing a shorter one from memory."
+      },
+      "newVersion": {
+        "type": "boolean",
+        "optional": true,
+        "description": "Save `instructions` as a NEW director derived from `id` instead of editing it in place. The original stays exactly as it was, and the new version becomes the active one for its production type unless you pass `activate: false`. Use it when the author wants to try a variant without losing the current one."
+      },
+      "activate": {
+        "type": "boolean",
+        "optional": true,
+        "description": "Make this director the one used for `productionType`. Defaults to true when creating or saving a new version, false when merely editing text in place."
+      },
+      "reset": {
+        "type": "boolean",
+        "optional": true,
+        "description": "Drop the author's edits to a BUILT-IN director and restore its shipped text. Ignored for author-created directors (there is no shipped text to go back to)."
+      },
+      "delete": {
+        "type": "boolean",
+        "optional": true,
+        "description": "Delete an author-created director. A built-in can never be deleted (use `reset`). If it was active, its production type falls back to the built-in director."
+      }
+    }
+  }
+}

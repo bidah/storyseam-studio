@@ -39,7 +39,7 @@ export const saveShotlist = (api: Api) =>
       },
     }),
     async run({ data: input, signal }) {
-      const { shots, source, mode, anchorId, approval_token } = input;
+      const { shots, source, mode, anchorId, progress, approval_token } = input;
       const writeMode =
         mode === "append" ? "append" : mode === "insert" ? "insert" : "replace";
 
@@ -71,6 +71,9 @@ export const saveShotlist = (api: Api) =>
         ...(writeMode === "insert" && anchorId != null
           ? { anchorId: anchorId as string }
           : {}),
+        // Script coverage rides with the batch that produced it, so a chunked
+        // build records where it stopped in the same write as the shots.
+        ...(progress ? { progress: progress as Json } : {}),
       };
 
       // Exactly ONE shape of this call destroys work: a "replace" that lands a

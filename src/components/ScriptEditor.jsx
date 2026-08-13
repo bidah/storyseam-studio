@@ -585,16 +585,16 @@ function ShotlistGate({ draftId, signed, shotlistExists, onSignedChange }) {
     }
   }, [onSignedChange]);
 
-  // Which shot-list skill the turn asks for depends on the project's production
-  // type, which lives on the world bible — read it here rather than threading it
-  // through the Script route's loader for one button. A failed read falls back to
-  // the default (2D), which is the pre-existing behaviour.
+  // Which shot-list skill the turn asks for depends on the project's active shot
+  // director (its `promptForm`) — read it here rather than threading it through
+  // the Script route's loader for one button. A failed read falls back to the
+  // paragraph wording, which is the pre-existing behaviour.
   const generate = useCallback(async () => {
-    let productionType;
+    let promptForm;
     try {
-      productionType = (await fetch("/api/world").then((r) => r.json()))?.productionType;
-    } catch { /* fall back to the 2D wording */ }
-    agent.send({ message: generateShotListMessage(productionType) }).catch(() => {});
+      promptForm = (await fetch("/api/shot-directors/active").then((r) => r.json()))?.director?.promptForm;
+    } catch { /* fall back to the paragraph wording */ }
+    agent.send({ message: generateShotListMessage({ promptForm, mode: "all" }) }).catch(() => {});
   }, [agent]);
 
   const genDisabled = agentBusy || !signed || shotlistExists;

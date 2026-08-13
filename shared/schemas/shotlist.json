@@ -17,6 +17,38 @@
         "optional": true,
         "description": "For mode \"insert\" ONLY: the `id` of the existing shot to insert the new `shots` immediately AFTER (the shot ABOVE the insertion point). Omit it (or send null) to insert at the very START of the list. Ignored by \"replace\"/\"append\"."
       },
+      "progress": {
+        "type": "object",
+        "optional": true,
+        "description": "SCRIPT COVERAGE — how far through the screenplay the shot list now reaches, stored on the list and read back by get_shotlist. Send it whenever you write shots from the script, and ALWAYS when you are building the list one chunk at a time: it is the only record of where the next chunk resumes, so without it the next run re-cuts the scene you just finished. It replaces the stored marker, so send the state AFTER this batch.",
+        "fields": {
+          "throughIndex": {
+            "type": "integer",
+            "optional": true,
+            "description": "The 0-based index of the LAST get_script `elements[]` line this shot list covers. The next chunk starts at throughIndex + 1."
+          },
+          "throughLine": {
+            "type": "string",
+            "optional": true,
+            "description": "A short verbatim quote of that last covered line — the human-readable anchor shown on the Shot list tab, and your check that the index still points where you think it does after the script is edited."
+          },
+          "note": {
+            "type": "string",
+            "optional": true,
+            "description": "One or two sentences for the writer of the NEXT chunk: where the story stands, which beat/location is mid-flight, and what happens next. Write it to be read cold, with no memory of this turn."
+          },
+          "complete": {
+            "type": "boolean",
+            "optional": true,
+            "description": "True when the shot list now covers the screenplay to its last line. Leave false (or omit) while chunks remain."
+          },
+          "draft": {
+            "type": "string",
+            "optional": true,
+            "description": "The pinned draft name these shots were cut from (get_script `pinnedDraft`), so a later chunk can tell it is continuing the same script."
+          }
+        }
+      },
       "shots": {
         "type": "array",
         "description": "The full ordered shot list, top to bottom.",

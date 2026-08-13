@@ -1,22 +1,22 @@
 ---
 name: shot-list
 description: >-
-  Turn the signed screenplay into the granular Shot list for a 2D or 3D-PIXAR
-  project — the flat, ordered list of every ~2-3s shot with its camera, action,
-  dialogue and a one-paragraph Seedance prompt. Check get_world first: if
-  productionType is "live-action" use the shot-list-live-action skill instead,
-  because that project's prompts are block documents, not paragraphs.
-  This is the middle stage of the pipeline (Script → SHOT LIST → auto-packed <=15s
-  multishots → Episode render). Use ONLY when the user explicitly asks for it —
-  "generate the shot list", "break the script into shots", "make the shots from
-  the script", "turn the script into shots". Never run it off the back of writing
-  the script in the same turn — a finished script authorizes nothing here, the
-  author asks for shots once they are happy with the screenplay. Do NOT render
-  video here (that's generate-multishot) — this only writes text shots via
-  save_shotlist.
+  Turn the signed screenplay into the granular Shot list when the project's shot
+  director writes into the SINGLE `prompt` field (promptForm "paragraph") — every
+  ~2-3s shot with its camera, action, dialogue and its Seedance prompt, written
+  exactly as the director's instructions say (one vivid paragraph, or the
+  labelled single-shot document the Seedance 2.0 Pro director specifies). Call
+  get_shot_director FIRST and obey it; if promptForm is "blocks", use
+  shot-list-live-action instead. Middle stage of the pipeline (Script → SHOT LIST
+  → auto-packed <=15s multishots → Episode render). Works two ways: the WHOLE
+  script at once, or ONE ~15s chunk per run ("generate the next 15 seconds")
+  resuming from the `progress` marker on get_shotlist — always record `progress`
+  after writing shots. Use ONLY when the user explicitly asks. Never run it off
+  the back of writing the script in the same turn. Do NOT render video (that's
+  generate-multishot).
 ---
 
-# shot-list (script → granular shot list)
+# shot-list (script → granular shot list, single-`prompt` directors)
 
 Break the **pinned, signed** screenplay into an ordered list of individual shots and
 save it with `save_shotlist`. The app then **auto-packs** consecutive same-location
@@ -25,11 +25,14 @@ Episode tab from those packs. No media is generated in this skill.
 
 ## Preconditions
 
-- **`get_world` reports `productionType: "2d"` or `"3d-pixar"`** (an absent field
-  means `2d`). If it reports `"live-action"`, STOP and use the
-  **shot-list-live-action** skill instead: a live-action shot's render prompt is a
-  block document (`promptBlocks`), not the one paragraph this skill writes, and
-  `save_shotlist` will warn that the wrong form was saved.
+- **`get_shot_director` reports `promptForm: "paragraph"`** — the whole render
+  prompt goes in the shot's single `prompt` field. What that text looks like is
+  the DIRECTOR's business, not this skill's: the 2D/3D directors ask for one
+  vivid paragraph, the Seedance 2.0 Pro director asks for a labelled single-shot
+  document (Spatial blocking / anchors / Action / Camera / … / Final frame). Read
+  it and write what it asks for. If it reports `"blocks"`, STOP and use the
+  **shot-list-live-action** skill instead: that director's prompt is sent as
+  `promptBlocks` and `save_shotlist` will warn that the wrong form was saved.
 - **The author asked for the shot list, in their own words, in this conversation.** Not
   "the script is done so shots are next" — that's the pipeline order, not permission.
   When you've just written or applied a script, the turn ends by *offering* the shot list;
@@ -37,12 +40,40 @@ Episode tab from those packs. No media is generated in this skill.
 - The script draft must be **signed** (the Script tab gates this). If the user asks to
   generate before signing, tell them to Sign the script first.
 - Read the current shot list with `get_shotlist` first. If it already has shots, do NOT
-  silently overwrite — confirm with the user (regenerating replaces every shot).
+  silently overwrite — confirm with the user (regenerating replaces every shot). The
+  exception is a CHUNKED build (below): there, more shots are expected and you
+  **append**, never replace.
+
+## Two ways to build it — read the request
+
+- **All at once** (default for "generate the shot list"): walk the whole script,
+  saving one beat per call, until the screenplay is covered.
+- **One chunk at a time** ("generate the next 15 seconds", "the next chunk of
+  shots", the Shot list tab's *Generate next ~15s* button): write **ONE bundle's
+  worth** — a single beat/location, roughly 4–6 shots whose `dur` sums to **≤15s**
+  — `append` it, record `progress`, tell the author where the list now stands, and
+  **STOP**. Do not roll on into the next location: the whole point of the chunk is
+  that it comes back fast, and the author reads it before asking for more.
+
+Either way, `progress` (step 5) is what makes the NEXT run continue instead of
+re-cutting the same scene.
 
 ## Steps
 
+0. **`get_shot_director`** — the author's prompt system for this project, edited
+   on the Settings page. Its `instructions` are the brief for every `prompt` you
+   write below and they **override** this skill's generic prompt guidance
+   wherever the two differ; its `promptForm` must be `paragraph` (see
+   Preconditions). Read it before writing the first shot, every run — it changes
+   between runs, that's what it is for.
 1. `get_script` — read the pinned draft (title + `elements[]`: scene_heading / action /
-   character / dialogue / parenthetical / transition). Then `get_world` — read the
+   character / dialogue / parenthetical / transition; a line's **0-based array
+   index** is what `progress.throughIndex` records). On a CHUNKED run also
+   `get_shotlist` and read its `progress` marker: start at
+   `progress.throughIndex + 1`, use `progress.note` for where the story stands,
+   and check `progress.throughLine` still matches that line (if the script was
+   edited under you, re-find the line by its text rather than trusting the
+   number). Then `get_world` — read the
    character roster. Its `name` values are the **canonical character names** and the
    single source of truth for identity (casting matches a shot's character to a voice by
    this exact name). Copy each name **verbatim** into the shots below — do NOT abbreviate
@@ -67,12 +98,15 @@ Episode tab from those packs. No media is generated in this skill.
    - **action** — plainly what happens.
    - **dialogue** — the spoken line(s), or `(no dialogue)`.
    - **audioSync** — the line or SFX this shot lands on (timing note).
-   - **prompt** — the **Seedance prompt**: one vivid paragraph. Fold any 2D-directing intent
-     (multiplane depth, on-2s/on-1s motion accents, smears, overlap/follow-through) straight
-     into the prose — Seedance won't literally animate "on 2s" but the cues steer motion.
-     Keep the prompt **style-free** (no art-style clauses) and diegetic (no music bed /
-     transition VFX) — the render style is chosen on the Episode tab (`set_episode_style`)
-     and prepended to each bundle's prompt at render time.
+   - **prompt** — the **Seedance prompt**, written to the brief `get_shot_director`
+     returned and in the structure it asks for (one paragraph, or its labelled
+     sections). That brief is canonical; what the 2D/3D directors ship with is to
+     fold any 2D-directing intent (multiplane depth, on-2s/on-1s motion accents,
+     smears, overlap/follow-through) straight into the prose — Seedance won't literally
+     animate "on 2s" but the cues steer motion — and to keep the prompt **style-free**
+     (no art-style clauses) and diegetic (no music bed / transition VFX), because the
+     render style is chosen on the Episode tab (`set_episode_style`) and prepended to
+     each bundle's prompt at render time.
 4. **Save the list one beat at a time — never in a single giant call.** A full episode
    is far too many shots (each with a long Seedance prompt) to emit in one
    `save_shotlist` call: that single tool call can blow past the model's output limit and
@@ -86,10 +120,30 @@ Episode tab from those packs. No media is generated in this skill.
    bounded and the list is durably saved after every batch, so if anything interrupts you
    mid-generation the beats already written survive and you (or the user) can resume by
    appending the rest. The `count` in each response is the running total.
-5. When every beat is written, tell the user the final shot count and how many ≤15s
-   multishots they packed into (from the last response's `packs`), and that they can edit
-   any shot on the Shot list tab.
-6. **Reconcile speakers with the World roster.** The last `save_shotlist` response may
+
+   On a CHUNKED run there is exactly ONE call: `mode: "append"` with that chunk's
+   shots (`"replace"` only when the list is empty and this is the first chunk).
+5. **Record where you stopped — `progress`, on the LAST `save_shotlist` call of the
+   run.** It is the only record the next chunk has, and it is written in the same
+   call as the shots so the two can't disagree:
+   ```
+   progress: {
+     throughIndex: <0-based index of the last get_script element you covered>,
+     throughLine:  "<short verbatim quote of that line>",
+     note:         "<1-2 sentences for a writer with no memory of this turn: where
+                    the story stands, what happens next>",
+     complete:     <true only when the list now reaches the script's last line>,
+     draft:        "<get_script pinnedDraft>"
+   }
+   ```
+   Send it on a full build too — a run that covered everything ends with
+   `complete: true`, which is how the Shot list tab knows there is nothing left to
+   generate.
+6. Tell the user where the list stands: the shot count (running total), how many ≤15s
+   multishots they pack into (from the last response's `packs`), and — after a chunk —
+   what the next chunk will cover, so they can press the button again or ask for the
+   rest. They can edit any shot on the Shot list tab.
+7. **Reconcile speakers with the World roster.** The last `save_shotlist` response may
    include `newSpeakers` — speaking characters in the shot list that have **no World
    character** yet (each with its `lines` count and the `shots`/`beats` it appears in).
    These are the casting gap: without a World record they can only be voiced from the
@@ -119,5 +173,11 @@ the shot prompts would fight that selector.
 - Do not render video or call any Higgsfield tool here — that's `generate-multishot`, run
   later per bundle from the Episode tab.
 - Do not pack shots into bundles yourself — the app packs automatically (≤15s, never
-  crossing a beat/location).
+  crossing a beat/location). On a chunked run you SIZE the chunk to one bundle
+  (~≤15s of shots in one location); the packing itself is still the app's.
 - Do not touch the existing Episode manifest or its renders.
+- Do not write shot prompts from memory of this file when `get_shot_director`
+  returned instructions — the author edits that brief precisely so the next shots
+  change, and ignoring it silently undoes their edit.
+- On a chunked run, do not `replace` a non-empty list, and do not "helpfully"
+  carry on past the chunk you were asked for.

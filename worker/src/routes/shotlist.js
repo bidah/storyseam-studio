@@ -16,7 +16,8 @@ import { validateBody } from "../lib/validate.js";
 import shotlistSchema from "../schemas/shotlist.json";
 import { normalizeShot } from "../lib/shots.js";
 import { packPreview } from "../lib/pack.js";
-import { normalizeProductionType, isLiveAction } from "../lib/production-type.js";
+import { normalizeProductionType } from "../lib/production-type.js";
+import { resolveActiveDirector, directorSummary } from "../lib/shot-directors.js";
 
 // Carry stored shot ids onto an incoming bulk save that omitted them.
 //
@@ -172,15 +173,19 @@ function newSpeakersNotInWorld(shots, worldNames) {
 }
 
 // Warn when the render prompts a batch carries don't match the shape the
-// project's production type calls for. Neither case is an error — the shots save
-// either way — but both produce a render prompt the author didn't intend, and
-// silently is how you find out three bundles later:
-//   - a live-action project sent paragraph `prompt`s: the shot renders, but
-//     without the block structure the live-action skill exists to produce.
-//   - a 2D/3D project sent `promptBlocks`: the blocks compose into `prompt`
+// project's ACTIVE SHOT DIRECTOR calls for. Neither case is an error — the shots
+// save either way — but both produce a render prompt the author didn't intend,
+// and silently is how you find out three bundles later:
+//   - a "blocks" director got paragraph `prompt`s: the shot renders, but without
+//     the block structure that director exists to produce.
+//   - a "paragraph" director got `promptBlocks`: the blocks compose into `prompt`
 //     fine, so this is only worth saying when it looks like the wrong skill ran.
 //   - a shot with NEITHER renders from an empty prompt.
-function promptShapeWarnings(shots, productionType) {
+//
+// It reads the DIRECTOR, not the production type, because the director is what
+// the author actually picked: a 2D project running the Seedance block director
+// is a legitimate setup, and warning it off its own choice would be noise.
+function promptShapeWarnings(shots, director, productionType) {
   const w = [];
   const empty = shots.filter((s) => !s.promptBlocks && !String(s.prompt || "").trim());
   if (empty.length) {
@@ -188,20 +193,40 @@ function promptShapeWarnings(shots, productionType) {
       `${empty.length} shot(s) have no render prompt at all (neither \`prompt\` nor \`promptBlocks\`) — they will render from an empty prompt.`,
     );
   }
-  const live = isLiveAction(productionType);
+  const wantsBlocks = director?.promptForm === "blocks";
   const blocked = shots.filter((s) => s.promptBlocks).length;
   const paragraph = shots.length - blocked - empty.length;
-  if (live && paragraph > 0) {
+  const where = `This ${normalizeProductionType(productionType)} project writes shots with the "${director?.name || "default"}" shot director`;
+  if (wantsBlocks && paragraph > 0) {
     w.push(
-      `This is a LIVE-ACTION project but ${paragraph} shot(s) carry a one-paragraph \`prompt\` instead of \`promptBlocks\`. Live-action shots are written with the shot-list-live-action skill's block structure — rewrite them with promptBlocks.`,
+      `${where}, whose prompt form is \`blocks\` — but ${paragraph} shot(s) carry a one-paragraph \`prompt\` instead of \`promptBlocks\`. Read the director with get_shot_director and rewrite them as blocks.`,
     );
   }
-  if (!live && blocked > 0) {
+  if (!wantsBlocks && blocked > 0) {
     w.push(
-      `This is a ${normalizeProductionType(productionType)} project but ${blocked} shot(s) carry \`promptBlocks\` (the live-action form). Those blocks were composed into \`prompt\`, but a 2D/3D-Pixar shot is written as one vivid paragraph by the shot-list skill.`,
+      `${where}, whose prompt form is \`paragraph\` — but ${blocked} shot(s) carry \`promptBlocks\`. Those blocks were composed into \`prompt\`, but this director writes one vivid paragraph per shot.`,
     );
   }
   return w;
+}
+
+// The script-coverage marker: how much of the screenplay the shot list already
+// covers, so the NEXT chunk starts where the last one stopped instead of
+// re-cutting the same scene. Written by whoever generates shots (the "generate
+// the next ~15s" button hands it straight back to the agent) and read by the
+// Shot list tab's progress line. Absent on an old list — that reads as "nothing
+// recorded", not "nothing covered".
+function normalizeProgress(raw, prev) {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return prev ?? null;
+  const idx = Number(raw.throughIndex);
+  return {
+    throughIndex: Number.isInteger(idx) && idx >= 0 ? idx : (prev?.throughIndex ?? null),
+    throughLine: raw.throughLine == null ? (prev?.throughLine ?? "") : String(raw.throughLine).slice(0, 300),
+    note: raw.note == null ? (prev?.note ?? "") : String(raw.note).slice(0, 1000),
+    complete: raw.complete == null ? !!prev?.complete : !!raw.complete,
+    draft: raw.draft == null ? (prev?.draft ?? null) : String(raw.draft).slice(0, 120),
+    updatedAt: new Date().toISOString(),
+  };
 }
 
 // Human-readable warnings for a canonicalization pass (empty when nothing moved).
@@ -265,14 +290,20 @@ export async function buildShotlistView(env, pid) {
     const rebuilt = await rebuildShotlistFromEpisode(env, pid);
     if (rebuilt) sl = rebuilt;
   }
-  // The project's production type rides along on the read. It lives on the world
-  // doc, but every consumer of the shot list needs it to know which form a shot's
-  // render prompt takes — the Shot list tab picks its prompt editor from it, and
-  // the agent gets it without a second get_world.
+  // The project's production type AND its active shot director ride along on the
+  // read. Both live in other documents, but every consumer of the shot list needs
+  // them to know which form a shot's render prompt takes — the Shot list tab
+  // picks its prompt editor from `director.promptForm`, and the agent gets it
+  // without a second get_world / get_shot_director.
   const world = await readDoc(env, pid, "world", null);
+  const productionType = normalizeProductionType(world?.productionType);
+  const { director } = await resolveActiveDirector(env, pid, productionType);
   return {
     ...sl,
-    productionType: normalizeProductionType(world?.productionType),
+    productionType,
+    director: directorSummary(director),
+    promptForm: director.promptForm,
+    progress: sl.progress || null,
     packs: packPreview(sl.shots),
   };
 }
@@ -320,7 +351,7 @@ function mintInsertIds(shots, anchorId, existingIds) {
 }
 
 export async function saveShotlist(env, pid, body) {
-  const { shots: rawShots, source, mode, anchorId } = body || {};
+  const { shots: rawShots, source, mode, anchorId, progress } = body || {};
   if (!Array.isArray(rawShots)) return { error: "shots[] required" };
 
   // The World roster is a different document and only read, so it stays outside
@@ -333,8 +364,12 @@ export async function saveShotlist(env, pid, body) {
   const world = await readDoc(env, pid, "world", { characters: [] });
   const worldNames = (world.characters || []).map((ch) => String(ch?.name || "").trim()).filter(Boolean);
   const productionType = normalizeProductionType(world?.productionType);
+  const { director } = await resolveActiveDirector(env, pid, productionType);
   const { shots, remaps, ambiguous } = canonicalizeShotNames(rawShots, worldNames);
-  const nameWarns = [...nameWarnings(remaps, ambiguous), ...promptShapeWarnings(shots, productionType)];
+  const nameWarns = [
+    ...nameWarnings(remaps, ambiguous),
+    ...promptShapeWarnings(shots, director, productionType),
+  ];
 
   // COMPARE-AND-SWAP, not read-then-write. Three writers share this document —
   // the author's bulk save on the Shot list tab, the agent appending a beat at a
@@ -348,6 +383,19 @@ export async function saveShotlist(env, pid, body) {
   return await updateDoc(env, pid, "shotlist", SHOTLIST_FALLBACK, (doc) => {
     const prevShots = (doc.shots || []).map(normalizeShot);
 
+    // Script coverage travels with the batch that produced it, so a chunked
+    // build ("write the next ~15 seconds") records where it stopped in the SAME
+    // atomic write that stores the shots. Recording it separately would let a
+    // crash between the two leave a list whose marker points at the wrong place,
+    // which is worse than no marker at all.
+    if (progress) doc.progress = normalizeProgress(progress, doc.progress || null);
+    const progressOut = doc.progress || null;
+    const shared = {
+      productionType,
+      director: directorSummary(director),
+      ...(progressOut ? { progress: progressOut } : {}),
+    };
+
     // Append: add these shots to the end and renumber the whole list. Appended
     // shots keep their explicit `id` or get a fresh positional id continuing the
     // list; there is no id-inheritance here (that only makes sense when incoming
@@ -360,7 +408,7 @@ export async function saveShotlist(env, pid, body) {
       const newSpeakers = newSpeakersNotInWorld(doc.shots, worldNames);
       return {
         ok: true, mode: "append", appended: shots.length, count: doc.shots.length,
-        productionType,
+        ...shared,
         ...(nameWarns.length ? { warnings: nameWarns } : {}),
         ...(newSpeakers.length ? { newSpeakers } : {}),
         packs: packPreview(doc.shots),
@@ -393,7 +441,7 @@ export async function saveShotlist(env, pid, body) {
         ok: true, mode: "insert", inserted: minted.length,
         insertedIds: minted.map((s) => s.id),
         anchorId: anchorId || null, count: doc.shots.length,
-        productionType,
+        ...shared,
         ...(nameWarns.length ? { warnings: nameWarns } : {}),
         ...(newSpeakers.length ? { newSpeakers } : {}),
         packs: packPreview(doc.shots),
@@ -416,7 +464,7 @@ export async function saveShotlist(env, pid, body) {
     return {
       ok: true,
       count: doc.shots.length,
-      productionType,
+      ...shared,
       idsPreserved: inherited,
       idsInvented: invented,
       ...(warnings.length ? { warnings } : {}),

@@ -5,15 +5,15 @@ description: >-
   the "insert a shot between two existing ones" flow, from the Shot list tab's "+"
   node or a chat request ("add a shot after MS-03", "insert a beat between shot 5
   and 6"). Use ONLY when a shot list already exists; the initial Script → Shot
-  list build is the shot-list / shot-list-live-action skills. Author each new shot
-  the SAME way those do (get_world for canonical roster + productionType; `2d`/
-  `3d-pixar` gets a one-paragraph `prompt`, `live-action` gets `promptBlocks`),
-  matching the neighbours' beat/location/style unless asked otherwise. Hard rules,
-  true without the body: DRAFT the shot, show it as ONE `render_ui` confirm card
-  (fields as a KeyValue + an Approve/Reject Actions block), then STOP — write
-  nothing yet. Only on approval, call `save_shotlist` with `mode:"insert"` and
-  `anchorId` = the id of the shot it goes AFTER (omit to insert at the start). On
-  reject, drop it — never re-ask, never renumber the neighbours.
+  list build is the shot-list / shot-list-live-action skills. Author the shot the
+  SAME way those do: get_shot_director for the prompt brief and its promptForm
+  ("paragraph" → a `prompt` paragraph, "blocks" → `promptBlocks`), get_world for
+  the roster, matching the neighbours' beat/location. Hard rules, true without the
+  body: DRAFT the shot, show it as ONE `render_ui` confirm card (a KeyValue + an
+  Approve/Reject Actions block), then STOP — write nothing yet. Only on approval,
+  call `save_shotlist` with `mode:"insert"` and `anchorId` = the id of the shot it
+  goes AFTER (omit to insert at the start). On reject, drop it — never re-ask,
+  never renumber the neighbours.
 ---
 
 # create-new-shots-for-shotlist (add a shot into an existing list)
@@ -46,25 +46,30 @@ for the new shots.
 1. **`get_shotlist`** — read the current shots (ids, beats, locations, cameras,
    durations) so you can place the new shot and copy the neighbours' style. Note
    the exact `id` of the shot the new one goes AFTER — that's your `anchorId`.
-2. **`get_world`** — read `productionType` and the character roster. Roster
-   `name` values are the canonical identity: copy any on-screen character's name
-   **verbatim** (never a short form), exactly as the shot-list skills require, so
-   casting doesn't duplicate them. A genuine one-off background role can use a
-   plain label ("Store Owner").
-3. **Author the new shot** the same way the matching shot-list skill would:
+2. **`get_shot_director`** — the project's prompt system, edited by the author on
+   the Settings page. Its `instructions` are the brief for this shot's render
+   prompt and override the generic guidance here; its `promptForm` decides the
+   form (step 3).
+3. **`get_world`** — read the character roster. Roster `name` values are the
+   canonical identity: copy any on-screen character's name **verbatim** (never a
+   short form), exactly as the shot-list skills require, so casting doesn't
+   duplicate them. A genuine one-off background role can use a plain label
+   ("Store Owner").
+4. **Author the new shot** the same way the matching shot-list skill would:
    - Inherit `beat`/`beatTitle` and `location` from the neighbours unless the
      request is clearly starting a new beat/place. Consecutive same-location
      shots must share a beat so they still pack together.
    - Fill `dur` (realistic seconds), `camera` (framing + move), `action`,
      `dialogue` (or `(no dialogue)`), `audioSync`.
-   - **Render prompt by production type** — the same fork as the shot-list
-     skills: a `2d` / `3d-pixar` shot gets a single vivid, **style-free**,
-     diegetic `prompt` paragraph; a `live-action` shot gets `promptBlocks` (load
-     **shot-list-live-action** for the block rules) and no `prompt`. Never both.
+   - **Render prompt by the director's `promptForm`** — the same fork as the
+     shot-list skills: `"paragraph"` gets a single vivid, **style-free**, diegetic
+     `prompt` paragraph; `"blocks"` gets `promptBlocks` (load
+     **shot-list-live-action** for the block contract) and no `prompt`. Never
+     both, and write either one to the director's `instructions`.
    - **Omit `id`** — the shot is new, so the server mints a fresh non-colliding
      one. (Passing an existing shot's id would collide; passing a made-up one is
      unnecessary.)
-4. **Confirm before writing — draw the card, then STOP.** Say one short line
+5. **Confirm before writing — draw the card, then STOP.** Say one short line
    naming what you'll insert and where, then call **`render_ui`** ONCE (load
    **generative-ui** for the syntax): a `Card` holding a `KeyValue` of the drafted
    shot's key fields (location, camera, action, dialogue, dur — and the prompt or
@@ -72,13 +77,13 @@ for the new shots.
    (`tone:"primary"`) and a **Reject** action, each `send` written in the
    author's voice. Then **end your turn** — do NOT call `save_shotlist` yet. The
    author's tap is the only thing that authorises the write.
-5. **On approval, insert it.** Call `save_shotlist` with `mode:"insert"`, the
+6. **On approval, insert it.** Call `save_shotlist` with `mode:"insert"`, the
    drafted `shots`, and `anchorId` set to the shot it goes after (omit anchorId to
    insert at the very start). The response returns `insertedIds` (the minted ids),
    the new `count`, and the fresh `packs`. Tell the author the new shot's id, that
    it landed between which shots, and how the ≤15s packs changed — and that they
    can edit any field on the Shot list tab.
-6. **Reconcile speakers.** If the insert response includes `newSpeakers` (a
+7. **Reconcile speakers.** If the insert response includes `newSpeakers` (a
    speaking character with no World record), handle it exactly as the shot-list
    skill does: offer to promote a recurring one with `add_world_character`
    (verbatim name + a role note citing the shot), leave one-off bit-parts off.

@@ -39,10 +39,12 @@ export const skills = [
   sheetGeneration,
   scriptWriting,
   scriptAgents,
-  // Two shot-list skills, one per production type — the world bible's
-  // `productionType` picks between them, NOT the phrasing of the request (both
-  // answer to "generate the shot list"). Each skill's preconditions make it bail
-  // out to the other when the type doesn't match.
+  // Two shot-list skills, one per PROMPT FORM — the project's active shot
+  // director (`get_shot_director` → `promptForm`) picks between them, NOT the
+  // phrasing of the request (both answer to "generate the shot list"). Each
+  // skill's preconditions make it bail out to the other when the form doesn't
+  // match. The director is author-editable (Settings › Shot list director), so
+  // the prompt SYSTEM lives there and these two keep the pipeline.
   shotList,
   shotListLiveAction,
   // Add a shot INTO an existing list (the "+" node between shot cards, or a

@@ -38,6 +38,8 @@ import { pinDraft } from "./pin_draft.js";
 import { recordScriptReview } from "./record_script_review.js";
 import { shareScript } from "./share_script.js";
 import { getShotlist } from "./get_shotlist.js";
+import { getShotDirector } from "./get_shot_director.js";
+import { saveShotDirector } from "./save_shot_director.js";
 import { saveShotlist } from "./save_shotlist.js";
 import { listShots } from "./list_shots.js";
 import { getEpisode } from "./get_episode.js";
@@ -146,6 +148,9 @@ export function createTools(api: Api): ToolDefinition[] {
     // Shotlist / Episode
     getShotlist(api),
     saveShotlist(api),
+    // The prompt system shots are written with (author-editable, Settings tab)
+    getShotDirector(api),
+    saveShotDirector(api),
     listShots(api),
     getEpisode(api),
     getMultishot(api),
@@ -233,6 +238,7 @@ export function createReadTools(api: Api): ToolDefinition[] {
     listDrafts(api),
     // Shotlist / Episode
     getShotlist(api),
+    getShotDirector(api),
     listShots(api),
     getEpisode(api),
     getMultishot(api),

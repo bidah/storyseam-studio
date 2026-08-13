@@ -859,35 +859,64 @@ export function createVisualWorldMessage(hint) {
 
 // Build the chat turn that generates the granular shot list from the signed
 // script. Routed through the agent like the Render buttons — but through WHICH
-// skill depends on the project's production type, so the button names it
-// explicitly rather than leaving the model to infer it. A live-action shot list
-// is a different run producing a different prompt document, and the two skills'
-// trigger phrases overlap almost completely ("generate the shot list"), so
-// relying on description-matching alone would route by coin flip.
-export function generateShotListMessage(productionType) {
+// skill depends on the project's SHOT DIRECTOR (its `promptForm`), so the button
+// names it explicitly rather than leaving the model to infer it. A block-prompt
+// shot list is a different run producing a different prompt document, and the two
+// skills' trigger phrases overlap almost completely ("generate the shot list"),
+// so relying on description-matching alone would route by coin flip.
+//
+// `mode` is the other half: "all" walks the whole screenplay, "chunk" writes ONE
+// ≤15s bundle's worth and stops. A chunk resumes from the list's `progress`
+// marker, which is quoted into the message so the agent starts from the right
+// line even before it reads the shot list back.
+export function generateShotListMessage({ promptForm, productionType, mode = "all", progress } = {}) {
+  const blocks = promptForm ? promptForm === "blocks" : isLiveAction(productionType);
+  const skill = blocks ? "shot-list-live-action" : "shot-list";
+  const promptLine = blocks
+    ? `write every shot's Seedance prompt as promptBlocks — the block document, not one paragraph —`
+    : `write every shot's Seedance prompt as one vivid paragraph,`;
+
+  const head = [
+    `First call get_shot_director and write every shot's prompt to the instructions it returns —` +
+      ` that brief is mine and it outranks the skill's own wording.`,
+    `Load the ${skill} skill (NOT the other one) and follow it.`,
+  ].join(" ");
+
   const tail =
     ` Do NOT render any video and do NOT pack the bundles yourself —` +
-    ` the app auto-packs into <=15s multishots. When done, tell me how many shots you wrote` +
-    ` and how many <=15s multishots they pack into. Then reconcile speakers with the World` +
-    ` roster per the skill: if save_shotlist reports newSpeakers, surface them and offer to` +
-    ` promote the recurring ones into the World with add_world_character.`;
-  if (isLiveAction(productionType)) {
+    ` the app auto-packs into <=15s multishots. Record the script coverage on your last` +
+    ` save_shotlist call (the \`progress\` field: throughIndex, throughLine, note, complete,` +
+    ` draft) — that marker is how the next run knows where to pick up. Then reconcile speakers` +
+    ` with the World roster per the skill: if save_shotlist reports newSpeakers, surface them` +
+    ` and offer to promote the recurring ones into the World with add_world_character.`;
+
+  if (mode === "chunk") {
+    const where = progress?.throughIndex != null
+      ? `The list already covers the script through element ${progress.throughIndex}` +
+        (progress.throughLine ? ` ("${String(progress.throughLine).slice(0, 160)}")` : "") +
+        `. Start at element ${progress.throughIndex + 1}.` +
+        (progress.note ? ` Where things stand: ${String(progress.note).slice(0, 400)}` : "")
+      : `The shot list has no coverage marker yet, so start at the beginning of the script` +
+        ` (or, if it already has shots, read get_shotlist and continue after the last one).`;
     return [
-      `Generate the shot list from the script now — the pinned draft is signed.`,
-      `This is a LIVE-ACTION production. Load the shot-list-live-action skill (NOT the` +
-        ` shot-list skill) and follow it: call get_script, break the screenplay into an` +
-        ` ordered list of short (~2-4s) shots, each with beat/location, camera, action,` +
-        ` dialogue and an audio-sync note, and write every shot's Seedance prompt as` +
-        ` promptBlocks — the block document the skill specifies, not one paragraph —` +
-        ` then call save_shotlist.` + tail,
+      `Write the NEXT ~15 seconds of the shot list — one multishot bundle's worth, not the whole script.`,
+      head,
+      where,
+      `Cut roughly 4-6 short (~2-4s) shots that stay in ONE beat/location and sum to <=15s,` +
+        ` each with beat/location, camera, action, dialogue and an audio-sync note, and` +
+        ` ${promptLine} then append them with save_shotlist (mode "append" — never replace).`,
+      `Then STOP: don't continue into the next location. Tell me what this chunk covers and what` +
+        ` the next one will pick up.` + tail,
     ].join("\n");
   }
+
   return [
     `Generate the shot list from the script now — the pinned draft is signed.`,
-    `Load the shot-list skill and follow it: call get_script, break the screenplay into an` +
-      ` ordered list of short (~2-4s) shots, each with beat/location, camera, action,` +
-      ` dialogue, an audio-sync note, and a Seedance prompt, then` +
-      ` call save_shotlist.` + tail,
+    head,
+    `Call get_script, break the screenplay into an ordered list of short (~2-4s) shots, each` +
+      ` with beat/location, camera, action, dialogue and an audio-sync note, ${promptLine}` +
+      ` and save it one beat per save_shotlist call.`,
+    `When done, tell me how many shots you wrote and how many <=15s multishots they pack into.` + tail,
   ].join("\n");
 }
 

@@ -1,11 +1,11 @@
 import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import { useLoaderData, useRevalidator } from "react-router";
-import { X, RefreshCw, Loader2, Layers, Film, Plus, Send, CornerDownRight } from "lucide-react";
+import { X, RefreshCw, Loader2, Layers, Film, Plus, Send, CornerDownRight, ListChecks, FastForward, CircleCheck } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useT } from "@/lib/i18n";
 import { invalidateTabCache } from "@/lib/tabCache";
 import { swr, useRevalidateOnMount, useRevalidateOnAgentIdle, useRevalidateOnAgentTool } from "@/lib/swr";
-import { useAgent, agentIsBusy, insertShotMessage } from "@/components/AgentProvider";
+import { useAgent, agentIsBusy, insertShotMessage, generateShotListMessage } from "@/components/AgentProvider";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
@@ -16,6 +16,69 @@ import { Empty, Panel, ErrorNote, fmtTime } from "@/components/shared";
 import { CAMERA_FRAMINGS, CAMERA_MOVES } from "@/lib/cameraOptions";
 import { ProductionTypeBadge } from "@/components/ProductionType";
 import { PROMPT_BLOCKS, isLiveAction } from "@/lib/productionType";
+
+// The two ways to write shots from the script, side by side. "Next ~15s" asks
+// for ONE multishot bundle's worth and comes back in a fraction of the time a
+// whole episode takes; "the rest" is the original full run. They are the same
+// agent skill with a different scope, and both resume from — and re-record —
+// the list's script-coverage marker, so mixing them is fine: chunk twice, then
+// let it finish the rest.
+function GenerateShots({ promptForm, progress, hasShots, busy, onSend }) {
+  const t = useT();
+  const done = !!progress?.complete;
+  const started = hasShots || progress?.throughIndex != null;
+  return (
+    <div className="flex flex-wrap items-center gap-1.5">
+      {/* Not disabled when the list is `complete`: the script can be edited
+          after the list was finished, and a button that can never be pressed
+          again is a dead end. The label says it's done; the agent says so too
+          if there really is nothing left. */}
+      <Button
+        size="sm"
+        variant={started ? "default" : "outline"}
+        disabled={busy}
+        title={done ? t("the marker says the whole script is covered — press to cut more anyway") : t("write the next ~15 seconds of shots and stop")}
+        onClick={() => onSend("chunk")}
+      >
+        {busy ? <Loader2 size={13} className="animate-spin" /> : <FastForward size={13} />}
+        {started ? t("Next ~15s") : t("Generate first ~15s")}
+      </Button>
+      <Button
+        size="sm"
+        variant={started ? "outline" : "default"}
+        disabled={busy}
+        title={done ? t("the marker says the whole script is covered") : t("break the whole screenplay into shots in one run")}
+        onClick={() => onSend("all")}
+      >
+        {busy ? <Loader2 size={13} className="animate-spin" /> : <ListChecks size={13} />}
+        {started ? t("Generate the rest") : t("Generate all shots")}
+      </Button>
+    </div>
+  );
+}
+
+// Where the script-to-shots pass has got to. Written by whoever generated the
+// last batch (see `progress` on save_shotlist) — absent on a list built before
+// this existed, which reads as "not recorded", not "nothing covered".
+function CoverageNote({ progress }) {
+  const t = useT();
+  if (!progress) return null;
+  if (progress.complete) {
+    return (
+      <span className="flex items-center gap-1 text-xs text-muted-foreground">
+        <CircleCheck size={12} className="text-primary" />
+        {t("covers the whole script")}
+        {progress.draft ? ` · ${progress.draft}` : ""}
+      </span>
+    );
+  }
+  return (
+    <span className="text-xs text-muted-foreground">
+      {progress.throughIndex != null ? t("script covered through line ") + progress.throughIndex : t("partial")}
+      {progress.note ? ` · ${t("next")}: ${progress.note}` : ""}
+    </span>
+  );
+}
 
 // PUT one field of shot :n; returns the fresh shot list + pack preview (or null).
 async function saveShotField(n, body) {
@@ -379,7 +442,25 @@ function ShotList() {
 
   const shots = data.shots || [];
   const packs = data.packs || [];
-  const liveAction = isLiveAction(data.productionType);
+  const progress = data.progress || null;
+  // Which prompt editor a shot gets is the DIRECTOR's prompt form, not the
+  // production type — the author can run the block (Seedance) director on a 2D
+  // project. An older worker sends no `promptForm`, so fall back to the type.
+  const liveAction = data.promptForm ? data.promptForm === "blocks" : isLiveAction(data.productionType);
+
+  // Both generate buttons go through the agent, like the Script tab's. The
+  // director's prompt form picks the skill; the coverage marker tells a chunk
+  // where to resume.
+  const generate = useCallback((mode) => {
+    agent.send({
+      message: generateShotListMessage({
+        promptForm: data.promptForm,
+        productionType: data.productionType,
+        mode,
+        progress: data.progress || null,
+      }),
+    }).catch(() => {});
+  }, [agent, data.promptForm, data.productionType, data.progress]);
   const runtime = shots.reduce((a, s) => a + (Number(s.dur) || 0), 0);
   const packById = new Map();
   packs.forEach((p) => p.shotIds.forEach((id) => packById.set(id, p.id)));
@@ -462,6 +543,13 @@ function ShotList() {
           <h2 className="text-xl font-semibold tracking-tight">Shot list</h2>
           <div className="flex flex-wrap items-center gap-2">
             <ProductionTypeBadge value={data.productionType} long />
+            <GenerateShots
+              promptForm={data.promptForm}
+              progress={progress}
+              hasShots={shots.length > 0}
+              busy={agentBusy}
+              onSend={generate}
+            />
             <Button variant="outline" onClick={rebuild} disabled={rebuilding}>
               {rebuilding ? <><Loader2 size={13} className="animate-spin" /> rebuilding…</> : <><RefreshCw size={13} /> rebuild from current episode</>}
             </Button>
@@ -471,16 +559,33 @@ function ShotList() {
           <Badge variant="outline">{shots.length} shots</Badge>
           <Badge variant="success">~{fmtTime(runtime)} total</Badge>
           <Badge variant="info"><Layers size={11} /> {packs.length} multishot packs</Badge>
+          {data.director?.name && (
+            <Badge variant="muted" title="the prompt system these shots are written with — edit it in Settings">
+              <Film size={11} /> {data.director.name}
+            </Badge>
+          )}
           {agentBusy && <Badge variant="warning"><Loader2 size={11} className="animate-spin" /> agent working…</Badge>}
-          <span>the granular shots auto-pack into ≤15s multishots (left rail — click one to filter); generate them from a signed script on the Script tab</span>
+          <CoverageNote progress={progress} />
+          <span>the granular shots auto-pack into ≤15s multishots (left rail — click one to filter); write them a bundle at a time with “Next ~15s”, or all at once</span>
         </div>
       </div>
 
       {error && <ErrorNote>{error}</ErrorNote>}
 
       {shots.length === 0 ? (
-        <div className="rounded-xl border border-dashed p-6 text-center">
-          <Empty>no shots yet — sign the script and press “generate shot list”, or rebuild from the current episode.</Empty>
+        <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed p-6 text-center">
+          <Empty>
+            no shots yet — sign the script, then write the first ≤15s bundle (fast, and you can steer
+            before the rest is written) or the whole list in one run. You can also rebuild from the
+            current episode.
+          </Empty>
+          <GenerateShots
+            promptForm={data.promptForm}
+            progress={progress}
+            hasShots={false}
+            busy={agentBusy}
+            onSend={generate}
+          />
         </div>
       ) : (
         <div className="flex flex-col gap-4 md:flex-row md:items-start">
@@ -533,11 +638,15 @@ function ShotList() {
                           <ShotField n={s.n} field="dialogue" value={s.dialogue} onSaved={onSaved} multiline /></label>
                         <label className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Audio sync
                           <ShotField n={s.n} field="audioSync" value={s.audioSync} onSaved={onSaved} multiline /></label>
-                        {/* The render prompt takes one of two forms, and which
-                            one is the project's production type, not a per-shot
-                            choice: a paragraph for 2D / 3D-Pixar, the block
-                            document for live action. */}
-                        {liveAction ? (
+                        {/* The render prompt takes one of two forms: the single
+                            `prompt` field, or the block document. Which editor
+                            a shot gets follows the SHOT first and the active
+                            director second — a shot that already has
+                            promptBlocks keeps its block editor even after the
+                            author switches to a single-prompt director,
+                            because the route (rightly) refuses to overwrite a
+                            composed `prompt` on a block shot. */}
+                        {s.promptBlocks || (liveAction && !String(s.prompt || "").trim()) ? (
                           <PromptBlocks shot={s} onSaved={onSaved} />
                         ) : (
                           <label className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground sm:col-span-2">Seedance prompt

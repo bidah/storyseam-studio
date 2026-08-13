@@ -6,9 +6,9 @@
 //
 // Backed by the same /api/visual-world doc as the Visual tab, so it shares the
 // "visual-world" swr cache key and the canonical invalidate+revalidate pair.
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useLoaderData, useRevalidator } from "react-router";
-import { Loader2, Save, Plus, Trash2, IdCard, MapPin, Package, Palette, Check, SlidersHorizontal, KeyRound, ExternalLink, Globe, TerminalSquare, Cpu, Clapperboard, Cable } from "lucide-react";
+import { Loader2, Save, Plus, Trash2, IdCard, MapPin, Package, Palette, Check, SlidersHorizontal, KeyRound, ExternalLink, Globe, TerminalSquare, Cpu, Clapperboard, Cable, Film, RotateCcw, CopyPlus } from "lucide-react";
 import { invalidateTabCache } from "@/lib/tabCache";
 import {
   useHiggsfieldLinked, connectHiggsfield, disconnectHiggsfield,
@@ -33,6 +33,9 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { Eyebrow, Panel, ErrorNote } from "@/components/shared";
+import { cn } from "@/lib/utils";
+import { PRODUCTION_TYPES } from "@/lib/productionType";
+import { ProductionTypeBadge } from "@/components/ProductionType";
 import { ASPECTS } from "@/components/ImageStudio";
 import { useLocale, useT } from "@/lib/i18n";
 import { Languages } from "lucide-react";
@@ -42,8 +45,17 @@ import { Languages } from "lucide-react";
 const DEFAULT_MODEL = "__default__";
 
 async function put(path, body) {
+  return send(path, "PUT", body);
+}
+
+// Same, for the routes that take a POST (the shot directors).
+async function post(path, body) {
+  return send(path, "POST", body);
+}
+
+async function send(path, method, body) {
   const res = await fetch(path, {
-    method: "PUT",
+    method,
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
@@ -423,6 +435,265 @@ function LanguagePanel() {
   );
 }
 
+// SHOT LIST DIRECTOR — the prompt system a shot's render prompt is written with.
+//
+// The project's production type (2D / 3D-Pixar / live action) says what kind of
+// film this is; a DIRECTOR says how a shot is written for it, and it is the
+// thing the author actually tunes: the brief the agent follows, and the FORM the
+// prompt takes (one paragraph, or the Seedance block document). One director is
+// in use per production type, so this panel shows all three and marks the one
+// this project is currently writing with.
+//
+// The text shown IS the text the agent reads back (`get_shot_director`) — not a
+// summary of it — so editing here changes the next shots that get written. Edits
+// to a built-in can be reverted ("Reset"); "Save as new version" keeps the
+// original and switches to the copy, which is how you try a variant without
+// losing the one that works.
+function DirectorPanel() {
+  const t = useT();
+  const [data, setData] = useState(null);      // GET /api/shot-directors payload
+  const [err, setErr] = useState(null);
+  const [tab, setTab] = useState(null);        // production type being inspected
+  const [pickedId, setPickedId] = useState({});// per production type, the one being VIEWED
+  const [draft, setDraft] = useState(null);    // { id, name, instructions, promptForm }
+  const [busy, setBusy] = useState(false);
+
+  const load = useCallback(async () => {
+    try {
+      const res = await fetch("/api/shot-directors");
+      const j = await res.json();
+      if (!res.ok) throw new Error(j.error || "Failed to load");
+      setData(j);
+      setTab((cur) => cur || j.productionType);
+      setErr(null);
+    } catch (e) {
+      setErr(String(e.message || e));
+    }
+  }, []);
+  useEffect(() => { load(); }, [load]);
+
+  const pt = tab || data?.productionType || "2d";
+  const directors = data?.directors || [];
+  // Every director is offerable for every production type — the Seedance
+  // director on a 2D project is a legitimate choice, and the app branches on the
+  // director's prompt form, not the type. The ones MADE for this type sort
+  // first; the rest are labelled with where they came from.
+  const forType = [
+    ...directors.filter((d) => d.productionType === pt),
+    ...directors.filter((d) => d.productionType !== pt),
+  ];
+  const activeId = data?.active?.[pt];
+  // What's on screen: the author's pick for this tab, else the active one.
+  const viewingId = pickedId[pt] && forType.some((d) => d.id === pickedId[pt]) ? pickedId[pt] : activeId;
+  const viewing = directors.find((d) => d.id === viewingId) || forType[0] || null;
+
+  // The draft follows whichever director is being viewed, until it's edited.
+  useEffect(() => {
+    if (!viewing) { setDraft(null); return; }
+    setDraft({
+      id: viewing.id,
+      name: viewing.name,
+      promptForm: viewing.promptForm,
+      instructions: viewing.instructions,
+    });
+  }, [viewing?.id, viewing?.instructions, viewing?.name, viewing?.promptForm]);
+
+  const dirty = !!(draft && viewing && (
+    draft.instructions !== viewing.instructions ||
+    draft.name !== viewing.name ||
+    draft.promptForm !== viewing.promptForm
+  ));
+
+  const call = async (body) => {
+    setBusy(true);
+    setErr(null);
+    try {
+      const j = await post("/api/shot-directors", body);
+      setData(j);
+      if (j.active?.[pt]) setPickedId((s) => ({ ...s, [pt]: j.saved || j.active[pt] }));
+    } catch (e) {
+      // Reported in the panel — never rethrown, so a click handler doesn't
+      // leave an unhandled rejection behind.
+      setErr(String(e.message || e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (err && !data) {
+    return (
+      <Panel title={<span className="flex items-center gap-2"><Film size={15} className="text-primary" /> {t("Shot list director")}</span>}>
+        <ErrorNote>{err}</ErrorNote>
+      </Panel>
+    );
+  }
+  if (!data) {
+    return (
+      <Panel title={<span className="flex items-center gap-2"><Film size={15} className="text-primary" /> {t("Shot list director")}</span>}>
+        <p className="text-sm text-muted-foreground"><Loader2 size={14} className="inline animate-spin" /> {t("Loading…")}</p>
+      </Panel>
+    );
+  }
+
+  return (
+    <Panel
+      title={<span className="flex items-center gap-2"><Film size={15} className="text-primary" /> {t("Shot list director")}</span>}
+      meta={<ProductionTypeBadge value={data.productionType} long />}
+    >
+      <p className="mb-3 text-sm text-muted-foreground">
+        {t("The prompt system your shots are written with — by the agent when it breaks the script into a shot list, and whenever you ask it for a single new shot. Each production type has one director in use; this project writes with the one marked ")}
+        <b>{t("In use")}</b>
+        {t(" under its production type. What you edit here is exactly the brief the agent reads, so a change lands on the next shots written — it never rewrites shots that already exist.")}
+      </p>
+
+      {/* Production type = the World tab's setting; switching tabs here only
+          LOOKS at another type's director, it doesn't change the project. */}
+      <div className="mb-3 flex flex-wrap items-center gap-1.5">
+        {PRODUCTION_TYPES.map((p) => {
+          const on = p.id === pt;
+          const isProject = p.id === data.productionType;
+          return (
+            <button
+              key={p.id}
+              type="button"
+              onClick={() => setTab(p.id)}
+              aria-pressed={on}
+              className={cn(
+                "flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs transition-colors",
+                on ? "border-primary bg-primary/10 ring-1 ring-primary/40" : "hover:bg-muted",
+              )}
+            >
+              {t(p.label)}
+              {isProject ? <Badge variant="success">{t("this project")}</Badge> : null}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* The directors available for this production type. Clicking one views
+          it; "Use this one" is what actually switches the project over. */}
+      <div className="space-y-1.5">
+        {forType.map((d) => {
+          const on = d.id === viewingId;
+          const inUse = d.id === activeId;
+          return (
+            <div
+              key={d.id}
+              className={cn(
+                "flex flex-wrap items-center gap-2 rounded-lg border p-2.5 text-sm transition-colors",
+                on ? "border-primary/50" : "opacity-80 hover:bg-muted/40",
+              )}
+            >
+              <button type="button" className="text-left font-medium" onClick={() => setPickedId((s) => ({ ...s, [pt]: d.id }))}>
+                {d.name}
+              </button>
+              <Badge variant="muted">{d.promptForm === "blocks" ? t("block prompt") : t("single prompt")}</Badge>
+              {d.productionType !== pt ? (
+                <Badge variant="outline">{t("made for")} {t(PRODUCTION_TYPES.find((p) => p.id === d.productionType)?.short || d.productionType)}</Badge>
+              ) : null}
+              {d.builtin ? <Badge variant="muted">{t("built-in")}</Badge> : null}
+              {d.edited ? <Badge variant="warning">{t("edited")}</Badge> : null}
+              {inUse ? <Badge variant="success">{t("In use")}</Badge> : null}
+              <div className="ml-auto flex items-center gap-1.5">
+                {!inUse && (
+                  <Button size="sm" variant="outline" disabled={busy} onClick={() => call({ id: d.id, productionType: pt, activate: true })}>
+                    {t("Use this one")}
+                  </Button>
+                )}
+                {d.builtin && d.edited && (
+                  <Button size="sm" variant="ghost" disabled={busy} title={t("Restore the shipped text")} onClick={() => call({ id: d.id, reset: true })}>
+                    <RotateCcw size={13} /> {t("Reset")}
+                  </Button>
+                )}
+                {!d.builtin && (
+                  <Button
+                    size="sm" variant="ghost" disabled={busy}
+                    className="text-destructive hover:text-destructive"
+                    aria-label={t("Delete this version")}
+                    onClick={() => call({ id: d.id, delete: true })}
+                  >
+                    <Trash2 size={13} />
+                  </Button>
+                )}
+              </div>
+              {d.blurb ? <p className="w-full text-xs text-muted-foreground">{d.blurb}</p> : null}
+            </div>
+          );
+        })}
+      </div>
+
+      {err ? <p className="mt-2 text-xs text-destructive">{err}</p> : null}
+
+      {/* The prompt itself. */}
+      {draft && (
+        <div className="mt-3 space-y-2 rounded-lg border p-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <Input
+              value={draft.name}
+              onChange={(e) => setDraft((s) => ({ ...s, name: e.target.value }))}
+              className="h-8 flex-1 text-sm font-medium"
+              placeholder={t("Director name")}
+              aria-label={t("Director name")}
+            />
+            <div>
+              <Select value={draft.promptForm} onValueChange={(v) => setDraft((s) => ({ ...s, promptForm: v }))}>
+                <SelectTrigger size="sm" className="w-[190px] text-xs"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="paragraph">{t("Single prompt field")}</SelectItem>
+                  <SelectItem value="blocks">{t("Block document (promptBlocks)")}</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <Textarea
+            value={draft.instructions}
+            onChange={(e) => setDraft((s) => ({ ...s, instructions: e.target.value }))}
+            rows={18}
+            className="font-mono text-xs"
+            placeholder={t("The brief the shot writer follows…")}
+          />
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="text-xs text-muted-foreground">
+              {draft.promptForm === "blocks"
+                ? t("Shots written by this director carry the block document (promptBlocks), whose section names are fixed — the Shot list tab edits them block by block.")
+                : t("Shots written by this director carry their whole render prompt in one field, structured however these instructions say.")}
+            </p>
+            <div className="flex items-center gap-1.5">
+              {dirty && (
+                <Button size="sm" variant="ghost" disabled={busy} onClick={() => setDraft({
+                  id: viewing.id, name: viewing.name, promptForm: viewing.promptForm, instructions: viewing.instructions,
+                })}>
+                  {t("Discard")}
+                </Button>
+              )}
+              <Button
+                size="sm" variant="outline" disabled={busy || !draft.instructions.trim()}
+                title={t("Keep the current one and save this text as a new version")}
+                onClick={() => call({
+                  id: draft.id, productionType: pt, newVersion: true,
+                  name: `${viewing.name} v${(viewing.version || 1) + 1}`,
+                  promptForm: draft.promptForm, instructions: draft.instructions,
+                })}
+              >
+                <CopyPlus size={13} /> {t("Save as new version")}
+              </Button>
+              <Button
+                size="sm" disabled={busy || !dirty}
+                onClick={() => call({
+                  id: draft.id, productionType: pt, name: draft.name,
+                  promptForm: draft.promptForm, instructions: draft.instructions,
+                })}
+              >
+                {busy ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />} {t("Save changes")}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+    </Panel>
+  );
+}
+
 // Save button with a transient "Saved" confirmation.
 function SaveButton({ onSave, children = "Save" }) {
   const [state, setState] = useState("idle"); // idle | saving | saved
@@ -566,14 +837,17 @@ function SettingsPage() {
       <div>
         <h2 className="text-xl font-semibold tracking-tight">Settings</h2>
         <p className="text-sm text-muted-foreground">
-          Project-wide prompts for image generation — the house style, and the sheet
-          prompts layered on top when a generation is tagged as a character, location, or prop sheet.
+          Project-wide prompts — the shot director your shot list is written with, the house
+          style for image generation, and the sheet prompts layered on top when a generation is
+          tagged as a character, location, or prop sheet.
         </p>
       </div>
 
       {error && <ErrorNote>{error}</ErrorNote>}
 
       <LanguagePanel />
+
+      <DirectorPanel />
 
       <ChatProviderPanel />
 
