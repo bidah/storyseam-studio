@@ -34,6 +34,7 @@ import { Empty, Eyebrow, Panel, ErrorNote, ConfirmModal } from "@/components/sha
 import MediaPicker from "@/components/MediaPicker";
 import PromptEditor from "@/components/mention/PromptEditor";
 import { refTagLabel, withImageRefNote } from "@/lib/refTags";
+import { uploadAttachment, classifyFile } from "@/lib/attachments";
 import { useProviderGate } from "@/components/ProviderGate";
 import { useT } from "@/lib/i18n";
 
@@ -481,9 +482,48 @@ export default function ImageStudio({
   // reference art would just invent a new location, so a reference is required
   // (the server enforces this too).
   const needsRef = sheetTagging && sheetType === "location" && refs.length === 0;
+  // A pasted/dropped image is still uploading — hold Generate so we never fire
+  // with a ref that has no durable url yet.
+  const uploadingRefs = refs.some((r) => r.uploading);
+
+  // Cmd/Ctrl+V (or drop) of an image onto the prompt box → add it to the ref
+  // tray exactly like a MediaPicker upload: show the local preview immediately,
+  // upload to R2 in the background, then swap in the durable /files url. Files
+  // that aren't images are ignored (this composer only takes reference images).
+  const addPastedFiles = async (files) => {
+    const images = Array.from(files || []).filter((f) => classifyFile(f) === "image");
+    if (!images.length) return;
+    const staged = images.map((file) => ({
+      file,
+      ref: withRefId({
+        kind: "upload",
+        url: undefined,
+        thumb: URL.createObjectURL(file),
+        name: file.name || "pasted image",
+        uploading: true,
+      }),
+    }));
+    setRefs((cur) => [...cur, ...staged.map((s) => s.ref)]);
+    await Promise.all(
+      staged.map(async ({ file, ref }) => {
+        try {
+          const data = await uploadAttachment(file);
+          setRefs((cur) =>
+            cur.map((r) => (r.id === ref.id ? { ...r, url: data.url, thumb: data.url, uploading: false } : r)),
+          );
+        } catch (e) {
+          // Drop the failed chip — a paste that never uploaded just doesn't stick.
+          setRefs((cur) => cur.filter((r) => r.id !== ref.id));
+          console.error("paste upload failed", e);
+        } finally {
+          URL.revokeObjectURL(ref.thumb);
+        }
+      }),
+    );
+  };
 
   const doGenerate = async () => {
-    if (!prompt.trim() || isBusy || !onGenerate || needsRef) return;
+    if (!prompt.trim() || isBusy || !onGenerate || needsRef || uploadingRefs) return;
     // No render provider connected yet → pop the setup modal instead of firing a
     // request that would 401 (setup is skippable at login now).
     if (!gate.ensure("image")) return;
@@ -572,6 +612,11 @@ export default function ImageStudio({
             {refs.map((r, i) => (
               <div key={r.id || `${r.kind}-${r.rel || r.genId}-${i}`} className="group relative">
                 <img src={r.thumb || r.url} alt={r.name} className="h-12 w-12 rounded-md border object-cover" />
+                {r.uploading && (
+                  <div className="absolute inset-0 flex items-center justify-center rounded-md bg-background/60">
+                    <Loader2 size={14} className="animate-spin text-muted-foreground" />
+                  </div>
+                )}
                 {/* The "@" tag this reference answers to in the prompt. */}
                 <span className="pointer-events-none absolute bottom-0 left-0 max-w-full truncate rounded-bl-md rounded-tr-md border-r border-t bg-background/85 px-1 text-[9px] font-medium text-muted-foreground">
                   {refTagLabel(i)}
@@ -595,6 +640,7 @@ export default function ImageStudio({
           placeholder={t(composerPlaceholder)}
           onChange={setPrompt}
           onSubmit={doGenerate}
+          onPasteFiles={addPastedFiles}
           className="mb-2 max-h-40 min-h-16 w-full overflow-y-auto rounded-md border border-input bg-transparent px-3 py-2 shadow-xs transition-[color,box-shadow] focus-within:border-ring focus-within:ring-[3px] focus-within:ring-ring/50 dark:bg-input/30"
         />
         <div className="flex flex-wrap items-center gap-2">
@@ -685,7 +731,7 @@ export default function ImageStudio({
             size="sm"
             className="ml-auto"
             onClick={doGenerate}
-            disabled={isBusy || !prompt.trim() || needsRef}
+            disabled={isBusy || !prompt.trim() || needsRef || uploadingRefs}
             title={needsRef ? t("Location sheets need a reference image — add one first") : undefined}
           >
             {isBusy ? <><Loader2 size={14} className="animate-spin" /> {t("generating…")}</> : <><Wand2 size={14} /> {t("Generate")}</>}
