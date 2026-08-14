@@ -52,6 +52,7 @@ import { attachStill } from "./attach_still.js";
 import { trimVideo } from "./trim_video.js";
 // References
 import { selectReference } from "./select_reference.js";
+import { linkReference } from "./link_reference.js";
 import { autoAssignRefs } from "./auto_assign_refs.js";
 import { rebuildEpisodePlan } from "./rebuild_episode_plan.js";
 import { selectVideo } from "./select_video.js";
@@ -162,6 +163,7 @@ export function createTools(api: Api): ToolDefinition[] {
     trimVideo(api),
     // References
     selectReference(api),
+    linkReference(api),
     autoAssignRefs(api),
     rebuildEpisodePlan(api),
     selectVideo(api),

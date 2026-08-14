@@ -62,7 +62,6 @@
 /api/timeline/from-animatic
 /api/timeline/from-radio
 /api/episode/first-frame
-/api/episode/link
 /api/episode/ref-video
 /api/script/drafts/*
 /api/script/sign

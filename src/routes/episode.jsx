@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useLoaderData, useRevalidator } from "react-router";
+import { useLoaderData, useNavigate, useRevalidator } from "react-router";
 import { X, Check, Plus, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, RotateCcw, Maximize2, Volume2, VolumeX, Speech, Play, Pause, Copy, Pencil, Sparkles, PenLine, FileText, Film, Image as ImageIcon, Loader2, Wand2, Scissors, Boxes, CircleAlert, MapPin, User, Palette } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useT } from "@/lib/i18n";
@@ -88,10 +88,13 @@ function computeNeeds(state, picked, audioPicked, audioMap) {
     const names = a?.order?.length ? a.order : a?.character ? [a.character] : [];
     for (const nm of names) covered.add(String(nm).trim().toUpperCase());
   }
-  const voice = (state.voice || []).map((v) => ({
-    ...v,
-    fulfilled: covered.has(String(v.name).trim().toUpperCase()),
-  }));
+  // A cast voice covers its speaker on its own; an uncast Sound Studio take
+  // covers one only while linked to it AND still picked (mirrors the worker).
+  const voice = (state.voice || []).map((v) => {
+    const link = v.link && audioPicked.has(v.link) ? v.link : null;
+    const auto = covered.has(String(v.name).trim().toUpperCase());
+    return { ...v, fulfilled: auto || !!link, via: auto ? "cast voice" : link };
+  });
   return {
     ...state, needs, voice,
     complete: { images: needs.every((n) => n.fulfilled), audio: voice.every((v) => v.fulfilled) },
@@ -1385,8 +1388,9 @@ function EpisodeBundle({ b, flat, picked, onOpenPicker, onRemove, onView, audioM
   );
 }
 
-function AudioPickerModal({ bundle, audioRefs, picked, voiceNeeds, open, onToggle, onClose }) {
+function AudioPickerModal({ bundle, audioRefs, picked, voiceNeeds, open, onToggle, onLinkNeed, onClose }) {
   const t = useT();
+  const navigate = useNavigate();
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="flex max-h-[88vh] max-w-[min(94vw,640px)] flex-col gap-0 overflow-hidden p-0">
@@ -1401,14 +1405,35 @@ function AudioPickerModal({ bundle, audioRefs, picked, voiceNeeds, open, onToggl
               <span className="font-semibold uppercase tracking-wide text-muted-foreground">{t("speakers")}</span>
               {voiceNeeds.map((v) => (
                 <NeedChip key={v.id} role="voice" label={v.name} fulfilled={v.fulfilled}
-                  title={v.fulfilled ? t("voice reference chosen") : t("pick a reference below that covers this speaker")} />
+                  title={v.fulfilled ? t("voice reference chosen") : t("pick a reference below, then tell it which speaker it is the voice of")} />
               ))}
             </div>
           )}
         </DialogHeader>
         <div className="min-h-0 flex-1 space-y-2 overflow-y-auto p-4">
-          {audioRefs.map((a) => {
+          {audioRefs.length === 0 ? (
+            <div className="space-y-3 py-6 text-center">
+              <Empty>
+                {t("no voice or sound references yet — every rendered Sound Studio take shows up here, and a voice cast to a character on the Radio tab arrives already matched to its speaker.")}
+              </Empty>
+              <div className="flex flex-wrap justify-center gap-2">
+                <Button variant="outline" size="sm" onClick={() => navigate("/sounds?new=voice")}>
+                  <Plus size={13} /> {t("Create a voice")}
+                </Button>
+                <Button variant="outline" size="sm" onClick={() => navigate("/radio")}>
+                  <Volume2 size={13} /> {t("Cast voices")}
+                </Button>
+              </div>
+            </div>
+          ) : audioRefs.map((a) => {
             const on = picked.has(a.rel);
+            // Which speaker this ref is standing in for. A ref that names its
+            // characters (a cast world voice, a legacy combined clip) covers
+            // them on its own; anything else — an uncast Sound Studio take —
+            // needs the author to say who it is, exactly like an image need.
+            const names = a.order?.length ? a.order : a.character ? [a.character] : [];
+            const linkedNeed = voiceNeeds?.find((v) => v.link === a.rel) || null;
+            const showLink = on && names.length === 0 && voiceNeeds?.length > 0;
             return (
               <div
                 key={a.rel}
@@ -1428,12 +1453,33 @@ function AudioPickerModal({ bundle, audioRefs, picked, voiceNeeds, open, onToggl
                 <div className="min-w-0 flex-1 space-y-1.5">
                   <div className="flex items-center gap-2 text-sm font-medium">
                     {a.label}
+                    {a.source === "sounds" && (
+                      <Badge variant="muted" title={t("from the Sound Studio")}>{t(a.kind || "sound")}</Badge>
+                    )}
                     {!a.exists && <Badge variant="destructive">{t("missing file")}</Badge>}
                   </div>
                   {a.order && a.order.length > 1 && (
                     <div className="text-xs text-muted-foreground">{t("voice order:")} {a.order.map((n, i) => `${i + 1}=${n}`).join(", ")}</div>
                   )}
                   <audio controls preload="none" src={a.url} />
+                  {showLink && (
+                    <select
+                      className="h-7 max-w-full truncate rounded border bg-background px-1 text-xs text-muted-foreground"
+                      value={linkedNeed?.id || ""}
+                      aria-label={t("Speaker voiced by {name}", { name: a.label })}
+                      title={t("Say which speaker this reference is the voice of")}
+                      onChange={(e) => {
+                        const next = e.target.value || null;
+                        if (linkedNeed && linkedNeed.id !== next) onLinkNeed(bundle.id, linkedNeed.id, null);
+                        if (next) onLinkNeed(bundle.id, next, a.rel);
+                      }}
+                    >
+                      <option value="">{t("is the voice of…")}</option>
+                      {voiceNeeds.map((v) => (
+                        <option key={v.id} value={v.id}>{v.name}</option>
+                      ))}
+                    </select>
+                  )}
                 </div>
               </div>
             );
@@ -1690,14 +1736,16 @@ function Episode({ reloadKey, onView }) {
     }
   }, []);
 
-  // Link (or unlink) one chosen reference to a scene need. Optimistic on the
-  // needs slice; the worker stores it in db.needLinks[bundle][needId].
+  // Link (or unlink) one chosen reference to a scene need — an image need
+  // ("character:Kid") or a speaker's voice ("voice:Trini"), which share the one
+  // link map. Optimistic on the needs slice; the worker stores it in
+  // db.needLinks[bundle][needId].
   const onLinkNeed = useCallback(async (bundle, need, rel) => {
     setNeedsMap((m) => {
       const st = m[bundle];
       if (!st) return m;
-      const needs = (st.needs || []).map((n) => (n.id === need ? { ...n, link: rel || null } : n));
-      return { ...m, [bundle]: { ...st, needs } };
+      const relink = (n) => (n.id === need ? { ...n, link: rel || null } : n);
+      return { ...m, [bundle]: { ...st, needs: (st.needs || []).map(relink), voice: (st.voice || []).map(relink) } };
     });
     try {
       await fetch("/api/episode/link", {
@@ -2063,6 +2111,7 @@ function Episode({ reloadKey, onView }) {
           }
           open={!!audioPicker}
           onToggle={onAudioToggle}
+          onLinkNeed={onLinkNeed}
           onClose={() => setAudioPicker(null)}
         />
       )}

@@ -101,6 +101,76 @@ async function legacyAudioPool(env, pid) {
   return found.filter(Boolean);
 }
 
+// ---- Sound Studio pool ------------------------------------------------------
+// Every rendered Sound Studio take is attachable to a scene as a voice/sound
+// reference, WITHOUT first being cast to a World character. Casting (Radio →
+// World `voiceRef`) is how a voice gets auto-matched to its speaker, but it was
+// also the only way a clip reached this pool at all: a project whose author had
+// generated voices in the Sound Studio and not cast them yet opened "Voice /
+// sound references" onto an empty list with nothing to do. A take picked from
+// here covers a speaker once it's linked to one (needLinks, same mechanism the
+// image needs use).
+const readSounds = (env, pid) => readDoc(env, pid, "sounds", { tracks: [] });
+
+// Stable per-bundle audio pick id for a Sound Studio take. Keyed by the TAKE
+// (unlike world voices, which are keyed by character) — that is what was picked.
+const soundTakeRel = (trackId, v) => `sound:${trackId}:v${v}`;
+
+// Which Sound Studio tab a track belongs to. Mirrors `trackKind` in
+// src/routes/sounds.jsx and `isVoiceTrack` in src/routes/radio.jsx: an explicit
+// `kind` wins; tracks created before that field existed fall back to the
+// v1-prompt heuristic.
+const VOICE_PROMPT_RE = /^\s*(@audio\d|use a seed audio voice reference to voice-act)/i;
+function trackKindOf(t) {
+  if (t?.kind === "voice" || t?.kind === "music" || t?.kind === "sfx") return t.kind;
+  const v1 = (t?.versions || []).find((v) => v.v === 1) || (t?.versions || [])[0];
+  return VOICE_PROMPT_RE.test(v1?.prompt || "") ? "voice" : "sfx";
+}
+
+// The pool entries contributed by the Sound Studio: one per READY take that
+// still has its media. A take a World character is already cast to is skipped —
+// it's in the pool as that character's `world-voice:` entry, which is keyed by
+// the character and so survives a re-cast; listing both would show one clip
+// twice. Voice takes sort first, the rest (sfx/music beds) after.
+function soundStudioPool(env, pid, sounds, world) {
+  const cast = new Set();
+  for (const ch of world?.characters || []) {
+    const vref = ch.voiceRef;
+    if (vref?.url && vref.trackId) cast.add(soundTakeRel(vref.trackId, vref.v));
+  }
+  const out = [];
+  for (const t of sounds?.tracks || []) {
+    const kind = trackKindOf(t);
+    const name = String(t.name || "").trim() || t.id;
+    for (const v of t.versions || []) {
+      if (v.status !== "ready" || !v.file) continue;
+      const rel = soundTakeRel(t.id, v.v);
+      if (cast.has(rel)) continue;
+      out.push({
+        rel,
+        label: (t.versions || []).length > 1 ? `${name} · v${v.v}` : name,
+        order: [],
+        character: null,
+        kind,
+        url: "/sound-media/" + v.file,
+        refUrl: filesUrl(env, mediaKey(pid, "sound-media", v.file)),
+        trackId: t.id,
+        v: v.v,
+        source: "sounds",
+        exists: true,
+      });
+    }
+  }
+  return out.sort((a, b) => (a.kind === "voice" ? 0 : 1) - (b.kind === "voice" ? 0 : 1));
+}
+
+// The whole attachable pool, in display order: cast World voices, then the
+// legacy loose files, then the uncast Sound Studio takes.
+async function audioPool(env, pid, world) {
+  const [legacy, sounds] = await Promise.all([legacyAudioPool(env, pid), readSounds(env, pid)]);
+  return [...worldVoicePool(env, pid, world), ...legacy, ...soundStudioPool(env, pid, sounds, world)];
+}
+
 // Roster lookup maps shared by auto-assign and needs validation: characters by
 // charKey(name), locations by slug (the shot-list `location` string).
 function rosterMaps(world) {
@@ -123,7 +193,9 @@ function rosterMaps(world) {
 // dialogue). An IMAGE need is fulfilled when the bundle's picked refs contain
 // either the need's World sheet image (auto-match) or a ref the user explicitly
 // linked to that need (db.needLinks[bundle][needId]). A VOICE need is fulfilled
-// when a picked audio ref covers that speaker. `enforced` is false when the
+// when a picked audio ref covers that speaker — by casting (a world voice
+// carries its character) or by the same explicit link, which is what an uncast
+// Sound Studio take needs. `enforced` is false when the
 // World roster is empty (the legacy offline-built Whistlewood project), keeping
 // signing ungated there exactly as before needs existed.
 const needIdOf = (im) => `${im.role}:${im.key}`;
@@ -146,6 +218,7 @@ function audioCoverage(maps, audioRels) {
 function needsStateFor(b, maps, db) {
   const links = db.needLinks?.[b.id] || {};
   const picks = new Set(db.episode?.[b.id] || []);
+  const audioPicks = new Set(db.episodeAudio?.[b.id] || []);
   const covered = audioCoverage(maps, db.episodeAudio?.[b.id]);
   const needs = (b.images || []).map((im) => {
     const id = needIdOf(im);
@@ -162,9 +235,20 @@ function needsStateFor(b, maps, db) {
       via: link || auto,           // the picked rel actually covering it
     };
   });
-  const voice = (b.speakers || []).map((name) => ({
-    id: "voice:" + name, name, fulfilled: covered.has(charKey(name)),
-  }));
+  const voice = (b.speakers || []).map((name) => {
+    const id = "voice:" + name;
+    // An uncast Sound Studio take carries no character, so it covers a speaker
+    // only while it is BOTH linked to them and still among this bundle's picks —
+    // the same rule the image needs use.
+    const link = links[id] && audioPicks.has(links[id]) ? links[id] : null;
+    const auto = covered.has(charKey(name));
+    return {
+      id, name,
+      link: links[id] || null,     // stored manual link (may point at a removed pick)
+      fulfilled: auto || !!link,
+      via: auto ? "cast voice" : link,
+    };
+  });
   return {
     needs, voice,
     enforced: maps.chars.size > 0 || maps.locs.size > 0,
@@ -386,11 +470,12 @@ export async function liveSkillPrompts(env, pid, shots, world, promptForm) {
 // gets the same joined view — reading the bare `episode-manifest` doc instead
 // would report bundles as unrendered whose media is sitting right there in R2.
 export async function buildEpisodeView(env, pid) {
-  const [manifest, world, vw, legacy, slDoc] = await Promise.all([
+  const [manifest, world, vw, legacy, sounds, slDoc] = await Promise.all([
     readManifest(env, pid),
     readWorld(env, pid),
     readDoc(env, pid, "visual-world", null),
     legacyAudioPool(env, pid),
+    readSounds(env, pid),
     readDoc(env, pid, "shotlist", null),
   ]);
   const shotlist = shotlistPacksState(slDoc, manifest);
@@ -469,7 +554,7 @@ export async function buildEpisodeView(env, pid) {
     // Voice/sound reference pool + per-bundle picks, so a caller (the agent's
     // get_episode, the MCP server) can see the voices attached to a bundle and
     // fetch their `refUrl` — the same data `/api/audio` serves the GUI.
-    audio: [...worldVoicePool(env, pid, world), ...legacy],
+    audio: [...worldVoicePool(env, pid, world), ...legacy, ...soundStudioPool(env, pid, sounds, world)],
     audioPicks: db.episodeAudio || {},
     style: {
       episode: db.episodeStyle || "",
@@ -494,16 +579,13 @@ export function registerEpisode(app) {
   });
 
   // Available voice/sound references + current per-bundle audio picks. The pool
-  // is the World roster's linked character voices, plus any legacy loose files
-  // that actually exist in this project's asset space.
+  // is the World roster's linked character voices, any legacy loose files that
+  // actually exist in this project's asset space, and every rendered Sound
+  // Studio take that isn't already cast to a character.
   app.get("/api/audio", async (c) => {
     const pid = c.get("projectId");
-    const [db, world, legacy] = await Promise.all([
-      readDB(c.env, pid),
-      readWorld(c.env, pid),
-      legacyAudioPool(c.env, pid),
-    ]);
-    const items = [...worldVoicePool(c.env, pid, world), ...legacy];
+    const [db, world] = await Promise.all([readDB(c.env, pid), readWorld(c.env, pid)]);
+    const items = await audioPool(c.env, pid, world);
     return c.json({ audio: items, episode: db.episodeAudio || {} });
   });
 
