@@ -18,6 +18,7 @@ import { normalizeShot } from "../lib/shots.js";
 import { packPreview } from "../lib/pack.js";
 import { normalizeProductionType } from "../lib/production-type.js";
 import { resolveActiveDirector, directorSummary } from "../lib/shot-directors.js";
+import { liveSkillPrompts } from "./episode.js";
 
 // Carry stored shot ids onto an incoming bulk save that omitted them.
 //
@@ -298,13 +299,18 @@ export async function buildShotlistView(env, pid) {
   const world = await readDoc(env, pid, "world", null);
   const productionType = normalizeProductionType(world?.productionType);
   const { director } = await resolveActiveDirector(env, pid, productionType);
+  // Each pack carries its full composed multishot skill prompt — the SAME
+  // styled prompt the Episode tab renders with (per-shot durations, camera,
+  // dialogue, Params line), composed live from the current shots. The Shot
+  // list's copy-prompt button ships this, ready to paste into any video tool.
+  const skillPrompts = await liveSkillPrompts(env, pid, sl.shots, world, director.promptForm);
   return {
     ...sl,
     productionType,
     director: directorSummary(director),
     promptForm: director.promptForm,
     progress: sl.progress || null,
-    packs: packPreview(sl.shots),
+    packs: packPreview(sl.shots).map((p) => ({ ...p, skillPrompt: skillPrompts[p.id] || "" })),
   };
 }
 

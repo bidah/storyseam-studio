@@ -356,6 +356,29 @@ function shotlistPacksState(slDoc, manifest) {
   };
 }
 
+// The styled multishot skill prompt of each pack of a LIVE shot list, keyed by
+// pack id ("MS-01" → prompt). Same composition the Episode tab renders with —
+// buildBundles' full per-shot script (durations, camera, dialogue, Seedance
+// prompt, Params line) plus the read-time style resolution below — but composed
+// from the shots passed in rather than the built manifest, so it reflects edits
+// that haven't been rebuilt into episode cards yet. Serves the Shot list tab's
+// copy-prompt button, which must hand out the SAME ready-to-use prompt the
+// Episode render sends, not a bare join of the shots' prompt fields.
+// `shots` must be normalized (block-form shots composed into `prompt`).
+export async function liveSkillPrompts(env, pid, shots, world, promptForm) {
+  const [vw, db] = await Promise.all([
+    readDoc(env, pid, "visual-world", null),
+    readDB(env, pid),
+  ]);
+  const presets = stylePresetsOf(vw);
+  return Object.fromEntries(
+    buildBundles(shots, world, vw?.settings).map((b) => [
+      b.id,
+      applyStyle(b.skillPrompt, styleTextOf(presets, resolveStyleId(db, b.id)), promptForm),
+    ]),
+  );
+}
+
 // The full episode plan as `GET /api/episode` serves it: the packed <=15s
 // bundles, the rendered takes that still exist in R2, per-bundle prompt
 // overrides, sign-offs, first frames, style refs, and the scene-needs state.

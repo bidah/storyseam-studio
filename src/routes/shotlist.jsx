@@ -405,13 +405,22 @@ function shotPromptText(s) {
   return (blocks || String(s.prompt || "")).trim();
 }
 
-// Header button for a beat/multishot card: copies EVERY shot's prompt in the
-// card to the clipboard in one go, each labelled with its shot id. Disabled when
-// none of the shots have a prompt yet; flips to a check for a moment on success.
-function CopyPromptButton({ shots }) {
+// Header button for a beat card: copies the FULL composed multishot skill
+// prompt of every pack the card's shots land in — the same styled, ready-to-use
+// prompt the Episode render sends (per-shot durations, camera, dialogue, Params
+// line), so it can be pasted straight into another video tool. Falls back to a
+// bare join of the shots' prompt fields only when the pack prompts haven't
+// arrived (a stale cached response). Disabled while there's nothing to copy;
+// flips to a check for a moment on success.
+function CopyPromptButton({ shots, packs }) {
   const t = useT();
   const [copied, setCopied] = useState(false);
-  const text = shots
+  const ids = new Set(shots.map((s) => s.id));
+  const packText = (packs || [])
+    .filter((p) => p.skillPrompt && p.shotIds.some((id) => ids.has(id)))
+    .map((p) => `${p.id}\n${p.skillPrompt}`)
+    .join("\n\n———\n\n");
+  const text = packText || shots
     .map((s) => {
       const p = shotPromptText(s);
       return p ? `shot ${s.id}\n${p}` : "";
@@ -432,7 +441,7 @@ function CopyPromptButton({ shots }) {
       size="sm"
       onClick={copy}
       disabled={!text}
-      title={t("Copy every shot's prompt in this multishot")}
+      title={t("Copy the full Seedance multishot prompt for this card's packs — the same prompt the Episode render uses")}
     >
       {copied ? <Check size={13} /> : <Copy size={13} />}
       {copied ? t("Copied") : t("Copy prompt")}
@@ -653,7 +662,7 @@ function ShotList() {
                 title={<span className="flex items-center gap-2"><Film size={15} className="text-primary" /> {b.beatTitle || b.beat}</span>}
                 meta={
                   <div className="flex items-center gap-2">
-                    <CopyPromptButton shots={b.shots} />
+                    <CopyPromptButton shots={b.shots} packs={packs} />
                     <Badge variant="outline">{b.shots.length} shots</Badge>
                     <ProductionTypeBadge value={data.productionType} />
                   </div>
