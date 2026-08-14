@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLoaderData, useNavigate, useRevalidator } from "react-router";
-import { X, Check, Plus, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, RotateCcw, Maximize2, Volume2, VolumeX, Speech, Play, Pause, Copy, Pencil, Sparkles, PenLine, FileText, Film, Image as ImageIcon, Loader2, Wand2, Scissors, Boxes, CircleAlert, MapPin, User, Palette } from "lucide-react";
+import { X, Check, Plus, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, RotateCcw, Maximize2, Volume2, VolumeX, Speech, Play, Pause, Copy, Pencil, Sparkles, PenLine, FileText, Film, Image as ImageIcon, Loader2, Wand2, Scissors, Boxes, CircleAlert, MapPin, User, Palette, Upload } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useT } from "@/lib/i18n";
 import { swr, useRevalidateOnMount, useRevalidateOnAgentIdle } from "@/lib/swr";
@@ -16,6 +16,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Slider } from "@/components/ui/slider";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
 import { Empty, Chip, ErrorNote, ConfirmModal, IconSwap } from "@/components/shared";
 import { ProductionTypeBadge } from "@/components/ProductionType";
 import MediaPicker from "@/components/MediaPicker";
@@ -784,47 +785,119 @@ function FirstFrameModal({ bundle, open, stills, reloadKey, current, onPick, onC
   );
 }
 
-// Pick the VIDEO STYLE CONTINUITY REFERENCE for a bundle's render: any already-
-// rendered generation (from any bundle) whose style/colors/feeling the new clip
-// should continue. Selecting the current one clears it (toggle).
-function RefVideoModal({ bundle, open, takes, reloadKey, current, onPick, onClose }) {
+// The global upload endpoint (same one the chat composer + MediaPicker use). It
+// takes raw bytes and returns a durable, ungated `/files/...` url the render
+// agent (and Higgsfield) can fetch.
+const UPLOAD_ENDPOINT = import.meta.env.VITE_UPLOAD_URL || "/api/upload";
+
+// Set the VIDEO REFERENCE — episode-wide (scope "episode") or one bundle's
+// override (scope "bundle"). Two ways in: UPLOAD a video from disk, or PICK one
+// of the already-generated takes (from any bundle). Whatever is chosen is passed
+// to Seedance as a video_references entry so the render continues its style,
+// colors, and feeling. `current` is the effective ref value ({url,name,source,
+// file}) so the active pick reads as selected. `onSet(value)` stores it,
+// `onUseGlobal` (bundle scope only) clears the override back to inheriting.
+function VideoRefModal({ open, scope, title, takes, reloadKey, current, onSet, onUseGlobal, onClose }) {
   const t = useT();
+  const [uploading, setUploading] = useState(false);
+  const [err, setErr] = useState(null);
+  const fileRef = useRef(null);
+  const isBundle = scope === "bundle";
+
+  const pickUpload = async (file) => {
+    if (!file) return;
+    setErr(null);
+    setUploading(true);
+    try {
+      const resp = await fetch(UPLOAD_ENDPOINT, {
+        method: "POST",
+        headers: { "Content-Type": file.type || "video/mp4", "x-filename": file.name },
+        body: file,
+      });
+      const data = await resp.json();
+      if (!resp.ok) throw new Error(data.error || `Upload failed (${resp.status})`);
+      onSet({ url: data.url, name: file.name, source: "upload", file: null });
+      onClose();
+    } catch (e) {
+      setErr(String(e.message || e));
+    } finally {
+      setUploading(false);
+    }
+  };
+
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-2xl">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2"><Film size={16} className="text-primary" /> {t("Video style continuity reference — {id}", { id: bundle.id })}</DialogTitle>
+          <DialogTitle className="flex items-center gap-2"><Film size={16} className="text-primary" /> {title}</DialogTitle>
         </DialogHeader>
         <p className="text-sm text-muted-foreground">
-          {t("Choose an already-generated video whose style, colors, and feeling the new render should continue. It is passed to Seedance as a video reference alongside the image references.")}
+          {isBundle
+            ? t("Upload a video, or pick one of the generated takes, to use as this bundle's video reference — it overrides the episode-wide one. Seedance continues its style, colors, and feeling.")
+            : t("Upload a video, or pick one of the generated takes, to use as the video reference for every bundle. Seedance continues its style, colors, and feeling — each bundle can override or switch it off.")}
         </p>
-        {takes.length === 0 ? (
-          <Empty>{t("no rendered videos yet — render a bundle first.")}</Empty>
-        ) : (
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-            {takes.map((tk) => {
-              const sel = tk.file === current;
-              return (
-                <button
-                  key={tk.file}
-                  type="button"
-                  onClick={() => onPick(sel ? null : tk)}
-                  className={cn(
-                    "group relative aspect-video overflow-hidden rounded-md border transition-colors",
-                    sel ? "border-primary ring-2 ring-primary/40" : "hover:border-primary/60",
-                  )}
-                  title={sel ? t("Click to clear") : t("Use {from} · {name} as the style reference", { from: tk.fromBundle, name: tk.name })}
-                >
-                  <video src={tk.url + (reloadKey ? `?v=${reloadKey}` : "")} muted playsInline preload="metadata" className="h-full w-full object-cover" />
-                  <span className="absolute left-1 top-1 rounded bg-background/80 px-1 font-mono text-[9px]">{tk.fromBundle} · {tk.name}</span>
-                  {sel && <span className="absolute right-1 top-1 rounded-full bg-primary p-0.5 text-primary-foreground"><Check size={10} /></span>}
-                </button>
-              );
-            })}
+
+        <input
+          ref={fileRef}
+          type="file"
+          accept="video/*"
+          hidden
+          onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; pickUpload(f); }}
+        />
+
+        {current?.url && (
+          <div className="flex items-center gap-3 rounded-lg border border-primary/40 bg-primary/5 p-2">
+            <video src={current.url + (reloadKey ? `?v=${reloadKey}` : "")} muted playsInline preload="metadata" className="h-14 w-24 shrink-0 rounded object-cover" />
+            <div className="min-w-0 flex-1 text-sm">
+              <div className="flex items-center gap-1.5 font-medium"><Check size={13} className="text-primary" /> {t("Current reference")}</div>
+              <div className="truncate text-xs text-muted-foreground">{current.name}{current.source === "upload" ? t(" · uploaded") : ""}</div>
+            </div>
           </div>
         )}
+
+        <div className="flex flex-wrap items-center gap-2">
+          <Button onClick={() => fileRef.current?.click()} disabled={uploading}>
+            {uploading ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />} {t("Upload a video")}
+          </Button>
+          {isBundle && (
+            <Button variant="outline" onClick={() => { onUseGlobal(); onClose(); }}>
+              {t("Use episode video reference")}
+            </Button>
+          )}
+        </div>
+        {err && <ErrorNote>{err}</ErrorNote>}
+
+        <div className="space-y-2">
+          <Label className="text-xs text-muted-foreground">{t("…or pick a generated take")}</Label>
+          {takes.length === 0 ? (
+            <Empty>{t("no rendered videos yet — render a bundle first.")}</Empty>
+          ) : (
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+              {takes.map((tk) => {
+                const sel = current?.source === "generation" && current?.file === tk.file;
+                return (
+                  <button
+                    key={tk.file}
+                    type="button"
+                    onClick={() => { onSet(sel ? null : { url: tk.refUrl || tk.url, name: `${tk.fromBundle} · ${tk.name}`, source: "generation", file: tk.file }); onClose(); }}
+                    className={cn(
+                      "group relative aspect-video overflow-hidden rounded-md border transition-colors",
+                      sel ? "border-primary ring-2 ring-primary/40" : "hover:border-primary/60",
+                    )}
+                    title={sel ? t("Click to clear") : t("Use {from} · {name} as the reference", { from: tk.fromBundle, name: tk.name })}
+                  >
+                    <video src={tk.url + (reloadKey ? `?v=${reloadKey}` : "")} muted playsInline preload="metadata" className="h-full w-full object-cover" />
+                    <span className="absolute left-1 top-1 rounded bg-background/80 px-1 font-mono text-[9px]">{tk.fromBundle} · {tk.name}</span>
+                    {sel && <span className="absolute right-1 top-1 rounded-full bg-primary p-0.5 text-primary-foreground"><Check size={10} /></span>}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
         <DialogFooter>
-          {current && <Button variant="ghost" onClick={() => onPick(null)}>{t("Clear style reference")}</Button>}
+          {current?.url && <Button variant="ghost" onClick={() => { onSet(null); onClose(); }}>{isBundle ? t("Clear override") : t("Clear video reference")}</Button>}
           <Button variant="outline" onClick={onClose}>{t("Done")}</Button>
         </DialogFooter>
       </DialogContent>
@@ -974,7 +1047,7 @@ function AudioRefPlayer({ a }) {
   );
 }
 
-function EpisodeBundle({ b, flat, picked, onOpenPicker, onRemove, onView, audioMap, audioPicked, onOpenAudio, vids, allVideos, reloadKey, onToggleVideo, stills, onToggleStill, firstFrame, onSetFirstFrame, refVideo, onSetRefVideo, override, onEditPrompt, onResetPrompt, signoff, onSign, needsState, onLinkNeed, style, onSetStyle, productionType }) {
+function EpisodeBundle({ b, flat, picked, onOpenPicker, onRemove, onView, audioMap, audioPicked, onOpenAudio, vids, allVideos, reloadKey, onToggleVideo, stills, onToggleStill, firstFrame, onSetFirstFrame, refVideo, globalVideoRef, onSetRefVideo, override, onEditPrompt, onResetPrompt, signoff, onSign, needsState, onLinkNeed, style, onSetStyle, productionType }) {
   const t = useT();
   const [open, setOpen] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
@@ -1020,18 +1093,38 @@ function EpisodeBundle({ b, flat, picked, onOpenPicker, onRemove, onView, audioM
         )
         .join("\n")
     : "";
-  // The chosen video style continuity reference: an already-rendered generation
-  // (from any bundle) the new clip should match in style/colors/feeling. Its
-  // ungated refUrl is what the model can fetch (video_references).
+  // The video reference riding on this bundle's render — passed to Seedance as a
+  // video_references entry so the clip continues its style/colors/feeling. It
+  // inherits the episode-wide `globalVideoRef` unless this bundle overrides it
+  // (upload / a picked take) or switches it off. Every candidate is an already-
+  // rendered generation from any bundle (for the picker grid).
   const allTakes = Object.entries(allVideos || {}).flatMap(([bid, arr]) =>
     (arr || []).map((t) => ({ ...t, fromBundle: bid }))
   );
-  const refVideoTake = refVideo?.file ? allTakes.find((t) => t.file === refVideo.file) : null;
-  const refVideoUrl = refVideoTake?.refUrl || null;
+  // Resolve an override value to a concrete {url,name,source,file}. Legacy
+  // overrides stored just {from,file}, so look the url up from the takes.
+  const resolveRef = (val) => {
+    if (!val || val.disabled) return null;
+    if (val.url) return { url: val.url, name: val.name, source: val.source, file: val.file || null };
+    if (val.file) {
+      const tk = allTakes.find((t) => t.file === val.file);
+      return tk ? { url: tk.refUrl || tk.url, name: `${tk.fromBundle} · ${tk.name}`, source: "generation", file: tk.file } : null;
+    }
+    return null;
+  };
+  const overrideDisabled = !!refVideo?.disabled;
+  const overrideRef = resolveRef(refVideo);
+  const effectiveRef = overrideDisabled ? null : (overrideRef || globalVideoRef || null);
+  const refVideoUrl = effectiveRef?.url || null;
+  const refInherited = !overrideRef && !overrideDisabled && !!globalVideoRef;
+  // Toggleable whenever there's a global to inherit or any explicit per-bundle
+  // state — including a `disabled` marker, so a switched-off bundle can switch
+  // back on even after the global was cleared.
+  const canToggleRef = !!globalVideoRef || !!refVideo;
 
   const videoBlock = refVideoUrl
     ? "\n\nVIDEO STYLE CONTINUITY REFERENCE (pass as a video_references entry):\n" +
-      `- ${refVideoTake.fromBundle} · ${refVideoTake.name}: ${refVideoUrl}\n` +
+      `- ${effectiveRef.name}: ${refVideoUrl}\n` +
       "This is a video reference for you to continue — keep its video style, colors, and feeling so our new generation has continuity."
     : "";
   const bodyPrompt = edited ? override : b.skillPrompt;
@@ -1144,16 +1237,34 @@ function EpisodeBundle({ b, flat, picked, onOpenPicker, onRemove, onView, audioM
                 )}
                 {t("First frame")}
               </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setRvOpen(true)}
-                disabled={allTakes.length === 0}
-                title={allTakes.length === 0 ? t("Render a bundle first — the style reference is one of the generated videos") : t("Choose a generated video whose style, colors, and feeling this render should continue (video reference)")}
-              >
-                {refVideoTake ? <Check size={13} className="text-primary" /> : <Film size={13} />}
-                {t("Style ref")}
-              </Button>
+              {/* Video reference: inherits the episode-wide one, overridable per
+                  bundle, and switchable off for a reference-free render. */}
+              <div className="flex items-center gap-1.5 rounded-md border py-0.5 pl-2 pr-0.5">
+                <Switch
+                  checked={!overrideDisabled && !!effectiveRef}
+                  disabled={!canToggleRef}
+                  onCheckedChange={(on) => onSetRefVideo(b.id, on ? null : { disabled: true })}
+                  aria-label={t("Use a video reference for this bundle")}
+                  title={
+                    !canToggleRef
+                      ? t("Set an episode video reference first, or choose one for this bundle")
+                      : overrideDisabled
+                      ? t("Video reference is off for this bundle — switch on to use it")
+                      : t("Video reference is on — switch off to render this bundle without it")
+                  }
+                />
+                <Film size={13} className={effectiveRef ? "text-primary" : "text-muted-foreground"} />
+                <span className="max-w-[110px] truncate text-xs text-muted-foreground" title={effectiveRef?.name || ""}>
+                  {overrideDisabled
+                    ? t("off")
+                    : effectiveRef
+                    ? (refInherited ? t("global") : effectiveRef.name)
+                    : t("none")}
+                </span>
+                <Button variant="ghost" size="sm" className="h-6 px-1.5 text-xs" onClick={() => setRvOpen(true)} title={t("Upload a video, or pick a generated take, as this bundle's video reference")}>
+                  {t("Change video reference")}
+                </Button>
+              </div>
               <Button variant="outline" size="sm" onClick={() => setSignOpen(true)} title={t("revision signing")}>
                 <PenLine size={13} /> {t("revision signing")}
               </Button>
@@ -1375,13 +1486,15 @@ function EpisodeBundle({ b, flat, picked, onOpenPicker, onRemove, onView, audioM
         onPick={(tk) => { onSetFirstFrame(b.id, tk?.shotId || null, tk?.file || null); setFfOpen(false); }}
         onClose={() => setFfOpen(false)}
       />
-      <RefVideoModal
-        bundle={b}
+      <VideoRefModal
         open={rvOpen}
+        scope="bundle"
+        title={t("Video reference — {id}", { id: b.id })}
         takes={allTakes}
         reloadKey={reloadKey}
-        current={refVideo?.file || null}
-        onPick={(tk) => { onSetRefVideo(b.id, tk?.fromBundle || null, tk?.file || null); setRvOpen(false); }}
+        current={effectiveRef}
+        onSet={(val) => onSetRefVideo(b.id, val)}
+        onUseGlobal={() => onSetRefVideo(b.id, null)}
         onClose={() => setRvOpen(false)}
       />
     </Card>
@@ -1564,7 +1677,9 @@ function Episode({ reloadKey, onView }) {
   const [signoffs, setSignoffs] = useState(payload.ep.signoffs || {});
   const [stills, setStills] = useState(payload.st?.stills || {}); // { bundle: { shot: [takes] } }
   const [firstFrames, setFirstFrames] = useState(payload.ep.firstFrames || {}); // { bundle: { shot, file } }
-  const [refVideos, setRefVideos] = useState(payload.ep.refVideos || {}); // { bundle: { from, file } }
+  const [refVideos, setRefVideos] = useState(payload.ep.refVideos || {}); // { bundle: override|{disabled} }
+  const [videoRef, setVideoRef] = useState(payload.ep.videoRef || null); // episode-wide video reference
+  const [gRvOpen, setGRvOpen] = useState(false); // episode video-ref modal
   const [needsMap, setNeedsMap] = useState(payload.ep.needs || {}); // { bundle: scene-needs state }
   const [style, setStyle] = useState(payload.ep.style || { episode: "", scenes: {}, presets: [] });
   // Which <=15s packs the current shot list yields + whether the list is
@@ -1586,6 +1701,7 @@ function Episode({ reloadKey, onView }) {
     setStills(st?.stills || {});
     setFirstFrames(ep.firstFrames || {});
     setRefVideos(ep.refVideos || {});
+    setVideoRef(ep.videoRef || null);
     setNeedsMap(ep.needs || {});
     setStyle(ep.style || { episode: "", scenes: {}, presets: [] });
     setShotlist(ep.shotlist || { complete: false, packs: [] });
@@ -1830,13 +1946,14 @@ function Episode({ reloadKey, onView }) {
     } catch (e) { setError(String(e.message || e)); }
   }, []);
 
-  // Choose (or clear) a bundle's video style continuity reference — an already-
-  // rendered generation (from any bundle) the new clip should match in style/
-  // colors/feeling. Optimistic; persisted to db.episodeRefVideo.
-  const onSetRefVideo = useCallback(async (bundle, from, file) => {
+  // Set one bundle's video-ref OVERRIDE — a value object ({url,name,source,file}
+  // from an upload or a picked take), { disabled:true } to render it ref-free, or
+  // null to clear back to inheriting the episode-wide reference. Optimistic;
+  // persisted to db.episodeRefVideo.
+  const onSetRefVideo = useCallback(async (bundle, value) => {
     setRefVideos((r) => {
       const next = { ...r };
-      if (file) next[bundle] = { from: from || null, file };
+      if (value) next[bundle] = value;
       else delete next[bundle];
       return next;
     });
@@ -1844,10 +1961,29 @@ function Episode({ reloadKey, onView }) {
       await fetch("/api/episode/ref-video", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ bundle, from: from || null, file: file || null }),
+        body: JSON.stringify({ bundle, ...(value || {}) }),
       });
     } catch (e) { setError(String(e.message || e)); }
   }, []);
+
+  // Set (or clear) the episode-wide video reference every bundle inherits.
+  // Optimistic; persisted to db.episodeVideoRef.
+  const onSetVideoRef = useCallback(async (value) => {
+    setVideoRef(value || null);
+    try {
+      await fetch("/api/episode/video-ref", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(value || {}),
+      });
+    } catch (e) { setError(String(e.message || e)); }
+  }, []);
+
+  // Every rendered take across all bundles — the pool the video-ref pickers grid.
+  const allTakes = useMemo(
+    () => Object.entries(videos || {}).flatMap(([bid, arr]) => (arr || []).map((tk) => ({ ...tk, fromBundle: bid }))),
+    [videos]
+  );
 
   // Re-pack the current shot list into bundles (Phase 0). The server preserves
   // stills (re-keyed by shot id) and renders; re-packed bundles need re-review.
@@ -2002,6 +2138,19 @@ function Episode({ reloadKey, onView }) {
             </Select>
             <Button
               variant="outline"
+              size="sm"
+              onClick={() => setGRvOpen(true)}
+              title={t("A video reference every bundle's render continues (style, colors, feeling) — upload one or pick a generated take. Each bundle can override it or switch it off.")}
+            >
+              {videoRef ? (
+                <video src={videoRef.url + (reloadKey ? `?v=${reloadKey}` : "")} muted playsInline preload="metadata" className="h-4 w-7 rounded-sm border object-cover" />
+              ) : (
+                <Film size={14} />
+              )}
+              {videoRef ? t("Video reference") : t("Add video reference")}
+            </Button>
+            <Button
+              variant="outline"
               // While the shot list is still in progress, `[]` re-packs only
               // the cards already built — new passes are added from the strip
               // below, not swept in by a header click.
@@ -2080,6 +2229,7 @@ function Episode({ reloadKey, onView }) {
                 firstFrame={firstFrames[b.id]}
                 onSetFirstFrame={onSetFirstFrame}
                 refVideo={refVideos[b.id]}
+                globalVideoRef={videoRef}
                 onSetRefVideo={onSetRefVideo}
                 override={prompts[b.id]}
                 onEditPrompt={onEditPrompt}
@@ -2115,6 +2265,17 @@ function Episode({ reloadKey, onView }) {
           onClose={() => setAudioPicker(null)}
         />
       )}
+
+      <VideoRefModal
+        open={gRvOpen}
+        scope="episode"
+        title={t("Episode video reference")}
+        takes={allTakes}
+        reloadKey={reloadKey}
+        current={videoRef}
+        onSet={onSetVideoRef}
+        onClose={() => setGRvOpen(false)}
+      />
 
       {pickerBundle && (
         <MediaPicker

@@ -63,6 +63,7 @@
 /api/timeline/from-radio
 /api/episode/first-frame
 /api/episode/ref-video
+/api/episode/video-ref          # global video reference the agent reads via get_episode (head.videoRef)
 /api/script/drafts/*
 /api/script/sign
 /api/script/proposal/reject       # the agent can propose but not reject on the author's behalf

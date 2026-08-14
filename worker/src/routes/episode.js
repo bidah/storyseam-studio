@@ -549,6 +549,12 @@ export async function buildEpisodeView(env, pid) {
     prompts: db.prompt || {},
     signoffs: db.signoffs || {},
     firstFrames: db.episodeFirstFrame || {},
+    // The episode-wide video reference (uploaded or a picked generation) every
+    // bundle inherits unless it overrides or disables it below.
+    videoRef: db.episodeVideoRef || null,
+    // Per-bundle video-ref overrides: undefined ⇒ inherit the global; a value
+    // with `disabled:true` ⇒ this bundle renders WITHOUT any video ref; a value
+    // with `url` (or a legacy `{from,file}`) ⇒ a per-bundle override.
     refVideos: db.episodeRefVideo || {},
     needs,
     // Voice/sound reference pool + per-bundle picks, so a caller (the agent's
@@ -965,20 +971,61 @@ export function registerEpisode(app) {
     return c.json({ ok: true, bundle, firstFrame });
   });
 
-  // Choose (or clear) the VIDEO STYLE CONTINUITY REFERENCE for a bundle's render —
-  // an already-rendered generation (from any bundle) the new clip should match in
-  // style/colors/feeling (passed as video_references). Stored per bundle as
-  // { from: <source bundle id>, file }; `file:null` (or omitted) clears it.
+  // Set (or clear) the EPISODE-WIDE VIDEO REFERENCE — an uploaded video or a
+  // picked generation whose style/colors/feeling every bundle's render should
+  // continue (passed to Seedance as video_references). Stored as
+  // { url, name, source, file }; a body without `url` clears it. `url` is the
+  // ungated fetchable /files URL (an /api/upload result, or a take's refUrl).
+  app.post("/api/episode/video-ref", async (c) => {
+    const pid = c.get("projectId");
+    let body;
+    try { body = await c.req.json(); } catch { body = {}; }
+    const { url, name, source, file } = body || {};
+    const { videoRef } = await editDB(c.env, pid, (db) => {
+      if (url) {
+        db.episodeVideoRef = {
+          url,
+          name: name || "video reference",
+          source: source || "upload",
+          file: file || null,
+        };
+      } else {
+        delete db.episodeVideoRef;
+      }
+      return { videoRef: db.episodeVideoRef || null };
+    });
+    return c.json({ ok: true, videoRef });
+  });
+
+  // Override, disable, or clear ONE bundle's video reference (otherwise it
+  // inherits the episode-wide one above). Body shapes:
+  //   { bundle, disabled:true }                 → render this bundle with no ref
+  //   { bundle, url, name, source, file }        → per-bundle override
+  //   { bundle, from, file }                     → legacy generated-take override
+  //   { bundle }  (no url/file/disabled)         → clear (back to inheriting)
   app.post("/api/episode/ref-video", async (c) => {
     const pid = c.get("projectId");
     let body;
     try { body = await c.req.json(); } catch { body = {}; }
-    const { bundle, from, file } = body || {};
+    const { bundle, from, file, url, name, source, disabled } = body || {};
     if (!bundle) return c.json({ error: "Missing 'bundle'" }, 400);
     const { refVideo } = await editDB(c.env, pid, (db) => {
       db.episodeRefVideo = db.episodeRefVideo || {};
-      if (file) db.episodeRefVideo[bundle] = { from: from || null, file };
-      else delete db.episodeRefVideo[bundle];
+      if (disabled) {
+        db.episodeRefVideo[bundle] = { disabled: true };
+      } else if (url) {
+        db.episodeRefVideo[bundle] = {
+          url,
+          name: name || "video reference",
+          source: source || "upload",
+          file: file || null,
+        };
+      } else if (file) {
+        // Legacy shape: a picked take resolved client-side from `file`.
+        db.episodeRefVideo[bundle] = { from: from || null, file };
+      } else {
+        delete db.episodeRefVideo[bundle];
+      }
       return { refVideo: db.episodeRefVideo[bundle] || null };
     });
     return c.json({ ok: true, bundle, refVideo });

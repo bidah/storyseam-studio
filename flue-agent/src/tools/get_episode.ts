@@ -61,6 +61,9 @@ type EpisodePayload = {
     Record<"images" | "prompt" | "audio", unknown>
   >;
   firstFrames?: Record<string, unknown>;
+  // Episode-wide video reference (uploaded or a picked take) every bundle
+  // inherits; `refVideos[id]` overrides or disables it per bundle.
+  videoRef?: { url?: string; name?: string; source?: string; file?: string | null } | null;
   refVideos?: Record<string, unknown>;
   needs?: Record<string, unknown>;
   audio?: AudioRef[];
@@ -114,7 +117,14 @@ export const getEpisode = (api: Api) =>
       const manifest = data.episode;
       if (!manifest) return { output: { episode: null } };
       const bundles = manifest.bundles ?? [];
-      const head = { title: manifest.title, totalShots: manifest.totalShots };
+      // `videoRef` is the episode-wide reference each bundle inherits (pass its
+      // `url` to Seedance as a video_references entry) unless the bundle's own
+      // `refVideo` overrides it, or disables it (`{ disabled: true }`).
+      const head = {
+        title: manifest.title,
+        totalShots: manifest.totalShots,
+        videoRef: data.videoRef ?? null,
+      };
 
       // Scoped: full detail for one bundle or one beat's bundles.
       if (input.bundle || input.beat) {
