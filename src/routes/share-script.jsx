@@ -15,7 +15,7 @@ import { TextStyle } from "@tiptap/extension-text-style";
 import { Color } from "@tiptap/extension-color";
 import { TaskList, TaskItem } from "@tiptap/extension-list";
 import { ScrollText } from "lucide-react";
-import { Screenplay } from "@/components/notes";
+import { Screenplay, transformCopiedScreenplay } from "@/components/notes";
 
 export async function loader({ params }) {
   const res = await fetch(`/api/share/script/${params.token}`);
@@ -34,7 +34,12 @@ export function Component() {
     editable: false,
     extensions: [Screenplay, StarterKit, TextStyle, Color, TaskList, TaskItem.configure({ nested: true })],
     content: doc || { type: "doc", content: [] },
-    editorProps: { attributes: { class: "focus:outline-none" } },
+    editorProps: {
+      attributes: { class: "focus:outline-none" },
+      // Read-only, but still copyable: a passage lifted off the share page keeps
+      // its screenplay elements when pasted into the editor.
+      transformCopied: transformCopiedScreenplay,
+    },
   });
 
   return (

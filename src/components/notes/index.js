@@ -7,6 +7,7 @@ export {
   SP_LABELS,
   SP_NEXT_ON_ENTER,
   SP_PLACEHOLDERS,
+  transformCopiedScreenplay,
 } from "./schema";
 export { SlashCommand } from "./SlashCommand";
 export { SelectionHighlight, selectionHighlightKey } from "./SelectionHighlight";

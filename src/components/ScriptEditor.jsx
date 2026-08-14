@@ -40,6 +40,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { useT, t as st } from "@/lib/i18n";
 import {
   Screenplay, SlashCommand, SelectionHighlight, buildInitialContent, elementsToDoc,
+  transformCopiedScreenplay,
   SP_TYPES, SP_LABELS, SP_PLACEHOLDERS,
 } from "@/components/notes";
 import { parseFountain } from "@/lib/fountain";
@@ -793,7 +794,12 @@ function Editor({ initial, drafts, pinnedId, currentName, reload, signed: signed
       SelectionHighlight,
     ],
     content: initial.doc,
-    editorProps: { attributes: { class: "min-h-[60vh] focus:outline-none" } },
+    editorProps: {
+      attributes: { class: "min-h-[60vh] focus:outline-none" },
+      // Copy/cut a passage and it pastes back as the elements it was — see
+      // transformCopiedScreenplay + the Screenplay parse rules in notes/schema.js.
+      transformCopied: transformCopiedScreenplay,
+    },
     onUpdate: ({ editor }) => {
       docRef.current = editor.getJSON();
       syncType(editor);
