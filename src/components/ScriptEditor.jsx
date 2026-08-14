@@ -39,12 +39,13 @@ import {
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useT, t as st } from "@/lib/i18n";
 import {
-  Screenplay, SlashCommand, buildInitialContent, elementsToDoc,
+  Screenplay, SlashCommand, SelectionHighlight, buildInitialContent, elementsToDoc,
   SP_TYPES, SP_LABELS, SP_PLACEHOLDERS,
 } from "@/components/notes";
 import { parseFountain } from "@/lib/fountain";
 import ScriptDiffReview from "@/components/ScriptDiffReview";
 import ScriptSelectionAsk from "@/components/ScriptSelectionAsk";
+import ScriptWorkingCard from "@/components/ScriptWorkingCard";
 
 // "2m ago" / "just now" — compact relative time for the drafts list.
 function relTime(iso) {
@@ -789,6 +790,7 @@ function Editor({ initial, drafts, pinnedId, currentName, reload, signed: signed
         },
       }),
       SlashCommand,
+      SelectionHighlight,
     ],
     content: initial.doc,
     editorProps: { attributes: { class: "min-h-[60vh] focus:outline-none" } },
@@ -826,10 +828,53 @@ function Editor({ initial, drafts, pinnedId, currentName, reload, signed: signed
   // Flush any pending save on unmount.
   useEffect(() => () => clearTimeout(timer.current), []);
 
+  // The passage currently sent to the agent — { from, to, text } or null. While
+  // set, the editor is locked read-only and the passage stays highlighted (the
+  // "working" decoration), with a card on the right; it clears when the agent
+  // comes back (a proposal takes over the tab, or the turn ends with no change).
+  const [work, setWork] = useState(null);
+  const workRef = useRef(null); // synchronous mirror for the decoration guard
+
+  // Mirror the LIVE selection as the "pending" highlight, so the picked passage
+  // stays lit even after the editor blurs (clicking into the ask box). Ignored
+  // once we're working — that decoration is owned below and must not be wiped.
+  const onPendingRange = useCallback(
+    (range) => {
+      if (!editor || workRef.current) return;
+      if (range) editor.commands.setSelectionHighlight({ ...range, mode: "pending" });
+      else editor.commands.clearSelectionHighlight();
+    },
+    [editor]
+  );
+
+  // A passage was sent to the agent: lock the doc and switch its highlight to the
+  // "working" state until the agent returns.
+  const onSent = useCallback(
+    (sel) => {
+      if (!editor) return;
+      workRef.current = sel;
+      setWork(sel);
+      editor.setEditable(false);
+      editor.commands.setSelectionHighlight({ from: sel.from, to: sel.to, mode: "working" });
+    },
+    [editor]
+  );
+
+  // Unlock and drop the highlight (agent finished with no proposal, or dismissed).
+  const releaseWork = useCallback(() => {
+    workRef.current = null;
+    setWork(null);
+    if (editor) {
+      editor.setEditable(true);
+      editor.commands.clearSelectionHighlight();
+    }
+  }, [editor]);
+
   const setType = (t) => editor?.chain().focus().setScreenplay(t).run();
 
   return (
-    <div className="mx-auto max-w-3xl space-y-3">
+    <div className="mx-auto flex w-full max-w-[1120px] justify-center gap-5 px-1">
+      <div className="w-full max-w-3xl space-y-3">
       {/* Toolbar */}
       <div className="sticky top-5 z-20 -mx-1 flex flex-wrap items-center gap-2 rounded-lg border bg-card/90 px-3 py-2 backdrop-blur supports-[backdrop-filter]:bg-card/70">
         <DraftControls
@@ -890,12 +935,35 @@ function Editor({ initial, drafts, pinnedId, currentName, reload, signed: signed
         {" "}{t("follows the flow (Character → Dialogue)")}
       </p>
 
+      {/* On narrow screens there's no room for the right rail, so the "working"
+          card rides above the editor instead. */}
+      {work && (
+        <div className="xl:hidden">
+          <ScriptWorkingCard sel={work} onRelease={releaseWork} />
+        </div>
+      )}
+
       <div className="notes-editor rounded-xl border bg-card px-6 py-8 sm:px-10">
         <EditorContent editor={editor} />
       </div>
 
       {/* Drag-select a passage → "Ask agent to change this" bubble → chat proposal. */}
-      <ScriptSelectionAsk editor={editor} />
+      <ScriptSelectionAsk
+        editor={editor}
+        paused={!!work}
+        onPendingRange={onPendingRange}
+        onSent={onSent}
+      />
+      </div>
+
+      {/* The passage sent to the agent stays lit + locked; this card explains why. */}
+      {work && (
+        <aside className="hidden w-72 shrink-0 xl:block">
+          <div className="sticky top-24">
+            <ScriptWorkingCard sel={work} onRelease={releaseWork} />
+          </div>
+        </aside>
+      )}
     </div>
   );
 }

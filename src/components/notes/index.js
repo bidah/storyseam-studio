@@ -9,3 +9,4 @@ export {
   SP_PLACEHOLDERS,
 } from "./schema";
 export { SlashCommand } from "./SlashCommand";
+export { SelectionHighlight, selectionHighlightKey } from "./SelectionHighlight";

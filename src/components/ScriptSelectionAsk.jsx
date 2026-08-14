@@ -28,7 +28,7 @@ function anchorFor(editor, from) {
   }
 }
 
-export default function ScriptSelectionAsk({ editor }) {
+export default function ScriptSelectionAsk({ editor, paused = false, onPendingRange, onSent }) {
   const agent = useAgent();
   const busy = agentIsBusy(agent);
 
@@ -48,7 +48,7 @@ export default function ScriptSelectionAsk({ editor }) {
   // empty one hides it. Clicking into the input below (which blurs the editor)
   // doesn't change the ProseMirror selection, so the box stays put while typing.
   const onSel = useCallback(() => {
-    if (!editor) return;
+    if (!editor || paused) return; // frozen while the agent works on a passage
     const { from, to, empty } = editor.state.selection;
     if (empty || from === to) {
       setSel(null);
@@ -60,7 +60,7 @@ export default function ScriptSelectionAsk({ editor }) {
       return;
     }
     setSel((prev) => (prev && prev.from === from && prev.to === to ? prev : { from, to, text }));
-  }, [editor]);
+  }, [editor, paused]);
 
   useEffect(() => {
     if (!editor) return;
@@ -77,6 +77,13 @@ export default function ScriptSelectionAsk({ editor }) {
   useEffect(() => {
     setValue("");
   }, [sel?.from, sel?.to]);
+
+  // Mirror the live selection up so the parent can paint the persistent
+  // highlight (which survives the editor blurring when the box is focused).
+  useEffect(() => {
+    if (paused) return; // the parent owns the "working" highlight while locked
+    onPendingRange?.(sel ? { from: sel.from, to: sel.to } : null);
+  }, [sel, paused, onPendingRange]);
 
   // (Re)compute the anchor rect on selection change, and keep it pinned to the
   // passage while the page scrolls or resizes.
@@ -129,6 +136,10 @@ export default function ScriptSelectionAsk({ editor }) {
     setSending(true);
     try {
       await agent.send({ message: scriptEditRequest(s.text, instruction) });
+      // Hand the passage off to the parent: it locks the doc and keeps the
+      // highlight lit (as "working") until the agent comes back. onSent runs
+      // FIRST so the pending-highlight clear below is ignored, not the lock.
+      onSent?.(s);
       setSel(null);
       setValue("");
       editor?.commands.blur?.();
@@ -137,9 +148,9 @@ export default function ScriptSelectionAsk({ editor }) {
     } finally {
       setSending(false);
     }
-  }, [agent, busy, sending, value, editor]);
+  }, [agent, busy, sending, value, editor, onSent]);
 
-  if (!editor || !sel || !coords) return null;
+  if (!editor || paused || !sel || !coords) return null;
 
   const disabled = busy || sending || !value.trim();
 

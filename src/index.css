@@ -468,6 +468,37 @@
       padding-right: 20ch;
     }
   }
+
+  /* Persistent selection highlight (SelectionHighlight decoration). It survives
+     the editor losing focus, so the passage the author picked stays lit while
+     they type the request and while the agent works on it. */
+  .notes-editor .ProseMirror .script-sel-pending {
+    background-color: color-mix(in oklch, var(--primary) 22%, transparent);
+    border-radius: 0.25rem;
+    box-shadow: 0 0 0 1px color-mix(in oklch, var(--primary) 35%, transparent);
+  }
+  /* "working" — sent to the agent and locked. Same accent, a touch stronger,
+     with a slow pulse so it reads as busy rather than merely selected. */
+  .notes-editor .ProseMirror .script-sel-working {
+    background-color: color-mix(in oklch, var(--primary) 30%, transparent);
+    border-radius: 0.25rem;
+    box-shadow: 0 0 0 1px color-mix(in oklch, var(--primary) 45%, transparent);
+    animation: script-sel-pulse 1.8s ease-in-out infinite;
+  }
+  @keyframes script-sel-pulse {
+    0%,
+    100% {
+      background-color: color-mix(in oklch, var(--primary) 24%, transparent);
+    }
+    50% {
+      background-color: color-mix(in oklch, var(--primary) 40%, transparent);
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .notes-editor .ProseMirror .script-sel-working {
+      animation: none;
+    }
+  }
 }
 
 /* ------------------------------------------------------------------ *
