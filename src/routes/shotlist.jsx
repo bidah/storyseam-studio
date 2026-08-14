@@ -23,10 +23,13 @@ import { PROMPT_BLOCKS, isLiveAction } from "@/lib/productionType";
 // agent skill with a different scope, and both resume from — and re-record —
 // the list's script-coverage marker, so mixing them is fine: chunk twice, then
 // let it finish the rest.
-function GenerateShots({ promptForm, progress, hasShots, busy, onSend }) {
+function GenerateShots({ promptForm, progress, hasShots, busy, activeMode, onSend }) {
   const t = useT();
   const done = !!progress?.complete;
   const started = hasShots || progress?.throughIndex != null;
+  // While the agent is busy BOTH buttons disable (only one run at a time), but the
+  // spinner belongs to the button that actually started this run — the other keeps
+  // its normal icon so it reads as "disabled because busy", not "also loading".
   return (
     <div className="flex flex-wrap items-center gap-1.5">
       {/* Not disabled when the list is `complete`: the script can be edited
@@ -40,7 +43,7 @@ function GenerateShots({ promptForm, progress, hasShots, busy, onSend }) {
         title={done ? t("the marker says the whole script is covered — press to cut more anyway") : t("write the next ~15 seconds of shots and stop")}
         onClick={() => onSend("chunk")}
       >
-        {busy ? <Loader2 size={13} className="animate-spin" /> : <FastForward size={13} />}
+        {busy && activeMode === "chunk" ? <Loader2 size={13} className="animate-spin" /> : <FastForward size={13} />}
         {started ? t("Next ~15s") : t("Generate first ~15s")}
       </Button>
       <Button
@@ -50,7 +53,7 @@ function GenerateShots({ promptForm, progress, hasShots, busy, onSend }) {
         title={done ? t("the marker says the whole script is covered") : t("break the whole screenplay into shots in one run")}
         onClick={() => onSend("all")}
       >
-        {busy ? <Loader2 size={13} className="animate-spin" /> : <ListChecks size={13} />}
+        {busy && activeMode === "all" ? <Loader2 size={13} className="animate-spin" /> : <ListChecks size={13} />}
         {started ? t("Generate the rest") : t("Generate all shots")}
       </Button>
     </div>
@@ -450,8 +453,11 @@ function ShotList() {
 
   // Both generate buttons go through the agent, like the Script tab's. The
   // director's prompt form picks the skill; the coverage marker tells a chunk
-  // where to resume.
+  // where to resume. `activeMode` remembers which button started THIS run so only
+  // it spins — the other stays disabled-but-idle. Cleared once the agent goes idle.
+  const [activeMode, setActiveMode] = useState(null);
   const generate = useCallback((mode) => {
+    setActiveMode(mode);
     agent.send({
       message: generateShotListMessage({
         promptForm: data.promptForm,
@@ -461,6 +467,10 @@ function ShotList() {
       }),
     }).catch(() => {});
   }, [agent, data.promptForm, data.productionType, data.progress]);
+  // Drop the remembered mode when the run ends, so the next press starts clean.
+  useEffect(() => {
+    if (!agentBusy) setActiveMode(null);
+  }, [agentBusy]);
   const runtime = shots.reduce((a, s) => a + (Number(s.dur) || 0), 0);
   const packById = new Map();
   packs.forEach((p) => p.shotIds.forEach((id) => packById.set(id, p.id)));
@@ -548,6 +558,7 @@ function ShotList() {
               progress={progress}
               hasShots={shots.length > 0}
               busy={agentBusy}
+              activeMode={activeMode}
               onSend={generate}
             />
             <Button variant="outline" onClick={rebuild} disabled={rebuilding}>
@@ -584,6 +595,7 @@ function ShotList() {
             progress={progress}
             hasShots={false}
             busy={agentBusy}
+            activeMode={activeMode}
             onSend={generate}
           />
         </div>
