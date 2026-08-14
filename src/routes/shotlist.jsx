@@ -1,6 +1,6 @@
 import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import { useLoaderData, useRevalidator } from "react-router";
-import { X, RefreshCw, Loader2, Layers, Film, Plus, Send, CornerDownRight, ListChecks, FastForward, CircleCheck } from "lucide-react";
+import { X, RefreshCw, Loader2, Layers, Film, Plus, Send, CornerDownRight, ListChecks, FastForward, CircleCheck, Copy, Check } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useT } from "@/lib/i18n";
 import { invalidateTabCache } from "@/lib/tabCache";
@@ -15,7 +15,7 @@ import { Popover, PopoverAnchor, PopoverContent } from "@/components/ui/popover"
 import { Empty, Panel, ErrorNote, fmtTime } from "@/components/shared";
 import { CAMERA_FRAMINGS, CAMERA_MOVES } from "@/lib/cameraOptions";
 import { ProductionTypeBadge } from "@/components/ProductionType";
-import { PROMPT_BLOCKS, isLiveAction } from "@/lib/productionType";
+import { PROMPT_BLOCKS, isLiveAction, composePromptBlocks } from "@/lib/productionType";
 
 // The two ways to write shots from the script, side by side. "Next ~15s" asks
 // for ONE multishot bundle's worth and comes back in a fraction of the time a
@@ -396,6 +396,50 @@ function InsertShot({ prev, next, creating, disabled, onSend, onCancel }) {
   );
 }
 
+// The render prompt of a single shot as plain text: the composed block prompt
+// for a live-action (block-form) shot, or the single `prompt` field otherwise.
+function shotPromptText(s) {
+  const blocks = s.promptBlocks && Object.keys(s.promptBlocks).length
+    ? composePromptBlocks(s.promptBlocks)
+    : "";
+  return (blocks || String(s.prompt || "")).trim();
+}
+
+// Header button for a beat/multishot card: copies EVERY shot's prompt in the
+// card to the clipboard in one go, each labelled with its shot id. Disabled when
+// none of the shots have a prompt yet; flips to a check for a moment on success.
+function CopyPromptButton({ shots }) {
+  const t = useT();
+  const [copied, setCopied] = useState(false);
+  const text = shots
+    .map((s) => {
+      const p = shotPromptText(s);
+      return p ? `shot ${s.id}\n${p}` : "";
+    })
+    .filter(Boolean)
+    .join("\n\n———\n\n");
+  const copy = async () => {
+    if (!text) return;
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch { /* clipboard blocked — leave the button as-is */ }
+  };
+  return (
+    <Button
+      variant="outline"
+      size="sm"
+      onClick={copy}
+      disabled={!text}
+      title={t("Copy every shot's prompt in this multishot")}
+    >
+      {copied ? <Check size={13} /> : <Copy size={13} />}
+      {copied ? t("Copied") : t("Copy prompt")}
+    </Button>
+  );
+}
+
 function ShotList() {
   const t = useT();
   const agent = useAgent();
@@ -609,6 +653,7 @@ function ShotList() {
                 title={<span className="flex items-center gap-2"><Film size={15} className="text-primary" /> {b.beatTitle || b.beat}</span>}
                 meta={
                   <div className="flex items-center gap-2">
+                    <CopyPromptButton shots={b.shots} />
                     <Badge variant="outline">{b.shots.length} shots</Badge>
                     <ProductionTypeBadge value={data.productionType} />
                   </div>
