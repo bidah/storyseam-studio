@@ -7,8 +7,7 @@
 // author can keep writing.
 
 import { useEffect, useRef } from "react";
-import { Loader2, Sparkles, X } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Loader2, Sparkles, Crosshair } from "lucide-react";
 import { useAgent, agentIsBusy } from "@/components/AgentProvider";
 import { useT } from "@/lib/i18n";
 
@@ -21,7 +20,7 @@ function Preview({ text }) {
   );
 }
 
-export default function ScriptWorkingCard({ sel, onRelease }) {
+export default function ScriptWorkingCard({ sel, onRelease, onReveal }) {
   const t = useT();
   const agent = useAgent();
   const busy = agentIsBusy(agent);
@@ -51,22 +50,25 @@ export default function ScriptWorkingCard({ sel, onRelease }) {
     return () => clearTimeout(id);
   }, [onRelease]);
 
+  // The whole card is a button that scrolls the editor to the still-highlighted
+  // passage — it never dismisses the lock (that clears itself when the agent
+  // returns).
   return (
-    <div className="rounded-xl border bg-card p-3 shadow-sm">
+    <button
+      type="button"
+      onClick={onReveal}
+      title={t("Jump to this passage")}
+      className="group w-full rounded-xl border bg-card p-3 text-left shadow-sm transition-colors hover:border-primary/40 hover:bg-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+    >
       <div className="flex items-center gap-2">
         <span className="relative flex h-6 w-6 items-center justify-center rounded-md bg-primary/15 text-primary">
           <Sparkles size={14} />
         </span>
         <span className="text-sm font-semibold">{t("Working on this selection")}</span>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="ml-auto h-6 w-6 text-muted-foreground"
-          aria-label={t("Dismiss")}
-          onClick={onRelease}
-        >
-          <X size={14} />
-        </Button>
+        <Crosshair
+          size={14}
+          className="ml-auto text-muted-foreground transition-colors group-hover:text-primary"
+        />
       </div>
 
       <div className="mt-2.5 flex items-center gap-2 text-xs text-muted-foreground">
@@ -79,10 +81,8 @@ export default function ScriptWorkingCard({ sel, onRelease }) {
       </div>
 
       <p className="mt-2.5 text-[11px] leading-relaxed text-muted-foreground">
-        {t(
-          "This passage is locked while the agent works. When it comes back you'll get a before → after diff to accept or discard."
-        )}
+        {t("Locked while the agent works — click to jump to the passage. You'll get a before → after diff when it returns.")}
       </p>
-    </div>
+    </button>
   );
 }

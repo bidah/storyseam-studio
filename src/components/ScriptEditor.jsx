@@ -866,6 +866,20 @@ function Editor({ initial, drafts, pinnedId, currentName, reload, signed: signed
     [editor]
   );
 
+  // Scroll the editor to the locked passage (clicking the "working" card). The
+  // highlight stays put — this only brings it back into view.
+  const revealWork = useCallback(() => {
+    const s = workRef.current;
+    if (!editor || !s) return;
+    try {
+      const { node } = editor.view.domAtPos(s.from);
+      const el = node?.nodeType === 3 ? node.parentElement : node;
+      el?.scrollIntoView?.({ behavior: "smooth", block: "center" });
+    } catch {
+      /* passage not currently rendered — nothing to scroll to */
+    }
+  }, [editor]);
+
   // Unlock and drop the highlight (agent finished with no proposal, or dismissed).
   const releaseWork = useCallback(() => {
     workRef.current = null;
@@ -945,7 +959,7 @@ function Editor({ initial, drafts, pinnedId, currentName, reload, signed: signed
           card rides above the editor instead. */}
       {work && (
         <div className="xl:hidden">
-          <ScriptWorkingCard sel={work} onRelease={releaseWork} />
+          <ScriptWorkingCard sel={work} onRelease={releaseWork} onReveal={revealWork} />
         </div>
       )}
 
@@ -966,7 +980,7 @@ function Editor({ initial, drafts, pinnedId, currentName, reload, signed: signed
       {work && (
         <aside className="hidden w-72 shrink-0 xl:block">
           <div className="sticky top-24">
-            <ScriptWorkingCard sel={work} onRelease={releaseWork} />
+            <ScriptWorkingCard sel={work} onRelease={releaseWork} onReveal={revealWork} />
           </div>
         </aside>
       )}
