@@ -1444,6 +1444,57 @@ function AudioPickerModal({ bundle, audioRefs, picked, voiceNeeds, open, onToggl
   );
 }
 
+// The dynamic build surface shown while the shot list is still being generated
+// one ~15s multishot pass at a time: one row per pack the current shots yield,
+// a per-pack build button for the ones without an episode card yet, and a
+// "Build all (n)" shortcut. The single whole-plan button only appears once the
+// shot list is complete.
+function PackBuildList({ packs, rebuilding, onBuild }) {
+  const t = useT();
+  const unbuilt = packs.filter((p) => !p.built);
+  return (
+    <div className="w-full space-y-2">
+      <div className="divide-y rounded-md border">
+        {packs.map((p) => (
+          <div key={p.id} className="flex items-center gap-2 px-3 py-2 text-sm">
+            <Badge variant="outline" className="font-mono">{p.id}</Badge>
+            <span className="min-w-0 flex-1 truncate">
+              {p.beatTitle || p.beat}
+              <span className="ml-2 text-xs text-muted-foreground">
+                {p.from}–{p.to} · {p.count} {p.count === 1 ? t("shot") : t("shots")} · ~{p.durationEst}s
+              </span>
+            </span>
+            {p.built ? (
+              <Badge variant="success">{t("built")}</Badge>
+            ) : (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => onBuild([p.id], p.id)}
+                disabled={!!rebuilding}
+                title={t("Build the episode card for {id} only", { id: p.id })}
+              >
+                {rebuilding === p.id ? <Loader2 size={13} className="animate-spin" /> : <Boxes size={13} />} {t("build")}
+              </Button>
+            )}
+          </div>
+        ))}
+      </div>
+      {unbuilt.length > 1 && (
+        <Button
+          className="w-full"
+          onClick={() => onBuild(unbuilt.map((p) => p.id), "rest")}
+          disabled={!!rebuilding}
+        >
+          {rebuilding === "rest"
+            ? <><Loader2 size={14} className="animate-spin" /> {t("building…")}</>
+            : <><Boxes size={14} /> {t("Build all ({n})", { n: unbuilt.length })}</>}
+        </Button>
+      )}
+    </div>
+  );
+}
+
 function Episode({ reloadKey, onView }) {
   const t = useT();
   // The 4-endpoint payload comes from the loader (swr paints the cache instantly
@@ -1470,6 +1521,10 @@ function Episode({ reloadKey, onView }) {
   const [refVideos, setRefVideos] = useState(payload.ep.refVideos || {}); // { bundle: { from, file } }
   const [needsMap, setNeedsMap] = useState(payload.ep.needs || {}); // { bundle: scene-needs state }
   const [style, setStyle] = useState(payload.ep.style || { episode: "", scenes: {}, presets: [] });
+  // Which <=15s packs the current shot list yields + whether the list is
+  // complete — drives the dynamic build button while shots are still being
+  // generated one ~15s pass at a time on the Shot list tab.
+  const [shotlist, setShotlist] = useState(payload.ep.shotlist || { complete: false, packs: [] });
   // A project property, not a manifest one, so it sits beside `episode` in the
   // response rather than inside it.
   const [productionType, setProductionType] = useState(payload.ep.productionType);
@@ -1487,6 +1542,7 @@ function Episode({ reloadKey, onView }) {
     setRefVideos(ep.refVideos || {});
     setNeedsMap(ep.needs || {});
     setStyle(ep.style || { episode: "", scenes: {}, presets: [] });
+    setShotlist(ep.shotlist || { complete: false, packs: [] });
     setProductionType(ep.productionType);
     setFolders(lib.folders || []);
     const m = {};
@@ -1657,7 +1713,9 @@ function Episode({ reloadKey, onView }) {
   // null when idle, "all" for the episode-wide run, or a beat id ("B1") for a
   // beat-scoped run — one run at a time either way.
   const [assigning, setAssigning] = useState(null);
-  const [rebuilding, setRebuilding] = useState(false);
+  // null when idle, else the key of the build button that was pressed ("all",
+  // "rest", or a pack id) — so the spinner shows only on that button.
+  const [rebuilding, setRebuilding] = useState(null);
   const { revalidate } = useRevalidator();
 
   // MediaPicker → bundle picks. Library items carry a rel already; a Visual
@@ -1745,11 +1803,20 @@ function Episode({ reloadKey, onView }) {
 
   // Re-pack the current shot list into bundles (Phase 0). The server preserves
   // stills (re-keyed by shot id) and renders; re-packed bundles need re-review.
-  const rebuild = useCallback(async () => {
-    setRebuilding(true);
+  // No `ids` = full rebuild; an array of pack ids builds just those cards (the
+  // server never drops existing ones); [] refreshes existing coverage only.
+  // `key` names the button that shows the spinner.
+  const rebuild = useCallback(async (ids, key = "all") => {
+    setRebuilding(key);
     setError(null);
     try {
-      const res = await fetch("/api/episode/rebuild", { method: "POST" });
+      const res = await fetch("/api/episode/rebuild", {
+        method: "POST",
+        ...(Array.isArray(ids) && {
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ bundles: ids }),
+        }),
+      });
       const out = await res.json();
       if (!res.ok) throw new Error(out.error || "Rebuild failed");
       invalidateTabCache("episode");
@@ -1757,7 +1824,7 @@ function Episode({ reloadKey, onView }) {
     } catch (e) {
       setError(String(e.message || e));
     } finally {
-      setRebuilding(false);
+      setRebuilding(null);
     }
   }, [revalidate]);
   // Choose the render style — episode-wide (bundle null) or a per-scene
@@ -1828,16 +1895,37 @@ function Episode({ reloadKey, onView }) {
     return groups;
   }, [data]);
 
+  // Packs the current shot list yields that have no episode card yet — offered
+  // as one-click builds while the shot list is still in progress.
+  const unbuiltPacks = useMemo(() => (shotlist.packs || []).filter((p) => !p.built), [shotlist]);
+
   if (error) return <ErrorNote>{error}</ErrorNote>;
-  if (!data)
+  if (!data) {
+    // No plan yet. What we offer depends on the shot list: nothing without
+    // shots; per-pack builds while the list is still being generated pass by
+    // pass; the single whole-plan button only once the list is complete.
+    if (!shotlist.packs.length)
+      return (
+        <div className="flex flex-col items-center gap-3 py-16 text-center">
+          <Empty>{t("No shot list yet — generate shots on the Shot list tab first.")}</Empty>
+        </div>
+      );
+    if (!shotlist.complete)
+      return (
+        <div className="mx-auto flex max-w-2xl flex-col items-center gap-4 py-16">
+          <Empty>{t("No episode plan yet — the shot list is still in progress. Build a card for each ~15s multishot pass as it lands, or generate the rest of the shots first.")}</Empty>
+          <PackBuildList packs={shotlist.packs} rebuilding={rebuilding} onBuild={rebuild} />
+        </div>
+      );
     return (
       <div className="flex flex-col items-center gap-3 py-16 text-center">
         <Empty>{t("No episode plan yet — pack the current shot list into ≤15s bundles to begin.")}</Empty>
-        <Button onClick={rebuild} disabled={rebuilding}>
-          {rebuilding ? <><Loader2 size={14} className="animate-spin" /> {t("building…")}</> : <><Boxes size={14} /> {t("Build episode plan")}</>}
+        <Button onClick={() => rebuild()} disabled={!!rebuilding}>
+          {rebuilding === "all" ? <><Loader2 size={14} className="animate-spin" /> {t("building…")}</> : <><Boxes size={14} /> {t("Build episode plan")}</>}
         </Button>
       </div>
     );
+  }
 
   return (
     <div className="space-y-4">
@@ -1864,8 +1952,18 @@ function Episode({ reloadKey, onView }) {
                 ))}
               </SelectContent>
             </Select>
-            <Button variant="outline" onClick={rebuild} disabled={rebuilding} title={t("Re-pack the current shot list into bundles (stills & renders are preserved; re-packed bundles need re-review)")}>
-              {rebuilding ? <><Loader2 size={14} className="animate-spin" /> {t("rebuilding…")}</> : <><Boxes size={14} /> {t("rebuild plan")}</>}
+            <Button
+              variant="outline"
+              // While the shot list is still in progress, `[]` re-packs only
+              // the cards already built — new passes are added from the strip
+              // below, not swept in by a header click.
+              onClick={() => rebuild(shotlist.complete ? undefined : [])}
+              disabled={!!rebuilding}
+              title={shotlist.complete
+                ? t("Re-pack the current shot list into bundles (stills & renders are preserved; re-packed bundles need re-review)")
+                : t("Re-pack the already-built cards from the current shot list — new multishot passes are built from the list below")}
+            >
+              {rebuilding === "all" ? <><Loader2 size={14} className="animate-spin" /> {t("rebuilding…")}</> : <><Boxes size={14} /> {t("rebuild plan")}</>}
             </Button>
             <Button onClick={() => autoAssign()} disabled={!!assigning || selCount === 0}>
               {assigning === "all" ? <><Loader2 size={14} className="animate-spin" /> {t("assigning…")}</> : <><Sparkles size={14} /> {t("auto-assign references")}</>}
@@ -1875,9 +1973,20 @@ function Episode({ reloadKey, onView }) {
         <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
           <Badge variant="outline">{data.bundles.length} {t("multishot bundles")}</Badge>
           <Badge variant="outline">{data.totalShots} {t("shots total")}</Badge>
+          {!shotlist.complete && <Badge variant="warning">{t("shot list in progress")}</Badge>}
           <Badge variant="success">{selCount} {t("library-selected refs")}</Badge>
           <span>{t("auto-assign matches your library picks to each shot by character + location")}</span>
         </div>
+        {!shotlist.complete && unbuiltPacks.length > 0 && (
+          <div className="space-y-2 rounded-md border border-dashed p-3">
+            <div className="text-xs text-muted-foreground">
+              {unbuiltPacks.length === 1
+                ? t("A new multishot pass is ready to build:")
+                : t("{n} new multishot passes are ready to build:", { n: unbuiltPacks.length })}
+            </div>
+            <PackBuildList packs={unbuiltPacks} rebuilding={rebuilding} onBuild={rebuild} />
+          </div>
+        )}
       </div>
 
       <div className="space-y-6">

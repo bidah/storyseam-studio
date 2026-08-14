@@ -13,7 +13,7 @@
 import { readDoc, updateDoc } from "../lib/docs.js";
 import { listMedia, listMediaSet, mediaKey, filesUrl, putMedia } from "../lib/media.js";
 import { ensureProxy } from "../lib/proxy.js";
-import { buildBundles, charKey, bundleSpeakers } from "../lib/pack.js";
+import { buildBundles, packPreview, charKey, bundleSpeakers } from "../lib/pack.js";
 import { normalizeShot } from "../lib/shots.js";
 import { resolveActiveDirector } from "../lib/shot-directors.js";
 import { SEED_PROMPTS } from "./visual-world.js";
@@ -338,6 +338,24 @@ async function hydrateOrphanedTakes(env, pid, db, genSet) {
 
 export { rosterMaps, needsStateFor };
 
+// Which <=15s packs the CURRENT shot list yields, and which of them already
+// have a card in the manifest (matched by shot membership, like bundleSig).
+// The Episode tab's build button reads this: while the shot list is still being
+// generated one ~15s pass at a time (`complete` false), it offers per-pack
+// builds for the packs without a card; only a complete list shows the single
+// whole-plan rebuild.
+function shotlistPacksState(slDoc, manifest) {
+  const shots = (slDoc?.shots || []).map(normalizeShot);
+  const builtSigs = new Set((manifest?.bundles || []).map(bundleSig));
+  return {
+    complete: !!slDoc?.progress?.complete,
+    packs: packPreview(shots).map((p) => ({
+      ...p,
+      built: builtSigs.has([...p.shotIds].sort().join(",")),
+    })),
+  };
+}
+
 // The full episode plan as `GET /api/episode` serves it: the packed <=15s
 // bundles, the rendered takes that still exist in R2, per-bundle prompt
 // overrides, sign-offs, first frames, style refs, and the scene-needs state.
@@ -345,13 +363,15 @@ export { rosterMaps, needsStateFor };
 // gets the same joined view — reading the bare `episode-manifest` doc instead
 // would report bundles as unrendered whose media is sitting right there in R2.
 export async function buildEpisodeView(env, pid) {
-  const [manifest, world, vw, legacy] = await Promise.all([
+  const [manifest, world, vw, legacy, slDoc] = await Promise.all([
     readManifest(env, pid),
     readWorld(env, pid),
     readDoc(env, pid, "visual-world", null),
     legacyAudioPool(env, pid),
+    readDoc(env, pid, "shotlist", null),
   ]);
-  if (!manifest) return { episode: null };
+  const shotlist = shotlistPacksState(slDoc, manifest);
+  if (!manifest) return { episode: null, shotlist };
   const db = await readDB(env, pid);
   // Heal stale multi-selection. Re-applied inside the CAS so the repair can't
   // revert a concurrent edit made between the read and the write.
@@ -408,6 +428,10 @@ export async function buildEpisodeView(env, pid) {
   });
   return {
     episode: { ...manifest, bundles },
+    // What the current shot list packs into and which packs already have a
+    // card here — the Episode tab's dynamic build button and the agent's
+    // get_episode both read it to offer partial builds mid-shotlist.
+    shotlist,
     // Which kind of film this is — the Episode tab badges its bundle cards with
     // it — and the shot director whose prompt form decided where the STYLE line
     // above landed.
@@ -697,19 +721,46 @@ export function registerEpisode(app) {
     ]);
     if (!shots.length) return c.json({ error: "No shot list yet — write a shot list first." }, 400);
 
+    // Optional PARTIAL build: `bundles: ["MS-03", …]` builds only those packs'
+    // cards — plus every pack holding a shot the previous manifest already
+    // covered, so a partial build can only ADD cards (and the stills/render
+    // remap below always has a live bundle to land on). `bundles: []` refreshes
+    // just the existing coverage; no body = the classic full rebuild. This is
+    // how the Episode tab tracks a shot list being generated one ~15s pass at
+    // a time on the Shot list tab.
+    let body = {};
+    try { body = await c.req.json(); } catch { body = {}; }
+    const only = Array.isArray(body?.bundles) ? body.bundles.map(String) : null;
+
     const bundles = buildBundles(shots, world, vw?.settings);
     const prev = await readManifest(c.env, pid);
     const prevBundles = prev?.bundles || [];
 
+    let selected = bundles;
+    if (only) {
+      const ids = new Set(bundles.map((b) => b.id));
+      const unknown = only.filter((id) => !ids.has(id));
+      if (unknown.length) {
+        return c.json({
+          error: `Unknown bundle id(s): ${unknown.join(", ")}. The current shot list packs into: ${bundles.map((b) => b.id).join(", ")}.`,
+        }, 400);
+      }
+      const covered = new Set(prevBundles.flatMap((b) => (b.shots || []).map((s) => s.id)));
+      const keep = new Set(only);
+      for (const b of bundles) if (b.shots.some((s) => covered.has(s.id))) keep.add(b.id);
+      selected = bundles.filter((b) => keep.has(b.id));
+      if (!selected.length) return c.json({ error: "Nothing to build — pass at least one bundle id." }, 400);
+    }
+
     // shot id -> new bundle id
     const shotToNew = {};
-    for (const b of bundles) for (const s of b.shots) shotToNew[s.id] = b.id;
+    for (const b of selected) for (const s of b.shots) shotToNew[s.id] = b.id;
     // old bundle membership signature -> old bundle id (for unchanged-bundle carryover)
     const oldBySig = {};
     for (const b of prevBundles) oldBySig[bundleSig(b)] = b.id;
     // new bundle id -> old bundle id when membership is identical
     const sameOld = {};
-    for (const b of bundles) { const o = oldBySig[bundleSig(b)]; if (o) sameOld[b.id] = o; }
+    for (const b of selected) { const o = oldBySig[bundleSig(b)]; if (o) sameOld[b.id] = o; }
 
     // Counters live OUTSIDE the mutate (the response reports them) and are reset
     // at the top of each attempt, because `mutate` re-runs on a version conflict.
@@ -721,10 +772,12 @@ export function registerEpisode(app) {
     const manifest = {
       ...(prev && typeof prev === "object" ? prev : {}),
       title: prev?.title || "Episode plan",
-      totalShots: shots.length,
+      // Shots covered by the manifest — equals shots.length on a full build,
+      // fewer while a partial shot list is being built up pack by pack.
+      totalShots: selected.reduce((n, b) => n + b.shots.length, 0),
       generatedAt: new Date().toISOString(),
       source: "rebuild",
-      bundles,
+      bundles: selected,
     };
     await editDB(c.env, pid, (db) => {
     stillsMoved = 0; stillsOrphaned = 0; videoMoved = 0; videoOrphaned = 0;
@@ -757,7 +810,7 @@ export function registerEpisode(app) {
     // (3) per-bundle selection data: keep only for unchanged-membership bundles.
     const carryUnchanged = (obj) => {
       const next = {};
-      for (const b of bundles) { const o = sameOld[b.id]; if (o && obj?.[o] != null) next[b.id] = obj[o]; }
+      for (const b of selected) { const o = sameOld[b.id]; if (o && obj?.[o] != null) next[b.id] = obj[o]; }
       return next;
     };
 
@@ -775,10 +828,11 @@ export function registerEpisode(app) {
     const unchanged = Object.keys(sameOld).length;
     return c.json({
       ok: true,
-      bundles: bundles.length,
+      bundles: selected.length,
+      requested: only || undefined,
       previousBundles: prevBundles.length,
       unchanged,
-      repacked: bundles.length - unchanged,
+      repacked: selected.length - unchanged,
       stillsMoved, stillsOrphaned,
       videoMoved, videoOrphaned,
     });
