@@ -327,6 +327,11 @@ function ImportControls({ flush, reload }) {
     setBusy(true);
     setErr(null);
     try {
+      // Fountain is the only importable format (the exporter round-trips it);
+      // the picker's accept already filters, but guard for OSes that let it through.
+      if (!/\.fountain$/i.test(file.name)) {
+        throw new Error(st("Only Fountain (.fountain) files can be imported."));
+      }
       await flush?.(); // never lose an in-flight edit to the current draft
       const text = await file.text();
       const { title, elements } = parseFountain(text);
@@ -352,7 +357,7 @@ function ImportControls({ flush, reload }) {
       <input
         ref={inputRef}
         type="file"
-        accept=".fountain,.txt,text/plain"
+        accept=".fountain"
         className="hidden"
         onChange={onPick}
       />
