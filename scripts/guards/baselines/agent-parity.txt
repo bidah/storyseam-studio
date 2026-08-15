@@ -63,6 +63,9 @@
 /api/timeline/from-radio
 /api/episode/first-frame
 /api/episode/ref-video
+/api/episode/need-toggle          # revision-signing: disable a requirement so it isn't gated
+/api/episode/need-add             # revision-signing: add a requirement the plan missed
+/api/episode/need-remove          # revision-signing: drop a hand-added requirement
 /api/episode/video-ref          # global video reference the agent reads via get_episode (head.videoRef)
 /api/script/drafts/*
 /api/script/sign

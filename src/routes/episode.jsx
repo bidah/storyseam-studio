@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLoaderData, useNavigate, useRevalidator } from "react-router";
-import { X, Check, Plus, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, RotateCcw, Maximize2, Volume2, VolumeX, Speech, Play, Pause, Copy, Pencil, Sparkles, PenLine, FileText, Film, Image as ImageIcon, Loader2, Wand2, Scissors, Boxes, CircleAlert, MapPin, User, Palette, Upload } from "lucide-react";
+import { X, Check, Plus, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, RotateCcw, Maximize2, Volume2, VolumeX, Speech, Play, Pause, Copy, Pencil, Sparkles, PenLine, FileText, Film, Image as ImageIcon, Loader2, Wand2, Scissors, Boxes, CircleAlert, MapPin, User, Palette, Power, Trash2, Upload } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useT } from "@/lib/i18n";
 import { swr, useRevalidateOnMount, useRevalidateOnAgentIdle } from "@/lib/swr";
@@ -96,22 +96,58 @@ function computeNeeds(state, picked, audioPicked, audioMap) {
     const auto = covered.has(String(v.name).trim().toUpperCase());
     return { ...v, fulfilled: auto || !!link, via: auto ? "cast voice" : link };
   });
+  // Prompt requirements have no auto signal — they clear only when toggled off.
+  const prompt = (state.prompt || []).map((p) => ({ ...p, fulfilled: false }));
+  // A requirement counts toward its section gate only while enabled AND gating.
+  const counts = (n) => !n.disabled && n.gates;
   return {
-    ...state, needs, voice,
-    complete: { images: needs.every((n) => n.fulfilled), audio: voice.every((v) => v.fulfilled) },
+    ...state, needs, voice, prompt,
+    complete: {
+      images: needs.filter(counts).every((n) => n.fulfilled),
+      audio: voice.filter(counts).every((v) => v.fulfilled),
+      prompt: prompt.filter(counts).every((p) => p.fulfilled),
+    },
   };
 }
 
-const roleIcon = { location: MapPin, character: User, voice: Volume2 };
+const roleIcon = { location: MapPin, character: User, voice: Volume2, image: ImageIcon, prompt: FileText };
 
-function NeedChip({ role, label, fulfilled, title }) {
+// One requirement pill. `onToggle` (when supplied) adds the disable/enable button
+// the author clicks to mark a requirement not-needed — a disabled pill goes muted
+// + struck-through and drops out of the sign gate. `onRemove` (extra needs only)
+// deletes a hand-added requirement outright.
+function NeedChip({ role, label, fulfilled, disabled, extra, title, onToggle, onRemove }) {
   const t = useT();
   const Icon = roleIcon[role] || User;
+  const variant = disabled ? "muted" : fulfilled ? "success" : "warning";
   return (
-    <Badge variant={fulfilled ? "success" : "warning"} className="gap-1" title={title}>
-      {fulfilled ? <Check size={11} /> : <Icon size={11} />}
-      {label}
+    <Badge variant={variant} className={cn("gap-1", (onToggle || onRemove) && "pr-1", disabled && "opacity-70")} title={title}>
+      {!disabled && fulfilled ? <Check size={11} /> : <Icon size={11} />}
+      <span className={cn(disabled && "line-through")}>{label}</span>
       {role === "voice" && <span className="opacity-70">{t("(voice)")}</span>}
+      {extra && <span className="opacity-60">{t("(added)")}</span>}
+      {onToggle && (
+        <button
+          type="button"
+          onClick={onToggle}
+          className="ml-0.5 inline-flex size-4 items-center justify-center rounded-full hover:bg-foreground/15"
+          aria-label={disabled ? t("Require {label} again", { label }) : t("Disable {label} — not needed", { label })}
+          title={disabled ? t("Not required — click to require again") : t("Required — click to disable (not needed for this scene)")}
+        >
+          {disabled ? <RotateCcw size={10} /> : <Power size={10} />}
+        </button>
+      )}
+      {onRemove && extra && (
+        <button
+          type="button"
+          onClick={onRemove}
+          className="inline-flex size-4 items-center justify-center rounded-full hover:bg-foreground/15"
+          aria-label={t("Remove {label}", { label })}
+          title={t("Remove this requirement")}
+        >
+          <Trash2 size={10} />
+        </button>
+      )}
     </Badge>
   );
 }
@@ -119,23 +155,36 @@ function NeedChip({ role, label, fulfilled, title }) {
 // The live scene-needs checklist shown on each bundle card (and echoed by the
 // pickers): every location/character/voice the scene requires, green when a
 // chosen reference covers it.
-function NeedsChecklist({ ns }) {
+function NeedsChecklist({ ns, onToggleNeed, onRemoveNeed, onAddRequirement }) {
   const t = useT();
   if (!ns) return null;
-  const total = ns.needs.length + ns.voice.length;
-  if (!total) return <Empty>{t("no scene needs detected — rebuild the plan after writing the shot list")}</Empty>;
+  const prompts = ns.prompt || [];
+  const total = ns.needs.length + ns.voice.length + prompts.length;
+  const toggle = onToggleNeed ? (id, disabled) => () => onToggleNeed(id, disabled) : null;
+  const remove = onRemoveNeed ? (id) => () => onRemoveNeed(id) : null;
   return (
     <div className="flex flex-wrap items-center gap-1.5 text-xs">
       <span className="font-semibold uppercase tracking-wide text-muted-foreground">{t("scene needs")}</span>
+      {total === 0 && (
+        <span className="text-muted-foreground">{t("no requirements detected — add one, or rebuild the plan after writing the shot list")}</span>
+      )}
       {ns.needs.map((n) => (
         <NeedChip
           key={n.id}
           role={n.role}
           label={n.key}
           fulfilled={n.fulfilled}
+          disabled={n.disabled}
+          extra={n.extra}
+          onToggle={toggle && toggle(n.id, !n.disabled)}
+          onRemove={n.extra && remove ? remove(n.id) : undefined}
           title={
-            n.fulfilled
+            n.disabled
+              ? t("disabled — not required to sign this scene")
+              : n.fulfilled
               ? t("covered by {via}", { via: n.via })
+              : n.extra
+              ? t("added by hand — choose a reference and link it to this requirement")
               : n.sheetRel
               ? t("not covered yet — choose its World sheet as a reference (or auto-assign)")
               : t("no World sheet linked — choose any reference and link it to this need")
@@ -148,10 +197,134 @@ function NeedsChecklist({ ns }) {
           role="voice"
           label={v.name}
           fulfilled={v.fulfilled}
-          title={v.fulfilled ? t("voice reference chosen") : t("no voice reference chosen for this speaker yet")}
+          disabled={v.disabled}
+          extra={v.extra}
+          onToggle={toggle && toggle(v.id, !v.disabled)}
+          onRemove={v.extra && remove ? remove(v.id) : undefined}
+          title={v.disabled ? t("disabled — not required to sign this scene") : v.fulfilled ? t("voice reference chosen") : t("no voice reference chosen for this speaker yet")}
         />
       ))}
+      {prompts.map((p) => (
+        <NeedChip
+          key={p.id}
+          role="prompt"
+          label={p.key}
+          fulfilled={p.fulfilled}
+          disabled={p.disabled}
+          extra
+          onToggle={toggle && toggle(p.id, !p.disabled)}
+          onRemove={remove ? remove(p.id) : undefined}
+          title={p.disabled ? t("disabled — not required to sign this scene") : t("added by hand — toggle off once the prompt is handled to unblock signing")}
+        />
+      ))}
+      {onAddRequirement && (
+        <Button variant="outline" size="sm" className="h-6 gap-1 px-2 text-[11px]" onClick={onAddRequirement}>
+          <Plus size={11} /> {t("add requirement")}
+        </Button>
+      )}
     </div>
+  );
+}
+
+/* ---------------------------------------------------------------- *
+ * Add-requirement modal                                            *
+ * ---------------------------------------------------------------- */
+
+const REQ_ROLES = [
+  { value: "image", label: "Image / reference", Icon: ImageIcon },
+  { value: "voice", label: "Voice", Icon: Volume2 },
+  { value: "prompt", label: "Prompt / note", Icon: FileText },
+];
+
+// Flag something the auto-plan missed as a required part of this scene — an extra
+// image reference, another voice, or a prompt note. Added requirements block
+// signing (image → link a ref, voice → pick a covering audio ref, prompt → toggle
+// off once handled) until covered or disabled. Also lists the extras already on
+// this bundle so they can be toggled or removed here.
+function AddRequirementModal({ bundle, ns, open, onAdd, onToggle, onRemove, onClose }) {
+  const t = useT();
+  const [role, setRole] = useState("image");
+  const [key, setKey] = useState("");
+  const extras = ns
+    ? [
+        ...ns.needs.filter((n) => n.extra).map((n) => ({ id: n.id, role: "image", label: n.key, fulfilled: n.fulfilled, disabled: n.disabled })),
+        ...ns.voice.filter((v) => v.extra).map((v) => ({ id: v.id, role: "voice", label: v.name, fulfilled: v.fulfilled, disabled: v.disabled })),
+        ...(ns.prompt || []).map((p) => ({ id: p.id, role: "prompt", label: p.key, fulfilled: p.fulfilled, disabled: p.disabled })),
+      ]
+    : [];
+  const submit = () => {
+    const label = key.trim();
+    if (!label) return;
+    onAdd(role, label);
+    setKey("");
+  };
+  return (
+    <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Plus size={16} /> {t("Add requirement")}
+            <Badge variant="secondary" className="font-mono">{bundle.id}</Badge>
+          </DialogTitle>
+        </DialogHeader>
+        <p className="text-sm text-muted-foreground">
+          {t("Flag something the plan missed — an extra image reference, another voice, or a prompt note. It blocks signing until covered or toggled off.")}
+        </p>
+        <div className="flex items-end gap-2">
+          <div className="space-y-1.5">
+            <Label>{t("Kind")}</Label>
+            <Select value={role} onValueChange={setRole}>
+              <SelectTrigger size="sm" className="w-[168px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {REQ_ROLES.map((r) => (
+                  <SelectItem key={r.value} value={r.value}>
+                    <r.Icon size={13} /> {t(r.label)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="flex-1 space-y-1.5">
+            <Label htmlFor="req-key">{t("What's needed")}</Label>
+            <Input
+              id="req-key"
+              value={key}
+              placeholder={role === "voice" ? t("speaker name…") : role === "prompt" ? t("prompt note…") : t("reference name…")}
+              onChange={(e) => setKey(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") submit(); }}
+            />
+          </div>
+          <Button onClick={submit} disabled={!key.trim()}>
+            <Plus size={14} /> {t("Add")}
+          </Button>
+        </div>
+        {extras.length > 0 && (
+          <div className="space-y-1.5">
+            <Label>{t("Added requirements")}</Label>
+            <div className="flex flex-wrap gap-1.5">
+              {extras.map((e) => (
+                <NeedChip
+                  key={e.id}
+                  role={e.role}
+                  label={e.label}
+                  fulfilled={e.fulfilled}
+                  disabled={e.disabled}
+                  extra
+                  onToggle={() => onToggle(e.id, !e.disabled)}
+                  onRemove={() => onRemove(e.id)}
+                  title={e.disabled ? t("disabled — not required to sign this scene") : t("required for this scene")}
+                />
+              ))}
+            </div>
+          </div>
+        )}
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>{t("Done")}</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -173,12 +346,16 @@ function SigningModal({ bundle, signoff, ns, open, onSign, onClose }) {
   const [err, setErr] = useState(null);
   const so = signoff || { images: null, prompt: null, audio: null };
   const name = signedBy.trim();
-  // Scene-needs gate: images can't be signed while an image need is uncovered,
-  // audio while a speaker has no voice pick. (The worker enforces this too.)
+  // Requirements gate: a section can't be signed while an enabled, gating
+  // requirement of it is still uncovered — images need a covering reference,
+  // audio a voice pick, prompt an author note toggled off. Disabled requirements
+  // drop out. (The worker enforces this too.)
+  const openReqs = (arr) => (arr || []).filter((n) => !n.disabled && n.gates && !n.fulfilled);
   const gated = ns?.enforced
     ? {
-        images: ns.complete.images ? null : ns.needs.filter((n) => !n.fulfilled).map((n) => n.key),
-        audio: ns.complete.audio ? null : ns.voice.filter((v) => !v.fulfilled).map((v) => v.name),
+        images: ns.complete.images ? null : openReqs(ns.needs).map((n) => n.key),
+        audio: ns.complete.audio ? null : openReqs(ns.voice).map((v) => v.name),
+        prompt: ns.complete.prompt ? null : openReqs(ns.prompt).map((p) => p.key),
       }
     : {};
   const toggle = async (section, signed) => {
@@ -1047,11 +1224,12 @@ function AudioRefPlayer({ a }) {
   );
 }
 
-function EpisodeBundle({ b, flat, picked, onOpenPicker, onRemove, onView, audioMap, audioPicked, onOpenAudio, vids, allVideos, reloadKey, onToggleVideo, stills, onToggleStill, firstFrame, onSetFirstFrame, refVideo, globalVideoRef, onSetRefVideo, override, onEditPrompt, onResetPrompt, signoff, onSign, needsState, onLinkNeed, style, onSetStyle, productionType }) {
+function EpisodeBundle({ b, flat, picked, onOpenPicker, onRemove, onView, audioMap, audioPicked, onOpenAudio, vids, allVideos, reloadKey, onToggleVideo, stills, onToggleStill, firstFrame, onSetFirstFrame, refVideo, globalVideoRef, onSetRefVideo, override, onEditPrompt, onResetPrompt, signoff, onSign, needsState, onLinkNeed, onToggleNeed, onAddNeed, onRemoveNeed, style, onSetStyle, productionType }) {
   const t = useT();
   const [open, setOpen] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
   const [signOpen, setSignOpen] = useState(false);
+  const [addReqOpen, setAddReqOpen] = useState(false);
   const [ffOpen, setFfOpen] = useState(false);
   const [rvOpen, setRvOpen] = useState(false);
   const [renderErr, setRenderErr] = useState(null);
@@ -1073,7 +1251,9 @@ function EpisodeBundle({ b, flat, picked, onOpenPicker, onRemove, onView, audioM
     () => computeNeeds(needsState, picked, audioPicked, audioMap),
     [needsState, picked, audioPicked, audioMap]
   );
-  const needAll = ns ? [...ns.needs, ...ns.voice] : [];
+  // Only ENABLED, gating requirements count toward the "needs done/total" badge —
+  // a disabled one is not required, so it neither shows outstanding nor blocks.
+  const needAll = ns ? [...ns.needs, ...ns.voice, ...(ns.prompt || [])].filter((x) => !x.disabled && x.gates) : [];
   const needDone = needAll.filter((x) => x.fulfilled).length;
   const needsComplete = !ns || !ns.enforced || needDone === needAll.length;
 
@@ -1291,7 +1471,12 @@ function EpisodeBundle({ b, flat, picked, onOpenPicker, onRemove, onView, audioM
       <CardContent className={cn("grid gap-4 p-4", !isImg && hasVid && "lg:grid-cols-[2fr_1fr]")}>
         <div className="min-w-0 space-y-4">
           {ns ? (
-            <NeedsChecklist ns={ns} />
+            <NeedsChecklist
+              ns={ns}
+              onToggleNeed={(need, disabled) => onToggleNeed(b.id, need, disabled)}
+              onRemoveNeed={(need) => onRemoveNeed(b.id, need)}
+              onAddRequirement={() => setAddReqOpen(true)}
+            />
           ) : (
             <div className="text-xs text-muted-foreground">
               <span className="font-semibold uppercase tracking-wide">{t("scene needs:")}</span>{" "}
@@ -1476,6 +1661,15 @@ function EpisodeBundle({ b, flat, picked, onOpenPicker, onRemove, onView, audioM
         open={signOpen}
         onSign={onSign}
         onClose={() => setSignOpen(false)}
+      />
+      <AddRequirementModal
+        bundle={b}
+        ns={ns}
+        open={addReqOpen}
+        onAdd={(role, key) => onAddNeed(b.id, role, key)}
+        onToggle={(need, disabled) => onToggleNeed(b.id, need, disabled)}
+        onRemove={(need) => onRemoveNeed(b.id, need)}
+        onClose={() => setAddReqOpen(false)}
       />
       <FirstFrameModal
         bundle={b}
@@ -1874,6 +2068,74 @@ function Episode({ reloadKey, onView }) {
     }
   }, []);
 
+  // Toggle one requirement off (disabled → dropped from the sign gate) or back
+  // on. Optimistic on the needs slice; persisted to db.needsDisabled[bundle].
+  const onToggleNeed = useCallback(async (bundle, need, disabled) => {
+    setNeedsMap((m) => {
+      const st = m[bundle];
+      if (!st) return m;
+      const flip = (arr) => (arr || []).map((n) => (n.id === need ? { ...n, disabled } : n));
+      return { ...m, [bundle]: { ...st, needs: flip(st.needs), voice: flip(st.voice), prompt: flip(st.prompt) } };
+    });
+    try {
+      await fetch("/api/episode/need-toggle", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ bundle, need, disabled }),
+      });
+    } catch {
+      /* keep optimistic state */
+    }
+  }, []);
+
+  // Add an extra requirement (image | voice | prompt) the auto-plan missed.
+  // Optimistically appends the returned need to the matching slice.
+  const onAddNeed = useCallback(async (bundle, role, key) => {
+    try {
+      const res = await fetch("/api/episode/need-add", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ bundle, role, key }),
+      });
+      const out = await res.json();
+      if (!res.ok) throw new Error(out.error);
+      const n = out.need; // { id, role, key }
+      setNeedsMap((m) => {
+        const st = m[bundle] || { needs: [], voice: [], prompt: [], enforced: true, complete: {} };
+        const next = { ...st, enforced: true };
+        if (role === "voice") {
+          next.voice = [...(st.voice || []), { id: n.id, name: key, fulfilled: false, extra: true, disabled: false, gates: true }];
+        } else if (role === "prompt") {
+          next.prompt = [...(st.prompt || []), { id: n.id, key, role: "prompt", fulfilled: false, extra: true, disabled: false, gates: true }];
+        } else {
+          next.needs = [...(st.needs || []), { id: n.id, key, role: "image", sheetRel: null, link: null, fulfilled: false, via: null, extra: true, disabled: false, gates: true }];
+        }
+        return { ...m, [bundle]: next };
+      });
+    } catch (e) {
+      setError(String(e.message || e));
+    }
+  }, []);
+
+  // Remove an extra requirement (auto needs are toggled off, not removed).
+  const onRemoveNeed = useCallback(async (bundle, need) => {
+    setNeedsMap((m) => {
+      const st = m[bundle];
+      if (!st) return m;
+      const drop = (arr) => (arr || []).filter((n) => n.id !== need);
+      return { ...m, [bundle]: { ...st, needs: drop(st.needs), voice: drop(st.voice), prompt: drop(st.prompt) } };
+    });
+    try {
+      await fetch("/api/episode/need-remove", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ bundle, need }),
+      });
+    } catch {
+      /* keep optimistic state */
+    }
+  }, []);
+
   // null when idle, "all" for the episode-wide run, or a beat id ("B1") for a
   // beat-scoped run — one run at a time either way.
   const [assigning, setAssigning] = useState(null);
@@ -2238,6 +2500,9 @@ function Episode({ reloadKey, onView }) {
                 onSign={onSign}
                 needsState={needsMap[b.id]}
                 onLinkNeed={onLinkNeed}
+                onToggleNeed={onToggleNeed}
+                onAddNeed={onAddNeed}
+                onRemoveNeed={onRemoveNeed}
                 style={style}
                 onSetStyle={onSetStyle}
               />

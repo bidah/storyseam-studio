@@ -215,12 +215,35 @@ function audioCoverage(maps, audioRels) {
   return covered;
 }
 
+// Author overrides on top of the auto-detected needs, both per-bundle in the
+// selections DB:
+//   db.extraNeeds[bundle]    — [{ id, role: "image"|"voice"|"prompt", key }]
+//        requirements the plan missed, flagged by hand in the "add requirement"
+//        modal. An image extra is fulfilled by LINKING a chosen ref to it (reuses
+//        needLinks); a voice extra by an audio pick covering its name; a prompt
+//        extra has no auto signal, so it gates the prompt section until toggled
+//        off.
+//   db.needsDisabled[bundle] — [needId, …]  requirements the author toggled OFF.
+//        A disabled requirement is dropped from the sign gate — that is how a
+//        revision gets signed when the plan over-detected something this scene
+//        doesn't actually need. Ids are auto ("character:Kid", "voice:SARA") or
+//        extra ("extra:image:ab12cd34").
+//
+// Every need carries `disabled` (toggled off), `extra` (author-added) and `gates`
+// (whether it participates in the sign gate at all — auto needs only gate once
+// the World roster exists, so legacy roster-less projects stay ungated; extra
+// needs always gate). `complete[section]` is true when every enabled, gating
+// requirement of that section is fulfilled.
 function needsStateFor(b, maps, db) {
   const links = db.needLinks?.[b.id] || {};
   const picks = new Set(db.episode?.[b.id] || []);
   const audioPicks = new Set(db.episodeAudio?.[b.id] || []);
   const covered = audioCoverage(maps, db.episodeAudio?.[b.id]);
-  const needs = (b.images || []).map((im) => {
+  const disabled = new Set(db.needsDisabled?.[b.id] || []);
+  const extra = Array.isArray(db.extraNeeds?.[b.id]) ? db.extraNeeds[b.id] : [];
+  const baseEnforced = maps.chars.size > 0 || maps.locs.size > 0;
+
+  const autoImage = (b.images || []).map((im) => {
     const id = needIdOf(im);
     const sheetRel = im.role === "location"
       ? maps.locs.get(im.key)?.sheetImage?.rel || null
@@ -233,13 +256,24 @@ function needsStateFor(b, maps, db) {
       link: links[id] || null,     // stored manual link (may point at a removed pick)
       fulfilled: !!(link || auto),
       via: link || auto,           // the picked rel actually covering it
+      extra: false, disabled: disabled.has(id), gates: baseEnforced,
     };
   });
-  const voice = (b.speakers || []).map((name) => {
-    const id = "voice:" + name;
-    // An uncast Sound Studio take carries no character, so it covers a speaker
-    // only while it is BOTH linked to them and still among this bundle's picks —
-    // the same rule the image needs use.
+  const extraImage = extra.filter((e) => e.role === "image").map((e) => {
+    const link = links[e.id] && picks.has(links[e.id]) ? links[e.id] : null;
+    return {
+      id: e.id, key: e.key, role: "image",
+      sheetRel: null, link: links[e.id] || null,
+      fulfilled: !!link, via: link,
+      extra: true, disabled: disabled.has(e.id), gates: true,
+    };
+  });
+  const needs = [...autoImage, ...extraImage];
+
+  // A speaker is covered by a cast World voice (auto) OR by a Sound Studio take
+  // linked to them while still among this bundle's picks — the same rule the
+  // image needs use.
+  const voiceNeed = (id, name, extraFlag) => {
     const link = links[id] && audioPicks.has(links[id]) ? links[id] : null;
     const auto = covered.has(charKey(name));
     return {
@@ -247,14 +281,30 @@ function needsStateFor(b, maps, db) {
       link: links[id] || null,     // stored manual link (may point at a removed pick)
       fulfilled: auto || !!link,
       via: auto ? "cast voice" : link,
+      extra: extraFlag, disabled: disabled.has(id), gates: extraFlag || baseEnforced,
     };
-  });
+  };
+  const autoVoice = (b.speakers || []).map((name) => voiceNeed("voice:" + name, name, false));
+  const extraVoice = extra.filter((e) => e.role === "voice").map((e) => voiceNeed(e.id, e.key, true));
+  const voice = [...autoVoice, ...extraVoice];
+
+  const prompt = extra.filter((e) => e.role === "prompt").map((e) => ({
+    id: e.id, key: e.key, role: "prompt",
+    fulfilled: false, extra: true, disabled: disabled.has(e.id), gates: true,
+  }));
+
+  const counts = (n) => !n.disabled && n.gates;
   return {
-    needs, voice,
-    enforced: maps.chars.size > 0 || maps.locs.size > 0,
+    needs, voice, prompt,
+    enforced:
+      baseEnforced ||
+      needs.some((n) => n.extra && !n.disabled) ||
+      voice.some((v) => v.extra && !v.disabled) ||
+      prompt.some((p) => !p.disabled),
     complete: {
-      images: needs.every((n) => n.fulfilled),
-      audio: voice.every((v) => v.fulfilled),
+      images: needs.filter(counts).every((n) => n.fulfilled),
+      audio: voice.filter(counts).every((v) => v.fulfilled),
+      prompt: prompt.filter(counts).every((p) => p.fulfilled),
     },
   };
 }
@@ -630,18 +680,20 @@ export function registerEpisode(app) {
     // Evaluate the needs gate BEFORE the compare-and-swap: it reads two other
     // documents, and the mutate may re-run.
     const db = await readDB(c.env, pid);
-    if (signed && (section === "images" || section === "audio")) {
+    if (signed) {
       const [manifest, world] = await Promise.all([readManifest(c.env, pid), readWorld(c.env, pid)]);
       const b = manifest?.bundles?.find((x) => x.id === bundle);
       if (b) {
         const state = needsStateFor(b, rosterMaps(world), db);
         if (state.enforced && !state.complete[section]) {
-          const unmet = section === "images"
-            ? state.needs.filter((n) => !n.fulfilled).map((n) => n.key)
-            : state.voice.filter((v) => !v.fulfilled).map((v) => v.name);
+          const open = (arr) => arr.filter((n) => !n.disabled && n.gates && !n.fulfilled);
+          const unmet =
+            section === "images" ? open(state.needs).map((n) => n.key)
+            : section === "audio" ? open(state.voice).map((v) => v.name)
+            : open(state.prompt).map((p) => p.key);
           return c.json({
-            error: `Can't sign ${section} for ${bundle} — unmet scene needs: ${unmet.join(", ")}. ` +
-              `Assign a reference covering each need (or link one of the chosen references to it) first.`,
+            error: `Can't sign ${section} for ${bundle} — unmet requirements: ${unmet.join(", ")}. ` +
+              `Cover each one (or toggle it off if this scene doesn't need it) first.`,
             needs: state,
           }, 409);
         }
@@ -695,6 +747,69 @@ export function registerEpisode(app) {
       return { links: cur };
     });
     return c.json({ ok: true, bundle, links });
+  });
+
+  // Toggle one requirement OFF (disabled → dropped from the sign gate) or back
+  // on. `need` is any need id — an auto one ("character:Kid" / "voice:SARA") or
+  // an extra one added below. Disabling is how the author signs a revision when
+  // the plan over-detected a need this scene doesn't actually require.
+  app.post("/api/episode/need-toggle", async (c) => {
+    const pid = c.get("projectId");
+    let body;
+    try { body = await c.req.json(); } catch { body = {}; }
+    const { bundle, need, disabled } = body || {};
+    if (!bundle || !need) return c.json({ error: "Missing 'bundle' or 'need'" }, 400);
+    const { list } = await editDB(c.env, pid, (db) => {
+      db.needsDisabled = db.needsDisabled || {};
+      const cur = new Set(db.needsDisabled[bundle] || []);
+      if (disabled) cur.add(String(need));
+      else cur.delete(String(need));
+      db.needsDisabled[bundle] = [...cur];
+      return { list: db.needsDisabled[bundle] };
+    });
+    return c.json({ ok: true, bundle, disabled: list });
+  });
+
+  // Add an extra requirement the auto-plan missed — an image reference, another
+  // voice, or a prompt note (role image|voice|prompt). Returns the created need
+  // { id, role, key }; an image extra is then satisfied by linking a ref to it,
+  // a voice extra by an audio pick covering its name, a prompt extra by toggling
+  // it off once handled.
+  const EXTRA_ROLES = new Set(["image", "voice", "prompt"]);
+  app.post("/api/episode/need-add", async (c) => {
+    const pid = c.get("projectId");
+    let body;
+    try { body = await c.req.json(); } catch { body = {}; }
+    const { bundle, role, key } = body || {};
+    const label = String(key || "").trim();
+    if (!bundle || !EXTRA_ROLES.has(role) || !label)
+      return c.json({ error: "Missing 'bundle', valid 'role' (image|voice|prompt), or 'key'" }, 400);
+    const need = { id: `extra:${role}:${crypto.randomUUID().slice(0, 8)}`, role, key: label };
+    await editDB(c.env, pid, (db) => {
+      db.extraNeeds = db.extraNeeds || {};
+      const cur = Array.isArray(db.extraNeeds[bundle]) ? db.extraNeeds[bundle] : [];
+      cur.push(need);
+      db.extraNeeds[bundle] = cur;
+    });
+    return c.json({ ok: true, bundle, need });
+  });
+
+  // Remove an extra requirement (auto needs can't be removed — toggle them off
+  // instead). Also clears any disabled flag / link that pointed at it.
+  app.post("/api/episode/need-remove", async (c) => {
+    const pid = c.get("projectId");
+    let body;
+    try { body = await c.req.json(); } catch { body = {}; }
+    const { bundle, need } = body || {};
+    if (!bundle || !need) return c.json({ error: "Missing 'bundle' or 'need'" }, 400);
+    await editDB(c.env, pid, (db) => {
+      if (Array.isArray(db.extraNeeds?.[bundle]))
+        db.extraNeeds[bundle] = db.extraNeeds[bundle].filter((e) => e.id !== need);
+      if (Array.isArray(db.needsDisabled?.[bundle]))
+        db.needsDisabled[bundle] = db.needsDisabled[bundle].filter((id) => id !== need);
+      if (db.needLinks?.[bundle]) delete db.needLinks[bundle][need];
+    });
+    return c.json({ ok: true, bundle });
   });
 
   // Auto-assign: source every bundle's image + audio references from the World
@@ -932,6 +1047,8 @@ export function registerEpisode(app) {
     db.prompt = carryUnchanged(db.prompt);
     db.signoffs = carryUnchanged(db.signoffs);
     db.needLinks = carryUnchanged(db.needLinks);
+    db.extraNeeds = carryUnchanged(db.extraNeeds);
+    db.needsDisabled = carryUnchanged(db.needsDisabled);
     db.sceneStyle = carryUnchanged(db.sceneStyle); // episode-wide style survives as-is
 
     }, { also: [{ name: "episode-manifest", value: manifest }] });
