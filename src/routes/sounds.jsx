@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLoaderData, useRevalidator, useSearchParams } from "react-router";
-import { Check, Plus, ChevronDown, ChevronRight, RotateCcw, Volume2, Speech, Copy, Heart, Music, Save, Clock, Download, Trash2, FileText, Loader2, Wand2, Upload } from "lucide-react";
+import { Check, Plus, ChevronDown, ChevronRight, RotateCcw, Volume2, Speech, Copy, Heart, Music, Save, Clock, Download, Trash2, FileText, Loader2, Wand2, Upload, ArrowRightLeft } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { invalidateTabCache } from "@/lib/tabCache";
 import { swr, useRevalidateOnMount } from "@/lib/swr";
@@ -15,6 +15,14 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+} from "@/components/ui/dropdown-menu";
 import { Empty, Chip, Panel, Spinner, ErrorNote, IconSwap } from "@/components/shared";
 
 /* ---------------------------------------------------------------- *
@@ -280,6 +288,11 @@ function UploadedSoundVersion({ track, ver, onChanged }) {
   );
 }
 
+// Per-kind noun used in the "Upload …" / "Move to …" labels, mirroring the
+// "New …" button so each section's upload button reads "Upload music" /
+// "Upload sound effect" / "Upload voice".
+const KIND_NOUN = { music: "music", sfx: "sound effect", voice: "voice" };
+
 // "Upload" action next to each tab's "New …" button. Wraps a hidden file input
 // (audio only) and hands the picked File up to the studio to POST as a new
 // uploaded track in this tab's `kind`.
@@ -300,7 +313,8 @@ function UploadSoundButton({ kind, busy, onPick }) {
         }}
       />
       <Button variant="outline" onClick={() => inputRef.current?.click()} disabled={busy}>
-        {busy ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />} {t("Upload")}
+        {busy ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}{" "}
+        {t("Upload {noun}", { noun: t(KIND_NOUN[kind] || "sound") })}
       </Button>
     </>
   );
@@ -341,6 +355,22 @@ function SoundTrack({ track, onChanged }) {
       setBusy(false);
     }
   };
+  // Move the whole track to another tab (background music / sound effect /
+  // voice) by reclassifying its `kind` — the same PATCH that renames.
+  const kind = trackKind(track);
+  const moveTo = async (next) => {
+    if (next === kind) return;
+    setBusy(true);
+    try {
+      await soundApi(`/api/sounds/${track.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ kind: next }),
+      });
+      onChanged();
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const liked = track.versions.some((v) => v.liked);
   const versions = [...track.versions].sort((a, b) => b.v - a.v);
@@ -370,6 +400,27 @@ function SoundTrack({ track, onChanged }) {
           <span className="text-xs text-muted-foreground">
             {track.versions.length} version{track.versions.length === 1 ? "" : "s"}
           </span>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="sm" disabled={busy} title="Move to another section">
+                <ArrowRightLeft size={14} /> Move
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuLabel>Move to</DropdownMenuLabel>
+              <DropdownMenuRadioGroup value={kind} onValueChange={moveTo}>
+                <DropdownMenuRadioItem value="music">
+                  <Music size={14} className="mr-2" /> Background music
+                </DropdownMenuRadioItem>
+                <DropdownMenuRadioItem value="sfx">
+                  <Volume2 size={14} className="mr-2" /> Sound effect
+                </DropdownMenuRadioItem>
+                <DropdownMenuRadioItem value="voice">
+                  <Speech size={14} className="mr-2" /> Voice acting
+                </DropdownMenuRadioItem>
+              </DropdownMenuRadioGroup>
+            </DropdownMenuContent>
+          </DropdownMenu>
           <Button variant="ghost" size="icon-sm" aria-label="Delete track" onClick={delTrack} disabled={busy} title="Delete track">
             <Trash2 size={16} />
           </Button>
