@@ -3,6 +3,7 @@ export {
   Screenplay,
   buildInitialContent,
   elementsToDoc,
+  docToElements,
   SP_TYPES,
   SP_LABELS,
   SP_NEXT_ON_ENTER,

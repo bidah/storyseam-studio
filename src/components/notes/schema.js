@@ -162,6 +162,32 @@ export function elementsToDoc(elements) {
   return { type: "doc", content };
 }
 
+// The inverse of `elementsToDoc`: a ProseMirror doc → the flat `{ type, text }[]`
+// array. Mirrors the agent-side docToElements (flue-agent/src/lib/script.ts) so
+// exporters (see src/lib/screenplayExport.js) read the stored doc the same way
+// the agent does. Empty blocks and the legacy in-doc title node are dropped; a
+// non-screenplay block (a stray paragraph, a list) is treated as action.
+function textOf(node) {
+  if (typeof node?.text === "string") return node.text;
+  return (node?.content || []).map(textOf).join("");
+}
+export function docToElements(doc) {
+  const blocks =
+    doc && doc.type === "doc" && Array.isArray(doc.content) ? doc.content : [];
+  const out = [];
+  for (const node of blocks) {
+    if (node.type === "title") continue; // legacy; title lives outside the doc
+    const text = textOf(node).trim();
+    if (!text) continue;
+    const type =
+      node.type === "screenplay" && SP_TYPES.includes(node.attrs?.spType)
+        ? node.attrs.spType
+        : "action";
+    out.push({ type, text });
+  }
+  return out;
+}
+
 /* ---------------------------------------------------------------- *
  * Screenplay block                                                 *
  * ---------------------------------------------------------------- */

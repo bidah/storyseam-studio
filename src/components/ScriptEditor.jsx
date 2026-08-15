@@ -17,7 +17,7 @@ import { Placeholder } from "@tiptap/extension-placeholder";
 import { TaskList, TaskItem } from "@tiptap/extension-list";
 import {
   Check, Loader2, Cloud, PenLine, Save, Pencil,
-  GitBranch, Plus, Trash2, Pin, CircleCheck, ListChecks, Lock, FileUp,
+  GitBranch, Plus, Trash2, Pin, CircleCheck, ListChecks, Lock, FileUp, FileDown,
   Stethoscope, RotateCcw, Share2, Copy, ExternalLink,
 } from "lucide-react";
 
@@ -37,6 +37,9 @@ import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger,
 } from "@/components/ui/dialog";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { useT, t as st } from "@/lib/i18n";
 import {
   Screenplay, SlashCommand, SelectionHighlight, buildInitialContent, elementsToDoc,
@@ -44,6 +47,7 @@ import {
   SP_TYPES, SP_LABELS, SP_PLACEHOLDERS,
 } from "@/components/notes";
 import { parseFountain } from "@/lib/fountain";
+import { exportScript, EXPORT_FORMATS } from "@/lib/screenplayExport";
 import ScriptDiffReview from "@/components/ScriptDiffReview";
 import ScriptSelectionAsk from "@/components/ScriptSelectionAsk";
 import ScriptWorkingCard from "@/components/ScriptWorkingCard";
@@ -363,6 +367,69 @@ function ImportControls({ flush, reload }) {
         {busy ? <Loader2 size={13} className="animate-spin" /> : <FileUp size={13} />}
         {t("Import")}
       </Button>
+      {err && (
+        <span className="max-w-[16rem] truncate text-[11px] text-destructive" role="alert" title={err}>
+          {err}
+        </span>
+      )}
+    </>
+  );
+}
+
+/* ---------------------------------------------------------------- *
+ * Export — the inverse of import. Serialize the current draft to any of the
+ * screenplay formats and download it, all client-side (see
+ * src/lib/screenplayExport.js). Reads the LIVE editor doc so an in-flight edit is
+ * included without waiting on autosave.
+ * ---------------------------------------------------------------- */
+
+function ExportControls({ editor, title, name }) {
+  const t = useT();
+  const [busy, setBusy] = useState(null); // the format currently exporting, or null
+  const [err, setErr] = useState(null);
+
+  const run = async (format) => {
+    if (!editor || busy) return;
+    setBusy(format);
+    setErr(null);
+    try {
+      const { count } = await exportScript({
+        doc: editor.getJSON(),
+        title,
+        name,
+        format,
+      });
+      if (!count) setErr(st("Nothing to export — the script is empty."));
+    } catch (e) {
+      setErr(String(e?.message || e));
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  return (
+    <>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-7 gap-1.5 text-xs"
+            disabled={!!busy}
+            title={t("Export the current draft as Fountain, text, Final Draft, PDF or Word")}
+          >
+            {busy ? <Loader2 size={13} className="animate-spin" /> : <FileDown size={13} />}
+            {t("Export")}
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="start">
+          {EXPORT_FORMATS.map(({ format, label }) => (
+            <DropdownMenuItem key={format} disabled={!!busy} onSelect={() => run(format)}>
+              {t(label)}
+            </DropdownMenuItem>
+          ))}
+        </DropdownMenuContent>
+      </DropdownMenu>
       {err && (
         <span className="max-w-[16rem] truncate text-[11px] text-destructive" role="alert" title={err}>
           {err}
@@ -905,6 +972,7 @@ function Editor({ initial, drafts, pinnedId, currentName, reload, signed: signed
           reload={reload}
         />
         <ImportControls flush={saveNow} reload={reload} />
+        <ExportControls editor={editor} title={title} name={currentName} />
         <ShareControls />
         <span className="mx-0.5 h-5 w-px bg-border" aria-hidden />
         <ShotlistGate
