@@ -63,6 +63,19 @@ export const saveWorld = (api: Api) =>
                 ),
               ),
             ),
+            miniatureImage: v.optional(
+              v.nullable(
+                d(
+                  v.object({
+                    rel: v.optional(v.string()),
+                    url: v.optional(v.string()),
+                    thumb: v.optional(v.string()),
+                    name: v.optional(v.string()),
+                  }),
+                  "Linked full-figure MINIATURE reference, used on wide/establishing shots where the character is too small for the sheet to read. PRESERVE whatever get_world returned (pass it back unchanged), or null to unlink. Link one with attach_character_miniature.",
+                ),
+              ),
+            ),
             voiceRef: v.optional(
               v.nullable(
                 d(

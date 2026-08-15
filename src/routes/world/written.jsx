@@ -3,6 +3,7 @@ import { useLoaderData, useRevalidator } from "react-router";
 import {
   Globe, Users, BookOpen, Sparkles, Wand2, UserPlus, Trash2, Loader2,
   ImagePlus, X, Maximize2, Mic, MapPin, MapPinPlus, Anchor, Library, Check,
+  PersonStanding,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { invalidateTabCache } from "@/lib/tabCache";
@@ -15,6 +16,7 @@ import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Empty, Eyebrow, Panel, Spinner, ErrorNote, ConfirmModal } from "@/components/shared";
 import { ProductionTypeBadge, ProductionTypePicker } from "@/components/ProductionType";
+import { normalizeProductionType } from "@/lib/productionType";
 import { useEpisodes } from "@/components/EpisodeProvider";
 import { FORMATS } from "@/lib/format";
 import DocHistory from "@/components/DocHistory";
@@ -256,12 +258,14 @@ function VoicePicker({ open, onOpenChange, onPick }) {
  * Character card                                                    *
  * ---------------------------------------------------------------- */
 
-function CharacterCard({ char, onField, onRemove, onToggleAnchor, isSeries, expanded }) {
+function CharacterCard({ char, onField, onRemove, onToggleAnchor, isSeries, expanded, is2d }) {
   const t = useT();
   const { setModalImage } = useShell();
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [miniOpen, setMiniOpen] = useState(false);
   const [voiceOpen, setVoiceOpen] = useState(false);
   const sheet = char.sheetImage;
+  const mini = char.miniatureImage;
   const voiceRef = char.voiceRef;
   return (
     <div className={cn("rounded-lg border p-3", isSeries && char.anchor && "border-primary/40 bg-primary/5")}>
@@ -339,6 +343,52 @@ function CharacterCard({ char, onField, onRemove, onToggleAnchor, isSeries, expa
         </div>
       )}
 
+      {/* Miniature: a full-figure reference used on WIDE / establishing shots,
+          where this character is too small in frame for the close-up sheet to
+          read. 2D projects only — the pipeline attaches it on wide shots (see
+          the Episode tab's needs checklist). */}
+      {is2d && (mini ? (
+        <div className="mb-2 flex items-center gap-3 rounded-lg border bg-muted/60 p-2">
+          <button
+            type="button"
+            onClick={() => setModalImage({ url: mini.url, name: mini.name || t("{name} miniature", { name: char.name || t("character") }), role: "asset" })}
+            title={t("View full image")}
+            className="shrink-0 overflow-hidden rounded-md border transition-colors hover:border-primary/60"
+          >
+            <img
+              src={mini.thumb || mini.url}
+              alt={mini.name || t("{name} miniature", { name: char.name || t("character") })}
+              className="h-28 w-28 object-cover"
+            />
+          </button>
+          <div className="flex min-w-0 flex-col items-start gap-1.5">
+            <span className="flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+              <PersonStanding size={13} className="text-primary" /> {t("Wide-shot miniature")}
+            </span>
+            <Button variant="outline" size="sm" onClick={() => setMiniOpen(true)}>
+              <ImagePlus size={13} /> {t("Change miniature")}
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => onField("miniatureImage", null)}
+              className="text-muted-foreground hover:text-destructive"
+            >
+              <X size={14} /> {t("Unlink")}
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <div className="mb-2">
+          <Button variant="outline" size="sm" onClick={() => setMiniOpen(true)}>
+            <PersonStanding size={13} /> {t("Link wide-shot miniature")}
+          </Button>
+          <p className="mt-1 text-[11px] text-muted-foreground">
+            {t("A full-figure reference for wide shots where this character is small in frame.")}
+          </p>
+        </div>
+      ))}
+
       {/* Voice: a liked Sound Studio take attached as this character's voice.
           Sits with the character sheet as the two linked assets of a character. */}
       {voiceRef ? (
@@ -400,6 +450,17 @@ function CharacterCard({ char, onField, onRemove, onToggleAnchor, isSeries, expa
         multiple={false}
         onAdd={([im]) => {
           if (im) onField("sheetImage", { rel: im.rel, url: im.url, thumb: im.thumb, name: im.name });
+        }}
+      />
+
+      <MediaPicker
+        open={miniOpen}
+        onOpenChange={setMiniOpen}
+        title={t("Link wide-shot miniature")}
+        sources={["library"]}
+        multiple={false}
+        onAdd={([im]) => {
+          if (im) onField("miniatureImage", { rel: im.rel, url: im.url, thumb: im.thumb, name: im.name });
         }}
       />
 
@@ -586,6 +647,8 @@ function World() {
   const agent = useAgent();
   const agentBusy = agentIsBusy(agent);
   const world = useLoaderData();
+  // Miniature references are a 2D affordance (wide-shot full-figure refs).
+  const is2d = normalizeProductionType(world.productionType) === "2d";
   const { isSeries, active: activeEpisode, refresh: refreshEpisodes } = useEpisodes();
   const revalidator = useRevalidator();
   useRevalidateOnMount("world");
@@ -821,6 +884,7 @@ function World() {
                     char={char}
                     expanded
                     isSeries={isSeries}
+                    is2d={is2d}
                     onField={(key, val) => setChar(char.id, key, val)}
                     onRemove={setConfirm}
                     onToggleAnchor={toggleAnchor}
@@ -847,6 +911,7 @@ function World() {
                 key={char.id}
                 char={char}
                 isSeries={isSeries}
+                is2d={is2d}
                 onField={(key, val) => setChar(char.id, key, val)}
                 onRemove={setConfirm}
                 onToggleAnchor={toggleAnchor}

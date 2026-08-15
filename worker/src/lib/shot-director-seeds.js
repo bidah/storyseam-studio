@@ -63,6 +63,16 @@ one shot lands as a hard cut in the finished cut.
 The generation has no memory of the shot before it. Never write "as above",
 "continues", a scene number, or a prop that isn't in THIS shot.
 
+## Wide shots — characters too small in frame
+On a WIDE or establishing shot the characters read as small figures, not faces.
+Two things follow. In the PROSE, describe them by full-figure silhouette rather
+than expression — posture, gait, gesture, the shape of the outfit against the
+background — since that is all the frame can carry at that scale. And flag it: a
+wide shot is where a character's close-up sheet stops being enough reference, so
+the app offers a full-figure MINIATURE reference for each character on the shot.
+Note in the shot which characters stand in the wide, so the author can attach or
+generate that miniature on the Episode tab before rendering.
+
 ## Length
 Aim for 60–120 words. A held close-up needs less; a wide with three moving
 elements needs more.`;

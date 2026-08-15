@@ -33,3 +33,19 @@ export function normalizeShot(s, i) {
     prompt: promptBlocks ? composePromptBlocks(promptBlocks) : (s.prompt || ""),
   };
 }
+
+// WIDE-SHOT detection, from the shot's free-text `camera` field — there is no
+// shot-size enum, framing is only ever described in prose. This is the trigger
+// for the 2D "miniature" reference: on a wide/establishing shot the characters
+// are too small in frame for a portrait-heavy character sheet to read, so a
+// full-figure MINIATURE reference is offered instead (see pack.js and the
+// Episode/Shot-list tabs). Kept deliberately conservative — it only gates an
+// OPTIONAL reference and an author prompt, so a stray match costs nothing.
+//
+// The front-end mirrors this in `src/lib/shots.js`; keep the two regexes in sync.
+export const WIDE_CAMERA_RE =
+  /\bwide\b|\bwide[- ]shots?\b|\be?w\.?s\.?\b|\bestablishing\b|\b(?:extreme |very )?long shots?\b|\baerial\b|\bbird'?s[- ]?eye\b/i;
+
+export function isWideShot(shot) {
+  return WIDE_CAMERA_RE.test(String(shot?.camera || ""));
+}

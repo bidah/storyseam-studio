@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLoaderData, useNavigate, useRevalidator } from "react-router";
-import { X, Check, Plus, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, RotateCcw, Maximize2, Volume2, VolumeX, Speech, Play, Pause, Copy, Pencil, Sparkles, PenLine, FileText, Film, Image as ImageIcon, Loader2, Wand2, Scissors, Boxes, CircleAlert, MapPin, User, Palette, Power, Trash2, Upload } from "lucide-react";
+import { X, Check, Plus, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, RotateCcw, Maximize2, Volume2, VolumeX, Speech, Play, Pause, Copy, Pencil, Sparkles, PenLine, FileText, Film, Image as ImageIcon, Loader2, Wand2, Scissors, Boxes, CircleAlert, MapPin, User, Palette, Power, Trash2, Upload, PersonStanding } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useT } from "@/lib/i18n";
 import { swr, useRevalidateOnMount, useRevalidateOnAgentIdle } from "@/lib/swr";
@@ -99,7 +99,8 @@ function computeNeeds(state, picked, audioPicked, audioMap) {
   // Prompt requirements have no auto signal — they clear only when toggled off.
   const prompt = (state.prompt || []).map((p) => ({ ...p, fulfilled: false }));
   // A requirement counts toward its section gate only while enabled AND gating.
-  const counts = (n) => !n.disabled && n.gates;
+  // Optional needs (wide-shot miniatures) are suggestions, never gates — excluded.
+  const counts = (n) => !n.disabled && n.gates && !n.optional;
   return {
     ...state, needs, voice, prompt,
     complete: {
@@ -110,21 +111,24 @@ function computeNeeds(state, picked, audioPicked, audioMap) {
   };
 }
 
-const roleIcon = { location: MapPin, character: User, voice: Volume2, image: ImageIcon, prompt: FileText };
+const roleIcon = { location: MapPin, character: User, voice: Volume2, image: ImageIcon, prompt: FileText, miniature: PersonStanding };
 
 // One requirement pill. `onToggle` (when supplied) adds the disable/enable button
 // the author clicks to mark a requirement not-needed — a disabled pill goes muted
 // + struck-through and drops out of the sign gate. `onRemove` (extra needs only)
-// deletes a hand-added requirement outright.
-function NeedChip({ role, label, fulfilled, disabled, extra, title, onToggle, onRemove }) {
+// deletes a hand-added requirement outright. An `optional` need (a wide-shot
+// miniature) is a suggestion, not a gap: rendered muted when unfulfilled so it
+// doesn't read as broken, and it never holds the sign gate.
+function NeedChip({ role, label, fulfilled, disabled, extra, optional, title, onToggle, onRemove }) {
   const t = useT();
   const Icon = roleIcon[role] || User;
-  const variant = disabled ? "muted" : fulfilled ? "success" : "warning";
+  const variant = disabled ? "muted" : fulfilled ? "success" : optional ? "muted" : "warning";
   return (
     <Badge variant={variant} className={cn("gap-1", (onToggle || onRemove) && "pr-1", disabled && "opacity-70")} title={title}>
       {!disabled && fulfilled ? <Check size={11} /> : <Icon size={11} />}
       <span className={cn(disabled && "line-through")}>{label}</span>
       {role === "voice" && <span className="opacity-70">{t("(voice)")}</span>}
+      {role === "miniature" && <span className="opacity-70">{t("(mini)")}</span>}
       {extra && <span className="opacity-60">{t("(added)")}</span>}
       {onToggle && (
         <button
@@ -174,6 +178,7 @@ function NeedsChecklist({ ns, onToggleNeed, onRemoveNeed, onAddRequirement }) {
           role={n.role}
           label={n.key}
           fulfilled={n.fulfilled}
+          optional={n.optional}
           disabled={n.disabled}
           extra={n.extra}
           onToggle={toggle && toggle(n.id, !n.disabled)}
@@ -183,6 +188,8 @@ function NeedsChecklist({ ns, onToggleNeed, onRemoveNeed, onAddRequirement }) {
               ? t("disabled — not required to sign this scene")
               : n.fulfilled
               ? t("covered by {via}", { via: n.via })
+              : n.role === "miniature"
+              ? t("optional — a wide-shot full-figure miniature. Link one on the World tab, then auto-assign")
               : n.extra
               ? t("added by hand — choose a reference and link it to this requirement")
               : n.sheetRel
@@ -350,7 +357,8 @@ function SigningModal({ bundle, signoff, ns, open, onSign, onClose }) {
   // requirement of it is still uncovered — images need a covering reference,
   // audio a voice pick, prompt an author note toggled off. Disabled requirements
   // drop out. (The worker enforces this too.)
-  const openReqs = (arr) => (arr || []).filter((n) => !n.disabled && n.gates && !n.fulfilled);
+  // Optional requirements (wide-shot miniatures) never gate — excluded here too.
+  const openReqs = (arr) => (arr || []).filter((n) => !n.disabled && n.gates && !n.optional && !n.fulfilled);
   const gated = ns?.enforced
     ? {
         images: ns.complete.images ? null : openReqs(ns.needs).map((n) => n.key),
@@ -1253,9 +1261,11 @@ function EpisodeBundle({ b, flat, picked, onOpenPicker, onRemove, onView, audioM
   );
   // Only ENABLED, gating requirements count toward the "needs done/total" badge —
   // a disabled one is not required, so it neither shows outstanding nor blocks.
-  const needAll = ns ? [...ns.needs, ...ns.voice, ...(ns.prompt || [])].filter((x) => !x.disabled && x.gates) : [];
+  // Optional needs (wide-shot miniatures) are excluded too: suggestions, not gates.
+  const needAll = ns ? [...ns.needs, ...ns.voice, ...(ns.prompt || [])].filter((x) => !x.disabled && x.gates && !x.optional) : [];
   const needDone = needAll.filter((x) => x.fulfilled).length;
   const needsComplete = !ns || !ns.enforced || needDone === needAll.length;
+
 
   const refBlock = assigned.length
     ? "IMAGE REFERENCES (pass each file as an image_references entry):\n" +

@@ -14,7 +14,8 @@ import { readDoc, updateDoc } from "../lib/docs.js";
 import { listMedia, listMediaSet, mediaKey, filesUrl, putMedia } from "../lib/media.js";
 import { ensureProxy } from "../lib/proxy.js";
 import { buildBundles, packPreview, charKey, bundleSpeakers } from "../lib/pack.js";
-import { normalizeShot } from "../lib/shots.js";
+import { normalizeShot, isWideShot } from "../lib/shots.js";
+import { normalizeProductionType } from "../lib/production-type.js";
 import { resolveActiveDirector } from "../lib/shot-directors.js";
 import { SEED_PROMPTS } from "./visual-world.js";
 
@@ -245,13 +246,20 @@ function needsStateFor(b, maps, db) {
 
   const autoImage = (b.images || []).map((im) => {
     const id = needIdOf(im);
+    // A miniature need is auto-fulfilled by the character's MINIATURE image,
+    // a character need by its sheet, a location need by its location sheet.
     const sheetRel = im.role === "location"
       ? maps.locs.get(im.key)?.sheetImage?.rel || null
-      : maps.chars.get(charKey(im.key))?.sheetImage?.rel || null;
+      : im.role === "miniature"
+        ? maps.chars.get(charKey(im.key))?.miniatureImage?.rel || null
+        : maps.chars.get(charKey(im.key))?.sheetImage?.rel || null;
     const link = links[id] && picks.has(links[id]) ? links[id] : null;
     const auto = sheetRel && picks.has(sheetRel) ? sheetRel : null;
     return {
       id, key: im.key, role: im.role,
+      // Optional needs (miniatures) surface on the checklist and prompt the
+      // author, but don't gate signing — see `complete.images` below.
+      optional: !!im.optional,
       sheetRel,                    // the World sheet rel that auto-fulfills this need
       link: links[id] || null,     // stored manual link (may point at a removed pick)
       fulfilled: !!(link || auto),
@@ -293,7 +301,9 @@ function needsStateFor(b, maps, db) {
     fulfilled: false, extra: true, disabled: disabled.has(e.id), gates: true,
   }));
 
-  const counts = (n) => !n.disabled && n.gates;
+  // Optional needs (wide-shot miniatures) surface on the checklist and prompt
+  // the author, but never gate signing — so they're excluded from `counts`.
+  const counts = (n) => !n.disabled && n.gates && !n.optional;
   return {
     needs, voice, prompt,
     enforced:
@@ -837,6 +847,8 @@ export function registerEpisode(app) {
 
     const world = await readWorld(c.env, pid);
     const { chars: charByKey, locs: locBySlug } = rosterMaps(world);
+    // Miniatures are a 2D affordance for wide-shot characters (see pack.js).
+    const is2d = normalizeProductionType(world?.productionType) === "2d";
 
     // Everyone on screen needs a linked sheet image; everyone who speaks needs
     // a linked voice. Collect the gaps across ALL target bundles up front.
@@ -903,6 +915,18 @@ export function registerEpisode(app) {
         const rel = locBySlug.get(slug)?.sheetImage?.rel;
         if (rel) { if (!images.includes(rel)) images.push(rel); }
         else locNoSheet.add(slug);
+      }
+      // 2D wide/establishing shots: also pull each on-screen character's
+      // MINIATURE reference when one is linked. Optional — a character with no
+      // miniature is simply skipped here (never a validation failure above).
+      if (is2d) {
+        for (const s of b.shots) {
+          if (!isWideShot(s)) continue;
+          for (const name of s.characters || []) {
+            const rel = charByKey.get(charKey(name))?.miniatureImage?.rel;
+            if (rel && !images.includes(rel)) images.push(rel);
+          }
+        }
       }
       for (const [k] of bundleSpeakers(b)) {
         const ch = charByKey.get(k);

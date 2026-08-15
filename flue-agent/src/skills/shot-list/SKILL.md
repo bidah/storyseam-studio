@@ -159,6 +159,31 @@ re-cutting the same scene.
    - Leave the genuine bit-parts OFF the roster — tell the user they stay castable from
      the Radio Casting rail (the app can voice them there without a World entry).
 
+## Wide shots — offer a character MINIATURE (2D projects only)
+
+Only when `get_world` reports `productionType: "2d"`. On a WIDE or establishing
+shot the characters read as small full figures, not faces, and the close-up
+character **sheet** stops being enough reference. The app has a second per-
+character reference slot for exactly this: a full-figure **miniature**.
+
+So, after writing a beat, look back at the shots you framed as wides
+(`camera` says wide / establishing / long shot / aerial / EWS) and collect the
+on-screen characters standing in them. For any of those characters whose
+`get_world` record has **no `miniatureImage`** yet:
+
+- `render_ui` an `OptionList` (or a `MediaGrid` of candidates from
+  `list_library`) naming the wide shots and asking the author whether to add a
+  full-figure miniature for each character — "these characters stand in a wide,
+  where their sheet won't read; add a miniature reference?"
+- When the author picks/uploads one, link it with **`attach_character_miniature`**
+  (the character's `id` + the library `rel`). It is a SEPARATE slot from the
+  sheet — this never touches `attach_character_sheet`.
+- It is **optional**: a character with no miniature still renders and still
+  signs off. Offer it, don't insist, and never block the shot list on it.
+
+The Episode tab then auto-assigns each linked miniature on its wide shots and
+passes it into the render alongside the sheet.
+
 ## Render style — do NOT bake one into the prompts
 
 Per-shot Seedance prompts carry **no art-style clauses**. The render style is a

@@ -1,6 +1,6 @@
 import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import { useLoaderData, useRevalidator } from "react-router";
-import { X, RefreshCw, Loader2, Layers, Film, Plus, Send, CornerDownRight, ListChecks, FastForward, CircleCheck, Copy, Check } from "lucide-react";
+import { X, RefreshCw, Loader2, Layers, Film, Plus, Send, CornerDownRight, ListChecks, FastForward, CircleCheck, Copy, Check, PersonStanding } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useT } from "@/lib/i18n";
 import { invalidateTabCache } from "@/lib/tabCache";
@@ -15,7 +15,8 @@ import { Popover, PopoverAnchor, PopoverContent } from "@/components/ui/popover"
 import { Empty, Panel, ErrorNote, fmtTime } from "@/components/shared";
 import { CAMERA_FRAMINGS, CAMERA_MOVES } from "@/lib/cameraOptions";
 import { ProductionTypeBadge } from "@/components/ProductionType";
-import { PROMPT_BLOCKS, isLiveAction, composePromptBlocks } from "@/lib/productionType";
+import { PROMPT_BLOCKS, isLiveAction, composePromptBlocks, normalizeProductionType } from "@/lib/productionType";
+import { isWideShot } from "@/lib/shots";
 
 // The two ways to write shots from the script, side by side. "Next ~15s" asks
 // for ONE multishot bundle's worth and comes back in a fraction of the time a
@@ -503,6 +504,8 @@ function ShotList() {
   // production type — the author can run the block (Seedance) director on a 2D
   // project. An older worker sends no `promptForm`, so fall back to the type.
   const liveAction = data.promptForm ? data.promptForm === "blocks" : isLiveAction(data.productionType);
+  // Wide-shot miniatures are a 2D affordance (see the World tab / Episode needs).
+  const is2d = normalizeProductionType(data.productionType) === "2d";
 
   // Both generate buttons go through the agent, like the Script tab's. The
   // director's prompt form picks the skill; the coverage marker tells a chunk
@@ -685,6 +688,14 @@ function ShotList() {
                       <div className="mb-1.5 flex flex-wrap items-center gap-2 text-xs">
                         <Badge variant="secondary" className="font-mono">shot {s.id}</Badge>
                         {isExtraShot(s) && <Badge variant="warning">extra shot</Badge>}
+                        {is2d && isWideShot(s) && (s.characters || []).length > 0 && (
+                          <Badge
+                            variant="muted"
+                            title="Wide shot — characters read small in frame. Link a full-figure ‘miniature’ reference for each on the World tab; it attaches automatically on the Episode tab."
+                          >
+                            <PersonStanding size={11} /> wide · miniature?
+                          </Badge>
+                        )}
                         {packById.get(s.id) && <Badge variant="info" className="font-mono">{packById.get(s.id)}</Badge>}
                         <span className="text-muted-foreground">{s.location}</span>
                         <span className="ml-auto flex items-center gap-1 text-muted-foreground">

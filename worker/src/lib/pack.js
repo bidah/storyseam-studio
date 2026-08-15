@@ -5,6 +5,8 @@
 // A bundle NEVER crosses a location: it breaks on beat change, packKey change, or
 // overflow past the 15s Seedance-2.0 single-clip cap.
 import { videoParamsText } from "./video-defaults.js";
+import { isWideShot } from "./shots.js";
+import { normalizeProductionType } from "./production-type.js";
 
 const MAX = 15; // Seedance 2.0 single-clip cap (seconds)
 
@@ -114,7 +116,7 @@ function rosterOf(world) {
 // on-screen character (keyed by display name). `available` = a sheet image is
 // linked in the World; missing entries surface on the episode tab so the user
 // knows to generate/link the sheet before rendering.
-function rosterImages(b, roster) {
+function rosterImages(b, roster, { miniatures = false } = {}) {
   const images = [];
   const seenLoc = new Set();
   const seenChar = new Set();
@@ -141,6 +143,30 @@ function rosterImages(b, roster) {
         available: !!ch?.sheetImage?.rel,
         url: ch?.sheetImage?.url || null,
       });
+    }
+  }
+  // MINIATURE needs (2D projects only): a character standing on a WIDE /
+  // establishing shot is too small in frame for the portrait-heavy character
+  // sheet to read, so a full-figure MINIATURE reference is offered for them. One
+  // entry per distinct character that appears on any wide shot in the bundle,
+  // keyed the same as the character need but with role "miniature". Marked
+  // `optional` — it surfaces on the Episode needs checklist and prompts the
+  // author, but (unlike a sheet) never blocks signing or render.
+  if (miniatures) {
+    const seenMini = new Set();
+    for (const s of b.shots) {
+      if (!isWideShot(s)) continue;
+      for (const name of s.characters || []) {
+        const k = charKey(name);
+        if (!k || seenMini.has(k)) continue;
+        seenMini.add(k);
+        const ch = roster.characters.get(k);
+        images.push({
+          key: ch?.name || name, role: "miniature", optional: true,
+          available: !!ch?.miniatureImage?.rel,
+          url: ch?.miniatureImage?.url || null,
+        });
+      }
     }
   }
   return images;
@@ -178,17 +204,23 @@ function buildBundles(shots, world, genSettings) {
   const roster = rosterOf(world);
   const videoParams = videoParamsText(genSettings);
   const hasRoster = roster.characters.size > 0 || roster.locations.size > 0;
+  // Miniature references are a 2D-animation affordance: on a wide shot the
+  // character is too small for the sheet to read (see rosterImages).
+  const is2d = normalizeProductionType(world?.productionType) === "2d";
   return packShots(shots).map((b, i) => {
     const id = "MS-" + String(i + 1).padStart(2, "0");
     let images;
     if (hasRoster) {
-      images = rosterImages(b, roster);
+      images = rosterImages(b, roster, { miniatures: is2d });
     } else {
       const charKeys = [...new Set(b.shots.flatMap((s) => s.characters || []))].map((c) => CHAR_REF[c]).filter(Boolean);
       const refKeys = [...new Set([...bgOf(b.shots[0].location), ...charKeys])];
       images = refKeys.map((k) => ({ key: k, role: charKeys.includes(k) ? "character" : "location", available: !!REF[k], url: refUrl(k) }));
     }
-    const missing = images.filter((im) => !im.available).map((im) => im.key);
+    // Optional needs (miniatures) never count as "missing" — a character with a
+    // sheet but no miniature must not read as an unfulfilled reference.
+    const missing = images.filter((im) => !im.available && !im.optional).map((im) => im.key);
+    const hasMiniature = images.some((im) => im.role === "miniature");
     const speakers = [...bundleSpeakers(b).values()];
     const dur = Math.min(MAX, Math.ceil(b.total));
     const title = `${id} · ${beatTitleOf(b.shots)} (shots ${b.shots[0].id}–${b.shots[b.shots.length - 1].id})`;
@@ -227,6 +259,9 @@ function buildBundles(shots, world, genSettings) {
       `Single location only — do NOT cross locations within this clip.\n` +
       `Audio: pass each VOICE / SOUND REFERENCE listed above as the matching character's voice — encode the clip to a black-screen MP4 and send it as a video_references entry (the generate-multishot skill's voice path), generate_audio: true, dialogue from the SHOT lines below. With no voice references listed, set generate_audio: true so Seedance generates its own audio from the prompt.\n` +
       `Pass each image listed under IMAGE REFERENCES above as an image_references entry; apply it to the matching character/location wherever it appears in the shots.\n` +
+      (hasMiniature
+        ? `Wide/establishing shots: where a character's MINIATURE (full-figure) reference is provided, pass it too as an image_references entry — it keeps a small-in-frame character's silhouette, proportions and outfit reading correctly when they are too small for the close-up sheet.\n`
+        : "") +
       bibleNote +
       `Params: ${videoParams}, duration ${dur}s (<=15), aspect 16:9.\n` +
       `Compose ONE continuous multishot clip from these ${b.shots.length} ordered shots, lip-syncing any dialogue:\n\n` +

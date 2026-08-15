@@ -87,6 +87,15 @@ for the new shots.
    speaking character with no World record), handle it exactly as the shot-list
    skill does: offer to promote a recurring one with `add_world_character`
    (verbatim name + a role note citing the shot), leave one-off bit-parts off.
+8. **Wide shot on a 2D project? Offer a miniature.** Only when `get_world`
+   reports `productionType: "2d"` AND you framed the new shot as a WIDE /
+   establishing shot (its `camera`). For each on-screen character with no
+   `miniatureImage` in `get_world`, `render_ui`-offer a full-figure **miniature**
+   reference — the sheet won't read when they're small in frame — and on the
+   author's pick link it with **`attach_character_miniature`** (character `id` +
+   library `rel`). Optional: never block on it. This is the same behaviour the
+   `shot-list` skill's "Wide shots — offer a character MINIATURE" section spells
+   out; follow that.
 
 ## The confirm card (shape)
 

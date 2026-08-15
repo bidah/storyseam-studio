@@ -99,6 +99,10 @@ function normalizeChar(raw, i = 0) {
   const out = { id: str(c.id) || `char-${Date.now().toString(36)}-${i}` };
   for (const f of CHAR_FIELDS) out[f] = str(c[f]);
   out.sheetImage = normalizeSheetImage(c.sheetImage);
+  // A separate full-figure MINIATURE reference (same shape as the sheet). Used on
+  // WIDE / establishing shots where the character is too small in frame for the
+  // portrait-heavy sheet to read — see worker/src/lib/pack.js and lib/shots.js.
+  out.miniatureImage = normalizeSheetImage(c.miniatureImage);
   out.voiceRef = normalizeVoiceRef(c.voiceRef);
   // An anchor character prevails across the whole series: every new episode is
   // seeded with the anchored cast (e.g. recurring judges). Library-level flag.
@@ -152,6 +156,7 @@ function mergeEntry(fields, raw, prev, i, normalize) {
   const out = { ...prev };
   for (const f of fields) out[f] = keep(raw?.[f], prev[f]);
   if (raw && "sheetImage" in raw) out.sheetImage = normalizeSheetImage(raw.sheetImage);
+  if (raw && "miniatureImage" in raw) out.miniatureImage = normalizeSheetImage(raw.miniatureImage);
   if (raw && "voiceRef" in raw) out.voiceRef = normalizeVoiceRef(raw.voiceRef);
   if (raw && "anchor" in raw) out.anchor = !!raw.anchor;
   return normalize(out, i);
@@ -274,6 +279,7 @@ export async function buildWorldView(env, pid) {
   const world = await readWorld(env, pid);
   for (const ch of world.characters) {
     if (ch.sheetImage?.rel) ch.sheetImage.refUrl = assetRefUrl(env, pid, ch.sheetImage.rel);
+    if (ch.miniatureImage?.rel) ch.miniatureImage.refUrl = assetRefUrl(env, pid, ch.miniatureImage.rel);
   }
   for (const loc of world.locations) {
     if (loc.sheetImage?.rel) loc.sheetImage.refUrl = assetRefUrl(env, pid, loc.sheetImage.rel);
@@ -431,6 +437,7 @@ export function registerWorld(app) {
     const world = await readWorld(c.env, pid);
     for (const ch of world.characters) {
       if (ch.sheetImage?.rel) ch.sheetImage.refUrl = assetRefUrl(c.env, pid, ch.sheetImage.rel);
+      if (ch.miniatureImage?.rel) ch.miniatureImage.refUrl = assetRefUrl(c.env, pid, ch.miniatureImage.rel);
     }
     return c.json({ characters: world.characters });
   });
@@ -451,6 +458,7 @@ export function registerWorld(app) {
       if (!bible.characterIds.includes(character.id)) bible.characterIds.push(character.id);
     });
     if (character.sheetImage?.rel) character.sheetImage.refUrl = assetRefUrl(c.env, pid, character.sheetImage.rel);
+    if (character.miniatureImage?.rel) character.miniatureImage.refUrl = assetRefUrl(c.env, pid, character.miniatureImage.rel);
     return c.json({ ok: true, character, world: await buildWorldView(c.env, pid) });
   });
 
@@ -471,6 +479,7 @@ export function registerWorld(app) {
     if (res.missing) return c.json({ error: `no character ${id}` }, 404);
     const character = res.character;
     if (character.sheetImage?.rel) character.sheetImage.refUrl = assetRefUrl(c.env, pid, character.sheetImage.rel);
+    if (character.miniatureImage?.rel) character.miniatureImage.refUrl = assetRefUrl(c.env, pid, character.miniatureImage.rel);
     return c.json({ ok: true, character, world: await buildWorldView(c.env, pid) });
   });
 
