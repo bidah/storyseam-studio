@@ -57,7 +57,7 @@ export function Component() {
           ) : null}
         </header>
 
-        <div className="notes-editor rounded-xl border bg-card px-6 py-8 sm:px-10">
+        <div className="notes-editor bg-card">
           <EditorContent editor={editor} />
         </div>
 
