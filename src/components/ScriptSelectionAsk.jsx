@@ -12,10 +12,11 @@
 // "/" SlashCommand menu.
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { Wand2, Loader2 } from "lucide-react";
+import { Wand2, Loader2, Mic, X, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { useAgent, agentIsBusy, scriptEditRequest } from "@/components/AgentProvider";
+import { useVoiceRecording, transcribeAudio, formatDuration } from "@/lib/useVoiceRecording";
 
 // Viewport coords of the selection's start caret. Returns null if the position
 // can't be measured (e.g. the doc changed out from under the stored range).
@@ -38,6 +39,13 @@ export default function ScriptSelectionAsk({ editor, paused = false, onPendingRa
   const [pos, setPos] = useState(null); // measured {left, top} for the box
   const [value, setValue] = useState(""); // the change request being typed
   const [sending, setSending] = useState(false);
+
+  // Whisper dictation — the same voice hook the chat composer uses. Recorded
+  // audio is transcribed by the Worker's `/api/transcribe` route and appended to
+  // the typed request rather than sent, so the author can dictate then edit.
+  const rec = useVoiceRecording();
+  const [transcribing, setTranscribing] = useState(false);
+  const [voiceError, setVoiceError] = useState("");
 
   const selRef = useRef(null);
   selRef.current = sel;
@@ -76,6 +84,7 @@ export default function ScriptSelectionAsk({ editor, paused = false, onPendingRa
   // belonged to the previously-selected lines).
   useEffect(() => {
     setValue("");
+    setVoiceError("");
   }, [sel?.from, sel?.to]);
 
   // Mirror the live selection up so the parent can paint the persistent
@@ -122,12 +131,44 @@ export default function ScriptSelectionAsk({ editor, paused = false, onPendingRa
     let top = coords.top - 8 - h;
     if (top < 64) top = coords.bottom + 8; // clear the sticky Script toolbar
     setPos({ left, top });
-  }, [coords, value, sending]);
+  }, [coords, value, sending, rec.recording, transcribing, voiceError]);
 
   const close = useCallback(() => {
+    if (rec.recording) rec.cancel();
     setSel(null);
     setValue("");
-  }, []);
+  }, [rec]);
+
+  const startRecording = useCallback(async () => {
+    setVoiceError("");
+    try {
+      await rec.start();
+    } catch (e) {
+      setVoiceError(e?.message || "Couldn't start recording.");
+    }
+  }, [rec]);
+
+  const cancelRecording = useCallback(() => {
+    rec.cancel();
+  }, [rec]);
+
+  // Stop, transcribe, and append the heard text to whatever's already typed.
+  const confirmRecording = useCallback(async () => {
+    setVoiceError("");
+    setTranscribing(true);
+    try {
+      const blob = await rec.stop();
+      if (!blob || blob.size < 100) return; // nothing usable captured
+      const { text } = await transcribeAudio(blob);
+      const heard = (text || "").trim();
+      if (heard) setValue((v) => (v.trim() ? `${v.trim()} ${heard}` : heard));
+      taRef.current?.focus();
+    } catch (e) {
+      setVoiceError(e?.message || "Transcription failed.");
+    } finally {
+      setTranscribing(false);
+    }
+  }, [rec]);
 
   const submit = useCallback(async () => {
     const s = selRef.current;
@@ -181,15 +222,66 @@ export default function ScriptSelectionAsk({ editor, paused = false, onPendingRa
         placeholder="Describe the change… (e.g. make this line angrier, tighten it, fix the slug)"
         className="min-h-[64px] resize-none text-sm"
       />
-      <div className="mt-2 flex items-center gap-2">
-        <span className="text-[11px] text-muted-foreground">
-          {busy ? "agent is busy…" : "Enter to send · Shift+Enter for a new line"}
-        </span>
-        <Button size="sm" className="ml-auto h-8 gap-1.5 text-xs" disabled={disabled} onClick={submit}>
-          {sending ? <Loader2 size={14} className="animate-spin" /> : <Wand2 size={14} />}
-          Ask agent
-        </Button>
-      </div>
+      {rec.recording || transcribing ? (
+        // The recording bar replaces the footer while a take is in progress —
+        // same cancel / pulse / confirm shape as the chat composer.
+        <div className="mt-2 flex items-center gap-2 rounded-lg border bg-background px-2 py-1">
+          <Button
+            size="icon"
+            variant="ghost"
+            className="size-7"
+            onClick={cancelRecording}
+            disabled={transcribing}
+            aria-label="Cancel recording"
+            title="Cancel"
+          >
+            <X size={14} />
+          </Button>
+          <div className="flex flex-1 items-center gap-2 text-xs">
+            {transcribing ? (
+              <Loader2 size={13} className="animate-spin text-muted-foreground" />
+            ) : (
+              <span className="size-2.5 animate-pulse rounded-full bg-red-500" />
+            )}
+            <span className="text-muted-foreground">
+              {transcribing ? "Transcribing…" : "Recording…"}
+            </span>
+            <span className="tabular-nums text-muted-foreground">
+              {formatDuration(rec.duration)}
+            </span>
+          </div>
+          <Button
+            size="icon"
+            className="size-7"
+            onClick={confirmRecording}
+            disabled={transcribing}
+            aria-label="Stop and transcribe"
+            title="Stop and transcribe"
+          >
+            {transcribing ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
+          </Button>
+        </div>
+      ) : (
+        <div className="mt-2 flex items-center gap-2">
+          <span className="text-[11px] text-muted-foreground">
+            {voiceError ? voiceError : busy ? "agent is busy…" : "Enter to send · Shift+Enter for a new line"}
+          </span>
+          <Button
+            size="icon"
+            variant="ghost"
+            className="ml-auto size-8 shrink-0"
+            onClick={startRecording}
+            aria-label="Dictate the change"
+            title="Dictate the change"
+          >
+            <Mic size={15} />
+          </Button>
+          <Button size="sm" className="h-8 shrink-0 gap-1.5 text-xs" disabled={disabled} onClick={submit}>
+            {sending ? <Loader2 size={14} className="animate-spin" /> : <Wand2 size={14} />}
+            Ask agent
+          </Button>
+        </div>
+      )}
     </div>
   );
 }
