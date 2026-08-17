@@ -9,6 +9,7 @@ import { Users, Check, Loader2, Globe, FolderClosed } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Panel, ErrorNote, Spinner } from "@/components/shared";
 import { useProjects } from "@/components/ProjectProvider";
+import { clearPendingInvite } from "@/lib/pendingInvite";
 
 async function apiJson(path, method = "GET", body) {
   const res = await fetch(path, {
@@ -46,6 +47,7 @@ export function Component() {
     setAccepting(true); setError(null);
     try {
       const res = await apiJson(`/api/orgs/invitations/${id}/accept`, "POST", { token });
+      clearPendingInvite(); // this page handled it — don't let the modal replay it
       await refresh();
       // Drop the invitee onto the project they were just granted, not the empty
       // personal project they were parked on — switchTo also persists the pick so

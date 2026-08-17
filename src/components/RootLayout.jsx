@@ -9,6 +9,7 @@ import LoginGate from "@/components/Login";
 import ProjectProvider from "@/components/ProjectProvider";
 import { ProviderGateProvider } from "@/components/ProviderGate";
 import ProjectSwitcher from "@/components/ProjectSwitcher";
+import PendingInviteModal from "@/components/PendingInviteModal";
 import EpisodeProvider from "@/components/EpisodeProvider";
 import EpisodeSwitcher from "@/components/EpisodeSwitcher";
 import { onProjectChange, onEpisodeChange } from "@/lib/projectFetch";
@@ -467,6 +468,10 @@ export default function RootLayout() {
       </Tabs>
 
       <ImageModal image={modalImage} onClose={() => setModalImage(null)} />
+      {/* Replays a pending invite (stashed pre-login in localStorage) once the
+          user is inside the app — the fallback for when the /accept-invite route
+          couldn't render across the sign-in / provider-connect redirects. */}
+      <PendingInviteModal />
       {/* App-wide toasts (desktop update-ready affordance lives here too). */}
       <Toaster position="bottom-right" />
       </ShellContext.Provider>

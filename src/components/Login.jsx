@@ -21,8 +21,8 @@
 // for one. BYOK keys live only in this browser's localStorage (lib/falKey.js /
 // lib/atlasKey.js) and ride per-request to the workers — never stored
 // server-side. Keys, connectors and provider toggles stay editable in Settings.
-import { useState } from "react";
-import { Link } from "react-router";
+import { useEffect, useState } from "react";
+import { Link, useLocation } from "react-router";
 import {
   Clapperboard, Bot, PenLine, Workflow, Film, ListVideo, AudioLines, Loader2, ArrowRight,
   KeyRound, ExternalLink, LogOut, Cable,
@@ -33,6 +33,7 @@ import { desktop, isDesktop } from "@/lib/desktop";
 import { useFalKey, setFalKey } from "@/lib/falKey";
 import { useAtlasKey, setAtlasKey } from "@/lib/atlasKey";
 import { useProviderPrefs, setActiveProvider, useSetupSkipped, setSetupSkipped } from "@/lib/providers";
+import { captureInviteFromLocation } from "@/lib/pendingInvite";
 import { useT } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -386,6 +387,13 @@ function HiggsfieldConnectScreen({ userEmail }) {
 
 export default function LoginGate({ children }) {
   const { data: session, isPending } = useSession();
+  const location = useLocation();
+  // Stash any invite link the moment we arrive on it — BEFORE the sign-in
+  // redirect or the provider-connect gate can navigate away and lose the id +
+  // token. PendingInviteModal replays it once the user is inside the app. Runs
+  // for both a signed-out visitor (homepage renders in place of the invite
+  // route) and a signed-in one still stuck behind the provider gate.
+  useEffect(() => { captureInviteFromLocation(); }, [location.pathname, location.search]);
   const falKey = useFalKey();
   const atlasKey = useAtlasKey();
   const prefs = useProviderPrefs();
