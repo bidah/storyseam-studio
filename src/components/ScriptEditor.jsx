@@ -5,8 +5,9 @@
 // button commits it).
 //
 // Persistence mirrors the rest of the app: the title + body ProseMirror doc are
-// saved to /api/script (a script.json on disk) with a 700 ms debounced autosave,
-// flushed immediately on Cmd/Ctrl+S or when the title is committed.
+// saved to /api/script (a script.json on disk) with a 1-minute idle autosave
+// (debounced from the last keystroke), flushed immediately by the manual Save
+// button, Cmd/Ctrl+S, or when the title is committed.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useEditor, EditorContent } from "@tiptap/react";
@@ -886,9 +887,14 @@ function ScriptSignModal({ open, onOpenChange, busy, onConfirm }) {
   );
 }
 
+// Idle autosave delay: persist one minute after the last keystroke. Long enough
+// that a working writer isn't saved mid-thought on every pause; the Save button
+// (and Cmd/Ctrl+S) let them flush sooner whenever they want.
+const AUTOSAVE_MS = 60_000;
+
 function Editor({ initial, drafts, pinnedId, currentName, reload, signed: signedInit, shotlistExists, draftId, reviews }) {
   const t = useT();
-  const [saveState, setSaveState] = useState("saved"); // "saved" | "saving" | "error"
+  const [saveState, setSaveState] = useState("saved"); // "saved" | "dirty" | "saving" | "error"
   // Local sign-off mirror: editing clears the server-side sign-off, so drop it
   // whenever we autosave; the Sign button sets it back.
   const [signed, setSigned] = useState(!!signedInit);
@@ -901,9 +907,11 @@ function Editor({ initial, drafts, pinnedId, currentName, reload, signed: signed
   const titleRef = useRef(initial.title);
   const docRef = useRef(initial.doc);
   const timer = useRef(null);
+  const dirtyRef = useRef(false); // unsaved edits pending — mirrors "dirty" for the unmount flush
 
   const saveNow = useCallback(async () => {
     clearTimeout(timer.current);
+    dirtyRef.current = false;
     setSaveState("saving");
     setSigned(false); // an edit invalidates the sign-off (server clears it too)
     try {
@@ -923,10 +931,14 @@ function Editor({ initial, drafts, pinnedId, currentName, reload, signed: signed
     }
   }, []);
 
+  // Mark the doc dirty and (re)arm the idle autosave. We show "unsaved" rather
+  // than "saving" while the minute counts down — nothing is written yet, and the
+  // Save button reads off this state to know it has work to do.
   const scheduleSave = useCallback(() => {
-    setSaveState("saving");
+    setSaveState("dirty");
+    dirtyRef.current = true;
     clearTimeout(timer.current);
-    timer.current = setTimeout(saveNow, 700);
+    timer.current = setTimeout(saveNow, AUTOSAVE_MS);
   }, [saveNow]);
 
   // Reflect the type of the block the caret is in (null when not screenplay).
@@ -993,8 +1005,16 @@ function Editor({ initial, drafts, pinnedId, currentName, reload, signed: signed
     return () => window.removeEventListener("keydown", onKey);
   }, [saveNow]);
 
-  // Flush any pending save on unmount.
-  useEffect(() => () => clearTimeout(timer.current), []);
+  // Flush any pending save on unmount so leaving the tab mid-minute doesn't drop
+  // up to a minute of edits. The fetch outlives the component; the state updates
+  // inside saveNow are harmless no-ops once unmounted.
+  useEffect(
+    () => () => {
+      clearTimeout(timer.current);
+      if (dirtyRef.current) saveNow();
+    },
+    [saveNow]
+  );
 
   // The passage currently sent to the agent — { from, to, text } or null. While
   // set, the editor is locked read-only and the passage stays highlighted (the
@@ -1100,15 +1120,29 @@ function Editor({ initial, drafts, pinnedId, currentName, reload, signed: signed
             </Button>
           ))}
         </div>
-        <span className="ml-auto flex items-center gap-1.5 text-xs text-muted-foreground">
-          {saveState === "saving" ? (
-            <><Loader2 size={13} className="animate-spin" /> {t("Saving…")}</>
-          ) : saveState === "error" ? (
-            <span className="text-destructive">{t("save failed")}</span>
-          ) : (
-            <><Check size={13} className="text-primary" /> {t("Saved")}</>
-          )}
-        </span>
+        <div className="ml-auto flex items-center gap-2">
+          <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            {saveState === "saving" ? (
+              <><Loader2 size={13} className="animate-spin" /> {t("Saving…")}</>
+            ) : saveState === "error" ? (
+              <span className="text-destructive">{t("save failed")}</span>
+            ) : saveState === "dirty" ? (
+              <span className="text-muted-foreground">{t("Unsaved changes")}</span>
+            ) : (
+              <><Check size={13} className="text-primary" /> {t("Saved")}</>
+            )}
+          </span>
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-7 text-xs"
+            onClick={saveNow}
+            disabled={saveState === "saved" || saveState === "saving"}
+            title={t("Save now (⌘S)")}
+          >
+            <Save size={13} /> {t("Save")}
+          </Button>
+        </div>
       </div>
 
       {/* Title — outside the editor box, click to edit */}
