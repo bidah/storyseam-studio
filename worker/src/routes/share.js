@@ -7,17 +7,24 @@
 // fabricated token dies here with a 404. Everything is a GET; nothing under
 // /api/share may ever mutate.
 import { readDoc } from "../lib/docs.js";
-import { readStore, pinnedDraft } from "../lib/script-store.js";
+import { readStore, pinnedDraft, countLines } from "../lib/script-store.js";
 import { shareTokenProject, shareTokensMatch } from "../lib/share-token.js";
 
-// Doc holding a project's active share token ({ token } or { token: null }).
-// Written only by the authed /api/script/share routes in routes/script.js.
+// Doc holding a project's active share token and which draft it points at
+// ({ token, draftId } — either may be null). Written only by the authed
+// /api/script/share routes in routes/script.js. A null `draftId` (or one whose
+// draft was since deleted) resolves to the PINNED draft, so old links never 404
+// on a deleted version.
 export const SHARE_DOC = "script-share";
 
 export function registerShare(app) {
-  // Resolve a share link to a minimal read-only projection of the PINNED
-  // draft. Deliberately NOT buildScriptView: drafts, proposals, sign-off and
-  // reviews are the author's business, not a link viewer's.
+  // Resolve a share link to a read-only projection of the shared script. The
+  // viewer can switch between EVERY draft in the store — so the response carries
+  // the full draft list (id/name/lineCount/updatedAt, no proposals) plus the
+  // content of ONE draft: the one named by `?draftId=`, else the author's chosen
+  // default (the pinned draft when none was chosen or it was since deleted).
+  // Deliberately NOT buildScriptView: proposals, sign-off and reviews stay the
+  // author's business.
   app.get("/api/share/script/:token", async (c) => {
     const token = c.req.param("token");
     const pid = shareTokenProject(token);
@@ -28,7 +35,25 @@ export function registerShare(app) {
     const cfg = await readDoc(c.env, pid, SHARE_DOC, null);
     if (!cfg?.token || !(await shareTokensMatch(cfg.token, token))) return gone();
     const store = await readStore(c.env, pid);
-    const d = pinnedDraft(store);
-    return c.json({ title: d.title || "", doc: d.doc ?? null, updatedAt: d.updatedAt || null });
+
+    // The default draft the link lands on: the author's chosen one, else pinned.
+    const fallback = (cfg.draftId && store.drafts.find((x) => x.id === cfg.draftId)) || pinnedDraft(store);
+    // Which draft's content to return — the requested one if it exists, else the
+    // default. An unknown/stale id quietly resolves to the default, never 404s.
+    const reqId = c.req.query("draftId");
+    const d = (reqId && store.drafts.find((x) => x.id === reqId)) || fallback;
+
+    return c.json({
+      drafts: store.drafts.map((x) => ({
+        id: x.id,
+        name: x.name,
+        lineCount: countLines(x.doc),
+        updatedAt: x.updatedAt || null,
+      })),
+      draftId: d.id,
+      title: d.title || "",
+      doc: d.doc ?? null,
+      updatedAt: d.updatedAt || null,
+    });
   });
 }

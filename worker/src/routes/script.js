@@ -456,46 +456,61 @@ export function registerScript(app) {
   });
 
   // --- share link (authed management half; the public viewer route lives in
-  // routes/share.js). The link always shows the PINNED draft, read-only.
+  // routes/share.js). The link shows one chosen draft, read-only — the pinned
+  // draft by default, or whichever version the author picks in the dialog.
   // The share page is served by this same worker's SPA, so the link's origin is
   // simply the request's own.
   const shareUrl = (c, token) => new URL(`/share/script/${token}`, c.req.url).toString();
 
-  // Is sharing on, and where does the link point?
+  // Is sharing on, where does the link point, and which draft does it show?
   app.get("/api/script/share", async (c) => {
     try {
       const cfg = await readDoc(c.env, c.get("projectId"), SHARE_DOC, null);
       return c.json({
         shared: !!cfg?.token,
         url: cfg?.token ? shareUrl(c, cfg.token) : null,
+        draftId: cfg?.draftId ?? null,
       });
     } catch (e) {
       return c.json({ error: String(e.message || e) }, 500);
     }
   });
 
-  // Turn sharing on. Idempotent: an existing live token is returned as-is, so
-  // reopening the Share dialog never silently rotates a link already sent out.
+  // Turn sharing on and/or repoint the link at a specific draft. Idempotent on
+  // the token: an existing live token is returned as-is, so reopening the Share
+  // dialog never silently rotates a link already sent out — but a `draftId` in
+  // the body updates which version that same link shows.
   app.post("/api/script/share", async (c) => {
     const pid = c.get("projectId");
     try {
-      const { token } = await updateDoc(c.env, pid, SHARE_DOC, { token: null }, (cfg) => {
+      let body = {};
+      try { body = await c.req.json(); } catch { /* empty body = just ensure a token */ }
+      // Validate the requested draft actually exists; an unknown id is ignored
+      // (the viewer falls back to the pinned draft) rather than 400ing.
+      let validDraft = null;
+      if (typeof body.draftId === "string" && body.draftId) {
+        const store = await readStore(c.env, pid);
+        if (store.drafts.some((d) => d.id === body.draftId)) validDraft = body.draftId;
+      }
+      const { token, draftId } = await updateDoc(c.env, pid, SHARE_DOC, { token: null, draftId: null }, (cfg) => {
         if (!cfg.token) cfg.token = makeShareToken(pid);
-        return { token: cfg.token };
+        if (validDraft) cfg.draftId = validDraft;
+        return { token: cfg.token, draftId: cfg.draftId ?? null };
       });
-      return c.json({ shared: true, url: shareUrl(c, token) });
+      return c.json({ shared: true, url: shareUrl(c, token), draftId: draftId ?? null });
     } catch (e) {
       return c.json({ error: String(e.message || e) }, 500);
     }
   });
 
   // Turn sharing off — every copy of the link dies immediately. A later share
-  // mints a fresh token, so old links stay dead.
+  // mints a fresh token, so old links stay dead. Also clears the chosen draft.
   app.delete("/api/script/share", async (c) => {
     try {
-      await updateDoc(c.env, c.get("projectId"), SHARE_DOC, { token: null }, (cfg) => {
+      await updateDoc(c.env, c.get("projectId"), SHARE_DOC, { token: null, draftId: null }, (cfg) => {
         if (!cfg.token) return { abort: true };
         cfg.token = null;
+        cfg.draftId = null;
         return {};
       });
       return c.json({ shared: false });

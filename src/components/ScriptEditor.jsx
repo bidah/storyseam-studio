@@ -18,7 +18,7 @@ import { TaskList, TaskItem } from "@tiptap/extension-list";
 import {
   Check, Loader2, Cloud, PenLine, Save, Pencil,
   GitBranch, Plus, Trash2, Pin, CircleCheck, ListChecks, Lock, FileUp, FileDown,
-  Stethoscope, RotateCcw, Share2, Copy, ExternalLink,
+  Stethoscope, RotateCcw, Share2, Copy, ExternalLink, ChevronDown,
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -444,34 +444,77 @@ function ExportControls({ editor, title, name }) {
   );
 }
 
-// Share — a public read-only link to the pinned draft (/share/script/<token>,
+// Share — a public read-only link to ONE chosen draft (/share/script/<token>,
 // rendered by src/routes/share-script.jsx outside the login gate). Opening the
-// dialog IS the enable action: it POSTs /api/script/share, which mints a token
-// once and returns the same link on every subsequent open. "Stop sharing"
-// revokes the token, killing every copy of the link.
-function ShareControls() {
+// dialog mints a token once (pointing at the pinned draft by default) and
+// returns the same link on every subsequent open. A version picker at the top
+// repoints that same link at another draft; the link always shows the latest
+// saved content of whichever draft it points at. "Stop sharing" revokes the
+// token, killing every copy of the link.
+function ShareControls({ drafts, pinnedId }) {
   const t = useT();
   const [open, setOpen] = useState(false);
-  const [info, setInfo] = useState(null); // null = minting, { url } = live
+  const [info, setInfo] = useState(null); // null = loading, { url, draftId } = live
   const [err, setErr] = useState(null);
   const [copied, setCopied] = useState(false);
+  const [busy, setBusy] = useState(false); // repointing to a different draft
 
+  // Which draft the link currently shows — the stored choice, else the pinned
+  // one (the viewer falls back to pinned for a null/deleted draftId).
+  const selectedId =
+    (info?.draftId && drafts.some((d) => d.id === info.draftId) && info.draftId) || pinnedId;
+  const selectedName = drafts.find((d) => d.id === selectedId)?.name || t("Pinned draft");
+  const sortedDrafts = [...drafts].sort((a, b) => (b.updatedAt || "").localeCompare(a.updatedAt || ""));
+
+  // Ensure a token exists, pointing at the pinned draft by default. GET first so
+  // a previously chosen draft isn't clobbered by reopening the dialog.
   useEffect(() => {
     if (!open) return;
     let alive = true;
     setInfo(null);
     setErr(null);
     setCopied(false);
-    fetch("/api/script/share", { method: "POST" })
-      .then((r) => r.json())
-      .then((d) => {
+    (async () => {
+      try {
+        const cur = await fetch("/api/script/share").then((r) => r.json());
+        if (cur.error) throw new Error(cur.error);
+        // Not shared yet → mint a link pointing at the pinned draft.
+        const d = cur.shared && cur.url
+          ? cur
+          : await fetch("/api/script/share", {
+              method: "POST",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify({ draftId: pinnedId }),
+            }).then((r) => r.json());
         if (!alive) return;
         if (d.error || !d.url) throw new Error(d.error || st("No share link returned"));
         setInfo(d);
-      })
-      .catch((e) => alive && setErr(String(e.message || e)));
+      } catch (e) {
+        if (alive) setErr(String(e.message || e));
+      }
+    })();
     return () => { alive = false; };
-  }, [open]);
+  }, [open, pinnedId]);
+
+  // Repoint the existing link at a different draft.
+  const pickDraft = async (draftId) => {
+    if (draftId === selectedId) return;
+    setBusy(true);
+    setErr(null);
+    try {
+      const d = await fetch("/api/script/share", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ draftId }),
+      }).then((r) => r.json());
+      if (d.error || !d.url) throw new Error(d.error || st("Couldn't update the share link"));
+      setInfo(d);
+    } catch (e) {
+      setErr(String(e.message || e));
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const copy = async () => {
     try {
@@ -511,9 +554,56 @@ function ShareControls() {
             <Share2 size={16} /> {t("Share script")}
           </DialogTitle>
           <DialogDescription>
-            {t("Anyone with this link can read the current script — formatted, no editing. The link always shows the latest saved version.")}
+            {t("Anyone with this link can read the chosen draft — formatted, no editing. Pick which version to share below; the link always shows its latest saved content.")}
           </DialogDescription>
         </DialogHeader>
+
+        {/* Version picker — which draft the link shows. Defaults to the pinned draft. */}
+        <div className="flex items-center gap-2">
+          <span className="shrink-0 text-xs font-medium text-muted-foreground">{t("Version")}</span>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 flex-1 justify-between gap-1.5 text-xs"
+                disabled={!info || busy}
+              >
+                <span className="flex min-w-0 items-center gap-1.5">
+                  <GitBranch size={13} className="shrink-0 text-muted-foreground" />
+                  <span className="truncate">{selectedName}</span>
+                  {selectedId === pinnedId && (
+                    <Badge variant="secondary" className="shrink-0 text-[10px]">{t("pinned")}</Badge>
+                  )}
+                </span>
+                {busy ? <Loader2 size={13} className="animate-spin" /> : <ChevronDown size={13} className="shrink-0 opacity-60" />}
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="max-h-64 w-[--radix-dropdown-menu-trigger-width] overflow-y-auto">
+              {sortedDrafts.map((d) => (
+                <DropdownMenuItem
+                  key={d.id}
+                  onClick={() => pickDraft(d.id)}
+                  className="flex items-center gap-2 text-xs"
+                >
+                  {d.id === selectedId ? (
+                    <Check size={13} className="shrink-0 text-primary" />
+                  ) : (
+                    <span className="w-[13px] shrink-0" />
+                  )}
+                  <span className="truncate">{d.name}</span>
+                  {d.id === pinnedId && (
+                    <Badge variant="secondary" className="shrink-0 text-[10px]">{t("pinned")}</Badge>
+                  )}
+                  <span className="ml-auto shrink-0 pl-2 text-[11px] text-muted-foreground">
+                    {d.lineCount} {t("lines")}
+                  </span>
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+
         {err ? (
           <p className="text-sm text-destructive" role="alert">{err}</p>
         ) : !info ? (
@@ -978,7 +1068,7 @@ function Editor({ initial, drafts, pinnedId, currentName, reload, signed: signed
         />
         <ImportControls flush={saveNow} reload={reload} />
         <ExportControls editor={editor} title={title} name={currentName} />
-        <ShareControls />
+        <ShareControls drafts={drafts} pinnedId={pinnedId} />
         <span className="mx-0.5 h-5 w-px bg-border" aria-hidden />
         <ShotlistGate
           draftId={draftId}
