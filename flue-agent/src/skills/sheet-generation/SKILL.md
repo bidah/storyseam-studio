@@ -65,8 +65,13 @@ always read them fresh, never improvise your own sheet instructions.
 - **Props have no roster.** The subject comes from the user's request plus the
   shot list: `get_shotlist` and read the shots that feature the object (how it
   is held, used, and lit) so the sheet shows the exact object those shots need.
+- `get_world` — the project's `productionType` (`"2d"`, `"3d-pixar"` or
+  `"live-action"`), which decides the base-style preset below.
 - `get_visual_world` — take BOTH:
-  - the style preset from `prompts[]` (the 2D house style `image` block), and
+  - the base-style preset from `prompts[]` whose id is **`preset-<productionType>`**
+    (`preset-2d`, `preset-3d-pixar` or `preset-live-action` — its `image` block is
+    the project's house look), honouring the author's Settings choice if it differs,
+    and
   - **`sheetPrompts.character`, `sheetPrompts.location`, or `sheetPrompts.prop`**
     — the project's sheet prompt for this sheet type.
 

@@ -86,12 +86,18 @@ already show them) and use exactly the role it lists:
 
 ## Step 2 — Write the prompt with the house style
 
-Call `get_visual_world` and take the prompt library's **2D preset** (`prompts[]`,
-the one whose `image` block describes the flat 2D Scandinavian-storybook style).
-Build each prompt as: **`<preset.image>` + a one-line scene** (which character/
-place, pose/expression, setting, framing). Keep the house style identical across a
-batch so the characters read as one world. Draw only what the author's brief
-supports — don't invent a design they haven't described; offer options instead.
+Pick the base-style preset that matches the project's **production type**, never a
+fixed "2D" one. Call `get_world` for `productionType` (`"2d"`, `"3d-pixar"` or
+`"live-action"`) and `get_visual_world` for the prompt library, then take the
+preset whose id is **`preset-<productionType>`** (`preset-2d`, `preset-3d-pixar`
+or `preset-live-action`) — its `image` block is the project's house look (2D
+animation, 3D Pixar-like, or live-action cinematic). If the author has selected a
+different preset in Settings, honour that; otherwise default to the one matching
+`productionType`. Build each prompt as: **`<preset.image>` + a one-line scene**
+(which character/place, pose/expression, setting, framing). Keep the house style
+identical across a batch so the characters read as one world. Draw only what the
+author's brief supports — don't invent a design they haven't described; offer
+options instead.
 
 ## Step 3 — References (optional but powerful)
 

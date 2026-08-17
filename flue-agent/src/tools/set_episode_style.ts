@@ -9,8 +9,9 @@ export const setEpisodeStyle = (api: Api) =>
     description:
       "Choose the render STYLE prepended to episode bundle prompts. Without `bundle` it sets the " +
       "episode-wide style every scene follows; with `bundle` it overrides one scene. `presetId` is a " +
-      "visual-world style-prompt id (list them via get_visual_world — e.g. the seeded 'preset-2d' 2D " +
-      "storybook look), omitted/empty to clear — NO style, which is the default and is right when the " +
+      "visual-world style-prompt id (list them via get_visual_world — one base-style preset per " +
+      "production type: 'preset-2d', 'preset-3d-pixar', 'preset-live-action'), omitted/empty to " +
+      "clear — NO style, which is the default and is right when the " +
       "image references alone should carry the look (e.g. realistic renders) — or, per-scene only, " +
       "the sentinel \"none\" to force that one scene style-free while the episode has a style. " +
       "Styles are applied to the composed skillPrompt at read time, so no rebuild is needed.",

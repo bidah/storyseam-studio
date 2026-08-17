@@ -16,6 +16,7 @@
 // and flips the record to "ready". The client polls /poll every ~3s while any
 // card is processing (mirrors idea-mural's VideoGenView).
 import { readDoc, updateDoc, normalizeProjectId } from "../lib/docs.js";
+import { normalizeProductionType } from "../lib/production-type.js";
 import { putMedia, mediaKey, filesUrl } from "../lib/media.js";
 import { putImageWithVariants, deriveInBackground } from "../lib/images.js";
 import {
@@ -86,15 +87,21 @@ const noProvider = (prov) => !prov.token && !prov.falKey && !prov.atlasKey;
 const str = (v) => (v == null ? "" : String(v));
 const clampCount = (n) => Math.min(4, Math.max(1, Math.floor(Number(n) || 1)));
 
-// The user's 2D prompt (adapted for stills — style/palette/composition kept, the
-// Seedance camera-motion clauses moved to the `video` field). Seeds the library
-// so the composer has a real preset to choose from on first use. Exported for
-// routes/episode.js: the Episode style selector offers these same presets even
-// before a project's visual-world doc exists.
+// The BASE STYLE prompts — one per production type. Each is prepended to every
+// image / video generation as the project's house look, so a live-action
+// project renders with a live-action base and a 3D project with a 3D one. The
+// preset ids are `preset-<productionType>` (see `defaultPresetId`) so the World
+// tab's production-type selection can resolve its matching default. The 2D one
+// is the original Whistlewood look; the 3D and live-action ones are generic
+// starting points meant to be tuned per project on the Settings page.
+//
+// Seeds the library so the composer has real presets to choose from on first
+// use. Exported for routes/episode.js: the Episode style selector offers these
+// same presets even before a project's visual-world doc exists.
 export const SEED_PROMPTS = [
   {
     id: "preset-2d",
-    name: "2D storybook (Whistlewood)",
+    name: "2D animation",
     builtin: true,
     image:
       "Flat 2D hand-drawn animation, clean confident vector linework, strictly " +
@@ -112,7 +119,51 @@ export const SEED_PROMPTS = [
       "camera stays flat and 2D-friendly with no orbiting or perspective shifts. " +
       "Smooth hand-drawn 2D animated motion. No hand held camera.",
   },
+  {
+    id: "preset-3d-pixar",
+    name: "3D animation (Pixar-like)",
+    builtin: true,
+    image:
+      "Stylized 3D CG animation in the Pixar / DreamWorks tradition, appealing " +
+      "rounded character design with expressive faces and clean silhouettes, " +
+      "soft global illumination with warm motivated key light and gentle fill, " +
+      "subsurface scattering on skin, physically-based materials, believable " +
+      "cloth and hair, rich but controlled cinematic color palette, shallow " +
+      "depth of field with soft bokeh, polished high-quality render. No flat 2D " +
+      "shading, no hand-drawn linework, no photoreal live-action footage, no " +
+      "uncanny realism.",
+    video:
+      "Smooth character-animated 3D motion with real weight, anticipation and " +
+      "follow-through, gentle cinematic camera moves — a slow dolly-in with " +
+      "subtle parallax — and consistent lighting across the shot. No morphing, " +
+      "no warping, no jitter.",
+  },
+  {
+    id: "preset-live-action",
+    name: "Live action (cinematic)",
+    builtin: true,
+    image:
+      "Photorealistic live-action cinematography shot on a full-frame cinema " +
+      "camera with a fast prime lens, natural motivated lighting, soft shallow " +
+      "depth of field with gentle bokeh, filmic color grade with true-to-life " +
+      "skin tones, subtle film grain, realistic skin texture and fabric detail, " +
+      "natural human proportions, grounded practical locations, strong " +
+      "cinematic composition. No illustration, no cartoon, no 2D flat shading, " +
+      "no 3D-render or CGI plastic look, no oversaturation.",
+    video:
+      "Naturalistic live-action motion with controlled cinematic camera work — " +
+      "a subtle steadicam or smooth dolly move — consistent exposure and color " +
+      "grade, and realistic motion blur. No morphing, no warping, no unnatural " +
+      "speed-ramping.",
+  },
 ];
+
+// The base-style preset id for a production type — the seed ids are
+// `preset-<productionType>`, so the World tab's selection resolves to its
+// matching house look. Anything unrecognised falls back to 2D (the historical
+// default). See `worker/src/lib/production-type.js`.
+export const defaultPresetId = (productionType) =>
+  `preset-${normalizeProductionType(productionType)}`;
 
 // Sheet prompts: layered on TOP of the style preset when a generation is tagged
 // as a character, location, or prop sheet (composer checkboxes / agent skill).
@@ -175,13 +226,13 @@ function imageResolutionParams(catalog, model, resolution) {
   return entry?.resolutions?.includes(resolution) ? { resolution } : {};
 }
 
-function emptyVisualWorld() {
+function emptyVisualWorld(productionType) {
   return {
     generatedAt: null,
     source: null,
     settings: {
       model: "", aspectRatio: "16:9", resolution: DEFAULT_IMAGE_RESOLUTION,
-      count: 1, cinematic: false, presetId: "preset-2d",
+      count: 1, cinematic: false, presetId: defaultPresetId(productionType),
       videoModel: DEFAULT_VIDEO_MODEL, videoResolution: DEFAULT_VIDEO_RESOLUTION,
     },
     prompts: structuredClone(SEED_PROMPTS),
@@ -399,8 +450,8 @@ function normalizeBoard(b) {
   return { nodes, edges, viewport: o.viewport ?? null, run: normalizeRun(o.run) };
 }
 
-function normalizeVisualWorld(raw) {
-  const base = emptyVisualWorld();
+function normalizeVisualWorld(raw, productionType) {
+  const base = emptyVisualWorld(productionType);
   const w = raw || {};
   base.generatedAt = w.generatedAt ?? null;
   base.source = w.source ?? null;
@@ -411,7 +462,7 @@ function normalizeVisualWorld(raw) {
       resolution: normalizeImageResolution(w.settings.resolution),
       count: clampCount(w.settings.count),
       cinematic: !!w.settings.cinematic,
-      presetId: str(w.settings.presetId) || "preset-2d",
+      presetId: str(w.settings.presetId) || defaultPresetId(productionType),
       // Clamps to a renderable (model, resolution) pair — a doc written before
       // these existed reads back as Seedance 2.0 / 720p.
       ...normalizeVideoDefaults(w.settings.videoModel, w.settings.videoResolution),
@@ -420,6 +471,15 @@ function normalizeVisualWorld(raw) {
   base.prompts = Array.isArray(w.prompts) && w.prompts.length
     ? w.prompts.map(normalizePrompt)
     : structuredClone(SEED_PROMPTS);
+  // Backfill the built-in base-style presets (one per production type). Older
+  // docs were seeded with only the 2D preset, so a live-action / 3D project
+  // would otherwise never see its own house style. Append any missing built-in
+  // by id — this preserves the user's edits (same id) and any custom presets,
+  // and the next prompts save persists the backfilled set.
+  const havePresetIds = new Set(base.prompts.map((p) => p.id));
+  for (const seed of SEED_PROMPTS) {
+    if (!havePresetIds.has(seed.id)) base.prompts.push(structuredClone(seed));
+  }
   base.sheetPrompts = normalizeSheetPrompts(w.sheetPrompts);
   base.promptRevisions = Array.isArray(w.promptRevisions) ? w.promptRevisions.map(normalizePromptRevision) : [];
   base.generations = Array.isArray(w.generations) ? w.generations.map(normalizeGeneration) : [];
@@ -427,9 +487,20 @@ function normalizeVisualWorld(raw) {
   return base;
 }
 
-const FALLBACK = emptyVisualWorld();
-const readVW = async (env, pid) => normalizeVisualWorld(await readDoc(env, pid, "visual-world", null));
-const updateVW = (env, pid, mutate) => updateDoc(env, pid, "visual-world", FALLBACK, mutate);
+// The project's production type (2d / 3d-pixar / live-action), read from the
+// world doc — it decides which base-style preset is the default. Kept as its own
+// read so both the read and write paths resolve the same house look.
+const worldProductionType = async (env, pid) =>
+  normalizeProductionType((await readDoc(env, pid, "world", null))?.productionType);
+const readVW = async (env, pid) => {
+  const [raw, pt] = await Promise.all([
+    readDoc(env, pid, "visual-world", null),
+    worldProductionType(env, pid),
+  ]);
+  return normalizeVisualWorld(raw, pt);
+};
+const updateVW = async (env, pid, mutate) =>
+  updateDoc(env, pid, "visual-world", emptyVisualWorld(await worldProductionType(env, pid)), mutate);
 
 // Decorate a ready generation for consumers:
 //   `url`    — the relative serve path (`/visual-media/<file>`) the in-app UI renders.
