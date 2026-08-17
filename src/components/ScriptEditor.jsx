@@ -1057,8 +1057,9 @@ function Editor({ initial, drafts, pinnedId, currentName, reload, signed: signed
   return (
     <div className="mx-auto flex w-full max-w-[1120px] justify-center gap-5 px-1">
       <div className="w-full max-w-3xl space-y-3">
-      {/* Toolbar */}
-      <div className="sticky top-5 z-20 -mx-1 flex flex-wrap items-center gap-2 rounded-lg border bg-card/90 px-3 py-2 backdrop-blur supports-[backdrop-filter]:bg-card/70">
+      {/* Actions menu — inline (scrolls away with the script) to free up
+          reading space. Only the Screenplay formatting row below stays pinned. */}
+      <div className="-mx-1 flex flex-wrap items-center gap-2 rounded-lg border bg-card/90 px-3 py-2">
         <DraftControls
           drafts={drafts}
           pinnedId={pinnedId}
@@ -1078,7 +1079,10 @@ function Editor({ initial, drafts, pinnedId, currentName, reload, signed: signed
         />
         <span className="mx-0.5 h-5 w-px bg-border" aria-hidden />
         <ReviewChips reviews={reviews} />
-        <span className="mx-0.5 h-5 w-px bg-border" aria-hidden />
+      </div>
+
+      {/* Screenplay formatting row — the only pinned toolbar. */}
+      <div className="sticky top-5 z-20 -mx-1 flex flex-wrap items-center gap-2 rounded-lg border bg-card/90 px-3 py-2 backdrop-blur supports-[backdrop-filter]:bg-card/70">
         <span className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground">
           <PenLine size={13} /> {t("Screenplay")}
         </span>
