@@ -5,8 +5,8 @@
 // ATLAS_KEY env secret is an optional operator fallback (dev / single-tenant).
 //
 // Unlike fal's queue API, Atlas is a single prediction API
-// (https://www.atlascloud.ai/docs): POST /api/v1/model/generateImage or
-// /generateVideo with a `model` field → { data: { id } }, then
+// (https://www.atlascloud.ai/docs): POST /api/v1/model/generateImage,
+// /generateVideo or /generateAudio with a `model` field → { data: { id } }, then
 // GET /api/v1/model/prediction/<id> until status leaves "processing"
 // (completed | failed | timeout); outputs land in `data.outputs[]` as URLs.
 //
@@ -37,20 +37,38 @@ export const ATLAS_IMAGE_MODELS = [
 
 export const ATLAS_VIDEO_MODELS = [
   {
-    id: "atlas:bytedance/seedance-2.0-fast",
-    label: "Seedance 2.0 Fast · Atlas",
-    t2vEndpoint: "bytedance/seedance-2.0-fast/text-to-video",
-    i2vEndpoint: "bytedance/seedance-2.0-fast/image-to-video",
+    id: "atlas:bytedance/seedance-2.0",
+    label: "Seedance 2.0 · Atlas",
+    t2vEndpoint: "bytedance/seedance-2.0/text-to-video",
+    i2vEndpoint: "bytedance/seedance-2.0/image-to-video",
+    // Multimodal omni-reference (reference images + videos + audios, ≤9/3/3) —
+    // the multishot / lip-sync path. Agent-driven today (the flue
+    // generate-multishot / video-from-audio-vfx skills call atlas_generate_video
+    // with reference_* URLs); kept here so the two Atlas registries stay in sync.
+    refEndpoint: "bytedance/seedance-2.0/reference-to-video",
+  },
+];
+
+// Audio: ByteDance Seed Audio 1.0 — the SAME model Higgsfield exposes as
+// `seed_audio`. Audio generation is agent-driven today (the flue seed-audio /
+// radio skills call `atlas_generate_audio`; the worker's sound/radio routes only
+// attach the resulting URL), so this entry keeps the two Atlas registries in
+// sync and is ready if a worker-side audio-generate route is ever added.
+export const ATLAS_AUDIO_MODELS = [
+  {
+    id: "atlas:bytedance/seed-audio-1.0",
+    label: "Seed Audio 1.0 · Atlas",
+    endpoint: "bytedance/seed-audio-1.0",
   },
 ];
 
 export function atlasModelEntry(id) {
-  return [...ATLAS_IMAGE_MODELS, ...ATLAS_VIDEO_MODELS].find((m) => m.id === id) || null;
+  return [...ATLAS_IMAGE_MODELS, ...ATLAS_VIDEO_MODELS, ...ATLAS_AUDIO_MODELS].find((m) => m.id === id) || null;
 }
 
 // Picker-shaped catalog entries ({ id, label, provider }) for one media kind.
 export function atlasCatalog(kind) {
-  const list = kind === "video" ? ATLAS_VIDEO_MODELS : ATLAS_IMAGE_MODELS;
+  const list = kind === "video" ? ATLAS_VIDEO_MODELS : kind === "audio" ? ATLAS_AUDIO_MODELS : ATLAS_IMAGE_MODELS;
   return list.map(({ id, label }) => ({ id, label, provider: "atlas" }));
 }
 
@@ -107,8 +125,13 @@ const unwrap = (j) => (j && typeof j === "object" && j.data && typeof j.data ===
 // Submit one prediction. `kind` picks the route (generateImage / generateVideo);
 // `endpoint` is the Atlas model id and rides in the body as `model`. Returns the
 // prediction id used by atlasPoll.
+const SUBMIT_ROUTE = {
+  image: "/model/generateImage",
+  video: "/model/generateVideo",
+  audio: "/model/generateAudio",
+};
 export async function atlasSubmit(key, kind, endpoint, input) {
-  const res = await atlasFetch(key, kind === "video" ? "/model/generateVideo" : "/model/generateImage", {
+  const res = await atlasFetch(key, SUBMIT_ROUTE[kind] || SUBMIT_ROUTE.image, {
     method: "POST",
     body: JSON.stringify({ model: endpoint, ...(input || {}) }),
   });

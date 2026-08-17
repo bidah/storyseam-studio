@@ -1,6 +1,6 @@
 ---
 name: continue-video
-description: Continue a video with Higgsfield Seedance 2.0 via the Higgsfield MCP. Takes a reference video, extracts its LAST frame to use as the start frame, collects per-character sound files (with a confirm selector to match each sound to a character tag), character sheets, and a prompt that supports @ image references which are sent to Higgsfield as subject/reference images. Use when the user wants to extend/continue a clip, generate the "next shot" from where a video left off, or recreate a Seedance video starting from a video's final frame. Model and resolution come from the project's Video defaults (get_visual_world → settings.videoModel / settings.videoResolution), NOT from a hardcoded value; when the render carries audio_references, mode "fast" is rejected, so a Seedance 2.0 Fast default is overridden to seedance_2_0 mode "std" and the override is stated to the user.
+description: Continue a video with Seedance 2.0 — on Higgsfield (MCP) OR Atlas Cloud (atlas_generate_video), whichever is the active render provider. Takes a reference video, extracts its LAST frame to use as the start frame, collects per-character sound files (with a confirm selector to match each sound to a character tag), character sheets, and a prompt that supports @ image references sent as subject/reference images. Use when the user wants to extend/continue a clip, generate the "next shot" from where a video left off, or recreate a Seedance video starting from a video's final frame. Model and resolution come from the project's Video defaults (get_visual_world → settings.videoModel / settings.videoResolution), NOT from a hardcoded value. On Higgsfield, when the render carries audio_references, mode "fast" is rejected, so a Seedance 2.0 Fast default is overridden to seedance_2_0 mode "std" and the override is stated to the user; on Atlas use the "Atlas Cloud path" section (reference-to-video).
 ---
 
 # Continue Video (Higgsfield Seedance 2.0 — via the Higgsfield MCP)
@@ -216,6 +216,36 @@ EOF
 ```
 
 Fill in real values (no placeholders). Print the result URL + a one-line summary (model, resolution, duration, voice) and the folder path.
+
+## Atlas Cloud path (when Atlas is the active provider)
+
+`atlas_generate_video` replaces the whole MCP upload dance — references are plain
+public URLs, no `media_upload`/`media_confirm`. Steps 1–4 (extract last frame,
+gather the voice track, character sheets, resolve `@` refs) are the same, but you
+keep **URLs/local files as URLs** instead of uploading to media_ids.
+
+- If the render carries a **voice/dialogue track** (lip-sync) → reference-to-video:
+  ```jsonc
+  atlas_generate_video {
+    prompt: "RESOLVED_PROMPT — 'image 1 is the last frame to continue from; image 2 = <char sheet>; speak the dialogue in the voice of audio 1 and lip-sync; output ONLY the spoken dialogue — no music, no SFX.'",
+    reference_image_urls: ["<last_frame URL>", "<char sheet refUrl>", "<resolved @ refs…>"],  // ≤9
+    reference_audio_urls: ["<dialogue/voice track URL>"],                                       // ≤3
+    reference_video_urls: ["<the reference clip URL>"],                                          // optional, ≤3 — style/motion continuity
+    duration: <4–15>, generate_audio: true, resolution: "<project default>"
+  }
+  ```
+- If it's a **silent** continue (no voice) → you can instead use plain
+  image-to-video with the last frame as `image_url` (the i2v model), which anchors
+  the opening frame hard.
+- ⚠️ **First-frame nuance:** Atlas reference-to-video treats `reference_images` as
+  identity/composition anchors, not a guaranteed literal opening frame the way
+  Higgsfield's `start_image` (or i2v's `image`) does. For a strict frame-exact
+  continuation WITH lip-sync, say so in the prompt ("open on image 1, the exact
+  last frame") and check the result; if the seam matters more than the embedded
+  voice, render silent via i2v (`image_url` = last frame) and mux the audio in
+  post with ffmpeg.
+- Confirm with the same `render_ui` card, then poll `atlas_job_status`;
+  `outputs[0]` is the mp4. Deliver as Step 6.
 
 ## Interaction rules
 

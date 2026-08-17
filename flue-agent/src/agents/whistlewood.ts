@@ -95,9 +95,13 @@ function storedAtlasKey(): string {
 
 // The Settings provider selection (app.ts setRenderPrefs → lib/render-prefs.ts):
 // exactly one provider is in use at a time; the selection steers the default
-// backend via the instructions. Tools for the other providers stay AVAILABLE —
-// Higgsfield-only pipelines (multishot lip-sync, Seed Audio scenes) must keep
-// working whatever the selection, and in-flight jobs may still need polling.
+// backend via the instructions. Tools for the other providers stay AVAILABLE so
+// in-flight jobs keep polling and so a capability the active backend lacks can
+// fall back. NOTE: Atlas is now FULL-featured — it hosts the same ByteDance
+// Seed Audio model (atlas_generate_audio) AND Seedance omni-reference-to-video
+// (atlas_generate_video with reference_* URLs), so seed-audio, radio, multishot
+// and lip-sync all run on Atlas. Only fal is limited (image + single-clip video
+// + single-SFX only), so on fal those flows fall back to Higgsfield.
 function storedRenderPrefs(): RenderPrefs {
   try {
     return readRenderPrefs(getCloudflareContext().storage.sql);
@@ -170,7 +174,7 @@ export const cloudflare = extend<CloudflareAgentLike & { ctx: DurableObjectState
 const PROVIDER_TOOLS: Record<string, string> = {
   higgsfield: "the Higgsfield tools (generate_image / generate_video / generate_audio)",
   fal: "the fal tools (fal_generate_image / fal_generate_video)",
-  atlas: "the Atlas Cloud tools (atlas_generate_image / atlas_generate_video)",
+  atlas: "the Atlas Cloud tools (atlas_generate_image / atlas_generate_video / atlas_generate_audio)",
 };
 
 // The instance id carries the conversation's scope: `userId~projectId~chatId`.
@@ -268,7 +272,7 @@ export function Whistlewood({ id }: AgentProps): string {
 
   const providerNote =
     prefs.active && PROVIDER_TOOLS[prefs.active]
-      ? `\n\n## Render provider\n\nThe user has SELECTED **${prefs.active}** as their render provider — use ${PROVIDER_TOOLS[prefs.active]} for image/video renders. Only use another backend when a skill is hard-bound to it (multishot lip-sync and Seed Audio scenes are Higgsfield-only) or the user explicitly asks.`
+      ? `\n\n## Render provider\n\nThe user has SELECTED **${prefs.active}** as their render provider — use ${PROVIDER_TOOLS[prefs.active]} for image, video AND audio. Atlas is FULL-featured: atlas_generate_audio is the Seed Audio backend (same ByteDance model as Higgsfield) for the seed-audio / radio skills, and atlas_generate_video's reference-to-video mode (pass reference_image_urls for identity stills + reference_audio_urls for the speech stem) does multishot AND lip-sync — so run those skills on Atlas too; do NOT tell the user any of this is Higgsfield-only. fal is the limited backend (image, single-clip video, single-SFX audio only): on fal, Seed Audio scenes / multishot / lip-sync fall back to Higgsfield. Only reach for another backend when the active one genuinely lacks a capability or the user explicitly asks.`
       : "";
 
   return providerNote ? `${instructions}${providerNote}` : instructions;

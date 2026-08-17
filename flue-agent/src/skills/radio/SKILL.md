@@ -37,8 +37,10 @@ questions — so the reference clip works for any line it later voices.
 Call **`casting_sample_prompt({ character, traits })`** — traits are the voice
 qualities only (age, timbre, accent — from the World record's `voice` field or
 the user's direction) — and pass its returned `prompt`, `model`, `format`, and
-`sample_rate` to `generate_audio` **verbatim**. If the words you are about to
-render differ from that tool's output, stop: you are off the playbook. This
+`sample_rate` to `generate_audio` **verbatim** (on **Atlas**, pass the same
+`prompt`/`format`/`sample_rate` to `atlas_generate_audio` — the `model` is
+implicit, and a casting sample has no reference clip). If the words you are about
+to render differ from that tool's output, stop: you are off the playbook. This
 includes the confirm card — the prompt you show the user for approval is the
 tool's output, unedited.
 
@@ -54,10 +56,28 @@ with it — a bad clone caught here saves a scene's worth of retakes.
    `beatTitle`/`beat`). Note each line's `id`, `character`, `text`, and
    `voiceRef.refUrl` (the reference clip — an **absolute, public URL** you can
    fetch directly).
-2. Load the **seed-audio** skill (`load_skill("seed-audio")`) — it owns the
-   Higgsfield `generate_audio` call, the 2048-char prompt gate, voice references
-   (TA2A), and the poll→download flow.
-3. For **each line in the scene, in order**:
+2. Load the **seed-audio** skill (`load_skill("seed-audio")`) — it owns the Seed
+   Audio call on BOTH backends (Higgsfield `generate_audio` and Atlas
+   `atlas_generate_audio`), the 2048-char prompt gate, voice references (TA2A),
+   and the poll→download flow. **Pick the backend from the active render
+   provider** (see the "Render provider" note in your instructions): Atlas → the
+   `atlas_generate_audio` two-call path below; Higgsfield/fal → the MCP path.
+3. For **each line in the scene, in order** — the prompt is identical on either
+   backend; only the reference-clip mechanics differ:
+
+   **Atlas Cloud (active provider = atlas):** no download, no upload — pass the
+   reference clip's public URL straight through:
+   ```jsonc
+   atlas_generate_audio {
+     format: "wav", sample_rate: 48000,
+     prompt: "<Character> (voiced by @Audio1) says: \"<the exact line>\". Let the final word ring out completely, then hold about one second of clean silence before the clip ends. Clean single voice, no music, no sound effects, no background.",
+     reference_audio_urls: ["<voiceRef.refUrl>"]
+   }
+   ```
+   Then poll `atlas_job_status { prediction_id }` until `completed`; `outputs[0]`
+   is the take URL — use it as `<rawUrl>` in steps 3.4–3.6.
+
+   **Higgsfield / fal (active provider = higgsfield or fal):**
    1. Download the character's reference clip to a local file straight from its
       absolute URL: `curl -sS -o ref.wav "<voiceRef.refUrl>"` (no env var or
       project header needed — `refUrl` is a public `/files/...` link). `file
@@ -79,9 +99,10 @@ with it — a bad clone caught here saves a scene's worth of retakes.
       (no duration param — see the seed-audio skill), so giving the model runway past
       the last word is what stops it clipping the line mid-word. It's a strong bias,
       not a hard guarantee.
-      Confirm the FIRST Higgsfield submit of the scene with the user, then proceed
-      through the rest without re-confirming each one.
    3. Poll `job_status { sync: true }`, get the result `rawUrl`.
+
+   Either way, confirm the FIRST submit of the scene with the user, then proceed
+   through the rest without re-confirming each one.
    4. `create_sound({ prompt: "<the line>", kind: "voice", name: "<Character> — <scene>" })`
       → returns a track id (e.g. `trk_7`). Its v1 is pending.
    5. `attach_sound({ id: <trackId>, v: 1, url: <rawUrl> })` — downloads the

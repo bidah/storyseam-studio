@@ -7,9 +7,11 @@
 // fallback (dev / single-tenant).
 //
 // Unlike fal's queue API, Atlas is one prediction API
-// (https://www.atlascloud.ai/docs): POST /api/v1/model/generateImage or
-// /generateVideo with a `model` body field → prediction id, then
-// GET /api/v1/model/prediction/<id> until status leaves "processing".
+// (https://www.atlascloud.ai/docs): POST /api/v1/model/generateImage,
+// /generateVideo or /generateAudio with a `model` body field → prediction id,
+// then GET /api/v1/model/prediction/<id> until status leaves "processing".
+// Atlas hosts ByteDance Seed Audio 1.0, so unlike fal it CAN run the seed-audio
+// / radio flows natively (not just single SFX) — see atlas_generate_audio.
 //
 // The tool set is TYPED and curated (keep the endpoints in sync with
 // worker/src/lib/atlas.js). When no key exists the tools are simply absent,
@@ -29,8 +31,23 @@ const ATLAS_API = "https://api.atlascloud.ai/api/v1";
 // ride on dedicated sibling models (…/edit, …/image-to-video).
 const IMAGE_MODEL = "google/nano-banana-2/text-to-image";
 const IMAGE_EDIT_MODEL = "google/nano-banana-2/edit";
-const VIDEO_T2V_MODEL = "bytedance/seedance-2.0-fast/text-to-video";
-const VIDEO_I2V_MODEL = "bytedance/seedance-2.0-fast/image-to-video";
+// Seedance 2.0 (the full model, NOT the -fast variant — fast trades quality and,
+// like Higgsfield's mode:fast, is the wrong pick for reference+audio work).
+const VIDEO_T2V_MODEL = "bytedance/seedance-2.0/text-to-video";
+const VIDEO_I2V_MODEL = "bytedance/seedance-2.0/image-to-video";
+// Multimodal "omni-reference" Seedance: reference IMAGES (identity/location
+// stills, ≤9), reference VIDEOS (≤3) and reference AUDIOS (speech stems, ≤3)
+// in one job, referred to in the prompt positionally ("image 1", "audio 1").
+// This is the multishot / lip-sync path — pass the dialogue stem as
+// reference_audios and Seedance lip-syncs to it (with generate_audio:true it
+// embeds that voice), with NO black-MP4 workaround and NO upload/confirm step
+// (the reference arrays take plain public URLs directly).
+const VIDEO_REF_MODEL = "bytedance/seedance-2.0/reference-to-video";
+// ByteDance Seed Audio 1.0 — the SAME model Higgsfield exposes as `seed_audio`,
+// so the seed-audio / radio skills work on Atlas with identical prompt craft.
+// Cinematic text-to-audio: one prompt → a full mixed scene (multi-voice
+// dialogue + SFX + ambience + music), plus voice cloning from reference clips.
+const AUDIO_MODEL = "bytedance/seed-audio-1.0";
 
 // Generic so input property types survive into run({ input }).
 const d = <T extends v.GenericSchema>(schema: T, text: string) =>
@@ -65,8 +82,13 @@ const unwrap = (j: any) => (j && typeof j === "object" && j.data && typeof j.dat
 
 // Submit → { prediction_id } (what atlas_job_status needs back). Fast image
 // models may complete synchronously — pass outputs through when present.
-async function submit(key: string, kind: "image" | "video", model: string, input: Record<string, unknown>) {
-  const res = await atlasFetch(key, kind === "video" ? "/model/generateVideo" : "/model/generateImage", {
+const SUBMIT_ROUTE: Record<"image" | "video" | "audio", string> = {
+  image: "/model/generateImage",
+  video: "/model/generateVideo",
+  audio: "/model/generateAudio",
+};
+async function submit(key: string, kind: "image" | "video" | "audio", model: string, input: Record<string, unknown>) {
+  const res = await atlasFetch(key, SUBMIT_ROUTE[kind], {
     method: "POST",
     body: JSON.stringify({ model, ...input }),
   });
@@ -120,24 +142,73 @@ export function createAtlasTools(userKey?: string): ToolDefinition[] {
   const generateVideo = defineTool({
     name: "atlas_generate_video",
     description:
-      "Generate a video with Atlas Cloud (Seedance 2.0 Fast). Async: returns a prediction_id to poll with atlas_job_status. Pass a start frame (a shot's still) as image_url — the image-to-video model is used automatically, which is the preferred path for shot renders (identity + composition lock).",
+      "Generate a video with Atlas Cloud (Seedance 2.0). Async: returns a prediction_id to poll with atlas_job_status. THREE modes, picked automatically: (1) plain text→video; (2) pass a start frame (a shot's still) as image_url → image-to-video, the preferred path for a single shot render (identity + composition lock); (3) pass any of reference_image_urls / reference_video_urls / reference_audio_urls → the multimodal 'omni-reference' model for multishot & lip-sync. For lip-sync, put the shot's SPEECH stem in reference_audio_urls and the character/location stills in reference_image_urls, keep generate_audio true, and in the prompt refer to them positionally ('image 1 is Sara …; lip-sync exactly to audio 1'). Seedance embeds that voice — no black-MP4 trick, no upload step (URLs go straight in).",
     input: v.object({
-      prompt: d(v.string(), "The full motion prompt (style/motion block + action)."),
-      image_url: v.optional(d(v.pipe(v.string(), v.url()), "Start-frame image URL (absolute, publicly fetchable). Strongly recommended for shot renders.")),
-      aspect_ratio: v.optional(d(v.picklist(["21:9", "16:9", "4:3", "1:1", "3:4", "9:16"]), "Aspect ratio. Default 16:9 (with a start frame it adapts to the frame).")),
-      duration: v.optional(d(v.pipe(v.number(), v.integer(), v.minValue(4), v.maxValue(15)), "Duration in seconds (4-15). Default 5.")),
-      generate_audio: v.optional(d(v.boolean(), "Generate synchronized audio. Default false (dialogue/SFX usually come from the Radio track).")),
-      resolution: v.optional(d(v.picklist(["480p", "720p", "1080p-SR"]), "Video resolution. Default 720p.")),
+      prompt: d(v.string(), "The full motion prompt (style/motion block + action). For reference jobs, describe each reference positionally ('image 1', 'video 1', 'audio 1') and say to lip-sync to the audio."),
+      image_url: v.optional(d(v.pipe(v.string(), v.url()), "Start-frame image URL (absolute, publicly fetchable). Use for a single-shot image-to-video render — NOT for multishot identity refs (use reference_image_urls for those).")),
+      reference_image_urls: v.optional(d(v.array(v.pipe(v.string(), v.url())), "Up to 9 reference image URLs (character/location stills) for the omni-reference model — identity/composition anchors, distinct from a start frame.")),
+      reference_video_urls: v.optional(d(v.array(v.pipe(v.string(), v.url())), "Up to 3 reference video URLs (motion/style clips) for the omni-reference model.")),
+      reference_audio_urls: v.optional(d(v.array(v.pipe(v.string(), v.url())), "Up to 3 reference audio URLs (the SPEECH stem to lip-sync to — WAV/MP3, ≤30s each). Triggers lip-sync on the omni-reference model.")),
+      aspect_ratio: v.optional(d(v.picklist(["21:9", "16:9", "4:3", "1:1", "3:4", "9:16", "adaptive"]), "Aspect ratio. Default adaptive (matches the first reference/frame), else 16:9.")),
+      duration: v.optional(d(v.pipe(v.number(), v.integer(), v.minValue(4), v.maxValue(15)), "Duration in seconds (4-15). Default 5. For a lip-sync shot use max(4, round(speech length)).")),
+      generate_audio: v.optional(d(v.boolean(), "Embed synchronized audio. Default false for plain text/image jobs; default TRUE when reference_audio_urls is present so the lip-synced voice is embedded.")),
+      resolution: v.optional(d(v.picklist(["480p", "720p", "1080p", "1440p-SR", "4k"]), "Video resolution. Default 720p.")),
     }),
     async run({ data: input }) {
+      const refImgs = (input.reference_image_urls ?? []).filter(Boolean).slice(0, 9);
+      const refVids = (input.reference_video_urls ?? []).filter(Boolean).slice(0, 3);
+      const refAuds = (input.reference_audio_urls ?? []).filter(Boolean).slice(0, 3);
+      const isRef = refImgs.length > 0 || refVids.length > 0 || refAuds.length > 0;
+      const model = isRef ? VIDEO_REF_MODEL : input.image_url ? VIDEO_I2V_MODEL : VIDEO_T2V_MODEL;
       return {
-        output: await submit(key, "video", input.image_url ? VIDEO_I2V_MODEL : VIDEO_T2V_MODEL, {
+        output: await submit(key, "video", model, {
           prompt: input.prompt,
-          ratio: input.aspect_ratio || (input.image_url ? "adaptive" : "16:9"),
+          ratio: input.aspect_ratio || (isRef || input.image_url ? "adaptive" : "16:9"),
           duration: input.duration ?? 5,
-          generate_audio: input.generate_audio ?? false,
+          // Reference jobs carrying a speech stem default to embedding audio (the
+          // lip-synced voice); plain text/image jobs stay silent unless asked.
+          generate_audio: input.generate_audio ?? (refAuds.length > 0),
           resolution: input.resolution || "720p",
-          ...(input.image_url ? { image: input.image_url } : {}),
+          ...(isRef
+            ? {
+                ...(refImgs.length ? { reference_images: refImgs } : {}),
+                ...(refVids.length ? { reference_videos: refVids } : {}),
+                ...(refAuds.length ? { reference_audios: refAuds } : {}),
+              }
+            : input.image_url
+              ? { image: input.image_url }
+              : {}),
+        }),
+      };
+    },
+  });
+
+  const generateAudio = defineTool({
+    name: "atlas_generate_audio",
+    description:
+      "Generate cinematic audio with Atlas Cloud (ByteDance Seed Audio 1.0 — the SAME Seed Audio model Higgsfield exposes as seed_audio). Async: returns a prediction_id to poll with atlas_job_status; outputs[0] is the audio URL — attach it with attach_sound / attach_radio_take. One text prompt renders a full mixed scene (multi-voice dialogue, SFX, ambience, music), NOT plain TTS. Use it when Atlas is the active provider; prompt craft is identical to the seed-audio skill (structure the scene, ≤2048 chars). For voice-consistent takes pass reference clip URLs in reference_audio_urls (absolute public /files/... URLs) and refer to them in the prompt as @Audio1/@Audio2/@Audio3.",
+    input: v.object({
+      prompt: d(v.string(), "The audio scene description / dialogue script (Seed Audio 'text'). Keep ≤2048 chars; structure it like the seed-audio skill."),
+      format: v.optional(d(v.picklist(["mp3", "wav", "pcm", "ogg_opus"]), "Output audio format. Default mp3 (web-playable; wav is lossless).")),
+      sample_rate: v.optional(d(v.picklist([8000, 16000, 24000, 32000, 44100, 48000]), "Output sample rate in Hz. Default 24000; 48000 for film fidelity.")),
+      speech_rate: v.optional(d(v.pipe(v.number(), v.integer(), v.minValue(-50), v.maxValue(100)), "Speaking speed. 0 = default, +faster / −slower.")),
+      loudness_rate: v.optional(d(v.pipe(v.number(), v.integer(), v.minValue(-50), v.maxValue(100)), "Overall loudness/gain. 0 = default, + louder.")),
+      pitch_rate: v.optional(d(v.pipe(v.number(), v.integer(), v.minValue(-12), v.maxValue(12)), "Pitch shift. − deeper voices, + higher/younger.")),
+      reference_audio_urls: v.optional(
+        d(v.array(v.pipe(v.string(), v.url())), "Up to 3 reference voice-clip URLs (absolute, publicly fetchable — e.g. /files/... links) to clone voices; map each to a character in the prompt via @Audio1/@Audio2/@Audio3."),
+      ),
+    }),
+    async run({ data: input }) {
+      const refs = (input.reference_audio_urls ?? []).filter(Boolean).slice(0, 3);
+      return {
+        output: await submit(key, "audio", AUDIO_MODEL, {
+          text: input.prompt,
+          format: input.format || "mp3",
+          sample_rate: input.sample_rate ?? 24000,
+          speech_rate: input.speech_rate ?? 0,
+          loudness_rate: input.loudness_rate ?? 0,
+          pitch_rate: input.pitch_rate ?? 0,
+          ...(refs.length ? { references: refs.map((u) => ({ audio_url: u })) } : {}),
         }),
       };
     },
@@ -168,5 +239,5 @@ export function createAtlasTools(userKey?: string): ToolDefinition[] {
     },
   });
 
-  return [generateImage, generateVideo, jobStatus];
+  return [generateImage, generateVideo, generateAudio, jobStatus];
 }

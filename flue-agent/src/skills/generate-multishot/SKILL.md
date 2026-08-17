@@ -1,25 +1,35 @@
 ---
 name: generate-multishot
 description: >-
-  Generate ONE multi-shot Seedance 2.0 video (several shots in one <15s clip)
-  via the Higgsfield MCP, driven by a DIALOG-ONLY audio stem (Flow A) or the
-  Episode tab's VOICE / SOUND REFERENCES as black-screen MP4s (Flow B), plus
-  character sheets and a location image. Use when the user wants a "multishot" /
-  "multi-shot" Seedance generation, asks to generate/render an Episode bundle or
-  shot by id ("generate MS-01"), to combine shots 1–N into one clip, or to
-  render a scene beat from character + location refs. Only the clean -dialog
-  stem, never the -vfx stem, feeds the video. Higgsfield-ONLY — never substitute
-  fal_generate_video or atlas_generate_video: their Seedance takes one start
-  image and no audio stem, so this multi-reference flow can't run on them.
-  Model/resolution come from the project Video defaults (get_visual_world);
-  audio references force mode "std", so a Fast default falls back to
-  seedance_2_0. Credits burn on submit, so show the params FIRST as a render_ui
-  KeyValue + Actions card, never alone.
+  Generate ONE multi-shot Seedance 2.0 video (several shots in one <15s clip) —
+  on Higgsfield (MCP) OR Atlas Cloud (atlas_generate_video reference-to-video),
+  whichever is the active provider — driven by a DIALOG-ONLY audio stem (Flow A)
+  or per-character VOICE references (Flow B), plus character sheets and a
+  location image. Use when the user wants a "multishot" / "multi-shot" Seedance
+  generation, asks to generate/render an Episode bundle or shot by id ("generate
+  MS-01"), to combine shots 1–N into one clip, or to render a scene beat from
+  character + location refs. Only the clean -dialog stem, never the -vfx stem,
+  feeds the video. fal CANNOT run this (its Seedance takes one start image and no
+  audio stem). Model/resolution come from the project Video defaults
+  (get_visual_world); on Higgsfield audio references force mode "std", so a Fast
+  default falls back to seedance_2_0. Credits burn on submit, so show the params
+  FIRST as a render_ui KeyValue + Actions card, never alone.
 ---
 
-# generate-multishot (Higgsfield Seedance 2.0 — via the Higgsfield MCP)
+# generate-multishot (Seedance 2.0 — Higgsfield or Atlas Cloud)
 
-Render a single **multi-shot** clip: several scripted shots (wide → MS → CU …) described as beats inside ONE `seedance_2_0` generation, under the 15s cap, lip-synced to a **dialogue-only** audio stem (Flow A) or to per-character voice refs (Flow B). Built on the **Higgsfield MCP** (`mcp__higgsfield__*`).
+Render a single **multi-shot** clip: several scripted shots (wide → MS → CU …) described as beats inside ONE Seedance 2.0 generation, under the 15s cap, lip-synced to a **dialogue-only** audio stem (Flow A) or to per-character voice refs (Flow B).
+
+> 🔀 **Pick the backend from the active render provider** (the "Render provider"
+> note in your instructions). **Higgsfield** → the `mcp__higgsfield__*` flow
+> written out below (`seedance_2_0`, `medias[]` roles, black-MP4 voice trick).
+> **Atlas Cloud** → the much simpler **"Atlas Cloud path"** section near the end:
+> `atlas_generate_video` reference-to-video takes the character/location stills
+> and the `-dialog` stem as plain URLs (`reference_image_urls` /
+> `reference_audio_urls`) — **no `media_upload`/`media_confirm`, no black-MP4
+> conversion**. Everything conceptual here (the `-dialog`/`-vfx` check net, the
+> confirm card, "≤15s", `generate_audio` on) applies to BOTH; only the tool call
+> and the reference plumbing differ.
 
 > **Always use the Higgsfield MCP, never the `higgsfield` CLI.** Multiple reference images require the role `image_references`, which the CLI cannot send (its `--image` collapses to the single `start_image`). The MCP `generate_video` `medias[]` array is the only way to pass character + location references together.
 
@@ -291,6 +301,47 @@ Download the video into the experiment's `gen/` folder and append an entry to it
 GEN_DIR="<experiment>/gen"; mkdir -p "$GEN_DIR"
 curl -fsSL -o "$GEN_DIR/<slug>_<res>.mp4" "RESULT_URL"
 ```
+
+## Atlas Cloud path (when Atlas is the active provider)
+
+`atlas_generate_video`'s **reference-to-video** mode is this whole flow in one
+call — Seedance 2.0's omni-reference takes the identity stills AND the dialogue
+audio as plain public URLs, so there is **no upload/confirm, no black-MP4
+trick**. Both Flow A and Flow B collapse to the same shape.
+
+1. **Run the check net first** (the `-dialog`/`-vfx` guard above is
+   backend-agnostic) and resolve the clean dialogue stem's URL. Also collect the
+   character-sheet and location image URLs — always the `refUrl` (full-res), never
+   `thumb`/`display`.
+2. **Submit** `atlas_generate_video`:
+   ```jsonc
+   atlas_generate_video {
+     prompt: "MULTISHOT_PROMPT — describe the ordered shots; then: 'image 1 = <location>, image 2 = <char A> …; speak all dialogue in the voice of audio 1 and lip-sync precisely; output ONLY spoken dialogue — no music, no SFX, no ambience.'",
+     reference_image_urls: ["<location refUrl>", "<char A sheet refUrl>", "<char B sheet refUrl>"],  // ≤9
+     reference_audio_urls: ["<the -dialog stem URL>"],                                                // ≤3; the dialogue stem
+     duration: <ceil(dialogue length), 4–15>,
+     generate_audio: true,   // embeds the lip-synced voice; default true once reference_audio_urls is set
+     resolution: "<project default, e.g. 720p>"
+   }
+   ```
+   - **Flow A** (a rendered `-dialog` stem): put that stem in
+     `reference_audio_urls` — Seedance lip-syncs to it and embeds it. This is the
+     clean path; you do NOT need the black-MP4 voice trick.
+   - **Flow B** (only per-character VOICE identity clips, no rendered line): pass
+     the voice clip URL(s) in `reference_audio_urls` too and, as with Higgsfield,
+     the spoken WORDS come from the `SHOT` lines in the prompt — refer to each as
+     "audio 1/2" and say to speak the shot's dialogue in that voice.
+   - An optional first-frame or a style-continuity clip rides in
+     `reference_video_urls` (≤3).
+3. **Confirm with the same `render_ui` card** (Step 3½) before submitting —
+   credits burn identically. Show `Model: Seedance 2.0 (Atlas)`.
+4. **Poll** `atlas_job_status { prediction_id }` until `completed`; `outputs[0]`
+   is the mp4 (already carrying the embedded lip-synced audio). Deliver it into
+   the experiment's `gen/` folder / `multishot.json` exactly as Step 6.
+
+Limits (Atlas Seedance 2.0): `reference_images` ≤9, `reference_videos` ≤3,
+`reference_audios` ≤3 (WAV/MP3, ≤30s each). No `mode` param — the full (non-fast)
+Seedance 2.0 model already accepts audio refs, so nothing to downgrade.
 
 ## Interaction rules
 

@@ -18,9 +18,18 @@ description: >-
 # video-from-audio-vfx
 
 A pipeline skill that combines **seed-audio** (ByteDance Seed Audio 1.0) and
-**seedance_2_0** (Higgsfield) via the Higgsfield MCP. Read the **seed-audio**
-skill for Seed Audio params/format and the upload→confirm→`audio_references`
-mechanics; this skill orchestrates them.
+**Seedance 2.0** — on **Higgsfield** (`mcp__higgsfield__*`) OR **Atlas Cloud**
+(`atlas_generate_audio` + `atlas_generate_video` reference-to-video), whichever
+is the active render provider. Read the **seed-audio** skill for Seed Audio
+params/format; on Higgsfield it also owns the upload→confirm→`audio_references`
+mechanics, on Atlas the references are just URLs. This skill orchestrates them.
+
+> 🔀 **On Atlas, the two-stem lip-sync is much simpler** — see the "Atlas Cloud
+> path" section at the end. The black-MP4 voice trick (Run D) is a
+> Higgsfield-only workaround; Atlas's reference-to-video takes the speech stem
+> directly as `reference_audio_urls`, so you skip the MP4 conversion and the
+> upload/confirm entirely. The two-stem *reasoning* (why speech and VFX stay
+> separate, the loudness lessons, versioning) is identical on both.
 
 > ⭐ **Default `generate_audio: true` on every Seedance `generate_video` call.**
 > `generate_audio:false` returns a **silent** video, so the delivered clip has no
@@ -207,6 +216,39 @@ ffmpeg -y -i seedance_silent.mp4 -i mix.wav   -map 0:v:0 -map 1:a:0 -t L \
 ```
 
 ---
+
+## Atlas Cloud path (when Atlas is the active provider)
+
+Same two-stem design, fewer steps — no `media_upload`/`media_confirm`, no
+black-screen-MP4 conversion.
+
+- **Run A — SPEECH stem:** `atlas_generate_audio` with the character voice clip's
+  public URL in `reference_audio_urls` (see the seed-audio skill's "Atlas Cloud
+  path"). Save the `-dialog` stem.
+- **Run B — VFX stem:** `atlas_generate_audio`, pure T2A (no references), the same
+  assertive/loud SFX prompt and the silence-check. Save the `-vfx` stem.
+- **Run D — lip-synced video (the simple path):** `atlas_generate_video` in
+  reference-to-video mode:
+  ```jsonc
+  atlas_generate_video {
+    prompt: "<visual description>. image 1 = <character>, image 2 = <location>. In the voice of audio 1, <Char> says: \"<line>\". Lip-sync precisely. Output ONLY her spoken dialogue — NO MUSIC, NO SOUND EFFECTS, NO ambience.",
+    reference_image_urls: ["<character sheet refUrl>", "<location refUrl>"],
+    reference_audio_urls: ["<the -dialog SPEECH stem URL>"],   // Seedance embeds this lip-synced voice
+    duration: <max(4, round(speech_len))>,
+    generate_audio: true,
+    resolution: "<project default>"
+  }
+  ```
+  Poll `atlas_job_status`; `outputs[0]` already has the embedded lip-synced voice
+  in the character's voice — this is the equivalent of Higgsfield's black-MP4 Run
+  D, without the workaround. (If you need the byte-exact seed-audio take in the
+  file instead of Seedance's rendering, use the fallback: pass the stem as
+  `reference_audio_urls` for mouth timing but set `generate_audio:false` to get a
+  silent video, then mux with ffmpeg as in Run E.)
+- **Run E — Post:** identical ffmpeg muxing (v1 = video+speech, v2 = video+mix).
+
+Everything else (stem naming `-dialog`/`-vfx`, keeping stems separate, the
+loudness verification, length/sync rules, versioning) is unchanged.
 
 ## Versioning (always keep previous takes)
 

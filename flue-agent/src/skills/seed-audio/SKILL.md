@@ -2,24 +2,39 @@
 name: seed-audio
 description: >-
   Generate cinematic text-to-audio (SFX, ambience, multi-voice dialogue, full
-  sound-design scenes) with ByteDance Seed Audio 1.0 via the Higgsfield MCP.
+  sound-design scenes) with ByteDance Seed Audio 1.0 — on Higgsfield
+  (mcp__higgsfield__generate_audio) OR Atlas Cloud (atlas_generate_audio, the
+  SAME model), whichever is active.
   Use when the user wants to "make a sound effect", "generate ambience", "create
   a sound-design scene", "render an audio scene with dialogue and SFX", a
   "soundscape", "foley", multi-character dialogue, or any mixed audio that TTS
-  alone cannot produce — including voice-consistent scenes via an uploaded voice
+  alone cannot produce — including voice-consistent scenes via a voice
   reference. Unlike text-to-speech, Seed Audio renders engines, crashes, rain,
   gunshots, rooms, music beds, and spoken lines together in one mixed clip. NOT
   for plain narration of long text (use a text2speech_v2_* model for that).
-  Higgsfield-ONLY for scenes: neither fal nor Atlas Cloud has a Seed Audio
-  equivalent even as the active provider — fal's fal_generate_audio makes single
-  ElevenLabs SFX, so use it only when the user explicitly asks for fal. Attached
-  audio is handed back PLAYABLE — a render_ui AudioList card, never a bare link.
+  fal has NO scene equivalent (only single ElevenLabs SFX), so on fal render
+  scenes on Higgsfield. Attached audio is handed back PLAYABLE — a render_ui
+  AudioList card, never a bare link.
 ---
 
-# Seed Audio 1.0 (Higgsfield)
+# Seed Audio 1.0 (Higgsfield or Atlas Cloud)
 
-**Model ID:** `seed_audio` · **Provider:** ByteDance · **Output:** audio
-**Accessed via:** Higgsfield MCP → `mcp__higgsfield__generate_audio`
+**Model:** ByteDance Seed Audio 1.0 · **Output:** audio
+
+Seed Audio is the SAME ByteDance model on both backends, so the prompt craft,
+params, and reference-voice behaviour below are identical — only the tool call
+and the reference-upload mechanics differ. **Pick the backend from the active
+render provider** (the "Render provider" note in your instructions says which):
+
+| Active provider | Submit tool | Poll tool | Voice references |
+|---|---|---|---|
+| **Higgsfield** (or fal — fal has no scene model, so scenes fall back here) | `mcp__higgsfield__generate_audio` (`model:"seed_audio"`) | `mcp__higgsfield__job_status` | upload→confirm→`medias:[{role:"audio_references"}]` |
+| **Atlas Cloud** | `atlas_generate_audio` | `atlas_job_status` | pass the clip's public URL directly in `reference_audio_urls` — **no upload/confirm step** |
+
+Everything else in this skill (prompt structure, the 2048-char gate, the
+six-part framework, `@Audio1` notation, tuning params) applies verbatim to both.
+The Higgsfield-specific workflow is written out first; the **"Atlas Cloud path"**
+section near the end gives the two-call equivalent.
 
 > 🏷 **Stem naming (check net):** when a scene is split into a speech pass and an
 > effects pass, save the outputs as `<base>-dialog.<ext>` (voices only, no
@@ -412,6 +427,48 @@ separate two kinds of non-speech audio — do not mix them in one per-shot pass:
   editing step / the `video-from-audio-vfx` skill — backgrounds can come later.)
 
 Rule of thumb: **per-shot = speech + effects; per-scene = one background bed.**
+
+## Atlas Cloud path (when Atlas is the active provider)
+
+Same model, same prompt — just two tool calls instead of the Higgsfield MCP
+dance. There is **no `media_upload`/`media_confirm`**: Atlas takes reference
+clips as plain URLs.
+
+1. **Gate the prompt** on the 2048-char limit exactly as above (the validator is
+   backend-agnostic).
+2. **Submit** with `atlas_generate_audio`. The `prompt` field IS Seed Audio's
+   `text`; the rate/format params map 1:1:
+   ```jsonc
+   atlas_generate_audio {
+     prompt: "<the audio scene description>",
+     format: "mp3",          // or "wav" for lossless (both attach fine)
+     sample_rate: 48000,      // 24000 default; 48000 for film fidelity
+     loudness_rate: 0, speech_rate: 0, pitch_rate: 0,
+     // voice-consistent (TA2A): pass up to 3 clean single-speaker clip URLs
+     reference_audio_urls: ["https://…/files/<key>"]
+   }
+   ```
+   For voice cloning, pass the reference clip's **absolute public URL** (a
+   `/files/...` link — e.g. a character's `voiceRef.refUrl`, or a clip you
+   generated and attached) in `reference_audio_urls`, and in the prompt bind each
+   to a character with `@Audio1`/`@Audio2`/`@Audio3` just like the Higgsfield
+   path (`Sara (voiced by @Audio1) says: "…"`). Max 3 refs.
+   It returns `{ prediction_id }`.
+3. **Poll** `atlas_job_status { prediction_id }` until `status: "completed"`;
+   `outputs[0]` is the audio URL (on `*.atlascloud.ai`).
+4. **Attach** exactly as the Higgsfield path does — `attach_sound` / the radio
+   skill's `attach_radio_take` accept that URL directly (the worker downloads it
+   into the project), then finish with the `render_ui` **AudioList** card.
+
+Notes / limits for the Atlas backend:
+- **No `duration` param** either — state the length in the prompt, same ~2-min
+  cap per pass.
+- **Preset `speaker` voices are Chinese-only** on Atlas, so don't pick one for an
+  English production — rely on descriptive voice traits in the prompt, or a
+  `reference_audio_urls` clip, to fix identity (this is the normal path anyway).
+- The audio editing / inpaint / extend flows above are prompt-driven and work the
+  same — pass the source clip(s) as `reference_audio_urls` and reference them as
+  `@Audio1`.
 
 ## Known quirks (verified)
 
