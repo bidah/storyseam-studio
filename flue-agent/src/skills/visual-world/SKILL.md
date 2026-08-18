@@ -63,8 +63,9 @@ generation (`get_visual_world` records the id that WAS used) or remember from an
 earlier turn — **Higgsfield renames these** (e.g. `nano_banana_flash` →
 `nano_banana_2`), so a remembered id goes stale and `generate_image` fails with
 "model not found / invalid model". Always **call `models_explore` fresh** (list
-image models, or `action:'recommend'` with the goal "flat 2D storybook character
-concept art") and pick the configured model if set — otherwise the **Nano Banana
+image models, or `action:'recommend'` with a goal describing the project's house
+style — e.g. "live-action character concept art" for a live-action production,
+never a hardcoded 2D goal) and pick the configured model if set — otherwise the **Nano Banana
 Pro** image model it returns, or, if the catalog has no "Pro", the current Nano
 Banana image model it lists. Reuse that freshly-resolved id for this batch only.
 If a `generate_image` call ever errors on the model, re-run `models_explore` and
@@ -86,18 +87,18 @@ already show them) and use exactly the role it lists:
 
 ## Step 2 — Write the prompt with the house style
 
-Pick the base-style preset that matches the project's **production type**, never a
-fixed "2D" one. Call `get_world` for `productionType` (`"2d"`, `"3d-pixar"` or
-`"live-action"`) and `get_visual_world` for the prompt library, then take the
-preset whose id is **`preset-<productionType>`** (`preset-2d`, `preset-3d-pixar`
-or `preset-live-action`) — its `image` block is the project's house look (2D
-animation, 3D Pixar-like, or live-action cinematic). If the author has selected a
-different preset in Settings, honour that; otherwise default to the one matching
-`productionType`. Build each prompt as: **`<preset.image>` + a one-line scene**
-(which character/place, pose/expression, setting, framing). Keep the house style
-identical across a batch so the characters read as one world. Draw only what the
-author's brief supports — don't invent a design they haven't described; offer
-options instead.
+Use the project's selected base-style preset, never a fixed "2D" one. Call
+`get_visual_world` and take the entry in `prompts[]` whose id equals
+**`settings.presetId`** — the server already resolves that to the preset
+matching the project's production type (`preset-2d`, `preset-3d-pixar` or
+`preset-live-action`; 2D animation, 3D Pixar-like, or live-action cinematic)
+unless the author picked a custom preset, so there is exactly ONE right answer:
+that preset's `image` block is the house look. Build each prompt as:
+**`<preset.image>` + a one-line scene** (which character/place, pose/expression,
+setting, framing). Use the SAME preset for every generation in a batch — never
+mix styled and unstyled prompts — so the characters read as one world. Draw only
+what the author's brief supports — don't invent a design they haven't described;
+offer options instead.
 
 ## Step 3 — References (optional but powerful)
 

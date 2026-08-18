@@ -165,6 +165,17 @@ export const SEED_PROMPTS = [
 export const defaultPresetId = (productionType) =>
   `preset-${normalizeProductionType(productionType)}`;
 
+// The built-in base styles are BOUND to the production type: a stored built-in
+// id that doesn't match it is never a deliberate author choice — it's the old
+// single-preset default baked into a doc before the per-type presets existed
+// (or left behind by a production-type switch), and honouring it is exactly the
+// "live-action project keeps rendering 2D" bug. So empty and built-in ids both
+// resolve to the production type's preset; only a CUSTOM preset id survives as
+// an explicit cross-style selection.
+const BUILTIN_PRESET_IDS = new Set(SEED_PROMPTS.map((p) => p.id));
+const resolvePresetId = (stored, productionType) =>
+  !stored || BUILTIN_PRESET_IDS.has(stored) ? defaultPresetId(productionType) : stored;
+
 // Sheet prompts: layered on TOP of the style preset when a generation is tagged
 // as a character, location, or prop sheet (composer checkboxes / agent skill).
 // Editable on the Settings page (PUT /api/visual-world/sheet-prompts).
@@ -462,7 +473,7 @@ function normalizeVisualWorld(raw, productionType) {
       resolution: normalizeImageResolution(w.settings.resolution),
       count: clampCount(w.settings.count),
       cinematic: !!w.settings.cinematic,
-      presetId: str(w.settings.presetId) || defaultPresetId(productionType),
+      presetId: resolvePresetId(str(w.settings.presetId), productionType),
       // Clamps to a renderable (model, resolution) pair — a doc written before
       // these existed reads back as Seedance 2.0 / 720p.
       ...normalizeVideoDefaults(w.settings.videoModel, w.settings.videoResolution),
