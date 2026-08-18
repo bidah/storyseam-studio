@@ -92,6 +92,21 @@ export function normalizeStore(obj) {
 export const pinnedDraft = (store) =>
   store.drafts.find((d) => d.id === store.pinnedId) || store.drafts[0];
 
+// The id of the project's currently pinned script draft, or null if it can't be
+// read. Downstream docs (the shot list, the episode manifest) stamp this at
+// generation time so their readers can tell the doc was built from a DIFFERENT
+// draft than the one now open — the author switched or created a draft — and
+// show a blank "regenerate for this draft" state instead of stale content.
+// Null-safe on purpose: a failure here must never break a shot-list read, it
+// just means "can't tell — treat as not stale".
+export async function pinnedDraftId(env, projectId) {
+  try {
+    return pinnedDraft(await readStore(env, projectId))?.id || null;
+  } catch {
+    return null;
+  }
+}
+
 export const draftMeta = (d, pinnedId) => ({
   id: d.id,
   name: d.name,

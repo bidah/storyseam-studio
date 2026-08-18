@@ -18,6 +18,7 @@ import { normalizeShot } from "../lib/shots.js";
 import { packPreview } from "../lib/pack.js";
 import { normalizeProductionType } from "../lib/production-type.js";
 import { resolveActiveDirector, directorSummary } from "../lib/shot-directors.js";
+import { pinnedDraftId } from "../lib/script-store.js";
 import { liveSkillPrompts } from "./episode.js";
 
 // Carry stored shot ids onto an incoming bulk save that omitted them.
@@ -287,7 +288,20 @@ async function rebuildShotlistFromEpisode(env, pid) {
 // and the packs instead of reading the raw doc and missing both.
 export async function buildShotlistView(env, pid) {
   let sl = await readShotlist(env, pid);
-  if (!sl.shots.length) {
+  // Stale-draft gate. The stored list is stamped with the script draft it was
+  // generated from (`sourceDraftId`, set in `saveShotlist`). When that no longer
+  // matches the pinned draft, the author switched or created a draft, so the
+  // shots belong to an OLD version of the script: serve a blank "regenerate for
+  // this draft" state rather than the stale list — and DON'T auto-seed from the
+  // (equally stale) episode manifest, which would just refill it. The stored doc
+  // is left untouched (still in the row + doc_history); it's hidden, not deleted.
+  // A null stamp (a list generated before this existed) is treated as not stale.
+  const draftId = await pinnedDraftId(env, pid);
+  const staleFromDraft =
+    sl.shots.length > 0 && sl.sourceDraftId != null && draftId != null && sl.sourceDraftId !== draftId;
+  if (staleFromDraft) {
+    sl = { generatedAt: null, source: null, shots: [], progress: null };
+  } else if (!sl.shots.length) {
     const rebuilt = await rebuildShotlistFromEpisode(env, pid);
     if (rebuilt) sl = rebuilt;
   }
@@ -306,6 +320,10 @@ export async function buildShotlistView(env, pid) {
   const skillPrompts = await liveSkillPrompts(env, pid, sl.shots, world, director.promptForm);
   return {
     ...sl,
+    // The pinned draft this view is scoped to, and whether the STORED list was
+    // hidden because it belonged to a different one. The Shot list tab reads the
+    // flag to render its "built from an earlier draft — regenerate" note.
+    staleFromDraft,
     productionType,
     director: directorSummary(director),
     promptForm: director.promptForm,
@@ -369,6 +387,11 @@ export async function saveShotlist(env, pid, body) {
   // no World match are left untouched; ambiguous ones are surfaced.
   const world = await readDoc(env, pid, "world", { characters: [] });
   const worldNames = (world.characters || []).map((ch) => String(ch?.name || "").trim()).filter(Boolean);
+  // The draft this list is being written against — stamped onto the doc below so
+  // a later read can tell the author has since moved to another draft. Read once,
+  // outside the compare-and-swap (draft switches are rare and it never changes
+  // mid-write).
+  const draftId = await pinnedDraftId(env, pid);
   const productionType = normalizeProductionType(world?.productionType);
   const { director } = await resolveActiveDirector(env, pid, productionType);
   const { shots, remaps, ambiguous } = canonicalizeShotNames(rawShots, worldNames);
@@ -387,7 +410,16 @@ export async function saveShotlist(env, pid, body) {
   // Everything inside is pure (`preserveIds` and `normalizeShot` derive from
   // their inputs only), which is what makes re-running safe.
   return await updateDoc(env, pid, "shotlist", SHOTLIST_FALLBACK, (doc) => {
-    const prevShots = (doc.shots || []).map(normalizeShot);
+    // The stored list belongs to a DIFFERENT script draft than the one now
+    // pinned (the author switched or created a draft). Its shots and coverage
+    // marker are from the old script, so any write against the current draft
+    // starts from an empty list rather than appending onto — or inheriting ids
+    // from — shots that no longer belong here. Re-stamp with the current draft.
+    const staleStored =
+      doc.sourceDraftId != null && draftId != null && doc.sourceDraftId !== draftId;
+    if (staleStored) doc.progress = null;
+    if (draftId != null) doc.sourceDraftId = draftId;
+    const prevShots = staleStored ? [] : (doc.shots || []).map(normalizeShot);
 
     // Script coverage travels with the batch that produced it, so a chunked
     // build ("write the next ~15 seconds") records where it stopped in the SAME

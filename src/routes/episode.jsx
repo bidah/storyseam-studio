@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLoaderData, useNavigate, useRevalidator } from "react-router";
-import { X, Check, Plus, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, RotateCcw, Maximize2, Volume2, VolumeX, Speech, Play, Pause, Copy, Pencil, Sparkles, PenLine, FileText, Film, Image as ImageIcon, Loader2, Wand2, Scissors, Boxes, CircleAlert, MapPin, User, Palette, Power, Trash2, Upload, PersonStanding } from "lucide-react";
+import { X, Check, Plus, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, RotateCcw, Maximize2, Volume2, VolumeX, Speech, Play, Pause, Copy, Pencil, Sparkles, PenLine, FileText, Film, Image as ImageIcon, Loader2, Wand2, Scissors, Boxes, CircleAlert, MapPin, User, Palette, Power, Trash2, Upload, PersonStanding, GitBranch } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useT } from "@/lib/i18n";
 import { swr, useRevalidateOnMount, useRevalidateOnAgentIdle } from "@/lib/swr";
@@ -1893,6 +1893,10 @@ function Episode({ reloadKey, onView }) {
   // A project property, not a manifest one, so it sits beside `episode` in the
   // response rather than inside it.
   const [productionType, setProductionType] = useState(payload.ep.productionType);
+  // The plan was hidden because its manifest was built from a different script
+  // draft than the one now pinned (the author switched/created a draft). `data`
+  // is null in that case; this flag tells the empty state to say WHY.
+  const [staleFromDraft, setStaleFromDraft] = useState(!!payload.ep.staleFromDraft);
   const promptTimers = useRef({});
   const agent = useAgent();
 
@@ -1910,6 +1914,7 @@ function Episode({ reloadKey, onView }) {
     setStyle(ep.style || { episode: "", scenes: {}, presets: [] });
     setShotlist(ep.shotlist || { complete: false, packs: [] });
     setProductionType(ep.productionType);
+    setStaleFromDraft(!!ep.staleFromDraft);
     setFolders(lib.folders || []);
     const m = {};
     for (const [k, v] of Object.entries(fn.episode || {})) m[k] = new Set(v);
@@ -2357,6 +2362,20 @@ function Episode({ reloadKey, onView }) {
 
   if (error) return <ErrorNote>{error}</ErrorNote>;
   if (!data) {
+    // Moved to a new script draft: the plan belonged to an earlier draft and was
+    // cleared. Point the author back to the Shot list (the episode rebuilds from
+    // it), rather than the generic "no plan yet" copy.
+    if (staleFromDraft)
+      return (
+        <div className="mx-auto flex max-w-2xl flex-col items-center gap-4 py-16 text-center">
+          <div className="flex items-start gap-2 rounded-xl border border-dashed border-amber-500/40 bg-amber-500/5 p-3 text-sm text-muted-foreground">
+            <GitBranch size={15} className="mt-0.5 shrink-0 text-amber-500" />
+            <span>
+              {t("You’ve moved to a new script draft. This episode plan was built from an earlier draft and has been cleared. Regenerate the shot list for the current script, then rebuild the plan. The previous plan is kept in version history.")}
+            </span>
+          </div>
+        </div>
+      );
     // No plan yet. What we offer depends on the shot list: nothing without
     // shots; per-pack builds while the list is still being generated pass by
     // pass; the single whole-plan button only once the list is complete.

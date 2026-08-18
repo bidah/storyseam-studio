@@ -17,6 +17,7 @@ import { buildBundles, packPreview, charKey, bundleSpeakers } from "../lib/pack.
 import { normalizeShot, isWideShot } from "../lib/shots.js";
 import { normalizeProductionType } from "../lib/production-type.js";
 import { resolveActiveDirector } from "../lib/shot-directors.js";
+import { pinnedDraftId } from "../lib/script-store.js";
 import { SEED_PROMPTS } from "./visual-world.js";
 
 // The de-facto selections DB (library picks + per-bundle episode selections).
@@ -530,16 +531,25 @@ export async function liveSkillPrompts(env, pid, shots, world, promptForm) {
 // gets the same joined view — reading the bare `episode-manifest` doc instead
 // would report bundles as unrendered whose media is sitting right there in R2.
 export async function buildEpisodeView(env, pid) {
-  const [manifest, world, vw, legacy, sounds, slDoc] = await Promise.all([
+  const [manifest, world, vw, legacy, sounds, slDoc, draftId] = await Promise.all([
     readManifest(env, pid),
     readWorld(env, pid),
     readDoc(env, pid, "visual-world", null),
     legacyAudioPool(env, pid),
     readSounds(env, pid),
     readDoc(env, pid, "shotlist", null),
+    pinnedDraftId(env, pid),
   ]);
-  const shotlist = shotlistPacksState(slDoc, manifest);
-  if (!manifest) return { episode: null, shotlist };
+  // Stale-draft gate — same rule as the shot list. The manifest is stamped with
+  // the draft its bundles were rebuilt from; when that no longer matches the
+  // pinned draft the author moved on, so this plan is built from an old script.
+  // Serve the empty "no episode yet" shape (plus a flag) so the Episode tab shows
+  // its regenerate state instead of stale cards. Non-destructive: the manifest
+  // row is untouched and reappears the moment its draft is pinned again.
+  const staleFromDraft =
+    !!manifest && manifest.sourceDraftId != null && draftId != null && manifest.sourceDraftId !== draftId;
+  const shotlist = staleFromDraft ? { complete: false, packs: [] } : shotlistPacksState(slDoc, manifest);
+  if (!manifest || staleFromDraft) return { episode: null, shotlist, staleFromDraft };
   const db = await readDB(env, pid);
   // Heal stale multi-selection. Re-applied inside the CAS so the repair can't
   // revert a concurrent edit made between the read and the write.
@@ -964,12 +974,21 @@ export function registerEpisode(app) {
     // Seedance model/resolution that go into each bundle's `Params:` line, so a
     // rebuild picks up whatever is currently set on Settings. Read raw: the
     // params helper clamps whatever it finds.
-    const [shots, world, vw] = await Promise.all([
+    const [shots, world, vw, slDoc, draftId] = await Promise.all([
       readShots(c.env, pid),
       readWorld(c.env, pid),
       readDoc(c.env, pid, "visual-world", null),
+      readDoc(c.env, pid, "shotlist", null),
+      pinnedDraftId(c.env, pid),
     ]);
     if (!shots.length) return c.json({ error: "No shot list yet — write a shot list first." }, 400);
+    // Refuse to pack a shot list that belongs to an earlier draft — otherwise the
+    // rebuilt manifest would be stamped with the current draft but carry the old
+    // script's shots. The Shot list tab is already blank-and-regenerate in this
+    // state; the episode follows the same order.
+    if (slDoc?.sourceDraftId != null && draftId != null && slDoc.sourceDraftId !== draftId) {
+      return c.json({ error: "The shot list was built from an earlier script draft — regenerate the shot list for the current draft first, then rebuild the episode." }, 400);
+    }
 
     // Optional PARTIAL build: `bundles: ["MS-03", …]` builds only those packs'
     // cards — plus every pack holding a shot the previous manifest already
@@ -1027,6 +1046,9 @@ export function registerEpisode(app) {
       totalShots: selected.reduce((n, b) => n + b.shots.length, 0),
       generatedAt: new Date().toISOString(),
       source: "rebuild",
+      // Stamp the draft these bundles were packed from so `buildEpisodeView` can
+      // blank the plan once the author moves to another draft (see its gate).
+      ...(draftId != null ? { sourceDraftId: draftId } : {}),
       bundles: selected,
     };
     await editDB(c.env, pid, (db) => {

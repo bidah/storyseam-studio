@@ -1,6 +1,6 @@
 import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import { useLoaderData, useRevalidator } from "react-router";
-import { X, RefreshCw, Loader2, Layers, Film, Plus, Send, CornerDownRight, ListChecks, FastForward, CircleCheck, Copy, Check, PersonStanding } from "lucide-react";
+import { X, RefreshCw, Loader2, Layers, Film, Plus, Send, CornerDownRight, ListChecks, FastForward, CircleCheck, Copy, Check, PersonStanding, GitBranch } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useT } from "@/lib/i18n";
 import { invalidateTabCache } from "@/lib/tabCache";
@@ -500,6 +500,10 @@ function ShotList() {
   const shots = data.shots || [];
   const packs = data.packs || [];
   const progress = data.progress || null;
+  // The worker blanked the stored list because it was generated from a different
+  // script draft than the one now pinned (the author switched/created a draft).
+  // Show a note explaining the blank state; the shots are hidden, not deleted.
+  const staleFromDraft = !!data.staleFromDraft;
   // Which prompt editor a shot gets is the DIRECTOR's prompt form, not the
   // production type — the author can run the block (Seedance) director on a 2D
   // project. An older worker sends no `promptForm`, so fall back to the type.
@@ -638,6 +642,16 @@ function ShotList() {
       </div>
 
       {error && <ErrorNote>{error}</ErrorNote>}
+
+      {staleFromDraft && (
+        <div className="flex items-start gap-2 rounded-xl border border-dashed border-amber-500/40 bg-amber-500/5 p-3 text-sm text-muted-foreground">
+          <GitBranch size={15} className="mt-0.5 shrink-0 text-amber-500" />
+          <span>
+            You’ve moved to a new script draft. This shot list was built from an earlier draft and has
+            been cleared — regenerate it for the current script. The previous list is kept in version history.
+          </span>
+        </div>
+      )}
 
       {shots.length === 0 ? (
         <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed p-6 text-center">
