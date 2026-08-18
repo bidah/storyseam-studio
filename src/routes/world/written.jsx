@@ -446,7 +446,7 @@ function CharacterCard({ char, onField, onRemove, onToggleAnchor, isSeries, expa
         open={pickerOpen}
         onOpenChange={setPickerOpen}
         title={t("Link character sheet")}
-        sources={["library"]}
+        sources={["library", "upload"]}
         multiple={false}
         onAdd={([im]) => {
           if (im) onField("sheetImage", { rel: im.rel, url: im.url, thumb: im.thumb, name: im.name });
@@ -457,7 +457,7 @@ function CharacterCard({ char, onField, onRemove, onToggleAnchor, isSeries, expa
         open={miniOpen}
         onOpenChange={setMiniOpen}
         title={t("Link wide-shot miniature")}
-        sources={["library"]}
+        sources={["library", "upload"]}
         multiple={false}
         onAdd={([im]) => {
           if (im) onField("miniatureImage", { rel: im.rel, url: im.url, thumb: im.thumb, name: im.name });
@@ -569,7 +569,7 @@ function LocationCard({ loc, onField, onRemove }) {
         open={pickerOpen}
         onOpenChange={setPickerOpen}
         title={t("Link location sheet")}
-        sources={["library"]}
+        sources={["library", "upload"]}
         multiple={false}
         onAdd={([im]) => {
           if (im) onField("sheetImage", { rel: im.rel, url: im.url, thumb: im.thumb, name: im.name });
