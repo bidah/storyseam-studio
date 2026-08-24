@@ -13,9 +13,13 @@
   },
   "dependencies": {
     "@better-auth/expo": "^1.6.23",
+    "@cloudflare/workers-oauth-provider": "^0.7.0",
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "agents": "^0.15.0",
     "better-auth": "^1.6.23",
     "better-auth-cloudflare": "^0.3.0",
     "fflate": "^0.8.3",
-    "hono": "^4.12.28"
+    "hono": "^4.12.28",
+    "zod": "^4.4.3"
   }
 }

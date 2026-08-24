@@ -70,9 +70,15 @@ import { registerAppState } from "./routes/appstate.js";
 import { registerNavigate } from "./routes/navigate.js";
 import { registerApprovals } from "./routes/approvals.js";
 import { registerMcp } from "./routes/mcp.js";
+import { OAuthProvider } from "@cloudflare/workers-oauth-provider";
+import { ShotStudioMCP } from "./mcp-agent.js";
 
 // Durable Object for per-project SSE live-sync (script + timeline channels).
 export { ProjectEvents } from "./sse-do.js";
+// Durable Object for the remote-MCP connector — one instance per MCP session.
+// Fronted by the OAuth provider at the bottom of this file; see src/mcp-agent.js
+// and docs/mcp.md.
+export { ShotStudioMCP } from "./mcp-agent.js";
 
 // --- worker ⇄ flue identity ------------------------------------------------
 // The SPA is served from this Worker and holds the Better Auth session cookie;
@@ -702,6 +708,114 @@ registerNavigate(app);
 registerApprovals(app);
 registerMcp(app);
 
+// --- remote-MCP OAuth consent screen ---------------------------------------
+// The per-user MCP connector (Settings › Connectors) is an OAuth-fronted server
+// (@cloudflare/workers-oauth-provider wraps the whole Worker at the bottom of
+// this file). The provider handles /oauth/token and /oauth/register itself and
+// injects `OAUTH_PROVIDER` (an OAuthHelpers) into this Hono app's env; only the
+// AUTHORIZE step — proving who the user is and getting their consent — is ours,
+// and it reuses the existing Better Auth (Google) session rather than a second
+// login. `props: { userId, email }` becomes the MCP agent's `this.props`, which
+// is what scopes every tool call to this user (src/mcp-agent.js). This route is
+// not under /api/*, so the fail-closed ownership middleware above ignores it.
+function esc(s) {
+  return String(s ?? "").replace(/[&<>"']/g, (ch) =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch]),
+  );
+}
+function consentPage(title, body) {
+  return new Response(
+    `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)} — StorySeam</title>
+<style>
+  :root { color-scheme: dark; }
+  body { margin:0; min-height:100dvh; display:grid; place-items:center; background:#09090b; color:#fafafa;
+         font:15px/1.5 ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,sans-serif; padding:24px; }
+  .card { width:100%; max-width:420px; background:#18181b; border:1px solid #27272a; border-radius:16px; padding:28px; }
+  h1 { font-size:19px; margin:0 0 6px; letter-spacing:-0.01em; }
+  .brand { color:#10b981; }
+  p { color:#a1a1aa; margin:0 0 14px; }
+  strong { color:#fafafa; }
+  button { width:100%; border:0; border-radius:10px; padding:11px 14px; font-size:15px; font-weight:600;
+           background:#10b981; color:#052e22; cursor:pointer; }
+  button.secondary { background:#27272a; color:#fafafa; margin-top:8px; }
+  .muted { font-size:12px; color:#71717a; margin:14px 0 0; }
+</style></head><body><div class="card">${body}</div></body></html>`,
+    { headers: { "content-type": "text/html; charset=utf-8" } },
+  );
+}
+async function handleAuthorize(c) {
+  const provider = c.env.OAUTH_PROVIDER;
+  if (!provider) return c.text("OAuth provider not configured", 500);
+  // A malformed authorize request (unknown/absent client_id, missing PKCE, bad
+  // redirect_uri) is the CALLER's error — answer 400, not a 500. A real MCP
+  // client registers via /oauth/register first, so it never lands here.
+  let oauthReq;
+  try {
+    oauthReq = await provider.parseAuthRequest(c.req.raw);
+  } catch (e) {
+    return c.text(`Invalid authorization request: ${String(e?.message || e)}`, 400);
+  }
+  const client = await provider.lookupClient(oauthReq.clientId).catch(() => null);
+  const clientName = client?.clientName || "An MCP client";
+  const url = new URL(c.req.url);
+  const authorizeUrl = url.pathname + url.search;
+
+  let session = null;
+  try {
+    session = await c.get("auth").api.getSession({ headers: c.req.raw.headers });
+  } catch { /* treated as signed-out */ }
+  const user = session?.user || null;
+
+  // Signed out: send them through the app's normal Google sign-in, returning to
+  // this authorize URL (there is no email/magic-link provider here — Google is
+  // the front door). Better Auth's social endpoint hands back the authorize URL;
+  // after Google it sets the session and bounces back here, now signed in.
+  if (!user) {
+    return consentPage(
+      "Sign in",
+      `<h1>Connect to <span class="brand">StorySeam</span></h1>
+       <p>${esc(clientName)} wants to access your StorySeam projects. Sign in to continue.</p>
+       <button id="go">Sign in with Google</button>
+       <p class="muted">You'll approve access on the next screen.</p>
+       <script>
+         document.getElementById('go').addEventListener('click', async () => {
+           const r = await fetch('/api/auth/sign-in/social', {
+             method: 'POST', headers: { 'content-type': 'application/json' },
+             body: JSON.stringify({ provider: 'google', callbackURL: ${JSON.stringify(authorizeUrl)} })
+           });
+           const d = await r.json().catch(() => null);
+           if (d && d.url) window.location.href = d.url;
+           else alert('Could not start sign-in.');
+         });
+       </script>`,
+    );
+  }
+
+  // Consent submitted: mint the grant and bounce back to the MCP client.
+  if (c.req.method === "POST") {
+    const { redirectTo } = await provider.completeAuthorization({
+      request: oauthReq,
+      userId: user.id,
+      metadata: { clientName },
+      scope: oauthReq.scope,
+      props: { userId: user.id, email: user.email },
+    });
+    return Response.redirect(redirectTo, 302);
+  }
+
+  // Signed in: show consent. Approving POSTs back to this same URL.
+  return consentPage(
+    "Authorize",
+    `<h1>Authorize <span class="brand">StorySeam</span></h1>
+     <p>${esc(clientName)} wants to access the StorySeam projects of
+     <strong>${esc(user.email)}</strong> — read and edit your script, shot list, episodes and library, and run the pipeline on your connected render account.</p>
+     <form method="POST" action="${esc(authorizeUrl)}"><button type="submit">Allow access</button></form>
+     <p class="muted">You can revoke this anytime from your MCP client. Renders bill to the account you connected in Settings.</p>`,
+  );
+}
+app.get("/oauth/authorize", handleAuthorize);
+app.post("/oauth/authorize", handleAuthorize);
+
 // --- flue chat agent proxy -------------------------------------------------
 // The chat agent (flue) runs as its own Cloudflare Worker (shot-studio-flue).
 // The SPA is served from this Worker and calls /eve/* SAME-ORIGIN, so proxy those
@@ -848,4 +962,30 @@ app.all("/eve/*", async (c) => {
 // single-page-application not_found_handling returns index.html for client routes.
 app.get("*", (c) => (c.env.ASSETS ? c.env.ASSETS.fetch(c.req.raw) : c.text("Not found", 404)));
 
-export default app;
+// --- Worker entry: OAuth provider in front of the whole app ----------------
+// The HTTP entry is the remote-MCP OAuth provider. It serves the MCP transports
+// (/mcp streamable-HTTP, /sse) ONLY for a request bearing a valid access token —
+// then hands the request to the ShotStudioMCP Durable Object with the user's
+// identity in `props` — handles the OAuth /oauth/token + /oauth/register
+// endpoints itself, and passes EVERYTHING ELSE (the entire app: /api/*, media,
+// /eve/*, the SPA, and our /oauth/authorize consent screen) straight through to
+// the Hono app as `defaultHandler`. Grants live in the OAUTH_KV namespace. When
+// OAUTH_KV isn't bound (e.g. a bare local run before provisioning), fall back to
+// the plain Hono app so the rest of the Worker still serves. See docs/mcp.md.
+const oauth = new OAuthProvider({
+  apiHandlers: {
+    "/mcp": ShotStudioMCP.serve("/mcp"),
+    "/sse": ShotStudioMCP.serveSSE("/sse"),
+  },
+  defaultHandler: app,
+  authorizeEndpoint: "/oauth/authorize",
+  tokenEndpoint: "/oauth/token",
+  clientRegistrationEndpoint: "/oauth/register",
+});
+
+export default {
+  fetch(request, env, ctx) {
+    if (!env.OAUTH_KV) return app.fetch(request, env, ctx);
+    return oauth.fetch(request, env, ctx);
+  },
+};

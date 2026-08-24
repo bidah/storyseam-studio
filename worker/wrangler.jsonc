@@ -84,7 +84,15 @@
   // process).
   "services": [
     { "binding": "FLUE", "service": "shot-studio-flue" },
-    { "binding": "FLUE_V2", "service": "shot-studio-flue-v2" }
+    { "binding": "FLUE_V2", "service": "shot-studio-flue-v2" },
+    // The Worker bound to ITSELF. The remote-MCP Durable Object (ShotStudioMCP)
+    // reaches the app's own JSON API through this in-process worker→worker
+    // binding instead of a public-URL fetch — no DNS/Host round-trip, and every
+    // call re-enters the SAME ownership + attribution middleware (index.js), so
+    // an MCP tool is scoped to its OAuth user exactly like a flue tool. See
+    // src/mcp-agent.js. Falls back to fetch(WORKER_PUBLIC_URL) when absent
+    // (local dev, where a self service binding can't resolve).
+    { "binding": "SELF", "service": "shot-studio-uploads" }
   ],
   // Serve the built Vite SPA from the Worker; API routes below take precedence,
   // and client-side routes fall back to index.html.
@@ -102,7 +110,12 @@
       "/api/*", "/files/*", "/gen/*", "/media/*", "/sound-media/*", "/final/*",
       "/refs/*", "/multishot-media/*", "/stills/*", "/storyboard-media/*", "/visual-media/*", "/moodboard-media/*", "/proxy/*", "/asset/*", "/thumb/*", "/hf-thumb/*", "/img/*",
       "/ingest/*", "/ingest-mpu/*", "/eve/*", "/upload", "/healthz",
-      "/desktop/updates/*"
+      "/desktop/updates/*",
+      // Remote MCP connector (docs/mcp.md): the OAuth-fronted per-user server.
+      // These must beat the SPA asset layer or the OAuth handshake + the MCP
+      // transport would hit index.html instead of the Worker. /.well-known/* is
+      // where @cloudflare/workers-oauth-provider serves its discovery documents.
+      "/mcp", "/sse", "/oauth/*", "/.well-known/*"
     ]
   },
   "r2_buckets": [
@@ -123,9 +136,14 @@
   // (the mobile chat composer's voice-message mic).
   "ai": { "binding": "AI" },
   "send_email": [{ "name": "EMAIL" }],
-  // KV for Better Auth (sessions secondary storage + rate limiting).
+  // KV for Better Auth (sessions secondary storage + rate limiting), and the KV
+  // that @cloudflare/workers-oauth-provider uses to persist the remote-MCP
+  // connector's OAuth grants + access tokens (docs/mcp.md). The provider reads
+  // the binding named OAUTH_KV. Provision it once, then paste the id here:
+  //   npx wrangler kv namespace create OAUTH_KV
   "kv_namespaces": [
-    { "binding": "AUTH_KV", "id": "4be9b787dc844a14a14d242b54ef7ca2" }
+    { "binding": "AUTH_KV", "id": "4be9b787dc844a14a14d242b54ef7ca2" },
+    { "binding": "OAUTH_KV", "id": "6b7c8fd415e64c9d95918d233495c5ca" }
   ],
   "d1_databases": [
     {
@@ -134,10 +152,20 @@
       "database_id": "248c977c-1beb-4ae8-9995-c4959219bd49"
     }
   ],
-  // Per-project SSE live-sync (script + timeline) — replaces the Express
-  // in-memory client sets, which can't work across Worker isolates.
+  // Durable Objects:
+  //   PROJECT_EVENTS  per-project SSE live-sync (script + timeline) — replaces
+  //     the Express in-memory client sets, which can't work across isolates.
+  //   MCP_OBJECT      one instance per remote-MCP session (the agents SDK's
+  //     McpAgent, class ShotStudioMCP in src/mcp-agent.js). SQLite-backed, so it
+  //     comes in on its own migration tag as a `new_sqlite_classes` entry.
   "durable_objects": {
-    "bindings": [{ "name": "PROJECT_EVENTS", "class_name": "ProjectEvents" }]
+    "bindings": [
+      { "name": "PROJECT_EVENTS", "class_name": "ProjectEvents" },
+      { "name": "MCP_OBJECT", "class_name": "ShotStudioMCP" }
+    ]
   },
-  "migrations": [{ "tag": "v1", "new_classes": ["ProjectEvents"] }]
+  "migrations": [
+    { "tag": "v1", "new_classes": ["ProjectEvents"] },
+    { "tag": "v2", "new_sqlite_classes": ["ShotStudioMCP"] }
+  ]
 }

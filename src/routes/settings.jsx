@@ -8,7 +8,7 @@
 // "visual-world" swr cache key and the canonical invalidate+revalidate pair.
 import { useCallback, useEffect, useState } from "react";
 import { useLoaderData, useRevalidator } from "react-router";
-import { Loader2, Save, Plus, Trash2, IdCard, MapPin, Package, Palette, Check, SlidersHorizontal, KeyRound, ExternalLink, Globe, TerminalSquare, Cpu, Clapperboard, Cable, Film, RotateCcw, CopyPlus } from "lucide-react";
+import { Loader2, Save, Plus, Trash2, IdCard, MapPin, Package, Palette, Check, SlidersHorizontal, KeyRound, ExternalLink, Globe, TerminalSquare, Cpu, Clapperboard, Cable, Film, RotateCcw, CopyPlus, Copy, Plug } from "lucide-react";
 import { invalidateTabCache } from "@/lib/tabCache";
 import {
   useHiggsfieldLinked, connectHiggsfield, disconnectHiggsfield,
@@ -220,6 +220,104 @@ function ConnectorsPanel() {
             : "You'll be sent to Higgsfield to approve access, then straight back here."}
         </p>
         {err ? <p className="mt-2 text-xs text-destructive">{err}</p> : null}
+      </div>
+    </Panel>
+  );
+}
+
+// The remote-MCP connector: point any MCP client at StorySeam's own /mcp URL and
+// sign in once (Google, then approve). The client then reads and drives the whole
+// pipeline — script, shot list, episodes, world, sounds, cuts — with its own
+// model, scoped to this user's projects. Server side: the OAuth-fronted McpAgent
+// in worker/src/mcp-agent.js. See docs/mcp.md.
+const MCP_CLIENTS = [
+  {
+    id: "claude-code",
+    label: "Claude Code",
+    snippet: (url) => `claude mcp add --transport http storyseam ${url}`,
+    hint: "Run this in your terminal, then Claude Code opens the sign-in page.",
+  },
+  {
+    id: "claude-desktop",
+    label: "Claude Desktop",
+    snippet: (url) => url,
+    hint: "Settings › Connectors › Add custom connector — paste this URL, then Connect.",
+  },
+  {
+    id: "cursor",
+    label: "Cursor",
+    snippet: (url) => JSON.stringify({ mcpServers: { storyseam: { url } } }, null, 2),
+    hint: "Add to ~/.cursor/mcp.json (or Settings › MCP), then click the sign-in prompt.",
+  },
+  {
+    id: "other",
+    label: "Other client",
+    snippet: (url) => url,
+    hint: "Add as a remote/HTTP MCP server with OAuth. Most clients just need the URL.",
+  },
+];
+
+function CopyButton({ text, label = "Copy" }) {
+  const [done, setDone] = useState(false);
+  return (
+    <Button
+      size="sm" variant="outline" className="gap-1.5"
+      onClick={async () => {
+        try { await navigator.clipboard.writeText(text); setDone(true); setTimeout(() => setDone(false), 1400); } catch { /* clipboard blocked */ }
+      }}
+    >
+      {done ? <Check size={14} /> : <Copy size={14} />}
+      {done ? "Copied" : label}
+    </Button>
+  );
+}
+
+function McpConnectorPanel() {
+  const [clientId, setClientId] = useState("claude-code");
+  // Origin-derived so it's correct on storyseam.app, the desktop app, and local
+  // dev alike — the same trick idea-mural's connector dialog uses.
+  const mcpUrl = (typeof window !== "undefined" ? window.location.origin : "https://storyseam.app") + "/mcp";
+  const client = MCP_CLIENTS.find((c) => c.id === clientId) || MCP_CLIENTS[0];
+  const snippet = client.snippet(mcpUrl);
+
+  return (
+    <Panel title={<span className="flex items-center gap-2"><Plug size={15} className="text-primary" /> MCP connector</span>}>
+      <p className="mb-3 text-sm text-muted-foreground">
+        Connect an AI client (Claude Desktop, Claude Code, Cursor…) to <b>StorySeam</b> over
+        MCP. It signs in as you — one Google login, then approve — and can then read and
+        edit your <b>script, shot list, episodes, world, sounds and cuts</b>, and run the
+        pipeline on your connected render account. It works across all your projects.
+      </p>
+
+      <div className="rounded-lg border p-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-sm font-medium">Server URL</span>
+          <Badge variant="info">OAuth</Badge>
+          <code className="ml-auto rounded bg-muted px-2 py-1 text-xs">{mcpUrl}</code>
+          <CopyButton text={mcpUrl} label="Copy URL" />
+        </div>
+
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <span className="text-sm font-medium">Set up in</span>
+          <Select value={clientId} onValueChange={setClientId}>
+            <SelectTrigger className="h-8 w-[180px]"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              {MCP_CLIENTS.map((c) => <SelectItem key={c.id} value={c.id}>{c.label}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="mt-2 rounded-md border bg-muted/40 p-2">
+          <div className="flex items-start justify-between gap-2">
+            <pre className="min-w-0 flex-1 overflow-x-auto whitespace-pre-wrap break-all text-xs leading-relaxed">{snippet}</pre>
+            <CopyButton text={snippet} />
+          </div>
+        </div>
+        <p className="mt-2 text-xs text-muted-foreground">{client.hint}</p>
+        <p className="mt-1 text-xs text-muted-foreground">
+          The first connection opens a StorySeam page: sign in with Google and click <b>Allow access</b>.
+          Renders bill to the account you linked above. Revoke anytime from your MCP client.
+        </p>
       </div>
     </Panel>
   );
@@ -852,6 +950,8 @@ function SettingsPage() {
       <ChatProviderPanel />
 
       <ConnectorsPanel />
+
+      <McpConnectorPanel />
 
       <ProvidersPanel />
 

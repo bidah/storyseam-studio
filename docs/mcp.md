@@ -1,15 +1,25 @@
 # MCP server — driving shot-studio from Claude Desktop / Claude Code / Cursor
 
-The Worker exposes a small **Model Context Protocol** server at
-`POST /api/mcp` (`worker/src/routes/mcp.js`), so an external client that brings
-its own model can read the pipeline and write the shot list without switching to
-the app.
+There are **two** MCP surfaces, for two different needs:
 
-This is a **fourth surface**, not a replacement for the parity rule in
-`CLAUDE.md`. The flue agent is still the in-app assistant that owns the skills,
-the render pipeline, and the project context. MCP is the read-heavy slice for
-authors who are already in an editor. Nothing that spends money or runs ffmpeg is
-exposed here.
+| | `POST /api/mcp` (token) | `/mcp` (OAuth connector) |
+| --- | --- | --- |
+| File | `worker/src/routes/mcp.js` | `worker/src/mcp-agent.js` |
+| Auth | one shared `MCP_TOKEN` bearer | **per-user OAuth** (sign in once, approve) |
+| Scope | **one** project (`?projectId=`) | the user's **whole account** — every project they own or can reach |
+| Setup | CLI / secret only | a **Connector card in Settings** (paste URL, connect) |
+| Surface | 9 mostly-read tools | reads + writes across the whole pipeline, generation kickoffs, and the skills as MCP **prompts** |
+| Built on | hand-rolled JSON-RPC | Cloudflare `McpAgent` DO + `@cloudflare/workers-oauth-provider` |
+
+The rest of this doc's older sections describe the **token** server; the OAuth
+**connector** is documented in [The per-user OAuth connector](#the-per-user-oauth-connector)
+below. Both are the same capabilities re-pointed at an external client that
+brings its own model — a fourth surface, not a replacement for the `CLAUDE.md`
+parity rule. The flue agent is still the in-app assistant.
+
+The token server deliberately stays small (read-heavy, one project, nothing that
+spends money). The connector is the opposite: it is what a user turns on to let
+their own Claude/Cursor drive their whole StorySeam account.
 
 ## Tools
 
@@ -130,3 +140,99 @@ about POSTs as mutations:
    data change and churn every open tab. The write tools broadcast for themselves
    (`announce()` in `mcp.js`), so nothing is lost. Until the skip is added, the
    two simply broadcast twice per write — a duplicate revalidate and nothing else.
+
+---
+
+# The per-user OAuth connector
+
+`worker/src/mcp-agent.js` is a second MCP server, exposed at `/mcp` (streamable
+HTTP) and `/sse` (legacy). Unlike the token server it is **per user** and scoped
+to the user's **whole account**, and it is what the **Settings › MCP connector**
+card wires up: a user pastes `https://storyseam.app/mcp` into any MCP client,
+signs in once with Google, approves, and their client can then read and drive the
+whole pipeline across all their projects.
+
+## How it's built
+
+- **`McpAgent`** (Cloudflare `agents` SDK) — a Durable Object, one instance per
+  MCP session (`MCP_OBJECT` binding, class `ShotStudioMCP`, its own
+  `new_sqlite_classes` migration in `wrangler.jsonc`).
+- **`@cloudflare/workers-oauth-provider`** wraps the *entire* Worker
+  (`export default` in `worker/src/index.js`). It serves `/mcp` + `/sse` only for
+  a request bearing a valid access token, handles `/oauth/token` +
+  `/oauth/register` itself, and passes everything else (the whole app) through to
+  the Hono app as `defaultHandler`. Grants live in the **`OAUTH_KV`** namespace.
+- **`/oauth/authorize`** (a Hono route in `index.js`) is the only custom OAuth
+  step: it reuses the existing **Better Auth (Google)** session for the consent
+  screen. Signed out → it kicks off Google sign-in returning to the authorize
+  URL; signed in → an "Allow access" screen. On approval it calls
+  `completeAuthorization({ props: { userId, email } })` — those props become the
+  agent's `this.props`, which is what scopes every tool call.
+
+## How tools reach data — no second implementation
+
+Every tool is a thin call to the app's **own JSON API** (`worker/src/routes/*`),
+dispatched through the **`SELF`** service binding (the Worker bound to itself, an
+in-process worker→worker hop) with a freshly-minted `x-flue-agent-user` assertion
+for the OAuth'd user — the same identity mechanism `flue-agent/src/lib/api.ts`
+uses (`lib/proxy-token.js`, issuer `shot-studio-agent`). That single detail buys:
+
+- the app's **fail-closed ownership middleware** scopes the caller to their own
+  projects, cross-project, with zero new access-control code;
+- writes are **attributed** (`actor=agent`) and episode-scoped, landing in
+  `doc_history` like any other write;
+- the tool surface **can't drift** from the GUI, because it *is* the GUI's API.
+
+`SELF` falls back to a public-URL `fetch(WORKER_PUBLIC_URL)` when the binding is
+absent (local dev). Write tools are **permissively typed** on purpose — the real
+contract lives server-side in the shared schemas (`worker/src/lib/validate.js`),
+and duplicating it in the MCP input schema is the exact drift the shared schemas
+exist to prevent. A bad body comes back as the route's own 4xx for the model to
+correct.
+
+## Tool + prompt surface
+
+Reads across the whole pipeline (`list_projects`, `get_status`, `get_world`,
+`get_script`, `list_drafts`, `lint_script`, `get_script_reviews`, `get_shotlist`,
+`list_shots`, `get_episode`, `list_episodes`, `get_radio`, `get_sounds`,
+`get_cuts`, `list_library`, `get_musical`, `list_history`, `list_doc_history`);
+session context (`use_project`, `use_episode`, `create_project`); writes
+(`add_world_character`/`_location`, `save_script`, `new_draft`, `pin_draft`,
+`sign_script`, `save_shotlist`, `create_episode`, `set_episode_style`,
+`save_episode_prompt`, `select_take`, `restore_version`); and generation
+kickoffs that **spend render credits** (`generate_storyboard`, `render_video`,
+`stitch_cut`, polled via `get_job`). The flue **skills** are exposed as MCP
+**prompts** (`worker/src/mcp-prompts.js`) — `orient`, `script-writing`,
+`world-creation`, `shot-list`, `generate-storyboard`, `generate-multishot`,
+`complete-cut`, `recover-lost-content` — so the client's model can load a
+playbook and then drive the tools the way flue does.
+
+## Approval / spend
+
+We rely on the **MCP client's native per-tool-call approval** (every client
+prompts the user before running a tool) rather than re-implementing the in-app
+two-phase approval, which needs a chat-transcript round-trip a remote client has
+no equivalent of. Credit-spending tools say so in their descriptions.
+
+## Provisioning + deploy
+
+The connector needs an OAuth KV namespace and the same proxy secret the flue hop
+already uses. One-time:
+
+```sh
+# 1. Create the grants store, then paste the returned id into wrangler.jsonc
+#    (kv_namespaces → OAUTH_KV, replacing REPLACE_WITH_OAUTH_KV_NAMESPACE_ID).
+cd worker && npx wrangler kv namespace create OAUTH_KV
+
+# 2. FLUE_PROXY_SECRET must already be set (it signs the flue hop too). If not:
+#    npx wrangler secret put FLUE_PROXY_SECRET
+```
+
+Then ship it — this touches only the API/UI Worker, not the flue worker:
+
+```sh
+npm run worker:deploy
+```
+
+Nothing to deploy on `shot-studio-flue-v2`: the MCP tools call `/api` directly
+rather than going through flue.
