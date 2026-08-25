@@ -6,7 +6,7 @@
 // change the pinned draft broadcast on the "script" channel for live-sync.
 import { readDoc, updateDoc } from "../lib/docs.js";
 import { broadcast } from "../lib/broadcast.js";
-import { makeShareToken } from "../lib/share-token.js";
+import { makeShareToken, isWorldShared, isScriptShared } from "../lib/share-token.js";
 import { SHARE_DOC } from "./share.js";
 import { SPECIALISTS, isSpecialist, cleanNotes, readReviews, recordReview, reviewState, digestReviews } from "../lib/reviews.js";
 // The roster itself (ids + how each specialist is named, what lane and stage it
@@ -455,20 +455,23 @@ export function registerScript(app) {
     }
   });
 
-  // --- share link (authed management half; the public viewer route lives in
-  // routes/share.js). The link shows one chosen draft, read-only — the pinned
-  // draft by default, or whichever version the author picks in the dialog.
-  // The share page is served by this same worker's SPA, so the link's origin is
-  // simply the request's own.
+  // --- share link (LEGACY authed half, kept for the mobile app which still POSTs
+  // here to get a script link; the web GUI now uses /api/share-config, and the
+  // public viewer routes live in routes/share.js). One token, two surfaces — this
+  // half only ever touches the SCRIPT surface, leaving `world` alone. The link
+  // shows one chosen draft, read-only — the pinned draft by default, or whichever
+  // version the author picks. The share page is served by this same worker's SPA,
+  // so the link's origin is simply the request's own.
   const shareUrl = (c, token) => new URL(`/share/script/${token}`, c.req.url).toString();
 
   // Is sharing on, where does the link point, and which draft does it show?
   app.get("/api/script/share", async (c) => {
     try {
       const cfg = await readDoc(c.env, c.get("projectId"), SHARE_DOC, null);
+      const scriptShared = isScriptShared(cfg);
       return c.json({
-        shared: !!cfg?.token,
-        url: cfg?.token ? shareUrl(c, cfg.token) : null,
+        shared: scriptShared,
+        url: scriptShared ? shareUrl(c, cfg.token) : null,
         draftId: cfg?.draftId ?? null,
       });
     } catch (e) {
@@ -492,8 +495,10 @@ export function registerScript(app) {
         const store = await readStore(c.env, pid);
         if (store.drafts.some((d) => d.id === body.draftId)) validDraft = body.draftId;
       }
-      const { token, draftId } = await updateDoc(c.env, pid, SHARE_DOC, { token: null, draftId: null }, (cfg) => {
+      const { token, draftId } = await updateDoc(c.env, pid, SHARE_DOC, { token: null, draftId: null, script: false, world: false }, (cfg) => {
         if (!cfg.token) cfg.token = makeShareToken(pid);
+        // Explicitly turn the SCRIPT surface on — that's what this endpoint means.
+        cfg.script = true;
         if (validDraft) cfg.draftId = validDraft;
         return { token: cfg.token, draftId: cfg.draftId ?? null };
       });
@@ -503,14 +508,16 @@ export function registerScript(app) {
     }
   });
 
-  // Turn sharing off — every copy of the link dies immediately. A later share
-  // mints a fresh token, so old links stay dead. Also clears the chosen draft.
+  // Turn SCRIPT sharing off. If the world is still shared the token stays alive
+  // (only the script surface goes dark); otherwise the token is revoked and every
+  // copy of the link dies. Also clears the chosen draft.
   app.delete("/api/script/share", async (c) => {
     try {
-      await updateDoc(c.env, c.get("projectId"), SHARE_DOC, { token: null, draftId: null }, (cfg) => {
+      await updateDoc(c.env, c.get("projectId"), SHARE_DOC, { token: null, draftId: null, script: false, world: false }, (cfg) => {
         if (!cfg.token) return { abort: true };
-        cfg.token = null;
+        cfg.script = false;
         cfg.draftId = null;
+        if (!isWorldShared(cfg)) cfg.token = null;
         return {};
       });
       return c.json({ shared: false });

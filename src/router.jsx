@@ -22,13 +22,20 @@ const fallback = (tab) => () => <RouteSkeleton tab={tab} />;
 // Biggest win: /editor's Remotion deps leave the main bundle. ErrorBoundary stays
 // statically set so it also catches lazy-load failures.
 export const router = createBrowserRouter([
-  // PUBLIC read-only script view behind a share link. A SIBLING of RootLayout,
-  // not a child: the shell's LoginGate (session + provider key) and header must
-  // never wrap it — a link viewer has neither. Matching here also keeps it out
-  // of the catch-all redirect inside RootLayout's children.
+  // PUBLIC read-only share view behind a share link — the World and Script tabs.
+  // A SIBLING of RootLayout, not a child: the shell's LoginGate (session +
+  // provider key) and header must never wrap it — a link viewer has neither.
+  // Matching here also keeps it out of the catch-all redirect inside RootLayout.
+  {
+    path: "/share/:token",
+    lazy: () => import("@/routes/share"),
+    ErrorBoundary: RouteError,
+  },
+  // Legacy script-only links (/share/script/<token>, issued before the unified
+  // page — the mobile app still mints these) redirect onto the Script tab.
   {
     path: "/share/script/:token",
-    lazy: () => import("@/routes/share-script"),
+    loader: ({ params }) => redirect(`/share/${params.token}?tab=script`),
     ErrorBoundary: RouteError,
   },
   // PUBLIC legal pages — siblings for the same reason as the share view above.

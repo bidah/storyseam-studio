@@ -21,6 +21,7 @@ import { useEpisodes } from "@/components/EpisodeProvider";
 import { FORMATS } from "@/lib/format";
 import DocHistory from "@/components/DocHistory";
 import MediaPicker from "@/components/MediaPicker";
+import ShareDialog from "@/components/ShareDialog";
 import { useT, t as staticT } from "@/lib/i18n";
 
 /* ---------------------------------------------------------------- *
@@ -727,6 +728,7 @@ function World() {
             {/* Every save parks the previous version — this is the way back if
                 a bad write (usually the agent's) flattens the bible. */}
             <DocHistory doc="world" onRestored={refetch} />
+            <ShareDialog />
             <Button onClick={createWithAgent} disabled={agentBusy}>
               {agentBusy
                 ? <><Loader2 size={14} className="animate-spin" /> {t("agent working…")}</>

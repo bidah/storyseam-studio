@@ -14,7 +14,7 @@
 // one `characters` (the episode's cast). See lib/format.js for feature vs series.
 import { readDoc, updateDoc, DEFAULT_EPISODE } from "../lib/docs.js";
 import { requestContext } from "../lib/request-context.js";
-import { assetRefUrl } from "../lib/media.js";
+import { assetRefUrl, filesUrl, mediaKey } from "../lib/media.js";
 import {
   normalizeProductionType, DEFAULT_PRODUCTION_TYPE, PRODUCTION_TYPE_IDS,
 } from "../lib/production-type.js";
@@ -328,6 +328,58 @@ export async function buildWorldView(env, pid) {
     characters: roster,
     charactersLibrary: world.characters,
     episodeId,
+  };
+}
+
+// ── Public read-only projection (the /api/share/world/:token viewer) ───────────
+// A share-link viewer has no session and no project header, so every image must
+// resolve to an UNGATED absolute `/files/...` URL — the gated `/asset/*` and
+// `/sound-media/*` routes read `c.get("projectId")` and would 401. So we strip
+// each sheet down to its ungated `url` (the library `rel` → `/files/.../asset/`)
+// and each voice to an ungated `/files/.../sound-media/` clip. Nothing here is
+// editable and nothing that isn't public (ids kept only to key React lists).
+const publicImage = (env, pid, img) => {
+  if (!img) return null;
+  const url = img.rel ? assetRefUrl(env, pid, img.rel) : "";
+  return url ? { url, name: str(img.name) } : null;
+};
+
+const publicVoice = (env, pid, vref) => {
+  if (!vref?.url) return null;
+  const m = /\/sound-media\/(.+)$/.exec(vref.url);
+  const url = m ? filesUrl(env, mediaKey(pid, "sound-media", m[1])) : "";
+  return url ? { name: str(vref.name), v: vref.v ?? null, url } : null;
+};
+
+// The written world exactly as the World tab shows it, stripped to the public,
+// read-only shape. Deliberately NOT episode-scoped via requestContext (the public
+// route has no identity store): a series link lands on the first episode's roster
+// and depth, which is the shared bible's default view.
+export async function buildSharedWorld(env, pid) {
+  const world = await readWorld(env, pid);
+  const bible = await readEpisodeBible(env, pid, DEFAULT_EPISODE, world);
+  const byId = new Map(world.characters.map((c) => [c.id, c]));
+  const roster = bible.characterIds.map((id) => byId.get(id)).filter(Boolean);
+  const is2d = normalizeProductionType(world.productionType) === "2d";
+  return {
+    title: world.title,
+    logline: world.logline,
+    productionType: world.productionType,
+    format: world.format,
+    map: world.map,
+    depth: bible.depth,
+    characters: roster.map((c) => ({
+      id: c.id,
+      name: c.name, archetype: c.archetype, role: c.role, want: c.want, need: c.need,
+      traits: c.traits, arc: c.arc, voice: c.voice, appearance: c.appearance,
+      sheetImage: publicImage(env, pid, c.sheetImage),
+      miniatureImage: is2d ? publicImage(env, pid, c.miniatureImage) : null,
+      voiceRef: publicVoice(env, pid, c.voiceRef),
+    })),
+    locations: world.locations.map((l) => ({
+      id: l.id, name: l.name, slug: l.slug, description: l.description,
+      sheetImage: publicImage(env, pid, l.sheetImage),
+    })),
   };
 }
 

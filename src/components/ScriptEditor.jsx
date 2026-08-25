@@ -33,6 +33,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
+import ShareDialog from "@/components/ShareDialog";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger,
@@ -442,203 +443,6 @@ function ExportControls({ editor, title, name }) {
         </span>
       )}
     </>
-  );
-}
-
-// Share — a public read-only link to ONE chosen draft (/share/script/<token>,
-// rendered by src/routes/share-script.jsx outside the login gate). Opening the
-// dialog mints a token once (pointing at the pinned draft by default) and
-// returns the same link on every subsequent open. A version picker at the top
-// repoints that same link at another draft; the link always shows the latest
-// saved content of whichever draft it points at. "Stop sharing" revokes the
-// token, killing every copy of the link.
-function ShareControls({ drafts, pinnedId }) {
-  const t = useT();
-  const [open, setOpen] = useState(false);
-  const [info, setInfo] = useState(null); // null = loading, { url, draftId } = live
-  const [err, setErr] = useState(null);
-  const [copied, setCopied] = useState(false);
-  const [busy, setBusy] = useState(false); // repointing to a different draft
-
-  // Which draft the link currently shows — the stored choice, else the pinned
-  // one (the viewer falls back to pinned for a null/deleted draftId).
-  const selectedId =
-    (info?.draftId && drafts.some((d) => d.id === info.draftId) && info.draftId) || pinnedId;
-  const selectedName = drafts.find((d) => d.id === selectedId)?.name || t("Pinned draft");
-  const sortedDrafts = [...drafts].sort((a, b) => (b.updatedAt || "").localeCompare(a.updatedAt || ""));
-
-  // Ensure a token exists, pointing at the pinned draft by default. GET first so
-  // a previously chosen draft isn't clobbered by reopening the dialog.
-  useEffect(() => {
-    if (!open) return;
-    let alive = true;
-    setInfo(null);
-    setErr(null);
-    setCopied(false);
-    (async () => {
-      try {
-        const cur = await fetch("/api/script/share").then((r) => r.json());
-        if (cur.error) throw new Error(cur.error);
-        // Not shared yet → mint a link pointing at the pinned draft.
-        const d = cur.shared && cur.url
-          ? cur
-          : await fetch("/api/script/share", {
-              method: "POST",
-              headers: { "content-type": "application/json" },
-              body: JSON.stringify({ draftId: pinnedId }),
-            }).then((r) => r.json());
-        if (!alive) return;
-        if (d.error || !d.url) throw new Error(d.error || st("No share link returned"));
-        setInfo(d);
-      } catch (e) {
-        if (alive) setErr(String(e.message || e));
-      }
-    })();
-    return () => { alive = false; };
-  }, [open, pinnedId]);
-
-  // Repoint the existing link at a different draft.
-  const pickDraft = async (draftId) => {
-    if (draftId === selectedId) return;
-    setBusy(true);
-    setErr(null);
-    try {
-      const d = await fetch("/api/script/share", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ draftId }),
-      }).then((r) => r.json());
-      if (d.error || !d.url) throw new Error(d.error || st("Couldn't update the share link"));
-      setInfo(d);
-    } catch (e) {
-      setErr(String(e.message || e));
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const copy = async () => {
-    try {
-      await navigator.clipboard.writeText(info.url);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
-    } catch (e) {
-      setErr(String(e.message || e));
-    }
-  };
-
-  const stopSharing = async () => {
-    try {
-      await fetch("/api/script/share", { method: "DELETE" });
-      setOpen(false);
-    } catch (e) {
-      setErr(String(e.message || e));
-    }
-  };
-
-  return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button
-          variant="outline"
-          size="sm"
-          className="h-7 gap-1.5 text-xs"
-          title={t("Share a public read-only view of this script")}
-        >
-          <Share2 size={13} />
-          {t("Share")}
-        </Button>
-      </DialogTrigger>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <Share2 size={16} /> {t("Share script")}
-          </DialogTitle>
-          <DialogDescription>
-            {t("Anyone with this link can read the chosen draft — formatted, no editing. Pick which version to share below; the link always shows its latest saved content.")}
-          </DialogDescription>
-        </DialogHeader>
-
-        {/* Version picker — which draft the link shows. Defaults to the pinned draft. */}
-        <div className="flex items-center gap-2">
-          <span className="shrink-0 text-xs font-medium text-muted-foreground">{t("Version")}</span>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-8 flex-1 justify-between gap-1.5 text-xs"
-                disabled={!info || busy}
-              >
-                <span className="flex min-w-0 items-center gap-1.5">
-                  <GitBranch size={13} className="shrink-0 text-muted-foreground" />
-                  <span className="truncate">{selectedName}</span>
-                  {selectedId === pinnedId && (
-                    <Badge variant="secondary" className="shrink-0 text-[10px]">{t("pinned")}</Badge>
-                  )}
-                </span>
-                {busy ? <Loader2 size={13} className="animate-spin" /> : <ChevronDown size={13} className="shrink-0 opacity-60" />}
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" className="max-h-64 w-[--radix-dropdown-menu-trigger-width] overflow-y-auto">
-              {sortedDrafts.map((d) => (
-                <DropdownMenuItem
-                  key={d.id}
-                  onClick={() => pickDraft(d.id)}
-                  className="flex items-center gap-2 text-xs"
-                >
-                  {d.id === selectedId ? (
-                    <Check size={13} className="shrink-0 text-primary" />
-                  ) : (
-                    <span className="w-[13px] shrink-0" />
-                  )}
-                  <span className="truncate">{d.name}</span>
-                  {d.id === pinnedId && (
-                    <Badge variant="secondary" className="shrink-0 text-[10px]">{t("pinned")}</Badge>
-                  )}
-                  <span className="ml-auto shrink-0 pl-2 text-[11px] text-muted-foreground">
-                    {d.lineCount} {t("lines")}
-                  </span>
-                </DropdownMenuItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
-
-        {err ? (
-          <p className="text-sm text-destructive" role="alert">{err}</p>
-        ) : !info ? (
-          <p className="flex items-center gap-2 text-sm text-muted-foreground">
-            <Loader2 size={14} className="animate-spin" /> {t("Creating share link…")}
-          </p>
-        ) : (
-          <div className="flex items-center gap-2">
-            <Input readOnly value={info.url} className="h-8 text-xs" onFocus={(e) => e.target.select()} />
-            <Button variant="outline" size="sm" className="h-8 gap-1.5 shrink-0" onClick={copy}>
-              {copied ? <Check size={13} className="text-primary" /> : <Copy size={13} />}
-              {copied ? t("Copied") : t("Copy")}
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-8 shrink-0"
-              aria-label={t("Open the shared view in a new tab")}
-              onClick={() => window.open(info.url, "_blank", "noopener")}
-            >
-              <ExternalLink size={13} />
-            </Button>
-          </div>
-        )}
-        <DialogFooter className="sm:justify-between">
-          <Button variant="ghost" size="sm" className="text-destructive" disabled={!info} onClick={stopSharing}>
-            {t("Stop sharing")}
-          </Button>
-          <Button variant="secondary" size="sm" onClick={() => setOpen(false)}>
-            {t("Done")}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
   );
 }
 
@@ -1089,7 +893,7 @@ function Editor({ initial, drafts, pinnedId, currentName, reload, signed: signed
         />
         <ImportControls flush={saveNow} reload={reload} />
         <ExportControls editor={editor} title={title} name={currentName} />
-        <ShareControls drafts={drafts} pinnedId={pinnedId} />
+        <ShareDialog />
         <span className="mx-0.5 h-5 w-px bg-border" aria-hidden />
         <ShotlistGate
           draftId={draftId}

@@ -42,6 +42,16 @@ export function shareTokenProject(token) {
   }
 }
 
+// ── What a share token exposes ────────────────────────────────────────────────
+// The `script-share` doc is now project-level, not script-only: one token, two
+// independently-toggled surfaces (the script and the written world). Its shape is
+// `{ token, draftId, script, world }` — but a legacy doc predating world sharing
+// only has `{ token, draftId }`, and a token was minted there to share the SCRIPT.
+// So an ABSENT `script` flag on a live token means "shared" (back-compat); `world`
+// is opt-in and only ever true when set explicitly.
+export const isScriptShared = (cfg) => !!cfg?.token && cfg.script !== false;
+export const isWorldShared = (cfg) => !!cfg?.token && cfg.world === true;
+
 // Constant-time equality via digest comparison (same shape as the MCP bearer
 // check in routes/mcp.js) so a mismatch can't leak where it diverged.
 export async function shareTokensMatch(a, b) {
