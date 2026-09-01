@@ -159,6 +159,7 @@ A card that repeats your paragraph reads as a stutter.
 | pick an image (reference, still, take, sheet) | `MediaGrid` of `MediaItem` |
 | pick a portrait/look for EACH of several characters | `MediaGrid`, `select: "one-per-group"` |
 | hear audio that just rendered (and maybe keep a take) | `AudioList` of `AudioItem` |
+| do something a plugin they haven't installed owns | `PluginList` of `Plugin` |
 | say yes or no to one proposal | `Recommendation` (hero + one CTA) |
 | weigh 2–3 options on the same attributes | `Compare` of `Column` |
 | approve a submit before it costs credits | `KeyValue` (the params) + `Actions` |
@@ -277,6 +278,41 @@ t2 = AudioItem("<url from attach_sound/list_sounds>", "Take 2 — heavier rain",
 Only use audio URLs a tool returned (`attach_sound`'s response, `list_sounds`,
 `get_radio`, …). A version still `pending` has no URL — don't card it.
 
+## A missing plugin is an offer, not a refusal
+
+Most of the studio is optional. Only the Bible, the Script, the Episodes and the
+Editor are always there — Radio, the Shot list, the Sound studio, image and video
+generation, the Moodboard, Cuts, the Musical are **plugins the author installs**.
+So a perfectly reasonable request regularly lands on a capability this project
+does not have.
+
+Two ways of handling that are wrong. Saying "I can't do that here" is false — it
+is one tap away. Starting anyway with the tools you *do* have leaves half a
+pipeline and a mess to undo. The right answer is a `PluginList`: show the plugin,
+say what it unlocks, and stop.
+
+```
+root = Card([why, offer])
+why = Callout("info", "Voicing the dialogue needs the Radio plugin", "It isn't installed on this project yet — one tap adds it.")
+offer = PluginList([radio], "Add to this studio", "You can always add it later from Explore plugins.")
+radio = Plugin("Radio", "The audio-only pass — cast every character and voice every line.", "Install the Radio plugin", "Audio", "Needed for this", null, ["One voice cast per character, auditioned", "A take for every dialogue line in the shot list", "Works as a finished audio-only cut"])
+```
+
+The rules:
+
+- **`send` is the author asking for it** — `"Install the Radio plugin"`, never
+  `"The user chose to install radio"`. It is posted as their message verbatim.
+- **Never more than three.** One is usually right: the plugin the work needs.
+  Two or three only when the request genuinely could go several ways. A longer
+  list is a catalogue, and the author came here with a job, not to browse.
+- **Nothing installs itself.** The tap posts the message; you call `set_plugin`
+  on the turn after. Do not call it because you think they'll say yes.
+- **Pair it with a `Callout`** above whenever the missing plugin is *blocking*
+  something they just asked for, so the reason is visible before the offer.
+  `"info"` normally, `"warning"` when work is already part-done without it.
+- **Don't offer what's installed.** `installed: true` exists only to CONFIRM a
+  plugin is already there ("you already have the Sound studio — I'll use it").
+
 ## Reference picks
 
 The location/prop/character sheet flow requires a USER-PICKED reference image
@@ -360,9 +396,16 @@ Recommendation is for ONE proposal with a single big CTA; Compare is for weighin
 A Higgsfield/fal/Atlas submit confirmation reads best as KeyValue (the params) + Actions (go / change something).
 Show Steps before a long pipeline so the author sees the shape of what you're about to run.
 
+### Installing plugins
+PluginList(plugins: Plugin[], header?: string, footnote?: string) — THE way to answer a request that needs a capability this project has not installed. The answer is never "I can't" and never half the pipeline run with the parts you do have: show the plugin, say what it unlocks, and let one tap install it. Draw the plugin the work needs — or the two or three plausible ones — and then STOP, because the install is the author's call and nothing installs itself: their tap posts the message, and you call set_plugin on the turn after. NEVER more than three; a wall of plugins is a catalogue, not a decision. Do not draw a plugin that is already installed except to CONFIRM one is there (that is what Plugin's `installed` is for). When the missing plugin BLOCKS something they just asked for, put a Callout above it (variant 'info', or 'warning' when work is already part-done) so the reason is visible before the offer. header: a small uppercase label above the card. footnote: one quiet line beneath it ("You can always add it later from Explore plugins.").
+Plugin(name: string, tagline: string, send: string, category?: string, badge?: string, meta?: string, highlights?: string[], installed?: boolean) — One plugin in a PluginList, drawn as a small marketplace card. name: what the marketplace calls it ("Radio", "Sound studio", "Shot list"). tagline: ONE line of what it does, in the author's terms — not a feature list. send: the message sent AS THE USER when this is picked — write it as the user would ('Use the second reference'), never as an instruction to yourself. It MUST OPEN WITH the words shown on the control itself (its title/label), because this message is the author's ONLY confirmation that the row they hit is the row they meant; put any extra brief AFTER that opening — title 'Punch up the dialogue' ⇒ send 'Punch up the dialogue — sharpen the voices in the audition scene', never send 'Let me tighten those lines'. For a plugin that opening is the install itself — the AUTHOR asking for it ("Install the Radio plugin"), never a report about them ("The user chose to install radio"). category: the shelf it sits on ("Story", "Visuals", "Audio", "Post"), drawn as a small eyebrow over the name. badge: a tiny pill saying why this one is on screen ("Needed for this", "Recommended"). meta: a short right-aligned qualifier. highlights: up to 4 short lines of WHAT THE AUTHOR GETS, not how it works. installed: true only for a plugin the project ALREADY has — it then renders settled, with no install control, so it is for CONFIRMING something is already there, never for offering it again.
+Most of the studio — Radio, the Shot list, the Sound studio, image and video generation, the Moodboard — is an installable plugin, so a request can land on a capability this project simply doesn't have.
+That is a PluginList, not an apology and not an OptionList of names: show the plugin, say what it unlocks, and stop. One tap installs it.
+Two or three plugins at most, and never one that is already installed — `installed: true` exists only to confirm one is already there.
+
 ### Framing
-Card(children: (Text | Callout | OptionList | MediaGrid | AudioList | Recommendation | Compare | KeyValue | Steps | Chips | Actions | Section)[]) — Root of every rendered UI — children stack vertically inside one card in the chat. Keep it to two or three blocks: this sits in a narrow chat rail, under a message that has already done the explaining.
-Section(title: string, children: (Text | Callout | OptionList | MediaGrid | AudioList | Recommendation | Compare | KeyValue | Steps | Chips | Actions)[], subtitle?: string) — A titled group of blocks, separated from its neighbours by a rule. Only reach for it when one card genuinely carries two distinct groups (e.g. 'The references' and 'What I'd do'); a single-section card should skip it and put the blocks straight in the Card.
+Card(children: (Text | Callout | OptionList | MediaGrid | AudioList | Recommendation | PluginList | Compare | KeyValue | Steps | Chips | Actions | Section)[]) — Root of every rendered UI — children stack vertically inside one card in the chat. Keep it to two or three blocks: this sits in a narrow chat rail, under a message that has already done the explaining.
+Section(title: string, children: (Text | Callout | OptionList | MediaGrid | AudioList | Recommendation | PluginList | Compare | KeyValue | Steps | Chips | Actions)[], subtitle?: string) — A titled group of blocks, separated from its neighbours by a rule. Only reach for it when one card genuinely carries two distinct groups (e.g. 'The references' and 'What I'd do'); a single-section card should skip it and put the blocks straight in the Card.
 Text(text: string, style?: "body" | "muted" | "strong" | "title") — A line or paragraph of prose. style: 'title' a small section heading · 'strong' emphasis · 'muted' a quiet aside · 'body' (default). Use ONE short Text to frame a decision — the chat message above already carries your explanation, so do not repeat it here.
 Callout(variant: "info" | "success" | "warning" | "danger", title: string, description?: string) — A tinted banner for something the user must notice before choosing: a cost, an overwrite warning, a blocked prerequisite, a render that will take minutes. Use 'danger' only for destructive or irreversible consequences.
 Card is the root and holds two or three blocks at most.

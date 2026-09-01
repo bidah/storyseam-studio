@@ -21,6 +21,12 @@ import { useT, t as staticT } from "@/lib/i18n";
  * writers' room. Who has read my script, what did they say, and     *
  * what haven't I run yet.                                           *
  *                                                                   *
+ * Its own top-level surface at /agents (the `agents` plugin). It    *
+ * used to be a sub-tab of the World tab, sharing a tab bar with the *
+ * bible and the visual explorer; the marketplace made every one of  *
+ * those a surface you install on purpose, so the wrapper went and   *
+ * this file draws its own heading.                                  *
+ *                                                                   *
  * Every specialist logs its own pass into the `script-reviews`      *
  * ledger (worker/src/lib/reviews.js), which is what makes this a    *
  * READ of a log book rather than a guess. The Script tab's chips    *
@@ -501,8 +507,8 @@ function ScriptAgents() {
 //
 // Both are tolerated failing. The lint simply disappears (the panel is hidden);
 // the ledger degrades to an inline error rather than throwing, because throwing
-// would hand the whole /world layout — sub-tab bar included — to the route
-// ErrorBoundary, and the author would lose the way back out of this tab.
+// would hand the whole surface to the route ErrorBoundary — an unreadable ledger
+// shouldn't cost the author the board, the roster and the way back to the script.
 export function loader() {
   return swr("script-agents", async () => {
     const get = async (path) => {

@@ -9,10 +9,17 @@ test.beforeEach(async ({ page }) => {
   await mockBackend(page);
 });
 
-const VISIBLE_TABS = [
-  "World", "Script", "Shot list", "Radio", "Animatic",
-  "Episode (48)", "Complete cuts", "Editor", "Library", "Sound studio",
+// The header is now the four CORE surfaces plus whatever the project has
+// installed (src/lib/plugins.ts). The mock backend reports every plugin
+// installed, so all of these are expected here; a real project starts with the
+// first four alone.
+const CORE_TABS = ["Bible", "Script", "Episodes", "Editor"];
+const PLUGIN_TABS = [
+  "Script agents", "Moodboard", "Shot list", "Image generation",
+  "Video generation", "Visual nodes", "Animatic", "Radio", "Sound studio",
+  "Musical", "Complete cuts", "Library",
 ];
+const VISIBLE_TABS = [...CORE_TABS, ...PLUGIN_TABS];
 
 test.describe("app shell", () => {
   test("renders header chrome: project, all tabs, refresh, account", async ({ page }) => {
@@ -29,6 +36,11 @@ test.describe("app shell", () => {
     }
     await expect(page.getByRole("tab", { name: "Shots", exact: true })).toHaveCount(0);
     await expect(page.getByRole("tab", { name: "Multi-shot", exact: true })).toHaveCount(0);
+
+    // The two doorways that live beside the tabs: the marketplace and the MCP
+    // explainer. Both are new chrome, both are always present.
+    await expect(page.getByRole("button", { name: /explore plugins/i })).toBeVisible();
+    await expect(page.getByRole("button", { name: /use mcp/i })).toBeVisible();
 
     await expect(page.getByRole("button", { name: /refresh/i })).toBeVisible();
     await expect(page.getByRole("button", { name: /account menu/i })).toBeVisible();

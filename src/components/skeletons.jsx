@@ -564,9 +564,9 @@ function EditorSkeleton() {
   );
 }
 
-// world/agents.jsx — the Script Agents board: a header + a status badge row,
+// agents.jsx — the Script Agents board: a header + a status badge row,
 // then stage Panels, each a 2-up grid of specialist cards.
-function WorldAgentsSkeleton() {
+function AgentsSkeleton() {
   return (
     <div className="space-y-4">
       <StackedHeader titleWidth="w-40" subtitle actions={["w-40"]} badges={["w-56", "w-24", "w-28"]} />
@@ -592,9 +592,11 @@ function WorldAgentsSkeleton() {
   );
 }
 
-// world/visual.jsx — the shared <ImageStudio>: a header, the composer (a prompt
-// box over a row of controls), then the results grid.
-function WorldVisualSkeleton() {
+// images.jsx / videos.jsx — both are the shared <ImageStudio>: a header, the
+// composer (a prompt box over a row of controls), then the results grid. One
+// shape, two keys: the surfaces differ in what the controls SAY, which is below
+// skeleton resolution.
+function StudioSkeleton() {
   return (
     <div className="space-y-4">
       <StackedHeader titleWidth="w-40" subtitle actions={["w-44"]} />
@@ -616,10 +618,37 @@ function WorldVisualSkeleton() {
   );
 }
 
-// world/nodes.jsx — the React Flow canvas. A single opaque block (same reasoning
+// plugins.jsx — the marketplace: a header, then a grid of plugin cards. The
+// catalog is static data, so the grid's SHAPE is known before anything loads —
+// what the cold load waits on is which of them are installed.
+function PluginsSkeleton() {
+  return (
+    <div className="space-y-4">
+      <StackedHeader titleWidth="w-44" subtitle badges={["w-24", "w-28"]} />
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        {Array.from({ length: 9 }, (_, i) => (
+          <div key={i} className="space-y-2.5 rounded-xl border bg-card p-4">
+            <div className="flex items-center gap-2.5">
+              <Skeleton className="size-9 shrink-0 rounded-md" />
+              <div className="min-w-0 flex-1 space-y-1.5">
+                <Skeleton className="h-4 w-28" />
+                <Skeleton className="h-3 w-16" />
+              </div>
+            </div>
+            <Skeleton className="h-3.5 w-full" />
+            <Skeleton className="h-3.5 w-4/5" />
+            <Skeleton className="h-8 w-24 rounded-md" />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// nodes.jsx — the React Flow canvas. A single opaque block (same reasoning
 // as the moodboard: no card shapes we can know before the graph loads) with a
 // small floating toolbar above it.
-function WorldNodesSkeleton() {
+function NodesSkeleton() {
   return (
     <div className="space-y-3">
       <div className="flex items-center gap-2">
@@ -631,13 +660,17 @@ function WorldNodesSkeleton() {
   );
 }
 
-// Tab → skeleton. Keys match the route paths in src/router.jsx (World sub-tabs
-// are keyed `world-<seg>`, resolved by src/routes/world/layout.jsx).
+// Tab → skeleton. Keys match the route paths in src/router.jsx, which are also
+// the plugin ids in src/lib/plugins.ts — `world` is the Bible, and the three
+// surfaces that used to hang off it (`agents`, `images`/`videos`, `nodes`) are
+// top-level now, so their keys lost the `world-` prefix with the sub-tab bar.
 const SKELETONS = {
   world: WorldSkeleton,
-  "world-agents": WorldAgentsSkeleton,
-  "world-visual": WorldVisualSkeleton,
-  "world-nodes": WorldNodesSkeleton,
+  agents: AgentsSkeleton,
+  images: StudioSkeleton,
+  videos: StudioSkeleton,
+  nodes: NodesSkeleton,
+  plugins: PluginsSkeleton,
   moodboard: MoodboardSkeleton,
   shotlist: ShotlistSkeleton,
   radio: RadioSkeleton,

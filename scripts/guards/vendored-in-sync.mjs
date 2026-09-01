@@ -8,6 +8,7 @@
 //   src/genui/*             → mobile-app/src/genui/*      (npm run genui:sync)
 //   src/lib/suggestions.ts  → mobile-app + worker copies   (npm --prefix mobile-app run sync:suggestions)
 //   src/lib/routeTable.js   → desktop/main/routeTable.js   (npm --prefix desktop run sync)
+//   src/lib/plugins.ts      → worker + flue-agent copies    (npm run plugins:sync)
 //   shared/schemas/*.json   → worker + flue-agent copies    (npm run schemas:sync)
 //   src/lib/moodboard-document.js → worker copy             (npm run moodboard:sync)
 //
@@ -38,6 +39,12 @@ const PAIRS = [
   ["src/lib/specialists.ts", "worker/src/lib/specialists.ts", "npm --prefix mobile-app run sync:suggestions"],
   ["src/lib/specialists.ts", "flue-agent/src/lib/specialists.ts", "npm --prefix mobile-app run sync:suggestions"],
   ["src/lib/routeTable.js", "desktop/main/routeTable.js", "npm --prefix desktop run sync"],
+  // The plugin catalog. Three surfaces must agree on which tabs exist and which
+  // are optional: the header draws them, the Worker validates an install against
+  // them, and the agent refuses a tool whose plugin isn't installed. A drifted
+  // copy is an agent offering to install something that doesn't exist.
+  ["src/lib/plugins.ts", "worker/src/lib/plugins.ts", "npm run plugins:sync"],
+  ["src/lib/plugins.ts", "flue-agent/src/lib/plugins.ts", "npm run plugins:sync"],
   // The moodboard op reducer. Applied optimistically on the client AND
   // authoritatively inside the Worker's updateDoc CAS — a drifted copy means
   // cards that silently snap back to a different position after a reload.

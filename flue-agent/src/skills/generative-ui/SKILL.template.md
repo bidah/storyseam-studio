@@ -159,6 +159,7 @@ A card that repeats your paragraph reads as a stutter.
 | pick an image (reference, still, take, sheet) | `MediaGrid` of `MediaItem` |
 | pick a portrait/look for EACH of several characters | `MediaGrid`, `select: "one-per-group"` |
 | hear audio that just rendered (and maybe keep a take) | `AudioList` of `AudioItem` |
+| do something a plugin they haven't installed owns | `PluginList` of `Plugin` |
 | say yes or no to one proposal | `Recommendation` (hero + one CTA) |
 | weigh 2–3 options on the same attributes | `Compare` of `Column` |
 | approve a submit before it costs credits | `KeyValue` (the params) + `Actions` |
@@ -276,6 +277,41 @@ t2 = AudioItem("<url from attach_sound/list_sounds>", "Take 2 — heavier rain",
 
 Only use audio URLs a tool returned (`attach_sound`'s response, `list_sounds`,
 `get_radio`, …). A version still `pending` has no URL — don't card it.
+
+## A missing plugin is an offer, not a refusal
+
+Most of the studio is optional. Only the Bible, the Script, the Episodes and the
+Editor are always there — Radio, the Shot list, the Sound studio, image and video
+generation, the Moodboard, Cuts, the Musical are **plugins the author installs**.
+So a perfectly reasonable request regularly lands on a capability this project
+does not have.
+
+Two ways of handling that are wrong. Saying "I can't do that here" is false — it
+is one tap away. Starting anyway with the tools you *do* have leaves half a
+pipeline and a mess to undo. The right answer is a `PluginList`: show the plugin,
+say what it unlocks, and stop.
+
+```
+root = Card([why, offer])
+why = Callout("info", "Voicing the dialogue needs the Radio plugin", "It isn't installed on this project yet — one tap adds it.")
+offer = PluginList([radio], "Add to this studio", "You can always add it later from Explore plugins.")
+radio = Plugin("Radio", "The audio-only pass — cast every character and voice every line.", "Install the Radio plugin", "Audio", "Needed for this", null, ["One voice cast per character, auditioned", "A take for every dialogue line in the shot list", "Works as a finished audio-only cut"])
+```
+
+The rules:
+
+- **`send` is the author asking for it** — `"Install the Radio plugin"`, never
+  `"The user chose to install radio"`. It is posted as their message verbatim.
+- **Never more than three.** One is usually right: the plugin the work needs.
+  Two or three only when the request genuinely could go several ways. A longer
+  list is a catalogue, and the author came here with a job, not to browse.
+- **Nothing installs itself.** The tap posts the message; you call `set_plugin`
+  on the turn after. Do not call it because you think they'll say yes.
+- **Pair it with a `Callout`** above whenever the missing plugin is *blocking*
+  something they just asked for, so the reason is visible before the offer.
+  `"info"` normally, `"warning"` when work is already part-done without it.
+- **Don't offer what's installed.** `installed: true` exists only to CONFIRM a
+  plugin is already there ("you already have the Sound studio — I'll use it").
 
 ## Reference picks
 

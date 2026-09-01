@@ -1667,7 +1667,7 @@ export const es = {
   "Pick at least one project, or choose “All projects”.":
     "Elige al menos un proyecto, o “Todos los proyectos”.",
 
-  // ── Visual world (world/visual.jsx) ──────────────────────────────────
+  // ── Visual world (routes/images.jsx + routes/videos.jsx) ─────────────
   "Agent is busy — wait for the current turn": "El agente está ocupado — espera a que termine el turno actual",
   "Explore how the world looks — generate concept images to find your characters and places.":
     "Explora cómo se ve el mundo: genera imágenes conceptuales para encontrar tus personajes y lugares.",

@@ -14,7 +14,17 @@
  * ActionExpressions here.
  */
 import { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
-import { Check, ChevronRight, Circle, CircleCheck, Expand, Pause, Play } from "lucide-react";
+import {
+  Blocks,
+  Check,
+  ChevronRight,
+  Circle,
+  CircleCheck,
+  Expand,
+  Pause,
+  Play,
+  Plus,
+} from "lucide-react";
 import { useTriggerAction, useIsStreaming } from "@openuidev/react-lang";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -771,6 +781,98 @@ export function Recommendation({ props }) {
 }
 
 // ---------------------------------------------------------------------------
+// Plugins
+// ---------------------------------------------------------------------------
+
+/**
+ * One row of the marketplace, in the chat. Adding a capability to the studio is
+ * a different decision from picking a take, so it doesn't wear an Option row:
+ * the shelf it sits on, the name, what it unlocks, and one install control.
+ *
+ * A plugin the project already HAS is settled — a success badge and no button,
+ * because there is nothing left to decide. Everything else gets the Install
+ * button carrying the `send`; the agent installs nothing itself.
+ */
+export function Plugin({ props }) {
+  const onClick = useSend(props.send);
+  const highlights = Array.isArray(props.highlights) ? props.highlights : [];
+  // Once the card is answered the plugin the author installed reads as taken
+  // and the ones they passed over recede. See answered.ts.
+  const { picked, dimmed } = useAnswerState(props.send);
+  return (
+    <div className={cn("flex flex-col gap-2.5 p-3", dimmed && "opacity-45")}>
+      <div className="flex items-start gap-3">
+        <span className="flex size-9 shrink-0 items-center justify-center rounded-lg border bg-muted/40">
+          <Blocks size={16} className="text-muted-foreground" />
+        </span>
+        <div className="min-w-0 flex-1">
+          {props.category ? (
+            <p className="text-[10px] font-medium tracking-wide text-muted-foreground uppercase">
+              {props.category}
+            </p>
+          ) : null}
+          <div className="flex items-center gap-1.5">
+            <h4 className="min-w-0 flex-1 text-sm font-semibold">{props.name}</h4>
+            {props.installed ? (
+              <Badge variant="success" className="shrink-0">
+                <Check size={11} />
+                Installed
+              </Badge>
+            ) : props.badge ? (
+              <Badge variant="info" className="shrink-0">
+                {props.badge}
+              </Badge>
+            ) : null}
+          </div>
+          <p className="mt-0.5 text-xs leading-snug text-muted-foreground">{props.tagline}</p>
+        </div>
+        {props.meta ? (
+          <span className="shrink-0 text-xs text-muted-foreground">{props.meta}</span>
+        ) : null}
+      </div>
+      {highlights.length ? (
+        <ul className="flex flex-col gap-1">
+          {highlights.slice(0, 4).map((line, i) => (
+            <li key={i} className="flex items-start gap-1.5 text-xs text-muted-foreground">
+              <Check size={12} className="mt-0.5 shrink-0 text-primary" />
+              <span>{line}</span>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+      {/* An installed plugin has no control at all — the badge above already
+          says everything true about it. */}
+      {props.installed ? null : (
+        <Button type="button" size="sm" disabled={!onClick} onClick={onClick} className="w-full">
+          {picked ? <Check size={14} /> : <Plus size={14} />}
+          Install {props.name}
+        </Button>
+      )}
+    </div>
+  );
+}
+
+export function PluginList({ props, renderNode }) {
+  const plugins = Array.isArray(props.plugins) ? props.plugins : [];
+  return (
+    <div>
+      <Header>{props.header}</Header>
+      <InsetCard>
+        {plugins.map((plugin, i) => (
+          <div key={i}>
+            {i > 0 ? <Separator /> : null}
+            {renderNode(plugin)}
+          </div>
+        ))}
+      </InsetCard>
+      {props.footnote ? (
+        <p className="px-0.5 pt-1.5 text-xs text-muted-foreground">{props.footnote}</p>
+      ) : null}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Comparison & detail
 // ---------------------------------------------------------------------------
 
@@ -981,6 +1083,8 @@ export const webRenderers = {
   AudioItem,
   AudioList,
   Recommendation,
+  Plugin,
+  PluginList,
   Column,
   Compare,
   KeyValue,

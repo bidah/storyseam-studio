@@ -29,6 +29,7 @@
     "genui:sync": "node scripts/sync-genui.mjs",
     "schemas:sync": "node scripts/sync-schemas.mjs",
     "moodboard:sync": "node scripts/sync-moodboard.mjs",
+    "plugins:sync": "node scripts/sync-plugins.mjs",
     "guards": "node scripts/run-guards.mjs"
   },
   "dependencies": {

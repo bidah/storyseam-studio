@@ -1,13 +1,14 @@
 ---
 name: visual-world
 description: >-
-  Explore the VISUAL world of the series on the World › Visual tab — generate
-  concept images to discover how characters and places look, with Nano Banana
-  Pro via the Higgsfield MCP. Use when the user is on the World › Visual screen
-  (clientContext screen = "world/visual" or "visual"), presses "Let the agent
-  explore", or asks to "explore the look", "how do the characters look",
-  "visualize the world", "generate character concepts", "concept art", "find the
-  look", "mood / style exploration", or to iterate "with this as a reference".
+  Concept images of how characters and places look, on the Image generation tab,
+  via the Higgsfield MCP. NEEDS the `images` plugin: if
+  `get_status.plugins.disabled` lists it, follow plugin-gate, do not generate.
+  Use on that screen (clientContext screen = "images", or the retired
+  "world/visual"), on "Let the agent explore", or for "explore the look", "how do
+  the characters look", "visualize the world", "generate character concepts",
+  "concept art", "find the look", "mood / style exploration", or to iterate
+  "with this as a reference".
   Generate with generate_image, then attach each with attach_visual_generation
   so it lands live on the tab. Default to the user's ACTIVE render provider
   ("Render provider" section; Higgsfield when unset) — on fal use
@@ -17,13 +18,18 @@ description: >-
   prose pointing at the tab.
 ---
 
-# Visual world exploration (World › Visual tab)
+# Visual world exploration (the Image generation tab)
 
-The **Visual** sub-tab of the World tab is a concept-art playground: the *written*
-world (story map, characters) already exists — here you help the author **find the
-look**. Generate concept images for characters and places, iterate on the ones
-they like (passing a chosen image back as a reference), and build up a board they
-can arrange on the **Visual nodes** canvas. Built on the **Higgsfield MCP**
+**Image generation** (`/images`) is a concept-art playground: the *written* world —
+the **Bible** (story map, characters) — already exists, and here you help the author
+**find the look**. Generate concept images for characters and places, iterate on the
+ones they like (passing a chosen image back as a reference), and build up a board
+they can arrange on the **Visual nodes** canvas (`/nodes`, its own plugin).
+
+Both are plugins now, and so is **Video generation** (`/videos`), which is where
+motion lands. They share ONE generation store, so a still you make here is
+available as a start frame there — but a project that has not installed the plugin
+has nowhere for your work to land. Check `get_status.plugins` first. Built on the **Higgsfield MCP**
 (`mcp__higgsfield__*`), using **Nano Banana Pro** by default.
 
 > **The images do the talking.** Keep chat short. Generate, attach, then SHOW
@@ -38,7 +44,8 @@ can arrange on the **Visual nodes** canvas. Built on the **Higgsfield MCP**
 - Visual world so far → `get_visual_world` (the prompt library + existing
   generations you can reuse as references).
 - You generate with the Higgsfield MCP, then **`attach_visual_generation`** with
-  the result URL — the Worker downloads it and it appears on the Visual tab live.
+  the result URL — the Worker downloads it and it appears on the Image generation
+  tab live.
 
 ## The MCP tools are already available
 
