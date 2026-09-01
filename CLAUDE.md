@@ -85,6 +85,13 @@ surfaces** — **Bible** (`/world`), **Script**, **Episodes**, **Editor** — pl
 whatever the project has installed, plus an **Explore plugins** button that
 opens the marketplace at `/plugins`.
 
+Two plugins ship **pre-installed** (`defaultInstalled`): **Images** and
+**Videos**. They are ordinary plugins — in the marketplace, removable — but a
+brand-new project has them on, because a studio with no way to make a picture is
+not a smaller studio, it is a broken one. The header order is `HEADER_ORDER`, a
+single list with core and plugins interleaved, so the row reads as the pipeline
+(Bible → Images → Videos → Script → …) rather than "built-ins, then extras".
+
 **`src/lib/plugins.ts` is canonical.** It is import-free pure data (id, label,
 tagline, blurb, highlights, category, `triggers`, `tools`, `skills`) vendored by
 **`npm run plugins:sync`** into `worker/src/lib/plugins.ts` and

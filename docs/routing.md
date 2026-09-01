@@ -14,7 +14,8 @@ build, and the dev proxy for no benefit (there's no SSR host). See
 ```
 /                 → redirect to /world
 CORE   /world (Bible)  /script  /episode  /editor
-PLUGIN /agents  /moodboard  /shotlist  /images  /videos  /nodes
+PLUGIN /images  /videos            (pre-installed on a new project)
+       /agents  /moodboard  /shotlist  /nodes
        /animatic  /radio  /sounds  /musical  /cuts  /library
 OTHER  /plugins (the marketplace)  /settings  /members  /accept-invite/:id
        /shots  /multishot  (sample-code surfaces, routed but never in the header)

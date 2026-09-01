@@ -56,7 +56,7 @@ const DEFAULT_ROUTES = {
   // TypeScript catalog. Keep it in step with `PLUGINS` in src/lib/plugins.ts.
   "/api/plugins": {
     enabled: [
-      "agents", "moodboard", "shotlist", "images", "videos", "nodes",
+      "images", "videos", "agents", "moodboard", "shotlist", "nodes",
       "animatic", "radio", "sounds", "musical", "cuts", "library",
     ],
     defaulted: false,

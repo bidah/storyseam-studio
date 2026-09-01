@@ -12,6 +12,11 @@
 // capability is installed on purpose. A project that is a radio play never
 // grows a Musical tab; a project that never renders never grows a Cuts tab.
 //
+// Two plugins ship PRE-INSTALLED (`defaultInstalled`): Images and Videos. They
+// are ordinary plugins — they sit in the marketplace and they can be removed —
+// but a brand-new project has them on, because a studio with no way to make a
+// picture is not a smaller studio, it is a broken one.
+//
 // This file is deliberately IMPORT-FREE and pure data so it can be vendored
 // verbatim into the packages that can't reach across the repo root:
 //
@@ -64,6 +69,15 @@ export interface PluginSpec extends Surface {
   /** The flue skills gated on this plugin. */
   skills: string[];
   /**
+   * Installed on a BRAND NEW project, without anyone choosing it. Reserve this
+   * for a capability whose absence would read as a broken studio rather than a
+   * smaller one — you cannot make anything without a way to make a picture. It
+   * is still an ordinary plugin: it sits in the marketplace and it can be
+   * removed. "Pre-installed", not "core".
+   */
+  defaultInstalled?: boolean;
+
+  /**
    * Does this plugin get seeded for a project that predates the marketplace?
    * When true, `GET /api/status`'s `usage[<id>]` counter decides — see
    * seedEnabled() below. Set false for a surface that has no content of its own.
@@ -108,6 +122,53 @@ export const CORE_IDS: string[] = CORE.map((s) => s.id);
 // appear in the header, so it runs down the pipeline: story, visuals, audio,
 // post.
 export const PLUGINS: PluginSpec[] = [
+  {
+    id: "images",
+    label: "Images",
+    name: "Image generation",
+    category: "Visuals",
+    tagline: "Generate stills — concept art, character sheets, location sheets, props.",
+    blurb:
+      "The picture side of the studio. Describe a character or a place, pick an image model from your connected provider, attach references, and generate. Everything you make lands here as a card you can save to the library, tag as a design sheet, or push onto the node canvas. The composer only ever shows IMAGE models — the video plugin has its own.",
+    highlights: [
+      "Your provider's live image-model catalog",
+      "Reference images, style presets and sheet prompts",
+      "Save a result straight into the project library",
+      "The agent generates into the same board",
+    ],
+    triggers: [
+      "generate an image", "make a picture", "concept art", "character sheet",
+      "location sheet", "prop sheet", "image generation", "draw", "illustrate",
+      "visual world", "how does it look",
+    ],
+    tools: ["get_visual_world", "attach_visual_generation", "save_visual_prompt", "save_generation_to_library"],
+    skills: ["visual-world", "sheet-generation"],
+    seedable: true,
+    defaultInstalled: true,
+  },
+  {
+    id: "videos",
+    label: "Videos",
+    name: "Video generation",
+    category: "Visuals",
+    tagline: "Generate motion — clips from a prompt, or from a still you already made.",
+    blurb:
+      "The motion side of the studio, deliberately its own surface. Same composer, but the model list is your provider's VIDEO catalog, the controls are the ones that model actually takes — MiniMax H3's 2K, Kling's mode, Veo's variant — and the results land in their own gallery instead of being mixed in with stills. Point it at an image you generated and it becomes that shot's first frame.",
+    highlights: [
+      "Your provider's live video-model catalog",
+      "Controls generated from the model's own parameters",
+      "Image-to-video from any still on the project",
+      "Clips land in their own gallery, not the image board",
+    ],
+    triggers: [
+      "generate a video", "make a clip", "animate", "image to video", "video generation",
+      "bring it to life", "motion", "render a clip",
+    ],
+    tools: ["get_visual_world", "attach_visual_generation"],
+    skills: ["continue-video", "video-from-audio-vfx"],
+    seedable: true,
+    defaultInstalled: true,
+  },
   {
     id: "agents",
     label: "Script agents",
@@ -176,63 +237,18 @@ export const PLUGINS: PluginSpec[] = [
     seedable: true,
   },
   {
-    id: "images",
-    label: "Image generation",
-    name: "Image generation",
-    category: "Visuals",
-    tagline: "Generate stills — concept art, character sheets, location sheets, props.",
-    blurb:
-      "The picture side of the studio. Describe a character or a place, pick an image model from your connected provider, attach references, and generate. Everything you make lands here as a card you can save to the library, tag as a design sheet, or push onto the node canvas. The composer only ever shows IMAGE models — the video plugin has its own.",
-    highlights: [
-      "Your provider's live image-model catalog",
-      "Reference images, style presets and sheet prompts",
-      "Save a result straight into the project library",
-      "The agent generates into the same board",
-    ],
-    triggers: [
-      "generate an image", "make a picture", "concept art", "character sheet",
-      "location sheet", "prop sheet", "image generation", "draw", "illustrate",
-      "visual world", "how does it look",
-    ],
-    tools: ["get_visual_world", "attach_visual_generation", "save_visual_prompt", "save_generation_to_library"],
-    skills: ["visual-world", "sheet-generation"],
-    seedable: true,
-  },
-  {
-    id: "videos",
-    label: "Video generation",
-    name: "Video generation",
-    category: "Visuals",
-    tagline: "Generate motion — clips from a prompt, or from a still you already made.",
-    blurb:
-      "The motion side of the studio, deliberately its own surface. Same composer, but the model list is your provider's VIDEO catalog, the controls are the ones video actually takes (duration, audio, a start frame), and the results land in their own gallery instead of being mixed in with stills. Point it at an image you generated and it becomes that shot's first frame.",
-    highlights: [
-      "Your provider's live video-model catalog",
-      "Image-to-video from any still on the project",
-      "Duration and generated-audio controls",
-      "Clips land in their own gallery, not the image board",
-    ],
-    triggers: [
-      "generate a video", "make a clip", "animate", "image to video", "video generation",
-      "bring it to life", "motion", "render a clip",
-    ],
-    tools: ["get_visual_world", "attach_visual_generation"],
-    skills: ["continue-video", "video-from-audio-vfx"],
-    seedable: true,
-  },
-  {
     id: "nodes",
     label: "Visual nodes",
     name: "Visual nodes",
     category: "Visuals",
     tagline: "A node canvas that wires prompts, stills and clips into one pipeline.",
     blurb:
-      "Reference lineage as a graph. Chain a text node into an image node into a video node, run the whole downstream closure with one click, and see exactly which still fed which clip. It is the same generation store as the image and video plugins — the canvas is a different way to drive it, not a second copy.",
+      "Reference lineage as a graph. Chain a text node into an image node into a video node, run the whole downstream closure with one click, and see exactly which still fed which clip. It is the same generation store as the Images and Videos tabs — the canvas is a different way to drive it, not a second copy.",
     highlights: [
       "Text → image → video chains you can re-run",
       "Run one node or everything downstream of it",
       "The lineage of every generation, visible",
-      "Shares the generation store with the other visual plugins",
+      "Shares the generation store with Images and Videos",
     ],
     triggers: [
       "visual nodes", "node canvas", "node graph", "wire the pipeline", "lineage",
@@ -422,10 +438,40 @@ export function normalizeEnabled(ids: unknown): string[] {
   return PLUGIN_IDS.filter((id) => seen[id]);
 }
 
-/** The header, left to right: the four core surfaces then the installed plugins. */
+/**
+ * The header, left to right. ONE ordered list of every surface, core and plugin
+ * interleaved — because the header reads as a pipeline, not as "the built-ins,
+ * then the extras". Images and Videos sit right after the Bible because that is
+ * the order the work happens in: read the bible, then find out what it looks
+ * like. Putting every plugin after the Editor would bury them behind the end of
+ * the pipeline.
+ *
+ * Anything missing from this list still appears, at the end — a new plugin whose
+ * position nobody chose is better in the wrong place than absent.
+ */
+export const HEADER_ORDER: string[] = [
+  "world", "images", "videos", "script", "moodboard", "agents", "shotlist",
+  "nodes", "animatic", "radio", "sounds", "musical", "episode", "cuts",
+  "editor", "library",
+];
+
 export function headerTabs(enabled: string[]): Surface[] {
   const on = normalizeEnabled(enabled);
-  return (CORE as Surface[]).concat(on.map((id) => BY_ID[id] as Surface));
+  const present: Record<string, Surface> = {};
+  for (const c of CORE) present[c.id] = c;
+  for (const id of on) present[id] = BY_ID[id] as Surface;
+
+  const out: Surface[] = [];
+  const placed: Record<string, boolean> = {};
+  for (const id of HEADER_ORDER) {
+    if (present[id]) {
+      out.push(present[id]);
+      placed[id] = true;
+    }
+  }
+  // The safety net for a surface added to the catalog but not to HEADER_ORDER.
+  for (const id of Object.keys(present)) if (!placed[id]) out.push(present[id]);
+  return out;
 }
 
 /**
@@ -495,12 +541,22 @@ export function seedEnabled(status: unknown): string[] {
     : undefined) || {};
   const out: string[] = [];
   for (const p of PLUGINS) {
+    // Pre-installed regardless of usage — including on a blank project, which is
+    // the whole point: a new author should not have to install a way to make a
+    // picture before they can make one.
+    if (p.defaultInstalled) {
+      out.push(p.id);
+      continue;
+    }
     if (!p.seedable) continue;
     const n = usage[p.id];
     if (typeof n === "number" && n > 0) out.push(p.id);
   }
   return normalizeEnabled(out);
 }
+
+/** Installed on a brand-new project without anyone choosing them. */
+export const DEFAULT_INSTALLED_IDS: string[] = PLUGINS.filter((p) => p.defaultInstalled).map((p) => p.id);
 
 /** Every plugin whose usage the status digest is expected to count. */
 export const SEEDABLE_IDS: string[] = PLUGINS.filter((p) => p.seedable).map((p) => p.id);

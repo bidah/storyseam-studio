@@ -77,6 +77,11 @@ Skills follow their plugin: `shot-list` / `shot-list-live-action` /
 `episode`, `editor` — plus Settings, Members and the marketplace itself. Never
 offer to install one, and never tell the author one is missing.
 
+**`images` and `videos` ship PRE-INSTALLED**, so on almost every project they are
+already on and there is nothing to offer. They are still ordinary plugins and an
+author can remove them — so read `plugins.disabled` rather than assuming. What
+you must not do is offer to install one that is already there.
+
 ## 3. When the request needs a plugin that is not installed
 
 Acknowledge first, as always — then:

@@ -15,9 +15,9 @@ test.beforeEach(async ({ page }) => {
 // first four alone.
 const CORE_TABS = ["Bible", "Script", "Episodes", "Editor"];
 const PLUGIN_TABS = [
-  "Script agents", "Moodboard", "Shot list", "Image generation",
-  "Video generation", "Visual nodes", "Animatic", "Radio", "Sound studio",
-  "Musical", "Complete cuts", "Library",
+  "Images", "Videos", "Script agents", "Moodboard", "Shot list",
+  "Visual nodes", "Animatic", "Radio", "Sound studio", "Musical",
+  "Complete cuts", "Library",
 ];
 const VISIBLE_TABS = [...CORE_TABS, ...PLUGIN_TABS];
 
