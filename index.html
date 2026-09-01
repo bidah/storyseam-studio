@@ -15,13 +15,14 @@
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <meta name="theme-color" content="#0f0f11" />
     <script>
-      // Apply the saved theme before first paint to avoid a flash of the wrong
-      // theme. Defaults to dark (matches the class on <html>).
+      // The app is DARK, full stop — `class="dark"` above is the whole story and
+      // this only cleans up after the old toggle. There used to be a light theme
+      // behind a `theme` key in localStorage, and a browser that once flipped it
+      // would keep landing on light forever; dropping the key means those
+      // browsers come back to dark on the next load. The light palette still
+      // exists in index.css (`:root`) but nothing selects it any more.
       try {
-        var t = localStorage.getItem("theme");
-        var isDark = t !== "light";
-        document.documentElement.classList.toggle("dark", isDark);
-        document.querySelector('meta[name="theme-color"]').setAttribute("content", isDark ? "#0f0f11" : "#ffffff");
+        localStorage.removeItem("theme");
       } catch (e) {}
     </script>
   </head>

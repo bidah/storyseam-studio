@@ -24,8 +24,9 @@
 import { useEffect, useState } from "react";
 import { Link, useLocation } from "react-router";
 import {
-  Clapperboard, Bot, PenLine, Workflow, Film, ListVideo, AudioLines, Loader2, ArrowRight,
-  KeyRound, ExternalLink, LogOut, Cable,
+  Bot, PenLine, Workflow, Film, ListVideo, AudioLines, Loader2, ArrowRight,
+  KeyRound, ExternalLink, LogOut, Cable, LayoutGrid, ImagePlus, Video, Radio,
+  Images, Music, Scissors, Users,
 } from "lucide-react";
 import { useSession, authClient, signOut } from "@/lib/auth-client";
 import { useHiggsfieldLinked, connectHiggsfield } from "@/lib/higgsfieldAccount";
@@ -37,15 +38,232 @@ import { captureInviteFromLocation } from "@/lib/pendingInvite";
 import { useT } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+  Dialog, DialogContent, DialogTitle, DialogDescription,
+} from "@/components/ui/dialog";
 
+// In pipeline order, which is also the order the marquee shows them in: an
+// author reading left to right sees the episode get made. `note` is the line on
+// the card; `blurb` is what the dialog says when the card is clicked. Adding one
+// here is all that's needed — the carousel derives its loop length from
+// FEATURES.length and holds its scroll SPEED constant as the list grows.
 const FEATURES = [
-  { icon: Bot, label: "Chat agent", note: "Drives the whole pipeline" },
-  { icon: PenLine, label: "Script writing", note: "Draft & revise the episode" },
-  { icon: Workflow, label: "Nodes", note: "Wire the shot graph" },
-  { icon: Film, label: "Episodes", note: "Plan & stitch the cut" },
-  { icon: ListVideo, label: "Shotlist", note: "Seedance shot-by-shot" },
-  { icon: AudioLines, label: "Sound studio", note: "Seed Audio design" },
+  {
+    icon: Bot,
+    label: "Chat agent",
+    note: "Drives the whole pipeline",
+    blurb:
+      "A chat agent with a typed tool for every step: it drafts the script, fills the shot list, fires renders and stitches the cut. It can also see the tab you are on, so \u201cmake this shot wider\u201d resolves without you explaining which shot.",
+  },
+  {
+    icon: PenLine,
+    label: "Script writing",
+    note: "Draft & revise the episode",
+    blurb:
+      "A screenplay editor with full revision history. Write it yourself, or hand a pass to the writers\u2019 room and review the diff before anything lands in the draft.",
+  },
+  {
+    icon: LayoutGrid,
+    label: "Moodboard",
+    note: "Pin references, set the look",
+    blurb:
+      "A free canvas for references, palettes and frames \u2014 the place to decide what the episode should feel like before a single shot is written.",
+  },
+  {
+    icon: ListVideo,
+    label: "Shotlist",
+    note: "Seedance shot-by-shot",
+    blurb:
+      "Break the script into numbered shots, each with its own prompt, camera note and duration. Shot ids are stable on purpose, so the media generated against a shot is never orphaned by a later edit.",
+  },
+  {
+    icon: Workflow,
+    label: "Visual nodes",
+    note: "Wire the shot graph",
+    blurb:
+      "The shot graph as a node canvas: see how scenes, shots and their generated media connect, and rewire them by dragging.",
+  },
+  {
+    icon: ImagePlus,
+    label: "Image generation",
+    note: "Storyboard stills, shot by shot",
+    blurb:
+      "Generate a still per shot and keep every take, so you can compare instead of regenerating. Character and location sheets hold faces and places steady across the whole episode.",
+  },
+  {
+    icon: Video,
+    label: "Video generation",
+    note: "Bring each shot to life",
+    blurb:
+      "Turn a chosen still into a moving shot. Takes are kept side by side, and swapping the one on the timeline never means starting over.",
+  },
+  {
+    icon: Radio,
+    label: "Radio",
+    note: "Hear the episode before you see it",
+    blurb:
+      "The audio-only pass: the whole episode as dialogue and sound, before a single frame is rendered. The cheapest possible place to discover a scene does not work.",
+  },
+  {
+    icon: Images,
+    label: "Animatic",
+    note: "Stills and dialogue on a timeline",
+    blurb:
+      "Storyboard stills cut against the radio pass. Shots with no art yet appear as labelled slates, so the episode is watchable end to end from the very first version.",
+  },
+  {
+    icon: AudioLines,
+    label: "Sound studio",
+    note: "Seed Audio design",
+    blurb:
+      "Text to cinematic audio \u2014 dialogue, room tone, foley and music rendered together as one mixed clip, which is the part plain text-to-speech cannot do.",
+  },
+  {
+    icon: Music,
+    label: "Musical",
+    note: "Turn a song into an audio shot bible",
+    blurb:
+      "Feed in a song with its stems and get a shot-by-shot breakdown back, cut to the track rather than to dialogue.",
+  },
+  {
+    icon: Scissors,
+    label: "Editor",
+    note: "Trim, split and arrange the cut",
+    blurb:
+      "A real timeline: trim, split, reorder and gap. Stills and video sit on one picture lane as peers, so a placeholder still upgrades to its finished shot in place.",
+  },
+  {
+    icon: Film,
+    label: "Episodes",
+    note: "Plan & stitch the cut",
+    blurb:
+      "Plan the episode, stitch the cuts and render the deliverable. A series keeps one shared world and a bible per episode.",
+  },
+  {
+    icon: Cable,
+    label: "Switch provider",
+    note: "Higgsfield, fal.ai or Atlas Cloud",
+    blurb:
+      "Bring your own rendering account and switch between them whenever you like. Keys you paste stay in this browser only, and generation bills to you, not to us.",
+  },
+  {
+    icon: Users,
+    label: "Team collaboration",
+    note: "Invite the crew to a project",
+    blurb:
+      "Invite people to the whole organization or to a single project. Everyone works in the same studio, while the tab each person is looking at stays their own.",
+  },
 ];
+
+// Card geometry, shared with the CSS animation. `marquee-left` slides the track
+// by exactly one copy of the list — (card + gap) × count — so the numbers here
+// and the `--marquee-*` vars below must stay the same numbers. COPIES is how
+// many times the list is repeated: enough that the tail of one copy is still
+// filling the band when the transform resets.
+const CARD_W = 280; // px — matches --marquee-item
+const CARD_GAP = 16; // px — Tailwind gap-4, matches --marquee-gap
+const COPIES = 3;
+const SECONDS_PER_CARD = 5.5; // ≈54px/s — slow enough to read a card as it passes
+
+// The feature strip: an endlessly scrolling row of cards that PAUSES while the
+// pointer is over it, and opens a detail dialog when one is clicked.
+//
+// It sits in a band 70% of the VIEWPORT wide — wider than the parent's
+// max-w-2xl text column (too narrow to read as a carousel) but not full-bleed
+// (cards then run off both screen edges with nothing to fade against, which
+// reads as a layout bug). No break-out trick is needed: the column is already
+// centred on the screen and its `items-center` centres this on the column, so a
+// `w-[70vw]` child overflows it symmetrically and lands centred on the viewport.
+// The max-width is a ceiling, not the size: past ~2200px of screen the strip
+// stops widening, because a card row that keeps growing just puts more cards
+// further from where the eye already is.
+function FeatureMarquee() {
+  const t = useT();
+  const [open, setOpen] = useState(null); // the feature whose dialog is showing
+
+  // "Next feature" walks the real list, not the repeated track, so it wraps
+  // after the last one instead of running into a duplicate.
+  const next = () => {
+    const i = FEATURES.findIndex((f) => f.label === open?.label);
+    if (i >= 0) setOpen(FEATURES[(i + 1) % FEATURES.length]);
+  };
+
+  return (
+    <>
+      <div className="relative mt-10 w-[70vw] max-w-[96rem] marquee-viewport">
+        <div
+          className="flex w-max gap-4 py-2 marquee-track hover:[animation-play-state:paused]"
+          style={{
+            "--marquee-item": `${CARD_W}px`,
+            "--marquee-gap": `${CARD_GAP}px`,
+            "--marquee-count": FEATURES.length,
+            // Seconds PER CARD rather than a fixed total, so adding a feature
+            // makes the loop longer instead of making every card whip past.
+            "--marquee-duration": `${FEATURES.length * SECONDS_PER_CARD}s`,
+          }}
+        >
+          {Array.from({ length: COPIES }).flatMap((_, copy) =>
+            FEATURES.map((f) => (
+              <button
+                key={`${copy}-${f.label}`}
+                type="button"
+                onClick={() => setOpen(f)}
+                // Only the first copy is real content; the rest are visual
+                // padding, and announcing the same fifteen features three times
+                // is just noise in a screen reader.
+                aria-hidden={copy > 0 || undefined}
+                tabIndex={copy > 0 ? -1 : undefined}
+                className="group/card flex h-[168px] w-[280px] shrink-0 flex-col items-start gap-3 rounded-2xl border bg-card/60 p-5 text-left transition-all hover:-translate-y-1 hover:border-primary/40 hover:bg-card hover:shadow-xl hover:shadow-primary/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary transition-transform group-hover/card:scale-110">
+                  <f.icon size={18} />
+                </span>
+                <div className="min-w-0 leading-snug">
+                  <div className="text-[15px] font-medium group-hover/card:text-primary">
+                    {t(f.label)}
+                  </div>
+                  <div className="mt-1 text-xs text-muted-foreground">{t(f.note)}</div>
+                </div>
+              </button>
+            ))
+          )}
+        </div>
+
+        {/* Edge fades, so cards enter and leave instead of being chopped off at
+            the band's edges. Pointer-events off or they'd eat the hover that
+            pauses the track. */}
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-y-0 left-0 w-24 bg-gradient-to-r from-background via-background/50 to-transparent"
+        />
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-y-0 right-0 w-24 bg-gradient-to-l from-background via-background/50 to-transparent"
+        />
+      </div>
+
+      <Dialog open={!!open} onOpenChange={(v) => !v && setOpen(null)}>
+        <DialogContent className="sm:max-w-md">
+          {open && (
+            <>
+              <div className="flex size-12 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+                <open.icon size={22} />
+              </div>
+              <DialogTitle className="text-xl">{t(open.label)}</DialogTitle>
+              <DialogDescription className="text-sm leading-relaxed">
+                {t(open.blurb)}
+              </DialogDescription>
+              <Button variant="secondary" className="mt-2 w-full gap-2" onClick={next}>
+                {t("Next feature")}
+                <ArrowRight size={16} />
+              </Button>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
 
 function Homepage() {
   const [busy, setBusy] = useState(false);
@@ -100,12 +318,30 @@ function Homepage() {
       <div className="relative w-full max-w-2xl">
         <div className="flex flex-col items-center text-center">
           <div className="flex items-center gap-3">
-            <div className="flex size-11 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-lg shadow-primary/20">
-              <Clapperboard size={24} />
+            {/* The app mark, as a full-bleed rounded tile. Two files rather than
+                one: the artwork's glow/paper background is baked in, so the
+                neon-on-black cut is the DARK one and the pastel-on-white cut is
+                the light one — swapping tints on a single image would kill the
+                glow. `dark:` picks between them so the mark stays right if the
+                light theme is ever re-enabled. */}
+            <div className="size-[95px] overflow-hidden rounded-[19px] shadow-lg shadow-primary/20">
+              <img
+                src="/logo-mark-dark.png"
+                alt=""
+                width={95}
+                height={95}
+                className="hidden size-full object-cover dark:block"
+              />
+              <img
+                src="/logo-mark-light.png"
+                alt=""
+                width={95}
+                height={95}
+                className="size-full object-cover dark:hidden"
+              />
             </div>
             <div className="text-left leading-tight">
-              <div className="text-xl font-semibold tracking-tight">StorySeam</div>
-              <div className="text-xs text-muted-foreground">storyseam.app</div>
+              <div className="text-3xl font-semibold tracking-tight">StorySeam</div>
             </div>
           </div>
 
@@ -116,19 +352,7 @@ function Homepage() {
             {t("StorySeam is a workspace for making short animated episodes. Draft the script, build the shot list, generate the images, video and sound, then assemble the cut on a timeline — with a chat agent that can drive any step for you.")}
           </p>
 
-          <div className="mt-8 grid w-full grid-cols-2 gap-2.5 sm:grid-cols-3">
-            {FEATURES.map((f) => (
-              <div key={f.label} className="flex items-start gap-2.5 rounded-xl border bg-card/60 p-3 text-left">
-                <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                  <f.icon size={16} />
-                </span>
-                <div className="min-w-0 leading-tight">
-                  <div className="text-sm font-medium">{t(f.label)}</div>
-                  <div className="truncate text-[11px] text-muted-foreground">{t(f.note)}</div>
-                </div>
-              </div>
-            ))}
-          </div>
+          <FeatureMarquee />
 
           <div className="mt-9 flex w-full flex-col items-center gap-3">
             <Button size="lg" className="w-full max-w-xs gap-2 font-medium" disabled={busy} onClick={signIn}>

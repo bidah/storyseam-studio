@@ -514,8 +514,8 @@ function SandboxPanel() {
 }
 
 // Interface language: which locale the studio UI renders in. A per-browser
-// preference (localStorage), like the theme toggle — it changes UI copy only,
-// takes effect immediately, and doesn't touch project data.
+// preference (localStorage) — it changes UI copy only, takes effect immediately,
+// and doesn't touch project data.
 function LanguagePanel() {
   const t = useT();
   const { locale, setLocale, locales } = useLocale();

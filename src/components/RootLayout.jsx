@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, Outlet, useLocation, useNavigate, useNavigation, useRevalidator } from "react-router";
-import { RefreshCw, ExternalLink, Clapperboard, Sun, Moon, LogOut, User, Users, Settings } from "lucide-react";
+import { RefreshCw, ExternalLink, Clapperboard, LogOut, User, Users, Settings } from "lucide-react";
 import { Glowing } from "glowing";
 import { cn } from "@/lib/utils";
 import { useProjectEvents } from "@/lib/useProjectEvents";
@@ -96,28 +96,13 @@ function useSettled(on, ms = 150) {
   return on && settled;
 }
 
-// Account menu — the shadcn avatar in the header opens a dropdown with the
-// light/dark theme toggle, a link to higgsfield.ai, and a sign-out that drops
-// the Higgsfield credential and re-gates the app (reload → LoginGate re-checks
-// → homepage).
+// Account menu — the shadcn avatar in the header opens a dropdown with links to
+// Settings and the team, a link to higgsfield.ai, and a sign-out that drops the
+// Higgsfield credential and re-gates the app (reload → LoginGate re-checks →
+// homepage). The light/dark toggle that used to live here is gone: the app is
+// dark-only now (see index.html), so the control had nothing to switch to.
 function UserMenu() {
   const t = useT();
-  const [dark, setDark] = useState(() =>
-    typeof document !== "undefined" ? document.documentElement.classList.contains("dark") : true
-  );
-  const toggleTheme = () => {
-    const next = !dark;
-    setDark(next);
-    document.documentElement.classList.toggle("dark", next);
-    try {
-      localStorage.setItem("theme", next ? "dark" : "light");
-    } catch {
-      /* ignore storage failures — the class toggle still applies for this session */
-    }
-    const meta = document.querySelector('meta[name="theme-color"]');
-    if (meta) meta.setAttribute("content", next ? "#0f0f11" : "#ffffff");
-  };
-
   const signOut = async () => {
     try {
       await authSignOut();
@@ -154,9 +139,6 @@ function UserMenu() {
           <Link to="/members">
             <Users size={14} /> {t("Team & access")}
           </Link>
-        </DropdownMenuItem>
-        <DropdownMenuItem onSelect={(e) => { e.preventDefault(); toggleTheme(); }}>
-          {dark ? <Sun size={14} /> : <Moon size={14} />} {dark ? t("Light mode") : t("Dark mode")}
         </DropdownMenuItem>
         <DropdownMenuItem asChild>
           <a href="https://higgsfield.ai" target="_blank" rel="noopener noreferrer">

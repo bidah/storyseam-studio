@@ -267,6 +267,57 @@
   );
 }
 
+/* ------------------------------------------------------------------ *
+ * `marquee-track` — the auto-scrolling feature carousel on the signed  *
+ * -out landing page. The track holds the SAME list repeated N times    *
+ * and slides left by exactly ONE copy's width, so the reset at 100%    *
+ * lands on an identical frame and the loop looks endless.              *
+ *                                                                      *
+ * That width is the whole trick, and it has to be told, not measured:  *
+ * a CSS animation can't read the track's own size, so the caller sets  *
+ * --marquee-item (one card's width), --marquee-gap (the flex gap) and  *
+ * --marquee-count (how many cards in ONE copy). Get any of the three   *
+ * wrong and the loop visibly jumps every cycle.                        *
+ *                                                                      *
+ * Pausing is `hover:[animation-play-state:paused]` at the call site —  *
+ * it belongs on whatever element owns the hover, and putting it here   *
+ * would make the utility care about its container.                     *
+ * ------------------------------------------------------------------ */
+@keyframes marquee-left {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(
+      calc(-1 * (var(--marquee-item) + var(--marquee-gap)) * var(--marquee-count))
+    );
+  }
+}
+
+@utility marquee-track {
+  animation: marquee-left var(--marquee-duration, 40s) linear infinite;
+  /* A carousel that moves on its own is exactly what this opts out of.
+     Stopping it alone would strand the off-screen cards, so the call site
+     pairs this with a scrollable container (see `marquee-viewport`). */
+  @media (prefers-reduced-motion: reduce) {
+    animation: none;
+  }
+}
+
+/* The clipping frame around a `marquee-track`. Hides the repeated copies
+   normally; becomes a plain horizontal scroller when the animation is off,
+   so every card stays reachable by drag/trackpad. */
+@utility marquee-viewport {
+  overflow: hidden;
+  @media (prefers-reduced-motion: reduce) {
+    overflow-x: auto;
+    scrollbar-width: none;
+    &::-webkit-scrollbar {
+      display: none;
+    }
+  }
+}
+
 /* Range slider (used for media take scrubbers) — themed to primary. */
 @layer components {
   input[type="range"].studio-range {
