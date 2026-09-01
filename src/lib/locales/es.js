@@ -851,8 +851,11 @@ export const es = {
   "Save & continue": "Guardar y continuar",
   "Sign in with Google": "Iniciar sesión con Google",
   "Signed in as": "Sesión iniciada como",
-  "StorySeam is a workspace for making short animated episodes. Draft the script, build the shot list, generate the images, video and sound, then assemble the cut on a timeline — with a chat agent that can drive any step for you.":
-    "StorySeam es un espacio de trabajo para crear episodios animados cortos. Redacta el guion, construye el guion de tomas, genera las imágenes, el vídeo y el sonido, y luego monta el corte en una línea de tiempo, con un agente de chat que puede dirigir cualquier paso por ti.",
+  "The first story harness agent": "El primer agente con arnés narrativo",
+  "Run on the web, through the UI or in your agent via MCP":
+    "Ejecútalo en la web, desde la interfaz o en tu agente vía MCP",
+  "StorySeam enables the core of AI video. Powerful, deep stories that can be created through our whole pipeline from script to video editing using the UI or letting the agent run the flow.":
+    "StorySeam habilita el núcleo del vídeo con IA. Historias potentes y profundas que se crean con todo nuestro pipeline, del guion al montaje, usando la interfaz o dejando que el agente lleve el proceso.",
   "StorySeam is set to render with Higgsfield, but this account isn't linked yet. Connect your Higgsfield account once and every image, video & audio generation bills it — you can manage the connection later in Settings.":
     "StorySeam está configurado para renderizar con Higgsfield, pero esta cuenta aún no está vinculada. Conecta tu cuenta de Higgsfield una vez y cada generación de imagen, vídeo y audio se facturará a ella; puedes gestionar la conexión más tarde en Ajustes.",
   "StorySeam renders images and video with your own account — paste a fal.ai or Atlas Cloud API key to continue. It is stored":
