@@ -37,7 +37,8 @@ import remarkBreaks from "remark-breaks";
 import { cn } from "@/lib/utils";
 import { engineForChatId } from "@/lib/chatEngine";
 import { buildSuggestions, FALLBACK_SUGGESTIONS } from "@/lib/suggestions";
-import { cardArtPath, meshPalette, meshSeed, meshShape } from "@/lib/card-art";
+import { cardArtPath, meshSeed } from "@/lib/card-art";
+import { meshBackground } from "@/lib/mesh";
 import { startSuggestion, sweepSuggestions } from "@/lib/suggestionProgress";
 import { Eyebrow } from "@/components/shared";
 import { useShell } from "@/lib/shellContext";
@@ -1073,28 +1074,6 @@ const POSTER_BAND = 135;
 const POSTER_H = 272;
 const POSTER_GAP = 10;
 
-// The seeded band under the artwork: nine colours (meshPalette) laid out as a
-// stack of radial gradients. The phone renders the same nine as a real 3×3 mesh
-// with expo-mesh-gradient; CSS has no mesh, and overlapping soft radials at the
-// same nine vertex positions is what gets closest — the colours bleed into each
-// other rather than banding, which is the whole point of the treatment.
-function meshBackground(seed) {
-  const palette = meshPalette(seed);
-  const points = meshShape(seed);
-  const stops = points
-    .map(([x, y], i) => {
-      const c = palette[i % palette.length];
-      // Generous radius so neighbouring vertices overlap heavily; without the
-      // overlap this reads as nine dots, not a gradient.
-      return `radial-gradient(circle at ${(x * 100).toFixed(0)}% ${(y * 100).toFixed(0)}%, ${c} 0%, transparent 62%)`;
-    })
-    .reverse()
-    .join(", ");
-  // The flat base is what shows through where the radials have faded out, so a
-  // corner is never the page's background peeking through the picture slot.
-  return { backgroundImage: stops, backgroundColor: palette[4] };
-}
-
 // The looping artwork, over the band. DECORATION, so it behaves like it: muted,
 // looping, no controls, and `pointer-events-none` so a click on the picture is
 // a click on the card — the whole card is one button and the video must not eat
@@ -1505,9 +1484,12 @@ function ModelPicker({ disabled }) {
 // the whole point: it's an infinite board the author arranges by hand, and every
 // pixel the chat holds is board they can't see. Everywhere else the panel earns
 // its width, so it stays open.
-const RAILED_BY_DEFAULT = new Set(["moodboard"]);
+// `nodes` joins it for the same reason — the reference-lineage graph is a canvas
+// you arrange by hand — and `plugins` because the marketplace is a browsing grid
+// that wants its columns, and nobody arrives there mid-conversation.
+const RAILED_BY_DEFAULT = new Set(["moodboard", "nodes", "plugins"]);
 
-// "/moodboard" → "moodboard"; "/world/nodes" → "world".
+// "/moodboard" → "moodboard"; "/accept-invite/abc" → "accept-invite".
 const tabOf = (pathname) => pathname.split("/")[1] || "";
 
 export default function AgentChat() {

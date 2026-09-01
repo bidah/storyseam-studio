@@ -24,7 +24,7 @@ import { StyleSheet } from 'react-native-unistyles';
 import { Image } from 'expo-image';
 import { Galeria } from '@nandorojo/galeria';
 import { setAudioModeAsync, useAudioPlayer, useAudioPlayerStatus } from 'expo-audio';
-import { Check, ChevronRight, Pause, Play } from 'lucide-react-native';
+import { Blocks, Check, ChevronRight, Pause, Play, Plus } from 'lucide-react-native';
 import { useIsStreaming, useTriggerAction } from '@openuidev/react-lang';
 import { BouncyPressable } from '@/components/ui/bouncy-pressable';
 import { SemiPillButton } from '@/components/ui/semi-pill-button';
@@ -46,6 +46,8 @@ import type {
   MediaItemProps,
   OptionListProps,
   OptionProps,
+  PluginListProps,
+  PluginProps,
   RecommendationProps,
   SectionProps,
   SelectMode,
@@ -875,6 +877,105 @@ export function Recommendation({ props }: Render<RecommendationProps>) {
 }
 
 // ---------------------------------------------------------------------------
+// Plugins
+// ---------------------------------------------------------------------------
+
+/**
+ * One row of the marketplace, in the chat. Adding a capability to the studio is
+ * a different decision from picking a take, so it isn't an Option row: the
+ * shelf it sits on, the name, what it unlocks, and one install slab.
+ *
+ * A plugin the project already HAS is settled — a tinted "Installed" badge and
+ * no button, because there is nothing left to decide. Everything else gets the
+ * SemiPillButton carrying the `send`; the agent installs nothing itself.
+ */
+export function Plugin({ props }: Render<PluginProps>) {
+  const colors = useColors();
+  const onPress = useSend(props.send);
+  const highlights = Array.isArray(props.highlights) ? props.highlights : [];
+  // Once the card is answered the plugin the author installed reads as taken
+  // and the ones they passed over recede. See answered.ts.
+  const { picked, dimmed } = useAnswerState(props.send);
+  return (
+    <View style={[styles.pluginBody, { opacity: dimmed ? 0.45 : 1 }]}>
+      <View style={styles.pluginHead}>
+        <View style={[styles.pluginIcon, { borderColor: colors.border }]}>
+          <Blocks size={18} color={colors.mutedForeground} />
+        </View>
+        <View style={styles.flex1}>
+          {props.category ? (
+            <RNText style={styles.pluginCategory}>{props.category}</RNText>
+          ) : null}
+          <View style={styles.rowTitleLine}>
+            <RNText style={styles.pluginName} numberOfLines={1}>
+              {props.name}
+            </RNText>
+            {props.installed ? (
+              <View style={styles.tintBadge}>
+                <RNText style={styles.tintBadgeText}>Installed</RNText>
+              </View>
+            ) : props.badge ? (
+              <View style={styles.badge}>
+                <RNText style={styles.badgeText}>{props.badge}</RNText>
+              </View>
+            ) : null}
+          </View>
+          <RNText style={styles.subtitle}>{props.tagline}</RNText>
+        </View>
+        {props.meta ? <RNText style={styles.meta}>{props.meta}</RNText> : null}
+      </View>
+      {highlights.length ? (
+        <View style={styles.bullets}>
+          {highlights.slice(0, 4).map((line, i) => (
+            <View key={i} style={styles.bulletRow}>
+              <Check size={13} color={colors.primary} style={{ marginTop: 3 }} />
+              <RNText style={styles.bulletText}>{line}</RNText>
+            </View>
+          ))}
+        </View>
+      ) : null}
+      {/* An installed plugin has no control at all — the badge above already
+          says everything true about it. */}
+      {props.installed ? null : (
+        <SemiPillButton
+          title={`Install ${props.name}`}
+          onPress={onPress}
+          disabled={!onPress}
+          variant="bounce"
+          accessibilityLabel={`Install the ${props.name} plugin`}
+        >
+          {/* The slab's fill IS the page's text colour, so its contents take
+              the page background — same inversion SemiPillButton's label does. */}
+          {picked ? (
+            <Check size={17} color={colors.pageBg} />
+          ) : (
+            <Plus size={17} color={colors.pageBg} />
+          )}
+        </SemiPillButton>
+      )}
+    </View>
+  );
+}
+
+export function PluginList({ props, renderNode }: Render<PluginListProps>) {
+  const plugins = Array.isArray(props.plugins) ? props.plugins : [];
+  return (
+    <View>
+      <Header>{props.header}</Header>
+      <InsetCard>
+        {plugins.map((plugin, i) => (
+          <Fragment key={i}>
+            {i > 0 ? <RowSeparator /> : null}
+            {renderNode(plugin)}
+          </Fragment>
+        ))}
+      </InsetCard>
+      {props.footnote ? <RNText style={styles.footnote}>{props.footnote}</RNText> : null}
+    </View>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Comparison & detail
 // ---------------------------------------------------------------------------
 
@@ -1109,6 +1210,8 @@ export const nativeRenderers: StudioRenderers = {
   AudioItem,
   AudioList,
   Recommendation,
+  Plugin,
+  PluginList,
   Column,
   Compare,
   KeyValue,
@@ -1261,6 +1364,26 @@ const styles = StyleSheet.create((theme) => ({
   bulletRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 8 },
   bulletText: { flex: 1, fontSize: 13, lineHeight: 18, color: theme.colors.mutedForeground },
   recCta: { marginTop: 2 },
+  // Plugins — the marketplace row: icon square, name + tagline, install slab.
+  pluginBody: { gap: 12, padding: 16 },
+  pluginHead: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
+  pluginIcon: {
+    height: 40,
+    width: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 12,
+    borderWidth: 1,
+    backgroundColor: theme.colors.secondary,
+  },
+  pluginCategory: {
+    fontSize: 10,
+    fontWeight: '500',
+    textTransform: 'uppercase',
+    letterSpacing: 0.3,
+    color: theme.colors.mutedForeground,
+  },
+  pluginName: { flex: 1, fontSize: 16, fontWeight: '600', color: theme.colors.foreground },
   // Comparison & detail
   columnCard: {
     flex: 1,

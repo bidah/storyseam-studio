@@ -7,6 +7,9 @@ import type { Api } from "../lib/api.js";
 import { renderUi } from "./render_ui.js";
 // Pipeline status (the whole-project digest)
 import { getStatus } from "./get_status.js";
+// Plugins — which surfaces this project's studio actually has
+import { listPlugins } from "./list_plugins.js";
+import { setPlugin } from "./set_plugin.js";
 // Context awareness — what the author is looking at, and moving them
 import { viewScreen } from "./view_screen.js";
 import { navigate } from "./navigate.js";
@@ -114,6 +117,9 @@ export function createTools(api: Api): ToolDefinition[] {
     readDocument(api),
     // Where the episode stands (counts + flags for the whole pipeline)
     getStatus(api),
+    // Which surfaces this project has installed (the plugin-gate safeguard)
+    listPlugins(api),
+    setPlugin(api),
     // What the author is looking at RIGHT NOW, and how to move them
     viewScreen(api),
     navigate(api),
@@ -228,7 +234,8 @@ export function createReadTools(api: Api): ToolDefinition[] {
     readDocument(api),
     // Where the episode stands
     getStatus(api),
-    // …and what the author is looking at
+    // …which plugins this project has, and what the author is looking at
+    listPlugins(api),
     viewScreen(api),
     // World / Script / Drafts
     getWorld(api),

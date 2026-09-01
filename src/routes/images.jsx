@@ -1,8 +1,23 @@
-// Visual world — the World tab's image-generation surface. Now a thin adapter
-// over the shared <ImageStudio>: this file owns only the visual-world BACKEND
-// (the /api/visual-world/* calls, the processing poll, and the canvas board),
-// and hands ImageStudio the data + action handlers. The composer/results/detail
-// UI lives in src/components/ImageStudio.jsx and is shared with Animatic/Episode.
+// Image generation — the picture half of the studio, and a thin adapter over the
+// shared <ImageStudio>. This file owns only the BACKEND (the /api/visual-world/*
+// calls, the processing poll, the canvas board); the composer/results/detail UI
+// lives in src/components/ImageStudio.jsx.
+//
+// ── Why Images and Videos are two surfaces over one store ────────────────────
+// /images and /videos read and write the SAME `visual-world` document, the same
+// generation array and the same style presets — they are not two backends, and
+// nothing here forks one. What differs is the COMPOSER: an image model list and
+// a video model list are different catalogs from the same providers, and a
+// selector that interleaves them is a selector where half the rows are a mistake
+// (the user's words: "input is setup to work for showcasing providers rather for
+// image or video not both"). So each surface filters the shared store to its own
+// `kind` and hands ImageStudio one medium's catalog. A record of the other kind
+// still renders sanely if it turns up — the tiles key off `gen.kind`, not the
+// surface.
+//
+// This surface therefore shows `kind !== "video"` (an older record with no kind
+// at all IS an image) and offers the image catalog, the count fan-out and the
+// character/location/prop sheet tagging, which are image concepts.
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useLoaderData, useRevalidator } from "react-router";
 import { Wand2, Loader2 } from "lucide-react";
@@ -13,7 +28,7 @@ import { Button } from "@/components/ui/button";
 import ImageStudio from "@/components/ImageStudio";
 import { useT } from "@/lib/i18n";
 
-function Visual() {
+function Images() {
   const t = useT();
   const agent = useAgent();
   const agentBusy = agentIsBusy(agent);
@@ -28,8 +43,9 @@ function Visual() {
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
 
-  // The real Higgsfield image-model catalog for the selector. Best-effort — if not
-  // signed in, the empty value still works (the server resolves Nano Banana Pro).
+  // The real IMAGE model catalog for the selector (the route's default type).
+  // Best-effort — if not signed in, the empty value still works (the server
+  // resolves Nano Banana Pro).
   const [models, setModels] = useState([]);
   useEffect(() => {
     let cancelled = false;
@@ -40,10 +56,14 @@ function Visual() {
     return () => { cancelled = true; };
   }, []);
 
-  const generations = world.generations || [];
+  // A record written before `kind` existed is an image, so the test is
+  // "not video" rather than "is image".
+  const generations = (world.generations || []).filter((g) => g.kind !== "video");
   const prompts = world.prompts || [];
 
-  // Poll while any card is still processing.
+  // Poll while any card is still processing. The poll endpoint advances every
+  // pending job on the project, video ones included — it is the shared store's
+  // ticker, not this surface's.
   const pollingRef = useRef(false);
   useEffect(() => {
     if (!generations.some((g) => g.status === "processing")) return;
@@ -73,6 +93,7 @@ function Visual() {
       await api("/api/visual-world/generate", {
         method: "POST",
         body: JSON.stringify({
+          kind: "image",
           prompt, model, count: Number(count), aspectRatio, presetId, sheetType,
           // Library/generation refs resolve to an ungated /files url server-side
           // from rel/genId; PC uploads already carry an absolute /files url, so
@@ -117,8 +138,9 @@ function Visual() {
 
   return (
     <ImageStudio
-      title={t("Visual world")}
-      subtitle={t("Explore how the world looks — generate concept images to find your characters and places.")}
+      medium="image"
+      title={t("Image generation")}
+      subtitle={t("Generate stills — concept art, character and location sheets, props. Everything you make lands on this board.")}
       headerExtra={({ prompt }) => (
         <Button
           variant="outline"
@@ -150,6 +172,9 @@ function Visual() {
   );
 }
 
+// The `visual-world` key is deliberately shared with /videos and /nodes: one
+// document, one cache entry, so a generation made on either surface shows up on
+// the other after the usual invalidate + revalidate.
 export function loader() {
   return swr("visual-world", async () => {
     const res = await fetch("/api/visual-world");
@@ -159,4 +184,4 @@ export function loader() {
   });
 }
 
-export function Component() { return <Visual />; }
+export function Component() { return <Images />; }

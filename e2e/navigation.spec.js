@@ -11,12 +11,12 @@ test.beforeEach(async ({ page }) => {
 
 // A confirmed landmark per tab (heading / control that renders with empty data).
 const TABS = [
-  { tab: "World",         path: "world",    landmark: (p) => p.getByRole("heading", { name: "World creation" }) },
+  { tab: "Bible",         path: "world",    landmark: (p) => p.getByRole("heading", { name: "World creation" }) },
   { tab: "Script",        path: "script",   landmark: (p) => p.getByRole("button", { name: "Sign script" }) },
   { tab: "Shot list",     path: "shotlist", landmark: (p) => p.getByRole("heading", { name: "Shot list" }) },
   { tab: "Radio",         path: "radio",    landmark: (p) => p.getByRole("heading", { name: "Radio version" }) },
   { tab: "Animatic",      path: "animatic", landmark: (p) => p.getByRole("heading", { name: "Animatic" }) },
-  { tab: "Episode (48)",  path: "episode",  landmark: (p) => p.getByRole("button", { name: "rebuild plan" }) },
+  { tab: "Episodes",      path: "episode",  landmark: (p) => p.getByRole("button", { name: "rebuild plan" }) },
   { tab: "Complete cuts", path: "cuts",     landmark: (p) => p.getByRole("heading", { name: /Complete cut/ }) },
   { tab: "Library",       path: "library",  landmark: (p) => p.getByRole("heading", { name: "Asset library" }) },
   { tab: "Sound studio",  path: "sounds",   landmark: (p) => p.getByRole("button", { name: "New background music" }) },

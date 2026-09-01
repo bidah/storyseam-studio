@@ -25,12 +25,17 @@ import sheetGeneration from "./skills/sheet-generation/SKILL.md";
 import assignRefs from "./skills/assign-refs/SKILL.md";
 import generativeUi from "./skills/generative-ui/SKILL.md";
 import destructiveApproval from "./skills/destructive-approval/SKILL.md";
+import pluginGate from "./skills/plugin-gate/SKILL.md";
 import teamAccess from "./skills/team-access/SKILL.md";
 import seriesEpisodes from "./skills/series-episodes/SKILL.md";
 
 export const skills = [
   generativeUi,
   destructiveApproval,
+  // Which surfaces this project actually HAS. Always-relevant like the two
+  // above: a plugin's tools succeed on a tab the author never installed, so the
+  // check has to happen before the work, not after it.
+  pluginGate,
   teamAccess,
   seriesEpisodes,
   worldCreation,

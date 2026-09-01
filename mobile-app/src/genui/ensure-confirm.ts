@@ -45,6 +45,11 @@ const TAPPABLE_BLOCKS = [
   "OptionList",
   "Chips",
   "Recommendation",
+  // Each Plugin row carries its own `send` (the install), so a PluginList is
+  // answerable on its own — splicing a confirm under it would offer a
+  // go-ahead for a decision the author has not been asked to make yet.
+  "Plugin",
+  "PluginList",
 ];
 
 /** The statements we splice in. Double-underscored so they can't collide with a model name. */

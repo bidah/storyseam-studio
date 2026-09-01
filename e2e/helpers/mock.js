@@ -49,6 +49,19 @@ const DEFAULT_ROUTES = {
   "/api/storyboard": { stills: {}, bundles: [] },
   "/api/episode/cuts": { range: { from: "MS-01", to: "MS-01" }, segments: [], music: [], history: [], output: null },
   "/api/sounds": { tracks: [] },
+  // Every plugin installed, so the tab specs still exercise every surface. A
+  // real project starts with only the four core tabs and installs the rest from
+  // /plugins; the gating itself is covered by plugins.spec.js. The id list is a
+  // literal on purpose — this helper is plain JS and cannot import the canonical
+  // TypeScript catalog. Keep it in step with `PLUGINS` in src/lib/plugins.ts.
+  "/api/plugins": {
+    enabled: [
+      "agents", "moodboard", "shotlist", "images", "videos", "nodes",
+      "animatic", "radio", "sounds", "musical", "cuts", "library",
+    ],
+    defaulted: false,
+    updatedAt: null,
+  },
 };
 
 function jsonResponse(body, status = 200) {

@@ -77,6 +77,55 @@ Before this existed the only schema for a capability lived inside the tool, so
 the agent path was strictly typed and the GUI path was unchecked. When you add
 validation to a route, put the contract here rather than inline.
 
+## Plugins — four core surfaces, everything else installed
+
+The header used to carry fourteen tabs, which is the shape of a tool that does
+everything and the feel of one you can't learn. It now carries **four core
+surfaces** — **Bible** (`/world`), **Script**, **Episodes**, **Editor** — plus
+whatever the project has installed, plus an **Explore plugins** button that
+opens the marketplace at `/plugins`.
+
+**`src/lib/plugins.ts` is canonical.** It is import-free pure data (id, label,
+tagline, blurb, highlights, category, `triggers`, `tools`, `skills`) vendored by
+**`npm run plugins:sync`** into `worker/src/lib/plugins.ts` and
+`flue-agent/src/lib/plugins.ts`; `npm run guards` fails when a copy drifts. A
+plugin's **`id` is also its URL segment, its `TabsTrigger` value, and the `view`
+the client reports to `PUT /api/appstate`** — keep them one string or the header,
+the route guard, the agent's `navigate` target and the gate check will disagree
+about what "the Radio plugin" means.
+
+Adding a plugin therefore means editing ONE file and running the sync. Adding a
+new *surface* still means the usual three parts (route, GUI, agent tool).
+
+- **State**: the `plugins` doc in D1, **project-level** (both collaborators see
+  the same studio — contrast `appstate:<userId>`, which is deliberately
+  per-user). `GET/PUT /api/plugins`; writes go through `updateDoc` like every
+  other doc.
+- **An absent document seeds from usage, it does not default to empty.**
+  A project that predates the marketplace already has a shot list and a radio
+  pass, and would otherwise open with its own work missing from the header —
+  which reads as data loss even though nothing was lost. `GET` derives the set
+  read-only from `status.usage` and reports `defaulted: true`; the first install
+  or removal materialises it and the derivation never runs again. It is not an
+  auto-installer: nothing new appears later because the project grew content.
+- **Uninstalling deletes nothing.** The tab goes, the documents stay. Say so
+  wherever the author can uninstall — it is the reassurance the whole model
+  rests on.
+- **The GUI gate** is `blockingPlugin(view, enabled)` in RootLayout: a plugin
+  route renders `<PluginGate>` (install it, or browse all) instead of its
+  content. Core and `UNGATED_VIEWS` are never gated, and the gate never fires
+  while the set is still loading — flashing "not installed" over a tab the
+  author owns is worse than a beat of nothing.
+- **The agent gate** is the `plugin-gate` skill plus `get_status.plugins`. When
+  a request needs an uninstalled plugin the agent does NOT run its tools and
+  does NOT write a document nobody can see: it draws a `PluginList` card
+  offering the install and stops. On the author's yes it calls `set_plugin` and
+  then **finishes the original request in the same turn** — they asked for the
+  work, not for a plugin.
+
+`Plugin` / `PluginList` are real components in the genui contract, so the offer
+card is drawn through the same `render_ui` channel as every other question.
+
 ## Feature parity — GUI AND agent, always
 
 Every feature must work **both** ways: through the GUI **and** through the flue

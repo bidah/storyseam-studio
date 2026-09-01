@@ -4,6 +4,12 @@
 // edges as references; Text nodes are prompt sources; Source nodes hold an
 // existing generation. Edges are TYPED and functional (see flow-config).
 //
+// Its own top-level surface at /nodes (the `nodes` plugin), no longer a sub-tab
+// of World. It reads and writes the SAME `visual-world` document the /images and
+// /videos surfaces do — the canvas is a different way to drive one generation
+// store, not a second copy of it — so it keeps the `visual-world` swr key and
+// stays in step with them through the usual invalidate + revalidate pair.
+//
 // Persistence: the graph lives on `visual-world.json`'s `board` (nodes/edges),
 // saved via PUT /api/visual-world/board (debounced). Runs go through
 // POST /node/run; the cascade advances on the /poll cycle (server-side, on

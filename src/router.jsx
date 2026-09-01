@@ -53,19 +53,25 @@ export const router = createBrowserRouter([
     id: "root",
     children: [
       { index: true, loader: () => redirect("/world") },
-      {
-        path: "world",
-        lazy: () => import("@/routes/world/layout"),
-        ErrorBoundary: RouteError,
-        HydrateFallback: fallback("world"),
-        children: [
-          { index: true, lazy: () => import("@/routes/world/written") },
-          { path: "agents", lazy: () => import("@/routes/world/agents") },
-          { path: "visual", lazy: () => import("@/routes/world/visual") },
-          { path: "nodes", lazy: () => import("@/routes/world/nodes") },
-        ],
-      },
-      // Keeps React Flow + TipTap out of the main chunk, like /world/nodes.
+      // /world is just the bible now: the sub-tab bar is gone and its three
+      // sub-surfaces became top-level plugins of their own (see below).
+      { path: "world", lazy: () => import("@/routes/world/written"), ErrorBoundary: RouteError, HydrateFallback: fallback("world") },
+      { path: "agents", lazy: () => import("@/routes/agents"), ErrorBoundary: RouteError, HydrateFallback: fallback("agents") },
+      { path: "images", lazy: () => import("@/routes/images"), ErrorBoundary: RouteError, HydrateFallback: fallback("images") },
+      { path: "videos", lazy: () => import("@/routes/videos"), ErrorBoundary: RouteError, HydrateFallback: fallback("videos") },
+      // Keeps React Flow out of the main chunk.
+      { path: "nodes", lazy: () => import("@/routes/nodes"), ErrorBoundary: RouteError, HydrateFallback: fallback("nodes") },
+      // The marketplace. Never gated — it is where you go to un-gate things.
+      { path: "plugins", lazy: () => import("@/routes/plugins"), ErrorBoundary: RouteError, HydrateFallback: fallback("plugins") },
+      // The old /world/* sub-tab paths, kept alive as redirects. They are still
+      // in the wild: bookmarks, links pasted into a chat, and — the one that
+      // would be invisible to us — a `navigate` command the agent minted before
+      // this refactor and replays from a stored plan. A 404-to-/script would
+      // look like the feature vanished.
+      { path: "world/agents", loader: () => redirect("/agents") },
+      { path: "world/visual", loader: () => redirect("/images") },
+      { path: "world/nodes", loader: () => redirect("/nodes") },
+      // Keeps React Flow + TipTap out of the main chunk, like /nodes.
       { path: "moodboard", lazy: () => import("@/routes/moodboard"), ErrorBoundary: RouteError, HydrateFallback: fallback("moodboard") },
       { path: "script", lazy: () => import("@/routes/script") },
       { path: "shotlist", lazy: () => import("@/routes/shotlist"), ErrorBoundary: RouteError, HydrateFallback: fallback("shotlist") },
