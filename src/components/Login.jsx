@@ -345,11 +345,15 @@ function Homepage() {
             </div>
           </div>
 
-          <h1 className="mt-8 max-w-xl text-balance text-3xl font-semibold tracking-tight sm:text-4xl">
-            {t("Write, storyboard, render and cut an")} <span className="text-primary">{t("episode")}</span> {t("in one place")}
+          <h1 className="mt-8 max-w-2xl text-balance text-3xl font-semibold tracking-tight sm:text-4xl">
+            {/* Two sentences, two translation units — NOT one string split around
+                the highlight. Word order moves between languages, and a headline
+                stitched from fragments is the first thing to read wrong. */}
+            <span className="text-primary">{t("The first story harness agent")}</span>.{" "}
+            {t("Run on the web, through the UI or in your agent via MCP")}
           </h1>
           <p className="mt-3 max-w-lg text-sm text-muted-foreground">
-            {t("StorySeam is a workspace for making short animated episodes. Draft the script, build the shot list, generate the images, video and sound, then assemble the cut on a timeline — with a chat agent that can drive any step for you.")}
+            {t("StorySeam enables the core of AI video. Powerful, deep stories that can be created through our whole pipeline from script to video editing using the UI or letting the agent run the flow.")}
           </p>
 
           <FeatureMarquee />

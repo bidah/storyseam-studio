@@ -8,6 +8,11 @@ import { mockBackend } from "./helpers/mock.js";
 // tab; these tests override `/api/plugins` per case, because what they are
 // actually about is the gate — a surface the project has NOT installed.
 
+// A project whose author has explicitly removed everything. NOT what a new
+// project looks like — Images and Videos ship pre-installed (`defaultInstalled`
+// in src/lib/plugins.ts), so a blank project seeds to those two. These tests
+// want the empty case, which is why they set it explicitly rather than relying
+// on the seed.
 const CORE_ONLY = { enabled: [], defaulted: false, updatedAt: null };
 
 // Point /api/plugins at a specific set, and capture what the client PUTs back.
@@ -50,7 +55,7 @@ test.describe("plugin marketplace", () => {
       await expect(header.getByRole("tab", { name: label, exact: true })).toBeVisible();
     }
     // Nothing installed — so no plugin tab is in the header at all.
-    for (const label of ["Radio", "Shot list", "Sound studio", "Image generation"]) {
+    for (const label of ["Radio", "Shot list", "Sound studio", "Images", "Videos"]) {
       await expect(header.getByRole("tab", { name: label, exact: true })).toHaveCount(0);
     }
     await expect(header.getByRole("button", { name: /explore plugins/i })).toBeVisible();
