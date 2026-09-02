@@ -28,6 +28,7 @@ const PAIRS = [
   ["src/editor/timeline.js", "render-fn/remotion/timeline.js", "npm --prefix render-fn run sync"],
   ["src/genui/contract.ts", "mobile-app/src/genui/contract.ts", "npm run genui:sync"],
   ["src/genui/detect-options.ts", "mobile-app/src/genui/detect-options.ts", "npm run genui:sync"],
+  ["src/genui/card-kind.ts", "mobile-app/src/genui/card-kind.ts", "npm run genui:sync"],
   ["src/lib/suggestions.ts", "mobile-app/src/lib/suggestions.ts", "npm --prefix mobile-app run sync:suggestions"],
   ["src/lib/suggestions.ts", "worker/src/lib/suggestions.ts", "npm --prefix mobile-app run sync:suggestions"],
   // The script-specialist roster. Three copies, because the ledger's whitelist

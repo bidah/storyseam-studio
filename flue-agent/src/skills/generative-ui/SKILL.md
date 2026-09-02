@@ -249,6 +249,21 @@ use it for `src` and leave `display` `null` (the tile just re-opens `src`).
 One image is still a card — a single tile in a `MediaGrid` is the normal way to
 hand back one generation, not an over-reaction.
 
+**Several images are still ONE card.** "Make me two concept images" is two
+generations and two `attach_*` calls, and then a SINGLE `MediaGrid` holding a
+tile for each — drawn once, at the end, after every job has landed. The count
+the author asked for is the count of tiles they must see. Two traps, both of
+which end with a picture the author never saw:
+
+- **Drawing a card per image as it lands.** `render_ui` ends your turn, so the
+  first card cuts the run in half — and the second image is generated in a turn
+  the author never asked for, if at all.
+- **Carding only the last one.** Every generation of the run goes in the grid,
+  including the ones from earlier steps of the same turn. If you defined a tile
+  and left it out of the grid's items array, `render_ui` hands the program back
+  to you rather than showing a card with a picture missing — add the row and
+  call it again.
+
 Only use image URLs a tool returned (`attach_visual_generation`'s `thumb` /
 `display`, `list_library`, `get_visual_world`, `get_episode`, …). A job that
 hasn't reached `completed` has no URL — don't card it, and never pass `refUrl` or

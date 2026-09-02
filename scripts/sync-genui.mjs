@@ -30,6 +30,7 @@ const MOBILE_CONTRACT = join(ROOT, "mobile-app/src/genui/contract.ts");
 const VENDORED = [
   ["src/genui/detect-options.ts", "mobile-app/src/genui/detect-options.ts"],
   ["src/genui/ensure-confirm.ts", "mobile-app/src/genui/ensure-confirm.ts"],
+  ["src/genui/card-kind.ts", "mobile-app/src/genui/card-kind.ts"],
   ["src/genui/answered.ts", "mobile-app/src/genui/answered.ts"],
 ];
 const SKILL_DIR = join(ROOT, "flue-agent/src/skills/generative-ui");

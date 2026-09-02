@@ -1,3 +1,4 @@
+import { isShowcaseCard, supersedes } from '@/genui/card-kind';
 import type { AgentMessage, MessagePart, QuestionState } from './types';
 
 // Ports of the web AgentChat.jsx derivations — same semantics, typed.
@@ -201,13 +202,18 @@ export function splitImages(text: string): TextSegment[] {
 // one; `ask_question` only ever turns up replaying an older conversation.
 export const QUESTION_TOOLS = new Set(['render_ui', 'ask_question']);
 
-// A card ENDS the turn, visually. The agent is told so twice — the `render_ui`
-// description, the generative-ui skill, and whistlewood.md's "then STOP" — and
-// still trails a reasoning block and a paragraph narrating the card it just
-// drew ("I've presented the three options — tap one…"). flue exposes no way to
-// stop the loop from inside a tool (`AgentRuntimeConfig` has no step hook and a
-// tool's `run` can't end the turn), so the last word belongs to whoever renders
-// it: everything the model says AFTER the card is dropped here.
+// A card that ASKS ends the turn, visually. The agent is told so twice — the
+// `render_ui` description, the generative-ui skill, and whistlewood.md's "then
+// STOP" — and still trails a reasoning block and a paragraph narrating the card
+// it just drew ("I've presented the three options — tap one…"). flue exposes no
+// way to stop the loop from inside a tool (`AgentRuntimeConfig` has no step hook
+// and a tool's `run` can't end the turn), so the last word belongs to whoever
+// renders it: everything the model says AFTER the card is dropped here.
+//
+// A SHOWCASE card doesn't end anything (see genui/card-kind.ts): a MediaGrid of
+// a finished image is output, and the agent that just drew one is usually still
+// working — the sentence after it introduces the next generation, not the card.
+// So only asks seal.
 //
 // Only prose goes — `text` and `reasoning`. A tool part that lands after a card
 // stays visible, because hiding real work the agent did would be a lie, not a
@@ -221,16 +227,30 @@ export const QUESTION_TOOLS = new Set(['render_ui', 'ask_question']);
 // assistant message that follows a card (until the user speaks again) and those
 // drop their prose whole.
 export function visibleParts<
-  T extends { type?: string; toolName?: string; text?: string },
+  T extends { type?: string; toolName?: string; text?: string; input?: unknown },
 >(parts: T[] | undefined, sealed = false): T[] {
   const list = parts || [];
   let card = -1;
   for (let i = 0; i < list.length; i++) {
-    if (list[i].type === 'dynamic-tool' && QUESTION_TOOLS.has(list[i].toolName ?? '')) card = i;
+    if (isAskCard(list[i])) card = i;
   }
   if (sealed) return list.filter((p) => !isNarration(p));
   if (card < 0) return list;
   return list.filter((p, i) => i <= card || !isNarration(p));
+}
+
+// Is this part a card the author is meant to ANSWER? `ask_question` always was;
+// a `render_ui` part is one unless its program merely shows a finished result.
+function isAskCard(part: { type?: string; toolName?: string; input?: unknown }): boolean {
+  if (part?.type !== 'dynamic-tool' || !QUESTION_TOOLS.has(part.toolName ?? '')) return false;
+  if (part.toolName !== 'render_ui') return true;
+  return !isShowcaseCard(cardLang(part));
+}
+
+/** The openui-lang program a `render_ui` part carries — `input` is `unknown` off the wire. */
+function cardLang(part: { input?: unknown }): string | null {
+  const input = part.input as { lang?: string } | undefined;
+  return typeof input?.lang === 'string' ? input.lang : null;
 }
 
 // Prose the card made redundant. A text part carrying a markdown IMAGE is not
@@ -254,8 +274,10 @@ function isNarration(p: { type?: string; text?: string }): boolean {
 // And `superseded`: cards REPLACED by a later card in the same turn. The model
 // sometimes redraws the same question (a card, more reasoning, then a refined
 // duplicate of that card in its next step) — two identical asks on screen. The
-// LAST card of a turn is the ask; every earlier card with no user message
-// between it and the next card is a discarded draft, dropped from rendering.
+// LAST card of a turn is the ask; an earlier card with no user message between
+// it and the next is a discarded draft, dropped from rendering — UNLESS it is
+// showing media the later card doesn't (`supersedes`). Two generations in one
+// turn are two cards, and the first picture is not a draft of the second.
 export function deriveQA(messages: AgentMessage[]): QuestionState {
   const answered = new Map<string, string>();
   const sealed = new Set<string>();
@@ -263,11 +285,13 @@ export function deriveQA(messages: AgentMessage[]): QuestionState {
   let pendingId: string | null = null;
   let afterCard = false;
   let lastCardId: string | null = null;
+  let lastCardLang: string | null = null;
   for (let i = 0; i < messages.length; i++) {
     const m = messages[i];
     if (m.role === 'user') {
       afterCard = false;
       lastCardId = null;
+      lastCardLang = null;
       continue;
     }
     if (m.role !== 'assistant') continue;
@@ -275,8 +299,11 @@ export function deriveQA(messages: AgentMessage[]): QuestionState {
     for (const p of m.parts || []) {
       if (p.type !== 'dynamic-tool' || !QUESTION_TOOLS.has(p.toolName ?? '') || !p.toolCallId)
         continue;
-      if (lastCardId) superseded.add(lastCardId);
+      const lang = p.toolName === 'render_ui' ? cardLang(p) : null;
+      const ask = isAskCard(p);
+      if (lastCardId && supersedes(lastCardLang, lang)) superseded.add(lastCardId);
       lastCardId = p.toolCallId;
+      lastCardLang = lang;
       let ans: string | null = null;
       for (let j = i + 1; j < messages.length; j++) {
         if (messages[j].role === 'user') {
@@ -285,8 +312,10 @@ export function deriveQA(messages: AgentMessage[]): QuestionState {
         }
       }
       if (ans) answered.set(p.toolCallId, ans);
-      else pendingId = p.toolCallId;
-      afterCard = true;
+      // Only a question can be pending: a showcase card has nothing to answer,
+      // and letting it claim `pendingId` would make the real ask above it inert.
+      else if (ask) pendingId = p.toolCallId;
+      if (ask) afterCard = true;
     }
   }
   return { pendingId, answered, sealed, superseded };

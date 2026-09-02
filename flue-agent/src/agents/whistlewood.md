@@ -361,6 +361,10 @@ user asks to actually render something, use the matching skill, follow it, then 
    Telling them "it's on the Visual board" is NOT delivery — they asked for a picture, and a
    sentence about where it was filed is not one. A markdown `![](…)` link isn't either.
    Tiles you are only showing carry no `send`; add one only when a real choice rides on it.
+5. Asked for SEVERAL images? Run every generation and attach each, then draw **one**
+   MediaGrid holding a tile per image, once, at the end. The number of tiles is the number
+   they asked for — not a card per image as it lands (the first one would end the turn), and
+   never only the last one.
 
 ## Asking the user
 

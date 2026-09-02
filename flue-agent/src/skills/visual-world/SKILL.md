@@ -211,8 +211,16 @@ full-screen and that's it. Give the tiles a `send` only when you are genuinely
 asking them to choose (which direction to iterate on, which take to keep); then
 the card doubles as Step 8's question.
 
-```jsonc
-render_ui { "program": "MediaGrid(header: \"Noah Chen — first pass\", columns: 2) { MediaItem(src: \"/visual-media/abc123.png\", label: \"Frayed, hollow-eyed\") }" }
+ONE card holds the whole batch: a tile per generation, drawn after every job has
+landed — two images asked for is two tiles, never a card each as they land and
+never just the last one. Arguments are POSITIONAL (`MediaItem(src, display, send,
+label)`), and each statement is its own line:
+
+```
+root = Card([shots])
+shots = MediaGrid([g1, g2], "Noah Chen — first pass", 2)
+g1 = MediaItem("/visual-media/abc123_thumb.webp", "/visual-media/abc123_display.webp", null, "Frayed, hollow-eyed")
+g2 = MediaItem("/visual-media/def456_thumb.webp", "/visual-media/def456_display.webp", null, "Tighter on the scar")
 ```
 
 ## Step 8 — Iterate
