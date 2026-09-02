@@ -43,7 +43,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Wand2, Loader2, Sparkles, ImagePlus, X, Plus, Trash2, RefreshCw,
   Copy, Library, Pencil, Layers, AlertCircle, Check, ChevronDown, ChevronUp, Info,
-  IdCard, MapPin, Package, Film, Volume2,
+  IdCard, MapPin, Package, Film, Volume2, Download,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useShell } from "@/lib/shellContext";
@@ -65,6 +65,7 @@ import { refTagLabel, withImageRefNote } from "@/lib/refTags";
 import { uploadAttachment, classifyFile } from "@/lib/attachments";
 import { useProviderGate } from "@/components/ProviderGate";
 import { useT } from "@/lib/i18n";
+import { downloadUrl, filenameFromUrl } from "@/lib/download";
 
 export const ASPECTS = ["16:9", "9:16", "1:1", "4:3", "3:4", "21:9"];
 const COUNTS = [1, 2, 3, 4];
@@ -554,6 +555,7 @@ function GenerationDetail({ gen, onClose, onRecreate, onUseAsRef, onEdit, onAddT
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [promptExpanded, setPromptExpanded] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [downloading, setDownloading] = useState(false);
   // Seed the saved state from the persisted `savedRel` (survives reload) and
   // reset confirm/expand/copied whenever a different generation opens.
   useEffect(() => {
@@ -561,6 +563,7 @@ function GenerationDetail({ gen, onClose, onRecreate, onUseAsRef, onEdit, onAddT
     setConfirmDelete(false);
     setPromptExpanded(false);
     setCopied(false);
+    setDownloading(false);
   }, [gen?.id, gen?.savedRel]);
   if (!gen) return null;
 
@@ -590,12 +593,33 @@ function GenerationDetail({ gen, onClose, onRecreate, onUseAsRef, onEdit, onAddT
     setTimeout(() => setCopied(false), 1500);
   };
 
+  // Always the ORIGINAL (`gen.url`), never `display` — that's a ~1600px webp
+  // for looking at, and a download that quietly hands back a downsized copy of
+  // the picture is worse than no download button.
+  const saveOriginal = async () => {
+    setDownloading(true);
+    try {
+      await downloadUrl(gen.url, gen.file || filenameFromUrl(gen.url, video ? "clip.mp4" : "generation.png"));
+    } finally {
+      setDownloading(false);
+    }
+  };
+
   // Secondary (outline) actions for the two-column row under the CTA.
   const secondaries = [
     onEdit && !video && { key: "edit", icon: Pencil, label: t("Edit"), onClick: () => onEdit(gen) },
     // A clip can't be a reference IMAGE, and the ref tray only takes images.
     onUseAsRef && !video && { key: "ref", icon: ImagePlus, label: t("Reference"), title: t("Use as generation reference"), onClick: () => onUseAsRef(gen) },
     onAddToCanvas && { key: "canvas", icon: Layers, label: t("Add to canvas"), onClick: () => onAddToCanvas(gen) },
+    gen.url && {
+      key: "download",
+      icon: downloading ? Loader2 : Download,
+      iconClassName: downloading ? "animate-spin" : undefined,
+      label: t("Download"),
+      title: video ? t("Download the original clip") : t("Download the full-size original"),
+      disabled: downloading,
+      onClick: saveOriginal,
+    },
     onSaveToLibrary && {
       key: "library", icon: Library,
       label: savedRel ? t("Saved to library") : t("Save to library"),
@@ -706,7 +730,7 @@ function GenerationDetail({ gen, onClose, onRecreate, onUseAsRef, onEdit, onAddT
               )}
               {secondaries.length > 0 && (
                 <div className="grid grid-cols-2 gap-2">
-                  {secondaries.map(({ key, icon: SecIcon, label, title, disabled, onClick }) => (
+                  {secondaries.map(({ key, icon: SecIcon, iconClassName, label, title, disabled, onClick }) => (
                     <Button
                       key={key}
                       size="sm"
@@ -716,7 +740,7 @@ function GenerationDetail({ gen, onClose, onRecreate, onUseAsRef, onEdit, onAddT
                       disabled={disabled}
                       onClick={onClick}
                     >
-                      <SecIcon size={13} /> <span className="truncate">{label}</span>
+                      <SecIcon size={13} className={iconClassName} /> <span className="truncate">{label}</span>
                     </Button>
                   ))}
                 </div>

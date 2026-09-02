@@ -536,6 +536,8 @@ export const es = {
   "Download": "Descargar",
   "Download audio": "Descargar audio",
   "Download script": "Descargar guion",
+  "Download the full-size original": "Descargar el original a tamaño completo",
+  "Download the original clip": "Descargar el clip original",
   "Download video": "Descargar vídeo",
   "Drop audio here": "Suelta el audio aquí",
   "Drop image here": "Suelta la imagen aquí",
