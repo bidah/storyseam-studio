@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLoaderData, useNavigate, useRevalidator } from "react-router";
-import { X, Check, Plus, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, RotateCcw, Maximize2, Volume2, VolumeX, Speech, Play, Pause, Copy, Pencil, Sparkles, PenLine, FileText, Film, Image as ImageIcon, Loader2, Wand2, Scissors, Boxes, CircleAlert, MapPin, User, Palette, Power, Trash2, Upload, PersonStanding, GitBranch } from "lucide-react";
+import { X, Check, Eye, Plus, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, RotateCcw, Maximize2, Volume2, VolumeX, Speech, Play, Pause, Copy, Pencil, Sparkles, PenLine, FileText, Film, Image as ImageIcon, Loader2, Wand2, Scissors, Boxes, CircleAlert, MapPin, User, Palette, Power, Trash2, Upload, PersonStanding, GitBranch } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useT } from "@/lib/i18n";
 import { swr, useRevalidateOnMount, useRevalidateOnAgentIdle } from "@/lib/swr";
@@ -43,15 +43,86 @@ function refLabel(rel) {
   return base.replace(/\.[a-z0-9]+$/, "");
 }
 
+/* ---------------------------------------------------------------- *
+ * Prompt composition                                               *
+ *                                                                  *
+ * Pure, so the bundle card and the beat-level review dialog compose *
+ * from one place — a preview that drifts from what actually goes    *
+ * out is worse than no preview.                                    *
+ * ---------------------------------------------------------------- */
+
+// Several render turns as one clipboard payload, ruled off so the bundle each
+// prompt belongs to survives the paste.
+function joinSends(sends) {
+  return sends.map(({ bundle, message }) => `### ${bundle.id}\n\n${message}`).join("\n\n" + "-".repeat(60) + "\n\n");
+}
+
+// Every rendered take across all bundles, tagged with the bundle it came from.
+function flattenTakes(allVideos) {
+  return Object.entries(allVideos || {}).flatMap(([bid, arr]) =>
+    (arr || []).map((tk) => ({ ...tk, fromBundle: bid }))
+  );
+}
+
+// Resolve one bundle's video-style-continuity reference: its own override
+// (upload / picked take / switched off) else the episode-wide one. Legacy
+// overrides stored just {from,file}, so look a bare file up from the takes.
+function resolveRefVideo(refVideo, allTakes, globalVideoRef) {
+  const resolve = (val) => {
+    if (!val || val.disabled) return null;
+    if (val.url) return { url: val.url, name: val.name, source: val.source, file: val.file || null };
+    if (val.file) {
+      const tk = (allTakes || []).find((t) => t.file === val.file);
+      return tk ? { url: tk.refUrl || tk.url, name: `${tk.fromBundle} · ${tk.name}`, source: "generation", file: tk.file } : null;
+    }
+    return null;
+  };
+  const disabled = !!refVideo?.disabled;
+  const override = resolve(refVideo);
+  return { override, disabled, effective: disabled ? null : (override || globalVideoRef || null) };
+}
+
+// The exact prompt a bundle renders from: the reference blocks composed from the
+// current picks, then the skill prompt (or the author's edited override).
+function composePrompt({ bundle, assigned, audioAssigned, videoRef, override }) {
+  const refBlock = assigned.length
+    ? "IMAGE REFERENCES (pass each file as an image_references entry):\n" +
+      assigned.map((im) => `- ${refLabel(im.rel)}: ${im.abs || im.rel}`).join("\n")
+    : "IMAGE REFERENCES: (none selected yet — use “choose character and location refs” above)";
+  const audioBlock = audioAssigned.length
+    ? "\n\nVOICE / SOUND REFERENCES (pass as the audio reference — voice identity, NOT dialogue):\n" +
+      audioAssigned
+        .map(
+          (a) =>
+            `- ${a.label}: ${a.refUrl || a.abs || a.url || a.rel}` +
+            (a.order && a.order.length > 1
+              ? ` — voices appear in this order: ${a.order.map((n, i) => `${i + 1}=${n}`).join(", ")}`
+              : "")
+        )
+        .join("\n")
+    : "";
+  const videoBlock = videoRef?.url
+    ? "\n\nVIDEO STYLE CONTINUITY REFERENCE (pass as a video_references entry):\n" +
+      `- ${videoRef.name}: ${videoRef.url}\n` +
+      "This is a video reference for you to continue — keep its video style, colors, and feeling so our new generation has continuity."
+    : "";
+  const bodyPrompt = typeof override === "string" ? override : bundle.skillPrompt;
+  const fullPrefix = refBlock + audioBlock + videoBlock + "\n\n";
+  return { refBlock, audioBlock, videoBlock, bodyPrompt, fullPrefix, displayPrompt: fullPrefix + bodyPrompt };
+}
+
+// `text` may be a function, for callers whose text is expensive to compose —
+// then it is built on the click rather than on every render.
 function CopyButton({ text, label = "copy prompt" }) {
   const t = useT();
   const [copied, setCopied] = useState(false);
   const onCopy = useCallback(async () => {
+    const value = typeof text === "function" ? text() : text;
     try {
-      await navigator.clipboard.writeText(text);
+      await navigator.clipboard.writeText(value);
     } catch {
       const ta = document.createElement("textarea");
-      ta.value = text;
+      ta.value = value;
       document.body.appendChild(ta);
       ta.select();
       document.execCommand("copy");
@@ -789,6 +860,58 @@ function PromptModal({ bundle, body, fullPrefix, assigned, audioAssigned, edited
 }
 
 /* ---------------------------------------------------------------- *
+ * Beat prompt review — every turn this beat will send, verbatim    *
+ * ---------------------------------------------------------------- */
+
+// Read-only preview of the exact chat turns the beat's bundles render from:
+// the same message `requestRender` sends, references and first frame included.
+// Read-only on purpose — a bundle's prompt is edited on its own card, where the
+// pickers that feed the reference blocks are.
+function BeatPromptModal({ beat, sends, open, onClose }) {
+  const t = useT();
+  return (
+    <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="flex max-h-[90vh] min-w-[min(94vw,1400px)] max-w-[min(94vw,1400px)] flex-col gap-0 overflow-hidden p-0">
+        <DialogHeader className="flex flex-row items-center justify-between gap-3 border-b px-5 py-4">
+          <DialogTitle className="flex items-center gap-2">
+            <Badge variant="outline" className="font-mono">{beat.beat}</Badge>
+            <span className="font-normal">{beat.beatTitle} — {t("prompts that will be sent")}</span>
+          </DialogTitle>
+          <div className="pr-8">
+            <CopyButton text={() => joinSends(sends)} label="copy all" />
+          </div>
+        </DialogHeader>
+
+        <div className="min-h-0 flex-1 space-y-5 overflow-y-auto p-5">
+          <p className="text-xs text-muted-foreground">
+            {t("One render turn per bundle, exactly as the Render button sends it. Edit a prompt on its own card.")}
+          </p>
+          {sends.map(({ bundle, message }) => (
+            <section key={bundle.id} className="space-y-2">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <Badge variant="secondary" className="font-mono">{bundle.id}</Badge>
+                  <span className="text-sm">{bundle.shots.length} {t("shots")}</span>
+                  <a href={`#ep-${bundle.id}`} onClick={onClose} className="text-xs text-muted-foreground underline-offset-2 hover:underline">
+                    {t("open card")}
+                  </a>
+                </div>
+                <CopyButton text={message} />
+              </div>
+              <Textarea
+                className="[field-sizing:content] resize-none overflow-hidden font-mono text-xs leading-relaxed"
+                value={message}
+                readOnly
+              />
+            </section>
+          ))}
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/* ---------------------------------------------------------------- *
  * Storyboard stills (per shot) — the image stage before video      *
  * ---------------------------------------------------------------- */
 
@@ -1267,44 +1390,14 @@ function EpisodeBundle({ b, flat, picked, onOpenPicker, onRemove, onView, audioM
   const needsComplete = !ns || !ns.enforced || needDone === needAll.length;
 
 
-  const refBlock = assigned.length
-    ? "IMAGE REFERENCES (pass each file as an image_references entry):\n" +
-      assigned.map((im) => `- ${refLabel(im.rel)}: ${im.abs || im.rel}`).join("\n")
-    : "IMAGE REFERENCES: (none selected yet — use “choose character and location refs” above)";
-  const audioBlock = audioAssigned.length
-    ? "\n\nVOICE / SOUND REFERENCES (pass as the audio reference — voice identity, NOT dialogue):\n" +
-      audioAssigned
-        .map(
-          (a) =>
-            `- ${a.label}: ${a.refUrl || a.abs || a.url || a.rel}` +
-            (a.order && a.order.length > 1
-              ? ` — voices appear in this order: ${a.order.map((n, i) => `${i + 1}=${n}`).join(", ")}`
-              : "")
-        )
-        .join("\n")
-    : "";
   // The video reference riding on this bundle's render — passed to Seedance as a
   // video_references entry so the clip continues its style/colors/feeling. It
   // inherits the episode-wide `globalVideoRef` unless this bundle overrides it
   // (upload / a picked take) or switches it off. Every candidate is an already-
   // rendered generation from any bundle (for the picker grid).
-  const allTakes = Object.entries(allVideos || {}).flatMap(([bid, arr]) =>
-    (arr || []).map((t) => ({ ...t, fromBundle: bid }))
-  );
-  // Resolve an override value to a concrete {url,name,source,file}. Legacy
-  // overrides stored just {from,file}, so look the url up from the takes.
-  const resolveRef = (val) => {
-    if (!val || val.disabled) return null;
-    if (val.url) return { url: val.url, name: val.name, source: val.source, file: val.file || null };
-    if (val.file) {
-      const tk = allTakes.find((t) => t.file === val.file);
-      return tk ? { url: tk.refUrl || tk.url, name: `${tk.fromBundle} · ${tk.name}`, source: "generation", file: tk.file } : null;
-    }
-    return null;
-  };
-  const overrideDisabled = !!refVideo?.disabled;
-  const overrideRef = resolveRef(refVideo);
-  const effectiveRef = overrideDisabled ? null : (overrideRef || globalVideoRef || null);
+  const allTakes = flattenTakes(allVideos);
+  const { override: overrideRef, disabled: overrideDisabled, effective: effectiveRef } =
+    resolveRefVideo(refVideo, allTakes, globalVideoRef);
   const refVideoUrl = effectiveRef?.url || null;
   const refInherited = !overrideRef && !overrideDisabled && !!globalVideoRef;
   // Toggleable whenever there's a global to inherit or any explicit per-bundle
@@ -1312,14 +1405,13 @@ function EpisodeBundle({ b, flat, picked, onOpenPicker, onRemove, onView, audioM
   // back on even after the global was cleared.
   const canToggleRef = !!globalVideoRef || !!refVideo;
 
-  const videoBlock = refVideoUrl
-    ? "\n\nVIDEO STYLE CONTINUITY REFERENCE (pass as a video_references entry):\n" +
-      `- ${effectiveRef.name}: ${refVideoUrl}\n` +
-      "This is a video reference for you to continue — keep its video style, colors, and feeling so our new generation has continuity."
-    : "";
-  const bodyPrompt = edited ? override : b.skillPrompt;
-  const fullPrefix = refBlock + audioBlock + videoBlock + "\n\n";
-  const displayPrompt = fullPrefix + bodyPrompt;
+  const { refBlock, bodyPrompt, fullPrefix, displayPrompt } = composePrompt({
+    bundle: b,
+    assigned,
+    audioAssigned,
+    videoRef: effectiveRef,
+    override,
+  });
 
   // The chosen first frame: a still the Seedance clip opens on (start_image). Its
   // ungated refUrl is what the model can fetch. Flatten all the bundle's stills
@@ -2257,9 +2349,33 @@ function Episode({ reloadKey, onView }) {
   }, []);
 
   // Every rendered take across all bundles — the pool the video-ref pickers grid.
-  const allTakes = useMemo(
-    () => Object.entries(videos || {}).flatMap(([bid, arr]) => (arr || []).map((tk) => ({ ...tk, fromBundle: bid }))),
-    [videos]
+  const allTakes = useMemo(() => flattenTakes(videos), [videos]);
+
+  // The exact chat turn one bundle's Render button sends, composed from the same
+  // picks its card shows — what the beat-level copy/review buttons hand over.
+  const outgoingFor = useCallback(
+    (b) => {
+      const assigned = [...(picks[b.id] || [])].map((rel) => flat.get(rel)).filter(Boolean);
+      const audioAssigned = [...(audioPicks[b.id] || [])].map((rel) => audioMap.get(rel)).filter(Boolean);
+      const { effective } = resolveRefVideo(refVideos[b.id], allTakes, videoRef);
+      const { displayPrompt } = composePrompt({
+        bundle: b,
+        assigned,
+        audioAssigned,
+        videoRef: effective,
+        override: prompts[b.id],
+      });
+      const ff = firstFrames[b.id];
+      const take = ff?.file
+        ? b.shots.flatMap((sh) => (stills[b.id] || {})[sh.id] || []).find((tk) => tk.file === ff.file)
+        : null;
+      return {
+        bundle: b,
+        prompt: displayPrompt,
+        message: renderEpisodeMessage(b, displayPrompt, take?.refUrl || null, effective?.url || null),
+      };
+    },
+    [picks, flat, audioPicks, audioMap, refVideos, allTakes, videoRef, prompts, firstFrames, stills]
   );
 
   // Re-pack the current shot list into bundles (Phase 0). The server preserves
@@ -2345,6 +2461,11 @@ function Episode({ reloadKey, onView }) {
     }
   }, []);
 
+  // The beat id whose outgoing render turns are open for review, if any — an id
+  // rather than the group object, so the dialog follows a rebuild instead of
+  // showing bundles that no longer exist.
+  const [promptBeat, setPromptBeat] = useState(null);
+
   // Consecutive bundles of the same beat, for the per-beat header rows.
   const beatGroups = useMemo(() => {
     const groups = [];
@@ -2355,6 +2476,8 @@ function Episode({ reloadKey, onView }) {
     }
     return groups;
   }, [data]);
+
+  const promptGroup = promptBeat ? beatGroups.find((g) => g.beat === promptBeat) || null : null;
 
   // Packs the current shot list yields that have no episode card yet — offered
   // as one-click builds while the shot list is still in progress.
@@ -2488,15 +2611,26 @@ function Episode({ reloadKey, onView }) {
                   {g.bundles.length} {g.bundles.length === 1 ? t("bundle") : t("bundles")}
                 </span>
               </div>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => autoAssign(g.beat)}
-                disabled={!!assigning || selCount === 0}
-                title={t("Auto-assign references + voice picks for {beat} only — other beats keep their picks", { beat: g.beat })}
-              >
-                {assigning === g.beat ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />} {t("auto-assign {beat}", { beat: g.beat })}
-              </Button>
+              <div className="flex flex-wrap items-center gap-2">
+                <CopyButton text={() => joinSends(g.bundles.map((b) => outgoingFor(b)))} label="copy prompt" />
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setPromptBeat(g.beat)}
+                  title={t("See the exact render turns this beat will send — references and first frames included")}
+                >
+                  <Eye size={13} /> {t("review prompt")}
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => autoAssign(g.beat)}
+                  disabled={!!assigning || selCount === 0}
+                  title={t("Auto-assign references + voice picks for {beat} only — other beats keep their picks", { beat: g.beat })}
+                >
+                  {assigning === g.beat ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />} {t("auto-assign {beat}", { beat: g.beat })}
+                </Button>
+              </div>
             </div>
             {g.bundles.map((b) => (
               <EpisodeBundle
@@ -2539,6 +2673,15 @@ function Episode({ reloadKey, onView }) {
           </div>
         ))}
       </div>
+
+      {promptGroup && (
+        <BeatPromptModal
+          beat={promptGroup}
+          sends={promptGroup.bundles.map((b) => outgoingFor(b))}
+          open={!!promptGroup}
+          onClose={() => setPromptBeat(null)}
+        />
+      )}
 
       {audioPicker && (
         <AudioPickerModal

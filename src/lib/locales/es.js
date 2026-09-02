@@ -283,6 +283,8 @@ export const es = {
   "Reuse": "Reutilizar",
   "Reuse prompt": "Reutilizar prompt",
   "Save selection to storyboard": "Guardar selección en el guion gráfico",
+  "See the exact render turns this beat will send — references and first frames included":
+    "Mira los turnos de render exactos que enviará este beat, con referencias y primeros fotogramas incluidos",
   "Set as reference": "Usar como referencia",
   "Style prompt": "Prompt de estilo",
   "Style: {name}": "Estilo: {name}",
@@ -1213,6 +1215,8 @@ export const es = {
   "click to view full image": "haz clic para ver la imagen completa",
   "collapse": "plegar",
   "copied": "copiado",
+  "copy all": "copiar todo",
+  "copy prompt": "copiar prompt",
   "covered by {via}": "cubierto por {via}",
   "covers…": "cubre…",
   "discard edits, return to the auto-composed prompt": "descartar ediciones y volver al prompt auto-compuesto",
@@ -1245,9 +1249,14 @@ export const es = {
     "aún sin cubrir: elige su hoja del Mundo como referencia (o auto-asigna)",
   "nothing detected — rebuild the plan after writing the shot list":
     "no se detectó nada: reconstruye el plan tras escribir el guion de tomas",
+  "One render turn per bundle, exactly as the Render button sends it. Edit a prompt on its own card.":
+    "Un turno de render por paquete, exactamente como lo envía el botón Renderizar. Edita un prompt en su propia tarjeta.",
+  "open card": "abrir tarjeta",
   "open the full-screen prompt editor": "abrir el editor de prompt a pantalla completa",
   "pick a reference below that covers this speaker": "elige abajo una referencia que cubra a este hablante",
+  "prompts that will be sent": "prompts que se enviarán",
   "rebuild plan": "reconstruir plan",
+  "review prompt": "revisar prompt",
   "rebuilding…": "reconstruyendo…",
   "refs": "refs",
   "remove from this shot": "quitar de esta toma",
