@@ -74,7 +74,7 @@ function PluginCard({ plugin, installed, busy, onOpen, onToggle }) {
   return (
     <div
       className={cn(
-        "flex flex-col overflow-hidden rounded-xl border bg-card shadow-sm transition-colors",
+        "flex flex-col overflow-hidden rounded-none border bg-card transition-colors",
         installed ? "border-primary/40" : "hover:border-primary/30",
       )}
     >
@@ -198,6 +198,10 @@ export function Component() {
     () => (category === "all" ? PLUGINS : PLUGINS.filter((p) => p.category === category)),
     [category],
   );
+  // What the project has sits on top, what it could have below — each keeps
+  // the catalogue's order, so a card that moves lands in a predictable place.
+  const installedShown = shown.filter((p) => isEnabled(p.id));
+  const availableShown = shown.filter((p) => !isEnabled(p.id));
   const open = openId ? PLUGINS.find((p) => p.id === openId) || null : null;
 
   // Deliberately NOT awaited: usePlugins already applies the change optimistically
@@ -253,16 +257,26 @@ export function Component() {
           per-visit one — and it beats painting twelve cards as "not installed"
           and then flipping half of them. */}
       {loading ? <Spinner label={t("Reading this project's plugins…")} /> : (
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {shown.map((p) => (
-          <PluginCard
-            key={p.id}
-            plugin={p}
-            installed={isEnabled(p.id)}
-            busy={loading}
-            onOpen={() => setOpenId(p.id)}
-            onToggle={() => toggle(p)}
-          />
+      <div className="space-y-6">
+        {[
+          { key: "installed", label: t("Installed"), items: installedShown },
+          { key: "available", label: t("Available"), items: availableShown },
+        ].filter((s) => s.items.length).map((section) => (
+          <section key={section.key} className="space-y-2">
+            <Eyebrow>{section.label} · {section.items.length}</Eyebrow>
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {section.items.map((p) => (
+                <PluginCard
+                  key={p.id}
+                  plugin={p}
+                  installed={section.key === "installed"}
+                  busy={loading}
+                  onOpen={() => setOpenId(p.id)}
+                  onToggle={() => toggle(p)}
+                />
+              ))}
+            </div>
+          </section>
         ))}
       </div>
       )}
@@ -276,7 +290,14 @@ export function Component() {
         installed={!!open && isEnabled(open.id)}
         busy={loading}
         onOpenChange={(o) => { if (!o) setOpenId(null); }}
-        onToggle={() => open && toggle(open)}
+        onToggle={() => {
+          if (!open) return;
+          // An install from the dialog closes it, so the author sees the card
+          // land in the Installed section rather than a badge flip behind a modal.
+          const installing = !isEnabled(open.id);
+          toggle(open);
+          if (installing) setOpenId(null);
+        }}
       />
     </div>
   );
