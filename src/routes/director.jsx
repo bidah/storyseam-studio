@@ -12,7 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { Empty, Panel, ErrorNote, Eyebrow, fmtTime } from "@/components/shared";
+import { Empty, Panel, ErrorNote, Eyebrow, ImageModal, fmtTime } from "@/components/shared";
 import {
   MAX_DIRECTIONS, MAX_END_IMAGES, MIN_END_IMAGE_GAP_SECONDS,
   MIN_OPENING_END_IMAGE_SECONDS, sectionOrder,
@@ -52,6 +52,24 @@ const at = (s) => fmtTime(s);
 
 // Shown wherever a Series is, not tucked behind a save button. An author who
 // finds out at the door has paid for the discovery.
+/** A thumbnail that opens full size in the shared image viewer. */
+function Zoomable({ src, name, role, className }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <button
+        type="button"
+        className="block cursor-zoom-in"
+        aria-label={`View ${name} full size`}
+        onClick={() => setOpen(true)}
+      >
+        <img src={src} alt="" className={className} />
+      </button>
+      <ImageModal image={open ? { url: src, name, role } : null} onClose={() => setOpen(false)} />
+    </>
+  );
+}
+
 function Issues({ issues }) {
   const entries = Object.entries(issues || {});
   if (!entries.length) return null;
@@ -203,9 +221,10 @@ function SeriesForm({ view, onPatch, busy }) {
             Make it on the Images tab, or pick it from the Library.
           </p>
           {value.imageUrl ? (
-            <img
+            <Zoomable
               src={value.imageUrl}
-              alt=""
+              name="First frame"
+              role="first frame"
               className="mt-2 max-h-40 rounded-md border border-border object-contain"
             />
           ) : null}
@@ -329,11 +348,14 @@ function CueSheet({ view, onSave, onPin, busy }) {
                 <div className="w-28 shrink-0 text-right">
                   {beat.endImageUrl ? (
                     <div className="space-y-1">
-                      <img
-                        src={beat.endImageUrl}
-                        alt=""
-                        className="ml-auto h-14 rounded border border-border object-cover"
-                      />
+                      <div className="flex justify-end">
+                        <Zoomable
+                          src={beat.endImageUrl}
+                          name={`Pinned frame at ${fmtTime(beat.offset)}`}
+                          role="pin"
+                          className="h-14 rounded border border-border object-cover"
+                        />
+                      </div>
                       <button
                         type="button"
                         className="text-[11px] text-muted-foreground hover:text-foreground"
@@ -416,7 +438,12 @@ function ModelSheets({ view, onSheet, busy }) {
             {sheets.map((sheet) => (
               <div key={sheet.name} className="rounded-md border border-border p-2">
                 {sheet.imageUrl ? (
-                  <img src={sheet.imageUrl} alt="" className="mb-2 w-full rounded object-cover" />
+                  <Zoomable
+                    src={sheet.imageUrl}
+                    name={sheet.name}
+                    role={sheet.kind}
+                    className="mb-2 w-full rounded object-cover"
+                  />
                 ) : (
                   <div className="mb-2 flex h-20 items-center justify-center rounded bg-muted/40 text-muted-foreground">
                     <ImageIcon size={18} />

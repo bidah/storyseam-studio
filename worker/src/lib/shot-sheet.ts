@@ -98,8 +98,13 @@ export type Shot = {
   text: string;
 };
 
-/** One reference image, and what the prompt will say it IS. */
-export type Reference = { url: string; label: string };
+/**
+ * One reference image, and what the prompt will say it IS. `name` and `kind`
+ * are the model sheet's — `name` is what the shots are searched for when the
+ * prompt tags them `Image N`. Optional because takes filed before the tags
+ * existed carry only `url` and `label`.
+ */
+export type Reference = { url: string; label: string; name?: string; kind?: 'style' | 'character' | 'location' };
 
 export type Sheet = {
   /** The Series' own prompt, verbatim: the style, the look lock, the identity locks. */
@@ -179,6 +184,41 @@ export function referenceBlock(references: Reference[]): string {
   return `[IMAGE REFERENCES] ${named} These are the DESIGN, not a scene: every shot below is drawn with the same figures, machines, places and palette these show, from whatever angle the shot names.`;
 }
 
+const escapeRegExp = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+/**
+ * Tag the first mention of each referenced character, machine or place with
+ * its image: `KAI'S MECHA (Image 2) standing in…`.
+ *
+ * The model reads the references by position — "Image 1, Image 2", in the
+ * order `reference_image_urls` lists them — so a name in a shot only reaches
+ * its sheet if the prompt says which image it is, right where it is used. The
+ * `[IMAGE REFERENCES]` block says it once at the top; a shot sixteen lines
+ * down that just says "the hangar bay" is relying on the model remembering.
+ *
+ * Longest name first, so "Kai's mecha" is tagged as the mecha and not as Kai,
+ * and a possessive stays attached to the name it belongs to. Style sheets are
+ * the look, not a subject, and are never tagged into a shot.
+ */
+export function tagReferences(text: string, references: Reference[]): string {
+  const named = references
+    .map((reference, index) => ({ name: reference.name?.trim() ?? '', tag: `Image ${index + 1}`, kind: reference.kind }))
+    .filter((r) => r.name && r.kind !== 'style')
+    .sort((a, b) => b.name.length - a.name.length);
+  if (!named.length) return text;
+  const pattern = new RegExp(
+    `(?<![\\w'’])(${named.map((r) => escapeRegExp(r.name).replace(/['’]/g, "['’]")).join('|')})(['’]s)?(?![\\w])`,
+    'gi',
+  );
+  const done = new Set<string>();
+  return text.replace(pattern, (match: string, name: string) => {
+    const hit = named.find((r) => r.name.toLowerCase().replace(/’/g, "'") === name.toLowerCase().replace(/’/g, "'"));
+    if (!hit || done.has(hit.tag)) return match;
+    done.add(hit.tag);
+    return `${match} (${hit.tag})`;
+  });
+}
+
 /**
  * The prompt, assembled.
  *
@@ -188,12 +228,14 @@ export function referenceBlock(references: Reference[]): string {
  */
 export function renderPrompt(sheet: Sheet): string {
   const span = shotSpan(sheet);
-  const list = shotLines(sheet).join('\n');
+  const list = shotLines(sheet)
+    .map((line) => tagReferences(line, sheet.references))
+    .join('\n');
   const clause = (sheet.clause || HOUSE_CLAUSE)
     .replace(/\{count\}/g, String(sheet.shots.length))
     .replace(/\{span\}/g, seconds(span));
   const tail = clause.includes('{shots}') ? clause.replace(/\{shots\}/g, list) : `${clause}\n\n${list}`;
-  return [sheet.premise.trim(), referenceBlock(sheet.references), tail]
+  return [tagReferences(sheet.premise.trim(), sheet.references), referenceBlock(sheet.references), tail]
     .filter(Boolean)
     .join('\n\n');
 }
@@ -500,22 +542,50 @@ function spread<T>(items: T[], count: number): T[] {
 /**
  * What to hand the model as references, and what to tell it they are.
  *
- * Style sheets first — the look governs every shot — then characters and
- * locations in the order the Series lists them, which is the order an author
- * put them in. Capped at the endpoint's nine; a Series with more sheets than
- * that has to choose, and choosing the style plus the cast is the choice that
- * keeps a film looking like itself.
+ * Style sheets first — the look governs every shot — capped at two, so a
+ * Series that has filed several past takes as styles cannot spend the whole
+ * budget on them. Then the characters, machines and places the chosen SHOTS
+ * actually name, most-mentioned first, and only then the rest in the order the
+ * Series lists them. Capped at the endpoint's nine: a sheet that shows the
+ * hangar bay in five shots needs the hangar bay's sheet more than it needs a
+ * character who never appears in it.
  */
-export function referencesOf(series: Pick<Series, 'modelSheets'>): Reference[] {
-  const order = { style: 0, character: 1, location: 2 } as const;
-  return [...series.modelSheets]
-    .filter((sheet) => Boolean(sheet.imageUrl))
-    .sort((a, b) => order[a.kind] - order[b.kind])
-    .slice(0, MAX_REFERENCE_IMAGES)
-    .map((sheet) => ({
-      url: sheet.imageUrl as string,
-      label: sheet.kind === 'style' ? `the house style — ${sheet.name}` : sheet.name,
-    }));
+export const MAX_STYLE_REFERENCES = 2;
+
+export function referencesOf(
+  series: Pick<Series, 'modelSheets'>,
+  shots: Pick<Shot, 'text'>[] = [],
+): Reference[] {
+  const drawn = series.modelSheets.filter((sheet) => Boolean(sheet.imageUrl));
+  const text = shots.map((shot) => shot.text).join('\n');
+  const mentions = (name: string) => {
+    if (!text || !name.trim()) return 0;
+    const pattern = new RegExp(
+      `(?<![\\w'’])${escapeRegExp(name.trim()).replace(/['’]/g, "['’]")}(?![\\w])`,
+      'gi',
+    );
+    return (text.match(pattern) || []).length;
+  };
+  const styles = drawn.filter((sheet) => sheet.kind === 'style').slice(0, MAX_STYLE_REFERENCES);
+  // A name that is a prefix of a longer one ("Kai" in "Kai's mecha") counts
+  // only its own mentions, not the longer name's.
+  const subjects = drawn
+    .filter((sheet) => sheet.kind !== 'style')
+    .map((sheet, order) => {
+      const longer = drawn.filter(
+        (other) => other !== sheet && other.name.toLowerCase().startsWith(sheet.name.toLowerCase()) && other.name.length > sheet.name.length,
+      );
+      const own = mentions(sheet.name) - longer.reduce((n, other) => n + mentions(other.name), 0);
+      return { sheet, order, count: Math.max(0, own) };
+    })
+    .sort((a, b) => b.count - a.count || a.order - b.order)
+    .map((entry) => entry.sheet);
+  return [...styles, ...subjects].slice(0, MAX_REFERENCE_IMAGES).map((sheet) => ({
+    url: sheet.imageUrl as string,
+    label: sheet.kind === 'style' ? `the house style — ${sheet.name}` : sheet.name,
+    name: sheet.name,
+    kind: sheet.kind,
+  }));
 }
 
 /**
@@ -544,13 +614,14 @@ export function sheetFrom(
   duration = MAX_DURATION_SECONDS,
 ): Sheet {
   const wanted = new Set(chosen);
+  const shots = slotsOf(series)
+    .filter((slot) => wanted.has(slot.offset) && !slot.refused)
+    .map((slot) => ({ offset: slot.offset, kind: slot.kind, text: slot.brief }));
   return {
     premise: series.prompt,
-    references: referencesOf(series),
+    references: referencesOf(series, shots),
     clause: series.prompts?.shotSheet?.trim() || HOUSE_CLAUSE,
-    shots: slotsOf(series)
-      .filter((slot) => wanted.has(slot.offset) && !slot.refused)
-      .map((slot) => ({ offset: slot.offset, kind: slot.kind, text: slot.brief })),
+    shots,
     duration,
     ...renderSettings(series),
   };

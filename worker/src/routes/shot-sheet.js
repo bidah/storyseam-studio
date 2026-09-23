@@ -32,6 +32,8 @@ const FAL_QUEUE = "https://queue.fal.run";
 
 const nowIso = () => new Date().toISOString();
 
+const takeWithUrl = (row) => ({ ...row, url: row.file ? `/director-media/${row.file}` : null });
+
 function falKeyOf(c) {
   return c.req.header("x-fal-key") || c.env.FAL_KEY || "";
 }
@@ -59,9 +61,12 @@ export function registerShotSheet(app) {
       title: series.title,
       slots: slotsOf(resolved),
       clause: series.prompts?.shotSheet || null,
+      // With its playable url — the tab plays `take.url`, and a take read back
+      // after a reload used to arrive without one, as an empty player.
       takes: (db.takes || [])
         .filter((t) => t.seriesId === seriesId)
-        .sort((a, b) => String(b.startedAt).localeCompare(String(a.startedAt))),
+        .sort((a, b) => String(b.startedAt).localeCompare(String(a.startedAt)))
+        .map(takeWithUrl),
     });
   });
 
@@ -151,14 +156,13 @@ export function registerShotSheet(app) {
     const take = (db.takes || []).find((t) => t.id === id);
     if (!take) return c.json({ error: "No such take" }, 404);
 
-    const withUrl = (row) => ({ ...row, url: row.file ? `/director-media/${row.file}` : null });
-    if (take.status !== "running") return c.json(withUrl(take));
+    if (take.status !== "running") return c.json(takeWithUrl(take));
 
     const key = falKeyOf(c);
-    if (!key) return c.json(withUrl(take));
+    if (!key) return c.json(takeWithUrl(take));
 
     const finished = await finishRender(c.env, pid, take, key);
-    return c.json(withUrl(finished));
+    return c.json(takeWithUrl(finished));
   });
 
   // ── The frames, coming back ───────────────────────────────────────────────
