@@ -852,6 +852,9 @@ export const es = {
   "Or render with your own fal.ai / Atlas Cloud key instead":
     "O renderiza con tu propia clave de fal.ai / Atlas Cloud en su lugar",
   "Privacy": "Privacidad",
+  "Realtime model": "Modelo en tiempo real",
+  "Alpha release of the director-harness setup": "Versión alfa del director-harness",
+  "Explore more": "Explorar más",
   "Save & continue": "Guardar y continuar",
   "Sign in with Google": "Iniciar sesión con Google",
   "Signed in as": "Sesión iniciada como",

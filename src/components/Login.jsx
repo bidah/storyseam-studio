@@ -1,10 +1,16 @@
-// App login gate — the branded StorySeam homepage with "Sign in with
-// Google" (Better Auth social provider). Gated on the Better Auth session; the
-// signed-in user owns their own projects. Higgsfield is no longer the front
-// door: it's a CONNECTOR linked to the session afterwards (Settings ›
-// Connectors, lib/higgsfieldAccount.js).
+// App login gate + the sign-in page it sends you to. "Sign in with Google"
+// (Better Auth social provider); the signed-in user owns their own projects.
+// Higgsfield is no longer the front door: it's a CONNECTOR linked to the
+// session afterwards (Settings › Connectors, lib/higgsfieldAccount.js).
 //
-// COPY RULES — this page is what Google Safe Browsing scores, and in Aug 2026 it
+// The sign-in page lives at its OWN url (/login, routed as a sibling of
+// RootLayout) rather than rendering in place of whatever app route was asked
+// for. `/` is now a public marketing landing with no account UI at all
+// (routes/landing.jsx), so LoginGate REDIRECTS a signed-out visitor to
+// /login?next=<the route they wanted> and the sign-in returns them there.
+//
+// COPY RULES — this page is what Google Safe Browsing scores (it is the one
+// signed-out page whose call to action is a Google button), and in Aug 2026 it
 // scored it as a deceptive page and put a "Dangerous site" interstitial on the
 // whole domain. A signed-out page whose only action is a Google sign-in button
 // is already a phishing-shaped thing; these three rules keep it from reading
@@ -22,7 +28,7 @@
 // lib/atlasKey.js) and ride per-request to the workers — never stored
 // server-side. Keys, connectors and provider toggles stay editable in Settings.
 import { useEffect, useState } from "react";
-import { Link, useLocation } from "react-router";
+import { Link, Navigate, useLocation } from "react-router";
 import {
   Bot, PenLine, Workflow, Film, ListVideo, AudioLines, Loader2, ArrowRight,
   KeyRound, ExternalLink, LogOut, Cable, LayoutGrid, ImagePlus, Video, Radio,
@@ -36,6 +42,8 @@ import { useAtlasKey, setAtlasKey } from "@/lib/atlasKey";
 import { useProviderPrefs, setActiveProvider, useSetupSkipped, setSetupSkipped } from "@/lib/providers";
 import { captureInviteFromLocation } from "@/lib/pendingInvite";
 import { useT } from "@/lib/i18n";
+import { HUD, DISPLAY, BODY, MONO } from "@/lib/hudTheme";
+import { HudHeader } from "@/components/HudHeader";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -213,16 +221,19 @@ function FeatureMarquee() {
                 // is just noise in a screen reader.
                 aria-hidden={copy > 0 || undefined}
                 tabIndex={copy > 0 ? -1 : undefined}
-                className="group/card flex h-[168px] w-[280px] shrink-0 flex-col items-start gap-3 rounded-2xl border bg-card/60 p-5 text-left transition-all hover:-translate-y-1 hover:border-primary/40 hover:bg-card hover:shadow-xl hover:shadow-primary/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="group/card flex h-[168px] w-[280px] shrink-0 flex-col items-start gap-4 border border-[var(--br-secondary)]/25 bg-[var(--br-surface)] p-6 text-left transition-colors hover:border-[var(--br-secondary)]/60 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--br-primary)]"
               >
-                <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary transition-transform group-hover/card:scale-110">
+                <span className="text-[var(--br-secondary)]">
                   <f.icon size={18} />
                 </span>
-                <div className="min-w-0 leading-snug">
-                  <div className="text-[15px] font-medium group-hover/card:text-primary">
-                    {t(f.label)}
+                <div className="min-w-0">
+                  <div
+                    className="text-[1.5rem] leading-none"
+                    style={{ fontFamily: DISPLAY, fontWeight: 600 }}
+                  >
+                    {t(f.label).toUpperCase()}
                   </div>
-                  <div className="mt-1 text-xs text-muted-foreground">{t(f.note)}</div>
+                  <p className="mt-2 text-[var(--br-secondary)]">{t(f.note)}</p>
                 </div>
               </button>
             ))
@@ -230,33 +241,47 @@ function FeatureMarquee() {
         </div>
 
         {/* Edge fades, so cards enter and leave instead of being chopped off at
-            the band's edges. Pointer-events off or they'd eat the hover that
-            pauses the track. */}
+            the band's edges. A MASK rather than two painted gradient panels:
+            design.md forbids gradients in the artwork, and a mask also stops
+            the fade from having to guess the page's ground colour. */}
         <div
           aria-hidden
-          className="pointer-events-none absolute inset-y-0 left-0 w-24 bg-gradient-to-r from-background via-background/50 to-transparent"
+          className="pointer-events-none absolute inset-y-0 left-0 w-24 bg-[var(--br-neutral)] [mask-image:linear-gradient(to_right,black,transparent)]"
         />
         <div
           aria-hidden
-          className="pointer-events-none absolute inset-y-0 right-0 w-24 bg-gradient-to-l from-background via-background/50 to-transparent"
+          className="pointer-events-none absolute inset-y-0 right-0 w-24 bg-[var(--br-neutral)] [mask-image:linear-gradient(to_left,black,transparent)]"
         />
       </div>
 
       <Dialog open={!!open} onOpenChange={(v) => !v && setOpen(null)}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent
+          className="rounded-none border-[var(--br-secondary)]/25 bg-[var(--br-surface)] text-[var(--br-primary)] sm:max-w-md"
+          style={{ ...HUD, fontFamily: BODY }}
+        >
           {open && (
             <>
-              <div className="flex size-12 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+              <div className="text-[var(--br-secondary)]">
                 <open.icon size={22} />
               </div>
-              <DialogTitle className="text-xl">{t(open.label)}</DialogTitle>
-              <DialogDescription className="text-sm leading-relaxed">
+              <DialogTitle
+                className="text-[2rem] leading-none"
+                style={{ fontFamily: DISPLAY, fontWeight: 600 }}
+              >
+                {t(open.label).toUpperCase()}
+              </DialogTitle>
+              <DialogDescription className="leading-relaxed text-[var(--br-secondary)]">
                 {t(open.blurb)}
               </DialogDescription>
-              <Button variant="secondary" className="mt-2 w-full gap-2" onClick={next}>
+              <button
+                type="button"
+                onClick={next}
+                className="mt-2 flex w-full items-center justify-center gap-2 border border-[var(--br-secondary)]/40 px-5 py-3 text-[0.72rem] uppercase text-[var(--br-primary)] transition-colors hover:border-[var(--br-primary)]"
+                style={{ fontFamily: MONO, letterSpacing: "0.08em" }}
+              >
                 {t("Next feature")}
-                <ArrowRight size={16} />
-              </Button>
+                <ArrowRight size={14} />
+              </button>
             </>
           )}
         </DialogContent>
@@ -265,7 +290,9 @@ function FeatureMarquee() {
   );
 }
 
-function Homepage() {
+// The sign-in page itself (/login). Exported for routes/login.jsx; LoginGate
+// never renders it inline any more — it navigates here.
+export function SignInPage() {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState(null);
   const t = useT();
@@ -273,14 +300,14 @@ function Homepage() {
   const signIn = async () => {
     setBusy(true);
     setErr(null);
-    // If we're gating an invite landing (LoginGate renders this page in place of
-    // /accept-invite/:id, so the URL is still the invite), return the user THERE
-    // after OAuth instead of the app root — otherwise the invite id + token are
-    // lost across the redirect and a brand-new user lands on an empty project.
-    // Same-origin path only, so there's nothing to open-redirect to.
-    const callbackURL = window.location.pathname.startsWith("/accept-invite/")
-      ? window.location.pathname + window.location.search
-      : "/";
+    // Where to land after OAuth. `/` is the public landing now, so the default
+    // is the app itself; `?next=` carries the route the visitor actually asked
+    // for (LoginGate sets it), which matters most for /accept-invite/:id —
+    // otherwise the invite id + token are lost across the redirect and a
+    // brand-new user lands on an empty project. Same-origin ABSOLUTE PATH only
+    // ("//host" rejected too), so there's nothing to open-redirect to.
+    const next = new URLSearchParams(window.location.search).get("next") || "";
+    const callbackURL = /^\/(?!\/)/.test(next) ? next : "/world";
     try {
       if (isDesktop) {
         // Desktop (TOO-21): ask Better Auth for the authorize URL without
@@ -303,7 +330,7 @@ function Homepage() {
         return;
       }
       // Web: redirects to Google and back to /api/auth/callback/google;
-      // Better Auth creates the session, then returns to callbackURL ("/").
+      // Better Auth creates the session, then returns to callbackURL.
       await authClient.signIn.social({ provider: "google", callbackURL });
     } catch (e) {
       setErr(String(e?.message || e));
@@ -311,88 +338,128 @@ function Homepage() {
     }
   };
 
+  // Drawn in the Battle Royale system (`design.md`, tokens in lib/hudTheme.js),
+  // the same one the model page at /director-harness uses: near-black ground,
+  // Teko display, mono labels, ONE accent — spent here on the sign-in button,
+  // which is the only action on the page. No gradients and no radii: the glow
+  // this page used to open with is gone, and every corner is square.
+  //
+  // Presentation only. Every line of copy below is unchanged, because it is
+  // what keeps this page from reading as phishing-shaped — see the COPY RULES
+  // at the top of this file before touching any of it.
   return (
-    <div className="relative flex min-h-dvh items-center justify-center overflow-hidden bg-background px-6 py-12">
-      <div aria-hidden className="pointer-events-none absolute -top-40 left-1/2 size-[46rem] -translate-x-1/2 rounded-full bg-primary/15 blur-3xl" />
+    <div
+      className="flex min-h-dvh flex-col bg-[var(--br-neutral)] px-4 pb-12 text-[var(--br-primary)] sm:px-8"
+      style={{ ...HUD, fontFamily: BODY, fontSize: "0.92rem", lineHeight: 1.5 }}
+    >
+      {/* The same strip the model page carries, so `/` and /director-harness
+          read as one site rather than two. */}
+      <div className="mx-auto w-full max-w-7xl">
+        <HudHeader />
+        {/* Notice strip under the header: points at the director harness while
+            it is in alpha. Outlined in secondary, not filled — the page's one
+            accent stays on the sign-in button. */}
+        <div
+          className="-mx-4 mt-4 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border border-[var(--br-secondary)]/25 px-4 py-2.5 text-[0.72rem] sm:-mx-8 sm:px-8 uppercase text-[var(--br-secondary)]"
+          style={{ fontFamily: MONO, letterSpacing: "0.08em" }}
+        >
+          <span>{t("Alpha release of the director-harness setup")}</span>
+          <Link
+            to="/director-harness"
+            className="flex items-center gap-1.5 border border-[var(--br-secondary)]/40 px-3 py-1.5 text-[var(--br-primary)] transition-colors hover:border-[var(--br-primary)]"
+          >
+            {t("Explore more")}
+            <ArrowRight size={12} />
+          </Link>
+        </div>
+      </div>
 
-      <div className="relative w-full max-w-2xl">
-        <div className="flex flex-col items-center text-center">
-          <div className="flex items-center gap-3">
-            {/* The app mark, as a full-bleed rounded tile. Two files rather than
-                one: the artwork's glow/paper background is baked in, so the
-                neon-on-black cut is the DARK one and the pastel-on-white cut is
-                the light one — swapping tints on a single image would kill the
-                glow. `dark:` picks between them so the mark stays right if the
-                light theme is ever re-enabled. */}
-            <div className="size-[95px] overflow-hidden rounded-[19px] shadow-lg shadow-primary/20">
-              <img
-                src="/logo-mark-dark.png"
-                alt=""
-                width={95}
-                height={95}
-                className="hidden size-full object-cover dark:block"
-              />
-              <img
-                src="/logo-mark-light.png"
-                alt=""
-                width={95}
-                height={95}
-                className="size-full object-cover dark:hidden"
-              />
-            </div>
-            <div className="text-left leading-tight">
-              <div className="text-3xl font-semibold tracking-tight">StorySeam</div>
-            </div>
-          </div>
-
-          <h1 className="mt-8 max-w-2xl text-balance text-3xl font-semibold tracking-tight sm:text-4xl">
-            {/* Two sentences, two translation units — NOT one string split around
-                the highlight. Word order moves between languages, and a headline
-                stitched from fragments is the first thing to read wrong. */}
-            <span className="text-primary">{t("The first story harness agent")}</span>.{" "}
-            {t("Run on the web, through the UI or in your agent via MCP")}
+      {/* Full width, not a column: the headline is ONE nowrap line, and a line
+          wider than its box overflows to the right instead of centring, which
+          is exactly what a narrow column did to it. The paragraphs below keep
+          their own measures. `flex-1` centres the block in what is left of the
+          screen under the strip. */}
+      <div className="relative mx-auto flex w-full flex-1 items-center justify-center py-12">
+        <div className="flex w-full flex-col items-center text-center">
+          {/* No mark and no wordmark here: the strip above carries STORYSEAM,
+              and repeating it 40px below made the page open with its own name
+              twice before it said anything. */}
+          {/* The display role from design.md, at its own size: ONE sentence,
+              one translation unit. The second line this headline used to carry
+              ("Run on the web…") is gone rather than shrunk — a display face
+              this size earns its space by saying one thing. */}
+          <h1
+            className="w-full whitespace-nowrap leading-[0.95]"
+            style={{
+              fontFamily: DISPLAY,
+              fontWeight: 700,
+              letterSpacing: "0.02em",
+              // ONE line at every width, so the size is driven by the width
+              // rather than by a breakpoint: the display role's 5rem is the
+              // ceiling, and below that the headline is as large as the column
+              // allows. The divisor is the line's own aspect — its width at a
+              // given size divided by that size — measured with the LONGEST
+              // translation (Spanish) so a locale switch can't overflow it.
+              fontSize: "min(5rem, calc((100vw - 5rem) / 17))",
+            }}
+          >
+            {t("The first story harness agent").toUpperCase()}
           </h1>
-          <p className="mt-3 max-w-lg text-sm text-muted-foreground">
+          <p className="mt-4 max-w-lg text-[var(--br-secondary)]">
             {t("StorySeam enables the core of AI video. Powerful, deep stories that can be created through our whole pipeline from script to video editing using the UI or letting the agent run the flow.")}
           </p>
 
           <FeatureMarquee />
 
           <div className="mt-9 flex w-full flex-col items-center gap-3">
-            <Button size="lg" className="w-full max-w-xs gap-2 font-medium" disabled={busy} onClick={signIn}>
-              {busy ? <Loader2 size={16} className="animate-spin" /> : null}
+            <button
+              type="button"
+              disabled={busy}
+              onClick={signIn}
+              className="flex w-full max-w-xs items-center justify-center gap-2 bg-[var(--br-tertiary)] px-5 py-3 text-[0.72rem] uppercase text-[var(--br-on-primary)] transition-opacity hover:opacity-90 disabled:opacity-60"
+              style={{ fontFamily: MONO, letterSpacing: "0.08em" }}
+            >
+              {busy ? <Loader2 size={14} className="animate-spin" /> : null}
               {t("Sign in with Google")}
-              {!busy ? <ArrowRight size={16} /> : null}
-            </Button>
+              {!busy ? <ArrowRight size={14} /> : null}
+            </button>
             {/* State the scope plainly. These are exactly the scopes the
                 authorize URL asks for (email + profile + openid) — if that ever
                 changes, change this sentence with it. */}
-            <p className="max-w-sm text-xs text-muted-foreground">
+            <p className="max-w-sm text-xs text-[var(--br-secondary)]">
               {t("Google sign-in is only used to create your StorySeam account — it shares your name, email address and profile picture. StorySeam never posts on your behalf and reads nothing else from your Google account.")}
             </p>
-            {err ? <p className="max-w-sm text-center text-xs text-destructive">{err}</p> : null}
+            {err ? <p className="max-w-sm text-center text-xs text-[var(--br-tertiary)]">{err}</p> : null}
           </div>
 
-          <p className="mt-6 max-w-lg border-t pt-6 text-xs leading-relaxed text-muted-foreground">
+          <p className="mt-6 max-w-lg border-t border-[var(--br-secondary)]/25 pt-6 text-xs leading-relaxed text-[var(--br-secondary)]">
             {t("Generation runs on a rendering account you connect yourself — Higgsfield, fal.ai or Atlas Cloud — so images, video and audio bill to you. StorySeam is not affiliated with those services. API keys you paste are kept in this browser only and are never stored on our servers.")}
           </p>
 
           {/* Reachable WITHOUT signing in — /privacy and /terms are routed as
               siblings of RootLayout so this link works for a signed-out
               visitor. See router.jsx. */}
-          <div className="mt-6 flex flex-wrap items-center justify-center gap-x-4 gap-y-2 text-xs text-muted-foreground">
-            <Link to="/privacy" className="underline-offset-4 hover:text-foreground hover:underline">
+          <div
+            className="mt-6 flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-[0.72rem] uppercase text-[var(--br-secondary)]"
+            style={{ fontFamily: MONO, letterSpacing: "0.08em" }}
+          >
+            <Link to="/privacy" className="underline-offset-4 hover:text-[var(--br-primary)] hover:underline">
               {t("Privacy")}
             </Link>
-            <Link to="/terms" className="underline-offset-4 hover:text-foreground hover:underline">
+            <Link to="/terms" className="underline-offset-4 hover:text-[var(--br-primary)] hover:underline">
               {t("Terms")}
             </Link>
             <a
               href="mailto:privacy@storyseam.app"
-              className="underline-offset-4 hover:text-foreground hover:underline"
+              className="underline-offset-4 hover:text-[var(--br-primary)] hover:underline"
             >
               {t("Contact")}
             </a>
+            {/* The model page lives at its own url now — this is how someone
+                who landed on the homepage finds it. */}
+            <Link to="/director-harness" className="underline-offset-4 hover:text-[var(--br-primary)] hover:underline">
+              {t("Realtime model")}
+            </Link>
           </div>
         </div>
       </div>
@@ -400,10 +467,17 @@ function Homepage() {
   );
 }
 
-function Splash() {
+// The session-still-resolving placeholder. Exported so /login can hold the
+// same beat instead of flashing a sign-in button at someone already signed in.
+export function Splash() {
+  // On the HUD ground, not the studio's: this is the beat BEFORE the homepage
+  // paints, and a zinc flash under a near-black page reads as a broken load.
   return (
-    <div className="flex min-h-dvh items-center justify-center bg-background">
-      <Loader2 className="size-6 animate-spin text-muted-foreground" />
+    <div
+      className="flex min-h-dvh items-center justify-center bg-[var(--br-neutral)]"
+      style={HUD}
+    >
+      <Loader2 className="size-6 animate-spin text-[var(--br-secondary)]" />
     </div>
   );
 }
@@ -425,10 +499,9 @@ function ProviderKeyScreen({ userEmail }) {
 
   return (
     <div className="relative flex min-h-dvh items-center justify-center overflow-hidden bg-background px-6 py-12">
-      <div aria-hidden className="pointer-events-none absolute -top-40 left-1/2 size-[46rem] -translate-x-1/2 rounded-full bg-primary/15 blur-3xl" />
       <div className="relative w-full max-w-md">
         <div className="flex flex-col items-center text-center">
-          <span className="flex size-11 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-lg shadow-primary/20">
+          <span className="flex size-11 items-center justify-center bg-primary text-primary-foreground">
             <KeyRound size={22} />
           </span>
           <h1 className="mt-6 text-balance text-2xl font-semibold tracking-tight">
@@ -438,7 +511,7 @@ function ProviderKeyScreen({ userEmail }) {
             {t("StorySeam renders images and video with your own account — paste a fal.ai or Atlas Cloud API key to continue. It is stored")} <b>{t("only in this browser")}</b>{t(", never on our servers, and you can add the other provider later in Settings.")}
           </p>
 
-          <div className="mt-6 flex gap-1 rounded-lg border bg-card/60 p-1" role="tablist" aria-label={t("Key provider")}>
+          <div className="mt-6 flex gap-1 border bg-card p-1" role="tablist" aria-label={t("Key provider")}>
             {KEY_PROVIDERS.map((p) => (
               <Button
                 key={p.id}
@@ -446,7 +519,7 @@ function ProviderKeyScreen({ userEmail }) {
                 role="tab"
                 aria-selected={pick.id === p.id}
                 size="sm"
-                variant={pick.id === p.id ? "secondary" : "ghost"}
+                variant={pick.id === p.id ? "default" : "ghost"}
                 onClick={() => { setPick(p); setDraft(""); }}
               >
                 {p.label}
@@ -564,7 +637,7 @@ function HiggsfieldConnectScreen({ userEmail }) {
     setBusy(true);
     setErr(null);
     try {
-      await connectHiggsfield("/");
+      await connectHiggsfield("/world");
       // Web navigates away to Higgsfield; desktop resolves in-place once the
       // child window finishes, and the refreshed account list unblocks the gate.
     } catch (e) {
@@ -576,10 +649,9 @@ function HiggsfieldConnectScreen({ userEmail }) {
 
   return (
     <div className="relative flex min-h-dvh items-center justify-center overflow-hidden bg-background px-6 py-12">
-      <div aria-hidden className="pointer-events-none absolute -top-40 left-1/2 size-[46rem] -translate-x-1/2 rounded-full bg-primary/15 blur-3xl" />
       <div className="relative w-full max-w-md">
         <div className="flex flex-col items-center text-center">
-          <span className="flex size-11 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-lg shadow-primary/20">
+          <span className="flex size-11 items-center justify-center bg-primary text-primary-foreground">
             <Cable size={22} />
           </span>
           <h1 className="mt-6 text-balance text-2xl font-semibold tracking-tight">
@@ -616,11 +688,12 @@ function HiggsfieldConnectScreen({ userEmail }) {
 export default function LoginGate({ children }) {
   const { data: session, isPending } = useSession();
   const location = useLocation();
-  // Stash any invite link the moment we arrive on it — BEFORE the sign-in
-  // redirect or the provider-connect gate can navigate away and lose the id +
+  // Stash any invite link the moment we arrive on it — BEFORE the redirect to
+  // /login or the provider-connect gate can navigate away and lose the id +
   // token. PendingInviteModal replays it once the user is inside the app. Runs
-  // for both a signed-out visitor (homepage renders in place of the invite
-  // route) and a signed-in one still stuck behind the provider gate.
+  // for both a signed-out visitor (about to be bounced to the sign-in page,
+  // which also re-stashes it from `?next=`) and a signed-in one still stuck
+  // behind the provider gate.
   useEffect(() => { captureInviteFromLocation(); }, [location.pathname, location.search]);
   const falKey = useFalKey();
   const atlasKey = useAtlasKey();
@@ -628,7 +701,14 @@ export default function LoginGate({ children }) {
   const hfLinked = useHiggsfieldLinked();
   const skipped = useSetupSkipped();
   if (isPending) return <Splash />;
-  if (!session) return <Homepage />;
+  // Signed out: send them to the sign-in PAGE, carrying the route they asked
+  // for so OAuth can return them to it. `replace` so Back goes where they came
+  // from rather than bouncing through the gate again.
+  if (!session) {
+    const next = location.pathname + location.search;
+    const to = next && next !== "/" ? `/login?next=${encodeURIComponent(next)}` : "/login";
+    return <Navigate to={to} replace />;
+  }
   // Connecting a render provider is now a soft onboarding step, not a wall: a
   // user who taps "I'll do this later" (setSetupSkipped) drops straight into the
   // app to chat, write the script and plan. The nudge to connect one then moves

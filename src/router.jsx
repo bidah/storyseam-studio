@@ -22,6 +22,33 @@ const fallback = (tab) => () => <RouteSkeleton tab={tab} />;
 // Biggest win: /editor's Remotion deps leave the main bundle. ErrorBoundary stays
 // statically set so it also catches lazy-load failures.
 export const router = createBrowserRouter([
+  // PUBLIC StorySeam homepage at `/` — the branded page with the mark, the
+  // feature marquee and the Google button, drawn now in the design.md system.
+  // A SIBLING of RootLayout, not its index route: it must render with no
+  // session and no project scope, and RootLayout's LoginGate is what sends
+  // people to the sign-in page, so nesting it would loop. It IS the sign-in
+  // page — `/` and `/login` are one module, and a visitor who already has a
+  // session is sent straight on to /world.
+  {
+    index: true,
+    lazy: () => import("@/routes/login"),
+    ErrorBoundary: RouteError,
+  },
+  // The same page at its own url, which is where LoginGate points a signed-out
+  // visitor (`/login?next=<the route they asked for>`).
+  {
+    path: "/login",
+    lazy: () => import("@/routes/login"),
+    ErrorBoundary: RouteError,
+  },
+  // PUBLIC model page: the realtime director harness, in the HUD design. Its
+  // own url rather than the site root — it is a product claim about one model,
+  // not the front door to the studio.
+  {
+    path: "/director-harness",
+    lazy: () => import("@/routes/landing"),
+    ErrorBoundary: RouteError,
+  },
   // PUBLIC read-only script view behind a share link. A SIBLING of RootLayout,
   // not a child: the shell's LoginGate (session + provider key) and header must
   // never wrap it — a link viewer has neither. Matching here also keeps it out
@@ -52,7 +79,6 @@ export const router = createBrowserRouter([
     ErrorBoundary: RouteError, // catch-all so chunk-load failures on any route auto-recover
     id: "root",
     children: [
-      { index: true, loader: () => redirect("/world") },
       // /world is just the bible now: the sub-tab bar is gone and its three
       // sub-surfaces became top-level plugins of their own (see below).
       { path: "world", lazy: () => import("@/routes/world/written"), ErrorBoundary: RouteError, HydrateFallback: fallback("world") },
