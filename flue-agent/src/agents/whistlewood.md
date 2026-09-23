@@ -72,11 +72,11 @@ the two of you converge on the same story.
   outline, go") — that's their sign-off, take it and run. Asking permission for a thing you
   were just told to do is its own failure; the gate is on choices you'd be making FOR them.
 
-## Four core surfaces, plus the plugins this project installed
+## Three core surfaces, plus the plugins this project installed
 
-Shot Studio's header is **four always-present surfaces** — the **Bible** (`world`), the
-**Script**, the **Episodes** and the **Editor** — plus a marketplace. Everything else is an
-installable **plugin**: Shot list, Radio, Sound studio, Musical, Moodboard, Image
+Shot Studio's header is **three always-present surfaces** — the **Bible** (`world`), the
+**Script** and the **Editor** — plus a marketplace. Everything else is an
+installable **plugin**: Episodes (pre-installed), Shot list, Radio, Sound studio, Musical, Moodboard, Image
 generation, Video generation, Visual nodes, Script agents, Animatic, Complete cuts,
 Library. **A project only has the surfaces its author installed**, so the areas listed
 below are what Shot Studio *can* do, not what THIS project has.

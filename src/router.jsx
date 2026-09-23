@@ -85,6 +85,14 @@ export const router = createBrowserRouter([
       { path: "library", lazy: () => import("@/routes/library"), ErrorBoundary: RouteError, HydrateFallback: fallback("library") },
       { path: "sounds", lazy: () => import("@/routes/sounds"), ErrorBoundary: RouteError, HydrateFallback: fallback("sounds") },
       { path: "musical", lazy: () => import("@/routes/musical"), ErrorBoundary: RouteError, HydrateFallback: fallback("musical") },
+      // The Director half of the studio. `stage` and `musicalized` are split out
+      // of the main chunk for the same reason `editor` is: they pull a WebRTC
+      // client and a media muxer respectively, and nobody who never opens them
+      // should pay for either.
+      { path: "director", lazy: () => import("@/routes/director"), ErrorBoundary: RouteError, HydrateFallback: fallback("director") },
+      { path: "stage", lazy: () => import("@/routes/stage"), ErrorBoundary: RouteError, HydrateFallback: fallback("stage") },
+      { path: "shotsheet", lazy: () => import("@/routes/shotsheet"), ErrorBoundary: RouteError, HydrateFallback: fallback("shotsheet") },
+      { path: "musicalized", lazy: () => import("@/routes/musicalized"), ErrorBoundary: RouteError, HydrateFallback: fallback("musicalized") },
       // Not a top tab — opened from the header avatar menu.
       { path: "settings", lazy: () => import("@/routes/settings"), ErrorBoundary: RouteError },
       // Team & access management, and the invite-acceptance landing. Both live

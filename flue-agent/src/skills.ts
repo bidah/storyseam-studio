@@ -28,6 +28,13 @@ import destructiveApproval from "./skills/destructive-approval/SKILL.md";
 import pluginGate from "./skills/plugin-gate/SKILL.md";
 import teamAccess from "./skills/team-access/SKILL.md";
 import seriesEpisodes from "./skills/series-episodes/SKILL.md";
+// The Director half of the studio — one recipe, one continuous take.
+import directorSeries from "./skills/director-series/SKILL.md";
+import cueSheet from "./skills/cue-sheet/SKILL.md";
+import modelSheets from "./skills/model-sheets/SKILL.md";
+import directorSitting from "./skills/director-sitting/SKILL.md";
+import shotSheet from "./skills/shot-sheet/SKILL.md";
+import scoreFilm from "./skills/score-film/SKILL.md";
 
 export const skills = [
   generativeUi,
@@ -64,6 +71,16 @@ export const skills = [
   radio,
   radioPacing,
   musical,
+  // The Director: one recipe, generated as one continuous take, instead of a
+  // shot at a time cut together. Ordered the way the work is — write the
+  // Series, write its beats, make the art they reference, play it, draw its
+  // pins, score what came back.
+  directorSeries,
+  cueSheet,
+  modelSheets,
+  directorSitting,
+  shotSheet,
+  scoreFilm,
   trimVideo,
   completeCut,
   editVideo,

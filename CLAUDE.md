@@ -77,18 +77,29 @@ Before this existed the only schema for a capability lived inside the tool, so
 the agent path was strictly typed and the GUI path was unchecked. When you add
 validation to a route, put the contract here rather than inline.
 
-## Plugins — four core surfaces, everything else installed
+**One capability describes itself in code instead**, and the exception is worth
+knowing. `src/lib/series.ts` (plus `shot-sheet.ts` and `music-plan.ts`) is
+vendored into the worker and the agent by **`npm run series:sync`**, because a
+Series' rules are not field shapes — they are relationships between fields that
+only code can state: two pinned frames three seconds apart, a reel's first pin
+clear of its opening chunk, both counted **per reel** after the sheet has been
+cut and rebased. A JSON schema can say a number is a number; it cannot say that
+a 17-pin sheet is refused whole and legal cut in two.
+
+## Plugins — three core surfaces, everything else installed
 
 The header used to carry fourteen tabs, which is the shape of a tool that does
-everything and the feel of one you can't learn. It now carries **four core
-surfaces** — **Bible** (`/world`), **Script**, **Episodes**, **Editor** — plus
+everything and the feel of one you can't learn. It now carries **three core
+surfaces** — **Bible** (`/world`), **Script**, **Editor** — plus
 whatever the project has installed, plus an **Explore plugins** button that
 opens the marketplace at `/plugins`.
 
-Two plugins ship **pre-installed** (`defaultInstalled`): **Images** and
-**Videos**. They are ordinary plugins — in the marketplace, removable — but a
-brand-new project has them on, because a studio with no way to make a picture is
-not a smaller studio, it is a broken one. The header order is `HEADER_ORDER`, a
+Three plugins ship **pre-installed** (`defaultInstalled`): **Images**,
+**Videos** and **Episodes**. They are ordinary plugins — in the marketplace,
+removable — but a brand-new project has them on, because a studio with no way to
+make a picture is not a smaller studio, it is a broken one. Episodes was core
+until it became removable; projects whose plugin list was saved before that were
+migrated to include it, so nobody lost the tab. The header order is `HEADER_ORDER`, a
 single list with core and plugins interleaved, so the row reads as the pipeline
 (Bible → Images → Videos → Script → …) rather than "built-ins, then extras".
 
@@ -132,6 +143,45 @@ new *surface* still means the usual three parts (route, GUI, agent tool).
 
 `Plugin` / `PluginList` are real components in the genui contract, so the offer
 card is drawn through the same `render_ui` channel as every other question.
+
+### The Director — four plugins, one recipe
+
+Everywhere else here you render a shot, then the next shot, then cut them
+together. The **Director** plugins are the other way: one recipe, and a live
+Director that generates the piece **continuously** against it. Ported from the
+story-smash-director repo, where every number in it was learned against a real
+endpoint's refusals.
+
+- **Director** (`/director`) — the Series: an opening prompt, an exact first
+  frame, a cue sheet of timed beats, model sheets, target audio.
+- **Stage** (`/stage`) — plays one live, and keeps the sitting.
+- **Shot sheet** (`/shotsheet`) — draws the whole cue sheet's pins as ONE clip
+  and cuts them back out.
+- **Musicalized** (`/musicalized`) — one continuous cue laid under a sitting.
+
+All four are **not `seedable`** — the first plugins that are not. Seeding exists
+for a project that predates the marketplace; none predates these, so a usage
+counter for them would be an integer that is always zero bought with a document
+read on every `/api/status`.
+
+**The endpoint refuses a WHOLE SESSION, not a beat.** A cue sheet that breaks a
+ceiling dies at `configure`, before a frame exists, and bills its sixty-second
+minimum anyway — naming no beat. That is why `src/lib/series.ts` exists and why
+it is vendored: the form checks the ceilings while a sheet is being typed, the
+Worker checks them on the way in, and the agent checks them before it spends a
+sitting. Every route answers with an `issues` map and every surface shows it.
+
+Three things are the BROWSER's, and each is in `scripts/guards/baselines/
+agent-parity.txt` with its reason: the WebRTC session itself, cutting frames off
+a decoded take, and muxing the scored film (the picture's packets are copied
+rather than re-encoded, so a scored sitting is bit-for-bit the one that was
+kept).
+
+**What connects to what** — this is a plugin of *this* studio, not a second app
+sharing its header. The Shot list derives the cue sheet (`derive_cue_sheet`);
+the Bible, Images and Library supply model sheets; Sound Studio and Radio supply
+the target audio; a kept sitting is an ordinary project file the Editor and
+Cuts can use.
 
 ## Feature parity — GUI AND agent, always
 

@@ -16,6 +16,13 @@
 /api/script/events                # SSE subscription
 /api/timeline/events              # SSE subscription
 /api/projects                     # project switching is a client concern; the agent is scoped to one
+# The three Director paths that are browser work by nature, not by omission. An
+# agent has no peer connection, no decoded video and no muxer — and each of these
+# is the browser doing the one thing it is uniquely able to do.
+/api/stage/fal/proxy              # the WebRTC session itself; only a browser can hold one
+/api/shotsheet/pins               # frames cut off the decoded take on screen; the agent pins via /api/director/series/*/pin
+/api/musicalized/scored           # the mix, muxed in the browser so the picture is copied rather than re-encoded
+
 /api/projects/*
 /api/projects/*/activate
 /api/nav/events                   # SSE subscription (agent → UI navigate commands)

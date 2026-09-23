@@ -3,13 +3,13 @@
 //
 // Shot Studio grew a header with fourteen tabs, which is the shape of a tool
 // that does everything and the feel of a tool you can't learn. So the shell is
-// now FOUR always-present surfaces — the Bible, the Script, the Episodes and
-// the Editor — plus a marketplace ("Explore plugins") where every other
+// now THREE always-present surfaces — the Bible, the Script and the Editor —
+// plus a marketplace ("Explore plugins") where every other
 // capability is installed on purpose. A project that is a radio play never
 // grows a Musical tab; a project that never renders never grows a Cuts tab.
 //
-// Two plugins ship PRE-INSTALLED (`defaultInstalled`): Images and Videos. They
-// are ordinary plugins — they sit in the marketplace and they can be removed —
+// Three plugins ship PRE-INSTALLED (`defaultInstalled`): Images, Videos and
+// Episodes (which was core until it became removable). They are ordinary plugins — they sit in the marketplace and they can be removed —
 // but a brand-new project has them on, because a studio with no way to make a
 // picture is not a smaller studio, it is a broken one.
 //
@@ -81,7 +81,7 @@ export interface PluginSpec extends Surface {
   seedable: boolean;
 }
 
-// ── The four that are always there ───────────────────────────────────────────
+// ── The three that are always there ───────────────────────────────────────────
 // Not installable, not removable: without them there is no app. The order is
 // the header order.
 export const CORE: Surface[] = [
@@ -96,12 +96,6 @@ export const CORE: Surface[] = [
     label: "Script",
     name: "Script",
     tagline: "Drafts, revisions and the screenplay itself.",
-  },
-  {
-    id: "episode",
-    label: "Episodes",
-    name: "Episodes",
-    tagline: "The packed episode: shot bundles, prompts and renders.",
   },
   {
     id: "editor",
@@ -342,6 +336,123 @@ export const PLUGINS: PluginSpec[] = [
     seedable: true,
   },
   {
+    id: "director",
+    label: "Director",
+    name: "Director Series",
+    category: "Story",
+    tagline: "A cue sheet the Director plans the whole arc from, before it draws a frame.",
+    blurb:
+      "The other way to make a film here. Instead of rendering shots one at a time and cutting them together, you write ONE recipe — an opening prompt, a first frame, and a cue sheet of timed beats — and a live Director generates the piece continuously against it. A beat is a second on the film's own clock plus what happens there: a prompt that directs from then on, the exact frame to land on, or the audio to shoot against. The whole sheet travels with the session, so the Director plans the arc rather than drifting into it.",
+    highlights: [
+      "A cue sheet derived from your shot list, or written by hand",
+      "Beats that pin an exact frame, a prompt, or a bed of audio",
+      "Model sheets from the Bible and Library keep a design still",
+      "Every ceiling the endpoint enforces, checked while you type",
+    ],
+    triggers: [
+      "director series", "cue sheet", "cuesheet", "director setup", "beats",
+      "recipe", "direct the film", "one continuous take", "live director",
+      "pin a frame", "end image",
+    ],
+    tools: [
+      "get_director", "open_series", "create_series", "update_series", "save_cue_sheet",
+      "derive_cue_sheet", "attach_model_sheet", "set_target_audio", "pin_beat_frame",
+    ],
+    skills: ["director-series", "cue-sheet", "model-sheets"],
+    // NOT seedable, and the four Director surfaces are the first plugins that
+    // are not. Seeding exists for a project that predates the marketplace and
+    // would otherwise open with its own work missing from the header. No
+    // project predates THESE: a Series cannot exist before the plugin that
+    // writes one does. A usage counter for them would be an integer that is
+    // always zero, bought with a document read on every /api/status.
+    seedable: false,
+  },
+  {
+    id: "stage",
+    label: "Stage",
+    name: "The Stage",
+    category: "Visuals",
+    tagline: "Play a Series live, and keep the sitting it produces.",
+    blurb:
+      "Where a Series becomes a film. Press play and a Director session opens: one continuous generation, shaped beat by beat by the cue sheet, arriving as it is made. Two sittings of the same Series are different films — the endpoint is not deterministic — so a sitting is recorded AS IT PLAYS or it cannot be recovered. Kept sittings land in the project like any other render, ready for the Editor, the Cuts tab, or a score.",
+    highlights: [
+      "One live session at a time — it bills from its first second",
+      "A preflight that catches a refusal before you pay for it",
+      "Sittings recorded as they play and kept in the project",
+      "Reels cut automatically when a sheet outgrows one script",
+    ],
+    triggers: [
+      "the stage", "play the series", "run a sitting", "sitting", "live session",
+      "generate the film", "watch it", "director session",
+    ],
+    tools: ["get_stage", "preflight_sitting", "list_sittings", "forget_sitting"],
+    skills: ["director-sitting"],
+    // NOT seedable, and the four Director surfaces are the first plugins that
+    // are not. Seeding exists for a project that predates the marketplace and
+    // would otherwise open with its own work missing from the header. No
+    // project predates THESE: a Series cannot exist before the plugin that
+    // writes one does. A usage counter for them would be an integer that is
+    // always zero, bought with a document read on every /api/status.
+    seedable: false,
+  },
+  {
+    id: "shotsheet",
+    label: "Shot sheet",
+    name: "Shot sheet",
+    category: "Visuals",
+    tagline: "Draw every pinned frame as ONE short film, then cut them back out.",
+    blurb:
+      "A pinned frame is the exact picture the Director continues from, so the cheapest way for a pin to hold a style is for a VIDEO model to have drawn it — frames made in an image model are frames the Director has to translate. This renders the whole cue sheet's pins as one clip: one finished frame per pin, each held under a second, hard cut to the next. One pass, so one lighting, one palette and one design across every pin. Then it cuts the clip back into frames and pins them to their beats.",
+    highlights: [
+      "Every pin drawn in one pass, in one hand",
+      "Your model sheets ride along as references",
+      "Frames cut back out and pinned to the right beat",
+      "The house clause is standing — the sheet's lines are not",
+    ],
+    triggers: [
+      "shot sheet", "shotsheet", "draw the pins", "pin the frames",
+      "generate the end images", "frames for the cue sheet", "contact sheet",
+    ],
+    tools: ["get_shot_sheet", "preview_shot_sheet", "render_shot_sheet"],
+    skills: ["shot-sheet"],
+    // NOT seedable, and the four Director surfaces are the first plugins that
+    // are not. Seeding exists for a project that predates the marketplace and
+    // would otherwise open with its own work missing from the header. No
+    // project predates THESE: a Series cannot exist before the plugin that
+    // writes one does. A usage counter for them would be an integer that is
+    // always zero, bought with a document read on every /api/status.
+    seedable: false,
+  },
+  {
+    id: "episode",
+    label: "Episodes",
+    name: "Episodes",
+    category: "Post",
+    tagline: "The packed episode: shot bundles, prompts and renders.",
+    blurb:
+      "Where the shot list turns into renders. Every shot is packed into a bundle with its prompt, its character and location references and its voice refs; you review and sign each bundle, render it, and pick the take that goes into the cut. A project that never renders shot by shot — a radio play, a Director piece — can remove it; nothing it wrote is deleted.",
+    highlights: [
+      "One bundle per shot: prompt, references and voice refs together",
+      "Auto-assign references from the Bible's roster",
+      "Sign a bundle before it renders",
+      "Pick the take that goes into the cut",
+    ],
+    triggers: [
+      "episode tab", "shot bundles", "bundle", "sign the bundle", "assign references",
+      "auto-assign refs", "render the shots", "episode prompt",
+    ],
+    // Only the writes nothing but this tab performs. get_episode, select_reference,
+    // select_video, set_episode_style and auto_assign_refs stay ungated: the shot
+    // list, moodboard and trim flows lean on them too, and gating them would break
+    // those whenever Episodes is off.
+    tools: ["rebuild_episode_plan", "save_episode_prompt", "sign_bundle", "link_reference", "select_audio_ref", "attach_episode_video"],
+    skills: ["assign-refs"],
+    seedable: true,
+    // It was core until it became removable, so every project has always had it:
+    // pre-installing keeps a new project's header the same as it always was.
+    defaultInstalled: true,
+  },
+  {
     id: "cuts",
     label: "Complete cuts",
     name: "Complete cuts",
@@ -362,6 +473,34 @@ export const PLUGINS: PluginSpec[] = [
     tools: ["get_cuts", "stitch_cuts", "score_cut", "load_cut_into_editor"],
     skills: ["complete-cut"],
     seedable: true,
+  },
+  {
+    id: "musicalized",
+    label: "Musicalized",
+    name: "Musicalized version",
+    category: "Post",
+    tagline: "One continuous cue written to the film you actually got, laid under it.",
+    blurb:
+      "Scoring a kept sitting. The cue is composed in chunks that turn where the PICTURE turns — measured off the finished film, never off the cue sheet, because the Director's chunks run long and a plan built from the beats is early by seconds. The film's own audio is untouched: the cue fades in beneath it at a low bed level, drops further under the loud windows measured off this take rather than under windows somebody typed, and the sum is limited. The picture's packets are copied rather than re-encoded, so the film you scored is the film you kept.",
+    highlights: [
+      "A composition plan measured from the film, not the sheet",
+      "One continuous cue as long as the piece",
+      "Ducked under dialogue the tool actually found",
+      "Picture copied, never re-encoded",
+    ],
+    triggers: [
+      "musicalized", "score the film", "score the sitting", "music under it",
+      "lay a score", "compose a cue", "scored version",
+    ],
+    tools: ["get_musicalized", "plan_score", "render_cue"],
+    skills: ["score-film"],
+    // NOT seedable, and the four Director surfaces are the first plugins that
+    // are not. Seeding exists for a project that predates the marketplace and
+    // would otherwise open with its own work missing from the header. No
+    // project predates THESE: a Series cannot exist before the plugin that
+    // writes one does. A usage counter for them would be an integer that is
+    // always zero, bought with a document read on every /api/status.
+    seedable: false,
   },
   {
     id: "library",
@@ -447,8 +586,8 @@ export function normalizeEnabled(ids: unknown): string[] {
  */
 export const HEADER_ORDER: string[] = [
   "world", "images", "videos", "script", "moodboard", "agents", "shotlist",
-  "nodes", "animatic", "radio", "sounds", "musical", "episode", "cuts",
-  "editor", "library",
+  "nodes", "animatic", "radio", "sounds", "musical", "director", "stage",
+  "shotsheet", "episode", "cuts", "musicalized", "editor", "library",
 ];
 
 export function headerTabs(enabled: string[]): Surface[] {
@@ -522,7 +661,7 @@ export function pluginForSkill(skill: string): PluginSpec | null {
 // the header because the project grew some content later.
 //
 // A genuinely blank project seeds to `[]`, which is the point: a new author
-// meets four tabs and a marketplace.
+// meets three tabs, the pre-installed plugins and a marketplace.
 /**
  * The usage counters `GET /api/status` reports, one per seedable plugin id.
  * Built by worker/src/routes/status.js; nothing else may write it.

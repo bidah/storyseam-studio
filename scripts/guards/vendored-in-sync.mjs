@@ -9,6 +9,8 @@
 //   src/lib/suggestions.ts  → mobile-app + worker copies   (npm --prefix mobile-app run sync:suggestions)
 //   src/lib/routeTable.js   → desktop/main/routeTable.js   (npm --prefix desktop run sync)
 //   src/lib/plugins.ts      → worker + flue-agent copies    (npm run plugins:sync)
+//   src/lib/series.ts       → worker + flue-agent copies    (npm run series:sync)
+//   src/lib/shot-sheet.ts   → worker + flue-agent copies    (npm run series:sync)
 //   shared/schemas/*.json   → worker + flue-agent copies    (npm run schemas:sync)
 //   src/lib/moodboard-document.js → worker copy             (npm run moodboard:sync)
 //
@@ -46,6 +48,16 @@ const PAIRS = [
   // copy is an agent offering to install something that doesn't exist.
   ["src/lib/plugins.ts", "worker/src/lib/plugins.ts", "npm run plugins:sync"],
   ["src/lib/plugins.ts", "flue-agent/src/lib/plugins.ts", "npm run plugins:sync"],
+  // The Series model. Every number in it is a ceiling the Director endpoint
+  // enforces by refusing the whole session at `configure` — so the form, the
+  // Worker and the agent all check the same list. A drifted copy is a form that
+  // promises a cue sheet the endpoint will refuse, after the frames were drawn.
+  ["src/lib/series.ts", "worker/src/lib/series.ts", "npm run series:sync"],
+  ["src/lib/series.ts", "flue-agent/src/lib/series.ts", "npm run series:sync"],
+  ["src/lib/shot-sheet.ts", "worker/src/lib/shot-sheet.ts", "npm run series:sync"],
+  ["src/lib/shot-sheet.ts", "flue-agent/src/lib/shot-sheet.ts", "npm run series:sync"],
+  ["src/lib/music-plan.ts", "worker/src/lib/music-plan.ts", "npm run series:sync"],
+  ["src/lib/music-plan.ts", "flue-agent/src/lib/music-plan.ts", "npm run series:sync"],
   // The moodboard op reducer. Applied optimistically on the client AND
   // authoritatively inside the Worker's updateDoc CAS — a drifted copy means
   // cards that silently snap back to a different position after a reload.

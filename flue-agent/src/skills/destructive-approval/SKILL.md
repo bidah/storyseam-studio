@@ -2,8 +2,8 @@
 name: destructive-approval
 description: >-
   The two-phase confirm flow for the destructive tools — `save_shotlist` in
-  shrinking "replace" mode, `stitch_cuts`, `restore_version`,
-  `delete_sound_version`. Load this the moment a tool result comes back with
+  shrinking "replace" mode, `save_cue_sheet` in shrinking "replace" mode,
+  `stitch_cuts`, `restore_version`, `delete_sound_version`. Load this the moment a tool result comes back with
   `approved: false` and an `approvalToken`. Hard rules that hold even without
   reading the body: that result means NOTHING HAPPENED — never report it as
   done; draw ONE `render_ui` confirm card built only from the `summary` and
@@ -32,6 +32,7 @@ in prose.
 | Tool | When |
 | --- | --- |
 | `save_shotlist` | ONLY a `mode: "replace"` that would leave FEWER shots than the list already has |
+| `save_cue_sheet` | ONLY a `mode: "replace"` that would leave FEWER beats than the sheet already has |
 | `stitch_cuts` | always |
 | `restore_version` | always |
 | `delete_sound_version` | always |
@@ -81,7 +82,8 @@ Then **stop**. Do not call another tool. Do not guess which way they will go.
 **4. They answer, and the turn continues.** If their message confirms, call the
 SAME tool again with `approval_token: "<the token>"`. The arguments you sent
 first time are replayed from the approval, so you do not repeat them — for
-`save_shotlist` that means sending the token and no `shots` at all.
+`save_shotlist` that means sending the token and no `shots` at all; for
+`save_cue_sheet`, the token and no `beats`.
 
 ## The rules that actually matter
 

@@ -238,6 +238,9 @@ export async function buildStatus(env, pid) {
     radio: voiced,
     sounds: tracks.length,
     musical: Array.isArray(musical?.segments) ? musical.segments.length : 0,
+    // A bundle is what the Episodes tab is made of; a project that never packed
+    // one never used it.
+    episode: bundles.length,
     cuts: cutHistory.length,
     // A PROXY, and deliberately so: this counts generations that were promoted
     // into the library (`savedRel`), not the library's real contents — uploads

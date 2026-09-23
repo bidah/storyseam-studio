@@ -34,7 +34,7 @@ export const setPlugin = (api: Api) =>
   defineTool({
     name: "set_plugin",
     description:
-      "Install a plugin into this project's studio, or remove one. ONLY call this after the AUTHOR has said yes to this specific plugin — a `PluginList` card they tapped, or a plain \"yes, install it\" in chat. Never install one on your own initiative to unblock yourself: when a request needs a plugin that is not installed, you say so and offer it (see the plugin-gate skill), you do not help yourself to it. Removing is even more clearly theirs — only ever on an explicit ask; it hides the tab and DELETES NOTHING (the shot list, takes and cuts stay in the database and come back if it is reinstalled). Valid `pluginId`s are exactly: agents, moodboard, shotlist, images, videos, nodes, animatic, radio, sounds, musical, cuts, library — the four core surfaces (world/Bible, script, episode, editor) are always present and cannot be installed or removed. Returns the fresh { installed, available } so you can confirm what changed in one line — then continue the work the author originally asked for, in the same turn.",
+      "Install a plugin into this project's studio, or remove one. ONLY call this after the AUTHOR has said yes to this specific plugin — a `PluginList` card they tapped, or a plain \"yes, install it\" in chat. Never install one on your own initiative to unblock yourself: when a request needs a plugin that is not installed, you say so and offer it (see the plugin-gate skill), you do not help yourself to it. Removing is even more clearly theirs — only ever on an explicit ask; it hides the tab and DELETES NOTHING (the shot list, takes and cuts stay in the database and come back if it is reinstalled). Valid `pluginId`s are exactly: " + PLUGIN_IDS.join(", ") + " — the three core surfaces (world/Bible, script, editor) are always present and cannot be installed or removed. Returns the fresh { installed, available } so you can confirm what changed in one line — then continue the work the author originally asked for, in the same turn.",
     input: v.object({
       pluginId: d(
         v.pipe(v.string(), v.minLength(1)),
@@ -59,7 +59,7 @@ export const setPlugin = (api: Api) =>
         return {
           output: {
             ok: false,
-            error: `"${pluginId}" is not a plugin. Valid ids: ${PLUGIN_IDS.join(", ")}. The core surfaces (world, script, episode, editor) are always present and are not installable.`,
+            error: `"${pluginId}" is not a plugin. Valid ids: ${PLUGIN_IDS.join(", ")}. The core surfaces (world, script, editor) are always present and are not installable.`,
           } as Json,
         };
       }

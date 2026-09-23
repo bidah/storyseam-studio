@@ -74,6 +74,10 @@ export function kindForPrefix(prefix) {
     "storyboard-media": "storyboard",
     "visual-media": "visual",
     "moodboard-media": "moodboard",
+    // Director bytes: kept sittings, shot-sheet takes, the cues written under
+    // them, and the scored films. One kind, because they are all "what a Series
+    // produced" and they are all browsed from the same three tabs.
+    "director-media": "director",
   };
   return map[prefix] || null;
 }

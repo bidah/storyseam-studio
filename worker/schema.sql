@@ -86,6 +86,23 @@ CREATE INDEX IF NOT EXISTS "verification_identifier_idx" on "verification" ("ide
 -- writes, a `version` column for optimistic concurrency (replacing the etag
 -- retry dance), and Time Travel — 30 days of automatic point-in-time recovery
 -- for the whole database. Media blobs stay in R2, where they belong.
+--
+-- DOC NAMES ARE A KEY SPACE, and one of them is namespaced. Most surfaces own a
+-- single row (`world`, `shotlist`, `sounds`, `radio`, `musical`, `plugins`, …).
+-- The Director owns five:
+--
+--   director              the index: which Series this project has, which is open
+--   director:<seriesId>   ONE Series — its cue sheet, model sheets and target audio
+--   director-sittings     every kept sitting, and the scored version of each
+--   director-cues         cue renders in flight: the body each was sent with
+--   director-sheets       every Shot Sheet render, in flight and finished
+--
+-- A Series gets a row of its own rather than an entry in a list because of what
+-- editing one is like: a cue sheet is up to sixty-four beats, moved one at a
+-- time, dozens of times, while a second author does the same to another Series.
+-- One shared document makes every one of those writes a compare-and-swap retry
+-- against work that has nothing to do with it, and makes the history dialog say
+-- "the Director changed" rather than "this Series changed".
 CREATE TABLE IF NOT EXISTS docs (
   project_id  TEXT NOT NULL,
   name        TEXT NOT NULL,

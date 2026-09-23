@@ -73,11 +73,11 @@ Skills follow their plugin: `shot-list` / `shot-list-live-action` /
 `generate-storyboard` is `animatic`; `moodboard`, `musical`, `script-agents`,
 `complete-cut` and `assign-refs` follow the plugin of the same subject.
 
-**The four core surfaces are always there.** `world` (Bible), `script`,
-`episode`, `editor` — plus Settings, Members and the marketplace itself. Never
+**The three core surfaces are always there.** `world` (Bible), `script`,
+`editor` — plus Settings, Members and the marketplace itself. Never
 offer to install one, and never tell the author one is missing.
 
-**`images` and `videos` ship PRE-INSTALLED**, so on almost every project they are
+**`images`, `videos` and `episode` ship PRE-INSTALLED**, so on almost every project they are
 already on and there is nothing to offer. They are still ordinary plugins and an
 author can remove them — so read `plugins.disabled` rather than assuming. What
 you must not do is offer to install one that is already there.

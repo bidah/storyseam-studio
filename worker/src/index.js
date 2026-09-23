@@ -34,6 +34,10 @@ import { registerScript } from "./routes/script.js";
 import { registerShare } from "./routes/share.js";
 import { registerSounds } from "./routes/sounds.js";
 import { registerMusical } from "./routes/musical.js";
+import { registerDirector } from "./routes/director.js";
+import { registerStage } from "./routes/stage.js";
+import { registerShotSheet } from "./routes/shot-sheet.js";
+import { registerMusicalized } from "./routes/musicalized.js";
 import { registerEpisode } from "./routes/episode.js";
 import { registerTimeline } from "./routes/timeline.js";
 import { registerSecrets } from "./routes/auth.js";
@@ -542,7 +546,7 @@ function mediaRoute(prefix) {
     });
   };
 }
-for (const p of ["media", "gen", "sound-media", "final", "refs", "multishot-media", "stills", "storyboard-media", "visual-media", "moodboard-media"]) {
+for (const p of ["media", "gen", "sound-media", "final", "refs", "multishot-media", "stills", "storyboard-media", "visual-media", "moodboard-media", "director-media"]) {
   app.get(`/${p}/*`, mediaRoute(p));
 }
 // The shared asset library (voice refs, browsable images) — per project under
@@ -684,6 +688,12 @@ registerScript(app);
 registerShare(app);
 registerSounds(app);
 registerMusical(app);
+// The Director half of the studio: the cue sheet, the live sitting it plays as,
+// the sheet its pins are drawn on, and the score laid under what it kept.
+registerDirector(app);
+registerStage(app);
+registerShotSheet(app);
+registerMusicalized(app);
 registerEpisode(app);
 registerTimeline(app);
 registerSecrets(app);

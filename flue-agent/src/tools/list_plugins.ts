@@ -1,7 +1,7 @@
 // What this project's studio actually HAS — the installed plugins, and the ones
 // still on the shelf.
 //
-// The header is four core surfaces (Bible, Script, Episodes, Editor) plus
+// The header is three core surfaces (Bible, Script, Editor) plus
 // whatever the author installed. Everything else — the shot list, Radio, the
 // sound studio, the cuts — is optional, which means a tool call can now land on
 // a surface that does not exist for this project: the document writes, the SSE
