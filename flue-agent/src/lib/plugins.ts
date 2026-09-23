@@ -507,6 +507,30 @@ export const PLUGINS: PluginSpec[] = [
     seedable: false,
   },
   {
+    id: "upscale",
+    label: "Upscale",
+    name: "Upscale",
+    category: "Post",
+    tagline: "Take a finished sitting or Deliver render to 1080p, 1440p or 4K.",
+    blurb:
+      "The last step before a film leaves the studio. The Stage streams at 720p and the Editor renders its 1280×720 timeline, so everything this studio finishes is small by construction. Pick a kept sitting, its scored version or a Deliver render, choose an upscaler and a target resolution, and the pass runs on fal against your own key. The upscaled file lands beside the original as a new file — the source is never touched, so nothing that already uses it changes.",
+    highlights: [
+      "Stage sittings and Editor renders in one list",
+      "SeedVR2, ByteDance and Topaz upscalers",
+      "720p up to 4K, billed to your own fal key",
+      "The original is never overwritten",
+    ],
+    triggers: [
+      "upscale", "upscaling", "higher resolution", "4k", "1080p", "enhance the video",
+      "sharpen the film", "increase resolution",
+    ],
+    tools: ["list_upscales", "upscale_video", "get_upscale"],
+    skills: ["upscale-video"],
+    // Nothing predates it — an upscale job cannot exist before the plugin that
+    // starts one does.
+    seedable: false,
+  },
+  {
     id: "library",
     label: "Library",
     name: "Library",
@@ -591,7 +615,7 @@ export function normalizeEnabled(ids: unknown): string[] {
 export const HEADER_ORDER: string[] = [
   "world", "images", "videos", "script", "moodboard", "agents", "shotlist",
   "nodes", "animatic", "radio", "sounds", "musical", "director", "stage",
-  "shotsheet", "episode", "cuts", "musicalized", "editor", "library",
+  "shotsheet", "episode", "cuts", "musicalized", "editor", "upscale", "library",
 ];
 
 export function headerTabs(enabled: string[]): Surface[] {

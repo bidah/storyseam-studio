@@ -33,6 +33,7 @@ import directorSeries from "./skills/director-series/SKILL.md";
 import cueSheet from "./skills/cue-sheet/SKILL.md";
 import modelSheets from "./skills/model-sheets/SKILL.md";
 import directorSitting from "./skills/director-sitting/SKILL.md";
+import upscaleVideo from "./skills/upscale-video/SKILL.md";
 import shotSheet from "./skills/shot-sheet/SKILL.md";
 import scoreFilm from "./skills/score-film/SKILL.md";
 
@@ -81,6 +82,8 @@ export const skills = [
   directorSitting,
   shotSheet,
   scoreFilm,
+  // Upscale: the last step before a finished film leaves the studio.
+  upscaleVideo,
   trimVideo,
   completeCut,
   editVideo,

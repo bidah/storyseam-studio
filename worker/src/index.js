@@ -36,6 +36,7 @@ import { registerSounds } from "./routes/sounds.js";
 import { registerMusical } from "./routes/musical.js";
 import { registerDirector } from "./routes/director.js";
 import { registerStage } from "./routes/stage.js";
+import { registerUpscale } from "./routes/upscale.js";
 import { registerShotSheet } from "./routes/shot-sheet.js";
 import { registerMusicalized } from "./routes/musicalized.js";
 import { registerEpisode } from "./routes/episode.js";
@@ -694,6 +695,8 @@ registerDirector(app);
 registerStage(app);
 registerShotSheet(app);
 registerMusicalized(app);
+// Upscale: a finished sitting or Deliver render, taken to a higher resolution on fal.
+registerUpscale(app);
 registerEpisode(app);
 registerTimeline(app);
 registerSecrets(app);

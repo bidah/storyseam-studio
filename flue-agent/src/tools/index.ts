@@ -32,6 +32,7 @@ import {
   pinBeatFrame, saveCueSheet, setTargetAudio, updateSeries,
 } from "./director.js";
 import { forgetSitting, getStage, listSittings, preflightSitting } from "./stage.js";
+import { getUpscale, listUpscales, upscaleVideo } from "./upscale.js";
 import { getShotSheet, previewShotSheet, renderShotSheet } from "./shot_sheet.js";
 import { getMusicalized, planScore, renderCue } from "./musicalized.js";
 // Moodboard (the reference wall)
@@ -243,6 +244,10 @@ export function createTools(api: Api): ToolDefinition[] {
     getMusicalized(api),
     planScore(api),
     renderCue(api),
+    // Upscale
+    listUpscales(api),
+    upscaleVideo(api),
+    getUpscale(api),
     // Teams / org access
     listOrgs(api),
     listMembers(api),
@@ -304,6 +309,9 @@ export function createReadTools(api: Api): ToolDefinition[] {
     previewShotSheet(api),
     getMusicalized(api),
     planScore(api),
+    // Upscale — what can be upscaled and how the jobs are going
+    listUpscales(api),
+    getUpscale(api),
     // Teams / org access (read)
     listOrgs(api),
     listMembers(api),

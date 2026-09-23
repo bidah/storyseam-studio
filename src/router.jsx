@@ -119,6 +119,7 @@ export const router = createBrowserRouter([
       { path: "stage", lazy: () => import("@/routes/stage"), ErrorBoundary: RouteError, HydrateFallback: fallback("stage") },
       { path: "shotsheet", lazy: () => import("@/routes/shotsheet"), ErrorBoundary: RouteError, HydrateFallback: fallback("shotsheet") },
       { path: "musicalized", lazy: () => import("@/routes/musicalized"), ErrorBoundary: RouteError, HydrateFallback: fallback("musicalized") },
+      { path: "upscale", lazy: () => import("@/routes/upscale"), ErrorBoundary: RouteError, HydrateFallback: fallback("upscale") },
       // Not a top tab — opened from the header avatar menu.
       { path: "settings", lazy: () => import("@/routes/settings"), ErrorBoundary: RouteError },
       // Team & access management, and the invite-acceptance landing. Both live
