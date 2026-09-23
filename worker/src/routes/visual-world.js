@@ -27,6 +27,14 @@ import {
   videoGenerateParams,
 } from "../lib/video-defaults.js";
 import {
+  normalizeCatalog,
+  normalizeModelSpec,
+  coerceParams,
+  legacyVideoParams,
+  batchCount,
+  decorateByokVideo,
+} from "../lib/video-models.js";
+import {
   getHiggsfieldToken,
   forceRefreshHiggsfieldToken,
   mcpToolCall,
@@ -237,6 +245,27 @@ function imageResolutionParams(catalog, model, resolution) {
   return entry?.resolutions?.includes(resolution) ? { resolution } : {};
 }
 
+// The /videos composer's remembered choice: a model id from the LIVE provider
+// catalog plus that model's own params bag ({ duration: 8, resolution: "2K" }).
+//
+// DELIBERATELY a separate key space from `settings.videoModel` /
+// `settings.videoResolution`. Those two are the SEEDANCE RENDER DEFAULTS the
+// render skills and the episode packer read through
+// `worker/src/lib/video-defaults.js` — a (model, mode, resolution) triple from a
+// curated list of three, written around Seedance's reference roles. Writing a
+// catalog id like `kling3_0` or `veo3` into them would repoint the whole render
+// pipeline at a model it is not written for (and whose params it doesn't send).
+// This is the exact trap to avoid: the composer's model choice goes HERE.
+const emptyVideoComposer = () => ({ model: "", aspectRatio: "16:9", params: {} });
+function normalizeVideoComposer(vc) {
+  const o = vc && typeof vc === "object" && !Array.isArray(vc) ? vc : {};
+  return {
+    model: str(o.model),
+    aspectRatio: str(o.aspectRatio) || "16:9",
+    params: normalizeParamsBag(o.params),
+  };
+}
+
 function emptyVisualWorld(productionType) {
   return {
     generatedAt: null,
@@ -245,6 +274,7 @@ function emptyVisualWorld(productionType) {
       model: "", aspectRatio: "16:9", resolution: DEFAULT_IMAGE_RESOLUTION,
       count: 1, cinematic: false, presetId: defaultPresetId(productionType),
       videoModel: DEFAULT_VIDEO_MODEL, videoResolution: DEFAULT_VIDEO_RESOLUTION,
+      videoComposer: emptyVideoComposer(),
     },
     prompts: structuredClone(SEED_PROMPTS),
     sheetPrompts: { ...SEED_SHEET_PROMPTS },
@@ -328,6 +358,12 @@ function normalizeGeneration(g, i = 0) {
     // "1k" | "2k" | "4k" when the job was submitted with an explicit output
     // resolution; "" for older records and models without the param.
     resolution: IMAGE_RESOLUTIONS.includes(o.resolution) ? o.resolution : "",
+    // The VALIDATED per-model params this job was submitted with (video:
+    // `{ duration, resolution, mode, generate_audio, … }` in whatever names the
+    // chosen model uses). Stored so the detail panel can explain a take without
+    // re-resolving a catalog that may have moved on — and so an older record,
+    // which has none, simply shows nothing.
+    params: normalizeParamsBag(o.params),
     presetId: str(o.presetId),
     // "" (plain image) | "character" | "location" | "prop" — this generation was
     // made as a design sheet (the sheet prompt was layered into the assembled
@@ -366,6 +402,36 @@ const FLOW_CONNECT_RULES = {
   "text-output": ["text-input"],
 };
 const clampDuration = (n) => Math.min(15, Math.max(4, Math.round(Number(n) || 5)));
+
+// The aspect ratio to submit for a model: its own declared list wins. `""` means
+// the model declares NO aspect ratios (Hailuo, Grok 1.5) and the field must be
+// omitted entirely; a wanted ratio the model doesn't offer (21:9 on Kling) snaps
+// to 16:9. A null spec — a model we somehow have no entry for — keeps the old
+// pass-through behaviour.
+function resolveAspectRatio(spec, wanted) {
+  const want = str(wanted) || "16:9";
+  const list = Array.isArray(spec?.aspectRatios) ? spec.aspectRatios : null;
+  if (!list) return want;
+  if (!list.length) return "";
+  return list.includes(want) ? want : list.includes("16:9") ? "16:9" : list[0];
+}
+
+// The validated params bag as STORED on a generation record / the composer
+// settings: scalars only, capped. It is provenance the detail panel reads back
+// ("1080p · std · 8s"), not a store — anything richer than a scalar is a sign
+// something is being smuggled through, so it's dropped.
+const PARAMS_KEY_CAP = 24;
+function normalizeParamsBag(p) {
+  if (!p || typeof p !== "object" || Array.isArray(p)) return {};
+  const out = {};
+  for (const [k, v] of Object.entries(p)) {
+    if (Object.keys(out).length >= PARAMS_KEY_CAP) break;
+    if (!k || k.length > 64) continue;
+    if (typeof v === "boolean" || (typeof v === "number" && Number.isFinite(v))) out[k] = v;
+    else if (typeof v === "string" && v.length <= 200) out[k] = v;
+  }
+  return out;
+}
 
 function normalizeNodeSettings(type, s) {
   const o = s || {};
@@ -477,6 +543,9 @@ function normalizeVisualWorld(raw, productionType) {
       // Clamps to a renderable (model, resolution) pair — a doc written before
       // these existed reads back as Seedance 2.0 / 720p.
       ...normalizeVideoDefaults(w.settings.videoModel, w.settings.videoResolution),
+      // The video COMPOSER's own model + params (see emptyVideoComposer for why
+      // this is not the same thing as videoModel/videoResolution above).
+      videoComposer: normalizeVideoComposer(w.settings.videoComposer),
     };
   }
   base.prompts = Array.isArray(w.prompts) && w.prompts.length
@@ -704,7 +773,10 @@ async function importRef(env, userId, token, url) {
 // catalog means we'd hand generate_image a dead id.
 const NANO_RE = /nano[\s_-]*banana/i;
 const PRO_RE = /\bpro\b/i;
-const MODELS_CACHE_KEY = "visual:image-models:v3";
+// v4: entries now also carry the normalized `params` / `aspectRatios` / `roles`
+// / `batch` from video-models.js. Bumped so a deploy doesn't serve ten minutes
+// of the older, stripped payload out of KV.
+const MODELS_CACHE_KEY = "visual:image-models:v4";
 async function resolveModels(env, userId, token) {
   try {
     const cached = await env.AUTH_KV.get(MODELS_CACHE_KEY, "json");
@@ -716,16 +788,31 @@ async function resolveModels(env, userId, token) {
     ? data
     : data?.models || data?.items || data?.image_models || data?.results || [];
   const models = raw
-    .map((m) => ({
-      id: str(m?.id || m?.model || m?.slug || m?.model_id),
-      label: str(m?.name || m?.title || m?.label || m?.display_name || m?.id),
-      // The model's own output-resolution options (its `resolution` parameter,
-      // e.g. ["1k","2k","4k"] on Nano Banana Pro). Empty = no such param —
-      // Soul's "quality" tiers are a different knob and deliberately not this.
-      resolutions: (Array.isArray(m?.parameters)
-        ? m.parameters.find((p) => p?.name === "resolution")?.options
-        : null) || [],
-    }))
+    .map((m) => {
+      // ADDITIVE only. The image catalog runs through the same normalizer as
+      // the video one so an image composer can grow per-model controls too —
+      // but its DROP rules are deliberately not applied here: an image model
+      // the video composer couldn't drive (a required id, say) must still
+      // appear in the image picker exactly as it always has. A model the
+      // normalizer rejects simply gets empty controls.
+      const spec = normalizeModelSpec(m);
+      return {
+        id: str(m?.id || m?.model || m?.slug || m?.model_id),
+        label: str(m?.name || m?.title || m?.label || m?.display_name || m?.id),
+        // The model's own output-resolution options (its `resolution` parameter,
+        // e.g. ["1k","2k","4k"] on Nano Banana Pro). Empty = no such param —
+        // Soul's "quality" tiers are a different knob and deliberately not this.
+        // UNCHANGED: `imageResolutionParams` and the composer's resolution
+        // picker both read this exact field.
+        resolutions: (Array.isArray(m?.parameters)
+          ? m.parameters.find((p) => p?.name === "resolution")?.options
+          : null) || [],
+        params: spec?.params || [],
+        aspectRatios: spec?.aspectRatios || [],
+        roles: spec?.roles || [],
+        batch: spec?.batch || null,
+      };
+    })
     .filter((m) => m.id);
   // Prefer a Nano Banana "Pro"; else any Nano Banana; else the first image model.
   const nanos = models.filter((m) => NANO_RE.test(m.label) || NANO_RE.test(m.id));
@@ -736,11 +823,22 @@ async function resolveModels(env, userId, token) {
   return out;
 }
 
-// Resolve the VIDEO-model catalog (id + label) via models_explore, marking the
-// Seedance default (image-to-video with identity). Same shape/caching as the
-// image catalog. Seedance ids also churn, so match loosely and cache short.
+// Resolve the VIDEO-model catalog via models_explore, marking the Seedance
+// default (image-to-video with identity). Same caching as the image catalog;
+// Seedance ids churn, so match loosely and cache short.
+//
+// Each entry is the FULL normalized spec (worker/src/lib/video-models.js): its
+// own parameters, aspect ratios, media roles and batch size. Keeping only
+// `{ id, label }` here — which is what this did — is what forced the composer
+// to hardcode Seedance's three controls for every model on the provider.
+// Non-generators (upscalers, deflickers, lipsync) and models we can't supply a
+// required input for are dropped by the normalizer, not offered as ways to make
+// a clip.
 const SEEDANCE_RE = /seedance/i;
-const VIDEO_MODELS_CACHE_KEY = "visual:video-models:v1";
+// v2: normalized specs instead of `{ id, label }`. MUST be bumped whenever that
+// shape changes — otherwise every user keeps getting the old stripped payload
+// out of KV for ten minutes after the deploy.
+const VIDEO_MODELS_CACHE_KEY = "visual:video-models:v2";
 async function resolveVideoModels(env, userId, token) {
   try {
     const cached = await env.AUTH_KV.get(VIDEO_MODELS_CACHE_KEY, "json");
@@ -751,12 +849,7 @@ async function resolveVideoModels(env, userId, token) {
   const raw = Array.isArray(data)
     ? data
     : data?.models || data?.items || data?.video_models || data?.results || [];
-  const models = raw
-    .map((m) => ({
-      id: str(m?.id || m?.model || m?.slug || m?.model_id),
-      label: str(m?.name || m?.title || m?.label || m?.display_name || m?.id),
-    }))
-    .filter((m) => m.id);
+  const models = normalizeCatalog(raw);
   // Prefer a Seedance model (best for image-to-video identity); else the first.
   const seed = models.find((m) => SEEDANCE_RE.test(m.label) || SEEDANCE_RE.test(m.id));
   const defaultId = seed?.id || models[0]?.id || "seedance_2_0";
@@ -791,12 +884,18 @@ async function resolveHfCatalog(env, userId, prov, kind) {
 // prov.disabled); its default model is the catalog default. When no selection
 // header rode along (older clients), all credentialed providers merge and the
 // default falls back Higgsfield → fal → Atlas, as before.
+//
+// The fal / Atlas registries are hardcoded endpoints with no discoverable
+// schema, so their VIDEO entries get a hand-written normalized spec
+// (`decorateByokVideo`) — otherwise a BYOK user's composer would render an
+// empty control row where the Higgsfield user gets duration and audio.
 function mergeCatalog(prov, hf, kind) {
   const has = (id) => !prov.disabled.has(id);
+  const byok = (list) => (kind === "video" ? list.map(decorateByokVideo) : list);
   const models = [
     ...(has("higgsfield") ? (hf?.models || []).map((m) => ({ ...m, provider: "higgsfield" })) : []),
-    ...(has("fal") && prov.falKey ? falCatalog(kind) : []),
-    ...(has("atlas") && prov.atlasKey ? atlasCatalog(kind) : []),
+    ...(has("fal") && prov.falKey ? byok(falCatalog(kind)) : []),
+    ...(has("atlas") && prov.atlasKey ? byok(atlasCatalog(kind)) : []),
   ];
   const defaults = {
     higgsfield: has("higgsfield") ? hf?.defaultId || "" : "",
@@ -871,6 +970,125 @@ function resolveNodeInputs(env, pid, vw, node) {
   return { startFrameUrl, imageRefUrls, inheritedText };
 }
 
+// Fire ONE VIDEO job on whichever provider the resolved model belongs to.
+//
+// Extracted from fireNodeJob because the Video-generation composer needs the
+// exact same thing. Before the plugin split there was no way to generate a clip
+// except by wiring a node on the canvas, so this lived inline; a second copy in
+// the /generate route would have meant two places to keep the Seedance
+// resolution/mode guard, the reference-role resolution and the three provider
+// dialects correct, and they drift silently — a wrong `mode` is a rejected job,
+// a wrong role is a video that ignores its start frame.
+//
+// The prompt is assembled from the preset's `video` (motion) block, NEVER its
+// `image` one: the house look for motion is a different paragraph, and layering
+// the still-image style onto a clip is how you get a video that fights itself.
+//
+// PARAMS. Every creative knob rides in ONE validated bag, spelled the way the
+// chosen model spells it — `settings.params`, run through `coerceParams` against
+// that model's normalized spec, so a name the model didn't declare is never
+// forwarded. Three layers merge, weakest first:
+//   1. the project's Seedance render defaults, but ONLY when this job actually
+//      resolved to that model (`mode` in particular is Seedance-specific),
+//   2. the LEGACY top-level `duration` / `generateAudio` fields, folded onto
+//      whatever this model calls them (Kling spells audio `sound`) — the Nodes
+//      canvas and older clients still speak that dialect,
+//   3. the caller's explicit `params`, which win.
+//
+// Network only; NO doc writes — the caller appends the "processing" record.
+// Returns what that record needs: `{ provider, model, jobId, assembledPrompt,
+// aspectRatio, params }`. `catalog` may be pre-resolved by a caller that
+// already needed it (the /generate route reads the model's `batch` off it).
+async function submitVideoJob({
+  env, userId, prov, vw, prompt, settings,
+  startFrameUrl = "", imageRefUrls = [], inheritedText = "", catalog = null,
+}) {
+  const preset = settings.presetId ? vw.prompts.find((p) => p.id === settings.presetId) : null;
+  const assembledPrompt = [inheritedText, str(preset?.video), str(prompt)].filter(Boolean).join("\n\n");
+
+  const cat = catalog || mergeCatalog(prov, await resolveHfCatalog(env, userId, prov, "video"), "video");
+  const model = resolveModelChoice(prov, cat, settings.model);
+  const spec = cat.models.find((m) => m.id === model) || null;
+
+  // A model that declares aspect ratios only accepts one FROM its list (Kling
+  // has no 21:9), so snap rather than submit a job it will refuse. A model that
+  // declares none takes no `aspect_ratio` field at all — see the send below.
+  const aspectRatio = resolveAspectRatio(spec, settings.aspectRatio);
+
+  const vd = videoGenerateParams(vw.settings);
+  const params = coerceParams(spec, {
+    ...(model === vd.model ? { resolution: vd.resolution, ...(vd.mode ? { mode: vd.mode } : {}) } : {}),
+    ...legacyVideoParams(spec, { duration: settings.duration, generateAudio: settings.generateAudio }),
+    ...(settings.params && typeof settings.params === "object" ? settings.params : {}),
+  });
+  // The two BYOK branches below have exactly two knobs each and take them off
+  // the same validated bag, so there is still ONE input shape.
+  const duration = clampDuration(params.duration);
+  const generateAudio = !!params.generate_audio;
+
+  if (isFalModel(model)) {
+    // fal Seedance: a single start image rides as `image_url` on the
+    // image-to-video endpoint (no multi-reference role system).
+    const entry = falModelEntry(model);
+    const startUrl = startFrameUrl || imageRefUrls[0] || "";
+    const { requestId } = await falSubmit(prov.falKey, startUrl ? entry.i2vEndpoint : entry.t2vEndpoint, {
+      prompt: assembledPrompt,
+      aspect_ratio: aspectRatio,
+      duration: String(duration),
+      generate_audio: generateAudio,
+      ...(startUrl ? { image_url: startUrl } : {}),
+    });
+    return { provider: "fal", model, jobId: requestId, assembledPrompt, aspectRatio, params };
+  }
+
+  if (isAtlasModel(model)) {
+    // Atlas Seedance: single start image as `image` on the image-to-video
+    // model; `ratio` (not aspect_ratio) with an "adaptive" mode when a start
+    // frame sets the shape.
+    const entry = atlasModelEntry(model);
+    const startUrl = startFrameUrl || imageRefUrls[0] || "";
+    const { predictionId } = await atlasSubmit(prov.atlasKey, "video", startUrl ? entry.i2vEndpoint : entry.t2vEndpoint, {
+      prompt: assembledPrompt,
+      ratio: atlasVideoRatio(aspectRatio, !!startUrl),
+      duration,
+      generate_audio: generateAudio,
+      ...(startUrl ? { image: startUrl } : {}),
+    });
+    return { provider: "atlas", model, jobId: predictionId, assembledPrompt, aspectRatio, params };
+  }
+
+  // Resolve the reference-image role this model actually accepts (Seedance:
+  // "image_references"; others may want "start_image"/"image"). Start frame
+  // leads, then image refs.
+  const refUrls = [startFrameUrl, ...imageRefUrls].filter(Boolean);
+  const medias = [];
+  if (refUrls.length) {
+    const role = await resolveMediaRole(env, userId, prov.token, model, ["image_references", "start_image", "image"]);
+    for (const url of refUrls) {
+      const mediaId = await importRef(env, userId, prov.token, url);
+      medias.push({ role, value: mediaId });
+    }
+  }
+  // The validated bag IS the parameter list — no hardcoded duration /
+  // generate_audio / resolution / mode any more. `aspect_ratio` rides only when
+  // the model declares aspect ratios (Hailuo and Grok 1.5 declare none, and
+  // sending the field to a model that has no such input is a rejected job).
+  const data = await mcp(env, userId, prov.token, "generate_video", {
+    params: {
+      ...params,
+      // Route-owned fields last: the bag can never clobber the model id, the
+      // assembled prompt or the imported medias.
+      model,
+      prompt: assembledPrompt,
+      ...(aspectRatio ? { aspect_ratio: aspectRatio } : {}),
+      medias,
+    },
+  });
+  const jobId = pickId(data, "jobId", "job_id", "id");
+  if (!jobId) throw new Error(`Higgsfield generate_video returned no job id (got: ${JSON.stringify(data).slice(0, 220)})`);
+  return { provider: "", model, jobId, assembledPrompt, aspectRatio, params };
+}
+
 // Fire ONE generation job for a node (image via generate_image, video via
 // generate_video), importing wired references first. Returns the "processing"
 // generation record to append (with jobId/kind/nodeId). Throws on a hard MCP
@@ -880,13 +1098,7 @@ async function fireNodeJob(env, userId, prov, pid, vw, node) {
   const kind = node.type === "video" ? "video" : "image";
   const settings = node.settings || {};
   const { startFrameUrl, imageRefUrls, inheritedText } = resolveNodeInputs(env, pid, vw, node);
-
-  // Assemble the prompt: inherited text (from a Text node), then the preset's
-  // style block (image or motion), then the node's own prompt.
-  const preset = settings.presetId ? vw.prompts.find((p) => p.id === settings.presetId) : null;
-  const presetBlock = kind === "video" ? str(preset?.video) : str(preset?.image);
   const scene = str(node.prompt);
-  const assembledPrompt = [inheritedText, presetBlock, scene].filter(Boolean).join("\n\n");
   const aspectRatio = str(settings.aspectRatio) || "16:9";
 
   const ts = new Date().toISOString();
@@ -895,7 +1107,6 @@ async function fireNodeJob(env, userId, prov, pid, vw, node) {
     kind,
     nodeId: node.id,
     prompt: scene,
-    assembledPrompt,
     aspectRatio,
     presetId: str(settings.presetId),
     refs: [],
@@ -903,76 +1114,32 @@ async function fireNodeJob(env, userId, prov, pid, vw, node) {
   };
 
   if (kind === "video") {
-    const catalog = mergeCatalog(prov, await resolveHfCatalog(env, userId, prov, "video"), "video");
-    const model = resolveModelChoice(prov, catalog, settings.model);
-
-    if (isFalModel(model)) {
-      // fal Seedance: a single start image rides as `image_url` on the
-      // image-to-video endpoint (no multi-reference role system).
-      const entry = falModelEntry(model);
-      const startUrl = startFrameUrl || imageRefUrls[0] || "";
-      const { requestId } = await falSubmit(prov.falKey, startUrl ? entry.i2vEndpoint : entry.t2vEndpoint, {
-        prompt: assembledPrompt,
-        aspect_ratio: aspectRatio,
-        duration: String(clampDuration(settings.duration)),
-        generate_audio: !!settings.generateAudio,
-        ...(startUrl ? { image_url: startUrl } : {}),
-      });
-      return normalizeGeneration({ ...base, status: "processing", provider: "fal", model, jobId: requestId });
-    }
-
-    if (isAtlasModel(model)) {
-      // Atlas Seedance: single start image as `image` on the image-to-video
-      // model; `ratio` (not aspect_ratio) with an "adaptive" mode when a start
-      // frame sets the shape.
-      const entry = atlasModelEntry(model);
-      const startUrl = startFrameUrl || imageRefUrls[0] || "";
-      const { predictionId } = await atlasSubmit(prov.atlasKey, "video", startUrl ? entry.i2vEndpoint : entry.t2vEndpoint, {
-        prompt: assembledPrompt,
-        ratio: atlasVideoRatio(aspectRatio, !!startUrl),
-        duration: clampDuration(settings.duration),
-        generate_audio: !!settings.generateAudio,
-        ...(startUrl ? { image: startUrl } : {}),
-      });
-      return normalizeGeneration({ ...base, status: "processing", provider: "atlas", model, jobId: predictionId });
-    }
-
-    // Resolve the reference-image role this model actually accepts (Seedance:
-    // "image_references"; others may want "start_image"/"image"). Start frame
-    // leads, then image refs.
-    const refUrls = [startFrameUrl, ...imageRefUrls].filter(Boolean);
-    const medias = [];
-    if (refUrls.length) {
-      const role = await resolveMediaRole(env, userId, prov.token, model, ["image_references", "start_image", "image"]);
-      for (const url of refUrls) {
-        const mediaId = await importRef(env, userId, prov.token, url);
-        medias.push({ role, value: mediaId });
-      }
-    }
-    // Honour the project's Seedance resolution/mode default — but ONLY when this
-    // node actually resolved to that model. A node pointed at Veo or Kling takes
-    // neither param, and `mode` in particular is Seedance-specific.
-    const vd = videoGenerateParams(vw.settings);
-    const seedanceParams = model === vd.model
-      ? { resolution: vd.resolution, ...(vd.mode ? { mode: vd.mode } : {}) }
-      : {};
-    const data = await mcp(env, userId, prov.token, "generate_video", {
-      params: {
-        model,
-        prompt: assembledPrompt,
-        aspect_ratio: aspectRatio,
-        duration: clampDuration(settings.duration),
-        generate_audio: !!settings.generateAudio,
-        ...seedanceParams,
-        medias,
-      },
+    // A node's settings are the LEGACY shape — `{ model, aspectRatio, duration,
+    // generateAudio }`, which is all the canvas's settings bar offers. They ride
+    // through unchanged: submitVideoJob folds `duration` / `generateAudio` onto
+    // whatever the chosen model calls them, so a node pointed at Kling gets
+    // `sound` and one pointed at Veo 3 (no duration at all) simply drops it.
+    const job = await submitVideoJob({
+      env, userId, prov, vw, prompt: scene, settings, startFrameUrl, imageRefUrls, inheritedText,
     });
-    const jobId = pickId(data, "jobId", "job_id", "id");
-    if (!jobId) throw new Error(`Higgsfield generate_video returned no job id (got: ${JSON.stringify(data).slice(0, 220)})`);
-    return normalizeGeneration({ ...base, status: "processing", model, jobId });
+    return normalizeGeneration({
+      ...base,
+      status: "processing",
+      assembledPrompt: job.assembledPrompt,
+      provider: job.provider,
+      model: job.model,
+      // The model may have snapped the node's aspect ratio into its own list.
+      aspectRatio: job.aspectRatio,
+      params: job.params,
+      jobId: job.jobId,
+    });
   }
 
-  // image
+  // image — inherited text, then the preset's IMAGE style block, then the
+  // node's own prompt.
+  const preset = settings.presetId ? vw.prompts.find((p) => p.id === settings.presetId) : null;
+  const assembledPrompt = [inheritedText, str(preset?.image), scene].filter(Boolean).join("\n\n");
+  const imageBase = { ...base, assembledPrompt };
   const catalog = mergeCatalog(prov, await resolveHfCatalog(env, userId, prov, "image"), "image");
   const model = resolveModelChoice(prov, catalog, settings.model);
 
@@ -986,7 +1153,7 @@ async function fireNodeJob(env, userId, prov, pid, vw, node) {
       num_images: 1,
       ...(imageRefUrls.length ? { image_urls: imageRefUrls } : {}),
     });
-    return normalizeGeneration({ ...base, status: "processing", provider: "fal", model, jobId: requestId });
+    return normalizeGeneration({ ...imageBase, status: "processing", provider: "fal", model, jobId: requestId });
   }
 
   if (isAtlasModel(model)) {
@@ -998,7 +1165,7 @@ async function fireNodeJob(env, userId, prov, pid, vw, node) {
       aspect_ratio: atlasImageAspect(aspectRatio),
       ...(imageRefUrls.length ? { images: imageRefUrls } : {}),
     });
-    return normalizeGeneration({ ...base, status: "processing", provider: "atlas", model, jobId: predictionId });
+    return normalizeGeneration({ ...imageBase, status: "processing", provider: "atlas", model, jobId: predictionId });
   }
 
   const medias = [];
@@ -1017,7 +1184,7 @@ async function fireNodeJob(env, userId, prov, pid, vw, node) {
   });
   const jobId = pickId(data, "jobId", "job_id", "id");
   if (!jobId) throw new Error(`Higgsfield generate_image returned no job id (got: ${JSON.stringify(data).slice(0, 220)})`);
-  return normalizeGeneration({ ...base, status: "processing", model, resolution: resolutionParams.resolution || "", jobId });
+  return normalizeGeneration({ ...imageBase, status: "processing", model, resolution: resolutionParams.resolution || "", jobId });
 }
 
 // ---- Run cascade (topological, driven by the client's /poll cycle) ----
@@ -1158,6 +1325,12 @@ export function registerVisualWorld(app) {
   // and Atlas registries (when their keys ride the request), each entry tagged
   // with its `provider`. `?type=video` returns the video catalog; anything else
   // the image catalog. 401 only when NO provider is available.
+  //
+  // Every entry carries its NORMALIZED spec — `params` (the creative controls,
+  // in declaration order, each with a label and the provider's own description
+  // as `hint`), `aspectRatios` ([] = the model takes none), `roles`, `batch`
+  // and the image composer's unchanged `resolutions`. The composer renders
+  // whatever it finds rather than assuming Seedance's three knobs.
   app.get("/api/visual-world/models", async (c) => {
     const userId = c.get("userId");
     if (!userId) return c.json({ error: "Sign in required" }, 401);
@@ -1174,9 +1347,24 @@ export function registerVisualWorld(app) {
     }
   });
 
-  // Start N image jobs. Body: { prompt, model?, count?, aspectRatio?, refs?,
-  // presetId?, cinematic? }. Appends N "processing" records; the client then
-  // polls /poll. References are imported into Higgsfield as media_ids.
+  // Start N generation jobs. Body: { prompt, kind?, model?, count?, aspectRatio?,
+  // refs?, presetId?, resolution?, sheetType?, params?, duration?,
+  // generateAudio?, startFrame? }. Appends N "processing" records; the client
+  // then polls /poll. References are imported into Higgsfield as media_ids.
+  //
+  // `params` is the video composer's per-model bag — `{ duration: 8,
+  // resolution: "2K", mode: "std", sound: "off", … }` in whatever names THAT
+  // model declares. It is validated against the model's normalized spec before
+  // submission (unknown names dropped, ranges clamped, enums snapped), so the
+  // route can never forward a param the model didn't declare. The older
+  // top-level `duration` / `generateAudio` still work and fold in underneath.
+  //
+  // `kind` is "image" (the default, and everything this route did before) or
+  // "video". Video generation used to be reachable ONLY by wiring a node on the
+  // canvas, which made "generate a clip of this" a three-step detour through a
+  // graph editor; the Video-generation plugin is its own composer, so it needs
+  // its own direct path. It fires through `submitVideoJob` — the same helper the
+  // canvas uses — rather than a second implementation.
   app.post("/api/visual-world/generate", async (c) => {
     const userId = c.get("userId");
     if (!userId) return c.json({ error: "Sign in required" }, 401);
@@ -1188,11 +1376,29 @@ export function registerVisualWorld(app) {
     try { body = await c.req.json(); } catch { body = {}; }
     const prompt = str(body.prompt).trim();
     if (!prompt) return c.json({ error: "Missing 'prompt'" }, 400);
+    if (body.kind != null && body.kind !== "image" && body.kind !== "video") {
+      return c.json({ error: `Unknown 'kind' "${str(body.kind)}" — expected "image" or "video".` }, 400);
+    }
+    const kind = body.kind === "video" ? "video" : "image";
+    // Images fan out `count` stills. VIDEO takes come from the chosen model's
+    // own `batch_size` instead (resolved in the video branch, once the model is
+    // known): a model that declares no batch stays at one clip per submission,
+    // which is what every video model did before — a clip costs an order of
+    // magnitude more than a still, so the number never comes from nowhere.
     const count = clampCount(body.count);
     const aspectRatio = str(body.aspectRatio) || "16:9";
     const presetId = str(body.presetId);
-    const sheetType = ["character", "location", "prop"].includes(body.sheetType) ? body.sheetType : "";
+    // Design sheets are an image-only idea — there is no such thing as a
+    // character-sheet clip — so the tag never rides on a video generation.
+    const sheetType =
+      kind === "image" && ["character", "location", "prop"].includes(body.sheetType) ? body.sheetType : "";
     const inputRefs = Array.isArray(body.refs) ? body.refs.map(normalizeRef) : [];
+    // The start frame is just a reference that leads: an explicit `startFrame`
+    // wins, otherwise the first `refs` entry is it. That matches what the node
+    // canvas does (`startFrameUrl || imageRefUrls[0]`) and what every provider
+    // expects — fal and Atlas take exactly one image, Higgsfield takes the list
+    // with the start frame first.
+    if (kind === "video" && body.startFrame) inputRefs.unshift(normalizeRef(body.startFrame));
     // A location sheet formalizes an EXISTING place — style prompt + reference
     // image, always. Without a reference it would just invent a new location.
     if (sheetType === "location" && inputRefs.length === 0) {
@@ -1200,6 +1406,106 @@ export function registerVisualWorld(app) {
     }
 
     try {
+      const vw = await readVW(c.env, pid);
+
+      // Resolve every reference to an ungated /files URL. fal fetches those URLs
+      // directly; Higgsfield needs each imported → media_id with the role THIS
+      // model accepts (Nano Banana Pro wants "image", others "image_references").
+      // Both media kinds need this, so it happens before the split.
+      const refUrls = [];
+      for (const r of inputRefs) {
+        let url = r.url;
+        if (!url && r.kind === "library" && r.rel) {
+          url = filesUrl(c.env, `media/${normalizeProjectId(pid)}/asset/${r.rel}`);
+        } else if (!url && r.kind === "generation" && r.genId) {
+          const g = vw.generations.find((x) => x.id === r.genId);
+          if (g?.file) url = filesUrl(c.env, mediaKey(pid, "visual", g.file));
+        }
+        if (url) refUrls.push(url);
+      }
+
+      // ---- video ----------------------------------------------------------
+      // The whole job — catalog, model choice, preset motion block, provider
+      // dialect — lives in submitVideoJob, shared with the Nodes canvas.
+      if (kind === "video") {
+        // Resolve the catalog ONCE: the model's normalized spec decides how many
+        // takes this submission is worth (its `batch_size`), and submitVideoJob
+        // then reuses the same catalog instead of re-resolving per take.
+        const catalog = mergeCatalog(prov, await resolveHfCatalog(c.env, userId, prov, "video"), "video");
+        let vmodel;
+        try {
+          vmodel = resolveModelChoice(prov, catalog, body.model);
+        } catch (e) {
+          if (e instanceof HiggsfieldAuthError) throw e;
+          return c.json({ error: e.message || "Could not resolve a video model" }, 502);
+        }
+        const spec = catalog.models.find((m) => m.id === vmodel) || null;
+        const takes = batchCount(spec, body.count);
+        const settings = {
+          model: vmodel,
+          aspectRatio,
+          // Legacy top-level fields, still sent by older clients and folded onto
+          // this model's own param names inside submitVideoJob.
+          duration: body.duration,
+          generateAudio: body.generateAudio,
+          params: body.params,
+          presetId,
+        };
+        const ts = new Date().toISOString();
+        const created = [];
+        for (let i = 0; i < takes; i++) {
+          const job = await submitVideoJob({
+            env: c.env, userId, prov, vw,
+            prompt,
+            settings,
+            startFrameUrl: refUrls[0] || "",
+            imageRefUrls: refUrls.slice(1),
+            catalog,
+          });
+          created.push(
+            normalizeGeneration({
+              id: `gen-${Date.now().toString(36)}-${crypto.randomUUID().slice(0, 6)}-${i}`,
+              status: "processing",
+              // The poll path, withUrls and every client filter key off this —
+              // set it and the rest of the pipeline already knows what to do.
+              kind: "video",
+              provider: job.provider,
+              prompt,
+              assembledPrompt: job.assembledPrompt,
+              model: job.model,
+              aspectRatio: job.aspectRatio,
+              params: job.params,
+              presetId,
+              jobId: job.jobId,
+              refs: inputRefs,
+              ts,
+            }),
+          );
+        }
+        await updateVW(c.env, pid, (v) => {
+          v.generations.unshift(...created);
+          // `settings.model` is the IMAGE model and `settings.videoModel` is the
+          // Seedance-render-defaults id from the Settings page — a video catalog
+          // id belongs in neither, and writing one would quietly repoint the
+          // other composer (or the episode render) at a model it can't run. The
+          // video composer's own choice is remembered under `videoComposer`.
+          v.settings = {
+            ...v.settings,
+            aspectRatio,
+            presetId,
+            videoComposer: normalizeVideoComposer({
+              model: vmodel,
+              aspectRatio,
+              params: created[0]?.params,
+            }),
+          };
+          v.generatedAt = ts;
+          v.source = "app";
+        });
+        return c.json({ ok: true, generations: created.map((g) => withUrls(c.env, pid, g)) });
+      }
+
+      // ---- image ----------------------------------------------------------
       // Resolve the model against the merged catalog. A selected id that
       // Higgsfield has since renamed (e.g. a saved `nano_banana_flash`) is no
       // longer in the catalog — fall back to the current default instead of
@@ -1215,7 +1521,6 @@ export function registerVisualWorld(app) {
 
       // Assemble the final prompt: preset style prefix (if chosen) + the sheet
       // prompt (when tagged as a character/location/prop sheet) + the scene.
-      const vw = await readVW(c.env, pid);
       // Output resolution: an explicit body value wins, else the project
       // default. Only reaches the API when this model takes the param.
       const resolution = IMAGE_RESOLUTIONS.includes(body.resolution)
@@ -1225,21 +1530,6 @@ export function registerVisualWorld(app) {
       const preset = presetId ? vw.prompts.find((p) => p.id === presetId) : null;
       const sheetPrompt = sheetType ? vw.sheetPrompts[sheetType] : "";
       const assembledPrompt = [preset?.image, sheetPrompt, prompt].filter(Boolean).join("\n\n");
-
-      // Resolve every reference to an ungated /files URL. fal fetches those URLs
-      // directly; Higgsfield needs each imported → media_id with the role THIS
-      // model accepts (Nano Banana Pro wants "image", others "image_references").
-      const refUrls = [];
-      for (const r of inputRefs) {
-        let url = r.url;
-        if (!url && r.kind === "library" && r.rel) {
-          url = filesUrl(c.env, `media/${normalizeProjectId(pid)}/asset/${r.rel}`);
-        } else if (!url && r.kind === "generation" && r.genId) {
-          const g = vw.generations.find((x) => x.id === r.genId);
-          if (g?.file) url = filesUrl(c.env, mediaKey(pid, "visual", g.file));
-        }
-        if (url) refUrls.push(url);
-      }
 
       // Fire one job per requested image.
       const started = [];
@@ -1649,6 +1939,13 @@ export function registerVisualWorld(app) {
       if (patch.count != null) next.count = clampCount(patch.count);
       if (typeof patch.cinematic === "boolean") next.cinematic = patch.cinematic;
       if (typeof patch.presetId === "string") next.presetId = patch.presetId;
+      // The VIDEO COMPOSER's remembered model + per-model params. A partial
+      // patch merges over what's stored, so a client that only saves `params`
+      // doesn't wipe the model. NOT videoModel/videoResolution — see
+      // `emptyVideoComposer` for why those are a different key space.
+      if (patch.videoComposer && typeof patch.videoComposer === "object") {
+        next.videoComposer = normalizeVideoComposer({ ...next.videoComposer, ...patch.videoComposer });
+      }
       if (typeof patch.videoModel === "string" || typeof patch.videoResolution === "string") {
         Object.assign(next, normalizeVideoDefaults(
           typeof patch.videoModel === "string" ? patch.videoModel : next.videoModel,

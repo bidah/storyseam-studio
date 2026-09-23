@@ -11,7 +11,7 @@ import { Badge } from '@/components/ui/badge';
 import { Eyebrow } from '@/components/ui/card';
 import { Empty, ErrorNote, Loading } from '@/components/ui/empty';
 import type { VisualGen, VisualWorldDoc } from '@/components/story/visual-world';
-import { deleteJson, mediaUrl, postJson } from '@/lib/api';
+import { deleteJson, imageUrl, mediaUrl, postJson } from '@/lib/api';
 import { resolvePickerRequest } from '@/lib/picker-bus';
 import { useInvalidate, useProjectResource } from '@/lib/queries';
 import { useColors } from '@/lib/colors';
@@ -154,7 +154,9 @@ export default function GenerationSheet() {
             {refThumbs.map((r, i) => (
               <Image
                 key={`${r.rel || r.genId || i}`}
-                source={{ uri: mediaUrl(r.thumb || r.url) }}
+                // A stored ref carries only {kind, rel, genId, url}, so this
+                // used to paint a 44pt square from the full-res original.
+                source={{ uri: imageUrl(r.thumb || r.url) }}
                 accessibilityLabel="reference"
                 style={{ width: 44, height: 44, borderRadius: 8, backgroundColor: colors.surface }}
                 contentFit="cover"

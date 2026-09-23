@@ -23,6 +23,7 @@ import DocHistory from "@/components/DocHistory";
 import MediaPicker from "@/components/MediaPicker";
 import ShareDialog from "@/components/ShareDialog";
 import { useT, t as staticT } from "@/lib/i18n";
+import { toZoomSrc } from "@/lib/previewSrc";
 
 /* ---------------------------------------------------------------- *
  * Section definitions — the pieces of the world bible               *
@@ -312,7 +313,7 @@ function CharacterCard({ char, onField, onRemove, onToggleAnchor, isSeries, expa
         <div className="mb-2 flex items-center gap-3 rounded-lg border bg-muted/60 p-2">
           <button
             type="button"
-            onClick={() => setModalImage({ url: sheet.url, name: sheet.name || t("{name} sheet", { name: char.name || t("character") }), role: "asset" })}
+            onClick={() => setModalImage({ url: sheet.url, display: sheet.display || toZoomSrc(sheet.url), name: sheet.name || t("{name} sheet", { name: char.name || t("character") }), role: "asset" })}
             title={t("View full image")}
             className="shrink-0 overflow-hidden rounded-md border transition-colors hover:border-primary/60"
           >
@@ -352,7 +353,7 @@ function CharacterCard({ char, onField, onRemove, onToggleAnchor, isSeries, expa
         <div className="mb-2 flex items-center gap-3 rounded-lg border bg-muted/60 p-2">
           <button
             type="button"
-            onClick={() => setModalImage({ url: mini.url, name: mini.name || t("{name} miniature", { name: char.name || t("character") }), role: "asset" })}
+            onClick={() => setModalImage({ url: mini.url, display: mini.display || toZoomSrc(mini.url), name: mini.name || t("{name} miniature", { name: char.name || t("character") }), role: "asset" })}
             title={t("View full image")}
             className="shrink-0 overflow-hidden rounded-md border transition-colors hover:border-primary/60"
           >
@@ -524,7 +525,7 @@ function LocationCard({ loc, onField, onRemove }) {
         <div className="mb-2 flex items-center gap-3 rounded-lg border bg-muted/60 p-2">
           <button
             type="button"
-            onClick={() => setModalImage({ url: sheet.url, name: sheet.name || t("{name} sheet", { name: loc.name || t("location") }), role: "asset" })}
+            onClick={() => setModalImage({ url: sheet.url, display: sheet.display || toZoomSrc(sheet.url), name: sheet.name || t("{name} sheet", { name: loc.name || t("location") }), role: "asset" })}
             title={t("View full image")}
             className="shrink-0 overflow-hidden rounded-md border transition-colors hover:border-primary/60"
           >

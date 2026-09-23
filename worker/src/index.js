@@ -35,6 +35,11 @@ import { registerShare } from "./routes/share.js";
 import { registerShareConfig } from "./routes/share-config.js";
 import { registerSounds } from "./routes/sounds.js";
 import { registerMusical } from "./routes/musical.js";
+import { registerDirector } from "./routes/director.js";
+import { registerStage } from "./routes/stage.js";
+import { registerUpscale } from "./routes/upscale.js";
+import { registerShotSheet } from "./routes/shot-sheet.js";
+import { registerMusicalized } from "./routes/musicalized.js";
 import { registerEpisode } from "./routes/episode.js";
 import { registerTimeline } from "./routes/timeline.js";
 import { registerSecrets } from "./routes/auth.js";
@@ -55,6 +60,7 @@ import { registerExtract } from "./routes/extract.js";
 import { registerChatTitle } from "./routes/chat-title.js";
 import { registerChats } from "./routes/chats.js";
 import { registerStatus } from "./routes/status.js";
+import { registerPlugins } from "./routes/plugins.js";
 import { registerSuggestions } from "./routes/suggestions.js";
 import { createAuth } from "./auth.js";
 import { broadcast } from "./lib/broadcast.js";
@@ -545,7 +551,7 @@ function mediaRoute(prefix) {
     });
   };
 }
-for (const p of ["media", "gen", "sound-media", "final", "refs", "multishot-media", "stills", "storyboard-media", "visual-media", "moodboard-media"]) {
+for (const p of ["media", "gen", "sound-media", "final", "refs", "multishot-media", "stills", "storyboard-media", "visual-media", "moodboard-media", "director-media"]) {
   app.get(`/${p}/*`, mediaRoute(p));
 }
 // The shared asset library (voice refs, browsable images) — per project under
@@ -688,6 +694,14 @@ registerShare(app);
 registerShareConfig(app);
 registerSounds(app);
 registerMusical(app);
+// The Director half of the studio: the cue sheet, the live sitting it plays as,
+// the sheet its pins are drawn on, and the score laid under what it kept.
+registerDirector(app);
+registerStage(app);
+registerShotSheet(app);
+registerMusicalized(app);
+// Upscale: a finished sitting or Deliver render, taken to a higher resolution on fal.
+registerUpscale(app);
 registerEpisode(app);
 registerTimeline(app);
 registerSecrets(app);
@@ -707,6 +721,7 @@ registerExtract(app);
 registerChatTitle(app);
 registerChats(app);
 registerStatus(app);
+registerPlugins(app);
 registerSuggestions(app);
 registerAppState(app);
 registerNavigate(app);

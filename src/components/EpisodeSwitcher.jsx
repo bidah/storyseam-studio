@@ -64,7 +64,7 @@ export default function EpisodeSwitcher() {
           <button
             type="button"
             aria-label="Switch episode"
-            className="flex h-9 w-[180px] min-w-[180px] max-w-[180px] shrink-0 items-center gap-2 rounded-md border bg-background/60 px-2.5 text-left outline-none transition-colors hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
+            className="flex h-9 w-[180px] min-w-[180px] max-w-[180px] shrink-0 items-center gap-2 rounded-md border bg-background px-2.5 text-left outline-none transition-colors hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
           >
             <Clapperboard size={14} className="shrink-0 text-muted-foreground" />
             <span className="min-w-0 flex-1 truncate text-xs font-semibold">

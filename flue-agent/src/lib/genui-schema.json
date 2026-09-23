@@ -35,6 +35,12 @@
     "Recommendation": {
       "$ref": "#/$defs/Recommendation"
     },
+    "Plugin": {
+      "$ref": "#/$defs/Plugin"
+    },
+    "PluginList": {
+      "$ref": "#/$defs/PluginList"
+    },
     "Column": {
       "$ref": "#/$defs/Column"
     },
@@ -69,6 +75,8 @@
     "AudioItem",
     "AudioList",
     "Recommendation",
+    "Plugin",
+    "PluginList",
     "Column",
     "Compare",
     "KeyValue",
@@ -105,6 +113,9 @@
                   },
                   {
                     "$ref": "#/$defs/Recommendation"
+                  },
+                  {
+                    "$ref": "#/$defs/PluginList"
                   },
                   {
                     "$ref": "#/$defs/Compare"
@@ -656,6 +667,102 @@
       "additionalProperties": false,
       "description": "A single recommended course of action, presented as a hero card with one big call-to-action button. Use it when you have ONE thing to propose and want a clean yes — a render you're about to submit, a plan you'd run next, a draft you'd pin. title: the proposal. body: two sentences of why. send: the message sent AS THE USER when this is picked — write it as the user would ('Use the second reference'), never as an instruction to yourself. It MUST OPEN WITH the words shown on the control itself (its title/label), because this message is the author's ONLY confirmation that the row they hit is the row they meant; put any extra brief AFTER that opening — title 'Punch up the dialogue' ⇒ send 'Punch up the dialogue — sharpen the voices in the audition scene', never send 'Let me tighten those lines' (the go-ahead). cta: the button text (\"Render it\", \"Do it\") — default \"Continue\". bullets: up to 4 short supporting facts. image: a preview thumbnail. meta: cost/duration (\"~90s · 12 credits\")."
     },
+    "PluginList": {
+      "type": "object",
+      "properties": {
+        "plugins": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Plugin"
+          }
+        },
+        "header": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "footnote": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "plugins"
+      ],
+      "additionalProperties": false,
+      "description": "THE way to answer a request that needs a capability this project has not installed. The answer is never \"I can't\" and never half the pipeline run with the parts you do have: show the plugin, say what it unlocks, and let one tap install it. Draw the plugin the work needs — or the two or three plausible ones — and then STOP, because the install is the author's call and nothing installs itself: their tap posts the message, and you call set_plugin on the turn after. NEVER more than three; a wall of plugins is a catalogue, not a decision. Do not draw a plugin that is already installed except to CONFIRM one is there (that is what Plugin's `installed` is for). When the missing plugin BLOCKS something they just asked for, put a Callout above it (variant 'info', or 'warning' when work is already part-done) so the reason is visible before the offer. header: a small uppercase label above the card. footnote: one quiet line beneath it (\"You can always add it later from Explore plugins.\")."
+    },
+    "Plugin": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "tagline": {
+          "type": "string"
+        },
+        "send": {
+          "type": "string"
+        },
+        "category": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "badge": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "meta": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "highlights": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "installed": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "name",
+        "tagline",
+        "send"
+      ],
+      "additionalProperties": false,
+      "description": "One plugin in a PluginList, drawn as a small marketplace card. name: what the marketplace calls it (\"Radio\", \"Sound studio\", \"Shot list\"). tagline: ONE line of what it does, in the author's terms — not a feature list. send: the message sent AS THE USER when this is picked — write it as the user would ('Use the second reference'), never as an instruction to yourself. It MUST OPEN WITH the words shown on the control itself (its title/label), because this message is the author's ONLY confirmation that the row they hit is the row they meant; put any extra brief AFTER that opening — title 'Punch up the dialogue' ⇒ send 'Punch up the dialogue — sharpen the voices in the audition scene', never send 'Let me tighten those lines'. For a plugin that opening is the install itself — the AUTHOR asking for it (\"Install the Radio plugin\"), never a report about them (\"The user chose to install radio\"). category: the shelf it sits on (\"Story\", \"Visuals\", \"Audio\", \"Post\"), drawn as a small eyebrow over the name. badge: a tiny pill saying why this one is on screen (\"Needed for this\", \"Recommended\"). meta: a short right-aligned qualifier. highlights: up to 4 short lines of WHAT THE AUTHOR GETS, not how it works. installed: true only for a plugin the project ALREADY has — it then renders settled, with no install control, so it is for CONFIRMING something is already there, never for offering it again."
+    },
     "Compare": {
       "type": "object",
       "properties": {
@@ -915,6 +1022,9 @@
               },
               {
                 "$ref": "#/$defs/Recommendation"
+              },
+              {
+                "$ref": "#/$defs/PluginList"
               },
               {
                 "$ref": "#/$defs/Compare"

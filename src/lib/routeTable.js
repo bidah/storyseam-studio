@@ -42,6 +42,7 @@ export const ROUTE_TABLE = [
   { prefix: "/stills", kind: "api" },
   { prefix: "/visual-media", kind: "api" },
   { prefix: "/moodboard-media", kind: "api" },
+  { prefix: "/director-media", kind: "api" },
   { prefix: "/files", kind: "api" },
   // The flue chat agent — token streams, so it forwards like SSE (unbuffered).
   // /eve/* is same-origin so useFlueAgent() needs no host/CORS config; the

@@ -968,7 +968,7 @@ function Editor({ initial, drafts, pinnedId, currentName, reload, signed: signed
         </div>
       )}
 
-      <div className="notes-editor rounded-xl border bg-card px-6 py-8 sm:px-10">
+      <div className="notes-editor rounded-none border bg-card px-6 py-8 sm:px-10">
         <EditorContent editor={editor} />
       </div>
 

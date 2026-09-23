@@ -58,7 +58,7 @@ function Tile({ url, name, caption, badge, picked, onClick }) {
       <img src={url} loading="lazy" alt={name} className="aspect-square w-full object-cover" />
       {badge && <Badge className="absolute left-1 top-1 px-1.5 py-0 text-[9px]">{badge}</Badge>}
       {picked && (
-        <span className="absolute right-1 top-1 flex size-5 items-center justify-center rounded-full bg-primary text-primary-foreground shadow">
+        <span className="absolute right-1 top-1 flex size-5 items-center justify-center rounded-none bg-primary text-primary-foreground shadow">
           <Check size={13} />
         </span>
       )}
@@ -391,7 +391,7 @@ export default function MediaPicker({
                             </span>
                           )}
                           {pickedNow && (
-                            <span className="absolute right-1 top-1 flex size-5 items-center justify-center rounded-full bg-primary text-primary-foreground shadow">
+                            <span className="absolute right-1 top-1 flex size-5 items-center justify-center rounded-none bg-primary text-primary-foreground shadow">
                               <Check size={13} />
                             </span>
                           )}
@@ -400,7 +400,7 @@ export default function MediaPicker({
                           type="button"
                           onClick={() => removeUpload(u.id)}
                           aria-label={`Remove ${u.name}`}
-                          className="absolute -right-1.5 -top-1.5 rounded-full border bg-background p-0.5 text-muted-foreground shadow-sm hover:text-destructive"
+                          className="absolute -right-1.5 -top-1.5 rounded-none border bg-background p-0.5 text-muted-foreground hover:text-destructive"
                         >
                           <X size={11} />
                         </button>

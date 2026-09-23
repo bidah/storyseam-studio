@@ -42,6 +42,9 @@ import { readDoc, updateDoc } from "../lib/docs.js";
 import { readWorld } from "./world.js";
 import { readStore, pinnedDraft, countLines } from "../lib/script-store.js";
 import { normalizeShot } from "../lib/shots.js";
+import { readReviews, reviewState } from "../lib/reviews.js";
+import { PLUGIN_IDS, pluginById } from "../lib/plugins.ts";
+import { readEnabledPlugins } from "./plugins.js";
 
 const DOC_PREFIX = "appstate:";
 const ANON_DOC = `${DOC_PREFIX}anon`;
@@ -107,6 +110,13 @@ function loaders(env, pid) {
     musical: () => once("musical", () => readDoc(env, pid, "musical", { segments: [] })),
     script: () => once("script", () => readStore(env, pid)),
     moodboard: () => once("moodboard", () => readDoc(env, pid, "moodboard", null)),
+    visual: () => once("visual", () => readDoc(env, pid, "visual-world", null)),
+    reviews: () => once("reviews", () => readReviews(env, pid)),
+    // The one loader that can cost more than a row read: an unseeded project
+    // makes readEnabledPlugins build a status. It only fires for the `plugins`
+    // view — the author is standing in the marketplace, so paying for the right
+    // answer there is the whole point.
+    plugins: () => once("plugins", () => readEnabledPlugins(env, pid)),
   };
 }
 
@@ -324,6 +334,99 @@ async function animaticScreen(L) {
   };
 }
 
+// The writers'-room board. Counts and id lists only — the findings themselves
+// are `get_script_reviews`'s job, and a fifteen-strong roster's structured notes
+// would swamp a screen report. What matters here is WHO has read the pinned
+// draft: "run the plot doctor" resolves without asking which doctors are stale.
+async function agentsScreen(L) {
+  const [store, doc] = await Promise.all([L.script(), L.reviews()]);
+  const draft = pinnedDraft(store);
+  const state = reviewState(doc, { pinnedId: draft.id, scriptUpdatedAt: draft.updatedAt });
+  return {
+    tab: "Script agents",
+    draftId: draft.id,
+    draftName: draft.name,
+    counts: state.totals,
+    // Read this draft at its current revision / read an older one / never read.
+    fresh: state.fresh,
+    stale: state.stale,
+    pending: state.pending,
+  };
+}
+
+// Image generation and Video generation are one generation store split by
+// `kind` (see routes/visual-world.js), so they hydrate through one function.
+// Prompts, not pixels: the agent can't see an image, and a wall of R2 filenames
+// is noise — but "the last thing they asked for was a wide shot of the mill" is
+// exactly what makes "make it darker" resolvable.
+const GEN_CAP = 12;
+async function generationsScreen(L, kind) {
+  const vw = await L.visual();
+  const all = Array.isArray(vw?.generations) ? vw.generations : [];
+  const gens = all.filter((g) => (kind === "video" ? g?.kind === "video" : g?.kind !== "video"));
+  return {
+    tab: kind === "video" ? "Video generation" : "Image generation",
+    count: gens.length,
+    ready: gens.filter((g) => g?.status === "ready").length,
+    processing: gens.filter((g) => g?.status === "processing").length,
+    failed: gens.filter((g) => g?.status === "error").length,
+    // Newest first — the store is unshifted on every generate.
+    recent: gens.slice(0, GEN_CAP).map((g) => ({
+      id: g.id,
+      status: g.status,
+      model: g.model || null,
+      sheetType: g.sheetType || null,
+      prompt: clip(g.prompt, 160),
+      ts: g.ts || null,
+    })),
+  };
+}
+
+// The node canvas. The shape of the graph plus what is mid-run: a node that is
+// firing is the one thing on this screen that changes under the author, and
+// "why is nothing happening" is answered by the started/errored split.
+async function nodesScreen(L) {
+  const vw = await L.visual();
+  const nodes = Array.isArray(vw?.board?.nodes) ? vw.board.nodes : [];
+  const edges = Array.isArray(vw?.board?.edges) ? vw.board.edges : [];
+  const run = vw?.board?.run || null;
+  const byType = {};
+  for (const n of nodes) byType[n?.type || "image"] = (byType[n?.type || "image"] || 0) + 1;
+  return {
+    tab: "Visual nodes",
+    nodes: nodes.length,
+    edges: edges.length,
+    byType,
+    run: run?.active
+      ? {
+          mode: run.mode,
+          // Ids, so "re-run the one that failed" has something to name.
+          running: (run.started || []).filter((id) => !(run.ready || []).includes(id)),
+          ready: run.ready || [],
+          errored: run.errored || [],
+        }
+      : null,
+  };
+}
+
+// The marketplace itself. Which plugins this project has and which it doesn't is
+// the single most useful thing to know while the author is standing here: "voice
+// the dialogue" with Radio uninstalled becomes an offer to install rather than a
+// pipeline that dies halfway, and the agent never has to ask.
+async function pluginsScreen(L) {
+  const { enabled, defaulted } = await L.plugins();
+  const label = (id) => pluginById(id)?.name || id;
+  const notInstalled = PLUGIN_IDS.filter((id) => !enabled.includes(id));
+  return {
+    tab: "Explore plugins",
+    installed: enabled.map((id) => ({ id, name: label(id) })),
+    available: notInstalled.map((id) => ({ id, name: label(id) })),
+    // true = nobody has installed or removed anything yet; the set shown is
+    // derived from what this project already uses.
+    defaulted,
+  };
+}
+
 async function episodeScreen(L) {
   const [manifest, db] = await Promise.all([L.manifest(), L.selections()]);
   const bundles = Array.isArray(manifest?.bundles) ? manifest.bundles : [];
@@ -335,14 +438,20 @@ async function episodeScreen(L) {
   };
 }
 
-// The view → screen map. `shots` / `multishot` are the (hidden) sample-code tabs
-// over the same shot list, so they hydrate as one.
+// The view → screen map. A `view` string is a plugin id, a core surface id, or
+// one of the ungated views (see lib/plugins.ts) — the same one string all the
+// way through, which is why this switch can be read against the marketplace
+// catalog. `shots` / `multishot` are the (hidden) sample-code tabs over the same
+// shot list, so they hydrate as one.
 async function screenForView(nav, L) {
   switch (nav?.view) {
     case "shotlist":
     case "shots":
     case "multishot":
       return await shotlistScreen(nav, L);
+    // `world` is now the BIBLE and nothing else: the sub-tabs that used to live
+    // under it (`/world/agents`, `/world/visual`, `/world/nodes`) are their own
+    // top-level surfaces below, each an installable plugin.
     case "world":
       return await worldScreen(L);
     case "script":
@@ -362,9 +471,26 @@ async function screenForView(nav, L) {
       return await episodeScreen(L);
     case "moodboard":
       return await moodboardScreen(L);
+    case "agents":
+      return await agentsScreen(L);
+    // `visual` is the DEAD name for the old `/world/visual` sub-tab, kept as an
+    // alias for one release: a tab left open across the deploy keeps reporting
+    // it, and the honest answer for that client is the image board it is still
+    // looking at. Drop this case once no client can be reporting it.
+    case "visual":
+    case "images":
+      return await generationsScreen(L, "image");
+    case "videos":
+      return await generationsScreen(L, "video");
+    case "nodes":
+      return await nodesScreen(L);
+    case "plugins":
+      return await pluginsScreen(L);
     default:
       // library / settings / anything new: the view name alone is still useful
-      // context, and inventing a hydration for it would just be a guess.
+      // context, and inventing a hydration for it would just be a guess. The
+      // Library in particular would need an R2 listing to say anything true
+      // about what is on screen, which is more than a screen report should cost.
       return { tab: nav?.view || null };
   }
 }

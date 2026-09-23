@@ -9,14 +9,31 @@ build, and the dev proxy for no benefit (there's no SSR host). See
 
 ## Route tree
 
-`src/router.jsx` — one `RootLayout` with a child route per tab:
+`src/router.jsx` — one `RootLayout` with a child route per surface:
 
 ```
-/            → redirect to /script
-/script      /shotlist  /shots  /multishot  /episode
-/cuts        /editor    /library  /sounds
-*            → redirect to /script
+/                 → redirect to /world
+CORE   /world (Bible)  /script  /episode  /editor
+PLUGIN /images  /videos            (pre-installed on a new project)
+       /agents  /moodboard  /shotlist  /nodes
+       /animatic  /radio  /sounds  /musical  /cuts  /library
+OTHER  /plugins (the marketplace)  /settings  /members  /accept-invite/:id
+       /shots  /multishot  (sample-code surfaces, routed but never in the header)
+LEGACY /world/agents → /agents   /world/visual → /images   /world/nodes → /nodes
+*                 → redirect to /script
 ```
+
+**Every route above still exists for every project — the PLUGIN block is gated,
+not conditional.** `RootLayout` asks `blockingPlugin(view, enabled)`
+(`src/lib/plugins.ts`) and renders `<PluginGate>` instead of the `<Outlet/>`
+when the surface belongs to a plugin this project has not installed. Keeping the
+routes unconditional is what makes a deep link, a stale bookmark and the agent's
+`navigate` all land somewhere sensible: an install prompt, never a 404 or a
+silent bounce to /script. See CLAUDE.md § Plugins.
+
+The three `LEGACY` redirects exist because the World tab used to own those
+surfaces as sub-routes. They are still in the wild — bookmarks, pasted links,
+and a `navigate` command the agent minted before the split.
 
 - **`src/components/RootLayout.jsx`** is the shell: providers
   (`TooltipProvider > AgentProvider > LoginGate > ProjectProvider`), the header

@@ -4,6 +4,12 @@
 // edges as references; Text nodes are prompt sources; Source nodes hold an
 // existing generation. Edges are TYPED and functional (see flow-config).
 //
+// Its own top-level surface at /nodes (the `nodes` plugin), no longer a sub-tab
+// of World. It reads and writes the SAME `visual-world` document the /images and
+// /videos surfaces do — the canvas is a different way to drive one generation
+// store, not a second copy of it — so it keeps the `visual-world` swr key and
+// stays in step with them through the usual invalidate + revalidate pair.
+//
 // Persistence: the graph lives on `visual-world.json`'s `board` (nodes/edges),
 // saved via PUT /api/visual-world/board (debounced). Runs go through
 // POST /node/run; the cascade advances on the /poll cycle (server-side, on
@@ -501,7 +507,7 @@ function Canvas() {
             <MiniMap pannable zoomable className="!bg-card" />
             {isEmpty && (
               <FlowPanel position="top-center" className="pointer-events-none mt-16 text-center">
-                <div className="pointer-events-auto rounded-xl border border-dashed bg-card/90 p-6 shadow-sm backdrop-blur">
+                <div className="pointer-events-auto rounded-none border border-dashed bg-card/90 p-6 backdrop-blur">
                   <Sparkles size={20} className="mx-auto mb-2 text-primary" />
                   <Empty>{t("right-click the canvas to add an Image, Video, Text or Source node — then wire them up and Run.")}</Empty>
                 </div>
@@ -551,7 +557,7 @@ function Canvas() {
 
         {error && <ErrorNote>{error}</ErrorNote>}
 
-        <div className="h-[74vh] overflow-hidden rounded-xl border bg-card">
+        <div className="h-[74vh] overflow-hidden rounded-none border bg-card">
           {expanded ? (
             <button
               type="button"

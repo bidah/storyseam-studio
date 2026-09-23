@@ -124,6 +124,15 @@ function isDeadEnd(root: unknown): boolean {
   return statesTerms && !showsResult;
 }
 
+/** Row components that put a picture or a clip on the card — the ones whose loss is visible. */
+const MEDIA_ROWS = ["MediaItem", "AudioItem"];
+
+/** Does statement `id` in this program define a media row? (`g2 = MediaItem(\"…\")`) */
+function definesMediaRow(program: string, id: string): boolean {
+  const name = id.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`^\\s*${name}\\s*=\\s*(?:${MEDIA_ROWS.join("|")})\\s*\\(`, "m").test(program);
+}
+
 /** One parse error, flattened to the line the model can act on. */
 function describe(error: {
   code?: string;
@@ -200,6 +209,29 @@ export const renderUi = () =>
               'edit = Action("Change something first", "Wait — let me change the params first")',
               "",
               "Each `send` is posted verbatim as the author's next message, so write it in THEIR voice. Do not apologise in chat for this; just call the tool again.",
+            ].join("\n"),
+          },
+        };
+      }
+
+      // A dropped MEDIA row is a PICTURE the author never saw. The model built
+      // the tile, attached the generation, said it made two — and shipped a card
+      // holding one, because the second `MediaItem` never made it into the
+      // grid's array. That is not a note for next time; it is the whole point of
+      // the card, so it comes back as a redraw. The corrected card shows both,
+      // and the client drops the partial one it replaces (see genui/card-kind.ts).
+      const droppedMedia = orphaned.filter((id) => definesMediaRow(lang, id));
+      if (droppedMedia.length) {
+        return {
+          output: {
+            presented: false,
+            errors: [
+              `These media rows were defined but never referenced from root, so the author cannot see them: ${droppedMedia.join(", ")}.`,
+            ],
+            note: [
+              "A picture or clip you generated is missing from the card you just drew.",
+              "Call render_ui once more with the SAME program plus every dropped row listed in its grid's/list's items array — e.g. `shots = MediaGrid([g1, g2], \"Noah Chen\")` when you defined both `g1` and `g2`.",
+              "One card holds every image of a batch; do not draw a second card to fix this. Do not apologise in chat; just call the tool again.",
             ].join("\n"),
           },
         };

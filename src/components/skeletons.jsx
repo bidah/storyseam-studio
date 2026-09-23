@@ -43,7 +43,7 @@ function StackedHeader({ titleWidth = "w-52", subtitle = false, actions = [], ba
       {badges.length > 0 && (
         <div className="flex flex-wrap items-center gap-2">
           {badges.map((w, i) => (
-            <Skeleton key={i} className={cn("h-5 rounded-full", w)} />
+            <Skeleton key={i} className={cn("h-5 rounded-none", w)} />
           ))}
           {/* several tabs end the badge row with a plain hint <span> */}
           {trailingNote && <Skeleton className="h-3 w-72 max-w-full" />}
@@ -60,7 +60,7 @@ function InlineHeader({ titleWidth = "w-44", badges = [], leading = false }) {
       {leading && <Skeleton className="h-8 w-20 rounded-md" />}
       <Skeleton className={cn("h-7", titleWidth)} />
       {badges.map((w, i) => (
-        <Skeleton key={i} className={cn("h-5 rounded-full", w)} />
+        <Skeleton key={i} className={cn("h-5 rounded-none", w)} />
       ))}
     </div>
   );
@@ -77,11 +77,11 @@ function TabsBar({ tabs = [2], className }) {
   );
 }
 
-// A `Panel` (shared.jsx:47-58): rounded-xl border bg-card, a border-b px-4 py-3
+// A `Panel` (shared.jsx:47-58): a square `border bg-card`, a border-b px-4 py-3
 // header, and a p-4 body.
 function PanelSkeleton({ rows = 3, title = true, className, bodyClassName, children }) {
   return (
-    <div className={cn("overflow-hidden rounded-xl border bg-card", className)}>
+    <div className={cn("overflow-hidden rounded-none border bg-card", className)}>
       {title && (
         <div className="flex items-center justify-between gap-3 border-b px-4 py-3">
           <Skeleton className="h-4 w-36" />
@@ -136,7 +136,7 @@ function WorldSkeleton() {
       <PanelSkeleton bodyClassName="grid gap-3 md:grid-cols-2">
         {Array.from({ length: 4 }, (_, i) => (
           <div key={i} className="flex items-start gap-3 rounded-lg border p-3">
-            <Skeleton className="size-12 shrink-0 rounded-full" />
+            <Skeleton className="size-12 shrink-0 rounded-none" />
             <div className="min-w-0 flex-1 space-y-2">
               <Skeleton className="h-4 w-28" />
               <Skeleton className="h-3.5 w-full" />
@@ -160,7 +160,7 @@ function RadioSkeleton() {
             <PanelSkeleton key={s} bodyClassName="space-y-3">
               {Array.from({ length: 4 }, (_, l) => (
                 <div key={l} className="flex items-start gap-3">
-                  <Skeleton className="h-5 w-20 shrink-0 rounded-full" />
+                  <Skeleton className="h-5 w-20 shrink-0 rounded-none" />
                   <div className="min-w-0 flex-1 space-y-2">
                     <Skeleton className="h-3.5" style={{ width: `${90 - l * 9}%` }} />
                     <Skeleton className="h-3.5 w-1/3" />
@@ -176,7 +176,7 @@ function RadioSkeleton() {
         <PanelSkeleton className="self-start" bodyClassName="space-y-3">
           {Array.from({ length: 5 }, (_, i) => (
             <div key={i} className="flex items-center gap-3">
-              <Skeleton className="size-8 shrink-0 rounded-full" />
+              <Skeleton className="size-8 shrink-0 rounded-none" />
               <div className="min-w-0 flex-1 space-y-1.5">
                 <Skeleton className="h-3.5 w-24" />
                 <Skeleton className="h-3 w-16" />
@@ -202,13 +202,13 @@ function ShotlistSkeleton() {
         </PanelSkeleton>
         <div className="space-y-3">
           {Array.from({ length: 7 }, (_, i) => (
-            <div key={i} className="flex items-center gap-4 rounded-xl border bg-card p-4">
+            <div key={i} className="flex items-center gap-4 rounded-none border bg-card p-4">
               <Skeleton className="h-14 w-24 shrink-0 rounded-md" />
               <div className="min-w-0 flex-1 space-y-2">
                 <Skeleton className="h-4 w-40" />
                 <Skeleton className="h-3.5" style={{ width: `${80 - i * 6}%` }} />
               </div>
-              <Skeleton className="h-5 w-16 shrink-0 rounded-full" />
+              <Skeleton className="h-5 w-16 shrink-0 rounded-none" />
             </div>
           ))}
         </div>
@@ -226,7 +226,7 @@ function LibrarySkeleton() {
       <InlineHeader titleWidth="w-40" badges={["w-24", "w-44"]} />
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
         {Array.from({ length: 10 }, (_, i) => (
-          <div key={i} className="overflow-hidden rounded-xl border bg-card">
+          <div key={i} className="overflow-hidden rounded-none border bg-card">
             <Skeleton className="aspect-video w-full rounded-none" />
             <div className="space-y-2 p-3">
               <Skeleton className="h-4 w-3/4" />
@@ -247,7 +247,7 @@ function SoundsSkeleton() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <Skeleton className="h-7 w-44" />
         <div className="flex items-center gap-2">
-          <Skeleton className="h-5 w-32 rounded-full" />
+          <Skeleton className="h-5 w-32 rounded-none" />
           <Skeleton className="h-8 w-40 rounded-md" />
         </div>
       </div>
@@ -260,12 +260,12 @@ function SoundsSkeleton() {
           <PanelSkeleton key={i} bodyClassName="space-y-3">
             {Array.from({ length: 2 }, (_, v) => (
               <div key={v} className="flex items-center gap-3 rounded-lg border p-3">
-                <Skeleton className="size-9 shrink-0 rounded-full" />
+                <Skeleton className="size-9 shrink-0 rounded-none" />
                 <div className="min-w-0 flex-1 space-y-2">
                   <Skeleton className="h-3.5 w-40" />
-                  <Skeleton className="h-2 w-full rounded-full" />
+                  <Skeleton className="h-2 w-full rounded-none" />
                 </div>
-                <Skeleton className="h-5 w-16 shrink-0 rounded-full" />
+                <Skeleton className="h-5 w-16 shrink-0 rounded-none" />
               </div>
             ))}
           </PanelSkeleton>
@@ -289,16 +289,16 @@ function EpisodeSkeleton() {
       />
       <div className="space-y-4">
         {Array.from({ length: 3 }, (_, i) => (
-          <div key={i} className="overflow-hidden rounded-xl border bg-card">
+          <div key={i} className="overflow-hidden rounded-none border bg-card">
             <div className="flex flex-wrap items-center justify-between gap-3 border-b px-4 py-3">
               <div className="flex items-center gap-2">
-                <Skeleton className="h-5 w-16 rounded-full" />
+                <Skeleton className="h-5 w-16 rounded-none" />
                 <Skeleton className="h-4 w-44" />
               </div>
               <div className="flex flex-wrap items-center gap-1.5">
-                <Skeleton className="h-5 w-20 rounded-full" />
-                <Skeleton className="h-5 w-16 rounded-full" />
-                <Skeleton className="h-5 w-24 rounded-full" />
+                <Skeleton className="h-5 w-20 rounded-none" />
+                <Skeleton className="h-5 w-16 rounded-none" />
+                <Skeleton className="h-5 w-24 rounded-none" />
                 {/* the segmented storyboard/video toggle */}
                 <Skeleton className="h-8 w-40 rounded-md" />
                 <Skeleton className="h-7 w-24 rounded-md" />
@@ -342,9 +342,9 @@ function CutsSkeleton() {
       <PanelSkeleton bodyClassName="space-y-1.5">
         {Array.from({ length: 8 }, (_, i) => (
           <div key={i} className="flex flex-wrap items-center gap-3 rounded-lg border px-3 py-2">
-            <Skeleton className="h-5 w-14 shrink-0 rounded-full" />
+            <Skeleton className="h-5 w-14 shrink-0 rounded-none" />
             <Skeleton className="h-3.5" style={{ width: `${34 - i * 2}%` }} />
-            <Skeleton className="h-5 w-20 rounded-full" />
+            <Skeleton className="h-5 w-20 rounded-none" />
             <Skeleton className="ml-auto h-3 w-24" />
           </div>
         ))}
@@ -363,7 +363,7 @@ function ShotsSkeleton() {
   const cell = "min-w-0 px-3";
   return (
     <div className="space-y-4">
-      <div className="overflow-hidden rounded-xl border">
+      <div className="overflow-hidden rounded-none border">
         <div className="grid border-b bg-muted/60 py-2.5" style={grid}>
           {Array.from({ length: 5 }, (_, i) => (
             <div key={i} className={cell}>
@@ -384,9 +384,9 @@ function ShotsSkeleton() {
             </div>
             <div className={cn(cell, "space-y-3")}>
               <Skeleton className="h-3 w-full max-w-16" />
-              <Skeleton className="h-9 w-full rounded-full" />
+              <Skeleton className="h-9 w-full rounded-none" />
               <Skeleton className="h-3 w-full max-w-16" />
-              <Skeleton className="h-9 w-full rounded-full" />
+              <Skeleton className="h-9 w-full rounded-none" />
             </div>
             <div className={cell}>
               <Skeleton className="aspect-video w-full rounded-md" />
@@ -406,7 +406,7 @@ function MultishotSkeleton() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <Skeleton className="h-7 w-56" />
         <div className="flex flex-wrap items-center gap-2">
-          <Skeleton className="h-5 w-28 rounded-full" />
+          <Skeleton className="h-5 w-28 rounded-none" />
           <Skeleton className="h-3 w-24" />
           <Skeleton className="h-3 w-20" />
         </div>
@@ -441,7 +441,7 @@ function MultishotSkeleton() {
         <PanelSkeleton className="self-start" bodyClassName="space-y-3">
           {Array.from({ length: 3 }, (_, i) => (
             <div key={i} className="space-y-2 rounded-lg border bg-muted/30 p-3">
-              <Skeleton className="h-4 w-24 rounded-full" />
+              <Skeleton className="h-4 w-24 rounded-none" />
               <Skeleton className="h-3.5 w-full" />
               <Skeleton className="h-3 w-2/3" />
             </div>
@@ -458,8 +458,8 @@ function MultishotSkeleton() {
         <PanelSkeleton className="self-start" bodyClassName="space-y-3">
           {Array.from({ length: 3 }, (_, i) => (
             <div key={i} className="space-y-1.5">
-              <Skeleton className="h-4 w-28 rounded-full" />
-              <Skeleton className="h-9 w-full rounded-full" />
+              <Skeleton className="h-4 w-28 rounded-none" />
+              <Skeleton className="h-9 w-full rounded-none" />
             </div>
           ))}
         </PanelSkeleton>
@@ -475,7 +475,7 @@ function MoodboardSkeleton() {
   return (
     <div className="space-y-3">
       <StackedHeader titleWidth="w-40" subtitle actions={["w-24", "w-24", "w-24", "w-32"]} />
-      <Skeleton className="h-[78vh] w-full rounded-xl" />
+      <Skeleton className="h-[78vh] w-full rounded-none" />
     </div>
   );
 }
@@ -493,7 +493,7 @@ function EditorSkeleton() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex min-w-0 items-center gap-2">
           <Skeleton className="h-7 w-20" />
-          <Skeleton className="h-5 w-28 rounded-full" />
+          <Skeleton className="h-5 w-28 rounded-none" />
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {["w-32", "w-24", "w-24", "w-40"].map((w, i) => (
@@ -504,7 +504,7 @@ function EditorSkeleton() {
 
       {/* fixed top: media pool (left) + player (right) */}
       <div className="flex items-start gap-4">
-        <div className="hidden w-1/4 min-w-[170px] max-w-[300px] shrink-0 space-y-2 rounded-xl border bg-muted/20 p-2.5 sm:block">
+        <div className="hidden w-1/4 min-w-[170px] max-w-[300px] shrink-0 space-y-2 rounded-none border bg-muted/20 p-2.5 sm:block">
           <Skeleton className="h-4 w-24" />
           {Array.from({ length: 6 }, (_, i) => (
             <div key={i} className="flex items-center gap-2">
@@ -516,7 +516,7 @@ function EditorSkeleton() {
             </div>
           ))}
         </div>
-        <Skeleton className="aspect-video min-w-0 flex-1 rounded-xl" />
+        <Skeleton className="aspect-video min-w-0 flex-1 rounded-none" />
       </div>
 
       {/* toolbar row */}
@@ -529,13 +529,13 @@ function EditorSkeleton() {
         <div className="flex items-center gap-2">
           <Skeleton className="h-4 w-10" />
           <Skeleton className="h-7 w-7 rounded-md" />
-          <Skeleton className="h-2 w-28 rounded-full" />
+          <Skeleton className="h-2 w-28 rounded-none" />
           <Skeleton className="h-7 w-7 rounded-md" />
         </div>
       </div>
 
       {/* timeline: w-24 label rail beside the ruler + lanes */}
-      <div className="overflow-hidden rounded-xl border bg-muted/20">
+      <div className="overflow-hidden rounded-none border bg-muted/20">
         <div className="flex">
           <div className="w-24 shrink-0 space-y-1 border-r bg-card p-2">
             <Skeleton className="h-5 w-full" />
@@ -564,9 +564,9 @@ function EditorSkeleton() {
   );
 }
 
-// world/agents.jsx — the Script Agents board: a header + a status badge row,
+// agents.jsx — the Script Agents board: a header + a status badge row,
 // then stage Panels, each a 2-up grid of specialist cards.
-function WorldAgentsSkeleton() {
+function AgentsSkeleton() {
   return (
     <div className="space-y-4">
       <StackedHeader titleWidth="w-40" subtitle actions={["w-40"]} badges={["w-56", "w-24", "w-28"]} />
@@ -581,7 +581,7 @@ function WorldAgentsSkeleton() {
                   <Skeleton className="h-3 w-full" />
                 </div>
               </div>
-              <Skeleton className="h-5 w-28 rounded-full" />
+              <Skeleton className="h-5 w-28 rounded-none" />
               <Skeleton className="h-3.5 w-full" />
               <Skeleton className="h-7 w-24 rounded-md" />
             </div>
@@ -592,9 +592,11 @@ function WorldAgentsSkeleton() {
   );
 }
 
-// world/visual.jsx — the shared <ImageStudio>: a header, the composer (a prompt
-// box over a row of controls), then the results grid.
-function WorldVisualSkeleton() {
+// images.jsx / videos.jsx — both are the shared <ImageStudio>: a header, the
+// composer (a prompt box over a row of controls), then the results grid. One
+// shape, two keys: the surfaces differ in what the controls SAY, which is below
+// skeleton resolution.
+function StudioSkeleton() {
   return (
     <div className="space-y-4">
       <StackedHeader titleWidth="w-40" subtitle actions={["w-44"]} />
@@ -609,35 +611,66 @@ function WorldVisualSkeleton() {
       </PanelSkeleton>
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
         {Array.from({ length: 8 }, (_, i) => (
-          <Skeleton key={i} className="aspect-square w-full rounded-xl" />
+          <Skeleton key={i} className="aspect-square w-full rounded-none" />
         ))}
       </div>
     </div>
   );
 }
 
-// world/nodes.jsx — the React Flow canvas. A single opaque block (same reasoning
+// plugins.jsx — the marketplace: a header, then a grid of plugin cards. The
+// catalog is static data, so the grid's SHAPE is known before anything loads —
+// what the cold load waits on is which of them are installed.
+function PluginsSkeleton() {
+  return (
+    <div className="space-y-4">
+      <StackedHeader titleWidth="w-44" subtitle badges={["w-24", "w-28"]} />
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        {Array.from({ length: 9 }, (_, i) => (
+          <div key={i} className="space-y-2.5 rounded-none border bg-card p-4">
+            <div className="flex items-center gap-2.5">
+              <Skeleton className="size-9 shrink-0 rounded-md" />
+              <div className="min-w-0 flex-1 space-y-1.5">
+                <Skeleton className="h-4 w-28" />
+                <Skeleton className="h-3 w-16" />
+              </div>
+            </div>
+            <Skeleton className="h-3.5 w-full" />
+            <Skeleton className="h-3.5 w-4/5" />
+            <Skeleton className="h-8 w-24 rounded-md" />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// nodes.jsx — the React Flow canvas. A single opaque block (same reasoning
 // as the moodboard: no card shapes we can know before the graph loads) with a
 // small floating toolbar above it.
-function WorldNodesSkeleton() {
+function NodesSkeleton() {
   return (
     <div className="space-y-3">
       <div className="flex items-center gap-2">
         <Skeleton className="h-8 w-28 rounded-md" />
         <Skeleton className="h-8 w-24 rounded-md" />
       </div>
-      <Skeleton className="h-[72vh] w-full rounded-xl" />
+      <Skeleton className="h-[72vh] w-full rounded-none" />
     </div>
   );
 }
 
-// Tab → skeleton. Keys match the route paths in src/router.jsx (World sub-tabs
-// are keyed `world-<seg>`, resolved by src/routes/world/layout.jsx).
+// Tab → skeleton. Keys match the route paths in src/router.jsx, which are also
+// the plugin ids in src/lib/plugins.ts — `world` is the Bible, and the three
+// surfaces that used to hang off it (`agents`, `images`/`videos`, `nodes`) are
+// top-level now, so their keys lost the `world-` prefix with the sub-tab bar.
 const SKELETONS = {
   world: WorldSkeleton,
-  "world-agents": WorldAgentsSkeleton,
-  "world-visual": WorldVisualSkeleton,
-  "world-nodes": WorldNodesSkeleton,
+  agents: AgentsSkeleton,
+  images: StudioSkeleton,
+  videos: StudioSkeleton,
+  nodes: NodesSkeleton,
+  plugins: PluginsSkeleton,
   moodboard: MoodboardSkeleton,
   shotlist: ShotlistSkeleton,
   radio: RadioSkeleton,

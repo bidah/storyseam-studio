@@ -1157,3 +1157,47 @@ export function renderAllPendingMessage(tracks) {
       ` submit with me before generating, as usual.`,
   ].join("\n");
 }
+
+// Hand a kept sitting to the agent to score (the Musicalized tab's "Ask the
+// agent"). The browser has already MEASURED the film, so the turn carries the
+// length and the turns rather than letting the agent reach for the cue sheet —
+// the one mistake that makes a score arrive early. The draft plan rides along
+// so the agent refines what's on screen instead of starting over, and the mix
+// stays with the browser: the agent writes and renders the cue, the tab lays it.
+export function musicalizeMessage({ sitting, seriesTitle, filmMs, turns, brief, savedBrief, plan, request }) {
+  const lines = [
+    `Make a musicalized version of the kept sitting "${sitting.title || sitting.id}"` +
+      ` (sitting ${sitting.id}, Series "${seriesTitle || sitting.seriesId}", seriesId ${sitting.seriesId}).`,
+    `Load the score-film skill and follow it.`,
+    ``,
+    filmMs != null
+      ? `The film is MEASURED at ${filmMs} ms — use exactly that as filmMs; the chunks must add up to it.`
+      : `The film hasn't been measured on my screen yet — use the sitting's own seconds from get_musicalized, never the cue sheet.`,
+  ];
+  if (turns?.length) {
+    lines.push(
+      `Where the film's sound turns (second · direction · dB): ` +
+        turns.map((t) => `${t.at}s ${t.kind === "jump" ? "up" : "down"} ${Math.abs(t.by)}`).join(", ") +
+        `. Cut chunks at the turns that matter.`,
+    );
+  }
+  const b = (brief || "").trim();
+  if (b) {
+    lines.push(``, `Music brief: ${b}`);
+    if (b !== (savedBrief || "").trim()) {
+      lines.push(`That brief isn't saved yet — save it on the Series first (update_series prompts.musicStyle, keeping the rest of prompts).`);
+    }
+  } else {
+    lines.push(``, `There's no music brief yet — propose one from the Series and the film, and save it once I agree.`);
+  }
+  if (request?.trim()) lines.push(``, `What I want: ${request.trim()}`);
+  if (plan?.chunks?.length) {
+    lines.push(``, `My current draft plan — start from it rather than from scratch:`, "```json", JSON.stringify(plan), "```");
+  }
+  lines.push(
+    ``,
+    `Run plan_score, tell me the cost, and wait for my go before render_cue. Poll it to done,` +
+      ` then tell me the cue is filed — I'll check its bands and lay it under the film on the Musicalized tab.`,
+  );
+  return lines.join("\n");
+}

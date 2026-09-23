@@ -41,7 +41,7 @@ import { useColors } from '@/lib/colors';
 import { useEffectiveScheme } from '@/lib/theme';
 import { agentIsBusy, useAgent, useSendToAgent } from '@/lib/agent/provider';
 import { createVisualWorldMessage } from '@/lib/agent/messages';
-import { apiFetch, apiJson, mediaUrl, postJson, transcribeAudio, uploadFile } from '@/lib/api';
+import { apiFetch, apiJson, imageUrl, mediaUrl, postJson, transcribeAudio, uploadFile } from '@/lib/api';
 import { createPickerRequest } from '@/lib/picker-bus';
 import { ASPECTS } from '@/lib/gen-defaults';
 import { useImageModelPickerStore } from '@/lib/image-model-picker';
@@ -438,7 +438,7 @@ function Loaded({
         return {
           kind: 'library' as const,
           rel,
-          thumb: mediaUrl(im?.thumb || im?.url),
+          thumb: imageUrl(im?.thumb || im?.url),
           name: im?.name || rel,
         };
       }),
@@ -551,7 +551,9 @@ function Loaded({
           rel: r.rel,
           genId: r.genId,
           ...(r.kind === 'upload' ? { url: r.url } : {}),
-          thumb: mediaUrl(r.thumb || r.url),
+          // The chip is a 48pt square: the thumb tier, not the original a
+          // stored ref's `url` points at.
+          thumb: imageUrl(r.thumb || r.url),
         })),
       );
     } else if (res.action === 'ref') {
@@ -564,7 +566,7 @@ function Loaded({
                 id: Crypto.randomUUID(),
                 kind: 'generation',
                 genId: gen.id,
-                thumb: mediaUrl(gen.url),
+                thumb: imageUrl(gen.thumb || gen.url),
                 name: 'gen',
               },
             ],

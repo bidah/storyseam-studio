@@ -99,7 +99,7 @@ const RefMentionMenu = forwardRef(function RefMentionMenu(props, ref) {
 
   if (props.items.length === 0) {
     return (
-      <div className="w-64 rounded-lg border bg-popover p-1 text-popover-foreground shadow-md">
+      <div className="w-64 rounded-lg border bg-popover p-1 text-popover-foreground">
         <div className="flex items-center gap-2 px-2 py-1.5 text-sm text-muted-foreground">
           <ImageOff size={14} /> No reference images — attach one first
         </div>
@@ -110,7 +110,7 @@ const RefMentionMenu = forwardRef(function RefMentionMenu(props, ref) {
   return (
     <div
       ref={containerRef}
-      className="max-h-64 w-64 overflow-y-auto rounded-lg border bg-popover p-1 text-popover-foreground shadow-md"
+      className="max-h-64 w-64 overflow-y-auto rounded-lg border bg-popover p-1 text-popover-foreground"
     >
       <div className="px-2 pb-1 pt-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
         Reference images

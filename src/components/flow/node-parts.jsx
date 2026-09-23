@@ -7,9 +7,13 @@ import { FLOW_CONNECT_RULES } from "./flow-config";
 import { useT } from "@/lib/i18n";
 
 // Larger, self-describing hit-areas colored by the data they carry
-// (image = sky, text = slate, video = violet).
+// (image = sky, text = slate, video = violet). Those colors are the edge TYPE
+// system, not chrome — the placeholder copy points at "the blue handle" and the
+// three kinds have to stay tellable apart, so they are NOT flattened to the
+// accent token. `!rounded-full` stays too: a connection handle is a port, and a
+// square port reads as a resize grip.
 const HANDLE_BASE =
-  "!size-5 !rounded-full !border-2 !border-background flex items-center justify-center text-white shadow-sm transition-transform hover:!scale-110 [&_svg]:!size-3 [&_svg]:pointer-events-none";
+  "!size-5 !rounded-full !border-2 !border-background flex items-center justify-center text-white transition-transform hover:!scale-110 [&_svg]:!size-3 [&_svg]:pointer-events-none";
 
 const HANDLE_COLOR = {
   "image-output": "!bg-sky-500",
@@ -83,7 +87,7 @@ export function RefChips({ refs }) {
           <div
             key={`${r.label}-${i}`}
             title={r.label}
-            className="size-10 shrink-0 overflow-hidden rounded-md border border-border"
+            className="size-10 shrink-0 overflow-hidden rounded-none border border-border"
           >
             <img src={r.thumb || r.url} alt={r.label} className="h-full w-full object-cover" />
           </div>
@@ -149,7 +153,7 @@ export function HistoryStrip({ generations, currentGenId, onPick }) {
             type="button"
             onClick={() => onPick(g.id)}
             title={g.prompt || t("Generation")}
-            className={`relative size-11 shrink-0 overflow-hidden rounded-md border transition-colors ${
+            className={`relative size-11 shrink-0 overflow-hidden rounded-none border transition-colors ${
               active ? "border-primary ring-1 ring-primary" : "border-border hover:border-foreground/40"
             }`}
           >

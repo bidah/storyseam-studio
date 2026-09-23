@@ -21,6 +21,8 @@ import { buildWorldView, MAP_FIELDS, DEPTH_FIELDS } from "./world.js";
 import { readStore, pinnedDraft, countLines } from "../lib/script-store.js";
 import { readReviews, reviewState, digestReviews } from "../lib/reviews.js";
 import { normalizeShot } from "../lib/shots.js";
+import { PLUGIN_IDS } from "../lib/plugins.ts";
+import { readEnabledPlugins } from "./plugins.js";
 
 const filled = (section, fields) => fields.filter((f) => String(section?.[f] || "").trim());
 const missing = (section, fields) => fields.filter((f) => !String(section?.[f] || "").trim());
@@ -55,7 +57,7 @@ function pipelineStage(s) {
 // (POST /api/next-questions does exactly that). Pure read: no writes, no
 // broadcast, safe to call from anywhere.
 export async function buildStatus(env, pid) {
-  const [world, store, reviewDoc, db, shotlistDoc, vw, radio, sounds, manifest, completedCards] =
+  const [world, store, reviewDoc, db, shotlistDoc, vw, radio, sounds, manifest, moodboardDoc, musical, completedCards] =
     await Promise.all([
       // The episode-merged view: `depth` and `characters` reflect the ACTIVE
       // episode's bible/roster, so the digest describes the episode in play.
@@ -68,6 +70,13 @@ export async function buildStatus(env, pid) {
       readDoc(env, pid, "radio", {}),
       readDoc(env, pid, "sounds", { tracks: [] }),
       readDoc(env, pid, "episode-manifest", null),
+      // Two documents read ONLY for the `usage` counters below — the marketplace
+      // has to know whether this project has ever used the Moodboard or the
+      // Musical, and neither surface is otherwise part of the digest. Both are
+      // single indexed rows in the same parallel batch, so they cost a round
+      // trip, not a round trip each.
+      readDoc(env, pid, "moodboard", null),
+      readDoc(env, pid, "musical", null),
       // The one part of the digest that is STORED rather than derived — see
       // routes/suggestions.js for why "done" can't be recomputed from the gap
       // that closed. It rides along here so the landing screen gets the live
@@ -115,6 +124,10 @@ export async function buildStatus(env, pid) {
   const draft = pinnedDraft(store);
   const lines = countLines(draft.doc);
   const signed = !!db?.scriptSignoff?.[draft.id];
+  // Hoisted out of `digestReviews(...)` because `usage.agents` needs the raw
+  // buckets: a specialist pass that went stale still happened, so fresh + stale
+  // is the honest count of "has the writers' room ever run here".
+  const reviews = reviewState(reviewDoc, { pinnedId: draft.id, scriptUpdatedAt: draft.updatedAt });
   const scriptState = {
     exists: lines > 0,
     lines,
@@ -125,23 +138,30 @@ export async function buildStatus(env, pid) {
     updatedAt: draft.updatedAt || null,
     signed,
     hasProposal: !!draft.proposal,
-    reviews: digestReviews(
-      reviewState(reviewDoc, { pinnedId: draft.id, scriptUpdatedAt: draft.updatedAt }),
-    ),
+    reviews: digestReviews(reviews),
   };
 
   // --- Visual world -----------------------------------------------------
   const gens = Array.isArray(vw?.generations) ? vw.generations : [];
+  // Stills and clips share one generation store (`kind` lives on the ITEM), and
+  // the total alone no longer tells a caller which MEDIUM the project has —
+  // Image generation and Video generation are separate installable surfaces now,
+  // so the split is what decides whether either is in the header.
+  const images = gens.filter((g) => g?.kind !== "video");
+  const videos = gens.filter((g) => g?.kind === "video");
+  const boardNodes = Array.isArray(vw?.board?.nodes) ? vw.board.nodes.length : 0;
   const visualState = {
     // A visual world is only real once a frame has actually come back — the
     // doc is seeded with style presets before anyone has generated anything.
     exists: gens.some((g) => g?.status === "ready"),
     generations: gens.length,
+    images: images.length,
+    videos: videos.length,
     ready: gens.filter((g) => g?.status === "ready").length,
     pending: gens.filter((g) => g?.status === "processing").length,
     // Has the style been tuned at all, or is it still the seeded default?
     promptRevisions: Array.isArray(vw?.promptRevisions) ? vw.promptRevisions.length : 0,
-    boardNodes: Array.isArray(vw?.board?.nodes) ? vw.board.nodes.length : 0,
+    boardNodes,
   };
 
   // --- Shot list / storyboard -------------------------------------------
@@ -197,6 +217,40 @@ export async function buildStatus(env, pid) {
   const cutHistory = Array.isArray(db?.cutHistory) ? db.cutHistory : [];
   const cutsState = { count: cutHistory.length, latestAt: cutHistory[0]?.at || null };
 
+  // --- Plugin usage -----------------------------------------------------
+  // One integer per installable surface: HAS THIS PROJECT ACTUALLY USED IT.
+  // Nothing else reads these as a measurement — they exist so the marketplace
+  // can seed a pre-existing project's header from its own work instead of
+  // opening it empty (see routes/plugins.js). Every one of them is counted off
+  // a document this digest already read, which is the constraint: the seed must
+  // not make /api/status any more expensive than it was.
+  const usage = {
+    // A pass that went stale still happened; only `pending` means never-run.
+    agents: reviews.fresh.length + reviews.stale.length,
+    moodboard: Object.keys(moodboardDoc?.cards || {}).length,
+    shotlist: shots.length,
+    images: images.length,
+    videos: videos.length,
+    nodes: boardNodes,
+    // The animatic's picture track is the storyboard stills, so a shot with a
+    // still is the honest unit of "this project has an animatic".
+    animatic: covered.length,
+    radio: voiced,
+    sounds: tracks.length,
+    musical: Array.isArray(musical?.segments) ? musical.segments.length : 0,
+    // A bundle is what the Episodes tab is made of; a project that never packed
+    // one never used it.
+    episode: bundles.length,
+    cuts: cutHistory.length,
+    // A PROXY, and deliberately so: this counts generations that were promoted
+    // into the library (`savedRel`), not the library's real contents — uploads
+    // and provider imports never pass through here. A true count needs an R2
+    // listing, which this digest is not allowed to do (see the header). It
+    // under-reports, which is the safe direction for a seed: the worst case is
+    // an author installing Library themselves.
+    library: gens.filter((g) => String(g?.savedRel || "")).length,
+  };
+
   const out = {
     at: new Date().toISOString(),
     projectId: pid || null,
@@ -209,9 +263,20 @@ export async function buildStatus(env, pid) {
     sounds: soundsState,
     episode: episodeState,
     cuts: cutsState,
+    usage,
     suggestions: { completed: completedCards },
   };
   out.stage = pipelineStage(out);
+  // One extra indexed row read, and NOT mutual recursion: the usage map is
+  // handed over, so readEnabledPlugins never builds a status of its own from
+  // here (routes/plugins.js explains the split).
+  const { enabled, defaulted } = await readEnabledPlugins(env, pid, usage);
+  out.plugins = {
+    enabled,
+    disabled: PLUGIN_IDS.filter((id) => enabled.indexOf(id) < 0),
+    // true = nobody has chosen yet; `enabled` was derived from `usage` above.
+    defaulted,
+  };
   return out;
 }
 

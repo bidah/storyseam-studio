@@ -127,7 +127,7 @@ const SlashMenu = forwardRef(function SlashMenu(props, ref) {
 
   if (props.items.length === 0) {
     return (
-      <div className="w-72 rounded-lg border bg-popover p-1 text-popover-foreground shadow-md">
+      <div className="w-72 rounded-none border bg-popover p-1 text-popover-foreground">
         <div className="px-2 py-1.5 text-sm text-muted-foreground">No results</div>
       </div>
     );
@@ -136,7 +136,7 @@ const SlashMenu = forwardRef(function SlashMenu(props, ref) {
   return (
     <div
       ref={containerRef}
-      className="max-h-80 w-72 overflow-y-auto rounded-lg border bg-popover p-1 text-popover-foreground shadow-md"
+      className="max-h-80 w-72 overflow-y-auto rounded-none border bg-popover p-1 text-popover-foreground"
     >
       <div className="px-2 pb-1 pt-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
         Screenplay
@@ -147,7 +147,7 @@ const SlashMenu = forwardRef(function SlashMenu(props, ref) {
           type="button"
           data-active={index === selected}
           className={cn(
-            "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm",
+            "flex w-full items-center gap-2 rounded-none px-2 py-1.5 text-left text-sm",
             index === selected ? "bg-accent text-accent-foreground" : "hover:bg-accent/50"
           )}
           // onMouseDown (not onClick) so the editor selection isn't lost first.
@@ -157,7 +157,7 @@ const SlashMenu = forwardRef(function SlashMenu(props, ref) {
           }}
           onMouseEnter={() => setSelected(index)}
         >
-          <span className="flex size-7 shrink-0 items-center justify-center rounded border bg-background">
+          <span className="flex size-7 shrink-0 items-center justify-center rounded-none border bg-background">
             <item.icon className="size-4" />
           </span>
           <span className="min-w-0">

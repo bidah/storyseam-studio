@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, Outlet, useLocation, useNavigate, useNavigation, useRevalidator } from "react-router";
-import { RefreshCw, ExternalLink, Clapperboard, Sun, Moon, LogOut, User, Users, Settings } from "lucide-react";
+import { RefreshCw, ExternalLink, Clapperboard, LogOut, User, Users, Settings, Blocks, Plug } from "lucide-react";
 import { Glowing } from "glowing";
 import { cn } from "@/lib/utils";
 import { useProjectEvents } from "@/lib/useProjectEvents";
@@ -30,36 +30,91 @@ import { ImageModal } from "@/components/shared";
 import { RouteSkeleton } from "@/components/skeletons";
 import { ShellContext } from "@/lib/shellContext";
 import { useT } from "@/lib/i18n";
+import { PluginsProvider, usePlugins } from "@/components/PluginsProvider";
+import PluginGate from "@/components/PluginGate";
+import { UseMcpDialog } from "@/components/UseMcpModal";
+import { headerTabs, blockingPlugin } from "@/lib/plugins";
 
 /* ---------------------------------------------------------------- *
  * App shell                                                        *
  * ---------------------------------------------------------------- */
 
-const TABS = [
-  { value: "world", label: "World" },
-  { value: "moodboard", label: "Moodboard" },
-  { value: "script", label: "Script" },
-  { value: "shotlist", label: "Shot list" },
-  { value: "radio", label: "Radio" },
-  { value: "animatic", label: "Animatic" },
-  // Sample-code tabs — kept wired up (routes/content still work) but hidden from
-  // the top menu. Drop `hidden` to surface them again.
-  { value: "shots", label: "Shots", hidden: true },
-  { value: "multishot", label: "Multi-shot", hidden: true },
-  { value: "episode", label: "Episode (48)" },
-  { value: "cuts", label: "Complete cuts" },
-  { value: "editor", label: "Editor" },
-  { value: "library", label: "Library" },
-  { value: "sounds", label: "Sound studio" },
-  { value: "musical", label: "Musical" },
-];
+// The header used to be a hardcoded list of fourteen tabs. It is now the four
+// core surfaces plus whatever this project has installed — `src/lib/plugins.ts`
+// owns the labels AND the order, so there is nothing to keep in sync here.
+// (The two sample-code surfaces, /shots and /multishot, are still routed and
+// still reachable by URL; they were already hidden from the menu and stay so.)
+function HeaderTabs() {
+  const t = useT();
+  const { enabled } = usePlugins();
+  return (
+    // `min-w-0` + `overflow-x-auto` keeps the header ONE row: a project with a
+    // dozen plugins installed scrolls its tab strip instead of wrapping the
+    // buttons beside it onto a second line.
+    <TabsList className="h-9 min-w-0 max-w-full overflow-x-auto">
+      {headerTabs(enabled).map((tab) => (
+        <TabsTrigger
+          key={tab.id}
+          value={tab.id}
+          className="text-xs"
+          // The Script tab's live-edit glow finds its element by this attribute
+          // (radix triggers don't forward refs) — see useGlow below.
+          {...(tab.id === "script" ? { "data-script-tab": "true" } : {})}
+        >
+          {t(tab.label)}
+        </TabsTrigger>
+      ))}
+    </TabsList>
+  );
+}
 
-// Brand-lime glow (matches the Higgsfield primary) for the "route being edited"
-// cue on the Script tab. `colors` alternates the glow hue with black so the
-// glowing library's gradient reads as a lime shimmer.
+// Live-sync for the one piece of state that isn't behind a route loader.
+//
+// The header's tab list comes from `usePlugins()`, not from a `loader`, so
+// RootLayout's "data changed → invalidate + revalidate" pair can't reach it.
+// Without this, a director who installs Radio leaves the editor sitting next to
+// them looking at a header that doesn't have it until they reload.
+//
+// Narrow on purpose: the `data` firehose fires on EVERY mutation anywhere in
+// the project, and re-reading the plugin set after each one would be a request
+// per keystroke-ish edit. So only a frame whose `resource` is "plugins" — plus
+// a reconnect, where frames were missed and we can't know — triggers a refresh.
+function PluginsLiveSync({ frame, resyncs }) {
+  const { refresh } = usePlugins();
+  const isPluginFrame = frame?.resource === "plugins";
+  useEffect(() => {
+    if (isPluginFrame) refresh();
+    // Keyed on the frame identity so two consecutive plugin edits both land.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [frame, isPluginFrame]);
+  useEffect(() => {
+    if (resyncs > 0) refresh();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [resyncs]);
+  return null;
+}
+
+// The route guard. `blockingPlugin` owns the policy — core surfaces, the
+// ungated views (settings, members, the marketplace itself…) and any path that
+// isn't a plugin at all come back null — so this only decides WHEN to ask.
+//
+// Never while the set is still loading: flashing "not installed" over a tab the
+// author does own is worse than a beat of nothing, and the answer arrives in
+// one request anyway.
+function GatedOutlet({ view, pendingView }) {
+  const { enabled, loading } = usePlugins();
+  if (pendingView) return <RouteSkeleton tab={pendingView} />;
+  const blocked = loading ? null : blockingPlugin(view, enabled);
+  return blocked ? <PluginGate plugin={blocked} /> : <Outlet />;
+}
+
+// The "route being edited" cue on the Script tab. Accent-orange, not the old
+// brand lime: design.md carries ONE accent and calls that rule load-bearing, so
+// a second hue here would read as a different kind of signal. `colors`
+// alternates it with the page ground so the sweep reads as a pulse.
 const GLOW_OPTS = {
-  colors: ["#cbf74e", "#000000", "#a3e635", "#000000", "#cbf74e"],
-  colors2: ["#ffffff", "#000000", "#000000", "#ffffff"],
+  colors: ["#FF5A1F", "#0B0C0F", "#FF5A1F", "#0B0C0F", "#FF5A1F"],
+  colors2: ["#F2F2F0", "#0B0C0F", "#0B0C0F", "#F2F2F0"],
   width: 3,
   rotationDuration: 2200,
   glowingBlurRatio: 1.4,
@@ -96,28 +151,13 @@ function useSettled(on, ms = 150) {
   return on && settled;
 }
 
-// Account menu — the shadcn avatar in the header opens a dropdown with the
-// light/dark theme toggle, a link to higgsfield.ai, and a sign-out that drops
-// the Higgsfield credential and re-gates the app (reload → LoginGate re-checks
-// → homepage).
+// Account menu — the shadcn avatar in the header opens a dropdown with links to
+// Settings and the team, a link to higgsfield.ai, and a sign-out that drops the
+// Higgsfield credential and re-gates the app (reload → LoginGate re-checks →
+// homepage). The light/dark toggle that used to live here is gone: the app is
+// dark-only now (see index.html), so the control had nothing to switch to.
 function UserMenu() {
   const t = useT();
-  const [dark, setDark] = useState(() =>
-    typeof document !== "undefined" ? document.documentElement.classList.contains("dark") : true
-  );
-  const toggleTheme = () => {
-    const next = !dark;
-    setDark(next);
-    document.documentElement.classList.toggle("dark", next);
-    try {
-      localStorage.setItem("theme", next ? "dark" : "light");
-    } catch {
-      /* ignore storage failures — the class toggle still applies for this session */
-    }
-    const meta = document.querySelector('meta[name="theme-color"]');
-    if (meta) meta.setAttribute("content", next ? "#0f0f11" : "#ffffff");
-  };
-
   const signOut = async () => {
     try {
       await authSignOut();
@@ -133,6 +173,9 @@ function UserMenu() {
         <button
           type="button"
           aria-label={t("Account menu")}
+          // The lone survivor of design.md's square rule: the focus ring traces
+          // the Avatar, and a square ring around a circular portrait reads as a
+          // misalignment rather than as a decision.
           className="rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
         >
           <Avatar className="size-8">
@@ -154,9 +197,6 @@ function UserMenu() {
           <Link to="/members">
             <Users size={14} /> {t("Team & access")}
           </Link>
-        </DropdownMenuItem>
-        <DropdownMenuItem onSelect={(e) => { e.preventDefault(); toggleTheme(); }}>
-          {dark ? <Sun size={14} /> : <Moon size={14} />} {dark ? t("Light mode") : t("Dark mode")}
         </DropdownMenuItem>
         <DropdownMenuItem asChild>
           <a href="https://higgsfield.ai" target="_blank" rel="noopener noreferrer">
@@ -221,6 +261,8 @@ export default function RootLayout() {
   const [projectKey, setProjectKey] = useState(0);
   const [episodeKey, setEpisodeKey] = useState(0);
   const [modalImage, setModalImage] = useState(null);
+  // "Use MCP" — how to point your own agent/harness at this project.
+  const [mcpOpen, setMcpOpen] = useState(false);
 
   // A lightweight readiness ping that bumps `reloadKey` (the media cache-bust
   // nonce) once the backend has settled, and drives the Refresh button's spinner.
@@ -290,7 +332,11 @@ export default function RootLayout() {
   // studio) → refetch so every tab reflects the change with no manual Refresh.
   // Script/timeline have their own targeted live streams. `resyncs` counts too:
   // after an SSE reconnect, events may have been missed, so refetch as well.
-  const dataEvents = useProjectEvents("/api/data/events");
+  // `{ data: true }` because one consumer needs the frame BODY, not just the
+  // counter: the installed-plugin set lives outside the loader graph, so a
+  // collaborator installing Radio has to be told which resource changed (see
+  // <PluginsLiveSync/>). Everything else still reacts to the counter alone.
+  const dataEvents = useProjectEvents("/api/data/events", { data: true });
   const dataEdits = dataEvents.edits + dataEvents.resyncs;
   useEffect(() => {
     if (dataEdits === 0) return; // ignore the initial value
@@ -407,35 +453,50 @@ export default function RootLayout() {
       <ProjectProvider>
       <EpisodeProvider>
       <ProviderGateProvider>
+      {/* Inside ProjectProvider (the installed set is per project) and outside
+          the header, which reads it to build the tabs. */}
+      <PluginsProvider>
+      <PluginsLiveSync frame={dataEvents.last} resyncs={dataEvents.resyncs} />
       <ShellContext.Provider value={shell}>
       {/* Highlight the PENDING tab, not the committed one — otherwise a click
           leaves the old tab lit for the whole load. */}
       <Tabs value={activeTab} onValueChange={(v) => navigate("/" + v)}>
       <div className="flex h-dvh flex-col overflow-hidden">
-        {/* One unified header, full width across both the GUI and the chat. */}
-        <header className="shrink-0 border-b bg-card/80 backdrop-blur supports-[backdrop-filter]:bg-card/60">
+        {/* One unified header, full width across both the GUI and the chat.
+            Opaque rather than a blur over the page: the strip is a flat HUD
+            ground (design.md), and a translucent header tints whatever
+            scrolls under the tab row. */}
+        <header className="shrink-0 border-b bg-card">
           <div className="flex flex-wrap items-center gap-x-3 gap-y-3 px-4 py-3 md:px-6">
-            <div className="flex size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground shadow-sm">
+            <div className="flex size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
               <Clapperboard size={18} />
             </div>
 
             <ProjectSwitcher />
             <EpisodeSwitcher />
 
-            <TabsList className="h-9">
-              {TABS.filter((tab) => !tab.hidden).map((tab) => (
-                <TabsTrigger
-                  key={tab.value}
-                  value={tab.value}
-                  className="text-xs"
-                  {...(tab.value === "script" ? { "data-script-tab": "true" } : {})}
-                >
-                  {t(tab.label)}
-                </TabsTrigger>
-              ))}
-            </TabsList>
+            <HeaderTabs />
+
+            {/* The doorway to the marketplace, sitting immediately after the
+                tabs rather than over in the account cluster: it is a peer of
+                the tabs — the place the NEXT tab comes from — not an app-wide
+                action. On it, it takes the SAME primary fill the TabsList
+                indicator draws, so it highlights exactly the way a tab does. */}
+            <Button
+              variant={view === "plugins" ? "default" : "outline"}
+              size="sm"
+              onClick={() => navigate("/plugins")}
+            >
+              <Blocks size={13} /> {t("Explore plugins")}
+            </Button>
 
             <div className="ml-auto flex items-center gap-2">
+              {/* Deliberately a first-class button, not a menu item: driving
+                  this project from your own agent is a headline capability,
+                  and nobody discovers it inside a dropdown. */}
+              <Button variant="secondary" size="sm" onClick={() => setMcpOpen(true)}>
+                <Plug size={13} /> {t("Use MCP")}
+              </Button>
               <Button variant="outline" size="sm" onClick={refresh} disabled={loading}>
                 <RefreshCw size={13} className={cn(loading && "animate-spin")} /> {t("Refresh")}
               </Button>
@@ -459,7 +520,7 @@ export default function RootLayout() {
                   : "max-w-[1500px]",
               )}
             >
-              {pendingView ? <RouteSkeleton tab={pendingView} /> : <Outlet />}
+              <GatedOutlet view={view} pendingView={pendingView} />
             </main>
           </div>
           <AgentChat />
@@ -468,6 +529,8 @@ export default function RootLayout() {
       </Tabs>
 
       <ImageModal image={modalImage} onClose={() => setModalImage(null)} />
+      {/* Connect StorySeam to your own agent/harness over MCP (POST /api/mcp). */}
+      <UseMcpDialog open={mcpOpen} onOpenChange={setMcpOpen} />
       {/* Replays a pending invite (stashed pre-login in localStorage) once the
           user is inside the app — the fallback for when the /accept-invite route
           couldn't render across the sign-in / provider-connect redirects. */}
@@ -475,6 +538,7 @@ export default function RootLayout() {
       {/* App-wide toasts (desktop update-ready affordance lives here too). */}
       <Toaster position="bottom-right" />
       </ShellContext.Provider>
+      </PluginsProvider>
       </ProviderGateProvider>
       </EpisodeProvider>
       </ProjectProvider>

@@ -204,7 +204,7 @@ export default function ScriptSelectionAsk({ editor, paused = false, onPendingRa
         top: pos ? pos.top : -9999,
         zIndex: 50,
       }}
-      className="w-80 rounded-xl border bg-popover p-2.5 text-popover-foreground shadow-lg"
+      className="w-80 rounded-none border bg-popover p-2.5 text-popover-foreground"
     >
       <Textarea
         ref={taRef}
@@ -238,10 +238,11 @@ export default function ScriptSelectionAsk({ editor, paused = false, onPendingRa
             <X size={14} />
           </Button>
           <div className="flex flex-1 items-center gap-2 text-xs">
+            {/* The rec dot stays circular — a lamp, not a panel. */}
             {transcribing ? (
               <Loader2 size={13} className="animate-spin text-muted-foreground" />
             ) : (
-              <span className="size-2.5 animate-pulse rounded-full bg-red-500" />
+              <span className="size-2.5 animate-pulse rounded-full bg-destructive" />
             )}
             <span className="text-muted-foreground">
               {transcribing ? "Transcribing…" : "Recording…"}

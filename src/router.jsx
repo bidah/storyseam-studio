@@ -22,6 +22,33 @@ const fallback = (tab) => () => <RouteSkeleton tab={tab} />;
 // Biggest win: /editor's Remotion deps leave the main bundle. ErrorBoundary stays
 // statically set so it also catches lazy-load failures.
 export const router = createBrowserRouter([
+  // PUBLIC StorySeam homepage at `/` — the branded page with the mark, the
+  // feature marquee and the Google button, drawn now in the design.md system.
+  // A SIBLING of RootLayout, not its index route: it must render with no
+  // session and no project scope, and RootLayout's LoginGate is what sends
+  // people to the sign-in page, so nesting it would loop. It IS the sign-in
+  // page — `/` and `/login` are one module, and a visitor who already has a
+  // session is sent straight on to /world.
+  {
+    index: true,
+    lazy: () => import("@/routes/login"),
+    ErrorBoundary: RouteError,
+  },
+  // The same page at its own url, which is where LoginGate points a signed-out
+  // visitor (`/login?next=<the route they asked for>`).
+  {
+    path: "/login",
+    lazy: () => import("@/routes/login"),
+    ErrorBoundary: RouteError,
+  },
+  // PUBLIC model page: the realtime director harness, in the HUD design. Its
+  // own url rather than the site root — it is a product claim about one model,
+  // not the front door to the studio.
+  {
+    path: "/director-harness",
+    lazy: () => import("@/routes/landing"),
+    ErrorBoundary: RouteError,
+  },
   // PUBLIC read-only share view behind a share link — the World and Script tabs.
   // A SIBLING of RootLayout, not a child: the shell's LoginGate (session +
   // provider key) and header must never wrap it — a link viewer has neither.
@@ -59,20 +86,25 @@ export const router = createBrowserRouter([
     ErrorBoundary: RouteError, // catch-all so chunk-load failures on any route auto-recover
     id: "root",
     children: [
-      { index: true, loader: () => redirect("/world") },
-      {
-        path: "world",
-        lazy: () => import("@/routes/world/layout"),
-        ErrorBoundary: RouteError,
-        HydrateFallback: fallback("world"),
-        children: [
-          { index: true, lazy: () => import("@/routes/world/written") },
-          { path: "agents", lazy: () => import("@/routes/world/agents") },
-          { path: "visual", lazy: () => import("@/routes/world/visual") },
-          { path: "nodes", lazy: () => import("@/routes/world/nodes") },
-        ],
-      },
-      // Keeps React Flow + TipTap out of the main chunk, like /world/nodes.
+      // /world is just the bible now: the sub-tab bar is gone and its three
+      // sub-surfaces became top-level plugins of their own (see below).
+      { path: "world", lazy: () => import("@/routes/world/written"), ErrorBoundary: RouteError, HydrateFallback: fallback("world") },
+      { path: "agents", lazy: () => import("@/routes/agents"), ErrorBoundary: RouteError, HydrateFallback: fallback("agents") },
+      { path: "images", lazy: () => import("@/routes/images"), ErrorBoundary: RouteError, HydrateFallback: fallback("images") },
+      { path: "videos", lazy: () => import("@/routes/videos"), ErrorBoundary: RouteError, HydrateFallback: fallback("videos") },
+      // Keeps React Flow out of the main chunk.
+      { path: "nodes", lazy: () => import("@/routes/nodes"), ErrorBoundary: RouteError, HydrateFallback: fallback("nodes") },
+      // The marketplace. Never gated — it is where you go to un-gate things.
+      { path: "plugins", lazy: () => import("@/routes/plugins"), ErrorBoundary: RouteError, HydrateFallback: fallback("plugins") },
+      // The old /world/* sub-tab paths, kept alive as redirects. They are still
+      // in the wild: bookmarks, links pasted into a chat, and — the one that
+      // would be invisible to us — a `navigate` command the agent minted before
+      // this refactor and replays from a stored plan. A 404-to-/script would
+      // look like the feature vanished.
+      { path: "world/agents", loader: () => redirect("/agents") },
+      { path: "world/visual", loader: () => redirect("/images") },
+      { path: "world/nodes", loader: () => redirect("/nodes") },
+      // Keeps React Flow + TipTap out of the main chunk, like /nodes.
       { path: "moodboard", lazy: () => import("@/routes/moodboard"), ErrorBoundary: RouteError, HydrateFallback: fallback("moodboard") },
       { path: "script", lazy: () => import("@/routes/script") },
       { path: "shotlist", lazy: () => import("@/routes/shotlist"), ErrorBoundary: RouteError, HydrateFallback: fallback("shotlist") },
@@ -86,6 +118,15 @@ export const router = createBrowserRouter([
       { path: "library", lazy: () => import("@/routes/library"), ErrorBoundary: RouteError, HydrateFallback: fallback("library") },
       { path: "sounds", lazy: () => import("@/routes/sounds"), ErrorBoundary: RouteError, HydrateFallback: fallback("sounds") },
       { path: "musical", lazy: () => import("@/routes/musical"), ErrorBoundary: RouteError, HydrateFallback: fallback("musical") },
+      // The Director half of the studio. `stage` and `musicalized` are split out
+      // of the main chunk for the same reason `editor` is: they pull a WebRTC
+      // client and a media muxer respectively, and nobody who never opens them
+      // should pay for either.
+      { path: "director", lazy: () => import("@/routes/director"), ErrorBoundary: RouteError, HydrateFallback: fallback("director") },
+      { path: "stage", lazy: () => import("@/routes/stage"), ErrorBoundary: RouteError, HydrateFallback: fallback("stage") },
+      { path: "shotsheet", lazy: () => import("@/routes/shotsheet"), ErrorBoundary: RouteError, HydrateFallback: fallback("shotsheet") },
+      { path: "musicalized", lazy: () => import("@/routes/musicalized"), ErrorBoundary: RouteError, HydrateFallback: fallback("musicalized") },
+      { path: "upscale", lazy: () => import("@/routes/upscale"), ErrorBoundary: RouteError, HydrateFallback: fallback("upscale") },
       // Not a top tab — opened from the header avatar menu.
       { path: "settings", lazy: () => import("@/routes/settings"), ErrorBoundary: RouteError },
       // Team & access management, and the invite-acceptance landing. Both live

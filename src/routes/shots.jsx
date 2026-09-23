@@ -52,7 +52,7 @@ function EditableCell({ shotId, kind, initialText, found, segmentTag, segmentLab
     <div className="space-y-2">
       {segmentLabel ? (
         <div
-          className="rounded-md border border-amber-500/25 bg-amber-500/10 px-2.5 py-1.5 text-xs font-semibold uppercase tracking-wide text-amber-500"
+          className="rounded-md border border-warning/25 bg-warning/10 px-2.5 py-1.5 text-xs font-semibold uppercase tracking-wide text-warning"
           title={t("Shared segment context (not editable here)")}
         >
           {segmentLabel}
@@ -70,7 +70,7 @@ function EditableCell({ shotId, kind, initialText, found, segmentTag, segmentLab
           {status === "saving" ? <><Loader2 size={13} className="animate-spin" /> {t("Saving…")}</> : <><Save size={13} /> {t("Save")}</>}
         </Button>
         {dirty && (
-          <span className="flex items-center gap-1 text-xs text-amber-500">
+          <span className="flex items-center gap-1 text-xs text-warning">
             <Circle size={8} fill="currentColor" /> {t("unsaved")}
           </span>
         )}
@@ -149,7 +149,7 @@ function Shots({ shots, error, reloadKey }) {
   return (
             <div className="space-y-4">
               {error && <ErrorNote>{error}</ErrorNote>}
-              <div className="overflow-hidden rounded-xl border">
+              <div className="overflow-hidden rounded-none border">
                 <div className="overflow-x-auto">
                   <table className="w-full min-w-[1040px] table-fixed border-collapse text-sm">
                     <colgroup>
@@ -179,7 +179,7 @@ function Shots({ shots, error, reloadKey }) {
                               <tr key={`seg-${s.audioSegment}`}>
                                 <td
                                   colSpan={5}
-                                  className="border-y border-amber-500/25 bg-amber-500/10 px-3 py-2 text-xs font-bold uppercase tracking-wider text-amber-500"
+                                  className="border-y border-warning/25 bg-warning/10 px-3 py-2 text-xs font-bold uppercase tracking-wider text-warning"
                                 >
                                   {s.audioSegmentLabel}
                                 </td>
@@ -200,7 +200,7 @@ function Shots({ shots, error, reloadKey }) {
                                   <Speech size={13} /> {t("Speech · for lipsync")}
                                 </div>
                                 <MediaTakes kind="audio" takes={s.speechTakes} reloadKey={reloadKey} />
-                                <div className="mb-1 mt-3 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wide text-amber-500">
+                                <div className="mb-1 mt-3 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wide text-warning">
                                   <Leaf size={13} /> {t("VFX · layer on video")}
                                 </div>
                                 <MediaTakes kind="audio" takes={s.vfxTakes} reloadKey={reloadKey} />

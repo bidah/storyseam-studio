@@ -1,6 +1,6 @@
 import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import { useLoaderData, useRevalidator } from "react-router";
-import { X, RefreshCw, Loader2, Layers, Film, Plus, Send, CornerDownRight, ListChecks, FastForward, CircleCheck, Copy, Check, PersonStanding, GitBranch } from "lucide-react";
+import { X, RefreshCw, Loader2, Layers, Film, Plus, Send, CornerDownRight, ListChecks, FastForward, CircleCheck, Copy, Check, Download, PersonStanding, GitBranch } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useT } from "@/lib/i18n";
 import { invalidateTabCache } from "@/lib/tabCache";
@@ -326,7 +326,7 @@ function InsertShot({ prev, next, creating, disabled, onSend, onCancel }) {
     return (
       <div className="relative flex items-center justify-center py-1.5">
         <div className="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-primary/40" />
-        <div className="relative z-10 flex items-center gap-2 rounded-full border border-primary/40 bg-primary/10 px-3 py-1 text-xs font-medium text-primary shadow-sm">
+        <div className="relative z-10 flex items-center gap-2 rounded-none border border-primary/40 bg-primary/10 px-3 py-1 text-xs font-medium text-primary">
           <Loader2 size={13} className="animate-spin" />
           {t("Creating new shot node…")}
           <button type="button" onClick={onCancel} aria-label={t("Dismiss")} className="text-primary/70 transition-colors hover:text-primary">
@@ -346,7 +346,7 @@ function InsertShot({ prev, next, creating, disabled, onSend, onCancel }) {
           onClick={() => setOpen(true)}
           aria-label={t("Add a shot here")}
           title={t("Add a shot here")}
-          className="relative z-10 flex size-6 items-center justify-center rounded-full border bg-background text-muted-foreground shadow-sm transition-colors hover:border-primary hover:bg-primary hover:text-primary-foreground"
+          className="relative z-10 flex size-6 items-center justify-center rounded-none border bg-background text-muted-foreground transition-colors hover:border-primary hover:bg-primary hover:text-primary-foreground"
         >
           <Plus size={14} />
         </button>
@@ -446,6 +446,101 @@ function CopyPromptButton({ shots, packs }) {
     >
       {copied ? <Check size={13} /> : <Copy size={13} />}
       {copied ? t("Copied") : t("Copy prompt")}
+    </Button>
+  );
+}
+
+// The whole shot list as plain text: every beat, every shot with its fields and
+// render prompt, then each multishot pack's composed skill prompt. Deliberately
+// the FULL list rather than what the pack filter happens to be showing — the
+// button is a "take the shot list with you", not an export of the current view.
+function shotlistText(data) {
+  const shots = data.shots || [];
+  const packs = data.packs || [];
+  const runtime = shots.reduce((a, s) => a + (Number(s.dur) || 0), 0);
+  const out = [];
+  const rule = "=".repeat(60);
+
+  out.push("SHOT LIST");
+  const head = [`${shots.length} shots`, `~${fmtTime(runtime)} total`, `${packs.length} multishot packs`];
+  if (data.productionType) head.push(String(data.productionType));
+  if (data.director?.name) head.push(`director: ${data.director.name}`);
+  out.push(head.join(" · "));
+  if (data.generatedAt) out.push(`generated ${data.generatedAt}`);
+  if (data.progress) {
+    out.push(data.progress.complete
+      ? "coverage: covers the whole script"
+      : `coverage: ${data.progress.throughIndex != null ? `script covered through line ${data.progress.throughIndex}` : "partial"}`);
+  }
+
+  const packById = new Map();
+  for (const p of packs) for (const id of p.shotIds || []) packById.set(id, p.id);
+
+  let beat = null;
+  for (const s of shots) {
+    if (s.beat !== beat) {
+      beat = s.beat;
+      out.push("", rule, (s.beatTitle || s.beat || "").toUpperCase(), rule);
+    }
+    const bits = [`shot ${s.id}`];
+    if (s.dur) bits.push(`${s.dur}s`);
+    if (s.location) bits.push(s.location);
+    if (packById.get(s.id)) bits.push(packById.get(s.id));
+    out.push("", bits.join("  ·  "));
+    const field = (label, value) => {
+      const v = String(value || "").trim();
+      if (v) out.push(`  ${label}: ${v.replace(/\n/g, "\n    ")}`);
+    };
+    field("characters", (s.characters || []).join(", "));
+    field("camera", s.camera);
+    field("action", s.action);
+    field("dialogue", s.dialogue);
+    field("audio sync", s.audioSync);
+    const prompt = shotPromptText(s);
+    if (prompt) {
+      out.push("  prompt:");
+      for (const line of prompt.split("\n")) out.push(`    ${line}`);
+    }
+  }
+
+  const withPrompts = packs.filter((p) => p.skillPrompt);
+  if (withPrompts.length) {
+    out.push("", rule, "MULTISHOT PACKS", rule);
+    for (const p of withPrompts) {
+      out.push("", `${p.id}  ·  ${p.from}–${p.to}  ·  ${p.count} shots  ·  ${p.durationEst}s`, "", p.skillPrompt);
+    }
+  }
+
+  return out.join("\n") + "\n";
+}
+
+// Header button: writes the whole list out as a .txt the author keeps, prints,
+// or pastes into another tool. Purely client-side — the list is already loaded,
+// so there's no route to call.
+function DownloadShotlistButton({ data }) {
+  const t = useT();
+  const shots = data.shots || [];
+  const download = () => {
+    if (!shots.length) return;
+    const blob = new Blob([shotlistText(data)], { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `shot-list-${new Date().toISOString().slice(0, 10)}.txt`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    // Revoke on the next tick — Safari cancels the download if the URL dies first.
+    setTimeout(() => URL.revokeObjectURL(url), 0);
+  };
+  return (
+    <Button
+      variant="outline"
+      onClick={download}
+      disabled={!shots.length}
+      title={t("Download the whole shot list — every beat, shot and render prompt — as a .txt file")}
+    >
+      <Download size={13} /> {t("Download shotlist")}
     </Button>
   );
 }
@@ -624,6 +719,7 @@ function ShotList() {
             <Button variant="outline" onClick={rebuild} disabled={rebuilding}>
               {rebuilding ? <><Loader2 size={13} className="animate-spin" /> rebuilding…</> : <><RefreshCw size={13} /> rebuild from current episode</>}
             </Button>
+            <DownloadShotlistButton data={data} />
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
@@ -644,8 +740,8 @@ function ShotList() {
       {error && <ErrorNote>{error}</ErrorNote>}
 
       {staleFromDraft && (
-        <div className="flex items-start gap-2 rounded-xl border border-dashed border-amber-500/40 bg-amber-500/5 p-3 text-sm text-muted-foreground">
-          <GitBranch size={15} className="mt-0.5 shrink-0 text-amber-500" />
+        <div className="flex items-start gap-2 rounded-none border border-dashed border-warning/40 bg-warning/5 p-3 text-sm text-muted-foreground">
+          <GitBranch size={15} className="mt-0.5 shrink-0 text-warning" />
           <span>
             You’ve moved to a new script draft. This shot list was built from an earlier draft and has
             been cleared — regenerate it for the current script. The previous list is kept in version history.
@@ -654,7 +750,7 @@ function ShotList() {
       )}
 
       {shots.length === 0 ? (
-        <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed p-6 text-center">
+        <div className="flex flex-col items-center gap-3 rounded-none border border-dashed p-6 text-center">
           <Empty>
             no shots yet — sign the script, then write the first ≤15s bundle (fast, and you can steer
             before the rest is written) or the whole list in one run. You can also rebuild from the

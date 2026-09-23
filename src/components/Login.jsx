@@ -1,10 +1,16 @@
-// App login gate — the branded StorySeam homepage with "Sign in with
-// Google" (Better Auth social provider). Gated on the Better Auth session; the
-// signed-in user owns their own projects. Higgsfield is no longer the front
-// door: it's a CONNECTOR linked to the session afterwards (Settings ›
-// Connectors, lib/higgsfieldAccount.js).
+// App login gate + the sign-in page it sends you to. "Sign in with Google"
+// (Better Auth social provider); the signed-in user owns their own projects.
+// Higgsfield is no longer the front door: it's a CONNECTOR linked to the
+// session afterwards (Settings › Connectors, lib/higgsfieldAccount.js).
 //
-// COPY RULES — this page is what Google Safe Browsing scores, and in Aug 2026 it
+// The sign-in page lives at its OWN url (/login, routed as a sibling of
+// RootLayout) rather than rendering in place of whatever app route was asked
+// for. `/` is now a public marketing landing with no account UI at all
+// (routes/landing.jsx), so LoginGate REDIRECTS a signed-out visitor to
+// /login?next=<the route they wanted> and the sign-in returns them there.
+//
+// COPY RULES — this page is what Google Safe Browsing scores (it is the one
+// signed-out page whose call to action is a Google button), and in Aug 2026 it
 // scored it as a deceptive page and put a "Dangerous site" interstitial on the
 // whole domain. A signed-out page whose only action is a Google sign-in button
 // is already a phishing-shaped thing; these three rules keep it from reading
@@ -22,10 +28,11 @@
 // lib/atlasKey.js) and ride per-request to the workers — never stored
 // server-side. Keys, connectors and provider toggles stay editable in Settings.
 import { useEffect, useState } from "react";
-import { Link, useLocation } from "react-router";
+import { Link, Navigate, useLocation } from "react-router";
 import {
-  Clapperboard, Bot, PenLine, Workflow, Film, ListVideo, AudioLines, Loader2, ArrowRight,
-  KeyRound, ExternalLink, LogOut, Cable,
+  Bot, PenLine, Workflow, Film, ListVideo, AudioLines, Loader2, ArrowRight,
+  KeyRound, ExternalLink, LogOut, Cable, LayoutGrid, ImagePlus, Video, Radio,
+  Images, Music, Scissors, Users,
 } from "lucide-react";
 import { useSession, authClient, signOut } from "@/lib/auth-client";
 import { useHiggsfieldLinked, connectHiggsfield } from "@/lib/higgsfieldAccount";
@@ -35,19 +42,257 @@ import { useAtlasKey, setAtlasKey } from "@/lib/atlasKey";
 import { useProviderPrefs, setActiveProvider, useSetupSkipped, setSetupSkipped } from "@/lib/providers";
 import { captureInviteFromLocation } from "@/lib/pendingInvite";
 import { useT } from "@/lib/i18n";
+import { HUD, DISPLAY, BODY, MONO } from "@/lib/hudTheme";
+import { HudHeader } from "@/components/HudHeader";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+  Dialog, DialogContent, DialogTitle, DialogDescription,
+} from "@/components/ui/dialog";
 
+// In pipeline order, which is also the order the marquee shows them in: an
+// author reading left to right sees the episode get made. `note` is the line on
+// the card; `blurb` is what the dialog says when the card is clicked. Adding one
+// here is all that's needed — the carousel derives its loop length from
+// FEATURES.length and holds its scroll SPEED constant as the list grows.
 const FEATURES = [
-  { icon: Bot, label: "Chat agent", note: "Drives the whole pipeline" },
-  { icon: PenLine, label: "Script writing", note: "Draft & revise the episode" },
-  { icon: Workflow, label: "Nodes", note: "Wire the shot graph" },
-  { icon: Film, label: "Episodes", note: "Plan & stitch the cut" },
-  { icon: ListVideo, label: "Shotlist", note: "Seedance shot-by-shot" },
-  { icon: AudioLines, label: "Sound studio", note: "Seed Audio design" },
+  {
+    icon: Bot,
+    label: "Chat agent",
+    note: "Drives the whole pipeline",
+    blurb:
+      "A chat agent with a typed tool for every step: it drafts the script, fills the shot list, fires renders and stitches the cut. It can also see the tab you are on, so \u201cmake this shot wider\u201d resolves without you explaining which shot.",
+  },
+  {
+    icon: PenLine,
+    label: "Script writing",
+    note: "Draft & revise the episode",
+    blurb:
+      "A screenplay editor with full revision history. Write it yourself, or hand a pass to the writers\u2019 room and review the diff before anything lands in the draft.",
+  },
+  {
+    icon: LayoutGrid,
+    label: "Moodboard",
+    note: "Pin references, set the look",
+    blurb:
+      "A free canvas for references, palettes and frames \u2014 the place to decide what the episode should feel like before a single shot is written.",
+  },
+  {
+    icon: ListVideo,
+    label: "Shotlist",
+    note: "Seedance shot-by-shot",
+    blurb:
+      "Break the script into numbered shots, each with its own prompt, camera note and duration. Shot ids are stable on purpose, so the media generated against a shot is never orphaned by a later edit.",
+  },
+  {
+    icon: Workflow,
+    label: "Visual nodes",
+    note: "Wire the shot graph",
+    blurb:
+      "The shot graph as a node canvas: see how scenes, shots and their generated media connect, and rewire them by dragging.",
+  },
+  {
+    icon: ImagePlus,
+    label: "Image generation",
+    note: "Storyboard stills, shot by shot",
+    blurb:
+      "Generate a still per shot and keep every take, so you can compare instead of regenerating. Character and location sheets hold faces and places steady across the whole episode.",
+  },
+  {
+    icon: Video,
+    label: "Video generation",
+    note: "Bring each shot to life",
+    blurb:
+      "Turn a chosen still into a moving shot. Takes are kept side by side, and swapping the one on the timeline never means starting over.",
+  },
+  {
+    icon: Radio,
+    label: "Radio",
+    note: "Hear the episode before you see it",
+    blurb:
+      "The audio-only pass: the whole episode as dialogue and sound, before a single frame is rendered. The cheapest possible place to discover a scene does not work.",
+  },
+  {
+    icon: Images,
+    label: "Animatic",
+    note: "Stills and dialogue on a timeline",
+    blurb:
+      "Storyboard stills cut against the radio pass. Shots with no art yet appear as labelled slates, so the episode is watchable end to end from the very first version.",
+  },
+  {
+    icon: AudioLines,
+    label: "Sound studio",
+    note: "Seed Audio design",
+    blurb:
+      "Text to cinematic audio \u2014 dialogue, room tone, foley and music rendered together as one mixed clip, which is the part plain text-to-speech cannot do.",
+  },
+  {
+    icon: Music,
+    label: "Musical",
+    note: "Turn a song into an audio shot bible",
+    blurb:
+      "Feed in a song with its stems and get a shot-by-shot breakdown back, cut to the track rather than to dialogue.",
+  },
+  {
+    icon: Scissors,
+    label: "Editor",
+    note: "Trim, split and arrange the cut",
+    blurb:
+      "A real timeline: trim, split, reorder and gap. Stills and video sit on one picture lane as peers, so a placeholder still upgrades to its finished shot in place.",
+  },
+  {
+    icon: Film,
+    label: "Episodes",
+    note: "Plan & stitch the cut",
+    blurb:
+      "Plan the episode, stitch the cuts and render the deliverable. A series keeps one shared world and a bible per episode.",
+  },
+  {
+    icon: Cable,
+    label: "Switch provider",
+    note: "Higgsfield, fal.ai or Atlas Cloud",
+    blurb:
+      "Bring your own rendering account and switch between them whenever you like. Keys you paste stay in this browser only, and generation bills to you, not to us.",
+  },
+  {
+    icon: Users,
+    label: "Team collaboration",
+    note: "Invite the crew to a project",
+    blurb:
+      "Invite people to the whole organization or to a single project. Everyone works in the same studio, while the tab each person is looking at stays their own.",
+  },
 ];
 
-function Homepage() {
+// Card geometry, shared with the CSS animation. `marquee-left` slides the track
+// by exactly one copy of the list — (card + gap) × count — so the numbers here
+// and the `--marquee-*` vars below must stay the same numbers. COPIES is how
+// many times the list is repeated: enough that the tail of one copy is still
+// filling the band when the transform resets.
+const CARD_W = 280; // px — matches --marquee-item
+const CARD_GAP = 16; // px — Tailwind gap-4, matches --marquee-gap
+const COPIES = 3;
+const SECONDS_PER_CARD = 5.5; // ≈54px/s — slow enough to read a card as it passes
+
+// The feature strip: an endlessly scrolling row of cards that PAUSES while the
+// pointer is over it, and opens a detail dialog when one is clicked.
+//
+// It sits in a band 70% of the VIEWPORT wide — wider than the parent's
+// max-w-2xl text column (too narrow to read as a carousel) but not full-bleed
+// (cards then run off both screen edges with nothing to fade against, which
+// reads as a layout bug). No break-out trick is needed: the column is already
+// centred on the screen and its `items-center` centres this on the column, so a
+// `w-[70vw]` child overflows it symmetrically and lands centred on the viewport.
+// The max-width is a ceiling, not the size: past ~2200px of screen the strip
+// stops widening, because a card row that keeps growing just puts more cards
+// further from where the eye already is.
+function FeatureMarquee() {
+  const t = useT();
+  const [open, setOpen] = useState(null); // the feature whose dialog is showing
+
+  // "Next feature" walks the real list, not the repeated track, so it wraps
+  // after the last one instead of running into a duplicate.
+  const next = () => {
+    const i = FEATURES.findIndex((f) => f.label === open?.label);
+    if (i >= 0) setOpen(FEATURES[(i + 1) % FEATURES.length]);
+  };
+
+  return (
+    <>
+      <div className="relative mt-10 w-[70vw] max-w-[96rem] marquee-viewport">
+        <div
+          className="flex w-max gap-4 py-2 marquee-track hover:[animation-play-state:paused]"
+          style={{
+            "--marquee-item": `${CARD_W}px`,
+            "--marquee-gap": `${CARD_GAP}px`,
+            "--marquee-count": FEATURES.length,
+            // Seconds PER CARD rather than a fixed total, so adding a feature
+            // makes the loop longer instead of making every card whip past.
+            "--marquee-duration": `${FEATURES.length * SECONDS_PER_CARD}s`,
+          }}
+        >
+          {Array.from({ length: COPIES }).flatMap((_, copy) =>
+            FEATURES.map((f) => (
+              <button
+                key={`${copy}-${f.label}`}
+                type="button"
+                onClick={() => setOpen(f)}
+                // Only the first copy is real content; the rest are visual
+                // padding, and announcing the same fifteen features three times
+                // is just noise in a screen reader.
+                aria-hidden={copy > 0 || undefined}
+                tabIndex={copy > 0 ? -1 : undefined}
+                className="group/card flex h-[168px] w-[280px] shrink-0 flex-col items-start gap-4 border border-[var(--br-secondary)]/25 bg-[var(--br-surface)] p-6 text-left transition-colors hover:border-[var(--br-secondary)]/60 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--br-primary)]"
+              >
+                <span className="text-[var(--br-secondary)]">
+                  <f.icon size={18} />
+                </span>
+                <div className="min-w-0">
+                  <div
+                    className="text-[1.5rem] leading-none"
+                    style={{ fontFamily: DISPLAY, fontWeight: 600 }}
+                  >
+                    {t(f.label).toUpperCase()}
+                  </div>
+                  <p className="mt-2 text-[var(--br-secondary)]">{t(f.note)}</p>
+                </div>
+              </button>
+            ))
+          )}
+        </div>
+
+        {/* Edge fades, so cards enter and leave instead of being chopped off at
+            the band's edges. A MASK rather than two painted gradient panels:
+            design.md forbids gradients in the artwork, and a mask also stops
+            the fade from having to guess the page's ground colour. */}
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-y-0 left-0 w-24 bg-[var(--br-neutral)] [mask-image:linear-gradient(to_right,black,transparent)]"
+        />
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-y-0 right-0 w-24 bg-[var(--br-neutral)] [mask-image:linear-gradient(to_left,black,transparent)]"
+        />
+      </div>
+
+      <Dialog open={!!open} onOpenChange={(v) => !v && setOpen(null)}>
+        <DialogContent
+          className="rounded-none border-[var(--br-secondary)]/25 bg-[var(--br-surface)] text-[var(--br-primary)] sm:max-w-md"
+          style={{ ...HUD, fontFamily: BODY }}
+        >
+          {open && (
+            <>
+              <div className="text-[var(--br-secondary)]">
+                <open.icon size={22} />
+              </div>
+              <DialogTitle
+                className="text-[2rem] leading-none"
+                style={{ fontFamily: DISPLAY, fontWeight: 600 }}
+              >
+                {t(open.label).toUpperCase()}
+              </DialogTitle>
+              <DialogDescription className="leading-relaxed text-[var(--br-secondary)]">
+                {t(open.blurb)}
+              </DialogDescription>
+              <button
+                type="button"
+                onClick={next}
+                className="mt-2 flex w-full items-center justify-center gap-2 border border-[var(--br-secondary)]/40 px-5 py-3 text-[0.72rem] uppercase text-[var(--br-primary)] transition-colors hover:border-[var(--br-primary)]"
+                style={{ fontFamily: MONO, letterSpacing: "0.08em" }}
+              >
+                {t("Next feature")}
+                <ArrowRight size={14} />
+              </button>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
+
+// The sign-in page itself (/login). Exported for routes/login.jsx; LoginGate
+// never renders it inline any more — it navigates here.
+export function SignInPage() {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState(null);
   const t = useT();
@@ -55,14 +300,14 @@ function Homepage() {
   const signIn = async () => {
     setBusy(true);
     setErr(null);
-    // If we're gating an invite landing (LoginGate renders this page in place of
-    // /accept-invite/:id, so the URL is still the invite), return the user THERE
-    // after OAuth instead of the app root — otherwise the invite id + token are
-    // lost across the redirect and a brand-new user lands on an empty project.
-    // Same-origin path only, so there's nothing to open-redirect to.
-    const callbackURL = window.location.pathname.startsWith("/accept-invite/")
-      ? window.location.pathname + window.location.search
-      : "/";
+    // Where to land after OAuth. `/` is the public landing now, so the default
+    // is the app itself; `?next=` carries the route the visitor actually asked
+    // for (LoginGate sets it), which matters most for /accept-invite/:id —
+    // otherwise the invite id + token are lost across the redirect and a
+    // brand-new user lands on an empty project. Same-origin ABSOLUTE PATH only
+    // ("//host" rejected too), so there's nothing to open-redirect to.
+    const next = new URLSearchParams(window.location.search).get("next") || "";
+    const callbackURL = /^\/(?!\/)/.test(next) ? next : "/world";
     try {
       if (isDesktop) {
         // Desktop (TOO-21): ask Better Auth for the authorize URL without
@@ -85,7 +330,7 @@ function Homepage() {
         return;
       }
       // Web: redirects to Google and back to /api/auth/callback/google;
-      // Better Auth creates the session, then returns to callbackURL ("/").
+      // Better Auth creates the session, then returns to callbackURL.
       await authClient.signIn.social({ provider: "google", callbackURL });
     } catch (e) {
       setErr(String(e?.message || e));
@@ -93,78 +338,128 @@ function Homepage() {
     }
   };
 
+  // Drawn in the Battle Royale system (`design.md`, tokens in lib/hudTheme.js),
+  // the same one the model page at /director-harness uses: near-black ground,
+  // Teko display, mono labels, ONE accent — spent here on the sign-in button,
+  // which is the only action on the page. No gradients and no radii: the glow
+  // this page used to open with is gone, and every corner is square.
+  //
+  // Presentation only. Every line of copy below is unchanged, because it is
+  // what keeps this page from reading as phishing-shaped — see the COPY RULES
+  // at the top of this file before touching any of it.
   return (
-    <div className="relative flex min-h-dvh items-center justify-center overflow-hidden bg-background px-6 py-12">
-      <div aria-hidden className="pointer-events-none absolute -top-40 left-1/2 size-[46rem] -translate-x-1/2 rounded-full bg-primary/15 blur-3xl" />
+    <div
+      className="flex min-h-dvh flex-col bg-[var(--br-neutral)] px-4 pb-12 text-[var(--br-primary)] sm:px-8"
+      style={{ ...HUD, fontFamily: BODY, fontSize: "0.92rem", lineHeight: 1.5 }}
+    >
+      {/* The same strip the model page carries, so `/` and /director-harness
+          read as one site rather than two. */}
+      <div className="mx-auto w-full max-w-7xl">
+        <HudHeader />
+        {/* Notice strip under the header: points at the director harness while
+            it is in alpha. Outlined in secondary, not filled — the page's one
+            accent stays on the sign-in button. */}
+        <div
+          className="-mx-4 mt-4 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border border-[var(--br-secondary)]/25 px-4 py-2.5 text-[0.72rem] sm:-mx-8 sm:px-8 uppercase text-[var(--br-secondary)]"
+          style={{ fontFamily: MONO, letterSpacing: "0.08em" }}
+        >
+          <span>{t("Alpha release of the director-harness setup")}</span>
+          <Link
+            to="/director-harness"
+            className="flex items-center gap-1.5 border border-[var(--br-secondary)]/40 px-3 py-1.5 text-[var(--br-primary)] transition-colors hover:border-[var(--br-primary)]"
+          >
+            {t("Explore more")}
+            <ArrowRight size={12} />
+          </Link>
+        </div>
+      </div>
 
-      <div className="relative w-full max-w-2xl">
-        <div className="flex flex-col items-center text-center">
-          <div className="flex items-center gap-3">
-            <div className="flex size-11 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-lg shadow-primary/20">
-              <Clapperboard size={24} />
-            </div>
-            <div className="text-left leading-tight">
-              <div className="text-xl font-semibold tracking-tight">StorySeam</div>
-              <div className="text-xs text-muted-foreground">storyseam.app</div>
-            </div>
-          </div>
-
-          <h1 className="mt-8 max-w-xl text-balance text-3xl font-semibold tracking-tight sm:text-4xl">
-            {t("Write, storyboard, render and cut an")} <span className="text-primary">{t("episode")}</span> {t("in one place")}
+      {/* Full width, not a column: the headline is ONE nowrap line, and a line
+          wider than its box overflows to the right instead of centring, which
+          is exactly what a narrow column did to it. The paragraphs below keep
+          their own measures. `flex-1` centres the block in what is left of the
+          screen under the strip. */}
+      <div className="relative mx-auto flex w-full flex-1 items-center justify-center py-12">
+        <div className="flex w-full flex-col items-center text-center">
+          {/* No mark and no wordmark here: the strip above carries STORYSEAM,
+              and repeating it 40px below made the page open with its own name
+              twice before it said anything. */}
+          {/* The display role from design.md, at its own size: ONE sentence,
+              one translation unit. The second line this headline used to carry
+              ("Run on the web…") is gone rather than shrunk — a display face
+              this size earns its space by saying one thing. */}
+          <h1
+            className="w-full whitespace-nowrap leading-[0.95]"
+            style={{
+              fontFamily: DISPLAY,
+              fontWeight: 700,
+              letterSpacing: "0.02em",
+              // ONE line at every width, so the size is driven by the width
+              // rather than by a breakpoint: the display role's 5rem is the
+              // ceiling, and below that the headline is as large as the column
+              // allows. The divisor is the line's own aspect — its width at a
+              // given size divided by that size — measured with the LONGEST
+              // translation (Spanish) so a locale switch can't overflow it.
+              fontSize: "min(5rem, calc((100vw - 5rem) / 17))",
+            }}
+          >
+            {t("The first story harness agent").toUpperCase()}
           </h1>
-          <p className="mt-3 max-w-lg text-sm text-muted-foreground">
-            {t("StorySeam is a workspace for making short animated episodes. Draft the script, build the shot list, generate the images, video and sound, then assemble the cut on a timeline — with a chat agent that can drive any step for you.")}
+          <p className="mt-4 max-w-lg text-[var(--br-secondary)]">
+            {t("StorySeam enables the core of AI video. Powerful, deep stories that can be created through our whole pipeline from script to video editing using the UI or letting the agent run the flow.")}
           </p>
 
-          <div className="mt-8 grid w-full grid-cols-2 gap-2.5 sm:grid-cols-3">
-            {FEATURES.map((f) => (
-              <div key={f.label} className="flex items-start gap-2.5 rounded-xl border bg-card/60 p-3 text-left">
-                <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                  <f.icon size={16} />
-                </span>
-                <div className="min-w-0 leading-tight">
-                  <div className="text-sm font-medium">{t(f.label)}</div>
-                  <div className="truncate text-[11px] text-muted-foreground">{t(f.note)}</div>
-                </div>
-              </div>
-            ))}
-          </div>
+          <FeatureMarquee />
 
           <div className="mt-9 flex w-full flex-col items-center gap-3">
-            <Button size="lg" className="w-full max-w-xs gap-2 font-medium" disabled={busy} onClick={signIn}>
-              {busy ? <Loader2 size={16} className="animate-spin" /> : null}
+            <button
+              type="button"
+              disabled={busy}
+              onClick={signIn}
+              className="flex w-full max-w-xs items-center justify-center gap-2 bg-[var(--br-tertiary)] px-5 py-3 text-[0.72rem] uppercase text-[var(--br-on-primary)] transition-opacity hover:opacity-90 disabled:opacity-60"
+              style={{ fontFamily: MONO, letterSpacing: "0.08em" }}
+            >
+              {busy ? <Loader2 size={14} className="animate-spin" /> : null}
               {t("Sign in with Google")}
-              {!busy ? <ArrowRight size={16} /> : null}
-            </Button>
+              {!busy ? <ArrowRight size={14} /> : null}
+            </button>
             {/* State the scope plainly. These are exactly the scopes the
                 authorize URL asks for (email + profile + openid) — if that ever
                 changes, change this sentence with it. */}
-            <p className="max-w-sm text-xs text-muted-foreground">
+            <p className="max-w-sm text-xs text-[var(--br-secondary)]">
               {t("Google sign-in is only used to create your StorySeam account — it shares your name, email address and profile picture. StorySeam never posts on your behalf and reads nothing else from your Google account.")}
             </p>
-            {err ? <p className="max-w-sm text-center text-xs text-destructive">{err}</p> : null}
+            {err ? <p className="max-w-sm text-center text-xs text-[var(--br-tertiary)]">{err}</p> : null}
           </div>
 
-          <p className="mt-6 max-w-lg border-t pt-6 text-xs leading-relaxed text-muted-foreground">
+          <p className="mt-6 max-w-lg border-t border-[var(--br-secondary)]/25 pt-6 text-xs leading-relaxed text-[var(--br-secondary)]">
             {t("Generation runs on a rendering account you connect yourself — Higgsfield, fal.ai or Atlas Cloud — so images, video and audio bill to you. StorySeam is not affiliated with those services. API keys you paste are kept in this browser only and are never stored on our servers.")}
           </p>
 
           {/* Reachable WITHOUT signing in — /privacy and /terms are routed as
               siblings of RootLayout so this link works for a signed-out
               visitor. See router.jsx. */}
-          <div className="mt-6 flex flex-wrap items-center justify-center gap-x-4 gap-y-2 text-xs text-muted-foreground">
-            <Link to="/privacy" className="underline-offset-4 hover:text-foreground hover:underline">
+          <div
+            className="mt-6 flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-[0.72rem] uppercase text-[var(--br-secondary)]"
+            style={{ fontFamily: MONO, letterSpacing: "0.08em" }}
+          >
+            <Link to="/privacy" className="underline-offset-4 hover:text-[var(--br-primary)] hover:underline">
               {t("Privacy")}
             </Link>
-            <Link to="/terms" className="underline-offset-4 hover:text-foreground hover:underline">
+            <Link to="/terms" className="underline-offset-4 hover:text-[var(--br-primary)] hover:underline">
               {t("Terms")}
             </Link>
             <a
               href="mailto:privacy@storyseam.app"
-              className="underline-offset-4 hover:text-foreground hover:underline"
+              className="underline-offset-4 hover:text-[var(--br-primary)] hover:underline"
             >
               {t("Contact")}
             </a>
+            {/* The model page lives at its own url now — this is how someone
+                who landed on the homepage finds it. */}
+            <Link to="/director-harness" className="underline-offset-4 hover:text-[var(--br-primary)] hover:underline">
+              {t("Realtime model")}
+            </Link>
           </div>
         </div>
       </div>
@@ -172,10 +467,17 @@ function Homepage() {
   );
 }
 
-function Splash() {
+// The session-still-resolving placeholder. Exported so /login can hold the
+// same beat instead of flashing a sign-in button at someone already signed in.
+export function Splash() {
+  // On the HUD ground, not the studio's: this is the beat BEFORE the homepage
+  // paints, and a zinc flash under a near-black page reads as a broken load.
   return (
-    <div className="flex min-h-dvh items-center justify-center bg-background">
-      <Loader2 className="size-6 animate-spin text-muted-foreground" />
+    <div
+      className="flex min-h-dvh items-center justify-center bg-[var(--br-neutral)]"
+      style={HUD}
+    >
+      <Loader2 className="size-6 animate-spin text-[var(--br-secondary)]" />
     </div>
   );
 }
@@ -197,10 +499,9 @@ function ProviderKeyScreen({ userEmail }) {
 
   return (
     <div className="relative flex min-h-dvh items-center justify-center overflow-hidden bg-background px-6 py-12">
-      <div aria-hidden className="pointer-events-none absolute -top-40 left-1/2 size-[46rem] -translate-x-1/2 rounded-full bg-primary/15 blur-3xl" />
       <div className="relative w-full max-w-md">
         <div className="flex flex-col items-center text-center">
-          <span className="flex size-11 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-lg shadow-primary/20">
+          <span className="flex size-11 items-center justify-center bg-primary text-primary-foreground">
             <KeyRound size={22} />
           </span>
           <h1 className="mt-6 text-balance text-2xl font-semibold tracking-tight">
@@ -210,7 +511,7 @@ function ProviderKeyScreen({ userEmail }) {
             {t("StorySeam renders images and video with your own account — paste a fal.ai or Atlas Cloud API key to continue. It is stored")} <b>{t("only in this browser")}</b>{t(", never on our servers, and you can add the other provider later in Settings.")}
           </p>
 
-          <div className="mt-6 flex gap-1 rounded-lg border bg-card/60 p-1" role="tablist" aria-label={t("Key provider")}>
+          <div className="mt-6 flex gap-1 border bg-card p-1" role="tablist" aria-label={t("Key provider")}>
             {KEY_PROVIDERS.map((p) => (
               <Button
                 key={p.id}
@@ -218,7 +519,7 @@ function ProviderKeyScreen({ userEmail }) {
                 role="tab"
                 aria-selected={pick.id === p.id}
                 size="sm"
-                variant={pick.id === p.id ? "secondary" : "ghost"}
+                variant={pick.id === p.id ? "default" : "ghost"}
                 onClick={() => { setPick(p); setDraft(""); }}
               >
                 {p.label}
@@ -336,7 +637,7 @@ function HiggsfieldConnectScreen({ userEmail }) {
     setBusy(true);
     setErr(null);
     try {
-      await connectHiggsfield("/");
+      await connectHiggsfield("/world");
       // Web navigates away to Higgsfield; desktop resolves in-place once the
       // child window finishes, and the refreshed account list unblocks the gate.
     } catch (e) {
@@ -348,10 +649,9 @@ function HiggsfieldConnectScreen({ userEmail }) {
 
   return (
     <div className="relative flex min-h-dvh items-center justify-center overflow-hidden bg-background px-6 py-12">
-      <div aria-hidden className="pointer-events-none absolute -top-40 left-1/2 size-[46rem] -translate-x-1/2 rounded-full bg-primary/15 blur-3xl" />
       <div className="relative w-full max-w-md">
         <div className="flex flex-col items-center text-center">
-          <span className="flex size-11 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-lg shadow-primary/20">
+          <span className="flex size-11 items-center justify-center bg-primary text-primary-foreground">
             <Cable size={22} />
           </span>
           <h1 className="mt-6 text-balance text-2xl font-semibold tracking-tight">
@@ -388,11 +688,12 @@ function HiggsfieldConnectScreen({ userEmail }) {
 export default function LoginGate({ children }) {
   const { data: session, isPending } = useSession();
   const location = useLocation();
-  // Stash any invite link the moment we arrive on it — BEFORE the sign-in
-  // redirect or the provider-connect gate can navigate away and lose the id +
+  // Stash any invite link the moment we arrive on it — BEFORE the redirect to
+  // /login or the provider-connect gate can navigate away and lose the id +
   // token. PendingInviteModal replays it once the user is inside the app. Runs
-  // for both a signed-out visitor (homepage renders in place of the invite
-  // route) and a signed-in one still stuck behind the provider gate.
+  // for both a signed-out visitor (about to be bounced to the sign-in page,
+  // which also re-stashes it from `?next=`) and a signed-in one still stuck
+  // behind the provider gate.
   useEffect(() => { captureInviteFromLocation(); }, [location.pathname, location.search]);
   const falKey = useFalKey();
   const atlasKey = useAtlasKey();
@@ -400,7 +701,14 @@ export default function LoginGate({ children }) {
   const hfLinked = useHiggsfieldLinked();
   const skipped = useSetupSkipped();
   if (isPending) return <Splash />;
-  if (!session) return <Homepage />;
+  // Signed out: send them to the sign-in PAGE, carrying the route they asked
+  // for so OAuth can return them to it. `replace` so Back goes where they came
+  // from rather than bouncing through the gate again.
+  if (!session) {
+    const next = location.pathname + location.search;
+    const to = next && next !== "/" ? `/login?next=${encodeURIComponent(next)}` : "/login";
+    return <Navigate to={to} replace />;
+  }
   // Connecting a render provider is now a soft onboarding step, not a wall: a
   // user who taps "I'll do this later" (setSetupSkipped) drops straight into the
   // app to chat, write the script and plan. The nudge to connect one then moves

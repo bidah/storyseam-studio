@@ -283,6 +283,8 @@ export const es = {
   "Reuse": "Reutilizar",
   "Reuse prompt": "Reutilizar prompt",
   "Save selection to storyboard": "Guardar selección en el guion gráfico",
+  "See the exact render turns this beat will send — references and first frames included":
+    "Mira los turnos de render exactos que enviará este beat, con referencias y primeros fotogramas incluidos",
   "Set as reference": "Usar como referencia",
   "Style prompt": "Prompt de estilo",
   "Style: {name}": "Estilo: {name}",
@@ -536,6 +538,8 @@ export const es = {
   "Download": "Descargar",
   "Download audio": "Descargar audio",
   "Download script": "Descargar guion",
+  "Download the full-size original": "Descargar el original a tamaño completo",
+  "Download the original clip": "Descargar el clip original",
   "Download video": "Descargar vídeo",
   "Drop audio here": "Suelta el audio aquí",
   "Drop image here": "Suelta la imagen aquí",
@@ -848,11 +852,17 @@ export const es = {
   "Or render with your own fal.ai / Atlas Cloud key instead":
     "O renderiza con tu propia clave de fal.ai / Atlas Cloud en su lugar",
   "Privacy": "Privacidad",
+  "Realtime model": "Modelo en tiempo real",
+  "Alpha release of the director-harness setup": "Versión alfa del director-harness",
+  "Explore more": "Explorar más",
   "Save & continue": "Guardar y continuar",
   "Sign in with Google": "Iniciar sesión con Google",
   "Signed in as": "Sesión iniciada como",
-  "StorySeam is a workspace for making short animated episodes. Draft the script, build the shot list, generate the images, video and sound, then assemble the cut on a timeline — with a chat agent that can drive any step for you.":
-    "StorySeam es un espacio de trabajo para crear episodios animados cortos. Redacta el guion, construye el guion de tomas, genera las imágenes, el vídeo y el sonido, y luego monta el corte en una línea de tiempo, con un agente de chat que puede dirigir cualquier paso por ti.",
+  "The first story harness agent": "El primer agente con arnés narrativo",
+  "Run on the web, through the UI or in your agent via MCP":
+    "Ejecútalo en la web, desde la interfaz o en tu agente vía MCP",
+  "StorySeam enables the core of AI video. Powerful, deep stories that can be created through our whole pipeline from script to video editing using the UI or letting the agent run the flow.":
+    "StorySeam habilita el núcleo del vídeo con IA. Historias potentes y profundas que se crean con todo nuestro pipeline, del guion al montaje, usando la interfaz o dejando que el agente lleve el proceso.",
   "StorySeam is set to render with Higgsfield, but this account isn't linked yet. Connect your Higgsfield account once and every image, video & audio generation bills it — you can manage the connection later in Settings.":
     "StorySeam está configurado para renderizar con Higgsfield, pero esta cuenta aún no está vinculada. Conecta tu cuenta de Higgsfield una vez y cada generación de imagen, vídeo y audio se facturará a ella; puedes gestionar la conexión más tarde en Ajustes.",
   "StorySeam renders images and video with your own account — paste a fal.ai or Atlas Cloud API key to continue. It is stored":
@@ -1208,6 +1218,8 @@ export const es = {
   "click to view full image": "haz clic para ver la imagen completa",
   "collapse": "plegar",
   "copied": "copiado",
+  "copy all": "copiar todo",
+  "copy prompt": "copiar prompt",
   "covered by {via}": "cubierto por {via}",
   "covers…": "cubre…",
   "discard edits, return to the auto-composed prompt": "descartar ediciones y volver al prompt auto-compuesto",
@@ -1240,9 +1252,14 @@ export const es = {
     "aún sin cubrir: elige su hoja del Mundo como referencia (o auto-asigna)",
   "nothing detected — rebuild the plan after writing the shot list":
     "no se detectó nada: reconstruye el plan tras escribir el guion de tomas",
+  "One render turn per bundle, exactly as the Render button sends it. Edit a prompt on its own card.":
+    "Un turno de render por paquete, exactamente como lo envía el botón Renderizar. Edita un prompt en su propia tarjeta.",
+  "open card": "abrir tarjeta",
   "open the full-screen prompt editor": "abrir el editor de prompt a pantalla completa",
   "pick a reference below that covers this speaker": "elige abajo una referencia que cubra a este hablante",
+  "prompts that will be sent": "prompts que se enviarán",
   "rebuild plan": "reconstruir plan",
+  "review prompt": "revisar prompt",
   "rebuilding…": "reconstruyendo…",
   "refs": "refs",
   "remove from this shot": "quitar de esta toma",
@@ -1273,6 +1290,8 @@ export const es = {
   "your name": "tu nombre",
 
   // ── Shotlist ────────────────────────────────────────────────────────
+  "Download shotlist": "Descargar plan de rodaje",
+  "Download the whole shot list — every beat, shot and render prompt — as a .txt file": "Descarga el plan de rodaje completo — cada beat, plano y prompt de render — como archivo .txt",
   "Medium close-up, slow push-in": "Plano medio corto, lento avance",
 
   // ── Shots ───────────────────────────────────────────────────────────
@@ -1667,7 +1686,7 @@ export const es = {
   "Pick at least one project, or choose “All projects”.":
     "Elige al menos un proyecto, o “Todos los proyectos”.",
 
-  // ── Visual world (world/visual.jsx) ──────────────────────────────────
+  // ── Visual world (routes/images.jsx + routes/videos.jsx) ─────────────
   "Agent is busy — wait for the current turn": "El agente está ocupado — espera a que termine el turno actual",
   "Explore how the world looks — generate concept images to find your characters and places.":
     "Explora cómo se ve el mundo: genera imágenes conceptuales para encontrar tus personajes y lugares.",

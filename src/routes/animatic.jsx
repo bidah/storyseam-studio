@@ -64,12 +64,13 @@ function ShotCell({ shot, reloadKey, onView }) {
           <span title={t("Has dialogue, not voiced yet")} className="text-muted-foreground/60"><AudioLines size={12} /></span>
         ) : null}
         {!shot.bundle && (
-          <span title={t("This shot is in no bundle — rebuild the episode plan")} className="text-amber-500"><CircleAlert size={12} /></span>
+          <span title={t("This shot is in no bundle — rebuild the episode plan")} className="text-warning"><CircleAlert size={12} /></span>
         )}
       </div>
       {loc && (
         <div className="flex items-center gap-1 text-[10px] text-muted-foreground" title={loc.known ? (loc.hasSheet ? t("Location has reference art") : t("Location has no reference sheet")) : t("Location not in the World roster")}>
-          <span className={cn("h-1.5 w-1.5 shrink-0 rounded-full", loc.hasSheet ? "bg-emerald-500" : loc.known ? "bg-amber-500" : "bg-muted-foreground/40")} />
+          {/* rounded-full kept: a 6px readiness dot is a circle, not a chip. */}
+          <span className={cn("h-1.5 w-1.5 shrink-0 rounded-full", loc.hasSheet ? "bg-primary" : loc.known ? "bg-warning" : "bg-muted-foreground/40")} />
           <span className="truncate font-mono">{loc.slug}</span>
         </div>
       )}
@@ -241,8 +242,8 @@ function AnimaticStudio() {
           roster cards, only the picture gap remains and the button becomes
           "Generate images". */}
       {locGaps.length > 0 && (
-        <div className="flex flex-wrap items-center gap-2 rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 text-sm">
-          <MapPin size={15} className="text-amber-500" />
+        <div className="flex flex-wrap items-center gap-2 rounded-lg border border-warning/30 bg-warning/5 p-3 text-sm">
+          <MapPin size={15} className="text-warning" />
           <span className="text-muted-foreground">
             {locGaps.length} location{locGaps.length > 1 ? "s" : ""} used by your shots {locGaps.length > 1 ? "have" : "has"} no reference art —
             stills will drift without a locked background.
@@ -250,7 +251,7 @@ function AnimaticStudio() {
           <div className="flex flex-wrap gap-1">
             {locGaps.slice(0, 8).map((l) => (
               <Badge key={l.slug} variant="outline" className="font-mono text-[10px]" title={l.known ? "On the World roster — no reference art yet" : "Not in the World roster"}>
-                <span className={cn("h-1.5 w-1.5 rounded-full", l.known ? "bg-amber-500" : "bg-red-500")} />
+                <span className={cn("h-1.5 w-1.5 rounded-full", l.known ? "bg-warning" : "bg-destructive")} />
                 {l.slug}
               </Badge>
             ))}
@@ -296,7 +297,7 @@ function AnimaticStudio() {
       )}
 
       {!hasShots ? (
-        <div className="rounded-xl border border-dashed p-6 text-center">
+        <div className="rounded-none border border-dashed p-6 text-center">
           <Empty>no shots yet — write a Shot list first, then render its scenes here.</Empty>
         </div>
       ) : (
@@ -335,7 +336,7 @@ function AnimaticStudio() {
                         className="hidden font-mono text-[10px] md:inline-flex"
                         title={l.hasSheet ? "Location reference art in place" : l.known ? "On the World roster — no reference art yet" : "Not in the World roster"}
                       >
-                        <span className={cn("h-1.5 w-1.5 rounded-full", l.hasSheet ? "bg-emerald-500" : l.known ? "bg-amber-500" : "bg-red-500")} />
+                        <span className={cn("h-1.5 w-1.5 rounded-full", l.hasSheet ? "bg-primary" : l.known ? "bg-warning" : "bg-destructive")} />
                         {l.slug}
                       </Badge>
                     ))}
@@ -354,15 +355,15 @@ function AnimaticStudio() {
                       </Button>
                     )}
                     {/* Red/green readiness lives on the Render button itself:
-                        primary (emerald) when every location is set up, tinted
+                        primary (the accent) when every location is set up, tinted
                         outline when the backgrounds would render unlocked. */}
                     <Button
                       size="sm"
                       variant={locsOk ? "default" : "outline"}
                       className={cn(
                         !locsOk && (locsMissingRoster.length
-                          ? "border-red-500/40 text-red-400 hover:text-red-300"
-                          : "border-amber-500/40 text-amber-500 hover:text-amber-400"),
+                          ? "border-destructive/40 text-destructive hover:text-destructive/80"
+                          : "border-warning/40 text-warning hover:text-warning/80"),
                       )}
                       onClick={() => renderScene(scene)}
                       disabled={agentBusy || renderable === 0}

@@ -1,0 +1,30 @@
+{
+  "capability": "upscale.start",
+  "route": "POST /api/upscale",
+  "tool": "upscale_video",
+  "description": "Upscale a finished video on fal — a kept Stage sitting (or its scored version) or an Editor Deliver render — to a higher resolution. Read list_upscales first: it names every video that can be upscaled (`source` ids like `sitting:<id>`, `scored:<id>`, `render:<file>`), the models, and which resolutions each model offers. This SPENDS the author's fal credits and a 4K pass on a long film is not cheap, so confirm the video, model and resolution with the author before calling it unless they already named all three. It only STARTS the job: the upscale runs on fal for minutes, so poll it with get_upscale (the job id this returns) until status is `done` — the finished file is then copied into the project and the original is never touched.",
+  "input": {
+    "type": "object",
+    "fields": {
+      "source": {
+        "type": "string",
+        "description": "The video to upscale, exactly as list_upscales names it: `sitting:<sittingId>` (a kept Stage sitting), `scored:<sittingId>` (that sitting's scored version) or `render:<file>` (an Editor Deliver render)."
+      },
+      "model": {
+        "type": "enum",
+        "values": ["seedvr", "bytedance", "topaz"],
+        "description": "The upscaler. `seedvr` (SeedVR2) = diffusion restoration, the sharpest on AI-generated footage and the only one offering 720p. `bytedance` = ByteDance's video upscaler, fast and clean with an AIGC preset. `topaz` = Topaz Proteus, the conservative choice that invents the least detail."
+      },
+      "resolution": {
+        "type": "enum",
+        "values": ["720p", "1080p", "1440p", "2160p"],
+        "description": "The target height. 2160p is 4K. Pick one the chosen model offers (list_upscales says which)."
+      },
+      "sourceHeight": {
+        "type": "integer",
+        "optional": true,
+        "description": "The source video's height in pixels, when known. Only Topaz uses it (it upscales by a FACTOR, so the factor is target ÷ source). Omitted, the source is assumed to be 720p."
+      }
+    }
+  }
+}

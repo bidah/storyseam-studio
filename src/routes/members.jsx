@@ -285,7 +285,9 @@ export function Component() {
         <div className="mt-2 divide-y">
           {members.map((m) => (
             <div key={m.userId} className="flex flex-wrap items-center gap-3 py-3">
-              <div className="flex size-8 items-center justify-center rounded-full bg-primary/10 text-sm font-medium text-primary">
+              {/* an initials monogram, not an avatar photo — square like every
+                  other tile in the HUD */}
+              <div className="flex size-8 items-center justify-center rounded-none bg-primary/10 text-sm font-medium text-primary">
                 {initials(m)}
               </div>
               <div className="min-w-0 flex-1">

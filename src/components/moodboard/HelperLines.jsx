@@ -25,12 +25,12 @@ export default function HelperLines({ horizontal, vertical }) {
     ctx.clearRect(0, 0, width, height);
 
     const [tx, ty, zoom] = transform;
-    // Use the theme primary so the guide matches the selected-card border in
-    // both light (deep green) and dark (brand lime) modes.
+    // Use the theme primary so the guide matches the selected-card border; the
+    // literal is only the fallback for a stylesheet that has not resolved yet.
     const primary = getComputedStyle(document.documentElement)
       .getPropertyValue("--primary")
       .trim();
-    ctx.strokeStyle = primary || "#cbf74e";
+    ctx.strokeStyle = primary || "#FF5A1F";
     ctx.lineWidth = 1;
 
     if (typeof vertical === "number") {

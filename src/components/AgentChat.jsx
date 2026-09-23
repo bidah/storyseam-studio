@@ -37,7 +37,8 @@ import remarkBreaks from "remark-breaks";
 import { cn } from "@/lib/utils";
 import { engineForChatId } from "@/lib/chatEngine";
 import { buildSuggestions, FALLBACK_SUGGESTIONS } from "@/lib/suggestions";
-import { cardArtPath, meshPalette, meshSeed, meshShape } from "@/lib/card-art";
+import { cardArtPath, meshSeed } from "@/lib/card-art";
+import { meshBackground } from "@/lib/mesh";
 import { startSuggestion, sweepSuggestions } from "@/lib/suggestionProgress";
 import { Eyebrow } from "@/components/shared";
 import { useShell } from "@/lib/shellContext";
@@ -83,7 +84,9 @@ import {
 } from "@/lib/useVoiceRecording";
 import MediaPicker from "@/components/MediaPicker";
 import { StudioUI, isReferenceUpload } from "@/genui/StudioUI";
+import { toZoomSrc } from "@/lib/previewSrc";
 import { detectOptions } from "@/genui/detect-options";
+import { isShowcaseCard, supersedes } from "@/genui/card-kind";
 import PromptEditor from "@/components/mention/PromptEditor";
 import { refTagLabel, splitRefTags } from "@/lib/refTags";
 import { useT, t as st } from "@/lib/i18n";
@@ -492,7 +495,7 @@ function QuestionCard({ part, pending, answer, canRespond, onRespond, onRequestR
   const variantFor = (style) =>
     style === "danger" ? "destructive" : style === "primary" ? "default" : "secondary";
   return (
-    <div className="space-y-2 rounded-lg border border-amber-500/30 bg-amber-500/5 p-3">
+    <div className="space-y-2 rounded-lg border border-warning/30 bg-warning/5 p-3">
       {question ? <Markdown text={question} className="text-muted-foreground" /> : null}
       {answer ? (
         <p className="text-sm font-medium">{t("Responded: {answer}", { answer })}</p>
@@ -634,13 +637,19 @@ function MessagePart({ part, qa, canRespond, onRespond, onRequestReference, offe
 // one; `ask_question` only ever turns up replaying an older conversation.
 const QUESTION_TOOLS = new Set(["render_ui", "ask_question"]);
 
-// A card ENDS the turn, visually. The agent is told so in three places — the
-// `render_ui` description, the generative-ui skill, and whistlewood.md's "then
-// STOP" — and still trails a reasoning block and a paragraph narrating the card
-// it just drew ("I've presented the three options — tap one…"). flue exposes no
-// way to stop the loop from inside a tool (`AgentRuntimeConfig` has no step hook
-// and a tool's `run` can't end the turn), so the last word belongs to whoever
-// renders it: everything the model says AFTER the card is dropped here.
+// A card that ASKS ends the turn, visually. The agent is told so in three
+// places — the `render_ui` description, the generative-ui skill, and
+// whistlewood.md's "then STOP" — and still trails a reasoning block and a
+// paragraph narrating the card it just drew ("I've presented the three options —
+// tap one…"). flue exposes no way to stop the loop from inside a tool
+// (`AgentRuntimeConfig` has no step hook and a tool's `run` can't end the turn),
+// so the last word belongs to whoever renders it: everything the model says
+// AFTER the card is dropped here.
+//
+// A SHOWCASE card doesn't end anything (see genui/card-kind.ts): a MediaGrid of
+// a finished image is output, and the agent that just drew one is usually still
+// working — the sentence after it introduces the next generation, not the card.
+// So only asks seal.
 //
 // Only prose goes — `text` and `reasoning`. A tool part landing after a card
 // stays visible, because hiding real work the agent did would be a lie, not a
@@ -657,11 +666,19 @@ function visibleParts(parts, sealed = false) {
   const list = parts || [];
   let card = -1;
   for (let i = 0; i < list.length; i++) {
-    if (list[i].type === "dynamic-tool" && QUESTION_TOOLS.has(list[i].toolName)) card = i;
+    if (isAskCard(list[i])) card = i;
   }
   if (sealed) return list.filter((p) => !isNarration(p));
   if (card < 0) return list;
   return list.filter((p, i) => i <= card || !isNarration(p));
+}
+
+// Is this part a card the author is meant to ANSWER? `ask_question` always was;
+// a `render_ui` part is one unless its program merely shows a finished result.
+function isAskCard(part) {
+  if (part?.type !== "dynamic-tool" || !QUESTION_TOOLS.has(part.toolName)) return false;
+  if (part.toolName !== "render_ui") return true;
+  return !isShowcaseCard(part.input?.lang);
 }
 
 // Prose the card made redundant. A text part carrying a markdown IMAGE is not
@@ -685,8 +702,10 @@ function isNarration(p) {
 // And `superseded`: cards REPLACED by a later card in the same turn. The model
 // sometimes redraws the same question (a card, more reasoning, then a refined
 // duplicate of that card in its next step) — two identical asks on screen. The
-// LAST card of a turn is the ask; every earlier card with no user message
-// between it and the next card is a discarded draft, dropped from rendering.
+// LAST card of a turn is the ask; an earlier card with no user message between
+// it and the next is a discarded draft, dropped from rendering — UNLESS it is
+// showing media the later card doesn't (`supersedes`). Two generations in one
+// turn are two cards, and the first picture is not a draft of the second.
 function deriveQA(messages) {
   const answered = new Map();
   const sealed = new Set();
@@ -694,19 +713,24 @@ function deriveQA(messages) {
   let pendingId = null;
   let afterCard = false;
   let lastCardId = null;
+  let lastCardLang = null;
   for (let i = 0; i < messages.length; i++) {
     const m = messages[i];
     if (m.role === "user") {
       afterCard = false;
       lastCardId = null;
+      lastCardLang = null;
       continue;
     }
     if (m.role !== "assistant") continue;
     if (afterCard && m.id) sealed.add(m.id);
     for (const p of m.parts || []) {
       if (p.type !== "dynamic-tool" || !QUESTION_TOOLS.has(p.toolName)) continue;
-      if (lastCardId) superseded.add(lastCardId);
+      const lang = p.toolName === "render_ui" ? p.input?.lang : null;
+      const ask = isAskCard(p);
+      if (lastCardId && supersedes(lastCardLang, lang)) superseded.add(lastCardId);
       lastCardId = p.toolCallId;
+      lastCardLang = lang;
       let ans = null;
       for (let j = i + 1; j < messages.length; j++) {
         if (messages[j].role === "user") {
@@ -719,8 +743,10 @@ function deriveQA(messages) {
         }
       }
       if (ans) answered.set(p.toolCallId, ans);
-      else pendingId = p.toolCallId;
-      afterCard = true;
+      // Only a question can be pending: a showcase card has nothing to answer,
+      // and letting it claim `pendingId` would make the real ask above it inert.
+      else if (ask) pendingId = p.toolCallId;
+      if (ask) afterCard = true;
     }
   }
   return { answered, pendingId, sealed, superseded };
@@ -798,7 +824,7 @@ function UserText({ text, atts }) {
           <img
             src={byLabel.get(p.label).url}
             alt={p.label}
-            className="size-3.5 rounded-[3px] object-cover"
+            className="size-3.5 rounded-none object-cover"
           />
         ) : null}
         @{p.label}
@@ -830,7 +856,7 @@ function AgentMessage({
     return (
       <div className="flex flex-col items-end">
         {text ? (
-          <div className="max-w-[92%] whitespace-pre-wrap break-words rounded-2xl bg-muted px-3 py-2 text-sm text-foreground">
+          <div className="max-w-[92%] whitespace-pre-wrap break-words rounded-none bg-muted px-3 py-2 text-sm text-foreground">
             <UserText text={text} atts={atts} />
           </div>
         ) : null}
@@ -1073,28 +1099,6 @@ const POSTER_BAND = 135;
 const POSTER_H = 272;
 const POSTER_GAP = 10;
 
-// The seeded band under the artwork: nine colours (meshPalette) laid out as a
-// stack of radial gradients. The phone renders the same nine as a real 3×3 mesh
-// with expo-mesh-gradient; CSS has no mesh, and overlapping soft radials at the
-// same nine vertex positions is what gets closest — the colours bleed into each
-// other rather than banding, which is the whole point of the treatment.
-function meshBackground(seed) {
-  const palette = meshPalette(seed);
-  const points = meshShape(seed);
-  const stops = points
-    .map(([x, y], i) => {
-      const c = palette[i % palette.length];
-      // Generous radius so neighbouring vertices overlap heavily; without the
-      // overlap this reads as nine dots, not a gradient.
-      return `radial-gradient(circle at ${(x * 100).toFixed(0)}% ${(y * 100).toFixed(0)}%, ${c} 0%, transparent 62%)`;
-    })
-    .reverse()
-    .join(", ");
-  // The flat base is what shows through where the radials have faded out, so a
-  // corner is never the page's background peeking through the picture slot.
-  return { backgroundImage: stops, backgroundColor: palette[4] };
-}
-
 // The looping artwork, over the band. DECORATION, so it behaves like it: muted,
 // looping, no controls, and `pointer-events-none` so a click on the picture is
 // a click on the card — the whole card is one button and the video must not eat
@@ -1167,7 +1171,7 @@ function LandingPoster({ suggestion: s, onClick }) {
       aria-label={done ? t("{title} — completed", { title: s.title }) : s.subtitle ? t("{title} — {subtitle}", { title: s.title, subtitle: s.subtitle }) : s.title}
       style={{ width: POSTER_W, height: POSTER_H }}
       className={cn(
-        "group relative flex shrink-0 snap-start flex-col overflow-hidden rounded-xl border bg-card text-left shadow-sm transition-colors",
+        "group relative flex shrink-0 snap-start flex-col overflow-hidden rounded-none border bg-card text-left transition-colors",
         done
           ? "cursor-default"
           : "hover:border-primary/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
@@ -1195,10 +1199,10 @@ function LandingPoster({ suggestion: s, onClick }) {
           not be. */}
       {done ? (
         <span className="absolute inset-0 flex items-center justify-center bg-black/55">
-          <span className="inline-flex items-center gap-1.5 rounded-full border border-white/35 bg-white/15 px-3 py-1.5 text-[0.8125rem] font-semibold text-white">
-            {/* Its own colours, not the theme's: this sits on a black wash in
-                both light and dark mode, so a token that flips with the theme
-                would vanish in one of them. */}
+          <span className="inline-flex items-center gap-1.5 rounded-none border border-foreground/35 bg-foreground/15 px-3 py-1.5 text-[0.8125rem] font-semibold text-foreground">
+            {/* The wash stays a literal black/55 — it is a scrim over arbitrary
+                artwork, not a palette fill. The pill on top of it is drawn in
+                `foreground`, which the theme pins light in both blocks. */}
             <Check size={12} strokeWidth={3} />
             {t("Completed")}
           </span>
@@ -1228,7 +1232,7 @@ function PosterSkeleton() {
         <div
           key={i}
           style={{ width: POSTER_W, height: POSTER_H }}
-          className="flex shrink-0 animate-pulse flex-col overflow-hidden rounded-xl border bg-card"
+          className="flex shrink-0 animate-pulse flex-col overflow-hidden rounded-none border bg-card"
         >
           <div className="shrink-0 bg-muted" style={{ height: POSTER_BAND }} />
           {/* Two bars for the headline, three for the paragraph — the real
@@ -1254,7 +1258,7 @@ function LandingCard({ icon: Icon, eyebrow, title, onClick, label }) {
       aria-label={label}
       className={cn(
         CARD_H,
-        "group flex flex-col items-start rounded-xl border bg-card p-3 text-left shadow-sm transition-colors hover:border-primary/40 hover:bg-accent/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+        "group flex flex-col items-start rounded-none border bg-card p-3 text-left transition-colors hover:border-primary/40 hover:bg-accent/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
       )}
     >
       <span className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary transition-colors group-hover:bg-primary/15">
@@ -1278,7 +1282,7 @@ function LandingSkeleton() {
       {[0, 1, 2, 3].map((i) => (
         <div
           key={i}
-          className={cn(CARD_H, "flex animate-pulse flex-col rounded-xl border bg-card p-3")}
+          className={cn(CARD_H, "flex animate-pulse flex-col rounded-none border bg-card p-3")}
         >
           <div className="size-7 rounded-lg bg-muted" />
           <div className="mt-auto h-3.5 w-4/5 rounded bg-muted" />
@@ -1505,9 +1509,12 @@ function ModelPicker({ disabled }) {
 // the whole point: it's an infinite board the author arranges by hand, and every
 // pixel the chat holds is board they can't see. Everywhere else the panel earns
 // its width, so it stays open.
-const RAILED_BY_DEFAULT = new Set(["moodboard"]);
+// `nodes` joins it for the same reason — the reference-lineage graph is a canvas
+// you arrange by hand — and `plugins` because the marketplace is a browsing grid
+// that wants its columns, and nobody arrives there mid-conversation.
+const RAILED_BY_DEFAULT = new Set(["moodboard", "nodes", "plugins"]);
 
-// "/moodboard" → "moodboard"; "/world/nodes" → "world".
+// "/moodboard" → "moodboard"; "/accept-invite/abc" → "accept-invite".
 const tabOf = (pathname) => pathname.split("/")[1] || "";
 
 export default function AgentChat() {
@@ -1573,7 +1580,17 @@ export default function AgentChat() {
   const onTranscriptClick = (e) => {
     const img = e.target.closest?.("img");
     if (img && (img.currentSrc || img.getAttribute("src"))) {
-      setLightbox({ src: img.currentSrc || img.src, alt: img.alt || t("image") });
+      // Zoom the ~1600px `display` webp, not the tile's own bytes. A genui card
+      // states its zoom target on the element (`data-zoom-src`, the `display`
+      // the agent passed); everything else — markdown images, sent reference
+      // thumbnails — gets the tier derived from its path. Without this the
+      // dialog opened a 400px thumb at natural size: a big modal around a
+      // small picture.
+      const painted = img.currentSrc || img.src;
+      setLightbox({
+        src: img.dataset?.zoomSrc || toZoomSrc(img.getAttribute("src")) || painted,
+        alt: img.alt || t("image"),
+      });
     }
   };
   // The reference images each user turn was sent with, so they re-render in the
@@ -2139,7 +2156,7 @@ export default function AgentChat() {
     <aside
       {...getDropRootProps({
         className: fullView
-          ? "fixed inset-y-4 left-1/2 z-50 flex w-[min(1100px,94vw)] -translate-x-1/2 flex-col overflow-hidden rounded-xl border bg-card shadow-2xl"
+          ? "fixed inset-y-4 left-1/2 z-50 flex w-[min(1100px,94vw)] -translate-x-1/2 flex-col overflow-hidden rounded-none border bg-card"
           : cn(
               "relative flex h-full shrink-0 flex-col border-l bg-card transition-[width] duration-200",
               railed ? "w-12" : "w-[495px]",
@@ -2184,7 +2201,7 @@ export default function AgentChat() {
       {/* Files can be dropped anywhere on the chat panel, not just the composer
           strip — so the whole aside is the drop target and this covers it. */}
       {isDragActive ? (
-        <div className="pointer-events-none absolute inset-2 z-30 flex items-center justify-center rounded-xl border-2 border-dashed border-primary bg-background/85 text-sm font-medium text-primary">
+        <div className="pointer-events-none absolute inset-2 z-30 flex items-center justify-center rounded-none border-2 border-dashed border-primary bg-background/85 text-sm font-medium text-primary">
           <span className="flex items-center gap-2">
             <Upload size={16} />
             {t("Drop images or documents to attach")}
@@ -2197,13 +2214,13 @@ export default function AgentChat() {
       <div className={cn("flex min-h-0 flex-1 flex-col", showRail && "hidden")}>
       <div className="relative min-h-0 flex-1">
         {/* New chat + previous-chats controls, floating over the top-right of the
-            transcript, each in its own rounded wrapper so they read over the
+            transcript, each in its own bordered wrapper so they read over the
             messages. */}
         <div className="absolute right-3 top-3 z-10 flex items-center gap-1.5">
           <Button
             size="icon"
             variant="ghost"
-            className="size-8 rounded-full border bg-card/80 text-muted-foreground shadow-sm backdrop-blur hover:bg-accent hover:text-foreground"
+            className="size-8 rounded-none border bg-card/80 text-muted-foreground backdrop-blur hover:bg-accent hover:text-foreground"
             aria-label={t("New chat")}
             title={t("New chat")}
             onClick={() => conv.newChat()}
@@ -2212,12 +2229,12 @@ export default function AgentChat() {
           </Button>
           <ChatHistorySheet
             conv={conv}
-            triggerClassName="rounded-full border bg-card/80 text-muted-foreground shadow-sm backdrop-blur hover:bg-accent hover:text-foreground"
+            triggerClassName="rounded-none border bg-card/80 text-muted-foreground backdrop-blur hover:bg-accent hover:text-foreground"
           />
           <Button
             size="icon"
             variant="ghost"
-            className="size-8 rounded-full border bg-card/80 text-muted-foreground shadow-sm backdrop-blur hover:bg-accent hover:text-foreground"
+            className="size-8 rounded-none border bg-card/80 text-muted-foreground backdrop-blur hover:bg-accent hover:text-foreground"
             aria-label={fullView ? t("Exit full view") : t("Full view")}
             title={fullView ? t("Exit full view") : t("Full view")}
             onClick={() => setFullView((v) => !v)}
@@ -2230,7 +2247,7 @@ export default function AgentChat() {
             <Button
               size="icon"
               variant="ghost"
-              className="size-8 rounded-full border bg-card/80 text-muted-foreground shadow-sm backdrop-blur hover:bg-accent hover:text-foreground"
+              className="size-8 rounded-none border bg-card/80 text-muted-foreground backdrop-blur hover:bg-accent hover:text-foreground"
               aria-label={t("Collapse the studio agent")}
               title={t("Collapse the studio agent")}
               onClick={() => setRailed(true)}
@@ -2243,7 +2260,7 @@ export default function AgentChat() {
           ref={scrollRef}
           onScroll={onScroll}
           onClick={onTranscriptClick}
-          className="h-full space-y-4 overflow-y-auto bg-muted/30 px-4 pb-4 pt-14 dark:bg-[#0E0E10] [&_img]:cursor-zoom-in"
+          className="h-full space-y-4 overflow-y-auto bg-background px-4 pb-4 pt-14 [&_img]:cursor-zoom-in"
         >
           {loadingHistory ? (
             <div className="flex h-full flex-col items-center justify-center gap-2 text-center text-muted-foreground">
@@ -2325,7 +2342,7 @@ export default function AgentChat() {
             variant="secondary"
             onClick={jumpToLatest}
             aria-label={t("Jump to latest")}
-            className="absolute bottom-3 left-1/2 size-8 -translate-x-1/2 rounded-full border shadow-md"
+            className="absolute bottom-3 left-1/2 size-8 -translate-x-1/2 rounded-none border"
           >
             <ArrowDown size={15} />
           </Button>
@@ -2424,7 +2441,7 @@ export default function AgentChat() {
               {transcribing ? (
                 <Loader2 size={14} className="animate-spin text-muted-foreground" />
               ) : (
-                <span className="size-2.5 animate-pulse rounded-full bg-red-500" />
+                <span className="size-2.5 animate-pulse rounded-full bg-destructive" />
               )}
               <span className="text-muted-foreground">
                 {transcribing ? t("Transcribing…") : t("Recording…")}

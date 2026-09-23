@@ -14,12 +14,23 @@
  * ActionExpressions here.
  */
 import { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
-import { Check, ChevronRight, Circle, CircleCheck, Expand, Pause, Play } from "lucide-react";
+import {
+  Blocks,
+  Check,
+  ChevronRight,
+  Circle,
+  CircleCheck,
+  Expand,
+  Pause,
+  Play,
+  Plus,
+} from "lucide-react";
 import { useTriggerAction, useIsStreaming } from "@openuidev/react-lang";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
+import { toZoomSrc } from "@/lib/previewSrc";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
 import { useAnswerState } from "./answered";
@@ -189,7 +200,7 @@ function Lightbox({ src, alt, open, onOpenChange }) {
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-3xl p-2" showCloseButton>
         <DialogTitle className="sr-only">{alt || "Image preview"}</DialogTitle>
-        <img src={src} alt={alt || ""} className="max-h-[80vh] w-full rounded-md object-contain" />
+        <img src={src} alt={alt || ""} className="max-h-[80vh] w-full rounded-none object-contain" />
       </DialogContent>
     </Dialog>
   );
@@ -206,11 +217,11 @@ function Header({ children }) {
   );
 }
 
-// The inset card shell: rounded, bordered, hairline-separated rows inside. The
+// The inset card shell: square, bordered, hairline-separated rows inside. The
 // web echo of the mobile model-picker card.
 function InsetCard({ className, children }) {
   return (
-    <div className={cn("overflow-hidden rounded-xl border bg-card", className)}>{children}</div>
+    <div className={cn("overflow-hidden rounded-none border bg-card", className)}>{children}</div>
   );
 }
 
@@ -221,7 +232,7 @@ function InsetCard({ className, children }) {
 export function Card({ props, renderNode }) {
   const children = Array.isArray(props.children) ? props.children : [];
   return (
-    <div className="flex w-full flex-col gap-3 rounded-xl border bg-background/40 p-3">
+    <div className="flex w-full flex-col gap-3 rounded-none border bg-background/40 p-3">
       {children.map((child, i) => (
         <div key={i}>{renderNode(child)}</div>
       ))}
@@ -267,7 +278,7 @@ const CALLOUT_STYLES = {
 
 export function Callout({ props }) {
   return (
-    <div className={cn("rounded-lg border p-2.5", CALLOUT_STYLES[props.variant] ?? CALLOUT_STYLES.info)}>
+    <div className={cn("rounded-none border p-2.5", CALLOUT_STYLES[props.variant] ?? CALLOUT_STYLES.info)}>
       <p className="text-sm font-medium">{props.title}</p>
       {props.description ? (
         <p className="mt-0.5 text-xs text-muted-foreground">{props.description}</p>
@@ -297,6 +308,10 @@ export function Option({ props }) {
   // current selection, and the rows they passed over recede. See answered.ts.
   const { picked, dimmed } = useAnswerState(props.send);
   const marked = props.selected || picked;
+  // What a tap OPENS, as opposed to what the tile paints. The model is told to
+  // pass `display` (the ~1600px webp) and usually does; when it forgets, derive
+  // the tier from the thumb rather than zooming a 400px box.
+  const zoom = props.display || toZoomSrc(props.src);
   return (
     <button
       type="button"
@@ -315,7 +330,7 @@ export function Option({ props }) {
         <img
           src={props.image}
           alt=""
-          className="size-10 shrink-0 rounded-md border object-cover"
+          className="size-10 shrink-0 rounded-none border object-cover"
         />
       ) : null}
       <span className="min-w-0 flex-1">
@@ -420,23 +435,32 @@ export function MediaItem({ props }) {
     <div className={cn("flex flex-col gap-1.5", dimmed && "opacity-45")}>
       <button
         type="button"
-        onClick={() => setPreview(true)}
+        // The chat transcript has its OWN delegated click-to-zoom over every
+        // <img> inside it (AgentChat). Without this the tap opened two
+        // lightboxes, and the delegated one — drawn last, so on top — showed the
+        // 400px thumb at natural size. `data-zoom-src` below is what it reads
+        // when a tile does bubble to it.
+        onClick={(e) => {
+          e.stopPropagation();
+          setPreview(true);
+        }}
         aria-label={props.label ? `Preview ${props.label}` : "Preview image"}
         className={cn(
-          "group relative block overflow-hidden rounded-lg border-2 transition-colors",
+          "group relative block overflow-hidden rounded-none border-2 transition-colors",
           marked || checked ? "border-primary" : "border-transparent hover:border-border",
         )}
       >
         <img
           src={props.src}
+          data-zoom-src={zoom}
           alt={props.label || ""}
           className="aspect-square w-full bg-muted object-cover"
         />
-        <span className="absolute right-1 top-1 rounded-md bg-background/80 p-1 opacity-0 transition-opacity group-hover:opacity-100">
+        <span className="absolute right-1 top-1 rounded-none bg-background/80 p-1 opacity-0 transition-opacity group-hover:opacity-100">
           <Expand size={11} />
         </span>
         {marked && !selection ? (
-          <span className="absolute left-1 top-1 rounded-full bg-primary p-0.5 text-primary-foreground">
+          <span className="absolute left-1 top-1 rounded-none bg-primary p-0.5 text-primary-foreground">
             <Check size={11} />
           </span>
         ) : null}
@@ -482,7 +506,7 @@ export function MediaItem({ props }) {
         </Button>
       ) : null}
       <Lightbox
-        src={props.display || props.src}
+        src={zoom}
         alt={props.label}
         open={preview}
         onOpenChange={setPreview}
@@ -630,7 +654,7 @@ export function AudioItem({ props }) {
         onClick={toggle}
         aria-label={`${playing ? "Pause" : "Play"} ${props.title}`}
         className={cn(
-          "flex size-9 shrink-0 items-center justify-center rounded-full border transition-colors",
+          "flex size-9 shrink-0 items-center justify-center rounded-none border transition-colors",
           playing
             ? "border-primary bg-primary text-primary-foreground"
             : "bg-card hover:bg-accent/60",
@@ -652,9 +676,9 @@ export function AudioItem({ props }) {
             {props.subtitle}
           </span>
         ) : null}
-        <span className="mt-1.5 block h-1 overflow-hidden rounded-full bg-muted">
+        <span className="mt-1.5 block h-1 overflow-hidden rounded-none bg-muted">
           <span
-            className="block h-full rounded-full bg-primary transition-[width] duration-200"
+            className="block h-full rounded-none bg-primary transition-[width] duration-200"
             style={{ width: `${Math.round(progress * 100)}%` }}
           />
         </span>
@@ -728,13 +752,21 @@ export function Recommendation({ props }) {
       {props.image ? (
         <button
           type="button"
-          onClick={() => setPreview(true)}
+          onClick={(e) => {
+            e.stopPropagation();
+            setPreview(true);
+          }}
           aria-label={`Preview ${props.title}`}
           className="block w-full"
         >
-          <img src={props.image} alt="" className="h-32 w-full bg-muted object-cover" />
-          <Lightbox
+          <img
             src={props.image}
+            data-zoom-src={toZoomSrc(props.image)}
+            alt=""
+            className="h-32 w-full bg-muted object-cover"
+          />
+          <Lightbox
+            src={toZoomSrc(props.image)}
             alt={props.title}
             open={preview}
             onOpenChange={setPreview}
@@ -771,6 +803,98 @@ export function Recommendation({ props }) {
 }
 
 // ---------------------------------------------------------------------------
+// Plugins
+// ---------------------------------------------------------------------------
+
+/**
+ * One row of the marketplace, in the chat. Adding a capability to the studio is
+ * a different decision from picking a take, so it doesn't wear an Option row:
+ * the shelf it sits on, the name, what it unlocks, and one install control.
+ *
+ * A plugin the project already HAS is settled — a success badge and no button,
+ * because there is nothing left to decide. Everything else gets the Install
+ * button carrying the `send`; the agent installs nothing itself.
+ */
+export function Plugin({ props }) {
+  const onClick = useSend(props.send);
+  const highlights = Array.isArray(props.highlights) ? props.highlights : [];
+  // Once the card is answered the plugin the author installed reads as taken
+  // and the ones they passed over recede. See answered.ts.
+  const { picked, dimmed } = useAnswerState(props.send);
+  return (
+    <div className={cn("flex flex-col gap-2.5 p-3", dimmed && "opacity-45")}>
+      <div className="flex items-start gap-3">
+        <span className="flex size-9 shrink-0 items-center justify-center rounded-none border bg-muted/40">
+          <Blocks size={16} className="text-muted-foreground" />
+        </span>
+        <div className="min-w-0 flex-1">
+          {props.category ? (
+            <p className="text-[10px] font-medium tracking-wide text-muted-foreground uppercase">
+              {props.category}
+            </p>
+          ) : null}
+          <div className="flex items-center gap-1.5">
+            <h4 className="min-w-0 flex-1 text-sm font-semibold">{props.name}</h4>
+            {props.installed ? (
+              <Badge variant="success" className="shrink-0">
+                <Check size={11} />
+                Installed
+              </Badge>
+            ) : props.badge ? (
+              <Badge variant="info" className="shrink-0">
+                {props.badge}
+              </Badge>
+            ) : null}
+          </div>
+          <p className="mt-0.5 text-xs leading-snug text-muted-foreground">{props.tagline}</p>
+        </div>
+        {props.meta ? (
+          <span className="shrink-0 text-xs text-muted-foreground">{props.meta}</span>
+        ) : null}
+      </div>
+      {highlights.length ? (
+        <ul className="flex flex-col gap-1">
+          {highlights.slice(0, 4).map((line, i) => (
+            <li key={i} className="flex items-start gap-1.5 text-xs text-muted-foreground">
+              <Check size={12} className="mt-0.5 shrink-0 text-primary" />
+              <span>{line}</span>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+      {/* An installed plugin has no control at all — the badge above already
+          says everything true about it. */}
+      {props.installed ? null : (
+        <Button type="button" size="sm" disabled={!onClick} onClick={onClick} className="w-full">
+          {picked ? <Check size={14} /> : <Plus size={14} />}
+          Install {props.name}
+        </Button>
+      )}
+    </div>
+  );
+}
+
+export function PluginList({ props, renderNode }) {
+  const plugins = Array.isArray(props.plugins) ? props.plugins : [];
+  return (
+    <div>
+      <Header>{props.header}</Header>
+      <InsetCard>
+        {plugins.map((plugin, i) => (
+          <div key={i}>
+            {i > 0 ? <Separator /> : null}
+            {renderNode(plugin)}
+          </div>
+        ))}
+      </InsetCard>
+      {props.footnote ? (
+        <p className="px-0.5 pt-1.5 text-xs text-muted-foreground">{props.footnote}</p>
+      ) : null}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Comparison & detail
 // ---------------------------------------------------------------------------
 
@@ -782,7 +906,7 @@ export function Column({ props }) {
     <Wrapper
       {...(onClick ? { type: "button", onClick } : {})}
       className={cn(
-        "flex min-w-0 flex-1 flex-col gap-1.5 rounded-lg border bg-card p-2.5 text-left",
+        "flex min-w-0 flex-1 flex-col gap-1.5 rounded-none border bg-card p-2.5 text-left",
         onClick && "transition-colors hover:bg-accent/60",
       )}
     >
@@ -858,7 +982,7 @@ export function Steps({ props }) {
             <li key={i} className="flex items-start gap-2.5">
               <span
                 className={cn(
-                  "mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold",
+                  "mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-none text-[11px] font-semibold",
                   done
                     ? "bg-primary text-primary-foreground"
                     : active
@@ -981,6 +1105,8 @@ export const webRenderers = {
   AudioItem,
   AudioList,
   Recommendation,
+  Plugin,
+  PluginList,
   Column,
   Compare,
   KeyValue,

@@ -92,13 +92,13 @@ function MiniPlayer({ src, label, file }) {
         <button
           onClick={toggle}
           disabled={!src}
-          className="flex size-8 min-w-8 items-center justify-center rounded-full bg-primary text-primary-foreground disabled:opacity-40"
+          className="flex size-8 min-w-8 items-center justify-center rounded-none bg-primary text-primary-foreground disabled:opacity-40"
           aria-label={playing ? `Pause ${label}` : `Play ${label}`}
         >
           {playing ? <Pause size={13} /> : <Play size={13} />}
         </button>
         <div
-          className="relative h-2 flex-1 cursor-pointer overflow-hidden rounded-full bg-border"
+          className="relative h-2 flex-1 cursor-pointer overflow-hidden rounded-none bg-border"
           onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); seek((e.clientX - r.left) / r.width); }}
         >
           <div className="absolute inset-y-0 left-0 bg-primary" style={{ width: `${pct}%` }} />
@@ -125,7 +125,7 @@ function MasterPlayer({ song, segments }) {
       <audio ref={ref} src={src} preload="metadata" />
       <div className="mb-3 flex items-center justify-between gap-3">
         <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Full song — reference before the split</div>
-        <div className="inline-flex overflow-hidden rounded-full border">
+        <div className="inline-flex overflow-hidden rounded-none border">
           {["vox", "mix"].map((m) => (
             <button
               key={m}
@@ -139,7 +139,7 @@ function MasterPlayer({ song, segments }) {
         </div>
       </div>
       <div className="flex items-center gap-3">
-        <button onClick={toggle} disabled={!src} className="flex size-12 min-w-12 items-center justify-center rounded-full bg-primary text-primary-foreground disabled:opacity-40" aria-label={playing ? "Pause song" : "Play song"}>
+        <button onClick={toggle} disabled={!src} className="flex size-12 min-w-12 items-center justify-center rounded-none bg-primary text-primary-foreground disabled:opacity-40" aria-label={playing ? "Pause song" : "Play song"}>
           {playing ? <Pause size={18} /> : <Play size={18} />}
         </button>
         <div

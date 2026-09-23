@@ -133,6 +133,21 @@ export interface RecommendationProps {
   meta?: string | null;
   bullets?: string[];
 }
+export interface PluginProps {
+  name: string;
+  tagline: string;
+  send: string;
+  category?: string | null;
+  badge?: string | null;
+  meta?: string | null;
+  highlights?: string[];
+  installed?: boolean;
+}
+export interface PluginListProps {
+  plugins?: unknown[];
+  header?: string | null;
+  footnote?: string | null;
+}
 export interface ColumnProps {
   label: string;
   rows?: DetailRow[];
@@ -173,8 +188,8 @@ export type Renderer<P> = (renderProps: {
 }) => ReactNode;
 
 /**
- * One entry per contract component. `Option`, `MediaItem`, `Column` and
- * `Action` ARE rendered (by their parents, through `renderNode`), so unlike
+ * One entry per contract component. `Option`, `MediaItem`, `Plugin`, `Column`
+ * and `Action` ARE rendered (by their parents, through `renderNode`), so unlike
  * appless's structural placeholders they each need a real renderer.
  */
 export interface StudioRenderers {
@@ -189,6 +204,8 @@ export interface StudioRenderers {
   AudioItem: Renderer<AudioItemProps>;
   AudioList: Renderer<AudioListProps>;
   Recommendation: Renderer<RecommendationProps>;
+  Plugin: Renderer<PluginProps>;
+  PluginList: Renderer<PluginListProps>;
   Column: Renderer<ColumnProps>;
   Compare: Renderer<CompareProps>;
   KeyValue: Renderer<KeyValueProps>;
@@ -387,6 +404,35 @@ export function buildStudioLibrary(renderers: StudioRenderers): Library {
     component: r(renderers.Recommendation),
   });
 
+  // --- Plugins -------------------------------------------------------------
+
+  const Plugin = defineComponent({
+    name: "Plugin",
+    props: z.object({
+      name: z.string(),
+      tagline: z.string(),
+      send: z.string(),
+      category: z.string().optional().nullable(),
+      badge: z.string().optional().nullable(),
+      meta: z.string().optional().nullable(),
+      highlights: z.array(z.string()).optional(),
+      installed: z.boolean().optional(),
+    }),
+    description: `One plugin in a PluginList, drawn as a small marketplace card. name: what the marketplace calls it ("Radio", "Sound studio", "Shot list"). tagline: ONE line of what it does, in the author's terms — not a feature list. send: ${SEND}. For a plugin that opening is the install itself — the AUTHOR asking for it ("Install the Radio plugin"), never a report about them ("The user chose to install radio"). category: the shelf it sits on ("Story", "Visuals", "Audio", "Post"), drawn as a small eyebrow over the name. badge: a tiny pill saying why this one is on screen ("Needed for this", "Recommended"). meta: a short right-aligned qualifier. highlights: up to 4 short lines of WHAT THE AUTHOR GETS, not how it works. installed: true only for a plugin the project ALREADY has — it then renders settled, with no install control, so it is for CONFIRMING something is already there, never for offering it again.`,
+    component: r(renderers.Plugin),
+  });
+
+  const PluginList = defineComponent({
+    name: "PluginList",
+    props: z.object({
+      plugins: z.array(Plugin.ref),
+      header: z.string().optional().nullable(),
+      footnote: z.string().optional().nullable(),
+    }),
+    description: `THE way to answer a request that needs a capability this project has not installed. The answer is never "I can't" and never half the pipeline run with the parts you do have: show the plugin, say what it unlocks, and let one tap install it. Draw the plugin the work needs — or the two or three plausible ones — and then STOP, because the install is the author's call and nothing installs itself: their tap posts the message, and you call set_plugin on the turn after. NEVER more than three; a wall of plugins is a catalogue, not a decision. Do not draw a plugin that is already installed except to CONFIRM one is there (that is what Plugin's \`installed\` is for). When the missing plugin BLOCKS something they just asked for, put a Callout above it (variant 'info', or 'warning' when work is already part-done) so the reason is visible before the offer. header: a small uppercase label above the card. footnote: one quiet line beneath it ("You can always add it later from Explore plugins.").`,
+    component: r(renderers.PluginList),
+  });
+
   // --- Comparison ----------------------------------------------------------
 
   const Column = defineComponent({
@@ -480,6 +526,7 @@ export function buildStudioLibrary(renderers: StudioRenderers): Library {
     MediaGrid.ref,
     AudioList.ref,
     Recommendation.ref,
+    PluginList.ref,
     Compare.ref,
     KeyValue.ref,
     Steps.ref,
@@ -522,6 +569,8 @@ export function buildStudioLibrary(renderers: StudioRenderers): Library {
       AudioItem,
       AudioList,
       Recommendation,
+      Plugin,
+      PluginList,
       Column,
       Compare,
       KeyValue,
@@ -566,6 +615,15 @@ export function buildStudioLibrary(renderers: StudioRenderers): Library {
           "Recommendation is for ONE proposal with a single big CTA; Compare is for weighing 2–3 options on identical rows.",
           "A Higgsfield/fal/Atlas submit confirmation reads best as KeyValue (the params) + Actions (go / change something).",
           "Show Steps before a long pipeline so the author sees the shape of what you're about to run.",
+        ],
+      },
+      {
+        name: "Installing plugins",
+        components: ["PluginList", "Plugin"],
+        notes: [
+          "Most of the studio — Radio, the Shot list, the Sound studio, image and video generation, the Moodboard — is an installable plugin, so a request can land on a capability this project simply doesn't have.",
+          "That is a PluginList, not an apology and not an OptionList of names: show the plugin, say what it unlocks, and stop. One tap installs it.",
+          "Two or three plugins at most, and never one that is already installed — `installed: true` exists only to confirm one is already there.",
         ],
       },
       {
