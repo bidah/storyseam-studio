@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useLoaderData, useRevalidator } from "react-router";
 import {
-  AlertTriangle, Clapperboard, Film, Image as ImageIcon, Loader2, Music,
+  AlertTriangle, Check, Clapperboard, Copy, Film, Image as ImageIcon, Loader2, Music,
   Pin, PinOff, Plus, Scissors, Trash2, Wand2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -276,6 +276,29 @@ function BeatSections({ prompt, include }) {
   );
 }
 
+// The whole cue sheet as plain text, for pasting anywhere. Every section of
+// every beat, including the ones this Series doesn't send — marked as such.
+function cueSheetText(s, beats, include) {
+  const lines = [`${s.title || "Untitled Series"} — cue sheet`];
+  if (s.prompt) lines.push(`Opening prompt: ${s.prompt}`);
+  if (s.imageUrl) lines.push(`First frame: ${s.imageUrl}`);
+  for (const beat of beats) {
+    lines.push("", `${at(beat.offset)} (${beat.offset}s)`);
+    const p = beat.prompt;
+    if (!p) lines.push("  (no prompt)");
+    else if (typeof p === "string") lines.push(`  ${p}`);
+    else {
+      for (const key of sectionOrder(p, null)) {
+        const off = include && !include.includes(key) ? " (not sent)" : "";
+        lines.push(`  ${key.toUpperCase()}${off}: ${p[key]}`);
+      }
+    }
+    if (beat.endImageUrl) lines.push(`  Pinned frame: ${beat.endImageUrl}`);
+    if (beat.audioUrl) lines.push(`  Audio: ${beat.audioUrl}`);
+  }
+  return lines.join("\n");
+}
+
 function CueSheet({ view, onSave, onPin, busy }) {
   const s = view.series;
   const beats = useMemo(
@@ -284,6 +307,15 @@ function CueSheet({ view, onSave, onPin, busy }) {
   );
   const pins = beats.filter((b) => b.endImageUrl);
   const include = s.prompts?.sections ?? null;
+
+  const [copied, setCopied] = useState(false);
+  const copySheet = async () => {
+    try {
+      await navigator.clipboard.writeText(cueSheetText(s, beats, include));
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch { /* clipboard refused — nothing to undo */ }
+  };
 
   const [adding, setAdding] = useState(false);
   const [newOffset, setNewOffset] = useState("");
@@ -313,6 +345,16 @@ function CueSheet({ view, onSave, onPin, busy }) {
                 <Badge variant="info">{view.reels.length} reels</Badge>
               </>
             ) : null}
+            <Button
+              size="sm"
+              variant="outline"
+              className="ml-1 h-7 text-xs"
+              onClick={copySheet}
+              disabled={!beats.length && !s.prompt}
+            >
+              {copied ? <Check size={12} /> : <Copy size={12} />}
+              {copied ? "Copied" : "Copy sheet"}
+            </Button>
           </div>
         </div>
 

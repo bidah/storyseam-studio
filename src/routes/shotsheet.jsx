@@ -9,6 +9,9 @@ import { swr, useRevalidateOnMount } from "@/lib/swr";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
+} from "@/components/ui/dialog";
 import { Empty, Panel, ErrorNote, Eyebrow, fmtTime } from "@/components/shared";
 import { MAX_DURATION_SECONDS, MIN_DURATION_SECONDS, grabTimes } from "@/lib/shot-sheet";
 import { MAX_END_IMAGES, MIN_END_IMAGE_GAP_SECONDS } from "@/lib/series";
@@ -156,13 +159,13 @@ function CutTake({ take, seriesId, slots, onPinned }) {
   // What pressing Pin would leave on the cue sheet, checked HERE against the
   // same ceilings the Director's route enforces — pins are written one at a
   // time, and a refusal half way through leaves half a sheet pinned.
-  const plan = useMemo(() => {
-    const chosen = picked.map((i) => ({ index: i, ...shots[i] })).filter((s) => s.offset !== undefined);
+  const planFor = useCallback((indices, clearOthers) => {
+    const chosen = indices.map((i) => ({ index: i, ...shots[i] })).filter((s) => s.offset !== undefined);
     const opening = chosen.find((s) => s.kind === "opening") || null;
     const pins = chosen.filter((s) => s.kind !== "opening");
     const pinOffsets = new Set(pins.map((s) => s.offset));
     const existing = slots.filter((s) => s.kind === "pin" && s.filled).map((s) => s.offset);
-    const toClear = replaceOthers ? existing.filter((o) => !pinOffsets.has(o)) : [];
+    const toClear = clearOthers ? existing.filter((o) => !pinOffsets.has(o)) : [];
     const final = [...new Set([...existing.filter((o) => !toClear.includes(o)), ...pinOffsets])].sort((a, b) => a - b);
     const issues = [];
     for (const s of pins) {
@@ -173,7 +176,7 @@ function CutTake({ take, seriesId, slots, onPinned }) {
     if (final.length > MAX_END_IMAGES) {
       issues.push(
         `That leaves ${final.length} pins on the cue sheet and the limit is ${MAX_END_IMAGES}. ` +
-        (replaceOthers
+        (clearOthers
           ? `Untick ${final.length - MAX_END_IMAGES}.`
           : `${existing.length} are already pinned — tick "replace the other pins", or untick ${final.length - MAX_END_IMAGES}.`),
       );
@@ -184,9 +187,15 @@ function CutTake({ take, seriesId, slots, onPinned }) {
       }
     }
     return { opening, pins, toClear, final, issues, replaced: pins.filter((s) => existing.includes(s.offset)).length };
-  }, [picked, shots, slots, replaceOthers]);
+  }, [shots, slots]);
+  const plan = useMemo(() => planFor(picked, replaceOthers), [planFor, picked, replaceOthers]);
 
-  const pinAll = async () => {
+  // One frame, confirmed in a dialog first. Checked against the pins already on
+  // the cue sheet, never clearing any of them.
+  const [confirming, setConfirming] = useState(null);
+  const single = confirming === null ? null : planFor([confirming], false);
+
+  const pinPlan = async (plan) => {
     setCutting(true);
     setError("");
     try {
@@ -227,8 +236,10 @@ function CutTake({ take, seriesId, slots, onPinned }) {
         });
       }
       onPinned();
+      return true;
     } catch (e) {
       setError(e.message);
+      return false;
     } finally {
       setCutting(false);
     }
@@ -252,7 +263,7 @@ function CutTake({ take, seriesId, slots, onPinned }) {
         </Button>
         {frames.length ? (
           <>
-            <Button size="sm" onClick={pinAll} disabled={cutting || !picked.length || plan.issues.length > 0}>
+            <Button size="sm" onClick={() => pinPlan(plan)} disabled={cutting || !picked.length || plan.issues.length > 0}>
               <Pin size={14} /> Pin {picked.length} to their beats
             </Button>
             <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
@@ -283,13 +294,13 @@ function CutTake({ take, seriesId, slots, onPinned }) {
               const on = picked.includes(i);
               const filled = slots.find((x) => x.offset === shot.offset)?.filled;
               return (
+                <div key={`${shot.offset}-${i}`} className="space-y-1">
                 <button
                   type="button"
-                  key={`${shot.offset}-${i}`}
                   onClick={() => toggle(i)}
                   aria-pressed={on}
                   aria-label={`${on ? "Skip" : "Use"} the frame for ${fmtTime(shot.offset ?? 0)}`}
-                  className={cn("space-y-1 text-left", !on && "opacity-40")}
+                  className={cn("w-full space-y-1 text-left", !on && "opacity-40")}
                 >
                   <div className="relative">
                     <img src={frame.href} alt="" className="w-full rounded border border-border" />
@@ -304,12 +315,108 @@ function CutTake({ take, seriesId, slots, onPinned }) {
                     {filled && shot.kind !== "opening" ? " · replaces" : ""}
                   </div>
                 </button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-7 w-full text-xs"
+                  disabled={cutting || shot.offset === undefined}
+                  onClick={() => setConfirming(i)}
+                >
+                  <Pin size={12} /> Pin
+                </Button>
+                </div>
               );
             })}
           </div>
         </>
       ) : null}
+
+      <Dialog open={confirming !== null} onOpenChange={(open) => { if (!open && !cutting) setConfirming(null); }}>
+        {single ? (
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>
+                {single.opening ? "Set as the Series' first frame?" : `Pin this frame at ${fmtTime(shots[confirming]?.offset ?? 0)}?`}
+              </DialogTitle>
+              <DialogDescription>
+                {single.opening
+                  ? "The film will start on this picture, replacing the current first frame."
+                  : single.replaced
+                    ? "This replaces the pin already on that beat."
+                    : `The Director will land on this picture at ${fmtTime(shots[confirming]?.offset ?? 0)}.`}
+                {single.opening ? "" : ` ${single.final.length} of ${MAX_END_IMAGES} pins after.`}
+              </DialogDescription>
+            </DialogHeader>
+            <img src={frames[confirming]?.href} alt="" className="w-full rounded-md border border-border" />
+            {error ? <ErrorNote>{error}</ErrorNote> : null}
+            {single.issues.map((issue) => (
+              <p key={issue} className="flex items-center gap-1.5 text-xs text-amber-500">
+                <AlertTriangle size={11} /> {issue}
+              </p>
+            ))}
+            <DialogFooter>
+              <Button variant="outline" disabled={cutting} onClick={() => setConfirming(null)}>Cancel</Button>
+              <Button
+                disabled={cutting || single.issues.length > 0}
+                onClick={async () => { if (await pinPlan(single)) setConfirming(null); }}
+              >
+                {cutting ? <Loader2 size={14} className="animate-spin" /> : <Pin size={14} />}
+                {single.opening ? "Set first frame" : "Pin"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        ) : null}
+      </Dialog>
     </div>
+  );
+}
+
+/* ---- every take this Series has rendered --------------------------------- */
+
+// Newest first. Picking a row loads it below for cutting; a take still drawing
+// can be picked too, and shows its progress in the same place.
+function TakeList({ takes, selectedId, onSelect }) {
+  return (
+    <Panel>
+      <div className="space-y-2">
+        <Eyebrow>Takes · {takes.length}</Eyebrow>
+        <div className="divide-y divide-border rounded-md border border-border">
+          {takes.map((t, i) => (
+            <button
+              key={t.id}
+              type="button"
+              onClick={() => onSelect(t.id)}
+              className={cn(
+                "flex w-full items-center gap-3 px-3 py-2 text-left text-sm hover:bg-muted/50",
+                t.id === selectedId && "bg-muted",
+              )}
+            >
+              {t.status === "done" && t.url ? (
+                <video src={t.url} muted preload="metadata" className="h-10 w-16 shrink-0 rounded border border-border object-cover" />
+              ) : (
+                <div className="flex h-10 w-16 shrink-0 items-center justify-center rounded border border-border text-muted-foreground">
+                  {t.status === "running" ? <Loader2 size={14} className="animate-spin" /> : <AlertTriangle size={14} />}
+                </div>
+              )}
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2">
+                  <span className="font-medium">Take {takes.length - i}</span>
+                  <Badge variant={t.status === "done" ? "success" : t.status === "error" ? "warning" : "info"}>
+                    {t.status}
+                  </Badge>
+                </div>
+                <div className="truncate text-xs text-muted-foreground">
+                  {t.startedAt ? new Date(t.startedAt).toLocaleString() : ""}
+                  {t.sheet?.shots?.length ? ` · ${t.sheet.shots.length} frames` : ""}
+                  {t.endpoint ? ` · ${t.endpoint}` : ""}
+                </div>
+              </div>
+              {t.id === selectedId ? <Check size={14} className="shrink-0 text-emerald-500" /> : null}
+            </button>
+          ))}
+        </div>
+      </div>
+    </Panel>
   );
 }
 
@@ -325,7 +432,10 @@ function ShotSheetTab() {
   const [chosen, setChosen] = useState([]);
   const [duration, setDuration] = useState(MAX_DURATION_SECONDS);
   const [preview, setPreview] = useState(null);
-  const [take, setTake] = useState(null);
+  // Every render is its own take and its own file — a new Render adds a row,
+  // it never takes over the one you were cutting from.
+  const [takes, setTakes] = useState([]);
+  const [selectedTakeId, setSelectedTakeId] = useState(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
@@ -336,7 +446,11 @@ function ShotSheetTab() {
       const next = await sheetApi(`/api/shotsheet/${encodeURIComponent(id)}`);
       setSheet(next);
       setChosen(next.slots.filter((s) => !s.refused).map((s) => s.offset));
-      setTake(next.takes?.find((t) => t.status === "done") || null);
+      const list = next.takes || [];
+      setTakes(list);
+      // Keep the take being cut from selected across a reload (pinning reloads).
+      setSelectedTakeId((prev) =>
+        list.some((t) => t.id === prev) ? prev : (list.find((t) => t.status === "done") || list[0])?.id ?? null);
     } catch (e) {
       setError(e.message);
     }
@@ -347,20 +461,27 @@ function ShotSheetTab() {
   // A render finishes in a `waitUntil` on the Worker, so the tab polls the
   // ledger rather than running a second poller of its own — two pollers racing
   // to write one row is how a take lands twice.
+  const runningIds = takes.filter((t) => t.status === "running").map((t) => t.id).join(",");
   useEffect(() => {
-    if (!take || take.status !== "running") return;
+    if (!runningIds) return;
+    const ids = runningIds.split(",");
     const timer = setInterval(async () => {
-      try {
-        const next = await sheetApi(`/api/shotsheet/take/${encodeURIComponent(take.id)}`);
-        if (next.status !== "running") {
-          setTake(next);
-          invalidateTabCache("shotsheet");
-          revalidate();
-        }
-      } catch { /* a transient failure is not a finished render */ }
+      const settled = [];
+      await Promise.all(ids.map(async (id) => {
+        try {
+          const next = await sheetApi(`/api/shotsheet/take/${encodeURIComponent(id)}`);
+          if (next.status !== "running") settled.push(next);
+        } catch { /* a transient failure is not a finished render */ }
+      }));
+      if (!settled.length) return;
+      setTakes((prev) => prev.map((t) => settled.find((n) => n.id === t.id) || t));
+      invalidateTabCache("shotsheet");
+      revalidate();
     }, 5000);
     return () => clearInterval(timer);
-  }, [take, revalidate]);
+  }, [runningIds, revalidate]);
+
+  const take = takes.find((t) => t.id === selectedTakeId) || null;
 
   const run = async (fn) => {
     setBusy(true);
@@ -445,7 +566,8 @@ function ShotSheetTab() {
                 const started = await sheetApi(`${url}/render`, {
                   method: "POST", body: JSON.stringify(body),
                 });
-                setTake(started.take);
+                setTakes((prev) => [started.take, ...prev.filter((t) => t.id !== started.take.id)]);
+                setSelectedTakeId(started.take.id);
               })}
             >
               {busy ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
@@ -481,6 +603,10 @@ function ShotSheetTab() {
             </Panel>
           ) : null}
 
+          {takes.length > 1 ? (
+            <TakeList takes={takes} selectedId={selectedTakeId} onSelect={setSelectedTakeId} />
+          ) : null}
+
           {take ? (
             <Panel>
               <div className="space-y-3">
@@ -493,6 +619,7 @@ function ShotSheetTab() {
                 {take.error ? <ErrorNote>{take.error}</ErrorNote> : null}
                 {take.status === "done" && take.url ? (
                   <CutTake
+                    key={take.id}
                     take={take}
                     seriesId={seriesId}
                     slots={sheet.slots}
