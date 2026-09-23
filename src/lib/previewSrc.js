@@ -50,3 +50,21 @@ export function toImageSrc(src, tier = "thumb") {
 
 export const toThumbSrc = (src) => toImageSrc(src, "thumb");
 export const toDisplaySrc = (src) => toImageSrc(src, "display");
+
+// The src a tile is PAINTED with → the src its full-screen preview should OPEN.
+//
+// Zooming should land on the ~1600px `display` webp: the thumb is a 400px box,
+// so a lightbox blows it up (or, in a natural-size dialog, draws a postage
+// stamp), and the original is multiple megabytes of resolution nobody is
+// looking at on screen. Both ends are handled — a `/img/thumb/…` tile upgrades
+// a tier, a raw original steps down to one — so a caller can hand this whatever
+// it happens to have and get the right middle tier back. Anything else (an
+// absolute provider URL, a data: uri, a legacy `/thumb/<rel>`) passes through
+// untouched.
+export function toZoomSrc(src) {
+  if (!src || typeof src !== "string") return src;
+  if (src.startsWith("/img/thumb/")) {
+    return "/img/display/" + src.slice("/img/thumb/".length);
+  }
+  return toDisplaySrc(src);
+}

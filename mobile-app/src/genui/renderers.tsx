@@ -30,7 +30,7 @@ import { BouncyPressable } from '@/components/ui/bouncy-pressable';
 import { SemiPillButton } from '@/components/ui/semi-pill-button';
 import { useColors } from '@/lib/colors';
 import { useEffectiveScheme } from '@/lib/theme';
-import { apiUrl, mediaUrl } from '@/lib/api';
+import { apiUrl, mediaUrl, toImageSrc } from '@/lib/api';
 import { useAnswerState } from './answered';
 import type {
   ActionProps,
@@ -76,6 +76,18 @@ function useSend(send?: string | null) {
 function mediaUri(src?: string | null): string | undefined {
   if (!src) return undefined;
   return /^(https?:|data:|file:)/.test(src) ? src : apiUrl(src);
+}
+
+// The src a tile is PAINTED with -> the src its full-screen preview should OPEN.
+// Zooming belongs on the ~1600px `display` webp: the thumb is a 400px box, so
+// full-screen it is a blown-up blur, and the original is megabytes of detail
+// nobody can see on a phone. The model is told to pass `display` and usually
+// does; this derives the tier when it forgets — upgrading a `/img/thumb/...`
+// tile, stepping a raw original down. Mirrors toZoomSrc in src/lib/previewSrc.js.
+function zoomSrc(src?: string | null): string | undefined {
+  if (!src) return undefined;
+  if (src.startsWith('/img/thumb/')) return '/img/display/' + src.slice('/img/thumb/'.length);
+  return toImageSrc(src, 'display');
 }
 
 /**
@@ -596,8 +608,9 @@ export function MediaGrid({ props, renderNode }: Render<MediaGridProps>) {
       // The tile paints from `src` (the small thumb), but tapping opens the
       // full-screen preview — which should be the larger `display` webp, not the
       // thumb blown up. Key the index by `src` (what the tile knows itself as),
-      // point Galeria's url at `display ?? src`.
-      const uri = mediaUri(p?.display || src);
+      // point Galeria's url at `display`, or at the tier derived from `src` when
+      // the model didn't pass one.
+      const uri = mediaUri(p?.display || zoomSrc(src));
       if (!src || !uri || map.has(src)) continue;
       map.set(src, list.length);
       list.push(uri);
@@ -824,12 +837,14 @@ export function Recommendation({ props }: Render<RecommendationProps>) {
   const onPress = useSend(props.send);
   const bullets = Array.isArray(props.bullets) ? props.bullets : [];
   const uri = mediaUri(props.image);
+  const zoomUri = mediaUri(zoomSrc(props.image));
   return (
     <InsetCard>
       {uri ? (
         // Tappable for the same full-screen look a MediaGrid tile gives — a
-        // preview thumbnail at 148pt is not enough to judge a render by.
-        <Galeria urls={[uri]} theme={scheme}>
+        // preview thumbnail at 148pt is not enough to judge a render by, and
+        // what opens is the display tier, not the 148pt tile's own bytes.
+        <Galeria urls={[zoomUri ?? uri]} theme={scheme}>
           <Galeria.Image index={0} style={{ width: '100%', height: 148 }}>
             <Image
               source={{ uri }}

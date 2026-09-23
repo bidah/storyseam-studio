@@ -84,6 +84,7 @@ import {
 } from "@/lib/useVoiceRecording";
 import MediaPicker from "@/components/MediaPicker";
 import { StudioUI, isReferenceUpload } from "@/genui/StudioUI";
+import { toZoomSrc } from "@/lib/previewSrc";
 import { detectOptions } from "@/genui/detect-options";
 import { isShowcaseCard, supersedes } from "@/genui/card-kind";
 import PromptEditor from "@/components/mention/PromptEditor";
@@ -1579,7 +1580,17 @@ export default function AgentChat() {
   const onTranscriptClick = (e) => {
     const img = e.target.closest?.("img");
     if (img && (img.currentSrc || img.getAttribute("src"))) {
-      setLightbox({ src: img.currentSrc || img.src, alt: img.alt || t("image") });
+      // Zoom the ~1600px `display` webp, not the tile's own bytes. A genui card
+      // states its zoom target on the element (`data-zoom-src`, the `display`
+      // the agent passed); everything else — markdown images, sent reference
+      // thumbnails — gets the tier derived from its path. Without this the
+      // dialog opened a 400px thumb at natural size: a big modal around a
+      // small picture.
+      const painted = img.currentSrc || img.src;
+      setLightbox({
+        src: img.dataset?.zoomSrc || toZoomSrc(img.getAttribute("src")) || painted,
+        alt: img.alt || t("image"),
+      });
     }
   };
   // The reference images each user turn was sent with, so they re-render in the

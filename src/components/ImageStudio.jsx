@@ -66,6 +66,7 @@ import { uploadAttachment, classifyFile } from "@/lib/attachments";
 import { useProviderGate } from "@/components/ProviderGate";
 import { useT } from "@/lib/i18n";
 import { downloadUrl, filenameFromUrl } from "@/lib/download";
+import { toThumbSrc, toZoomSrc } from "@/lib/previewSrc";
 
 export const ASPECTS = ["16:9", "9:16", "1:1", "4:3", "3:4", "21:9"];
 const COUNTS = [1, 2, 3, 4];
@@ -642,11 +643,21 @@ function GenerationDetail({ gen, onClose, onRecreate, onUseAsRef, onEdit, onAddT
           ) : (
             <button
               type="button"
-              onClick={() => setModalImage({ url: gen.url, name: gen.prompt || t("generation"), role: "asset" })}
+              // The lightbox opens the ~1600px webp too. It used to be handed
+              // `gen.url` — the untouched original, which on a 4k generation is
+              // several megabytes of detail no screen shows, so the viewer sat
+              // blank while it downloaded. The original has exactly one job here
+              // and it is the Download button below (`saveOriginal`).
+              onClick={() => setModalImage({
+                url: gen.url,
+                display: gen.display || toZoomSrc(gen.url),
+                name: gen.prompt || t("generation"),
+                role: "asset",
+              })}
               className="flex min-h-0 items-center justify-center overflow-hidden rounded-lg border bg-muted"
               title={t("View full image")}
             >
-              <img src={gen.display || gen.url} alt={gen.prompt} className="max-h-full max-w-full object-contain" />
+              <img src={gen.display || toZoomSrc(gen.url)} alt={gen.prompt} className="max-h-full max-w-full object-contain" />
             </button>
           )}
 
@@ -666,7 +677,7 @@ function GenerationDetail({ gen, onClose, onRecreate, onUseAsRef, onEdit, onAddT
                     {refThumbs.map((r, i) => (
 <img
                           key={`${r.rel || r.genId || i}`}
-                          src={r.thumb || r.url}
+                          src={toThumbSrc(r.thumb || r.url)}
                           alt={t("reference")}
                           className="h-12 w-12 rounded-md border object-cover"
                         />
@@ -1089,7 +1100,7 @@ export default function ImageStudio({
           <div className="mb-2 flex flex-wrap gap-2">
             {refs.map((r, i) => (
               <div key={r.id || `${r.kind}-${r.rel || r.genId}-${i}`} className="group relative">
-                <img src={r.thumb || r.url} alt={r.name} className="h-12 w-12 rounded-md border object-cover" />
+                <img src={toThumbSrc(r.thumb || r.url)} alt={r.name} className="h-12 w-12 rounded-md border object-cover" />
                 {r.uploading && (
                   <div className="absolute inset-0 flex items-center justify-center rounded-md bg-background/60">
                     <Loader2 size={14} className="animate-spin text-muted-foreground" />

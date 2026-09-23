@@ -30,6 +30,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
+import { toZoomSrc } from "@/lib/previewSrc";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
 import { useAnswerState } from "./answered";
@@ -307,6 +308,10 @@ export function Option({ props }) {
   // current selection, and the rows they passed over recede. See answered.ts.
   const { picked, dimmed } = useAnswerState(props.send);
   const marked = props.selected || picked;
+  // What a tap OPENS, as opposed to what the tile paints. The model is told to
+  // pass `display` (the ~1600px webp) and usually does; when it forgets, derive
+  // the tier from the thumb rather than zooming a 400px box.
+  const zoom = props.display || toZoomSrc(props.src);
   return (
     <button
       type="button"
@@ -430,7 +435,15 @@ export function MediaItem({ props }) {
     <div className={cn("flex flex-col gap-1.5", dimmed && "opacity-45")}>
       <button
         type="button"
-        onClick={() => setPreview(true)}
+        // The chat transcript has its OWN delegated click-to-zoom over every
+        // <img> inside it (AgentChat). Without this the tap opened two
+        // lightboxes, and the delegated one — drawn last, so on top — showed the
+        // 400px thumb at natural size. `data-zoom-src` below is what it reads
+        // when a tile does bubble to it.
+        onClick={(e) => {
+          e.stopPropagation();
+          setPreview(true);
+        }}
         aria-label={props.label ? `Preview ${props.label}` : "Preview image"}
         className={cn(
           "group relative block overflow-hidden rounded-lg border-2 transition-colors",
@@ -439,6 +452,7 @@ export function MediaItem({ props }) {
       >
         <img
           src={props.src}
+          data-zoom-src={zoom}
           alt={props.label || ""}
           className="aspect-square w-full bg-muted object-cover"
         />
@@ -492,7 +506,7 @@ export function MediaItem({ props }) {
         </Button>
       ) : null}
       <Lightbox
-        src={props.display || props.src}
+        src={zoom}
         alt={props.label}
         open={preview}
         onOpenChange={setPreview}
@@ -738,13 +752,21 @@ export function Recommendation({ props }) {
       {props.image ? (
         <button
           type="button"
-          onClick={() => setPreview(true)}
+          onClick={(e) => {
+            e.stopPropagation();
+            setPreview(true);
+          }}
           aria-label={`Preview ${props.title}`}
           className="block w-full"
         >
-          <img src={props.image} alt="" className="h-32 w-full bg-muted object-cover" />
-          <Lightbox
+          <img
             src={props.image}
+            data-zoom-src={toZoomSrc(props.image)}
+            alt=""
+            className="h-32 w-full bg-muted object-cover"
+          />
+          <Lightbox
+            src={toZoomSrc(props.image)}
             alt={props.title}
             open={preview}
             onOpenChange={setPreview}
