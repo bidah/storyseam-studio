@@ -1,6 +1,6 @@
 import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import { useLoaderData, useRevalidator } from "react-router";
-import { X, RefreshCw, Loader2, Layers, Film, Plus, Send, CornerDownRight, ListChecks, FastForward, CircleCheck, Copy, Check, PersonStanding, GitBranch } from "lucide-react";
+import { X, RefreshCw, Loader2, Layers, Film, Plus, Send, CornerDownRight, ListChecks, FastForward, CircleCheck, Copy, Check, Download, PersonStanding, GitBranch } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useT } from "@/lib/i18n";
 import { invalidateTabCache } from "@/lib/tabCache";
@@ -450,6 +450,101 @@ function CopyPromptButton({ shots, packs }) {
   );
 }
 
+// The whole shot list as plain text: every beat, every shot with its fields and
+// render prompt, then each multishot pack's composed skill prompt. Deliberately
+// the FULL list rather than what the pack filter happens to be showing — the
+// button is a "take the shot list with you", not an export of the current view.
+function shotlistText(data) {
+  const shots = data.shots || [];
+  const packs = data.packs || [];
+  const runtime = shots.reduce((a, s) => a + (Number(s.dur) || 0), 0);
+  const out = [];
+  const rule = "=".repeat(60);
+
+  out.push("SHOT LIST");
+  const head = [`${shots.length} shots`, `~${fmtTime(runtime)} total`, `${packs.length} multishot packs`];
+  if (data.productionType) head.push(String(data.productionType));
+  if (data.director?.name) head.push(`director: ${data.director.name}`);
+  out.push(head.join(" · "));
+  if (data.generatedAt) out.push(`generated ${data.generatedAt}`);
+  if (data.progress) {
+    out.push(data.progress.complete
+      ? "coverage: covers the whole script"
+      : `coverage: ${data.progress.throughIndex != null ? `script covered through line ${data.progress.throughIndex}` : "partial"}`);
+  }
+
+  const packById = new Map();
+  for (const p of packs) for (const id of p.shotIds || []) packById.set(id, p.id);
+
+  let beat = null;
+  for (const s of shots) {
+    if (s.beat !== beat) {
+      beat = s.beat;
+      out.push("", rule, (s.beatTitle || s.beat || "").toUpperCase(), rule);
+    }
+    const bits = [`shot ${s.id}`];
+    if (s.dur) bits.push(`${s.dur}s`);
+    if (s.location) bits.push(s.location);
+    if (packById.get(s.id)) bits.push(packById.get(s.id));
+    out.push("", bits.join("  ·  "));
+    const field = (label, value) => {
+      const v = String(value || "").trim();
+      if (v) out.push(`  ${label}: ${v.replace(/\n/g, "\n    ")}`);
+    };
+    field("characters", (s.characters || []).join(", "));
+    field("camera", s.camera);
+    field("action", s.action);
+    field("dialogue", s.dialogue);
+    field("audio sync", s.audioSync);
+    const prompt = shotPromptText(s);
+    if (prompt) {
+      out.push("  prompt:");
+      for (const line of prompt.split("\n")) out.push(`    ${line}`);
+    }
+  }
+
+  const withPrompts = packs.filter((p) => p.skillPrompt);
+  if (withPrompts.length) {
+    out.push("", rule, "MULTISHOT PACKS", rule);
+    for (const p of withPrompts) {
+      out.push("", `${p.id}  ·  ${p.from}–${p.to}  ·  ${p.count} shots  ·  ${p.durationEst}s`, "", p.skillPrompt);
+    }
+  }
+
+  return out.join("\n") + "\n";
+}
+
+// Header button: writes the whole list out as a .txt the author keeps, prints,
+// or pastes into another tool. Purely client-side — the list is already loaded,
+// so there's no route to call.
+function DownloadShotlistButton({ data }) {
+  const t = useT();
+  const shots = data.shots || [];
+  const download = () => {
+    if (!shots.length) return;
+    const blob = new Blob([shotlistText(data)], { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `shot-list-${new Date().toISOString().slice(0, 10)}.txt`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    // Revoke on the next tick — Safari cancels the download if the URL dies first.
+    setTimeout(() => URL.revokeObjectURL(url), 0);
+  };
+  return (
+    <Button
+      variant="outline"
+      onClick={download}
+      disabled={!shots.length}
+      title={t("Download the whole shot list — every beat, shot and render prompt — as a .txt file")}
+    >
+      <Download size={13} /> {t("Download shotlist")}
+    </Button>
+  );
+}
+
 function ShotList() {
   const t = useT();
   const agent = useAgent();
@@ -624,6 +719,7 @@ function ShotList() {
             <Button variant="outline" onClick={rebuild} disabled={rebuilding}>
               {rebuilding ? <><Loader2 size={13} className="animate-spin" /> rebuilding…</> : <><RefreshCw size={13} /> rebuild from current episode</>}
             </Button>
+            <DownloadShotlistButton data={data} />
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">

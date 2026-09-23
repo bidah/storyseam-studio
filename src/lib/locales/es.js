@@ -1290,6 +1290,8 @@ export const es = {
   "your name": "tu nombre",
 
   // ── Shotlist ────────────────────────────────────────────────────────
+  "Download shotlist": "Descargar plan de rodaje",
+  "Download the whole shot list — every beat, shot and render prompt — as a .txt file": "Descarga el plan de rodaje completo — cada beat, plano y prompt de render — como archivo .txt",
   "Medium close-up, slow push-in": "Plano medio corto, lento avance",
 
   // ── Shots ───────────────────────────────────────────────────────────
