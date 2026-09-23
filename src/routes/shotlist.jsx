@@ -326,7 +326,7 @@ function InsertShot({ prev, next, creating, disabled, onSend, onCancel }) {
     return (
       <div className="relative flex items-center justify-center py-1.5">
         <div className="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-primary/40" />
-        <div className="relative z-10 flex items-center gap-2 rounded-full border border-primary/40 bg-primary/10 px-3 py-1 text-xs font-medium text-primary shadow-sm">
+        <div className="relative z-10 flex items-center gap-2 rounded-none border border-primary/40 bg-primary/10 px-3 py-1 text-xs font-medium text-primary">
           <Loader2 size={13} className="animate-spin" />
           {t("Creating new shot node…")}
           <button type="button" onClick={onCancel} aria-label={t("Dismiss")} className="text-primary/70 transition-colors hover:text-primary">
@@ -346,7 +346,7 @@ function InsertShot({ prev, next, creating, disabled, onSend, onCancel }) {
           onClick={() => setOpen(true)}
           aria-label={t("Add a shot here")}
           title={t("Add a shot here")}
-          className="relative z-10 flex size-6 items-center justify-center rounded-full border bg-background text-muted-foreground shadow-sm transition-colors hover:border-primary hover:bg-primary hover:text-primary-foreground"
+          className="relative z-10 flex size-6 items-center justify-center rounded-none border bg-background text-muted-foreground transition-colors hover:border-primary hover:bg-primary hover:text-primary-foreground"
         >
           <Plus size={14} />
         </button>
@@ -740,8 +740,8 @@ function ShotList() {
       {error && <ErrorNote>{error}</ErrorNote>}
 
       {staleFromDraft && (
-        <div className="flex items-start gap-2 rounded-xl border border-dashed border-amber-500/40 bg-amber-500/5 p-3 text-sm text-muted-foreground">
-          <GitBranch size={15} className="mt-0.5 shrink-0 text-amber-500" />
+        <div className="flex items-start gap-2 rounded-none border border-dashed border-warning/40 bg-warning/5 p-3 text-sm text-muted-foreground">
+          <GitBranch size={15} className="mt-0.5 shrink-0 text-warning" />
           <span>
             You’ve moved to a new script draft. This shot list was built from an earlier draft and has
             been cleared — regenerate it for the current script. The previous list is kept in version history.
@@ -750,7 +750,7 @@ function ShotList() {
       )}
 
       {shots.length === 0 ? (
-        <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed p-6 text-center">
+        <div className="flex flex-col items-center gap-3 rounded-none border border-dashed p-6 text-center">
           <Empty>
             no shots yet — sign the script, then write the first ≤15s bundle (fast, and you can steer
             before the rest is written) or the whole list in one run. You can also rebuild from the

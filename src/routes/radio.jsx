@@ -424,7 +424,7 @@ function RadioStudio() {
       {error && <ErrorNote>{error}</ErrorNote>}
 
       {scenes.length === 0 ? (
-        <div className="rounded-xl border border-dashed p-6 text-center">
+        <div className="rounded-none border border-dashed p-6 text-center">
           <Empty>{t("no dialogue yet — generate a Shot list with spoken lines first, then cast voices and render here.")}</Empty>
         </div>
       ) : (

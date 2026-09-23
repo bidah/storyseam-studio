@@ -7,95 +7,120 @@
 @custom-variant dark (&:is(.dark *));
 
 /* ------------------------------------------------------------------ *
- * shot-studio — professional "studio" theme                          *
- * Emerald accent on a neutral zinc base. Dark is the default.        *
+ * shot-studio — the `design.md` (Battle Royale) system               *
+ * Near-black ground, one orange accent, flat and square. Dark only.  *
+ * ------------------------------------------------------------------ */
+
+/* ------------------------------------------------------------------ *
+ * The palette is `design.md` (Battle Royale) — near-black ground, one  *
+ * orange accent, flat, square. It is defined ONCE here as the shadcn   *
+ * token set, so every primitive, route and modal in the app inherits   *
+ * it: a component that says `bg-card` or `border` is already in the    *
+ * system and needs no edit. The public pages (`/`, /director-harness)  *
+ * read the same values through `lib/hudTheme.js`.                      *
+ *                                                                      *
+ * Both blocks carry the SAME values. The app is dark-only (`class=     *
+ * "dark"` on <html>, the light theme is gone), and mirroring them means *
+ * anything that renders outside the `.dark` subtree — a portal, a       *
+ * detached preview — still lands in the system rather than on white.    *
  * ------------------------------------------------------------------ */
 
 :root {
-  --radius: 0.65rem;
+  /* design.md rounds NOTHING. 0 at every step, which is what turns every
+     `rounded-lg` / `rounded-md` / `rounded-sm` in the app square at once. */
+  --radius: 0rem;
 
-  --background: oklch(0.99 0 0);
-  --foreground: oklch(0.16 0.004 285);
+  --background: #0B0C0F; /* neutral */
+  --foreground: #F2F2F0; /* primary */
 
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.16 0.004 285);
+  --card: #141619; /* surface */
+  --card-foreground: #F2F2F0;
 
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.16 0.004 285);
+  --popover: #141619;
+  --popover-foreground: #F2F2F0;
 
-  /* Higgsfield brand — characteristic lime-yellow (#CBF74E). On the DARK theme
-     that bright accent sits on dark surfaces and reads fine, but in LIGHT mode
-     the same lime is used as a *foreground* too (badge text, thin borders,
-     accent icons) where lime-on-white fails WCAG contrast badly. So light mode
-     uses a deeper green of the same family (~5:1 both as a fill under white text
-     AND as text/border on white) with a near-white foreground. Dark mode keeps
-     the brand lime below. */
-  --primary: oklch(0.51 0.13 148);
-  --primary-foreground: oklch(0.985 0 0);
+  /* Tertiary is the system's SOLE interaction driver, and shadcn's `primary`
+     is what buttons, rings and active states read — so they are the same
+     thing. design.md reserves it for one action per screen; the app is denser
+     than a landing page, but the rule still says: if everything is orange,
+     nothing is. */
+  --primary: #FF5A1F;
+  --primary-foreground: #0B0C0F; /* on-primary */
 
-  --secondary: oklch(0.968 0.002 285);
-  --secondary-foreground: oklch(0.21 0.006 285);
+  /* One step up from the surface, for the quiet fills (secondary buttons,
+     hover rows, muted chips). Derived from Surface rather than invented: the
+     system names four grounds, and this is the gap between two of them. */
+  --secondary: #1C1F24;
+  --secondary-foreground: #F2F2F0;
 
-  --muted: oklch(0.968 0.002 285);
-  --muted-foreground: oklch(0.552 0.01 285);
+  --muted: #141619;
+  --muted-foreground: #7A7E85; /* secondary — borders, captions, metadata */
 
-  --accent: oklch(0.955 0.04 148);
-  --accent-foreground: oklch(0.4 0.1 148);
+  --accent: #1C1F24;
+  --accent-foreground: #F2F2F0;
 
-  --destructive: oklch(0.577 0.245 27.3);
-  --destructive-foreground: oklch(0.98 0.02 20);
+  /* Not in design.md, and deliberately NOT the accent: "delete" and "the one
+     action on this screen" must not be the same colour. Red stays red, amber
+     stays amber, and both are pushed away from the orange so a destructive
+     confirm can't be mistaken for a primary button. */
+  --destructive: #E5484D;
+  --destructive-foreground: #F2F2F0;
 
-  --warning: oklch(0.72 0.16 62);
-  --warning-foreground: oklch(0.28 0.06 62);
+  --warning: #E8A33D;
+  --warning-foreground: #0B0C0F;
 
-  --border: oklch(0.916 0.003 285);
-  --input: oklch(0.916 0.003 285);
-  --ring: oklch(0.51 0.13 148);
+  /* Everything non-text is Secondary at low alpha — the same border the
+     public pages draw. */
+  --border: rgb(122 126 133 / 25%);
+  --input: rgb(122 126 133 / 40%);
+  --ring: #FF5A1F;
 
-  --chart-1: oklch(0.58 0.135 162);
-  --chart-2: oklch(0.6 0.12 220);
-  --chart-3: oklch(0.7 0.15 70);
-  --chart-4: oklch(0.62 0.19 350);
-  --chart-5: oklch(0.55 0.15 300);
+  --chart-1: #FF5A1F;
+  --chart-2: #7A7E85;
+  --chart-3: #E8A33D;
+  --chart-4: #F2F2F0;
+  --chart-5: #4B5058;
 }
 
 .dark {
-  --background: oklch(0.165 0.004 285);
-  --foreground: oklch(0.965 0.002 285);
+  --radius: 0rem;
 
-  --card: oklch(0.205 0.005 285);
-  --card-foreground: oklch(0.965 0.002 285);
+  --background: #0B0C0F;
+  --foreground: #F2F2F0;
 
-  --popover: oklch(0.205 0.005 285);
-  --popover-foreground: oklch(0.965 0.002 285);
+  --card: #141619;
+  --card-foreground: #F2F2F0;
 
-  --primary: oklch(0.9 0.208 123);
-  --primary-foreground: oklch(0.24 0.05 125);
+  --popover: #141619;
+  --popover-foreground: #F2F2F0;
 
-  --secondary: oklch(0.27 0.006 285);
-  --secondary-foreground: oklch(0.965 0.002 285);
+  --primary: #FF5A1F;
+  --primary-foreground: #0B0C0F;
 
-  --muted: oklch(0.27 0.006 285);
-  --muted-foreground: oklch(0.715 0.012 286);
+  --secondary: #1C1F24;
+  --secondary-foreground: #F2F2F0;
 
-  --accent: oklch(0.32 0.06 123);
-  --accent-foreground: oklch(0.92 0.11 123);
+  --muted: #141619;
+  --muted-foreground: #7A7E85;
 
-  --destructive: oklch(0.65 0.2 25);
-  --destructive-foreground: oklch(0.97 0.02 20);
+  --accent: #1C1F24;
+  --accent-foreground: #F2F2F0;
 
-  --warning: oklch(0.78 0.15 72);
-  --warning-foreground: oklch(0.2 0.05 72);
+  --destructive: #E5484D;
+  --destructive-foreground: #F2F2F0;
 
-  --border: oklch(1 0 0 / 9%);
-  --input: oklch(1 0 0 / 14%);
-  --ring: oklch(0.9 0.208 123);
+  --warning: #E8A33D;
+  --warning-foreground: #0B0C0F;
 
-  --chart-1: oklch(0.72 0.15 162);
-  --chart-2: oklch(0.68 0.13 220);
-  --chart-3: oklch(0.77 0.15 70);
-  --chart-4: oklch(0.7 0.19 350);
-  --chart-5: oklch(0.65 0.16 300);
+  --border: rgb(122 126 133 / 25%);
+  --input: rgb(122 126 133 / 40%);
+  --ring: #FF5A1F;
+
+  --chart-1: #FF5A1F;
+  --chart-2: #7A7E85;
+  --chart-3: #E8A33D;
+  --chart-4: #F2F2F0;
+  --chart-5: #4B5058;
 }
 
 @theme inline {
@@ -131,19 +156,22 @@
   --color-chart-4: var(--chart-4);
   --color-chart-5: var(--chart-5);
 
-  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+  /* design.md's type ramp: Inter for body, JetBrains Mono for labels, Teko
+     for display. The system stack stays as the fallback so a blocked Google
+     Fonts request degrades to what the app used to look like rather than to
+     Times. The faces are loaded in index.html. */
+  --font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
     "Helvetica Neue", Arial, sans-serif;
-  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas,
-    monospace;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, "SF Mono", Menlo,
+    Consolas, monospace;
+  --font-display: "Teko", "Oswald", "Haettenschweiler", sans-serif;
 }
 /* Header dropdown menus (ProjectSwitcher, UserMenu). Radix portais menu
    content into <body>, so these are scoped to the portaled content via the
    .header-menu class placed on DropdownMenuContent. Default highlight uses the
-   pale accent tint with dark text (`accent`/`accent-foreground`) which reads as
-   "green with black text" on light surfaces; instead render the selection as a
-   solid primary-green pill with near-white text (and icons) for legibility.
-   Follows the active theme: light gets the deep green, dark keeps the brand
-   lime. */
+   quiet accent fill, which reads as a barely-there row; instead render the
+   selection as a solid accent block with the on-accent foreground, so the
+   highlighted item is unmistakable. */
 .header-menu [data-slot="dropdown-menu-item"]:focus,
 .header-menu [data-slot="dropdown-menu-item"][data-highlighted] {
   background-color: var(--primary);
@@ -175,9 +203,24 @@
   }
   body {
     @apply bg-background text-foreground;
+    font-family: var(--font-sans);
+    font-size: 0.92rem;
+    line-height: 1.5;
     font-feature-settings: "cv02", "cv03", "cv04", "cv11";
     -webkit-font-smoothing: antialiased;
     text-rendering: optimizeLegibility;
+  }
+
+  /* The display role, applied where the markup already says "heading" rather
+     than through a class every surface has to remember. Teko is condensed and
+     sets SHORT, so a heading in it occupies less width than the stack it
+     replaces — nothing reflows outward. Weight and tracking come from
+     design.md; an explicit `font-*` class on a heading still wins. */
+  h1,
+  h2,
+  h3 {
+    font-family: var(--font-display);
+    letter-spacing: 0.02em;
   }
 
   /* Native media controls tuned for dark UI */
@@ -211,7 +254,7 @@
   }
   *::-webkit-scrollbar-thumb {
     background: color-mix(in oklab, var(--muted-foreground) 30%, transparent);
-    border-radius: 9999px;
+    border-radius: 0;
     border: 3px solid transparent;
     background-clip: content-box;
   }
@@ -324,19 +367,22 @@
     -webkit-appearance: none;
     appearance: none;
     height: 4px;
-    border-radius: 9999px;
+    border-radius: 0;
     background: var(--border);
     cursor: pointer;
   }
   input[type="range"].studio-range::-webkit-slider-thumb {
     -webkit-appearance: none;
     appearance: none;
+    /* The TRACK is square like everything else; the HANDLE stays round —
+       a square handle inside a square track has no edge that says "drag me",
+       the same exception `ui/slider.jsx` and `ui/switch.jsx` make. The drop
+       shadow is gone either way: the system is flat. */
     width: 14px;
     height: 14px;
     border-radius: 9999px;
     background: var(--primary);
     border: 2px solid var(--background);
-    box-shadow: 0 1px 3px rgb(0 0 0 / 0.3);
   }
   input[type="range"].studio-range::-moz-range-thumb {
     width: 14px;
@@ -409,21 +455,17 @@
     font-style: italic;
   }
   .notes-editor .ProseMirror pre {
-    background: oklch(0.94 0.002 285);
-    color: oklch(0.2 0.006 285);
-    border-radius: 0.5rem;
+    background: var(--card);
+    color: var(--card-foreground);
+    border-radius: 0;
     padding: 0.75rem 1rem;
     font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
     font-size: 0.875rem;
     overflow-x: auto;
   }
-  .dark .notes-editor .ProseMirror pre {
-    background: oklch(0.2 0.006 285);
-    color: oklch(0.96 0.002 285);
-  }
   .notes-editor .ProseMirror code {
     background: color-mix(in oklch, var(--muted-foreground) 18%, transparent);
-    border-radius: 0.25rem;
+    border-radius: 0;
     padding: 0.1em 0.3em;
     font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
     font-size: 0.875em;
@@ -525,14 +567,14 @@
      they type the request and while the agent works on it. */
   .notes-editor .ProseMirror .script-sel-pending {
     background-color: color-mix(in oklch, var(--primary) 22%, transparent);
-    border-radius: 0.25rem;
+    border-radius: 0;
     box-shadow: 0 0 0 1px color-mix(in oklch, var(--primary) 35%, transparent);
   }
   /* "working" — sent to the agent and locked. Same accent, a touch stronger,
      with a slow pulse so it reads as busy rather than merely selected. */
   .notes-editor .ProseMirror .script-sel-working {
     background-color: color-mix(in oklch, var(--primary) 30%, transparent);
-    border-radius: 0.25rem;
+    border-radius: 0;
     box-shadow: 0 0 0 1px color-mix(in oklch, var(--primary) 45%, transparent);
     animation: script-sel-pulse 1.8s ease-in-out infinite;
   }
@@ -580,7 +622,7 @@
     display: inline;
     padding: 0.1em 0.35em;
     margin: 0 0.08em;
-    border-radius: 0.3em;
+    border-radius: 0;
     border: 1px solid color-mix(in oklch, var(--primary) 35%, transparent);
     background: color-mix(in oklch, var(--primary) 12%, transparent);
     color: var(--primary);
@@ -592,7 +634,7 @@
 
 /* Brief primary-colour pulse on a card when we jump to it from the Complete-cut
    overlay (see navigateTo / .nav-flash in RootLayout.jsx). Uses the theme
-   primary so light mode gets the deep green and dark mode keeps the brand lime. */
+   primary, which is the system's single accent. */
 @keyframes nav-flash {
   0%   { box-shadow: 0 0 0 0 color-mix(in oklch, var(--primary) 0%, transparent); }
   20%  { box-shadow: 0 0 0 4px color-mix(in oklch, var(--primary) 90%, transparent); }
@@ -618,7 +660,6 @@
     /* Transparent at rest so the card is borderless, but the 2px box is
        reserved to avoid any layout shift when the active border appears. */
     border: 2px solid transparent;
-    box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.18), 0 1px 2px -1px rgb(0 0 0 / 0.18);
     transition-property: all;
     transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
     transition-duration: 150ms;
@@ -649,10 +690,8 @@
      the user keeps seeing the black border while editing. */
   .post-it-node.has-border {
     border-color: #000;
-    box-shadow:
-      inset 0 0 0 2px #000,
-      0 1px 3px 0 rgb(0 0 0 / 0.18),
-      0 1px 2px -1px rgb(0 0 0 / 0.18);
+    /* Ring only, no depth: the inset layer IS the inner border. */
+    box-shadow: inset 0 0 0 2px #000;
   }
 
   /* The only card border: shown when selected or while being dragged. Kept as a
@@ -693,7 +732,6 @@
 
   .link-card-node {
     border-radius: var(--radius);
-    box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.18), 0 1px 2px -1px rgb(0 0 0 / 0.18);
     transition: all 150ms cubic-bezier(0.4, 0, 0.2, 1);
     width: 280px;
     height: 260px;

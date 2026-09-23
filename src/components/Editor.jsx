@@ -433,7 +433,7 @@ function Waveform({ peaks, width, winStart = 0, winEnd = 1, fadeInPx, fadeOutPx,
     const n = peaks.length;
     const w0 = Math.max(0, Math.min(winStart || 0, 1));
     const w1 = Math.max(w0 + 0.001, Math.min(winEnd == null ? 1 : winEnd, 1));
-    ctx.fillStyle = disabled ? "rgba(161,161,170,0.45)" : "rgba(196,181,253,0.8)"; // zinc-400 / violet-300
+    ctx.fillStyle = disabled ? "rgba(122,126,133,0.45)" : "rgba(242,242,240,0.8)"; // muted-foreground / foreground, literal: canvas takes no class
     for (let x = 0; x < W; x++) {
       const i0 = Math.floor((w0 + (x / W) * (w1 - w0)) * n);
       const i1 = Math.max(i0 + 1, Math.ceil((w0 + ((x + 1) / W) * (w1 - w0)) * n));
@@ -445,10 +445,10 @@ function Waveform({ peaks, width, winStart = 0, winEnd = 1, fadeInPx, fadeOutPx,
     const fi = Math.max(0, Math.min((fadeInPx / width) * W, W));
     const fo = Math.max(0, Math.min((fadeOutPx / width) * W, W));
     if (fi > 0 || fo > 0) {
-      ctx.fillStyle = "rgba(0,0,0,0.45)";
+      ctx.fillStyle = "rgba(11,12,15,0.45)";
       if (fi > 0) { ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(fi, 0); ctx.lineTo(0, h); ctx.closePath(); ctx.fill(); }
       if (fo > 0) { ctx.beginPath(); ctx.moveTo(W, 0); ctx.lineTo(W - fo, 0); ctx.lineTo(W, h); ctx.closePath(); ctx.fill(); }
-      ctx.strokeStyle = "rgba(255,255,255,0.8)";
+      ctx.strokeStyle = "rgba(242,242,240,0.8)";
       ctx.lineWidth = dpr;
       ctx.beginPath();
       if (fi > 0) { ctx.moveTo(0, h); ctx.lineTo(fi, 0); }
@@ -641,18 +641,19 @@ function TimelineItem({
       <ContextMenuTrigger asChild>
         <div
           className={cn(
-            "group absolute top-1 bottom-1 select-none overflow-hidden rounded-md border text-[11px] shadow-sm",
+            "group absolute top-1 bottom-1 select-none overflow-hidden rounded-md border text-[11px]",
             disabled
               ? "border-muted-foreground/30 bg-muted-foreground/15 text-muted-foreground line-through decoration-muted-foreground/50"
               : isAudio
-                ? "border-violet-500/40 bg-violet-500/20 text-violet-100"
-                // Picture lane, three states at a glance: amber = a shot still
-                // waiting on art, sky = a storyboard still, emerald = real footage.
+                ? "border-border bg-secondary text-foreground"
+                // Picture lane, three states at a glance: warning = a shot still
+                // waiting on art, plain surface = a storyboard still, accent =
+                // real footage. One accent only, so the lane reads by weight.
                 : isSlate
-                  ? "border-amber-500/50 bg-amber-500/15 text-amber-100"
+                  ? "border-warning/50 bg-warning/15 text-warning"
                   : isImage
-                    ? "border-sky-500/40 bg-sky-500/20 text-sky-50"
-                    : "border-emerald-500/40 bg-emerald-500/20 text-emerald-50",
+                    ? "border-border bg-muted text-foreground"
+                    : "border-primary/40 bg-primary/20 text-foreground",
             selected && "ring-2 ring-primary",
             linkHighlight && "ring-2 ring-primary/40",
           )}
@@ -695,7 +696,7 @@ title={t(item.name)}
               className="pointer-events-none absolute inset-0 opacity-40"
               style={{
                 backgroundImage:
-                  "repeating-linear-gradient(45deg, transparent 0 6px, rgba(251,191,36,0.35) 6px 12px)",
+                  "repeating-linear-gradient(45deg, transparent 0 6px, rgba(232,163,61,0.35) 6px 12px)",
               }}
             />
           )}
@@ -728,9 +729,9 @@ title={t(item.name)}
             >
               <div
                 className={cn(
-                  "w-full rounded-full transition-all",
+                  "w-full rounded-none transition-all",
                   selected || vol !== 1 ? "h-0.5" : "h-px",
-                  disabled ? "bg-muted-foreground/50" : "bg-violet-100/70 group-hover/vol:h-0.5 group-hover/vol:bg-violet-50",
+                  disabled ? "bg-muted-foreground/50" : "bg-foreground/70 group-hover/vol:h-0.5 group-hover/vol:bg-foreground",
                 )}
               />
             </div>
@@ -739,7 +740,7 @@ title={t(item.name)}
           <div
             className={cn(
               "pointer-events-none absolute inset-x-0 top-0 flex min-w-0 items-center gap-1 px-1.5 py-0.5",
-              hasArt && !disabled && "bg-gradient-to-b from-black/60 to-transparent",
+              hasArt && !disabled && "bg-background/60",
             )}
           >
             {disabled ? (
@@ -760,12 +761,12 @@ title={t(item.name)}
                 reads as a bug next to the pool item it came from. */}
             <span className="ml-auto flex shrink-0 items-center gap-1">
               {isAudio && vol !== 1 && (
-                <span className="rounded-sm bg-black/50 px-1 tabular-nums text-white">
+                <span className="rounded-sm bg-background/50 px-1 tabular-nums text-foreground">
                   {Math.round(vol * 100)}%
                 </span>
               )}
               {speed !== 1 && (
-                <span className="rounded-sm bg-black/50 px-1 font-medium tabular-nums text-white">
+                <span className="rounded-sm bg-background/50 px-1 font-medium tabular-nums text-foreground">
                   {fmtSpeed(speed)}
                 </span>
               )}
@@ -773,14 +774,15 @@ title={t(item.name)}
             </span>
           </div>
           {/* fade handles — the classic dots at the card's top corners; drag
-              inward to lengthen the fade (the dot sits where the fade ends) */}
+              inward to lengthen the fade (the dot sits where the fade ends).
+              These stay round: a square is a trim handle, a dot is a fade. */}
           {isAudio && !disabled && (
             <>
               <div
                 data-handle="fade-in"
                 onPointerDown={(e) => { e.stopPropagation(); onSelect(item.id); onFadeStart(e, item, "in"); }}
                 className={cn(
-                  "absolute top-0.5 z-10 h-2.5 w-2.5 -translate-x-1/2 cursor-ew-resize rounded-full border border-white/80 bg-violet-300 shadow transition-opacity",
+                  "absolute top-0.5 z-10 h-2.5 w-2.5 -translate-x-1/2 cursor-ew-resize rounded-full border border-foreground/80 bg-primary shadow transition-opacity",
                   selected || item.fadeInFrames ? "opacity-100" : "opacity-0 group-hover:opacity-100",
                 )}
                 style={{ left: Math.min(Math.max(fadeInPx, 6), Math.max(6, width / 2)) }}
@@ -790,7 +792,7 @@ title={t(item.name)}
                 data-handle="fade-out"
                 onPointerDown={(e) => { e.stopPropagation(); onSelect(item.id); onFadeStart(e, item, "out"); }}
                 className={cn(
-                  "absolute top-0.5 z-10 h-2.5 w-2.5 -translate-x-1/2 cursor-ew-resize rounded-full border border-white/80 bg-violet-300 shadow transition-opacity",
+                  "absolute top-0.5 z-10 h-2.5 w-2.5 -translate-x-1/2 cursor-ew-resize rounded-full border border-foreground/80 bg-primary shadow transition-opacity",
                   selected || item.fadeOutFrames ? "opacity-100" : "opacity-0 group-hover:opacity-100",
                 )}
                 style={{ left: Math.max(Math.min(width - fadeOutPx, width - 6), Math.min(width - 6, width / 2)) }}
@@ -802,14 +804,14 @@ title={t(item.name)}
           <div
             data-handle="resize-start"
             onPointerDown={(e) => { e.stopPropagation(); onSelect(item.id); onDragStart(e, item, track, "resize-start"); }}
-            className="absolute inset-y-0 left-0 w-2 cursor-ew-resize bg-black/25 opacity-0 transition-opacity group-hover:opacity-100"
+            className="absolute inset-y-0 left-0 w-2 cursor-ew-resize bg-background/25 opacity-0 transition-opacity group-hover:opacity-100"
             title={t("Drag to trim the start")}
           />
           {/* right-edge resize handle */}
           <div
             data-handle="resize"
             onPointerDown={(e) => { e.stopPropagation(); onSelect(item.id); onDragStart(e, item, track, "resize"); }}
-            className="absolute inset-y-0 right-0 w-2 cursor-ew-resize bg-black/25 opacity-0 transition-opacity group-hover:opacity-100"
+            className="absolute inset-y-0 right-0 w-2 cursor-ew-resize bg-background/25 opacity-0 transition-opacity group-hover:opacity-100"
             title={t("Drag to trim the end")}
           />
         </div>
@@ -837,7 +839,7 @@ title={t(item.name)}
                   {takes.map((t) => (
                     <ContextMenuItem key={t.file} onSelect={() => onSwapTake?.(item.id, t)} disabled={t.file === item.stillFile}>
                       <span className="flex items-center gap-2">
-                        <img src={t.thumb || t.url} alt="" className="h-6 w-10 rounded-sm bg-black object-cover" />
+                        <img src={t.thumb || t.url} alt="" className="h-6 w-10 rounded-sm bg-background object-cover" />
                         {t.angle || t.name}
                       </span>
                     </ContextMenuItem>
@@ -945,8 +947,8 @@ function PoolCard({ item, active, open, onMeta, onDragStart }) {
     <div
       className={cn(
         "group relative select-none overflow-hidden rounded-md border bg-card text-left transition-shadow",
-        "cursor-grab active:cursor-grabbing hover:border-primary/50 hover:shadow-sm",
-        item.selected && "ring-1 ring-emerald-500/50",
+        "cursor-grab active:cursor-grabbing hover:border-primary/50",
+        item.selected && "ring-1 ring-primary/50",
         open && "border-primary ring-2 ring-primary",
         active && "opacity-40",
       )}
@@ -960,7 +962,7 @@ function PoolCard({ item, active, open, onMeta, onDragStart }) {
           muted
           playsInline
           preload="metadata"
-          className="pointer-events-none aspect-video w-full bg-black object-cover"
+          className="pointer-events-none aspect-video w-full bg-background object-cover"
           onLoadedMetadata={(e) => {
             const v = e.currentTarget;
             onMeta(item.id, v.duration);
@@ -969,8 +971,8 @@ function PoolCard({ item, active, open, onMeta, onDragStart }) {
           }}
         />
       ) : (
-        <div className="flex aspect-video w-full items-center justify-center bg-violet-500/15">
-          <Music size={20} className="text-violet-300" />
+        <div className="flex aspect-video w-full items-center justify-center bg-secondary">
+          <Music size={20} className="text-muted-foreground" />
           <audio
             ref={mediaRef}
             src={item.src}
@@ -981,7 +983,7 @@ function PoolCard({ item, active, open, onMeta, onDragStart }) {
         </div>
       )}
       <div className="flex items-center gap-1 px-1.5 py-1">
-        {isVideo ? <Film size={10} className="shrink-0 text-emerald-400" /> : <Music size={10} className="shrink-0 text-violet-300" />}
+        {isVideo ? <Film size={10} className="shrink-0 text-muted-foreground" /> : <Music size={10} className="shrink-0 text-muted-foreground" />}
         <span className="truncate text-[10px] font-medium">{item.name}</span>
       </div>
     </div>
@@ -998,12 +1000,12 @@ function StillCard({ still, onOpen }) {
       title={still.sourceName || "Still"}
       className={cn(
         "group relative select-none overflow-hidden rounded-md border bg-card text-left transition-shadow",
-        "cursor-pointer hover:border-primary/50 hover:shadow-sm",
+        "cursor-pointer hover:border-primary/50",
       )}
     >
-      <img src={still.thumb || still.url} alt="" loading="lazy" className="aspect-video w-full bg-black object-cover" />
+      <img src={still.thumb || still.url} alt="" loading="lazy" className="aspect-video w-full bg-background object-cover" />
       <div className="flex items-center gap-1 px-1.5 py-1">
-        <Camera size={10} className="shrink-0 text-amber-400" />
+        <Camera size={10} className="shrink-0 text-muted-foreground" />
         <span className="truncate text-[10px] font-medium">{still.sourceBundle || still.sourceName || "Still"}</span>
       </div>
     </button>
@@ -1170,7 +1172,7 @@ function SourceMonitor({
 
   return (
     <div
-      className="flex h-full w-full flex-col bg-black"
+      className="flex h-full w-full flex-col bg-background"
       // The preview box's context menu belongs to the PROGRAM (grab still, flip
       // the clip at the playhead) — none of it applies to a source asset.
       onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); }}
@@ -1206,9 +1208,9 @@ function SourceMonitor({
           </div>
         )}
 
-        <div className="pointer-events-none absolute inset-x-0 top-0 flex items-start gap-2 bg-gradient-to-b from-black/70 to-transparent px-2.5 py-1.5">
-          <span className="flex min-w-0 items-center gap-1.5 text-[11px] font-medium text-white/90">
-            {isVideo ? <Film size={11} className="shrink-0 text-emerald-400" /> : <Music size={11} className="shrink-0 text-violet-300" />}
+        <div className="pointer-events-none absolute inset-x-0 top-0 flex items-start gap-2 bg-background/70 px-2.5 py-1.5">
+          <span className="flex min-w-0 items-center gap-1.5 text-[11px] font-medium text-foreground/90">
+            {isVideo ? <Film size={11} className="shrink-0 text-muted-foreground" /> : <Music size={11} className="shrink-0 text-muted-foreground" />}
             <span className="truncate">{item.name}</span>
           </span>
         </div>
@@ -1216,20 +1218,20 @@ function SourceMonitor({
         {/* in/out rail — a layer over the bottom of the picture, above the
             transport. Grips at the bottom edge, the needle's head at the top,
             exactly where a trim bar reads fastest. */}
-        <div className="absolute inset-x-0 bottom-0 bg-black/75 px-3 pb-2 pt-1 backdrop-blur-sm">
-          <div className="mb-0.5 flex items-center gap-2 text-[10px] tabular-nums text-white/60">
+        <div className="absolute inset-x-0 bottom-0 bg-background/75 px-3 pb-2 pt-1 backdrop-blur-sm">
+          <div className="mb-0.5 flex items-center gap-2 text-[10px] tabular-nums text-muted-foreground">
             <span>in {formatTimecode(inSec, fps)}</span>
             <span>out {formatTimecode(outSec, fps)}</span>
-            <span className="text-white/80">{formatTimecode(Math.max(0, outSec - inSec), fps)} selected</span>
+            <span className="text-foreground">{formatTimecode(Math.max(0, outSec - inSec), fps)} selected</span>
           </div>
           <div
             ref={railRef}
             className={cn("relative h-6 select-none touch-none", ready ? "cursor-ew-resize" : "opacity-40")}
             onPointerDown={(e) => startRailDrag(e, "scrub")}
           >
-            <div className="absolute inset-x-0 top-1/2 h-px -translate-y-1/2 bg-white/25" />
+            <div className="absolute inset-x-0 top-1/2 h-px -translate-y-1/2 bg-foreground/25" />
             <div
-              className="absolute top-1/2 h-[3px] -translate-y-1/2 rounded-full bg-white/70"
+              className="absolute top-1/2 h-[3px] -translate-y-1/2 rounded-none bg-foreground/70"
               style={{ left: `${inPct}%`, width: `${Math.max(0, outPct - inPct)}%` }}
             />
             {/* in grip — its right edge sits on the mark */}
@@ -1242,7 +1244,7 @@ function SourceMonitor({
               tabIndex={0}
               onPointerDown={(e) => startRailDrag(e, "in")}
               title={`In — ${formatTimecode(inSec, fps, true)}`}
-              className="absolute bottom-0 flex h-4 w-3.5 -translate-x-full cursor-ew-resize items-center justify-center rounded-sm bg-zinc-400 text-zinc-900 hover:bg-zinc-200"
+              className="absolute bottom-0 flex h-4 w-3.5 -translate-x-full cursor-ew-resize items-center justify-center rounded-sm bg-muted-foreground text-background hover:bg-foreground"
               style={{ left: `${inPct}%` }}
             >
               <GripVertical size={9} />
@@ -1257,15 +1259,15 @@ function SourceMonitor({
               tabIndex={0}
               onPointerDown={(e) => startRailDrag(e, "out")}
               title={`Out — ${formatTimecode(outSec, fps, true)}`}
-              className="absolute bottom-0 flex h-4 w-3.5 cursor-ew-resize items-center justify-center rounded-sm bg-zinc-400 text-zinc-900 hover:bg-zinc-200"
+              className="absolute bottom-0 flex h-4 w-3.5 cursor-ew-resize items-center justify-center rounded-sm bg-muted-foreground text-background hover:bg-foreground"
               style={{ left: `${outPct}%` }}
             >
               <GripVertical size={9} />
             </div>
             {/* the source needle */}
-            <div className="pointer-events-none absolute bottom-0 top-1.5 w-px bg-red-500" style={{ left: `${curPct}%` }} />
+            <div className="pointer-events-none absolute bottom-0 top-1.5 w-px bg-primary" style={{ left: `${curPct}%` }} />
             <div
-              className="pointer-events-none absolute top-0 flex h-4 w-4 -translate-x-1/2 items-center justify-center rounded-sm bg-red-500 text-white"
+              className="pointer-events-none absolute top-0 flex h-4 w-4 -translate-x-1/2 items-center justify-center rounded-sm bg-primary text-primary-foreground"
               style={{ left: `${curPct}%` }}
             >
               <GripVertical size={9} />
@@ -1279,7 +1281,7 @@ function SourceMonitor({
           onClick={onClose}
           aria-label="Back to the program monitor"
           title="Back to the program monitor (Esc)"
-          className="absolute right-1.5 top-1.5 z-10 text-white/70 hover:bg-white/10 hover:text-white"
+          className="absolute right-1.5 top-1.5 z-10 text-foreground/70 hover:bg-foreground/10 hover:text-foreground"
         >
           <X size={15} />
         </Button>
@@ -1363,7 +1365,7 @@ function SourceMonitor({
             </DropdownMenu>
           </div>
         </div>
-        {note && <p className="w-full text-[10px] text-amber-400">{note}</p>}
+        {note && <p className="w-full text-[10px] text-warning">{note}</p>}
       </div>
     </div>
   );
@@ -1395,7 +1397,7 @@ function SourceWave({ peaks, inFrac, outFrac }) {
       let a = 0;
       for (let i = i0; i < i1 && i < n; i++) if (peaks[i] > a) a = peaks[i];
       const inRange = f >= inFrac && f <= outFrac;
-      ctx.fillStyle = inRange ? "rgba(196,181,253,0.9)" : "rgba(196,181,253,0.22)";
+      ctx.fillStyle = inRange ? "rgba(242,242,240,0.9)" : "rgba(242,242,240,0.22)"; // foreground, literal: canvas takes no class
       const half = Math.max(a, 0.01) * (mid - dpr);
       ctx.fillRect(x, mid - half, 1, half * 2);
     }
@@ -1405,7 +1407,7 @@ function SourceWave({ peaks, inFrac, outFrac }) {
       <canvas ref={ref} aria-hidden className="h-full w-full" />
       {!peaks && (
         <div className="absolute inset-0 flex items-center justify-center">
-          <AudioLines size={22} className="animate-pulse text-violet-300/60" />
+          <AudioLines size={22} className="animate-pulse text-muted-foreground" />
         </div>
       )}
     </div>
@@ -1500,7 +1502,7 @@ function SceneDialog({ open, target, onOpenChange, onGenerate, busy }) {
       <DialogContent className="max-w-2xl">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <ImageIcon size={16} className="text-sky-400" />
+            <ImageIcon size={16} className="text-muted-foreground" />
             {target?.mode === "add" ? "Add scene" : "New still"} — {bundleId || "?"} / {shotId || "?"}
           </DialogTitle>
           <DialogDescription>
@@ -1529,7 +1531,7 @@ function SceneDialog({ open, target, onOpenChange, onGenerate, busy }) {
                   id="scene-shot"
                   value={shotId || ""}
                   onChange={(e) => setPickedShot(e.target.value)}
-                  className="mt-1 h-8 w-full rounded-md border border-input bg-transparent px-2 text-xs shadow-xs outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
+                  className="mt-1 h-8 w-full rounded-md border border-input bg-transparent px-2 text-xs outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
                 >
                   {options.map((o) => (
                     <option key={o.shot} value={o.shot}>
@@ -1554,7 +1556,7 @@ function SceneDialog({ open, target, onOpenChange, onGenerate, busy }) {
             </div>
 
             {stale && (
-              <p className="flex items-center gap-1.5 text-xs text-amber-400">
+              <p className="flex items-center gap-1.5 text-xs text-warning">
                 <TriangleAlert size={12} /> the shot’s action changed since the last take was generated — the prompt below may be out of date.
               </p>
             )}
@@ -1575,11 +1577,11 @@ function SceneDialog({ open, target, onOpenChange, onGenerate, busy }) {
                       className={cn(
                         "relative shrink-0 overflow-hidden rounded border transition-shadow",
                         reuse?.file === t.file ? "border-primary ring-2 ring-primary" : "hover:border-primary/50",
-                        t.file === target?.stillFile && "ring-1 ring-sky-500/60",
+                        t.file === target?.stillFile && "ring-1 ring-foreground/60",
                       )}
                     >
-                      <img src={t.thumb || t.url} alt="" className="h-16 w-28 bg-black object-cover" />
-                      <span className="absolute inset-x-0 bottom-0 truncate bg-black/60 px-1 text-[9px] text-white">
+                      <img src={t.thumb || t.url} alt="" className="h-16 w-28 bg-background object-cover" />
+                      <span className="absolute inset-x-0 bottom-0 truncate bg-background/60 px-1 text-[9px] text-foreground">
                         {t.angle || t.name}
                       </span>
                     </button>
@@ -1684,7 +1686,7 @@ function AudioDialog({ open, onOpenChange, onPick }) {
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-lg">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2"><Music size={16} className="text-violet-400" /> Add audio</DialogTitle>
+          <DialogTitle className="flex items-center gap-2"><Music size={16} className="text-muted-foreground" /> Add audio</DialogTitle>
           <DialogDescription>Drops a Sound Studio take onto this lane at the point you clicked.</DialogDescription>
         </DialogHeader>
         {loading ? (
@@ -1729,7 +1731,7 @@ function MediaPool({ pool, stills, collapsed, height, onToggle, dragId, openId, 
 
   if (collapsed) {
     return (
-      <div data-editor-region="library" style={style} className="flex max-h-[70vh] w-9 shrink-0 flex-col items-center gap-2 rounded-xl border bg-muted/20 py-2">
+      <div data-editor-region="library" style={style} className="flex max-h-[70vh] w-9 shrink-0 flex-col items-center gap-2 rounded-none border bg-muted/20 py-2">
         <Button variant="ghost" size="icon-sm" onClick={onToggle} title="Show media pool" aria-label="Show media pool">
           <PanelLeftOpen size={16} />
         </Button>
@@ -1743,7 +1745,7 @@ function MediaPool({ pool, stills, collapsed, height, onToggle, dragId, openId, 
   }
 
   return (
-    <div data-editor-region="library" style={style} className="flex max-h-[70vh] w-1/4 min-w-[170px] max-w-[300px] shrink-0 flex-col overflow-hidden rounded-xl border bg-muted/20">
+    <div data-editor-region="library" style={style} className="flex max-h-[70vh] w-1/4 min-w-[170px] max-w-[300px] shrink-0 flex-col overflow-hidden rounded-none border bg-muted/20">
       <div className="flex items-center justify-between gap-1 border-b px-2.5 py-1.5">
         <div className="flex items-center gap-1.5 text-xs font-medium">
           <FolderOpen size={13} /> Media pool
@@ -4696,8 +4698,8 @@ export default function Editor({ reloadKey }) {
               className={cn(
                 "pointer-events-none absolute top-1 bottom-1 z-10 flex items-center gap-1 overflow-hidden rounded-md border px-1.5 text-[11px] opacity-70",
                 t.type === "audio"
-                  ? "border-violet-400/60 bg-violet-500/30 text-violet-100"
-                  : "border-emerald-400/60 bg-emerald-500/30 text-emerald-50",
+                  ? "border-border bg-secondary text-foreground"
+                  : "border-primary/60 bg-primary/30 text-foreground",
               )}
               style={{
                 left: framesToSec(poolDrag.drop.from, fps) * pxPerSec,
@@ -4830,7 +4832,7 @@ export default function Editor({ reloadKey }) {
       )}
 
       {!timeline ? (
-        <div className="rounded-xl border border-dashed p-10 text-center">
+        <div className="rounded-none border border-dashed p-10 text-center">
           <Wand2 className="mx-auto mb-3 text-muted-foreground" />
           <p className="text-sm text-muted-foreground">
             No timeline yet. Pick a complete cut above to load its clips and music into the editor,
@@ -4863,7 +4865,7 @@ export default function Editor({ reloadKey }) {
                 <div
                   ref={playerWrapRef}
                   data-editor-region="preview"
-                  className="relative min-w-0 self-start overflow-hidden rounded-xl border bg-black"
+                  className="relative min-w-0 self-start overflow-hidden rounded-none border bg-background"
                   // Natural mode fills the row (width-driven). Once the timeline
                   // resizer sets a height, drive the width from it instead.
                   style={playerH
@@ -4885,7 +4887,7 @@ export default function Editor({ reloadKey }) {
                     acknowledgeRemotionLicense
                   />
                   {playbackRate !== 1 && !sourceItem && (
-                    <div className="pointer-events-none absolute left-3 top-3 z-10 rounded-md bg-black/70 px-2 py-1 text-xs font-semibold tabular-nums text-white">
+                    <div className="pointer-events-none absolute left-3 top-3 z-10 rounded-md bg-background/70 px-2 py-1 text-xs font-semibold tabular-nums text-foreground">
                       {playbackRate < 0 ? "◀◀" : "▶▶"} {Math.abs(playbackRate)}×
                     </div>
                   )}
@@ -4957,7 +4959,7 @@ export default function Editor({ reloadKey }) {
             title="Drag to resize the preview / timeline split · double-click to reset"
           >
             <div className="h-px w-full bg-border transition-colors group-hover:h-0.5 group-hover:bg-primary/60 group-active:h-0.5 group-active:bg-primary" />
-            <div className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-md border bg-card px-1.5 py-0.5 opacity-0 shadow-sm transition-opacity group-hover:opacity-100 group-active:opacity-100">
+            <div className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-md border bg-card px-1.5 py-0.5 opacity-0 transition-opacity group-hover:opacity-100 group-active:opacity-100">
               <GripHorizontal size={13} className="text-muted-foreground" />
             </div>
           </div>
@@ -5045,7 +5047,7 @@ export default function Editor({ reloadKey }) {
           </div>
 
           {/* Timeline tracks */}
-          <div data-editor-region="timeline" className="overflow-hidden rounded-xl border bg-muted/20">
+          <div data-editor-region="timeline" className="overflow-hidden rounded-none border bg-muted/20">
             <div className="flex">
               {/* track labels — split into video / audio rails that mirror
                   their lane group's vertical scroll */}
@@ -5097,7 +5099,7 @@ export default function Editor({ reloadKey }) {
                   {/* rubber-band drag-select rectangle */}
                   {marquee && (
                     <div
-                      className="pointer-events-none absolute z-40 border border-white/70 bg-white/15"
+                      className="pointer-events-none absolute z-40 border border-primary/70 bg-primary/15"
                       style={{ left: marquee.x, top: marquee.y, width: marquee.w, height: marquee.h }}
                     />
                   )}
@@ -5144,7 +5146,7 @@ export default function Editor({ reloadKey }) {
                   {/* playhead — draggable head scrubs the video */}
                   <div className="pointer-events-none absolute top-0 bottom-0 z-20 w-px bg-primary" style={{ left: playheadX }}>
                     <div
-                      className="pointer-events-auto absolute -top-0.5 left-1/2 h-4 w-3 -translate-x-1/2 cursor-ew-resize rounded-b-[3px] rounded-t-sm bg-primary shadow ring-1 ring-primary/40 transition-transform hover:scale-110"
+                      className="pointer-events-auto absolute -top-0.5 left-1/2 h-4 w-3 -translate-x-1/2 cursor-ew-resize rounded-b-none rounded-t-sm bg-primary shadow ring-1 ring-primary/40 transition-transform hover:scale-110"
                       style={{ clipPath: "polygon(0 0, 100% 0, 100% 60%, 50% 100%, 0 60%)" }}
                       onPointerDown={startScrub}
                       title="Drag to scrub"
@@ -5157,7 +5159,7 @@ export default function Editor({ reloadKey }) {
 
           {/* Inspector for the selected item(s) */}
           {selectedIds.size > 1 ? (
-            <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border bg-card p-4">
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-none border bg-card p-4">
               <div className="flex items-center gap-2 text-sm font-medium">
                 <Layers size={14} /> {selectedIds.size} clips selected
                 <span className="text-xs font-normal text-muted-foreground">drag any of them to move the group</span>
@@ -5172,7 +5174,7 @@ export default function Editor({ reloadKey }) {
               </div>
             </div>
           ) : selected ? (
-            <div className="rounded-xl border bg-card p-4">
+            <div className="rounded-none border bg-card p-4">
               <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                 <div className="flex items-center gap-2 text-sm font-medium">
                   {selected.track.type === "audio" ? <Music size={14} /> : <Film size={14} />}
@@ -5302,19 +5304,21 @@ export default function Editor({ reloadKey }) {
           style={{ left: poolDrag.x, top: poolDrag.y }}
         >
           <div className={cn(
-            "relative w-[180px] overflow-hidden rounded-md border shadow-xl",
+            "relative w-[180px] overflow-hidden rounded-md border",
             poolDrag.drop && !poolDrag.drop.valid ? "border-destructive/70 opacity-80" : "border-primary/60 opacity-70",
           )}>
             {poolDrag.frameUrl ? (
               <img src={poolDrag.frameUrl} alt="" className="block aspect-video w-full object-cover" />
             ) : (
-              <div className="flex aspect-video w-full items-center justify-center bg-violet-500/25">
-                <Music size={22} className="text-violet-200" />
+              <div className="flex aspect-video w-full items-center justify-center bg-secondary">
+                <Music size={22} className="text-muted-foreground" />
               </div>
             )}
             <div className="truncate bg-background/85 px-1.5 py-1 text-[10px] font-medium">{poolDrag.item.name}</div>
             {poolDrag.drop && !poolDrag.drop.valid && (
               <div className="absolute inset-0 flex items-center justify-center bg-destructive/20">
+                {/* drop-shadow kept: this badge sits over an arbitrary video frame,
+                    so the shadow is legibility, not decoration. */}
                 <Ban size={26} className="text-destructive drop-shadow" />
               </div>
             )}
@@ -5342,14 +5346,14 @@ export default function Editor({ reloadKey }) {
         <DialogContent className="max-w-3xl">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <Camera size={16} className="text-amber-400" />
+              <Camera size={16} className="text-muted-foreground" />
               {stillModal?.sourceBundle || stillModal?.sourceName || "Grabbed still"}
             </DialogTitle>
             <DialogDescription>A frame captured from the editor preview.</DialogDescription>
           </DialogHeader>
           {stillModal && (
             <div className="space-y-3">
-              <img src={stillModal.display || stillModal.url} alt="" className="w-full rounded-md border bg-black" />
+              <img src={stillModal.display || stillModal.url} alt="" className="w-full rounded-md border bg-background" />
               <dl className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
                 <StillMeta label="Source clip" value={stillModal.sourceName} />
                 <StillMeta label="Bundle" value={stillModal.sourceBundle} />

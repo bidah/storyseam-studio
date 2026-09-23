@@ -29,7 +29,7 @@ function NowPlayingCut({ src, segs, music, withMusic, navigateTo }) {
 
   const chip =
     "pointer-events-auto flex items-center gap-1.5 rounded-md bg-black/70 px-2.5 py-1.5 " +
-    "text-xs font-medium text-white shadow-sm backdrop-blur transition-colors hover:bg-black/85";
+    "text-xs font-medium text-white backdrop-blur transition-colors hover:bg-black/85";
 
   // Fall back to the last segment's end when the browser hasn't reported the
   // real container duration yet, so dots still lay out before playback starts.
@@ -71,7 +71,7 @@ function NowPlayingCut({ src, segs, music, withMusic, navigateTo }) {
 
   const tip =
     "pointer-events-auto flex cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-md " +
-    "border border-white/15 bg-black/85 px-2 py-1 text-[11px] font-medium text-white shadow-md " +
+    "border border-white/15 bg-black/85 px-2 py-1 text-[11px] font-medium text-white " +
     "backdrop-blur transition-colors hover:border-primary hover:bg-primary/30";
 
   return (
@@ -135,15 +135,15 @@ function NowPlayingCut({ src, segs, music, withMusic, navigateTo }) {
             aria-valuenow={Math.round(currentTime)}
           >
             {/* track */}
-            <div className="absolute inset-x-0 top-1/2 h-1 -translate-y-1/2 rounded-full bg-muted" />
+            <div className="absolute inset-x-0 top-1/2 h-1 -translate-y-1/2 rounded-none bg-muted" />
             {/* progress fill */}
             <div
-              className="absolute left-0 top-1/2 h-1 -translate-y-1/2 rounded-full bg-primary/50"
+              className="absolute left-0 top-1/2 h-1 -translate-y-1/2 rounded-none bg-primary/50"
               style={{ width: `${Math.min(1, Math.max(0, currentTime / dur)) * 100}%` }}
             />
             {/* playhead */}
             <div
-              className="absolute top-1/2 h-3 w-0.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-primary"
+              className="absolute top-1/2 h-3 w-0.5 -translate-x-1/2 -translate-y-1/2 rounded-none bg-primary"
               style={{ left: `${Math.min(1, Math.max(0, currentTime / dur)) * 100}%` }}
             />
             {markers.map((mk) => {
@@ -167,8 +167,9 @@ function NowPlayingCut({ src, segs, music, withMusic, navigateTo }) {
                       seek(mk.seekTo);
                     }}
                     className={cn(
-                      "block h-2.5 w-2.5 rounded-full border border-black/40 shadow-sm transition-transform hover:scale-125",
-                      isShot ? "bg-primary" : "bg-sky-400",
+                      /* rounded-full kept: a 10px marker dot is a circle. */
+                      "block h-2.5 w-2.5 rounded-full border border-black/40 transition-transform hover:scale-125",
+                      isShot ? "bg-primary" : "bg-muted-foreground",
                       !isShot && "translate-y-2" // sound dots sit on a lower row so they don't overlap shot dots
                     )}
                   />
@@ -208,7 +209,7 @@ function NowPlayingCut({ src, segs, music, withMusic, navigateTo }) {
                         }}
                         title={t('Jump to "{label}" in the Sound studio', { label: mk.cue.name || mk.cue.label })}
                       >
-                        <Music size={12} className="shrink-0 text-sky-400" />
+                        <Music size={12} className="shrink-0 text-muted-foreground" />
                         <span className="max-w-[24ch] truncate">{mk.cue.label}</span>
                         <span className="tabular-nums text-white/50">
                           {fmtTime(mk.cue.start)} → {fmtTime(mk.cue.beatEnd)}
@@ -431,13 +432,13 @@ function CompleteCuts({ navigateTo }) {
       {out ? (
         <CutVersionCard gen={out} bump={bump} navigateTo={navigateTo} latest olderCount={olderCount} onOpenHistory={() => setHistoryOpen(true)} />
       ) : (
-        <div className="rounded-xl border border-dashed p-6 text-center">
+        <div className="rounded-none border border-dashed p-6 text-center">
           <Empty>{t("not stitched yet — press")} “{t("stitch selected takes")}” {t("to build the {from} → {to} cut", { from: data.range.from, to: data.range.to })}</Empty>
         </div>
       )}
 
       {out && out.kind !== "scored" && music.length > 0 && (
-        <div className="rounded-xl border border-dashed p-4 text-center text-sm text-muted-foreground">
+        <div className="rounded-none border border-dashed p-4 text-center text-sm text-muted-foreground">
           <span className="flex items-center justify-center gap-1.5">
             <Music size={13} /> {music.length} {t("background-music cues ready — press")} <strong className="text-foreground">{t("add background music")}</strong> {t("to render a scored version (it becomes the new latest version)")}.
           </span>

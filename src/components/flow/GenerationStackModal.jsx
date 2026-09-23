@@ -14,7 +14,7 @@ export default function GenerationStackModal({ open, onClose, generations, curre
       <DialogContent className="sm:max-w-2xl">
         <DialogHeader><DialogTitle>{t("Generations")}</DialogTitle></DialogHeader>
         {list.length === 0 ? (
-          <div className="rounded-lg border border-dashed p-8 text-center">
+          <div className="rounded-none border border-dashed p-8 text-center">
             <Empty>{t("this node hasn't produced any generations yet.")}</Empty>
           </div>
         ) : (
@@ -26,7 +26,7 @@ export default function GenerationStackModal({ open, onClose, generations, curre
                   key={g.id}
                   onClick={() => { onSelect(g.id); onClose(); }}
                   title={g.prompt}
-                  className={`group relative aspect-square overflow-hidden rounded-lg border bg-muted transition-colors ${
+                  className={`group relative aspect-square overflow-hidden rounded-none border bg-muted transition-colors ${
                     active ? "border-primary ring-1 ring-primary" : "hover:border-primary/60"
                   }`}
                 >

@@ -14,7 +14,7 @@ function TextNode({ data }) {
 
   return (
     <>
-      <div className="flex w-[280px] flex-col overflow-hidden rounded-xl border border-border bg-background shadow-md">
+      <div className="flex w-[280px] flex-col overflow-hidden rounded-none border border-border bg-background">
         <div className="flex items-center gap-2 border-b border-border px-3 py-2">
           <span className="text-muted-foreground [&_svg]:size-4"><Type size={16} /></span>
           <span className="text-sm font-medium">{t("Text")}</span>
@@ -30,7 +30,7 @@ function TextNode({ data }) {
             <button
               type="button"
               onClick={() => data.onRun("from-here")}
-              className="nodrag self-end inline-flex items-center gap-1.5 rounded-md bg-foreground px-3 py-1.5 text-xs font-medium text-background transition-opacity hover:opacity-90"
+              className="nodrag self-end inline-flex items-center gap-1.5 rounded-none bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground transition-opacity hover:opacity-90"
               title={t("Regenerate every node downstream of this one")}
             >
               <Play size={13} /> {t("Run from here")}

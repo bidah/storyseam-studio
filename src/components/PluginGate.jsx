@@ -39,7 +39,7 @@ export function PluginGate({ plugin }) {
     <div className="mx-auto w-full max-w-xl py-10">
       <Panel>
         <div className="flex flex-col items-center gap-5 text-center">
-          <div className="flex size-11 items-center justify-center rounded-xl bg-primary/10 text-primary">
+          <div className="flex size-11 items-center justify-center rounded-none bg-primary/10 text-primary">
             <Blocks size={20} />
           </div>
 

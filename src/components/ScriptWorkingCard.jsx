@@ -58,7 +58,7 @@ export default function ScriptWorkingCard({ sel, onRelease, onReveal }) {
       type="button"
       onClick={onReveal}
       title={t("Jump to this passage")}
-      className="group w-full rounded-xl border bg-card p-3 text-left shadow-sm transition-colors hover:border-primary/40 hover:bg-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      className="group w-full rounded-none border bg-card p-3 text-left transition-colors hover:border-primary/40 hover:bg-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
     >
       <div className="flex items-center gap-2">
         <span className="relative flex h-6 w-6 items-center justify-center rounded-md bg-primary/15 text-primary">

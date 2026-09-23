@@ -28,14 +28,16 @@ function ImageNode({ data, selected }) {
         minWidth={MIN_SIZE}
         minHeight={MIN_SIZE / aspect}
         lineClassName="!border-primary"
-        handleClassName="!size-3 !rounded-sm !border-2 !border-primary !bg-background"
+        handleClassName="!size-3 !rounded-none !border-2 !border-primary !bg-background"
       />
 
+      {/* `border` replaces the old drop shadow: the flat system separates a card
+          from the canvas with a hairline, not with depth. */}
       <img
         src={src}
         alt=""
         draggable={false}
-        className="h-full w-full select-none rounded-md object-contain shadow-sm"
+        className="h-full w-full select-none rounded-none border object-contain"
       />
 
       <div
@@ -45,7 +47,6 @@ function ImageNode({ data, selected }) {
         <Button
           size="icon-sm"
           variant="secondary"
-          className="shadow-sm"
           aria-label="View full size"
           onClick={(e) => {
             e.stopPropagation();
@@ -57,7 +58,7 @@ function ImageNode({ data, selected }) {
         <Button
           size="icon-sm"
           variant="secondary"
-          className="text-destructive shadow-sm hover:text-destructive"
+          className="text-destructive hover:text-destructive"
           aria-label="Delete image"
           onClick={handleDelete}
         >

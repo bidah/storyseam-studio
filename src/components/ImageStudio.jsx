@@ -636,7 +636,8 @@ function GenerationDetail({ gen, onClose, onRecreate, onUseAsRef, onEdit, onAddT
         <div className="grid min-h-0 flex-1 gap-4 md:grid-cols-[minmax(0,3fr)_minmax(0,1fr)]">
           {video ? (
             // The shell lightbox is an IMAGE viewer, so a clip plays in place
-            // with its own transport instead of opening it.
+            // with its own transport instead of opening it. `bg-black` is the
+            // letterbox MATTE, not a palette surface — it stays literal.
             <div className="flex min-h-0 items-center justify-center overflow-hidden rounded-lg border bg-black">
               <video src={gen.url} controls muted playsInline className="max-h-full max-w-full object-contain" />
             </div>
@@ -665,7 +666,7 @@ function GenerationDetail({ gen, onClose, onRecreate, onUseAsRef, onEdit, onAddT
           <div className="flex min-h-0 flex-col">
             <div className="min-h-0 flex-1 space-y-4 overflow-y-auto pr-1">
               {/* PROMPT */}
-              <section className="rounded-xl border bg-muted/30 p-3">
+              <section className="rounded-none border bg-muted/30 p-3">
                 <div className="mb-2 flex items-center justify-between gap-2">
                   <Eyebrow className="flex items-center gap-1.5"><Sparkles size={12} /> {t("Prompt")}</Eyebrow>
                   <Button variant="ghost" size="sm" className="h-7 gap-1.5 px-2 text-xs" onClick={copyPrompt}>
@@ -706,7 +707,7 @@ function GenerationDetail({ gen, onClose, onRecreate, onUseAsRef, onEdit, onAddT
               {/* DETAILS */}
               <section>
                 <Eyebrow className="mb-1.5 flex items-center gap-1.5 px-1"><Info size={12} /> {t("Details")}</Eyebrow>
-                <dl className="space-y-2 rounded-xl border bg-muted/30 p-3">
+                <dl className="space-y-2 rounded-none border bg-muted/30 p-3">
                   <DetailRow label={t("Model")}>{gen.model || t("Default")}</DetailRow>
                   {gen.sheetType && SHEET_TYPES[gen.sheetType] && (
                     <DetailRow label={t("Sheet")}>{t(SHEET_TYPES[gen.sheetType].label)}</DetailRow>
@@ -1084,7 +1085,7 @@ export default function ImageStudio({
       </Panel>
 
       {/* Composer */}
-      <div className="sticky bottom-4 z-10 rounded-xl border bg-card/95 p-3 shadow-lg backdrop-blur">
+      <div className="sticky bottom-4 z-10 rounded-none border bg-card/95 p-3 backdrop-blur">
         {/* Mode banner when working from a base image (variation / edit). */}
         {mode !== "new" && base && (
           <div className="mb-2 flex items-center gap-2 text-xs text-muted-foreground">
@@ -1113,7 +1114,7 @@ export default function ImageStudio({
                 <button
                   onClick={() => setRefs((cur) => cur.filter((_, j) => j !== i))}
                   aria-label={t("Remove reference")}
-                  className="absolute -right-1.5 -top-1.5 rounded-full border bg-background p-0.5 text-muted-foreground shadow-sm hover:text-destructive"
+                  className="absolute -right-1.5 -top-1.5 rounded-none border bg-background p-0.5 text-muted-foreground hover:text-destructive"
                 >
                   <X size={11} />
                 </button>
@@ -1130,7 +1131,7 @@ export default function ImageStudio({
           onChange={setPrompt}
           onSubmit={doGenerate}
           onPasteFiles={addPastedFiles}
-          className="mb-2 max-h-40 min-h-16 w-full overflow-y-auto rounded-md border border-input bg-transparent px-3 py-2 shadow-xs transition-[color,box-shadow] focus-within:border-ring focus-within:ring-[3px] focus-within:ring-ring/50 dark:bg-input/30"
+          className="mb-2 max-h-40 min-h-16 w-full overflow-y-auto rounded-md border border-input bg-transparent px-3 py-2 transition-[color,box-shadow] focus-within:border-ring focus-within:ring-[3px] focus-within:ring-ring/50 dark:bg-input/30"
         />
         <div className="flex flex-wrap items-center gap-2">
           <Button variant="outline" size="sm" onClick={() => setPickRef(true)} title={t(copy.refTitle)}>
@@ -1257,7 +1258,7 @@ export default function ImageStudio({
             <button
               type="button"
               onClick={() => setPickRef(true)}
-              className="flex items-center gap-1.5 text-xs text-amber-500 hover:underline"
+              className="flex items-center gap-1.5 text-xs text-warning hover:underline"
             >
               <AlertCircle size={13} /> {t("Location sheets need a reference image — add one")}
             </button>

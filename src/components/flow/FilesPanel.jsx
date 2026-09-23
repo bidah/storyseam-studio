@@ -21,7 +21,7 @@ export default function FilesPanel({ open, onClose, generations, onPick, title }
           <SheetDescription>{t("Click a generation to drop it on the canvas as a source.")}</SheetDescription>
         </SheetHeader>
         {ready.length === 0 ? (
-          <div className="rounded-lg border border-dashed p-8 text-center">
+          <div className="rounded-none border border-dashed p-8 text-center">
             <Empty>{t("no ready generations yet — make some on the Visual tab or run a node.")}</Empty>
           </div>
         ) : (
@@ -31,14 +31,14 @@ export default function FilesPanel({ open, onClose, generations, onPick, title }
                 key={g.id}
                 onClick={() => onPick(g.id)}
                 title={g.prompt}
-                className="group relative aspect-square overflow-hidden rounded-md border bg-muted hover:border-primary/60"
+                className="group relative aspect-square overflow-hidden rounded-none border bg-muted hover:border-primary/60"
               >
                 {g.kind === "video" ? (
                   <video src={g.url} className="h-full w-full object-cover" muted />
                 ) : (
                   <img src={g.thumb || g.url} alt={g.prompt} loading="lazy" className="h-full w-full object-cover" />
                 )}
-                <span className="absolute right-1 top-1 rounded bg-background/80 p-0.5 text-muted-foreground">
+                <span className="absolute right-1 top-1 rounded-none bg-background/80 p-0.5 text-muted-foreground">
                   {g.kind === "video" ? <Clapperboard size={11} /> : <ImageIcon size={11} />}
                 </span>
               </button>

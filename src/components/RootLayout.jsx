@@ -108,12 +108,13 @@ function GatedOutlet({ view, pendingView }) {
   return blocked ? <PluginGate plugin={blocked} /> : <Outlet />;
 }
 
-// Brand-lime glow (matches the Higgsfield primary) for the "route being edited"
-// cue on the Script tab. `colors` alternates the glow hue with black so the
-// glowing library's gradient reads as a lime shimmer.
+// The "route being edited" cue on the Script tab. Accent-orange, not the old
+// brand lime: design.md carries ONE accent and calls that rule load-bearing, so
+// a second hue here would read as a different kind of signal. `colors`
+// alternates it with the page ground so the sweep reads as a pulse.
 const GLOW_OPTS = {
-  colors: ["#cbf74e", "#000000", "#a3e635", "#000000", "#cbf74e"],
-  colors2: ["#ffffff", "#000000", "#000000", "#ffffff"],
+  colors: ["#FF5A1F", "#0B0C0F", "#FF5A1F", "#0B0C0F", "#FF5A1F"],
+  colors2: ["#F2F2F0", "#0B0C0F", "#0B0C0F", "#F2F2F0"],
   width: 3,
   rotationDuration: 2200,
   glowingBlurRatio: 1.4,
@@ -172,6 +173,9 @@ function UserMenu() {
         <button
           type="button"
           aria-label={t("Account menu")}
+          // The lone survivor of design.md's square rule: the focus ring traces
+          // the Avatar, and a square ring around a circular portrait reads as a
+          // misalignment rather than as a decision.
           className="rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
         >
           <Avatar className="size-8">
@@ -458,10 +462,13 @@ export default function RootLayout() {
           leaves the old tab lit for the whole load. */}
       <Tabs value={activeTab} onValueChange={(v) => navigate("/" + v)}>
       <div className="flex h-dvh flex-col overflow-hidden">
-        {/* One unified header, full width across both the GUI and the chat. */}
-        <header className="shrink-0 border-b bg-card/80 backdrop-blur supports-[backdrop-filter]:bg-card/60">
+        {/* One unified header, full width across both the GUI and the chat.
+            Opaque rather than a blur over the page: the strip is a flat HUD
+            ground (design.md), and a translucent header tints whatever
+            scrolls under the tab row. */}
+        <header className="shrink-0 border-b bg-card">
           <div className="flex flex-wrap items-center gap-x-3 gap-y-3 px-4 py-3 md:px-6">
-            <div className="flex size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground shadow-sm">
+            <div className="flex size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
               <Clapperboard size={18} />
             </div>
 
@@ -473,9 +480,10 @@ export default function RootLayout() {
             {/* The doorway to the marketplace, sitting immediately after the
                 tabs rather than over in the account cluster: it is a peer of
                 the tabs — the place the NEXT tab comes from — not an app-wide
-                action. It highlights when you're on it, the way a tab would. */}
+                action. On it, it takes the SAME primary fill the TabsList
+                indicator draws, so it highlights exactly the way a tab does. */}
             <Button
-              variant={view === "plugins" ? "secondary" : "outline"}
+              variant={view === "plugins" ? "default" : "outline"}
               size="sm"
               onClick={() => navigate("/plugins")}
             >

@@ -203,7 +203,7 @@ function PostItNode({ data, selected, dragging }) {
       onClick={handleClick}
     >
       {showToolbar && (
-        <div className="nodrag noselect absolute -top-11 left-0 z-10 flex items-center gap-1 rounded-lg border bg-popover p-1 shadow-lg">
+        <div className="nodrag noselect absolute -top-11 left-0 z-10 flex items-center gap-1 rounded-none border bg-popover p-1">
           {toolbarToggle("bold", "Bold", Bold, editor.isActive("bold"), () =>
             editor.chain().focus().toggleBold().run(),
           )}
@@ -277,6 +277,9 @@ function PostItNode({ data, selected, dragging }) {
         }`}
       >
         <div ref={contentRef} className={`w-full ${isEditing ? "nodrag noselect" : ""}`}>
+          {/* Ink stays neutral-900, not a theme token: the card's background is
+              the author's chosen post-it color (data), so the text has to
+              contrast THAT, not the app surface. */}
           <EditorContent
             editor={editor}
             className={`leading-relaxed text-neutral-900 ${

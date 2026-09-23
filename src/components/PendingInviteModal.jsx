@@ -98,7 +98,7 @@ export default function PendingInviteModal() {
     <Dialog open={open} onOpenChange={(o) => { if (!o) dismiss(); }}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader className="items-center text-center sm:text-center">
-          <div className="mx-auto mb-1 flex size-12 items-center justify-center rounded-full bg-primary/10 text-primary">
+          <div className="mx-auto mb-1 flex size-12 items-center justify-center rounded-none bg-primary/10 text-primary">
             <Users size={22} />
           </div>
           <DialogTitle>Join {preview.organizationName}</DialogTitle>

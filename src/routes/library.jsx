@@ -108,7 +108,7 @@ function Library({ onView }) {
                 {im.selected ? (
                   <Button
                     variant="destructive" size="icon-xs"
-                    className="rounded-full opacity-90"
+                    className="rounded-none opacity-90"
                     title={t("remove from final_selection")} aria-label={t("remove from final_selection")}
                     onClick={() => setConfirm({ type: "deselect", im })}
                   >
@@ -117,7 +117,7 @@ function Library({ onView }) {
                 ) : (
                   <Button
                     size="icon-xs"
-                    className="rounded-full opacity-0 transition-opacity group-hover:opacity-90"
+                    className="rounded-none opacity-0 transition-opacity group-hover:opacity-90"
                     title={t("add to final_selection")} aria-label={t("add to final_selection")}
                     onClick={() => toggle(im)}
                   >
@@ -126,7 +126,7 @@ function Library({ onView }) {
                 )}
                 <Button
                   variant="secondary" size="icon-xs"
-                  className="rounded-full opacity-0 transition-opacity group-hover:opacity-90"
+                  className="rounded-none opacity-0 transition-opacity group-hover:opacity-90"
                   title={t("rename")} aria-label={t("rename")}
                   onClick={() => setRename(im)}
                 >
@@ -134,7 +134,7 @@ function Library({ onView }) {
                 </Button>
                 <Button
                   variant="destructive" size="icon-xs"
-                  className="rounded-full opacity-0 transition-opacity group-hover:opacity-90"
+                  className="rounded-none opacity-0 transition-opacity group-hover:opacity-90"
                   title={t("delete from library")} aria-label={t("delete from library")}
                   onClick={() => setConfirm({ type: "delete", im })}
                 >
@@ -196,7 +196,7 @@ function Library({ onView }) {
           return (
             <button
               key={f.folder}
-              className="group overflow-hidden rounded-xl border bg-card text-left transition-colors hover:border-primary/50"
+              className="group overflow-hidden rounded-none border bg-card text-left transition-colors hover:border-primary/50"
               onClick={() => setActive(f.folder)}
             >
               <div className="relative aspect-video bg-muted">
@@ -465,7 +465,7 @@ function HiggsfieldImport({ onView }) {
     // account row without touching the (Google) app session. A sign-in here
     // would instead switch the session to the Higgsfield-identified user.
     return (
-      <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed p-8 text-center text-sm text-muted-foreground">
+      <div className="flex flex-col items-center gap-3 rounded-none border border-dashed p-8 text-center text-sm text-muted-foreground">
         <p>Your Higgsfield connection expired. Reconnect it to browse your generated images here.</p>
         <Button onClick={() => connectHiggsfield("/library").catch(() => {})}>
           <KeyRound size={14} /> Reconnect Higgsfield
@@ -509,7 +509,7 @@ function HiggsfieldImport({ onView }) {
                   <Badge className="absolute left-1.5 top-1.5"><Check size={11} /> in library</Badge>
                   <Button
                     variant="destructive" size="icon-xs"
-                    className="absolute right-1.5 top-1.5 rounded-full opacity-0 transition-opacity group-hover:opacity-90"
+                    className="absolute right-1.5 top-1.5 rounded-none opacity-0 transition-opacity group-hover:opacity-90"
                     title="remove from library" aria-label="remove from library"
                     onClick={() => setConfirm({ item: it, rel: inLibrary })}
                   >
@@ -519,7 +519,7 @@ function HiggsfieldImport({ onView }) {
               ) : (
                 <Button
                   size="icon-xs"
-                  className="absolute right-1.5 top-1.5 rounded-full opacity-0 transition-opacity group-hover:opacity-90"
+                  className="absolute right-1.5 top-1.5 rounded-none opacity-0 transition-opacity group-hover:opacity-90"
                   title="add to library" aria-label="add to library"
                   onClick={() => setPick(it)}
                 >
@@ -536,7 +536,7 @@ function HiggsfieldImport({ onView }) {
 
       {loading && items.length === 0 && <Spinner />}
       {!loading && !error && items.length === 0 && (
-        <div className="rounded-xl border border-dashed p-8 text-center text-sm text-muted-foreground">
+        <div className="rounded-none border border-dashed p-8 text-center text-sm text-muted-foreground">
           No completed image generations found on your Higgsfield account.
         </div>
       )}

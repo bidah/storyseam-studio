@@ -129,7 +129,9 @@ function SoundVersion({ track, ver, onChanged }) {
           aria-label={ver.liked ? t("Unlike this version") : t("Like this version")}
           onClick={toggleLike} disabled={busy} title={t("Like")}
         >
-          <Heart size={16} fill={ver.liked ? "#e11d48" : "none"} color={ver.liked ? "#e11d48" : "currentColor"} />
+          {/* liked is a state marker, so it takes the one accent the system
+              allows rather than its own red */}
+          <Heart size={16} fill={ver.liked ? "var(--primary)" : "none"} color={ver.liked ? "var(--primary)" : "currentColor"} />
         </Button>
         <Button variant="ghost" size="icon-sm" aria-label={t("Delete this version")} onClick={del} disabled={busy} title={t("Delete version")}>
           <Trash2 size={15} />
@@ -267,7 +269,7 @@ function UploadedSoundVersion({ track, ver, onChanged }) {
           aria-label={ver.liked ? t("Unlike this version") : t("Like this version")}
           onClick={toggleLike} disabled={busy} title={t("Like")}
         >
-          <Heart size={16} fill={ver.liked ? "#e11d48" : "none"} color={ver.liked ? "#e11d48" : "currentColor"} />
+          <Heart size={16} fill={ver.liked ? "var(--primary)" : "none"} color={ver.liked ? "var(--primary)" : "currentColor"} />
         </Button>
         <Button variant="ghost" size="icon-sm" aria-label={t("Delete this version")} onClick={del} disabled={busy} title={t("Delete version")}>
           <Trash2 size={15} />
@@ -392,7 +394,7 @@ function SoundTrack({ track, onChanged }) {
             disabled={busy}
             aria-label="Track name"
           />
-          {liked && <Heart size={15} fill="#e11d48" color="#e11d48" />}
+          {liked && <Heart size={15} fill="var(--primary)" color="var(--primary)" />}
         </div>
       }
       meta={
@@ -951,7 +953,7 @@ function TrackList({ loading, tracks, emptyText, onChanged }) {
   if (loading) return <Spinner label="loading…" />;
   if (tracks.length === 0) {
     return (
-      <div className="rounded-xl border border-dashed p-8 text-center">
+      <div className="rounded-none border border-dashed p-8 text-center">
         <Empty>{emptyText}</Empty>
       </div>
     );

@@ -14,7 +14,7 @@ function StatusBadge({ status }) {
   if (status === "idle" || status === "ready") return null;
   const cls = status === "error" ? "bg-destructive/10 text-destructive" : "bg-primary/10 text-primary";
   return (
-    <span className={`rounded px-1.5 py-0.5 text-[10px] font-medium capitalize ${cls}`}>{t(status)}</span>
+    <span className={`rounded-none px-1.5 py-0.5 text-[10px] font-medium capitalize ${cls}`}>{t(status)}</span>
   );
 }
 
@@ -24,7 +24,7 @@ export default function FlowNodeShell({
 }) {
   const t = useT();
   return (
-    <div className="flex w-[320px] flex-col overflow-hidden rounded-xl border border-border bg-background shadow-md">
+    <div className="flex w-[320px] flex-col overflow-hidden rounded-none border border-border bg-background">
       <div className="flex items-center gap-2 border-b border-border px-3 py-2">
         {icon && <span className="text-muted-foreground [&_svg]:size-4">{icon}</span>}
         <div className="min-w-0 flex-1">
@@ -41,10 +41,10 @@ export default function FlowNodeShell({
             type="button"
             onClick={onOpenStack}
             title={t("{stackCount} generations — pick one", { stackCount })}
-            className="nodrag relative inline-flex size-7 shrink-0 items-center justify-center rounded-md border border-border text-muted-foreground transition-colors hover:bg-muted hover:text-foreground [&_svg]:size-3.5"
+            className="nodrag relative inline-flex size-7 shrink-0 items-center justify-center rounded-none border border-border text-muted-foreground transition-colors hover:bg-muted hover:text-foreground [&_svg]:size-3.5"
           >
             <Layers size={14} />
-            <span className="absolute -right-1 -top-1 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-primary px-0.5 text-[9px] font-medium text-primary-foreground">
+            <span className="absolute -right-1 -top-1 flex h-3.5 min-w-3.5 items-center justify-center rounded-none bg-primary px-0.5 text-[9px] font-medium text-primary-foreground">
               {stackCount}
             </span>
           </button>

@@ -57,7 +57,7 @@ export default function NodeSettingsBar({ type, settings, onChange, readOnly }) 
       {isVideo && (
         <label
           className={cn(
-            "inline-flex h-7 items-center gap-1.5 rounded-md border border-input bg-card px-2 text-xs text-muted-foreground shadow-xs",
+            "inline-flex h-7 items-center gap-1.5 rounded-none border border-input bg-card px-2 text-xs text-muted-foreground",
             readOnly && "pointer-events-none opacity-60",
           )}
           title={t("Generate audio with the clip")}
@@ -92,7 +92,7 @@ function MiniSelect({ label, value, options, onChange, readOnly, width = "w-auto
     <Select value={value} onValueChange={onChange} disabled={readOnly}>
       <SelectTrigger
         aria-label={label}
-        className={cn("h-7 gap-1 border-input bg-card px-2 text-xs shadow-xs", width)}
+        className={cn("h-7 gap-1 border-input bg-card px-2 text-xs", width)}
       >
         <SelectValue placeholder={label} />
       </SelectTrigger>

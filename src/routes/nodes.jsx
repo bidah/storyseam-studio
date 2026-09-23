@@ -507,7 +507,7 @@ function Canvas() {
             <MiniMap pannable zoomable className="!bg-card" />
             {isEmpty && (
               <FlowPanel position="top-center" className="pointer-events-none mt-16 text-center">
-                <div className="pointer-events-auto rounded-xl border border-dashed bg-card/90 p-6 shadow-sm backdrop-blur">
+                <div className="pointer-events-auto rounded-none border border-dashed bg-card/90 p-6 backdrop-blur">
                   <Sparkles size={20} className="mx-auto mb-2 text-primary" />
                   <Empty>{t("right-click the canvas to add an Image, Video, Text or Source node — then wire them up and Run.")}</Empty>
                 </div>
@@ -557,7 +557,7 @@ function Canvas() {
 
         {error && <ErrorNote>{error}</ErrorNote>}
 
-        <div className="h-[74vh] overflow-hidden rounded-xl border bg-card">
+        <div className="h-[74vh] overflow-hidden rounded-none border bg-card">
           {expanded ? (
             <button
               type="button"

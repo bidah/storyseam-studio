@@ -40,11 +40,13 @@ const TITLE_ID = "title";
 // A screenplay line: a small element-type chip + its text (with optional inline
 // word-diff tokens for a modified line).
 function LineRow({ type, text, tokens, tone }) {
+  // The palette has no green, and a second accent would break the single-accent
+  // rule — so an addition is drawn in the accent and a removal in destructive.
   const toneCls =
     tone === "add"
-      ? "text-emerald-600 dark:text-emerald-400"
+      ? "text-primary"
       : tone === "del"
-        ? "text-rose-600 line-through decoration-rose-400/60 dark:text-rose-400"
+        ? "text-destructive line-through decoration-destructive/60"
         : "text-foreground";
   return (
     <div className="flex items-baseline gap-2 px-3 py-0.5 text-sm">
@@ -57,8 +59,8 @@ function LineRow({ type, text, tokens, tone }) {
               <span
                 key={i}
                 className={cn(
-                  t.tag === "del" && "text-rose-600 line-through decoration-rose-400/60 dark:text-rose-400",
-                  t.tag === "ins" && "rounded-sm bg-emerald-500/15 text-emerald-600 dark:text-emerald-400",
+                  t.tag === "del" && "text-destructive line-through decoration-destructive/60",
+                  t.tag === "ins" && "rounded-sm bg-primary/15 text-primary",
                 )}
               >
                 {t.v}
@@ -230,10 +232,10 @@ export default function ScriptDiffReview({ stored, reload }) {
           </Badge>
           <div className="ml-auto flex items-center gap-1.5 text-xs">
             {stats.added > 0 && (
-              <span className="font-medium text-emerald-600 dark:text-emerald-400">+{stats.added}</span>
+              <span className="font-medium text-primary">+{stats.added}</span>
             )}
             {stats.removed > 0 && (
-              <span className="font-medium text-rose-600 dark:text-rose-400">−{stats.removed}</span>
+              <span className="font-medium text-destructive">−{stats.removed}</span>
             )}
             <span className="text-muted-foreground">
               {totalChanges} change{totalChanges === 1 ? "" : "s"}
@@ -277,7 +279,7 @@ export default function ScriptDiffReview({ stored, reload }) {
       </div>
 
       {/* Diff body */}
-      <div className="notes-editor space-y-2 rounded-xl border bg-card px-3 py-4 sm:px-4">
+      <div className="notes-editor space-y-2 rounded-none border bg-card px-3 py-4 sm:px-4">
         {titleChanged && (
           <div
             className={cn(

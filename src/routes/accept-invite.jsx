@@ -66,7 +66,7 @@ export function Component() {
   return (
     <div className="mx-auto flex w-full max-w-md flex-col items-center px-4 py-16">
       <Panel className="w-full p-6 text-center">
-        <div className="mx-auto mb-3 flex size-12 items-center justify-center rounded-full bg-primary/10 text-primary">
+        <div className="mx-auto mb-3 flex size-12 items-center justify-center rounded-none bg-primary/10 text-primary">
           <Users size={22} />
         </div>
         {error && <ErrorNote>{error}</ErrorNote>}

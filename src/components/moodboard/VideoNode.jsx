@@ -26,17 +26,21 @@ function VideoNode({ data, selected }) {
         minWidth={MIN_SIZE}
         minHeight={MIN_SIZE / aspect}
         lineClassName="!border-primary"
-        handleClassName="!size-3 !rounded-sm !border-2 !border-primary !bg-background"
+        handleClassName="!size-3 !rounded-none !border-2 !border-primary !bg-background"
       />
 
       {/* `nodrag nopan` so the native controls (play / scrub / fullscreen) work
-          without the gesture being hijacked into panning or dragging the node. */}
+          without the gesture being hijacked into panning or dragging the node.
+          `bg-black` is the letterbox behind an object-contain clip — picture
+          matte, not a surface, so it stays black rather than a theme token.
+          `border` replaces the old drop shadow: the flat system separates a card
+          from the canvas with a hairline, not with depth. */}
       <video
         src={src}
         controls
         playsInline
         preload="metadata"
-        className="nodrag nopan h-full w-full select-none rounded-md bg-black object-contain shadow-sm"
+        className="nodrag nopan h-full w-full select-none rounded-none border bg-black object-contain"
         onClick={(e) => e.stopPropagation()}
         onPointerDown={(e) => e.stopPropagation()}
       />
@@ -48,7 +52,7 @@ function VideoNode({ data, selected }) {
         <Button
           size="icon-sm"
           variant="secondary"
-          className="text-destructive shadow-sm hover:text-destructive"
+          className="text-destructive hover:text-destructive"
           aria-label="Delete video"
           onClick={handleDelete}
         >

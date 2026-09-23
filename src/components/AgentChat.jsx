@@ -495,7 +495,7 @@ function QuestionCard({ part, pending, answer, canRespond, onRespond, onRequestR
   const variantFor = (style) =>
     style === "danger" ? "destructive" : style === "primary" ? "default" : "secondary";
   return (
-    <div className="space-y-2 rounded-lg border border-amber-500/30 bg-amber-500/5 p-3">
+    <div className="space-y-2 rounded-lg border border-warning/30 bg-warning/5 p-3">
       {question ? <Markdown text={question} className="text-muted-foreground" /> : null}
       {answer ? (
         <p className="text-sm font-medium">{t("Responded: {answer}", { answer })}</p>
@@ -824,7 +824,7 @@ function UserText({ text, atts }) {
           <img
             src={byLabel.get(p.label).url}
             alt={p.label}
-            className="size-3.5 rounded-[3px] object-cover"
+            className="size-3.5 rounded-none object-cover"
           />
         ) : null}
         @{p.label}
@@ -856,7 +856,7 @@ function AgentMessage({
     return (
       <div className="flex flex-col items-end">
         {text ? (
-          <div className="max-w-[92%] whitespace-pre-wrap break-words rounded-2xl bg-muted px-3 py-2 text-sm text-foreground">
+          <div className="max-w-[92%] whitespace-pre-wrap break-words rounded-none bg-muted px-3 py-2 text-sm text-foreground">
             <UserText text={text} atts={atts} />
           </div>
         ) : null}
@@ -1171,7 +1171,7 @@ function LandingPoster({ suggestion: s, onClick }) {
       aria-label={done ? t("{title} — completed", { title: s.title }) : s.subtitle ? t("{title} — {subtitle}", { title: s.title, subtitle: s.subtitle }) : s.title}
       style={{ width: POSTER_W, height: POSTER_H }}
       className={cn(
-        "group relative flex shrink-0 snap-start flex-col overflow-hidden rounded-xl border bg-card text-left shadow-sm transition-colors",
+        "group relative flex shrink-0 snap-start flex-col overflow-hidden rounded-none border bg-card text-left transition-colors",
         done
           ? "cursor-default"
           : "hover:border-primary/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
@@ -1199,10 +1199,10 @@ function LandingPoster({ suggestion: s, onClick }) {
           not be. */}
       {done ? (
         <span className="absolute inset-0 flex items-center justify-center bg-black/55">
-          <span className="inline-flex items-center gap-1.5 rounded-full border border-white/35 bg-white/15 px-3 py-1.5 text-[0.8125rem] font-semibold text-white">
-            {/* Its own colours, not the theme's: this sits on a black wash in
-                both light and dark mode, so a token that flips with the theme
-                would vanish in one of them. */}
+          <span className="inline-flex items-center gap-1.5 rounded-none border border-foreground/35 bg-foreground/15 px-3 py-1.5 text-[0.8125rem] font-semibold text-foreground">
+            {/* The wash stays a literal black/55 — it is a scrim over arbitrary
+                artwork, not a palette fill. The pill on top of it is drawn in
+                `foreground`, which the theme pins light in both blocks. */}
             <Check size={12} strokeWidth={3} />
             {t("Completed")}
           </span>
@@ -1232,7 +1232,7 @@ function PosterSkeleton() {
         <div
           key={i}
           style={{ width: POSTER_W, height: POSTER_H }}
-          className="flex shrink-0 animate-pulse flex-col overflow-hidden rounded-xl border bg-card"
+          className="flex shrink-0 animate-pulse flex-col overflow-hidden rounded-none border bg-card"
         >
           <div className="shrink-0 bg-muted" style={{ height: POSTER_BAND }} />
           {/* Two bars for the headline, three for the paragraph — the real
@@ -1258,7 +1258,7 @@ function LandingCard({ icon: Icon, eyebrow, title, onClick, label }) {
       aria-label={label}
       className={cn(
         CARD_H,
-        "group flex flex-col items-start rounded-xl border bg-card p-3 text-left shadow-sm transition-colors hover:border-primary/40 hover:bg-accent/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+        "group flex flex-col items-start rounded-none border bg-card p-3 text-left transition-colors hover:border-primary/40 hover:bg-accent/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
       )}
     >
       <span className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary transition-colors group-hover:bg-primary/15">
@@ -1282,7 +1282,7 @@ function LandingSkeleton() {
       {[0, 1, 2, 3].map((i) => (
         <div
           key={i}
-          className={cn(CARD_H, "flex animate-pulse flex-col rounded-xl border bg-card p-3")}
+          className={cn(CARD_H, "flex animate-pulse flex-col rounded-none border bg-card p-3")}
         >
           <div className="size-7 rounded-lg bg-muted" />
           <div className="mt-auto h-3.5 w-4/5 rounded bg-muted" />
@@ -2156,7 +2156,7 @@ export default function AgentChat() {
     <aside
       {...getDropRootProps({
         className: fullView
-          ? "fixed inset-y-4 left-1/2 z-50 flex w-[min(1100px,94vw)] -translate-x-1/2 flex-col overflow-hidden rounded-xl border bg-card shadow-2xl"
+          ? "fixed inset-y-4 left-1/2 z-50 flex w-[min(1100px,94vw)] -translate-x-1/2 flex-col overflow-hidden rounded-none border bg-card"
           : cn(
               "relative flex h-full shrink-0 flex-col border-l bg-card transition-[width] duration-200",
               railed ? "w-12" : "w-[495px]",
@@ -2201,7 +2201,7 @@ export default function AgentChat() {
       {/* Files can be dropped anywhere on the chat panel, not just the composer
           strip — so the whole aside is the drop target and this covers it. */}
       {isDragActive ? (
-        <div className="pointer-events-none absolute inset-2 z-30 flex items-center justify-center rounded-xl border-2 border-dashed border-primary bg-background/85 text-sm font-medium text-primary">
+        <div className="pointer-events-none absolute inset-2 z-30 flex items-center justify-center rounded-none border-2 border-dashed border-primary bg-background/85 text-sm font-medium text-primary">
           <span className="flex items-center gap-2">
             <Upload size={16} />
             {t("Drop images or documents to attach")}
@@ -2214,13 +2214,13 @@ export default function AgentChat() {
       <div className={cn("flex min-h-0 flex-1 flex-col", showRail && "hidden")}>
       <div className="relative min-h-0 flex-1">
         {/* New chat + previous-chats controls, floating over the top-right of the
-            transcript, each in its own rounded wrapper so they read over the
+            transcript, each in its own bordered wrapper so they read over the
             messages. */}
         <div className="absolute right-3 top-3 z-10 flex items-center gap-1.5">
           <Button
             size="icon"
             variant="ghost"
-            className="size-8 rounded-full border bg-card/80 text-muted-foreground shadow-sm backdrop-blur hover:bg-accent hover:text-foreground"
+            className="size-8 rounded-none border bg-card/80 text-muted-foreground backdrop-blur hover:bg-accent hover:text-foreground"
             aria-label={t("New chat")}
             title={t("New chat")}
             onClick={() => conv.newChat()}
@@ -2229,12 +2229,12 @@ export default function AgentChat() {
           </Button>
           <ChatHistorySheet
             conv={conv}
-            triggerClassName="rounded-full border bg-card/80 text-muted-foreground shadow-sm backdrop-blur hover:bg-accent hover:text-foreground"
+            triggerClassName="rounded-none border bg-card/80 text-muted-foreground backdrop-blur hover:bg-accent hover:text-foreground"
           />
           <Button
             size="icon"
             variant="ghost"
-            className="size-8 rounded-full border bg-card/80 text-muted-foreground shadow-sm backdrop-blur hover:bg-accent hover:text-foreground"
+            className="size-8 rounded-none border bg-card/80 text-muted-foreground backdrop-blur hover:bg-accent hover:text-foreground"
             aria-label={fullView ? t("Exit full view") : t("Full view")}
             title={fullView ? t("Exit full view") : t("Full view")}
             onClick={() => setFullView((v) => !v)}
@@ -2247,7 +2247,7 @@ export default function AgentChat() {
             <Button
               size="icon"
               variant="ghost"
-              className="size-8 rounded-full border bg-card/80 text-muted-foreground shadow-sm backdrop-blur hover:bg-accent hover:text-foreground"
+              className="size-8 rounded-none border bg-card/80 text-muted-foreground backdrop-blur hover:bg-accent hover:text-foreground"
               aria-label={t("Collapse the studio agent")}
               title={t("Collapse the studio agent")}
               onClick={() => setRailed(true)}
@@ -2260,7 +2260,7 @@ export default function AgentChat() {
           ref={scrollRef}
           onScroll={onScroll}
           onClick={onTranscriptClick}
-          className="h-full space-y-4 overflow-y-auto bg-muted/30 px-4 pb-4 pt-14 dark:bg-[#0E0E10] [&_img]:cursor-zoom-in"
+          className="h-full space-y-4 overflow-y-auto bg-background px-4 pb-4 pt-14 [&_img]:cursor-zoom-in"
         >
           {loadingHistory ? (
             <div className="flex h-full flex-col items-center justify-center gap-2 text-center text-muted-foreground">
@@ -2342,7 +2342,7 @@ export default function AgentChat() {
             variant="secondary"
             onClick={jumpToLatest}
             aria-label={t("Jump to latest")}
-            className="absolute bottom-3 left-1/2 size-8 -translate-x-1/2 rounded-full border shadow-md"
+            className="absolute bottom-3 left-1/2 size-8 -translate-x-1/2 rounded-none border"
           >
             <ArrowDown size={15} />
           </Button>
@@ -2441,7 +2441,7 @@ export default function AgentChat() {
               {transcribing ? (
                 <Loader2 size={14} className="animate-spin text-muted-foreground" />
               ) : (
-                <span className="size-2.5 animate-pulse rounded-full bg-red-500" />
+                <span className="size-2.5 animate-pulse rounded-full bg-destructive" />
               )}
               <span className="text-muted-foreground">
                 {transcribing ? t("Transcribing…") : t("Recording…")}

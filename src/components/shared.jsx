@@ -53,7 +53,7 @@ function Chip({ on, className, children, ...props }) {
     <button
       type="button"
       className={cn(
-        "inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium transition-colors",
+        "inline-flex items-center gap-1.5 rounded-none border px-3 py-1 text-xs font-medium transition-colors",
         on
           ? "border-primary/40 bg-primary/15 text-primary"
           : "border-border text-muted-foreground hover:bg-accent hover:text-accent-foreground",
@@ -114,7 +114,7 @@ function ImageModal({ image, onClose }) {
         </DialogHeader>
         {image && (
           <>
-            <div className="relative flex min-h-0 flex-1 items-center justify-center bg-black">
+            <div className="relative flex min-h-0 flex-1 items-center justify-center bg-background">
               <img
                 src={image.display || image.url}
                 alt={image.name}
@@ -123,7 +123,10 @@ function ImageModal({ image, onClose }) {
               <button
                 onClick={onClose}
                 aria-label={tHook("Close")}
-                className="absolute right-3 top-3 flex size-9 items-center justify-center rounded-full bg-black/60 text-white ring-1 ring-white/25 backdrop-blur transition-colors hover:bg-black/85 focus-visible:ring-2 focus-visible:ring-white/70 focus-visible:outline-none"
+                // Tokens, not white-on-black: the close sits over an arbitrary
+                // image, so it brings its own ground instead of borrowing the
+                // photo's.
+                className="absolute right-3 top-3 flex size-9 items-center justify-center rounded-none bg-background/70 text-foreground ring-1 ring-border backdrop-blur transition-colors hover:bg-background focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
               >
                 <X size={18} />
               </button>

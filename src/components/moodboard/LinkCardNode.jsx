@@ -60,7 +60,7 @@ export default function LinkCardNode({ data, selected }) {
           <img
             src={favicon}
             alt=""
-            className="size-4 shrink-0 rounded-sm"
+            className="size-4 shrink-0 rounded-none"
             onError={(e) => {
               e.target.style.display = "none";
             }}
@@ -74,7 +74,7 @@ export default function LinkCardNode({ data, selected }) {
               <Skeleton className="h-4 w-3/4" />
               <Skeleton className="h-3 w-full" />
               <Skeleton className="h-3 w-5/6" />
-              <Skeleton className="mt-1 h-16 w-full rounded-md" />
+              <Skeleton className="mt-1 h-16 w-full rounded-none" />
             </div>
           ) : (
             <>
@@ -91,7 +91,7 @@ export default function LinkCardNode({ data, selected }) {
               )}
 
               {image && (
-                <div className="mt-1 min-h-0 flex-1 overflow-hidden rounded-md">
+                <div className="mt-1 min-h-0 flex-1 overflow-hidden rounded-none">
                   <img
                     src={image}
                     alt=""
@@ -107,7 +107,7 @@ export default function LinkCardNode({ data, selected }) {
         </div>
 
         <div className="mt-3 flex justify-end">
-          <Button size="xs" variant="outline" onClick={handleOpen} className="nodrag shadow-sm">
+          <Button size="xs" variant="outline" onClick={handleOpen} className="nodrag">
             Open
             <ExternalLink size={12} />
           </Button>

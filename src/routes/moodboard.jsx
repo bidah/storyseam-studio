@@ -979,7 +979,7 @@ function Canvas() {
       <div
         {...getRootProps({
           className:
-            "relative min-h-0 flex-1 overflow-hidden rounded-xl border bg-card",
+            "relative min-h-0 flex-1 overflow-hidden rounded-none border bg-card",
         })}
         onPointerMove={onPointerMove}
       >
@@ -1017,7 +1017,7 @@ function Canvas() {
           <MiniMap pannable zoomable className="!bg-card" />
           {sync.cards.length === 0 && (
             <FlowPanel position="top-center" className="pointer-events-none mt-16 text-center">
-              <div className="pointer-events-auto rounded-xl border border-dashed bg-card/90 p-6 shadow-sm backdrop-blur">
+              <div className="pointer-events-auto rounded-none border border-dashed bg-card/90 p-6 backdrop-blur">
                 <StickyNote size={20} className="mx-auto mb-2 text-primary" />
                 <Empty>
                   {t("drag images in from anywhere, paste an image or a link, or double-click the canvas for a note.")}
@@ -1026,7 +1026,7 @@ function Canvas() {
             </FlowPanel>
           )}
           <FlowPanel position="bottom-center">
-            <div className="rounded-lg border bg-card/90 px-4 py-1.5 text-xs text-muted-foreground shadow-sm backdrop-blur">
+            <div className="rounded-lg border bg-card/90 px-4 py-1.5 text-xs text-muted-foreground backdrop-blur">
               {t("Double-click to add a note · paste an image or URL · right-click for more")}
             </div>
           </FlowPanel>
@@ -1034,7 +1034,7 @@ function Canvas() {
 
         {isDragActive && (
           <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center bg-background/80 backdrop-blur-sm">
-            <div className="rounded-xl border-2 border-dashed border-primary px-8 py-6 text-center">
+            <div className="rounded-none border-2 border-dashed border-primary px-8 py-6 text-center">
               <ImageUp size={28} className="mx-auto mb-2 text-primary" />
               <p className="text-sm font-medium">{t("Drop images onto the board")}</p>
             </div>
@@ -1120,7 +1120,7 @@ function Canvas() {
                   key={id}
                   type="button"
                   onClick={() => confirmStack(id)}
-                  className="group flex aspect-square flex-col overflow-hidden rounded-md border bg-card text-left shadow-sm transition hover:ring-2 hover:ring-primary focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none"
+                  className="group flex aspect-square flex-col overflow-hidden rounded-md border bg-card text-left transition hover:ring-2 hover:ring-primary focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none"
                 >
                   {card.type === "image" && card.imageKey ? (
                     <img src={imageThumbUrl(card.imageKey)} alt="" className="size-full object-cover" />
@@ -1136,6 +1136,8 @@ function Canvas() {
                       {card.previewData?.title || card.url}
                     </span>
                   ) : (
+                    /* text-neutral-900 is contrast against card.color — an
+                       author-picked swatch — not a theme surface, so it stays. */
                     <span
                       className="line-clamp-5 size-full p-2 text-xs text-neutral-900"
                       style={{ backgroundColor: card.color }}

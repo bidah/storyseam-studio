@@ -205,7 +205,7 @@ function NeedChip({ role, label, fulfilled, disabled, extra, optional, title, on
         <button
           type="button"
           onClick={onToggle}
-          className="ml-0.5 inline-flex size-4 items-center justify-center rounded-full hover:bg-foreground/15"
+          className="ml-0.5 inline-flex size-4 items-center justify-center rounded-none hover:bg-foreground/15"
           aria-label={disabled ? t("Require {label} again", { label }) : t("Disable {label} — not needed", { label })}
           title={disabled ? t("Not required — click to require again") : t("Required — click to disable (not needed for this scene)")}
         >
@@ -216,7 +216,7 @@ function NeedChip({ role, label, fulfilled, disabled, extra, optional, title, on
         <button
           type="button"
           onClick={onRemove}
-          className="inline-flex size-4 items-center justify-center rounded-full hover:bg-foreground/15"
+          className="inline-flex size-4 items-center justify-center rounded-none hover:bg-foreground/15"
           aria-label={t("Remove {label}", { label })}
           title={t("Remove this requirement")}
         >
@@ -494,7 +494,7 @@ function SigningModal({ bundle, signoff, ns, open, onSign, onClose }) {
                     {on ? t("signed by {by} · {at}", { by: sig.by, at: fmt(sig.at) }) : hint}
                   </div>
                   {!on && unmet && (
-                    <div className="mt-0.5 flex items-start gap-1 text-xs text-amber-500">
+                    <div className="mt-0.5 flex items-start gap-1 text-xs text-warning">
                       <CircleAlert size={12} className="mt-0.5 shrink-0" />
                       <span>{t("can't sign yet — uncovered scene needs: {unmet}", { unmet: unmet.join(", ") })}</span>
                     </div>
@@ -599,7 +599,7 @@ function EpVideoRail({ bundleId, vids, reloadKey, onToggleVideo }) {
   };
 
   return (
-    <div className="rounded-xl border bg-muted/30 p-3">
+    <div className="rounded-none border bg-muted/30 p-3">
       <div className="mb-2 flex items-center justify-between gap-2">
         <span className="flex min-w-0 items-center gap-2 text-xs font-medium">
           <span className="truncate">{bundleId} · {g.name || t("gen {n}", { n: idx + 1 })}</span>
@@ -628,7 +628,7 @@ function EpVideoRail({ bundleId, vids, reloadKey, onToggleVideo }) {
         </video>
         <button
           className={cn(
-            "absolute left-2 top-2 flex size-6 items-center justify-center rounded-full border-2 border-white/80 shadow transition-colors",
+            "absolute left-2 top-2 flex size-6 items-center justify-center rounded-none border-2 border-white/80 shadow transition-colors",
             g.selected ? "bg-primary text-primary-foreground" : "bg-black/50 text-transparent hover:bg-black/70"
           )}
           title={g.selected ? t("selected for stitching — click to unselect") : t("select this take for stitching")}
@@ -684,8 +684,10 @@ function EpVideoRail({ bundleId, vids, reloadKey, onToggleVideo }) {
             <button
               key={v.file || k}
               className={cn(
+                /* rounded-full kept: an 8px take dot is a circle, and the trim variant is
+                   the same dot rotated into a diamond. */
                 "size-2 rounded-full transition-colors",
-                v.kind === "trim" && "rotate-45 rounded-[1px]",
+                v.kind === "trim" && "rotate-45 rounded-none",
                 k === idx ? "bg-primary" : v.selected ? "bg-primary/50" : "bg-muted-foreground/30 hover:bg-muted-foreground/60"
               )}
               onClick={() => setI(k)}
@@ -936,7 +938,7 @@ function EpStillRail({ stills, reloadKey, onView, onToggle }) {
   const src = `${g.display || g.url}?v=${reloadKey}`;
 
   return (
-    <div className="rounded-xl border bg-muted/30 p-2">
+    <div className="rounded-none border bg-muted/30 p-2">
       <div className="mb-1.5 flex items-center justify-between gap-2">
         <span className="truncate text-[11px] font-medium">
           {g.name}
@@ -954,7 +956,7 @@ function EpStillRail({ stills, reloadKey, onView, onToggle }) {
         </button>
         <button
           className={cn(
-            "absolute left-2 top-2 flex size-6 items-center justify-center rounded-full border-2 border-white/80 shadow transition-colors",
+            "absolute left-2 top-2 flex size-6 items-center justify-center rounded-none border-2 border-white/80 shadow transition-colors",
             g.selected ? "bg-primary text-primary-foreground" : "bg-black/50 text-transparent hover:bg-black/70"
           )}
           title={g.selected ? t("selected still — click to unselect") : t("select this still")}
@@ -970,6 +972,7 @@ function EpStillRail({ stills, reloadKey, onView, onToggle }) {
             <button
               key={v.file || k}
               className={cn(
+                /* rounded-full kept: an 8px take dot is a circle, not a chip. */
                 "size-2 rounded-full transition-colors",
                 k === idx ? "bg-primary" : v.selected ? "bg-primary/50" : "bg-muted-foreground/30 hover:bg-muted-foreground/60"
               )}
@@ -1078,7 +1081,7 @@ function FirstFrameModal({ bundle, open, stills, reloadKey, current, onPick, onC
                 >
                   <img src={(st.thumb || st.url) + (reloadKey ? `?v=${reloadKey}` : "")} alt={st.shotId} className="h-full w-full object-cover" />
                   <span className="absolute left-1 top-1 rounded bg-background/80 px-1 font-mono text-[9px]">{st.shotId}</span>
-                  {sel && <span className="absolute right-1 top-1 rounded-full bg-primary p-0.5 text-primary-foreground"><Check size={10} /></span>}
+                  {sel && <span className="absolute right-1 top-1 rounded-none bg-primary p-0.5 text-primary-foreground"><Check size={10} /></span>}
                 </button>
               );
             })}
@@ -1196,7 +1199,7 @@ function VideoRefModal({ open, scope, title, takes, reloadKey, current, onSet, o
                   >
                     <video src={tk.url + (reloadKey ? `?v=${reloadKey}` : "")} muted playsInline preload="metadata" className="h-full w-full object-cover" />
                     <span className="absolute left-1 top-1 rounded bg-background/80 px-1 font-mono text-[9px]">{tk.fromBundle} · {tk.name}</span>
-                    {sel && <span className="absolute right-1 top-1 rounded-full bg-primary p-0.5 text-primary-foreground"><Check size={10} /></span>}
+                    {sel && <span className="absolute right-1 top-1 rounded-none bg-primary p-0.5 text-primary-foreground"><Check size={10} /></span>}
                   </button>
                 );
               })}
@@ -1322,7 +1325,7 @@ function AudioRefPlayer({ a }) {
   }
   return (
     <span
-      className="relative flex h-7 items-center gap-1.5 overflow-hidden rounded-full border bg-secondary pl-1 pr-2 text-secondary-foreground"
+      className="relative flex h-7 items-center gap-1.5 overflow-hidden rounded-none border bg-secondary pl-1 pr-2 text-secondary-foreground"
       title={a.rel}
     >
       <span
@@ -1337,7 +1340,7 @@ function AudioRefPlayer({ a }) {
         onClick={toggle}
         aria-label={`${playing ? "Pause" : "Play"} ${a.label}`}
         className={cn(
-          "relative z-10 flex size-5 shrink-0 items-center justify-center rounded-full border transition-colors",
+          "relative z-10 flex size-5 shrink-0 items-center justify-center rounded-none border transition-colors",
           playing
             ? "border-primary bg-primary text-primary-foreground"
             : "bg-card text-foreground hover:bg-accent/60"
@@ -1455,7 +1458,7 @@ function EpisodeBundle({ b, flat, picked, onOpenPicker, onRemove, onView, audioM
 
   return (
     <Card id={`ep-${b.id}`} className="scroll-mt-24 gap-0 py-0">
-      <CardHeader className="sticky top-[61px] z-10 flex flex-row flex-wrap items-center justify-between gap-3 rounded-t-xl border-b bg-card px-4 py-3 [.border-b]:pb-3">
+      <CardHeader className="sticky top-[61px] z-10 flex flex-row flex-wrap items-center justify-between gap-3 rounded-none border-b bg-card px-4 py-3 [.border-b]:pb-3">
         <div className="flex items-center gap-2">
           <Badge variant="secondary" className="font-mono text-sm">{b.id}</Badge>
           <span className="font-semibold">{b.beatTitle}</span>
@@ -1606,14 +1609,14 @@ function EpisodeBundle({ b, flat, picked, onOpenPicker, onRemove, onView, audioM
                       </button>
                       <Button
                         variant="destructive" size="icon-xs"
-                        className="absolute right-1.5 top-1.5 rounded-full opacity-90"
+                        className="absolute right-1.5 top-1.5 rounded-none opacity-90"
                         title={t("remove from this shot")} aria-label={t("remove from this shot")}
                         onClick={() => onRemove(b.id, im)}
                       >
                         <X size={13} />
                       </Button>
                       {ns?.enforced && (autoNeed ? (
-                        <div className="flex items-center gap-1 truncate px-2 pt-1 text-[11px] text-emerald-500" title={t("This is the World sheet for this need")}>
+                        <div className="flex items-center gap-1 truncate px-2 pt-1 text-[11px] text-primary" title={t("This is the World sheet for this need")}>
                           <Check size={11} className="shrink-0" /> {autoNeed.key}
                         </div>
                       ) : (
@@ -1853,7 +1856,7 @@ function AudioPickerModal({ bundle, audioRefs, picked, voiceNeeds, open, onToggl
               >
                 <Button
                   variant={on ? "default" : "outline"} size="icon-sm"
-                  className="mt-0.5 shrink-0 rounded-full"
+                  className="mt-0.5 shrink-0 rounded-none"
                   title={on ? t("remove from this shot") : t("use in this shot")}
                   onClick={() => onToggle(bundle.id, a.rel, !on)}
                 >
@@ -2491,8 +2494,8 @@ function Episode({ reloadKey, onView }) {
     if (staleFromDraft)
       return (
         <div className="mx-auto flex max-w-2xl flex-col items-center gap-4 py-16 text-center">
-          <div className="flex items-start gap-2 rounded-xl border border-dashed border-amber-500/40 bg-amber-500/5 p-3 text-sm text-muted-foreground">
-            <GitBranch size={15} className="mt-0.5 shrink-0 text-amber-500" />
+          <div className="flex items-start gap-2 rounded-none border border-dashed border-warning/40 bg-warning/5 p-3 text-sm text-muted-foreground">
+            <GitBranch size={15} className="mt-0.5 shrink-0 text-warning" />
             <span>
               {t("You’ve moved to a new script draft. This episode plan was built from an earlier draft and has been cleared. Regenerate the shot list for the current script, then rebuild the plan. The previous plan is kept in version history.")}
             </span>

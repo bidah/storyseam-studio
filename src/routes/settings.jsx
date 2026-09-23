@@ -461,7 +461,7 @@ function PluginsPanel() {
       )}
     >
       <p className="mb-3 text-sm text-muted-foreground">
-        {t("The four core surfaces — ")}
+        {t("The core surfaces — ")}
         <b>{CORE.map((c) => t(c.label)).join(", ")}</b>
         {t(" — are always on and aren't listed here. Everything else is a plugin: turning one off hides its tab and nothing else. ")}
         <b>{t("Your work is never deleted")}</b>

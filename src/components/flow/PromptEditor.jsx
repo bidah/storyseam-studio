@@ -7,7 +7,7 @@ import { Textarea } from "@/components/ui/textarea";
 export default function PromptEditor({ value, onChange, placeholder, readOnly, inheritedText }) {
   if (inheritedText != null && inheritedText !== "") {
     return (
-      <div className="rounded-md border border-dashed border-border bg-muted/40 p-2">
+      <div className="rounded-none border border-dashed border-border bg-muted/40 p-2">
         <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
           Inherited prompt
         </span>

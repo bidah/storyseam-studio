@@ -200,7 +200,7 @@ function Lightbox({ src, alt, open, onOpenChange }) {
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-3xl p-2" showCloseButton>
         <DialogTitle className="sr-only">{alt || "Image preview"}</DialogTitle>
-        <img src={src} alt={alt || ""} className="max-h-[80vh] w-full rounded-md object-contain" />
+        <img src={src} alt={alt || ""} className="max-h-[80vh] w-full rounded-none object-contain" />
       </DialogContent>
     </Dialog>
   );
@@ -217,11 +217,11 @@ function Header({ children }) {
   );
 }
 
-// The inset card shell: rounded, bordered, hairline-separated rows inside. The
+// The inset card shell: square, bordered, hairline-separated rows inside. The
 // web echo of the mobile model-picker card.
 function InsetCard({ className, children }) {
   return (
-    <div className={cn("overflow-hidden rounded-xl border bg-card", className)}>{children}</div>
+    <div className={cn("overflow-hidden rounded-none border bg-card", className)}>{children}</div>
   );
 }
 
@@ -232,7 +232,7 @@ function InsetCard({ className, children }) {
 export function Card({ props, renderNode }) {
   const children = Array.isArray(props.children) ? props.children : [];
   return (
-    <div className="flex w-full flex-col gap-3 rounded-xl border bg-background/40 p-3">
+    <div className="flex w-full flex-col gap-3 rounded-none border bg-background/40 p-3">
       {children.map((child, i) => (
         <div key={i}>{renderNode(child)}</div>
       ))}
@@ -278,7 +278,7 @@ const CALLOUT_STYLES = {
 
 export function Callout({ props }) {
   return (
-    <div className={cn("rounded-lg border p-2.5", CALLOUT_STYLES[props.variant] ?? CALLOUT_STYLES.info)}>
+    <div className={cn("rounded-none border p-2.5", CALLOUT_STYLES[props.variant] ?? CALLOUT_STYLES.info)}>
       <p className="text-sm font-medium">{props.title}</p>
       {props.description ? (
         <p className="mt-0.5 text-xs text-muted-foreground">{props.description}</p>
@@ -330,7 +330,7 @@ export function Option({ props }) {
         <img
           src={props.image}
           alt=""
-          className="size-10 shrink-0 rounded-md border object-cover"
+          className="size-10 shrink-0 rounded-none border object-cover"
         />
       ) : null}
       <span className="min-w-0 flex-1">
@@ -446,7 +446,7 @@ export function MediaItem({ props }) {
         }}
         aria-label={props.label ? `Preview ${props.label}` : "Preview image"}
         className={cn(
-          "group relative block overflow-hidden rounded-lg border-2 transition-colors",
+          "group relative block overflow-hidden rounded-none border-2 transition-colors",
           marked || checked ? "border-primary" : "border-transparent hover:border-border",
         )}
       >
@@ -456,11 +456,11 @@ export function MediaItem({ props }) {
           alt={props.label || ""}
           className="aspect-square w-full bg-muted object-cover"
         />
-        <span className="absolute right-1 top-1 rounded-md bg-background/80 p-1 opacity-0 transition-opacity group-hover:opacity-100">
+        <span className="absolute right-1 top-1 rounded-none bg-background/80 p-1 opacity-0 transition-opacity group-hover:opacity-100">
           <Expand size={11} />
         </span>
         {marked && !selection ? (
-          <span className="absolute left-1 top-1 rounded-full bg-primary p-0.5 text-primary-foreground">
+          <span className="absolute left-1 top-1 rounded-none bg-primary p-0.5 text-primary-foreground">
             <Check size={11} />
           </span>
         ) : null}
@@ -654,7 +654,7 @@ export function AudioItem({ props }) {
         onClick={toggle}
         aria-label={`${playing ? "Pause" : "Play"} ${props.title}`}
         className={cn(
-          "flex size-9 shrink-0 items-center justify-center rounded-full border transition-colors",
+          "flex size-9 shrink-0 items-center justify-center rounded-none border transition-colors",
           playing
             ? "border-primary bg-primary text-primary-foreground"
             : "bg-card hover:bg-accent/60",
@@ -676,9 +676,9 @@ export function AudioItem({ props }) {
             {props.subtitle}
           </span>
         ) : null}
-        <span className="mt-1.5 block h-1 overflow-hidden rounded-full bg-muted">
+        <span className="mt-1.5 block h-1 overflow-hidden rounded-none bg-muted">
           <span
-            className="block h-full rounded-full bg-primary transition-[width] duration-200"
+            className="block h-full rounded-none bg-primary transition-[width] duration-200"
             style={{ width: `${Math.round(progress * 100)}%` }}
           />
         </span>
@@ -824,7 +824,7 @@ export function Plugin({ props }) {
   return (
     <div className={cn("flex flex-col gap-2.5 p-3", dimmed && "opacity-45")}>
       <div className="flex items-start gap-3">
-        <span className="flex size-9 shrink-0 items-center justify-center rounded-lg border bg-muted/40">
+        <span className="flex size-9 shrink-0 items-center justify-center rounded-none border bg-muted/40">
           <Blocks size={16} className="text-muted-foreground" />
         </span>
         <div className="min-w-0 flex-1">
@@ -906,7 +906,7 @@ export function Column({ props }) {
     <Wrapper
       {...(onClick ? { type: "button", onClick } : {})}
       className={cn(
-        "flex min-w-0 flex-1 flex-col gap-1.5 rounded-lg border bg-card p-2.5 text-left",
+        "flex min-w-0 flex-1 flex-col gap-1.5 rounded-none border bg-card p-2.5 text-left",
         onClick && "transition-colors hover:bg-accent/60",
       )}
     >
@@ -982,7 +982,7 @@ export function Steps({ props }) {
             <li key={i} className="flex items-start gap-2.5">
               <span
                 className={cn(
-                  "mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold",
+                  "mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-none text-[11px] font-semibold",
                   done
                     ? "bg-primary text-primary-foreground"
                     : active

@@ -51,6 +51,8 @@ function GenerationSlideshow({ generations, reloadKey }) {
               <button
                 key={gen.id || idx}
                 className={cn(
+                  // a take dot is a dot: the circle is the shape here, not a
+                  // corner radius, so it survives the square-everything rule
                   "size-2 rounded-full transition-colors",
                   idx === i ? "bg-primary" : "bg-muted-foreground/30 hover:bg-muted-foreground/60"
                 )}
@@ -79,7 +81,7 @@ function GenerationSlideshow({ generations, reloadKey }) {
             {g.createdAt && <span className="text-xs text-muted-foreground">{g.createdAt}</span>}
           </div>
           {g.videoUrl ? (
-            <video key={`${g.videoUrl}?v=${reloadKey}-${i}`} controls preload="metadata" className="rounded-lg bg-black">
+            <video key={`${g.videoUrl}?v=${reloadKey}-${i}`} controls preload="metadata" className="rounded-lg bg-background">
               <source src={`${g.videoUrl}?v=${reloadKey}`} type="video/mp4" />
             </video>
           ) : (
