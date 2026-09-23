@@ -1,20 +1,22 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLoaderData, useRevalidator } from "react-router";
 import {
-  ArrowDown, ArrowUp, AudioLines, Check, Loader2, Merge, Music4, Plus, RotateCcw, Save,
-  Sparkles, Tags, Trash2,
+  ArrowDown, ArrowUp, AudioLines, Bot, Check, FilePlus2, Loader2, Merge, Music4, Plus, RotateCcw,
+  Save, Sparkles, Tags, Trash2,
 } from "lucide-react";
 import { invalidateTabCache } from "@/lib/tabCache";
-import { swr, useRevalidateOnMount } from "@/lib/swr";
+import { swr, useRevalidateOnAgentIdle, useRevalidateOnMount } from "@/lib/swr";
+import { agentIsBusy, musicalizeMessage, useAgent } from "@/components/AgentProvider";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Empty, Panel, ErrorNote, Eyebrow, fmtTime } from "@/components/shared";
 import {
   ADHERENCE, chunkStarts, fitToFilm, mergeIntoPrevious, planFromPrompt, planTotalMs,
-  renderCostUsd, splitAt, starterPlan, styleTags, validatePlan,
+  USD_PER_MINUTE, renderCostUsd, splitAt, starterPlan, styleTags, validatePlan,
 } from "@/lib/music-plan";
 import { SAMPLE_RATE, contactSheet, fetchFilm, readCue, readFilmAudio, writeScoredFilm } from "@/director/film";
 import { clock, duckWindows, findTurns, loudnessPerSecond } from "@/director/measure";
@@ -43,6 +45,14 @@ import { makePreview } from "@/director/preview";
  * bit-for-bit the film you kept.                                       *
  * ------------------------------------------------------------------ */
 
+// The models a cue can be rendered on. ONE today, on purpose: the Worker's cue
+// route is a narrow door to a single fal endpoint (see worker/src/routes/
+// musicalized.js), so a second entry here means a second door there first.
+// Shown as a picker anyway so the author can SEE what the score is made on.
+const MUSIC_MODELS = [
+  { id: "elevenlabs/music/v2.5", label: "ElevenLabs Music v2.5", via: "fal", note: "composition plan, up to 30 chunks" },
+];
+
 const POLL_MS = 5_000;
 const CONTACT_EVERY_SEC = 5;
 
@@ -69,6 +79,14 @@ function readDraft(seriesId) {
     return raw ? JSON.parse(raw) : null;
   } catch {
     return null;
+  }
+}
+
+function clearDraft(seriesId) {
+  try {
+    localStorage.removeItem(draftKey(seriesId));
+  } catch {
+    /* nothing to forget */
   }
 }
 
@@ -359,9 +377,14 @@ function MixEditor({ mix, onChange, playhead }) {
 
 /* ---- one sitting, scored ------------------------------------------------- */
 
-function Workbench({ sitting, series, model, onChanged }) {
+function Workbench({ sitting, series, model, onChanged, fresh, onNew }) {
   const seriesId = sitting.seriesId;
-  const draft = useMemo(() => readDraft(seriesId), [seriesId]);
+  const agent = useAgent();
+  const agentBusy = agentIsBusy(agent);
+  // A NEW run starts from the brief and the film alone: no draft, no earlier
+  // cue. Earlier cues stay on the Series, one click away under "Plans on the
+  // Series" — New forgets the draft, it deletes nothing.
+  const draft = useMemo(() => (fresh ? null : readDraft(seriesId)), [seriesId, fresh]);
   const kept = useMemo(() => plannedCues(series), [series]);
 
   // ------------------------------------------------------------ measuring
@@ -424,7 +447,7 @@ function Workbench({ sitting, series, model, onChanged }) {
   }, [seriesId, series?.prompts, brief, onChanged]);
 
   // -------------------------------------------------------------- the plan
-  const [plan, setPlan] = useState(() => draft?.plan ?? kept[0]?.plan ?? null);
+  const [plan, setPlan] = useState(() => draft?.plan ?? (fresh ? null : kept[0]?.plan) ?? null);
   const [mix, setMix] = useState(() => draft?.mix ?? DEFAULT_MIX);
 
   // A plan needs the film's length to start from; it is made the moment the
@@ -447,7 +470,19 @@ function Workbench({ sitting, series, model, onChanged }) {
   const starts = plan ? chunkStarts(plan) : [];
 
   // --------------------------------------------------------------- the cue
-  const [cueUrl, setCueUrl] = useState(() => sitting.cueUrl || kept[0]?.piece.audioUrl || null);
+  const [cueUrl, setCueUrl] = useState(() => (fresh ? null : sitting.cueUrl || kept[0]?.piece.audioUrl || null));
+
+  // A cue that lands while this page is open — rendered by the agent from the
+  // chat, or by this page — becomes the one on screen, with the plan it was
+  // made from.
+  const newestId = kept[0]?.piece.id ?? null;
+  const seenNewest = useRef(newestId);
+  useEffect(() => {
+    if (!newestId || newestId === seenNewest.current) return;
+    seenNewest.current = newestId;
+    setPlan(kept[0].plan);
+    if (kept[0].piece.audioUrl) setCueUrl(kept[0].piece.audioUrl);
+  }, [newestId, kept]);
   const [cueAudio, setCueAudio] = useState(null);
   const [render, setRender] = useState({ step: "idle" });
   const pollRef = useRef(null);
@@ -593,8 +628,62 @@ function Workbench({ sitting, series, model, onChanged }) {
 
   const briefChanged = (brief.trim() || null) !== (savedBrief || null);
 
+  const [request, setRequest] = useState("");
+  const askAgent = () => {
+    agent
+      .send({
+        message: musicalizeMessage({
+          sitting,
+          seriesTitle: series?.title,
+          filmMs,
+          turns,
+          brief,
+          savedBrief,
+          plan,
+          request,
+        }),
+      })
+      .then(() => setRequest(""))
+      .catch(() => {});
+  };
+
   return (
     <>
+      <Panel>
+        <div className="flex flex-wrap items-center gap-2">
+          <Input
+            className="h-8 min-w-48 flex-1"
+            value={request}
+            onChange={(e) => setRequest(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter" && !agentBusy) askAgent(); }}
+            placeholder="What should the score do? e.g. quiet until the reveal, then brass — optional"
+          />
+          <Button
+            size="sm"
+            disabled={agentBusy}
+            title={agentBusy ? "The agent is busy — wait for it to finish" : "Send this film, its turns, the brief and the draft plan to the agent to score"}
+            onClick={askAgent}
+          >
+            {agentBusy ? <Loader2 size={14} className="animate-spin" /> : <Bot size={14} />}
+            Ask the agent to musicalize
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            title="Start a new run from the brief and the film — earlier cues stay on the Series"
+            onClick={() => {
+              clearDraft(seriesId);
+              onNew();
+            }}
+          >
+            <FilePlus2 size={14} /> New
+          </Button>
+        </div>
+        <p className="mt-2 text-xs text-muted-foreground">
+          The agent writes the plan and renders the cue; the cue appears here when it lands, and the mix below stays yours.
+        </p>
+      </Panel>
+
       {/* 1 · THE FILM ------------------------------------------------------ */}
       <Step
         n={1}
@@ -672,6 +761,28 @@ function Workbench({ sitting, series, model, onChanged }) {
         title="The composition plan"
         meta={plan ? `${plan.chunks.length} chunks · ${(totalMs / 1000).toFixed(1)} s · about $${renderCostUsd(totalMs).toFixed(2)} a render` : null}
       >
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-sm font-medium">Music model</span>
+          <Select value={model} onValueChange={() => {}}>
+            <SelectTrigger size="sm" className="w-[260px]" aria-label="Music model">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {(MUSIC_MODELS.some((m) => m.id === model)
+                ? MUSIC_MODELS
+                : [...MUSIC_MODELS, { id: model, label: model, via: "fal", note: "" }]
+              ).map((m) => (
+                <SelectItem key={m.id} value={m.id}>
+                  {m.label} · {m.via}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <span className="text-xs text-muted-foreground">
+            {MUSIC_MODELS.find((m) => m.id === model)?.note || model} · ~${USD_PER_MINUTE}/min of cue · the default, and today the only one
+          </span>
+        </div>
+
         <div className="space-y-2">
           <div className="flex flex-wrap items-baseline justify-between gap-2">
             <label htmlFor="music-brief" className="text-sm font-medium">The Series’ music brief</label>
@@ -758,7 +869,7 @@ function Workbench({ sitting, series, model, onChanged }) {
             {render.step === "busy" ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
             {render.step === "busy" ? "Rendering…" : `Render the cue (${plan ? `$${renderCostUsd(totalMs).toFixed(2)}` : "—"})`}
           </Button>
-          <Badge variant="muted" title="The one music model the Worker will spend a render on">{model} · fal</Badge>
+          <span className="text-xs text-muted-foreground">on {MUSIC_MODELS.find((m) => m.id === model)?.label || model}</span>
           {render.note ? <span className="text-xs text-muted-foreground">{render.note}</span> : null}
         </div>
         {render.error ? <ErrorNote>{render.error}</ErrorNote> : null}
@@ -870,7 +981,12 @@ function Workbench({ sitting, series, model, onChanged }) {
 function MusicalizedTab() {
   const initial = useLoaderData();
   const { revalidate } = useRevalidator();
+  const agent = useAgent();
   useRevalidateOnMount("musicalized");
+  // The agent's render_cue files the cue on the Series; the turn settling is
+  // when to look for it.
+  useRevalidateOnAgentIdle("musicalized", agent.status);
+  const [run, setRun] = useState(0);
 
   const sittings = initial.sittings || [];
   const [sittingId, setSittingId] = useState(sittings[0]?.id || "");
@@ -891,7 +1007,7 @@ function MusicalizedTab() {
           className="h-8 max-w-full rounded-md border border-input bg-transparent px-2 text-sm"
           aria-label="Sitting to score"
           value={sittingId}
-          onChange={(e) => setSittingId(e.target.value)}
+          onChange={(e) => { setSittingId(e.target.value); setRun(0); }}
         >
           <option value="">Pick a sitting…</option>
           {sittings.map((s) => (
@@ -910,8 +1026,10 @@ function MusicalizedTab() {
         <Empty>Pick a sitting.</Empty>
       ) : (
         <Workbench
-          key={sitting.id}
+          key={`${sitting.id}:${run}`}
           sitting={sitting}
+          fresh={run > 0}
+          onNew={() => setRun((n) => n + 1)}
           series={series}
           model={initial.model || "elevenlabs/music/v2.5"}
           onChanged={onChanged}

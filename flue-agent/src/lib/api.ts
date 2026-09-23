@@ -35,6 +35,11 @@ export function createApi(
   userId?: string | null,
   chatId?: string | null,
   episodeId?: string | null,
+  // The author's own fal key (BYOK), stamped as `x-fal-key` exactly as the
+  // browser's fetch shim does — the routes that spend on fal directly
+  // (`/api/musicalized/cue`) read it from there. Absent, they fall back to the
+  // Worker's FAL_KEY secret.
+  falKey?: string | null,
 ) {
   const base = process.env.SHOT_STUDIO_API ?? "http://localhost:3334";
 
@@ -71,6 +76,7 @@ export function createApi(
     // Correlation only — which conversation made this change, recorded in
     // doc_history so a history entry leads back to the chat that caused it.
     if (chatId) headers.set(AGENT_CHAT_HEADER, chatId);
+    if (falKey) headers.set("x-fal-key", falKey);
 
     const res = await fetch(`${base}${path}`, {
       method: init?.method ?? "GET",
