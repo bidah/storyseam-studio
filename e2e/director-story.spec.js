@@ -109,7 +109,7 @@ test.describe("director story", () => {
     await expect(page).toHaveURL(/\/director-story\/create\/film_1$/);
     await expect(page.locator("[data-story-view]")).toBeVisible();
     // The gear's default length rides along.
-    expect(posted).toEqual({ prompt: "A lighthouse keeper's cat relights the lamp", seconds: 120 });
+    expect(posted).toEqual({ prompt: "A lighthouse keeper's cat relights the lamp" });
     await expect(page.locator("[data-step]")).toHaveCount(8);
     await expect(page.locator("[data-prompt]")).toHaveText(/lighthouse keeper/);
 
