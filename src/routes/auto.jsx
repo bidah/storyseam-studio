@@ -182,8 +182,34 @@ function RunResult({ result }) {
   );
 }
 
+// The Stills: the frames cut out of the clips and pinned on the Series — the
+// opening frame (the Series' first frame) and then every pin, in offset order.
+function StillsResult({ result }) {
+  const frames = result?.frames || [];
+  if (!frames.length) return null;
+  const at = (s) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+  return (
+    <ul className="grid grid-cols-3 gap-2 sm:grid-cols-4" data-stills>
+      {frames.map((f) => (
+        <li key={f.offset} className="space-y-1">
+          <img
+            src={f.imageUrl}
+            alt={f.kind === "opening" ? "First frame" : `Pin at ${at(f.offset)}`}
+            loading="lazy"
+            className="aspect-video w-full rounded-md border bg-muted object-cover"
+          />
+          <p className="truncate text-xs">
+            <span className="font-medium">{f.kind === "opening" ? "First frame" : at(f.offset)}</span>
+            <span className="text-muted-foreground"> · clip {f.part}</span>
+          </p>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 // One card per step. Stages without a result view render their summary alone.
-const RESULT_VIEWS = { world: WorldResult, sheets: SheetsResult, run: RunResult };
+const RESULT_VIEWS = { world: WorldResult, sheets: SheetsResult, run: RunResult, stills: StillsResult };
 
 function StepCard({ step }) {
   const badge = STATUS_BADGE[step.status] || STATUS_BADGE.running;

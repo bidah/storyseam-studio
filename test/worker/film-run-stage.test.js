@@ -112,7 +112,8 @@ function expectPinnable(result) {
 
 describe("the Shot sheet run stage", () => {
   it("is appended after the cue sheet, a paid stage", () => {
-    expect(FILM_STAGES.at(-1)).toMatchObject({ key: "run", label: "Shot sheet run", paid: true });
+    expect(FILM_STAGES.find((s) => s.key === "run")).toMatchObject({ label: "Shot sheet run", paid: true });
+    expect(FILM_STAGES.map((s) => s.key).indexOf("run")).toBe(FILM_STAGES.map((s) => s.key).indexOf("cuesheet") + 1);
   });
 
   // A Film is at least 2:00, which at a pin every 4s is two reels by the Film

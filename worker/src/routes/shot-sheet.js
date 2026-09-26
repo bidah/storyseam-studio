@@ -14,7 +14,10 @@
 // queue poll. The CUTTING is the browser's, because the browser already has the
 // video decoded on screen and a frame grab there costs nothing — where doing it
 // server-side would mean an ffmpeg sandbox per sheet. So this file renders and
-// files; `POST /api/shotsheet/pins` takes the frames back.
+// files; `POST /api/shotsheet/pins` takes the frames back. (Auto has no
+// browser, so its Stills stage pays for that sandbox instead —
+// lib/film-stages/stills.js — writing the same keys and pinning through the
+// same Director helpers.)
 //
 // ── The sheet is assembled, never typed ─────────────────────────────────────
 // `lib/shot-sheet.ts` derives the grab times from the SAME list of shots the

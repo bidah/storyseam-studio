@@ -30,6 +30,8 @@
 import {
   absolutizeSeries,
   createSeries,
+  patchSeries,
+  pinBeat,
   replaceCueSheet,
   readIndex,
   readSeries,
@@ -49,7 +51,6 @@ import {
   reels,
   screening,
   seriesInput,
-  seriesPatch,
   stampCueTiming,
 } from "../lib/series.ts";
 
@@ -189,21 +190,8 @@ export function registerDirector(app) {
     let body;
     try { body = await c.req.json(); } catch { body = {}; }
 
-    const parsed = seriesPatch.safeParse(body);
-    if (!parsed.success) return c.json({ error: "Invalid patch", issues: fieldErrors(parsed.error) }, 400);
-
-    const res = await updateSeries(c.env, pid, id, (series) => {
-      if (!series?.id) return { abort: true, missing: true };
-      // Swapping which sound a Series is shot against archives the one it had —
-      // a render that is replaced is kept, never overwritten, because a version
-      // whose prompt was lost cannot be made again in the same hand.
-      const patch = archiveReplacedAudio(series, parsed.data);
-      const next = stampCueTiming(applyPatch(series, patch));
-      const check = seriesInput.safeParse(next);
-      if (!check.success) return { abort: true, issues: fieldErrors(check.error) };
-      Object.assign(series, next, { updatedAt: nowIso() });
-      return {};
-    });
+    const res = await patchSeries(c.env, pid, id, body);
+    if (res.invalid) return c.json({ error: "Invalid patch", issues: res.invalid }, 400);
     if (res.missing) return c.json({ error: "No such Series" }, 404);
     if (res.issues) return c.json({ error: "The endpoint would refuse this", issues: res.issues }, 400);
 
@@ -425,26 +413,8 @@ export function registerDirector(app) {
     const offset = Number(body.offset);
     if (!Number.isFinite(offset)) return c.json({ error: "Send the `offset` of the beat to pin" }, 400);
 
-    const res = await updateSeries(c.env, pid, id, (series) => {
-      if (!series?.id) return { abort: true, missing: true };
-      const beats = [...(series.directions || [])];
-      const at = beats.findIndex((b) => b.offset === offset);
-      if (at < 0) return { abort: true, noBeat: true };
-      beats[at] = {
-        ...beats[at],
-        endImageUrl: body.clear ? null : String(body.imageUrl || ""),
-        // Kept beside the pin for the same reason a model sheet keeps its
-        // prompt: a pin whose prompt was lost is a shot that cannot be redrawn
-        // in the same hand. None of it reaches the Director.
-        endImagePrompt: body.clear ? null : (body.prompt ?? beats[at].endImagePrompt ?? null),
-        endImageModel: body.clear ? null : (body.model ?? beats[at].endImageModel ?? null),
-        endImageRefs: body.clear ? null : (body.refs ?? beats[at].endImageRefs ?? null),
-      };
-      const candidate = stampCueTiming({ ...series, directions: beats });
-      const check = seriesInput.safeParse(candidate);
-      if (!check.success) return { abort: true, issues: fieldErrors(check.error) };
-      Object.assign(series, candidate, { updatedAt: nowIso() });
-      return {};
+    const res = await pinBeat(c.env, pid, id, {
+      offset, imageUrl: body.imageUrl, clear: !!body.clear, prompt: body.prompt, model: body.model, refs: body.refs,
     });
     if (res.missing) return c.json({ error: "No such Series" }, 404);
     if (res.noBeat) {
