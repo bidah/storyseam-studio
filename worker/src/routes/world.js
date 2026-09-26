@@ -420,6 +420,53 @@ export async function setCharacterVoiceByName(env, pid, name, voiceRef) {
   return !!res.matched;
 }
 
+// The bulk MERGE save behind `POST /api/world` (the agent's save_world) — and
+// the Auto Film job's World stage (lib/film-job.js), so there is ONE World
+// format and one merge rule. `body` is `{ ...world, source }` or
+// `{ world, source }`. The episode that receives depth and new cast is the
+// request context's (lib/request-context.js). → `{ ok, world }` (the view).
+export async function saveWorld(env, pid, body) {
+  const incoming = body && typeof body === "object" && body.world ? body.world : body;
+  const { addedIds } = await editWorld(env, pid, (prev) => {
+    const prevIds = new Set(prev.characters.map((x) => x.id));
+    const merged = normalizeWorld({
+      title: keep(incoming?.title, prev.title),
+      logline: keep(incoming?.logline, prev.logline),
+      // Same merge rule as every other field, but checked against the enum
+      // FIRST: `normalizeWorld` coerces anything unrecognised to "2d", so
+      // passing a typo straight through would silently demote a live-action
+      // project. An omitted or invalid value keeps what's stored.
+      productionType: keepProductionType(incoming?.productionType, prev.productionType),
+      format: keepFormat(incoming?.format, prev.format),
+      map: mergeSection(MAP_FIELDS, incoming?.map, prev.map),
+      // `depth` is per-episode now — carried untouched on the world doc and
+      // folded into the active episode's bible below.
+      depth: prev.depth,
+      characters: mergeRoster(CHAR_FIELDS, incoming?.characters, prev.characters, normalizeChar),
+      locations: mergeRoster(LOC_FIELDS, incoming?.locations, prev.locations, normalizeLocation),
+    });
+    merged.generatedAt = new Date().toISOString();
+    merged.source = str(body?.source) || "agent";
+    // Characters the merge just introduced to the library — they belong in the
+    // episode the agent is writing for, so they join its roster below.
+    const addedIds = merged.characters.map((x) => x.id).filter((id) => !prevIds.has(id));
+    Object.assign(prev, merged);
+    return { addedIds };
+  });
+  // Per-episode side of a bulk save: story depth and the new cast land in the
+  // active episode's bible, not on the shared world doc.
+  const incomingDepth = incoming?.depth && typeof incoming.depth === "object" ? incoming.depth : null;
+  if (incomingDepth || addedIds.length) {
+    await editEpisodeBible(env, pid, (bible) => {
+      if (incomingDepth) {
+        for (const f of DEPTH_FIELDS) bible.depth[f] = keep(incomingDepth[f], bible.depth[f]);
+      }
+      for (const id of addedIds) if (!bible.characterIds.includes(id)) bible.characterIds.push(id);
+    });
+  }
+  return { ok: true, world: await buildWorldView(env, pid) };
+}
+
 export function registerWorld(app) {
   // Read the world bible (seeds an empty skeleton on first use). Each linked
   // character sheet gets an absolute `refUrl` (ungated `/files/...`) so the agent
@@ -439,45 +486,7 @@ export function registerWorld(app) {
     const pid = c.get("projectId");
     let body;
     try { body = await c.req.json(); } catch { return c.json({ error: "Invalid JSON body" }, 400); }
-    const incoming = body && typeof body === "object" && body.world ? body.world : body;
-    const { addedIds } = await editWorld(c.env, pid, (prev) => {
-      const prevIds = new Set(prev.characters.map((x) => x.id));
-      const merged = normalizeWorld({
-        title: keep(incoming?.title, prev.title),
-        logline: keep(incoming?.logline, prev.logline),
-        // Same merge rule as every other field, but checked against the enum
-        // FIRST: `normalizeWorld` coerces anything unrecognised to "2d", so
-        // passing a typo straight through would silently demote a live-action
-        // project. An omitted or invalid value keeps what's stored.
-        productionType: keepProductionType(incoming?.productionType, prev.productionType),
-        format: keepFormat(incoming?.format, prev.format),
-        map: mergeSection(MAP_FIELDS, incoming?.map, prev.map),
-        // `depth` is per-episode now — carried untouched on the world doc and
-        // folded into the active episode's bible below.
-        depth: prev.depth,
-        characters: mergeRoster(CHAR_FIELDS, incoming?.characters, prev.characters, normalizeChar),
-        locations: mergeRoster(LOC_FIELDS, incoming?.locations, prev.locations, normalizeLocation),
-      });
-      merged.generatedAt = new Date().toISOString();
-      merged.source = str(body?.source) || "agent";
-      // Characters the merge just introduced to the library — they belong in the
-      // episode the agent is writing for, so they join its roster below.
-      const addedIds = merged.characters.map((x) => x.id).filter((id) => !prevIds.has(id));
-      Object.assign(prev, merged);
-      return { addedIds };
-    });
-    // Per-episode side of a bulk save: story depth and the new cast land in the
-    // active episode's bible, not on the shared world doc.
-    const incomingDepth = incoming?.depth && typeof incoming.depth === "object" ? incoming.depth : null;
-    if (incomingDepth || addedIds.length) {
-      await editEpisodeBible(c.env, pid, (bible) => {
-        if (incomingDepth) {
-          for (const f of DEPTH_FIELDS) bible.depth[f] = keep(incomingDepth[f], bible.depth[f]);
-        }
-        for (const id of addedIds) if (!bible.characterIds.includes(id)) bible.characterIds.push(id);
-      });
-    }
-    return c.json({ ok: true, world: await buildWorldView(c.env, pid) });
+    return c.json(await saveWorld(c.env, pid, body));
   });
 
   // Merge-patch the top-level sections (inline UI edits to title/logline, the

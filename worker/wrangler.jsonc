@@ -171,14 +171,19 @@
   //   MCP_OBJECT      one instance per remote-MCP session (the agents SDK's
   //     McpAgent, class ShotStudioMCP in src/mcp-agent.js). SQLite-backed, so it
   //     comes in on its own migration tag as a `new_sqlite_classes` entry.
+  //   FILM_JOBS       one per project: the Auto Film job (class FilmJobs in
+  //     src/film-job-do.js) — stores the current job and runs its stages on
+  //     alarms, so a Film never depends on the author's tab. SQLite-backed.
   "durable_objects": {
     "bindings": [
       { "name": "PROJECT_EVENTS", "class_name": "ProjectEvents" },
-      { "name": "MCP_OBJECT", "class_name": "ShotStudioMCP" }
+      { "name": "MCP_OBJECT", "class_name": "ShotStudioMCP" },
+      { "name": "FILM_JOBS", "class_name": "FilmJobs" }
     ]
   },
   "migrations": [
     { "tag": "v1", "new_classes": ["ProjectEvents"] },
-    { "tag": "v2", "new_sqlite_classes": ["ShotStudioMCP"] }
+    { "tag": "v2", "new_sqlite_classes": ["ShotStudioMCP"] },
+    { "tag": "v3", "new_sqlite_classes": ["FilmJobs"] }
   ]
 }

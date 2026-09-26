@@ -127,6 +127,9 @@ export const router = createBrowserRouter([
       { path: "shotsheet", lazy: () => import("@/routes/shotsheet"), ErrorBoundary: RouteError, HydrateFallback: fallback("shotsheet") },
       { path: "musicalized", lazy: () => import("@/routes/musicalized"), ErrorBoundary: RouteError, HydrateFallback: fallback("musicalized") },
       { path: "upscale", lazy: () => import("@/routes/upscale"), ErrorBoundary: RouteError, HydrateFallback: fallback("upscale") },
+      // Auto — prompt to Film. Not a plugin and not in the header yet: reachable
+      // at /auto. Its steps run in the FilmJobs Durable Object, not in this tab.
+      { path: "auto", lazy: () => import("@/routes/auto"), ErrorBoundary: RouteError, HydrateFallback: fallback("auto") },
       // Not a top tab — opened from the header avatar menu.
       { path: "settings", lazy: () => import("@/routes/settings"), ErrorBoundary: RouteError },
       // Team & access management, and the invite-acceptance landing. Both live

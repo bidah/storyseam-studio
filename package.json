@@ -31,6 +31,7 @@
     "moodboard:sync": "node scripts/sync-moodboard.mjs",
     "plugins:sync": "node scripts/sync-plugins.mjs",
     "series:sync": "node scripts/sync-series.mjs",
+    "auto:sync": "node scripts/sync-auto-prompts.mjs",
     "guards": "node scripts/run-guards.mjs"
   },
   "dependencies": {
