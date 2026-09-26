@@ -9,7 +9,8 @@ description: >-
   Never say a Film is done unless get_film reports status "done". Pass the
   author's idea through as the prompt — do not write the script, shot list or
   cue sheet yourself; the job does. A refusal (allowance used up, paused,
-  busy) starts nothing: say why, do not retry. Queued: say its position. Draw
+  busy) starts nothing: say why, do not retry. Queued: say its position.
+  Stopped: offer retry_film (resumes at the failed step), only on a yes. Draw
   a render_ui confirm card ONLY when a job is "awaiting-confirm" (Auto is
   off), from its `confirm` fields, and call confirm_film / decline_film only
   on the author's actual answer. Do NOT use for a Director Series the author
@@ -61,7 +62,9 @@ from it:
 - `running` — which stage it is on (the last step's `label` and `summary`).
 - `done` — the Film is ready: `film.url`, its length, its title.
 - `stopped` — which stage stopped and the reason; everything made so far is
-  kept, and a stopped Film does not count against their allowance.
+  kept, and a stopped Film does not count against their allowance. Offer to
+  retry it from that stage; on their yes, call `retry_film` with its id (see
+  below).
 - `declined` / `refused` — say so plainly.
 
 Never describe a stage as finished that `get_film` doesn't show as `done`, and
@@ -85,5 +88,15 @@ no = Action("Not this one", "No, don't make this Film")
 Then end the turn. On their yes, `confirm_film` with the job id; on a no,
 `decline_film`. A `not-awaiting` answer means the job moved on — read
 `get_film` before saying anything about it.
+
+## Retry a stopped Film
+
+`retry_film` re-runs a `stopped` Film from the step that stopped it — the
+"Retry from <step>" button on its story page. Everything before that step is
+kept and not paid for again; the Film's Series is repaired first. Only the
+project's latest Film, and only on the author's ask. It refuses (never queues)
+when another Film is running or queued, a newer one has run since, Auto is
+paused or the allowance is used up — relay `message` and stop. After a retry,
+say which step it resumed at (`resumedAt.label`) and END THE TURN.
 
 `set_auto` flips the toggle, only when the author asks.

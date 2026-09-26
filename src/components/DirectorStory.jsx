@@ -516,10 +516,25 @@ function StepIcon({ status, size = 16 }) {
 
 const STATUS_WORD = { done: "done", failed: "failed", retrying: "retrying", running: "in progress", pending: "waiting" };
 
-export function StoryView({ job, onNew }) {
+/**
+ * Retry a stopped Film from the step that stopped it
+ * (POST /api/auto/films/:id/retry). → the running job; throws with the
+ * worker's one-line reason when it refuses.
+ */
+export async function retryFilm(id) {
+  const { res, data } = await getJSON(`/api/auto/films/${encodeURIComponent(id)}/retry`, { method: "POST" });
+  if (!res.ok) throw new Error(data.message || data.error || `Couldn't retry the story (${res.status}).`);
+  return data.job || null;
+}
+
+export function StoryView({ job, onNew, onRetry, retrying = false, retryError = null }) {
   const steps = stepsOf(job);
   const done = job.status === "done" && job.film?.url;
   const stopped = job.status === "stopped";
+  // The step that stopped it — what "Retry from …" names.
+  const failedLabel = stopped
+    ? job.stopped?.label || job.steps?.find((s) => s.status === "failed")?.label || null
+    : null;
   const waiting = job.status === "awaiting-confirm";
   const queued = job.status === "queued";
   // The chosen length; an older Film without one shows what its cue sheet planned.
@@ -549,6 +564,18 @@ export function StoryView({ job, onNew }) {
             >
               {formatLength(length)}
             </span>
+          ) : null}
+          {stopped && onRetry && failedLabel ? (
+            <button
+              type="button"
+              onClick={onRetry}
+              disabled={retrying}
+              className="flex shrink-0 items-center gap-1.5 border border-[var(--br-secondary)]/40 px-3 py-1.5 text-[0.72rem] uppercase text-[var(--br-primary)] transition-colors hover:border-[var(--br-primary)] disabled:opacity-50"
+              style={{ fontFamily: MONO, letterSpacing: "0.08em" }}
+              data-retry
+            >
+              <RotateCw size={12} className={cn(retrying && "animate-spin")} aria-hidden /> Retry from {failedLabel}
+            </button>
           ) : null}
           <button
             type="button"
@@ -621,7 +648,7 @@ export function StoryView({ job, onNew }) {
               </ol>
               {stopped && (
                 <p className="text-sm text-[var(--br-tertiary)]" data-stopped>
-                  This story couldn't be finished. It doesn't count against your allowance.
+                  {retryError || "This story couldn't be finished. It doesn't count against your allowance."}
                 </p>
               )}
               {queued && (

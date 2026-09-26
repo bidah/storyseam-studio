@@ -23,6 +23,10 @@
 //             the answer to the one confirm card an Auto-off job asks (#65):
 //             confirm re-arms the alarm; decline ends the job and starts the
 //             next queued Film.
+//   retry(filmId)
+//             → { ok, job, repaired } | { ok:false, code, message, job }
+//             re-run a STOPPED Film from its failed step (lib/film-job.js
+//             retryFilm): repairs its Series, then re-arms the alarm.
 //
 // Every transition is broadcast on the project's existing live-sync `data`
 // channel (the ProjectEvents DO) as `{ resource: "auto", kind, filmId, step,
@@ -30,9 +34,12 @@
 // rather than a sixth EventSource.
 
 import { DurableObject } from "cloudflare:workers";
-import { advanceFilm, confirmFilm, declineFilm, event, groqModel, isActive, nextAlarmDelay, publicJob } from "./lib/film-job.js";
+import {
+  advanceFilm, confirmFilm, declineFilm, event, groqModel, isActive, nextAlarmDelay, publicJob, repairFilmSeries, retryFilm,
+} from "./lib/film-job.js";
 import { publicQueue, startNextQueued, submitFilm } from "./lib/film-queue.js";
-import { JOB_KEY, QUEUE_KEY, readFilm, saveJob } from "./lib/film-history.js";
+import { JOB_KEY, QUEUE_KEY, historyKey, readFilm, saveJob } from "./lib/film-history.js";
+import { runWithContext } from "./lib/request-context.js";
 import { broadcast } from "./lib/broadcast.js";
 import { saveWorld } from "./routes/world.js";
 
@@ -95,6 +102,27 @@ export class FilmJobs extends DurableObject {
     // The declined Film is over: the queue moves on.
     await this.ctx.storage.setAlarm(Date.now());
     return { ok: true, job: publicJob(res.job) };
+  }
+
+  // Retry a stopped Film from the step that stopped it (lib/film-job.js
+  // retryFilm): only the latest Film, only with nothing queued. Its Series is
+  // repaired first, then the alarm resumes the runner AT the failed step.
+  async retry(filmId) {
+    const job = await this.ctx.storage.get(KEY);
+    const queue = (await this.ctx.storage.get(QUEUE)) || [];
+    const archived = job?.id === filmId ? null : (await this.ctx.storage.get(historyKey(filmId))) || null;
+    const res = await retryFilm({ job, queue, archived }, filmId, {
+      env: this.env,
+      repair: (j) =>
+        runWithContext(
+          { userId: j.userId, caller: "auto", chatId: null, episodeId: j.episodeId || undefined },
+          () => repairFilmSeries(this.env, j),
+        ),
+      commit: (j, ev) => this.commit(j, ev),
+    });
+    if (!res.ok) return { ...res, job: publicJob(job?.id === filmId ? job : archived) };
+    await this.ctx.storage.setAlarm(Date.now());
+    return { ok: true, job: publicJob(res.job), repaired: res.repaired ?? null };
   }
 
   async alarm() {
