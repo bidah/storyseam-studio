@@ -149,11 +149,22 @@ describe("pin_draft (two-step: resolve then pin)", () => {
 });
 
 describe("Auto film tools", () => {
-  it("make_film POSTs the same body the Auto surface does, putting an explicit length first", async () => {
+  it("make_film POSTs the same body the Auto surface does: the prompt untouched, the length as `seconds`", async () => {
     const api = makeApi({ post: { ok: true, job: { id: "film-1", status: "running", steps: [], spend: {} } } });
-    const out: any = await run(makeFilm(api), { prompt: "a mecha short", length: "3:00" });
-    expect(api.calls[0]).toMatchObject({ verb: "post", path: "/api/auto/films", body: { prompt: "Length: 3:00. a mecha short" } });
-    expect(out).toMatchObject({ started: true, filmId: "film-1", job: { status: "running" } });
+    const out: any = await run(makeFilm(api), { prompt: "a mecha short", seconds: 180 });
+    expect(api.calls[0]).toMatchObject({ verb: "post", path: "/api/auto/films", body: { prompt: "a mecha short", seconds: 180 } });
+    expect(out).toMatchObject({ started: true, filmId: "film-1", seconds: 180, length: "3:00", job: { status: "running" } });
+  });
+
+  it("make_film rounds a spoken length up to a step, caps it at 5:00, and sends none when none was asked", async () => {
+    const api = makeApi({ post: { ok: true, job: { id: "film-1", status: "running", steps: [], spend: {} } } });
+    await run(makeFilm(api), { prompt: "x", seconds: 190 });
+    expect(api.calls[0].body).toEqual({ prompt: "x", seconds: 210 });
+    const capped: any = await run(makeFilm(api), { prompt: "x", seconds: 600 });
+    expect(api.calls[1].body).toEqual({ prompt: "x", seconds: 300 });
+    expect(capped).toMatchObject({ capped: true, length: "5:00" });
+    await run(makeFilm(api), { prompt: "x" });
+    expect(api.calls[2].body).toEqual({ prompt: "x" });
   });
 
   it("make_film reports a queue position", async () => {

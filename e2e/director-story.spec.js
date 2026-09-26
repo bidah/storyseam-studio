@@ -108,7 +108,8 @@ test.describe("director story", () => {
 
     await expect(page).toHaveURL(/\/director-story\/create\/film_1$/);
     await expect(page.locator("[data-story-view]")).toBeVisible();
-    expect(posted).toEqual({ prompt: "A lighthouse keeper's cat relights the lamp" });
+    // The gear's default length rides along.
+    expect(posted).toEqual({ prompt: "A lighthouse keeper's cat relights the lamp", seconds: 120 });
     await expect(page.locator("[data-step]")).toHaveCount(8);
     await expect(page.locator("[data-prompt]")).toHaveText(/lighthouse keeper/);
 
@@ -116,6 +117,44 @@ test.describe("director story", () => {
     await page.reload();
     await expect(page.locator("[data-story-view]")).toBeVisible();
     await expect(page.locator("[data-prompt]")).toHaveText(/lighthouse keeper/);
+  });
+
+  test("the settings gear picks the length: 3:00 sends seconds 180, is remembered, and shows on the story", async ({ page }) => {
+    const chosen = job({ steps: [], seconds: 180 });
+    await mockBackend(page, {
+      routes: { "/api/auto/films/current": { job: null, queue: [] }, ...filmRoute("film_1", { job: chosen }) },
+    });
+    let posted = null;
+    await page.route("**/api/auto/films", (route) => {
+      posted = route.request().postDataJSON();
+      return route.fulfill({ status: 202, contentType: "application/json", body: JSON.stringify({ ok: true, job: chosen }) });
+    });
+    await page.goto("/director-story");
+
+    const gear = page.getByRole("button", { name: "Story settings" });
+    await expect(gear).toBeVisible();
+    await expect(gear).toContainText("2:00");
+    await gear.click();
+    const panel = page.locator("[data-story-settings-panel]");
+    await expect(panel).toBeVisible();
+    await expect(panel.getByRole("radio", { name: "2:00" })).toHaveAttribute("aria-checked", "true");
+    await expect(panel.getByRole("radio", { name: "5:00" })).toBeVisible();
+    await panel.getByRole("radio", { name: "3:00" }).click();
+    await expect(panel.getByRole("radio", { name: "3:00" })).toHaveAttribute("aria-checked", "true");
+    await page.keyboard.press("Escape");
+    await expect(panel).toHaveCount(0);
+    await expect(gear).toContainText("3:00");
+
+    // Remembered per browser.
+    await page.reload();
+    await expect(page.getByRole("button", { name: "Story settings" })).toContainText("3:00");
+
+    const input = page.getByPlaceholder("Tell what story premise you have");
+    await input.fill("A two minute lighthouse story");
+    await input.press("Enter");
+    await expect(page).toHaveURL(/\/director-story\/create\/film_1$/);
+    expect(posted).toEqual({ prompt: "A two minute lighthouse story", seconds: 180 });
+    await expect(page.locator("[data-length]")).toHaveText("3:00");
   });
 
   test("a queued submit navigates to its id and says Queued", async ({ page }) => {

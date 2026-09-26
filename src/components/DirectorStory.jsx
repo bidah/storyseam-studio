@@ -43,7 +43,9 @@
 // user's stored Auto setting is off we turn it on before starting.
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Link, Navigate, useLocation } from "react-router";
-import { ArrowUp, Check, Circle, CircleAlert, Loader2, Mic, Plus, RotateCw, Square, X } from "lucide-react";
+import { ArrowUp, Check, Circle, CircleAlert, Loader2, Mic, Plus, RotateCw, Settings2, Square, X } from "lucide-react";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { FILM_DEFAULT_SECONDS, FILM_STEPS, formatLength } from "@/lib/film-plan";
 import { useVoiceRecording, transcribeAudio, formatDuration } from "@/lib/useVoiceRecording";
 import { useSession } from "@/lib/auth-client";
 import { getProjectId, setProjectId } from "@/lib/projectFetch";
@@ -230,10 +232,104 @@ function DotsBackground() {
   return <div ref={ref} aria-hidden className="pointer-events-none fixed inset-0 z-0" />;
 }
 
+// ── Story settings: the gear beside the send button ────────────────────────
+//
+// The defaults a story is made with, changeable before sending. For now that is
+// the Film's LENGTH: 2:00 unless changed, any 30s step up to the ceiling
+// (film-plan.ts FILM_STEPS). It is sent as `seconds` with the prompt and wins
+// over a length the prompt's wording states. Remembered per browser — a
+// convenience only, so every storage access is allowed to fail.
+
+const LENGTH_KEY = "director-story:length";
+
+export function readStoredLength() {
+  try {
+    const n = Number(window.localStorage.getItem(LENGTH_KEY));
+    return FILM_STEPS.includes(n) ? n : FILM_DEFAULT_SECONDS;
+  } catch {
+    return FILM_DEFAULT_SECONDS;
+  }
+}
+
+function storeLength(seconds) {
+  try { window.localStorage.setItem(LENGTH_KEY, String(seconds)); } catch { /* private mode: not remembered */ }
+}
+
+function StorySettings({ seconds, onSeconds, disabled }) {
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          aria-label="Story settings"
+          disabled={disabled}
+          className="flex h-10 shrink-0 items-center gap-1.5 px-2 text-[var(--br-secondary)] transition-colors hover:text-[var(--br-primary)] disabled:opacity-40 data-[state=open]:text-[var(--br-primary)]"
+          data-story-settings
+        >
+          <Settings2 size={16} aria-hidden />
+          <span className="text-[0.72rem] tabular-nums" style={{ fontFamily: MONO, letterSpacing: "0.08em" }}>
+            {formatLength(seconds)}
+          </span>
+        </button>
+      </PopoverTrigger>
+      {/* Portaled out of the page, so it carries the page's tokens itself. */}
+      <PopoverContent
+        side="top"
+        align="end"
+        sideOffset={8}
+        className="w-auto border-[var(--br-secondary)]/40 bg-[var(--br-surface)] p-3 text-[var(--br-primary)]"
+        style={{ ...HUD, fontFamily: BODY }}
+        data-story-settings-panel
+      >
+        <div className="mb-2 flex items-baseline justify-between gap-6">
+          <span
+            id="story-length-label"
+            className="text-[0.72rem] uppercase text-[var(--br-secondary)]"
+            style={{ fontFamily: MONO, letterSpacing: "0.08em" }}
+          >
+            Length
+          </span>
+          <span className="text-[0.72rem] text-[var(--br-secondary)]">
+            {seconds === FILM_DEFAULT_SECONDS ? "default" : `default ${formatLength(FILM_DEFAULT_SECONDS)}`}
+          </span>
+        </div>
+        <div role="radiogroup" aria-labelledby="story-length-label" className="flex">
+          {FILM_STEPS.map((step) => {
+            const on = step === seconds;
+            return (
+              <button
+                key={step}
+                type="button"
+                role="radio"
+                aria-checked={on}
+                onClick={() => onSeconds(step)}
+                className={cn(
+                  "-ml-px border px-2.5 py-1.5 text-[0.72rem] tabular-nums transition-colors first:ml-0",
+                  on
+                    ? "relative z-10 border-[var(--br-tertiary)] bg-[var(--br-tertiary)] text-[var(--br-on-primary)]"
+                    : "border-[var(--br-secondary)]/40 text-[var(--br-primary)]/80 hover:text-[var(--br-primary)]",
+                )}
+                style={{ fontFamily: MONO }}
+              >
+                {formatLength(step)}
+              </button>
+            );
+          })}
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 // ── Simple view: hero + input ──────────────────────────────────────────────
 
 export function SimpleView({ onSubmit, submitting, note, running }) {
   const [prompt, setPrompt] = useState("");
+  const [seconds, setSeconds] = useState(readStoredLength);
+  const chooseSeconds = (s) => {
+    setSeconds(s);
+    storeLength(s);
+  };
   const ref = useRef(null);
   // Dictation: the same Whisper path the studio's composers use. The one
   // button is a mic while the box is empty and the send arrow once it isn't.
@@ -276,7 +372,7 @@ export function SimpleView({ onSubmit, submitting, note, running }) {
     e?.preventDefault();
     const text = prompt.trim();
     if (!text || submitting) return;
-    if (await onSubmit(text)) setPrompt("");
+    if (await onSubmit(text, seconds)) setPrompt("");
   };
 
   return (
@@ -311,6 +407,7 @@ export function SimpleView({ onSubmit, submitting, note, running }) {
               disabled={submitting}
               className="min-h-34 flex-1 resize-none bg-transparent px-3 py-3 text-base leading-relaxed text-[var(--br-primary)] placeholder:text-[var(--br-secondary)] focus:outline-none disabled:opacity-60"
             />
+            {!listening && <StorySettings seconds={seconds} onSeconds={chooseSeconds} disabled={submitting} />}
             {listening ? (
               <div className="flex shrink-0 items-center gap-2">
                 <span className="flex items-center gap-1.5 text-xs tabular-nums text-[var(--br-secondary)]">
@@ -418,6 +515,8 @@ export function StoryView({ job, onNew }) {
   const stopped = job.status === "stopped";
   const waiting = job.status === "awaiting-confirm";
   const queued = job.status === "queued";
+  // The chosen length; an older Film without one shows what its cue sheet planned.
+  const length = job.seconds || job.steps?.find((s) => s.key === "cuesheet")?.result?.seconds || null;
   // Ended without a Film worth showing: one line says why.
   const ended =
     job.status === "declined"
@@ -434,6 +533,16 @@ export function StoryView({ job, onNew }) {
           <p className="min-w-0 flex-1 truncate text-sm text-[var(--br-secondary)]" title={job.prompt} data-prompt>
             {job.prompt}
           </p>
+          {length ? (
+            <span
+              className="shrink-0 text-[0.72rem] tabular-nums text-[var(--br-secondary)]"
+              style={{ fontFamily: MONO, letterSpacing: "0.08em" }}
+              title="Length"
+              data-length
+            >
+              {formatLength(length)}
+            </span>
+          ) : null}
           <button
             type="button"
             onClick={onNew}

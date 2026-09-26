@@ -11,7 +11,7 @@
 // lives in lib/film-job.js; this file only persists, broadcasts and schedules.
 //
 // Spoken to over RPC by routes/auto.js:
-//   start({ prompt, userId, projectId, episodeId })
+//   start({ prompt, seconds?, userId, projectId, episodeId })
 //     → { ok, job } | { ok, queued: true, position, film, job } | { ok:false, refusal, job }
 //   current() → the job (without userId) | null
 //   queued()  → the waiting Films (without userId), each with its position

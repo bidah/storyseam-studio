@@ -10,7 +10,7 @@
 //
 // ── Shape (later slices EXTEND this, never reshape it) ─────────────────────
 //
-//   job  = { id, prompt, status: 'running'|'awaiting-confirm'|'done'|'stopped'
+//   job  = { id, prompt, seconds?, status: 'running'|'awaiting-confirm'|'done'|'stopped'
 //            |'refused'|'declined', error, projectId, episodeId, userId,
 //            auto, createdAt, updatedAt, steps: [step],
 //            spend: { [stageKey]: dollars }, stopped?: { stage, label, reason,
@@ -124,7 +124,19 @@ import { runStillsStage } from "./film-stages/stills.js";
 import { runSittingStage } from "./film-stages/sitting.js";
 import { runScoreStage } from "./film-stages/score.js";
 import { readAutoSettings } from "./auto-settings.js";
-import { planFilm, MAX_REFERENCE_SHEETS } from "./film-plan.ts";
+import { planFilm, formatLength, FILM_STEPS, MAX_REFERENCE_SHEETS } from "./film-plan.ts";
+
+/**
+ * A Film length someone CHOSE (the /director-story gear, make_film's `seconds`)
+ * → null when it is fine, else why not. Absent is fine — the prompt, or the
+ * 2:00 default, decides — but a value that is not exactly one of the 30s steps
+ * is refused, not rounded: a control sent it, and rounding would hide the bug.
+ */
+export function checkFilmSeconds(seconds) {
+  if (seconds === undefined || seconds === null) return null;
+  if (typeof seconds === "number" && FILM_STEPS.includes(seconds)) return null;
+  return `A Film is ${FILM_STEPS.map(formatLength).join(", ")} long — choose one of those.`;
+}
 
 export const FILM_EVENT_RESOURCE = "auto";
 export const FILM_EVENTS = Object.freeze([
@@ -260,10 +272,12 @@ export function publicJob(job) {
  * → `{ ok: true, job }` | `{ ok: false, refusal: { code, message } }`, code
  *   'invalid' | 'busy' | 'paused' | 'unavailable' | 'allowance'.
  */
-export async function startFilm(existing, { prompt, userId, projectId, episodeId }, deps = {}) {
+export async function startFilm(existing, { prompt, seconds, userId, projectId, episodeId }, deps = {}) {
   const env = deps.env;
   const text = str(prompt);
   if (!text) return refuse("invalid", "Write a prompt first.");
+  const badLength = checkFilmSeconds(seconds);
+  if (badLength) return refuse("invalid", badLength);
   if (text.length > MAX_PROMPT_CHARS) {
     return refuse("invalid", `Keep the prompt under ${MAX_PROMPT_CHARS} characters.`);
   }
@@ -286,6 +300,8 @@ export async function startFilm(existing, { prompt, userId, projectId, episodeId
     job: {
       id: deps.newId ? deps.newId() : `film-${crypto.randomUUID()}`,
       prompt: text,
+      // The chosen length, when one was chosen: it wins over the prompt's.
+      ...(seconds != null ? { seconds } : {}),
       status: "running",
       error: null,
       projectId: projectId ?? null,
@@ -535,7 +551,7 @@ const money = (n) => `$${(Number(n) || 0).toFixed(2)}`;
 export function confirmPlan(job, worldResult) {
   const drawn = (worldResult?.characters?.length || 0) + (worldResult?.places?.length || 0);
   const sheets = Math.min(MAX_REFERENCE_SHEETS, Math.max(1, drawn));
-  const p = planFilm({ prompt: job.prompt, referenceSheets: sheets });
+  const p = planFilm({ prompt: job.prompt, seconds: job.seconds ?? null, referenceSheets: sheets });
   const plan = {
     seconds: p.seconds,
     length: p.length,

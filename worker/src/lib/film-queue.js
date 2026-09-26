@@ -6,7 +6,7 @@
 // these two pure functions; everything here takes its side effects as `deps`
 // (the same deps `startFilm` takes) so a Vitest can drive a whole queue.
 //
-//   queue item = { id, prompt, userId, projectId, episodeId, queuedAt }
+//   queue item = { id, prompt, seconds?, userId, projectId, episodeId, queuedAt }
 //
 // The kill switch and the allowance are checked TWICE for a queued Film: when
 // it is enqueued (so an author already over their allowance is told at once)
@@ -60,8 +60,11 @@ export async function submitFilm({ job, queue = [] }, input, deps = {}) {
   // so the running one doesn't read as "busy".
   const check = await startFilm(null, input, deps);
   if (!check.ok) return check;
-  const { id, prompt, projectId, episodeId, userId } = check.job;
-  const item = { id, prompt, userId, projectId, episodeId, queuedAt: iso(deps.now?.()) };
+  const { id, prompt, seconds, projectId, episodeId, userId } = check.job;
+  // `seconds` rides along so the Film keeps its chosen length at the front.
+  const item = {
+    id, prompt, ...(seconds != null ? { seconds } : {}), userId, projectId, episodeId, queuedAt: iso(deps.now?.()),
+  };
   const next = [...queue, item];
   return { ok: true, queued: true, position: next.length, item, queue: next };
 }
@@ -85,6 +88,7 @@ export async function startNextQueued({ job, queue = [] }, deps = {}) {
     refused.push({
       id: item.id,
       prompt: item.prompt,
+      ...(item.seconds != null ? { seconds: item.seconds } : {}),
       status: "refused",
       error: res.refusal.message,
       refusal: res.refusal,

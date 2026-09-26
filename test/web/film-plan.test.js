@@ -1,5 +1,5 @@
 // The Film plan — the quote an Auto prompt gets before anything is paid for:
-// the length (2:00–4:30 in 30s steps, rounded up, capped and SAID so), the
+// the length (2:00–5:00 in 30s steps, rounded up, capped and SAID so), the
 // beats and pins at ~4s, the reels they need, and a cost by stage.
 import { describe, expect, it } from "vitest";
 import {
@@ -48,7 +48,7 @@ describe("parseLength", () => {
   });
 });
 
-describe("filmLength — round up to the next 30s step, 2:00 floor, 4:30 cap", () => {
+describe("filmLength — round up to the next 30s step, 2:00 floor, 5:00 cap", () => {
   it.each([
     [null, 120, false],
     [0, 120, false],
@@ -65,8 +65,10 @@ describe("filmLength — round up to the next 30s step, 2:00 floor, 4:30 cap", (
     [240, 240, false],
     [241, 270, false],
     [270, 270, false],
-    [271, 270, true],
-    [600, 270, true],
+    [271, 300, false],
+    [300, 300, false],
+    [301, 300, true],
+    [600, 300, true],
   ])("%j → %is (capped %j)", (requested, seconds, capped) => {
     expect(filmLength(requested)).toEqual({ seconds, capped });
   });
@@ -78,7 +80,9 @@ describe("planFilm — the acceptance examples", () => {
     ["90 seconds", 120, "2:00", false],
     ["3:10", 210, "3:30", false],
     ["a mecha in the rain", 120, "2:00", false],
-    ["ten minutes", 270, "4:30", true],
+    ["ten minutes", 300, "5:00", true],
+    ["four and a half minutes", 270, "4:30", false],
+    ["five minutes", 300, "5:00", false],
   ])("%j → %s", (prompt, seconds, length, capped) => {
     const plan = planFilm({ prompt });
     expect(plan.seconds).toBe(seconds);
@@ -99,8 +103,8 @@ describe("planFilm — the acceptance examples", () => {
 });
 
 describe("every 30s step", () => {
-  it("the steps are 2:00 … 4:30", () => {
-    expect(FILM_STEPS.map(formatLength)).toEqual(["2:00", "2:30", "3:00", "3:30", "4:00", "4:30"]);
+  it("the steps are 2:00 … 5:00", () => {
+    expect(FILM_STEPS.map(formatLength)).toEqual(["2:00", "2:30", "3:00", "3:30", "4:00", "4:30", "5:00"]);
   });
 
   it.each(FILM_STEPS.map((s) => [s]))("%is: beats at ~4s (≤64), pins fit the reel ceilings in ≤5 reels", (seconds) => {
@@ -139,6 +143,8 @@ describe("every 30s step", () => {
       // 4:30 at 4s is 68 beats — past the Series' 64 — so it is cut every 5s.
       // At 5s a seam loses only its own pin (the next is 5s on, clear of the opening).
       [270, 5, 54, 50, 4, 3, 3],
+      // 5:00 at 5s is 60 beats: still under 64, still 4 reels.
+      [300, 5, 60, 56, 4, 3, 3],
     ]);
   });
 });
@@ -149,6 +155,7 @@ describe("beatSpacing", () => {
     expect(beatSpacing(256)).toBe(4);
     expect(beatSpacing(257)).toBe(5);
     expect(beatSpacing(270)).toBe(5);
+    expect(beatSpacing(300)).toBe(5);
     for (const s of FILM_STEPS) expect(Math.ceil(s / beatSpacing(s))).toBeLessThanOrEqual(MAX_DIRECTIONS);
   });
 });
@@ -169,7 +176,8 @@ describe("reelsOnGrid", () => {
     expect(reelsOnGrid(12, 4).pins).toBe(1); // beats at 0, 4, 8 → pin at 8 only (4 is inside the opening 5s)
   });
 
-  it("4:30 fits in at most 5 reels", () => {
+  it("5:00 fits in at most 5 reels", () => {
+    expect(FILM_MAX_SECONDS).toBe(300);
     expect(reelsOnGrid(FILM_MAX_SECONDS).reels).toBeLessThanOrEqual(5);
   });
 });
@@ -199,7 +207,7 @@ describe("estimate", () => {
   });
 
   it("one clip per reel, each 5–15s", () => {
-    const plan = planFilm({ seconds: 270 });
+    const plan = planFilm({ seconds: 300 });
     expect(plan.estimate.perStage.clips.units).toBeLessThanOrEqual(plan.reels * 15);
     expect(plan.estimate.perStage.clips.units).toBeGreaterThanOrEqual(plan.reels * 5);
   });
