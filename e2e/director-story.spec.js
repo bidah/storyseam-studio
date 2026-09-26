@@ -50,7 +50,12 @@ test.describe("director story", () => {
 
     await expect(page.getByRole("heading", { name: /text to long form video stories in seconds/i })).toBeVisible();
     await expect(page.getByPlaceholder("Tell what story premise you have")).toBeVisible();
+    // Empty box → the mic; typing turns it into the send arrow.
+    await expect(page.getByRole("button", { name: "Dictate your premise" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Make the story" })).toHaveCount(0);
+    await page.getByPlaceholder("Tell what story premise you have").fill("A lighthouse keeper's cat");
     await expect(page.getByRole("button", { name: "Make the story" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Dictate your premise" })).toHaveCount(0);
     await expectNoStudioShell(page);
   });
 

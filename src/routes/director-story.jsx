@@ -29,7 +29,8 @@
 // user's stored Auto setting is off we turn it on before starting.
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Navigate } from "react-router";
-import { ArrowUp, Check, Circle, CircleAlert, Loader2, Plus, RotateCw } from "lucide-react";
+import { ArrowUp, Check, Circle, CircleAlert, Loader2, Mic, Plus, RotateCw, Square, X } from "lucide-react";
+import { useVoiceRecording, transcribeAudio, formatDuration } from "@/lib/useVoiceRecording";
 import { useSession } from "@/lib/auth-client";
 import { getProjectId, setProjectId } from "@/lib/projectFetch";
 import { useProjectEvents } from "@/lib/useProjectEvents";
@@ -321,6 +322,33 @@ function DotsBackground() {
 function SimpleView({ onSubmit, submitting, note }) {
   const [prompt, setPrompt] = useState("");
   const ref = useRef(null);
+  // Dictation: the same Whisper path the studio's composers use. The one
+  // button is a mic while the box is empty and the send arrow once it isn't.
+  const rec = useVoiceRecording();
+  const [transcribing, setTranscribing] = useState(false);
+  const [voiceNote, setVoiceNote] = useState(null);
+
+  const startRecording = async () => {
+    setVoiceNote(null);
+    try { await rec.start(); } catch (e) { setVoiceNote(e?.message || "Couldn't start recording."); }
+  };
+  const stopAndTranscribe = async () => {
+    setTranscribing(true);
+    try {
+      const blob = await rec.stop();
+      if (!blob || blob.size < 100) return; // nothing usable captured
+      const { text } = await transcribeAudio(blob);
+      const heard = (text || "").trim();
+      if (heard) setPrompt((v) => (v.trim() ? `${v.trim()} ${heard}` : heard));
+      else setVoiceNote("Didn't catch that — try again.");
+      ref.current?.focus();
+    } catch (e) {
+      setVoiceNote(e?.message || "Transcription failed.");
+    } finally {
+      setTranscribing(false);
+    }
+  };
+  const listening = rec.recording || transcribing;
 
   // A real text area: five lines tall to start, grows with the text up to a
   // cap, then scrolls inside.
@@ -370,18 +398,58 @@ function SimpleView({ onSubmit, submitting, note }) {
               disabled={submitting}
               className="min-h-34 flex-1 resize-none bg-transparent px-3 py-3 text-base leading-relaxed text-[var(--br-primary)] placeholder:text-[var(--br-secondary)] focus:outline-none disabled:opacity-60"
             />
-            <button
-              type="submit"
-              aria-label="Make the story"
-              disabled={!prompt.trim() || submitting}
-              className="flex size-10 shrink-0 items-center justify-center bg-[var(--br-tertiary)] text-[var(--br-on-primary)] transition-opacity hover:opacity-90 disabled:opacity-40"
-            >
-              {submitting ? <Loader2 size={18} className="animate-spin" /> : <ArrowUp size={18} />}
-            </button>
+            {listening ? (
+              <div className="flex shrink-0 items-center gap-2">
+                <span className="flex items-center gap-1.5 text-xs tabular-nums text-[var(--br-secondary)]">
+                  {transcribing ? (
+                    <Loader2 size={13} className="animate-spin" />
+                  ) : (
+                    <span className="size-2 animate-pulse rounded-full bg-[var(--br-tertiary)]" />
+                  )}
+                  {transcribing ? "Transcribing…" : formatDuration(rec.duration)}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => rec.cancel()}
+                  disabled={transcribing}
+                  aria-label="Cancel recording"
+                  className="flex size-10 items-center justify-center text-[var(--br-secondary)] transition-colors hover:text-[var(--br-primary)] disabled:opacity-40"
+                >
+                  <X size={18} />
+                </button>
+                <button
+                  type="button"
+                  onClick={stopAndTranscribe}
+                  disabled={transcribing}
+                  aria-label="Stop and transcribe"
+                  className="flex size-10 items-center justify-center bg-[var(--br-tertiary)] text-[var(--br-on-primary)] transition-opacity hover:opacity-90 disabled:opacity-40"
+                >
+                  {transcribing ? <Loader2 size={18} className="animate-spin" /> : <Square size={16} fill="currentColor" />}
+                </button>
+              </div>
+            ) : prompt.trim() ? (
+              <button
+                type="submit"
+                aria-label="Make the story"
+                disabled={submitting}
+                className="flex size-10 shrink-0 items-center justify-center bg-[var(--br-tertiary)] text-[var(--br-on-primary)] transition-opacity hover:opacity-90 disabled:opacity-40"
+              >
+                {submitting ? <Loader2 size={18} className="animate-spin" /> : <ArrowUp size={18} />}
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={startRecording}
+                aria-label="Dictate your premise"
+                className="flex size-10 shrink-0 items-center justify-center bg-[var(--br-tertiary)] text-[var(--br-on-primary)] transition-opacity hover:opacity-90"
+              >
+                <Mic size={18} />
+              </button>
+            )}
           </div>
         </form>
         <p className="min-h-5 text-sm text-[var(--br-secondary)]" aria-live="polite" data-note>
-          {note}
+          {voiceNote || note}
         </p>
       </main>
     </Page>
