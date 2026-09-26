@@ -5,6 +5,7 @@
 import {
   MAX_END_IMAGES,
   MAX_PROMPT_CHARS,
+  MAX_REEL_CHANGES,
   MIN_END_IMAGE_GAP_SECONDS,
   MIN_OPENING_END_IMAGE_SECONDS,
   SECTION_JOIN,
@@ -627,54 +628,168 @@ export function sheetFrom(
   };
 }
 
-// ------------------------------------------------------- a run of clips
+// ------------------------------------------------------- the reel planner
 
 /**
- * The chosen shots, cut into as few clips as the two ceilings allow.
+ * ONE REEL of a run: a stretch of the cue sheet the Director plays as one
+ * script, and the one clip that draws its frames.
  *
- * One clip holds `maxShots(duration)` frames (each needs `MIN_SHOT_SECONDS` to
- * settle) and pins at most `MAX_END_IMAGES` of them. A cue sheet with more
- * beats than that is not refused — it is drawn as a RUN: several clips, in
- * running order, each a complete sheet of its own with its own grab times, so
- * cutting clip 2 can never land a frame on a beat from clip 1. Parts are kept
- * as even as possible rather than filled greedily, so the last clip is not two
- * frames held for seven seconds each.
+ * `opensAt` is the beat it opens on — 0 for the first reel, a seam for every
+ * later one. `shots` stay on the cue sheet's own clock (never rebased): they
+ * are what the clip draws, and a pin is addressed by its beat's authored offset.
  */
-export function splitShots(shots: Shot[], duration: number = MAX_DURATION_SECONDS): Shot[][] {
-  if (!shots.length) return [];
-  const room = Math.max(1, maxShots(duration));
-  const pinCount = shots.filter((shot) => shot.kind === 'pin').length;
-  let parts = Math.max(1, Math.ceil(shots.length / room), Math.ceil(pinCount / MAX_END_IMAGES));
-  for (;;) {
-    const out: Shot[][] = [];
-    const base = Math.floor(shots.length / parts);
-    const extra = shots.length % parts;
-    let at = 0;
-    for (let i = 0; i < parts; i++) {
-      const size = base + (i < extra ? 1 : 0);
-      out.push(shots.slice(at, at + size));
-      at += size;
-    }
-    const fits = out.every(
-      (part) => part.length <= room && part.filter((shot) => shot.kind === 'pin').length <= MAX_END_IMAGES,
-    );
-    if (fits || parts >= shots.length) return out;
-    parts += 1;
-  }
+export type Reel = { reel: number; opensAt: number; shots: Shot[] };
+
+/** A chosen frame the run does NOT draw, and the seam that cost it. */
+export type SkippedFrame = { offset: number; seam: number; reason: string };
+
+export type ReelPlan = {
+  reels: Reel[];
+  /** The beats a later reel opens on — what the Series' `reelChanges` becomes. */
+  seams: number[];
+  skipped: SkippedFrame[];
+  /** One clip per reel, in running order. */
+  clips: Shot[][];
+  /** Why this plan cannot be run at all, or null. Said before anything is paid for. */
+  refused: string | null;
+};
+
+/**
+ * How many pins one reel may hold when it is drawn as one clip.
+ *
+ * The lower of two ceilings: sixteen pins per script, and the frames one clip
+ * of `duration` seconds holds — less the opening frame when this reel carries it.
+ */
+export function reelCapacity(duration: number = MAX_DURATION_SECONDS, opening = false): number {
+  return Math.max(1, Math.min(MAX_END_IMAGES, maxShots(duration) - (opening ? 1 : 0)));
 }
 
 /**
- * The sheets a Series and a choice of slots amount to — one per clip of the
- * run. Each carries the references ITS shots name, so a clip set in the hangar
- * is handed the hangar's sheet even when another clip needed the nine slots.
+ * The chosen frames, cut into REELS — and one clip per reel.
+ *
+ * A reel holds at most sixteen pins, the first at least 5s in, each 3s after
+ * the last. When a reel is full the planner opens the next one on a SEAM — a
+ * beat — and a seam costs pins: the beat an appended reel opens on has no pin
+ * (no chunk ends at its second zero), and no pin may sit less than 5s after it.
+ * Those frames are NOT drawn: a frame the Series would refuse at pin time is a
+ * frame paid for and thrown away. See docs/adr/0002.
+ *
+ * The seam goes on whichever beat after the last pin placed, up to the pin that
+ * did not fit, costs the fewest chosen frames — `beats` offers beats nobody
+ * chose to draw, which may cost nothing — the latest on a tie. Planned from
+ * scratch every time: the Series' existing `reelChanges` are not an input.
+ *
+ * A clip never crosses a seam. More than `MAX_REEL_CHANGES` seams is refused,
+ * with the count.
  */
-export function sheetsFrom(
+export function planReels(
+  shots: Shot[],
+  options: { duration?: number; beats?: number[] } = {},
+): ReelPlan {
+  const duration = options.duration ?? MAX_DURATION_SECONDS;
+  const ordered = [...shots].sort((a, b) => a.offset - b.offset);
+  const pins = ordered.filter((shot) => shot.kind === 'pin');
+  const candidates = [...new Set([...(options.beats ?? []), ...pins.map((pin) => pin.offset)])]
+    .filter((offset) => Number.isFinite(offset) && offset >= 1)
+    .sort((a, b) => a - b);
+
+  const reels: Reel[] = [{ reel: 1, opensAt: 0, shots: ordered.filter((shot) => shot.kind === 'opening') }];
+  const seams: number[] = [];
+  const skipped: SkippedFrame[] = [];
+  const pinCount = (reel: Reel) => reel.shots.filter((shot) => shot.kind === 'pin').length;
+  // What a seam at `at` costs: the chosen frame on it and every one inside its window.
+  const cost = (at: number) =>
+    pins.filter((pin) => pin.offset >= at && pin.offset < at + MIN_OPENING_END_IMAGE_SECONDS).length;
+
+  let current = reels[0];
+  for (let i = 0; i < pins.length; ) {
+    const pin = pins[i];
+    if (current.reel > 1 && pin.offset - current.opensAt < MIN_OPENING_END_IMAGE_SECONDS) {
+      skipped.push({
+        offset: pin.offset,
+        seam: current.opensAt,
+        reason:
+          pin.offset === current.opensAt
+            ? `reel ${current.reel} opens on this beat, and an appended reel's opening beat has no pin`
+            : `${pin.offset - current.opensAt}s after the reel change at ${current.opensAt}s; ` +
+              `a reel's first pin is at least ${MIN_OPENING_END_IMAGE_SECONDS}s in`,
+      });
+      i += 1;
+      continue;
+    }
+    const capacity = reelCapacity(duration, current.shots.some((shot) => shot.kind === 'opening'));
+    if (pinCount(current) < capacity) {
+      current.shots.push(pin);
+      i += 1;
+      continue;
+    }
+    // Full: open the next reel on the cheapest beat after the last pin placed.
+    const last = current.shots.at(-1)?.offset ?? current.opensAt;
+    const open = candidates.filter((at) => at > last && at <= pin.offset);
+    const seam = open.reduce((best, at) => (cost(at) <= cost(best) ? at : best), open[0] ?? pin.offset);
+    seams.push(seam);
+    current = { reel: current.reel + 1, opensAt: seam, shots: [] };
+    reels.push(current);
+  }
+
+  // A reel change whose every frame was lost to its own window draws nothing:
+  // drop it. Its frames stay undrawn — the reel before was already full.
+  if (reels.length > 1 && reels[reels.length - 1].shots.length === 0) {
+    const dropped = reels.pop() as Reel;
+    seams.pop();
+    const before = reels[reels.length - 1];
+    for (const frame of skipped) {
+      if (frame.seam !== dropped.opensAt) continue;
+      frame.seam = before.opensAt;
+      frame.reason = `reel ${before.reel} already holds ${pinCount(before)} pins, and a reel change here would draw nothing`;
+    }
+  }
+
+  const refused =
+    seams.length > MAX_REEL_CHANGES
+      ? `these frames need ${seams.length} reel changes (${seams.length + 1} reels); a Series takes ` +
+        `${MAX_REEL_CHANGES} — choose fewer frames, or a longer clip`
+      : null;
+  return { reels, seams, skipped, clips: reels.map((reel) => reel.shots), refused };
+}
+
+/**
+ * The plan a Series and a choice of slots amount to, and one sheet per clip of
+ * it. Each carries the references ITS shots name, so a reel set in the hangar
+ * is handed the hangar's sheet even when another reel needed the nine slots.
+ */
+export function planSheets(
   series: Parameters<typeof sheetFrom>[0],
   chosen: number[],
   duration = MAX_DURATION_SECONDS,
-): Sheet[] {
+): { plan: ReelPlan; sheets: Sheet[] } {
   const whole = sheetFrom(series, chosen, duration);
-  const parts = splitShots(whole.shots, duration);
-  if (parts.length <= 1) return [whole];
-  return parts.map((shots) => ({ ...whole, shots, references: referencesOf(series, shots) }));
+  const plan = planReels(whole.shots, { duration, beats: series.directions.map((beat) => beat.offset) });
+  const sheets = plan.clips.map((shots) => ({ ...whole, shots, references: referencesOf(series, shots) }));
+  return { plan, sheets };
+}
+
+/**
+ * The Series' cue sheet with a plan's seams written in.
+ *
+ * `reelChanges` become the seams, and a pin already on a beat INSIDE a seam's
+ * 5s window is cleared — once the seam exists the Series refuses it, and every
+ * pin placed after it would be refused too. The seam's own beat keeps what it
+ * has: `reels()` already leaves that one off the wire, and it comes back if the
+ * seam moves. Pure.
+ */
+export function withSeams<T extends Pick<Series, 'directions'>>(
+  series: T,
+  seams: number[],
+): { reelChanges: number[]; directions: T['directions']; cleared: number[] } {
+  const cleared: number[] = [];
+  const directions = series.directions.map((beat) => {
+    const inWindow = seams.some(
+      (seam) => beat.offset > seam && beat.offset - seam < MIN_OPENING_END_IMAGE_SECONDS,
+    );
+    if (!inWindow || !beat.endImageUrl) return beat;
+    cleared.push(beat.offset);
+    return { ...beat, endImageUrl: null, endImagePrompt: null, endImageModel: null, endImageRefs: null };
+  }) as T['directions'];
+  return { reelChanges: [...seams].sort((a, b) => a - b), directions, cleared };
 }

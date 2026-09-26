@@ -19,16 +19,18 @@ import * as v from "valibot";
 import { d } from "./_util.js";
 import type { Api } from "../lib/api.js";
 import { MAX_DURATION_SECONDS, MAX_REFERENCE_IMAGES, MIN_DURATION_SECONDS, MIN_SHOT_SECONDS } from "../lib/shot-sheet.js";
-import { MAX_END_IMAGES } from "../lib/series.js";
+import { MAX_END_IMAGES, MAX_REEL_CHANGES, MIN_OPENING_END_IMAGE_SECONDS } from "../lib/series.js";
 
 const seriesId = d(v.string(), "The Series whose pins are being drawn (from get_director).");
 
 const SHEET_RULES =
   `A sheet is ${MIN_DURATION_SECONDS}–${MAX_DURATION_SECONDS} whole seconds long and each shot needs ` +
   `${MIN_SHOT_SECONDS}s to settle on a drawing, so the number of frames a sheet can hold is bounded by its ` +
-  `length; at most ${MAX_REFERENCE_IMAGES} reference images ride along. More frames than one clip holds (or more than ` +
-  `${MAX_END_IMAGES} pins) are NOT refused: they are drawn as a RUN of several clips in running order, each its own ` +
-  `sheet with its own references and grab times.`;
+  `length; at most ${MAX_REFERENCE_IMAGES} reference images ride along. More frames than one reel holds (${MAX_END_IMAGES} ` +
+  `pins) are NOT refused: the run PLANS REELS first and draws ONE CLIP PER REEL, each its own sheet with its own ` +
+  `references and grab times. Each reel change (seam) costs frames — the beat a later reel opens on has no pin, and ` +
+  `no pin may sit under ${MIN_OPENING_END_IMAGE_SECONDS}s after it — so those chosen frames are NOT drawn (listed in ` +
+  `\`plan.skipped\`). A plan needing more than ${MAX_REEL_CHANGES} reel changes is refused before anything is paid for.`;
 
 export const getShotSheet = (api: Api) =>
   defineTool({
@@ -46,7 +48,7 @@ export const previewShotSheet = (api: Api) =>
   defineTool({
     name: "preview_shot_sheet",
     description:
-      "Rehearse a shot sheet without paying for it: the assembled prompt exactly as the video model will receive it, which endpoint it goes to, the grab times each frame will be cut at, and every reason it would be refused. Free. When the frames need more than one clip, `parts` lists every clip's prompt, endpoint and grab times. Use it whenever you have reworded a shot line or changed which slots are drawn — the prompt is ASSEMBLED from the same list of shots the grab times come from, so reading it back is how you confirm the model is being asked for the frames you think it is. A sheet with sixteen shots in the prompt and seventeen grabs taken out of it is a film whose every pin is one beat wrong, and nothing about that looks like a bug.",
+      "Rehearse a shot sheet without paying for it: the assembled prompt exactly as the video model will receive it, which endpoint it goes to, the grab times each frame will be cut at, and every reason it would be refused. Free. `plan` is the reel plan — the reels, the seams (beats a later reel opens on), the chosen frames those seams cost and will NOT be drawn, and `refused` when it needs too many seams; `parts` lists one clip per reel with its prompt, endpoint and grab times. Tell the author which frames a seam skips before rendering. Use it whenever you have reworded a shot line or changed which slots are drawn — the prompt is ASSEMBLED from the same list of shots the grab times come from, so reading it back is how you confirm the model is being asked for the frames you think it is. A sheet with sixteen shots in the prompt and seventeen grabs taken out of it is a film whose every pin is one beat wrong, and nothing about that looks like a bug.",
     input: v.object({
       seriesId,
       slots: d(
@@ -68,7 +70,7 @@ export const renderShotSheet = (api: Api) =>
   defineTool({
     name: "render_shot_sheet",
     description:
-      "Spend a render: draw the chosen frames as one clip, with the Series' model sheets handed over as references and named in the prompt. Costs real money, so preview_shot_sheet first and show the author the prompt. Returns immediately with `takes` (one per clip of the run — usually one, several when the frames don't fit one clip), each `running`; pass each take's `takeId` back to poll, and keep polling every one — the poll is what finalizes the take, so a render nobody asks about never lands. When it is done the clip is kept in the project and filed on the Series as a style model sheet carrying the whole prompt, so the next sheet can be asked for with this one in front of it. THE FRAMES ARE NOT PINNED BY THIS. Cutting them out happens in the browser — finish by telling the author the take is ready and to open the Shot sheet tab, or by pinning frames they have already cut with pin_beat_frame.",
+      "Spend a render: draw the chosen frames, one clip per planned reel, with the Series' model sheets handed over as references and named in the prompt. Costs real money, so preview_shot_sheet first and show the author the prompt. Before paying it WRITES the plan's seams as the Series' `reelChanges` (re-planned from scratch, replacing any the Series had) and clears an old pin that sits inside a new seam's window (`cleared`); a plan the Series would refuse is refused with nothing spent. Returns immediately with `takes` (one per reel — usually one), each `running`; pass each take's `takeId` back to poll, and keep polling every one — the poll is what finalizes the take, so a render nobody asks about never lands. When it is done the clip is kept in the project and filed on the Series as a style model sheet carrying the whole prompt, so the next sheet can be asked for with this one in front of it. THE FRAMES ARE NOT PINNED BY THIS. Cutting them out happens in the browser — finish by telling the author the take is ready and to open the Shot sheet tab, or by pinning frames they have already cut with pin_beat_frame.",
     input: v.object({
       seriesId,
       takeId: d(

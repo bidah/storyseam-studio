@@ -13,8 +13,8 @@ import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
 import { Empty, Panel, ErrorNote, Eyebrow, fmtTime } from "@/components/shared";
-import { MAX_DURATION_SECONDS, MIN_DURATION_SECONDS, grabTimes, splitShots } from "@/lib/shot-sheet";
-import { MAX_END_IMAGES, MIN_END_IMAGE_GAP_SECONDS } from "@/lib/series";
+import { MAX_DURATION_SECONDS, MIN_DURATION_SECONDS, grabTimes, planReels } from "@/lib/shot-sheet";
+import { MAX_END_IMAGES, MIN_END_IMAGE_GAP_SECONDS, MIN_OPENING_END_IMAGE_SECONDS } from "@/lib/series";
 import { grabFrames } from "@/director/frames";
 
 /* ------------------------------------------------------------------ *
@@ -84,7 +84,7 @@ function References({ references }) {
 
 /* ---- the slots ----------------------------------------------------------- */
 
-function Slots({ slots, chosen, onToggle }) {
+function Slots({ slots, chosen, skipped, onToggle }) {
   if (!slots.length) {
     return <Empty>No frames to draw — this Series’ cue sheet pins nothing yet.</Empty>;
   }
@@ -118,6 +118,11 @@ function Slots({ slots, chosen, onToggle }) {
                   <AlertTriangle size={11} /> {slot.refused}
                 </p>
               ) : null}
+              {on && skipped?.has(slot.offset) ? (
+                <p className="mt-1 flex items-center gap-1.5 text-xs text-amber-500">
+                  <Scissors size={11} /> not drawn — {skipped.get(slot.offset)}
+                </p>
+              ) : null}
               {slot.filled ? (
                 <p className="mt-1 text-xs text-muted-foreground">already drawn</p>
               ) : null}
@@ -131,7 +136,7 @@ function Slots({ slots, chosen, onToggle }) {
 
 /* ---- cutting the take back into frames ----------------------------------- */
 
-function CutTake({ take, seriesId, slots, onPinned }) {
+function CutTake({ take, seriesId, slots, seams = [], onPinned }) {
   const [cutting, setCutting] = useState(false);
   const [frames, setFrames] = useState([]);
   const [picked, setPicked] = useState([]);
@@ -163,35 +168,56 @@ function CutTake({ take, seriesId, slots, onPinned }) {
   // What pressing Pin would leave on the cue sheet, checked HERE against the
   // same ceilings the Director's route enforces — pins are written one at a
   // time, and a refusal half way through leaves half a sheet pinned.
+  //
+  // Every ceiling is PER REEL, as the Series counts it: `seams` are its reel
+  // changes, a seam's own beat carries no pin on the wire, and "replace the
+  // other pins" only replaces pins in the reels this clip draws — never another
+  // clip's reel.
   const planFor = useCallback((indices, clearOthers) => {
+    const cuts = [...seams].sort((a, b) => a - b);
+    const reelOf = (offset) => cuts.filter((c) => c <= offset).length;
+    const opensAt = (reel) => (reel === 0 ? 0 : cuts[reel - 1]);
     const chosen = indices.map((i) => ({ index: i, ...shots[i] })).filter((s) => s.offset !== undefined);
     const opening = chosen.find((s) => s.kind === "opening") || null;
     const pins = chosen.filter((s) => s.kind !== "opening");
     const pinOffsets = new Set(pins.map((s) => s.offset));
-    const existing = slots.filter((s) => s.kind === "pin" && s.filled).map((s) => s.offset);
-    const toClear = clearOthers ? existing.filter((o) => !pinOffsets.has(o)) : [];
+    const ownReels = new Set(shots.map((s) => reelOf(s.offset)));
+    const existing = slots
+      .filter((s) => s.kind === "pin" && s.filled && !cuts.includes(s.offset))
+      .map((s) => s.offset);
+    const toClear = clearOthers ? existing.filter((o) => !pinOffsets.has(o) && ownReels.has(reelOf(o))) : [];
     const final = [...new Set([...existing.filter((o) => !toClear.includes(o)), ...pinOffsets])].sort((a, b) => a - b);
     const issues = [];
     for (const s of pins) {
       const slot = slots.find((x) => x.offset === s.offset);
       if (!slot) issues.push(`${fmtTime(s.offset)} is no longer a beat on this cue sheet — untick it.`);
       else if (slot.refused) issues.push(`${fmtTime(s.offset)}: ${slot.refused}.`);
+      else if (cuts.includes(s.offset)) issues.push(`${fmtTime(s.offset)} opens a reel, and a reel's opening beat has no pin — untick it.`);
     }
-    if (final.length > MAX_END_IMAGES) {
-      issues.push(
-        `That leaves ${final.length} pins on the cue sheet and the limit is ${MAX_END_IMAGES}. ` +
-        (clearOthers
-          ? `Untick ${final.length - MAX_END_IMAGES}.`
-          : `${existing.length} are already pinned — tick "replace the other pins", or untick ${final.length - MAX_END_IMAGES}.`),
-      );
-    }
-    for (let i = 1; i < final.length; i++) {
-      if (final[i] - final[i - 1] < MIN_END_IMAGE_GAP_SECONDS) {
-        issues.push(`Pins at ${fmtTime(final[i - 1])} and ${fmtTime(final[i])} are closer than ${MIN_END_IMAGE_GAP_SECONDS}s.`);
+    const many = cuts.length > 0;
+    for (let reel = 0; reel <= cuts.length; reel++) {
+      const inReel = final.filter((o) => reelOf(o) === reel);
+      const where = many ? `Reel ${reel + 1}: ` : "";
+      if (inReel.length > MAX_END_IMAGES) {
+        const existingHere = existing.filter((o) => reelOf(o) === reel).length;
+        issues.push(
+          `${where}that leaves ${inReel.length} pins and the limit is ${MAX_END_IMAGES} per reel. ` +
+          (clearOthers
+            ? `Untick ${inReel.length - MAX_END_IMAGES}.`
+            : `${existingHere} are already pinned — tick "replace the other pins", or untick ${inReel.length - MAX_END_IMAGES}.`),
+        );
+      }
+      if (reel > 0 && inReel.length && inReel[0] - opensAt(reel) < MIN_OPENING_END_IMAGE_SECONDS) {
+        issues.push(`${where}a pin at ${fmtTime(inReel[0])} is under ${MIN_OPENING_END_IMAGE_SECONDS}s after the reel change at ${fmtTime(opensAt(reel))}.`);
+      }
+      for (let i = 1; i < inReel.length; i++) {
+        if (inReel[i] - inReel[i - 1] < MIN_END_IMAGE_GAP_SECONDS) {
+          issues.push(`${where}pins at ${fmtTime(inReel[i - 1])} and ${fmtTime(inReel[i])} are closer than ${MIN_END_IMAGE_GAP_SECONDS}s.`);
+        }
       }
     }
     return { opening, pins, toClear, final, issues, replaced: pins.filter((s) => existing.includes(s.offset)).length };
-  }, [shots, slots]);
+  }, [shots, slots, seams]);
   const plan = useMemo(() => planFor(picked, replaceOthers), [planFor, picked, replaceOthers]);
 
   // One frame, confirmed in a dialog first. Checked against the pins already on
@@ -285,7 +311,7 @@ function CutTake({ take, seriesId, slots, onPinned }) {
             {plan.pins.length} pin{plan.pins.length === 1 ? "" : "s"}
             {plan.replaced ? `, ${plan.replaced} replacing a pin already there` : ""}
             {plan.toClear.length ? `; clears ${plan.toClear.length} other pin${plan.toClear.length === 1 ? "" : "s"}` : ""}
-            {` — ${plan.final.length} of ${MAX_END_IMAGES} pins after.`}
+            {` — ${plan.final.length} pins on the cue sheet after (${MAX_END_IMAGES} per reel).`}
           </p>
           {plan.issues.map((issue) => (
             <p key={issue} className="flex items-center gap-1.5 text-xs text-amber-500">
@@ -348,7 +374,7 @@ function CutTake({ take, seriesId, slots, onPinned }) {
                   : single.replaced
                     ? "This replaces the pin already on that beat."
                     : `The Director will land on this picture at ${fmtTime(shots[confirming]?.offset ?? 0)}.`}
-                {single.opening ? "" : ` ${single.final.length} of ${MAX_END_IMAGES} pins after.`}
+                {single.opening ? "" : ` ${single.final.length} pins on the cue sheet after (${MAX_END_IMAGES} per reel).`}
               </DialogDescription>
             </DialogHeader>
             <img src={frames[confirming]?.href} alt="" className="w-full rounded-md border border-border" />
@@ -375,11 +401,58 @@ function CutTake({ take, seriesId, slots, onPinned }) {
   );
 }
 
+/* ---- the reel plan ------------------------------------------------------- */
+
+// How a run will cut the chosen frames: the reels (one clip each), the seams a
+// later reel opens on, and the frames those seams cost — which are NOT drawn,
+// because the Series would refuse them at pin time. Takes the planner's own
+// result or the Worker's `plan` view (offsets in place of shots).
+function PlanSummary({ plan }) {
+  const reels = plan.reels.map((reel) => {
+    const offsets = reel.offsets || (reel.shots || []).map((s) => s.offset);
+    return { ...reel, offsets };
+  });
+  return (
+    <div className="space-y-1.5 rounded-md border border-border p-3 text-xs">
+      <div className="flex flex-wrap items-center gap-2">
+        <Eyebrow>Reels · {reels.length}</Eyebrow>
+        <span className="text-muted-foreground">
+          one clip per reel
+          {plan.seams.length
+            ? ` · reel changes at ${plan.seams.map((s) => fmtTime(s)).join(", ")}`
+            : " · no reel change"}
+        </span>
+      </div>
+      <div className="flex flex-wrap gap-1.5">
+        {reels.map((reel) => (
+          <Badge key={reel.reel} variant="muted">
+            Reel {reel.reel} · {reel.offsets.length} frame{reel.offsets.length === 1 ? "" : "s"}
+            {reel.offsets.length ? ` · ${fmtTime(reel.offsets[0])}–${fmtTime(reel.offsets.at(-1))}` : ""}
+          </Badge>
+        ))}
+      </div>
+      {plan.skipped.length ? (
+        <p className="flex items-start gap-1.5 text-amber-500">
+          <Scissors size={12} className="mt-0.5 shrink-0" />
+          {plan.skipped.length} chosen frame{plan.skipped.length === 1 ? "" : "s"} not drawn — a reel
+          change costs its opening beat and any pin under {MIN_OPENING_END_IMAGE_SECONDS}s after it:{" "}
+          {plan.skipped.map((f) => fmtTime(f.offset)).join(", ")}
+        </p>
+      ) : null}
+      {plan.refused ? (
+        <p className="flex items-start gap-1.5 text-amber-500">
+          <AlertTriangle size={12} className="mt-0.5 shrink-0" /> {plan.refused}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
 /* ---- every run this Series has rendered ---------------------------------- */
 
-// A RUN is one press of Render. A cue sheet longer than one clip holds is drawn
-// as several clips (see `splitShots`), all sharing a `runId`; a take filed
-// before runs existed is a run of one.
+// A RUN is one press of Render. A cue sheet longer than one reel is planned into
+// reels and drawn one clip per reel (see `planReels`), all sharing a `runId`; a
+// take filed before runs existed is a run of one.
 function groupRuns(takes) {
   const runs = new Map();
   for (const t of takes) {
@@ -497,7 +570,7 @@ function RunPlayer({ clips }) {
   );
 }
 
-function RunPanel({ run, seriesId, slots, onPinned }) {
+function RunPanel({ run, seriesId, slots, seams, onPinned }) {
   const done = run.clips.filter((t) => t.status === "done" && t.url);
   const many = run.clips.length > 1;
   return (
@@ -512,14 +585,17 @@ function RunPanel({ run, seriesId, slots, onPinned }) {
           <div key={take.id} className={cn("space-y-3", many && "rounded-md border border-border p-3")}>
             {many ? (
               <div className="flex items-center gap-2">
-                <span className="text-sm font-medium">Clip {take.part} of {take.parts}</span>
+                <span className="text-sm font-medium">
+                  {/* Runs planned by reel file `opensAt`; older runs were split by count. */}
+                  {take.opensAt === undefined ? "Clip" : "Reel"} {take.part} of {take.parts}
+                </span>
                 <span className="font-mono text-xs text-muted-foreground">{clipRange(take)}</span>
                 <Badge variant={statusVariant(take.status)}>{take.status}</Badge>
               </div>
             ) : null}
             {take.error ? <ErrorNote>{take.error}</ErrorNote> : null}
             {take.status === "done" && take.url ? (
-              <CutTake key={take.id} take={take} seriesId={seriesId} slots={slots} onPinned={onPinned} />
+              <CutTake key={take.id} take={take} seriesId={seriesId} slots={slots} seams={seams} onPinned={onPinned} />
             ) : take.status === "running" ? (
               <p className="flex items-center gap-2 text-sm text-muted-foreground">
                 <Loader2 size={14} className="animate-spin" /> drawing — this takes a few minutes
@@ -597,17 +673,24 @@ function ShotSheetTab() {
   const runs = useMemo(() => groupRuns(takes), [takes]);
   const selectedRun = runs.find((r) => r.id === selectedRunId) || null;
 
-  // How the chosen frames will be split, worked out the same way the Worker
-  // will — so the button can say "3 clips" before anything is spent.
-  const plannedClips = useMemo(() => {
-    if (!sheet) return [];
+  // The reels the chosen frames will be planned into, worked out with the same
+  // function the Worker runs — so the page can say "3 clips", where the seams
+  // fall and which frames they cost before anything is spent.
+  const plan = useMemo(() => {
+    if (!sheet) return null;
     const wanted = new Set(chosen);
     const shots = sheet.slots
       .filter((slot) => wanted.has(slot.offset) && !slot.refused)
       .map((slot) => ({ offset: slot.offset, kind: slot.kind, text: slot.brief }));
     const secs = Number(duration);
-    return Number.isInteger(secs) && secs >= MIN_DURATION_SECONDS ? splitShots(shots, secs) : [shots];
+    const beats = sheet.slots.map((slot) => slot.offset);
+    return planReels(shots, {
+      duration: Number.isInteger(secs) && secs >= MIN_DURATION_SECONDS ? secs : MAX_DURATION_SECONDS,
+      beats,
+    });
   }, [sheet, chosen, duration]);
+  const clipCount = plan?.clips.length || 0;
+  const skippedAt = useMemo(() => new Map((plan?.skipped || []).map((f) => [f.offset, f.reason])), [plan]);
 
   const run = async (fn) => {
     setBusy(true);
@@ -665,6 +748,7 @@ function ShotSheetTab() {
               <Slots
                 slots={sheet.slots}
                 chosen={chosen}
+                skipped={skippedAt}
                 onToggle={(offset) =>
                   setChosen((prev) =>
                     prev.includes(offset) ? prev.filter((o) => o !== offset) : [...prev, offset],
@@ -687,7 +771,7 @@ function ShotSheetTab() {
             </Button>
             <Button
               size="sm"
-              disabled={busy || !chosen.length || preview?.errors?.length}
+              disabled={busy || !chosen.length || preview?.errors?.length || Boolean(plan?.refused)}
               onClick={() => run(async () => {
                 const started = await sheetApi(`${url}/render`, {
                   method: "POST", body: JSON.stringify(body),
@@ -696,21 +780,18 @@ function ShotSheetTab() {
                 const ids = new Set(fresh.map((t) => t.id));
                 setTakes((prev) => [...fresh, ...prev.filter((t) => !ids.has(t.id))]);
                 setSelectedRunId(started.runId || started.take.id);
+                // The run wrote its seams onto the Series; cutting counts pins per reel.
+                if (started.plan) setSheet((prev) => (prev ? { ...prev, reelChanges: started.plan.seams } : prev));
                 // Some clips queued, a later one refused: the queued ones are
                 // real renders, so they are kept — and the refusal is shown.
                 if (started.error) setError(started.error);
               })}
             >
               {busy ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
-              {plannedClips.length > 1 ? `Render ${plannedClips.length} clips — costs money` : "Render — costs money"}
+              {`Render ${clipCount} clip${clipCount === 1 ? "" : "s"} — costs money`}
             </Button>
-            {plannedClips.length > 1 ? (
-              <span className="text-xs text-muted-foreground">
-                {chosen.length} frames don’t fit one {duration}s clip — drawn as {plannedClips.length} clips of{" "}
-                {plannedClips.map((c) => c.length).join(" · ")} frames, in running order.
-              </span>
-            ) : null}
           </div>
+          {plan ? <PlanSummary plan={plan} /> : null}
           {/* Next to the buttons, not at the top of the page: Render sits below
               a long list of frames, and an error up there is one nobody sees. */}
           {error ? <ErrorNote>{error}</ErrorNote> : null}
@@ -728,11 +809,15 @@ function ShotSheetTab() {
                     ))}
                   </div>
                 ) : null}
+                {preview.plan ? <PlanSummary plan={{ ...preview.plan, refused: null }} /> : null}
                 {(preview.parts || [preview]).map((part, i, all) => (
                   <div key={i} className={cn("space-y-2", all.length > 1 && "rounded-md border border-border p-3")}>
                     {all.length > 1 ? (
                       <div className="flex items-center gap-2">
-                        <span className="text-sm font-medium">Clip {i + 1} of {all.length}</span>
+                        <span className="text-sm font-medium">
+                          Reel {part.reel || i + 1} of {all.length}
+                          {part.opensAt ? ` · opens at ${fmtTime(part.opensAt)}` : ""}
+                        </span>
                         <span className="font-mono text-xs text-muted-foreground">{part.sheet ? clipRange(part) : ""}</span>
                       </div>
                     ) : null}
@@ -763,6 +848,7 @@ function ShotSheetTab() {
               run={selectedRun}
               seriesId={seriesId}
               slots={sheet.slots}
+              seams={sheet.reelChanges || []}
               onPinned={() => { invalidateTabCache("shotsheet"); revalidate(); load(seriesId); }}
             />
           ) : null}
