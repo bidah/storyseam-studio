@@ -32,10 +32,11 @@ resets (`resetsAt`) and stop — do not start the Film to "see what happens".
 
 ## 2. Start it
 
-`make_film` with the author's idea as `prompt`, in their words. Add `length`
-only when they asked for one and it is not already in the wording (a Film is
-2:00–4:30; none stated means 2:00; a stated length rounds up; longer caps at
-4:30 — tell them if theirs was capped).
+`make_film` with the author's idea as `prompt`, in their words. When they asked
+for a length, pass it as `seconds` (three minutes → 180) — it wins over the
+wording, like the length setting on the Auto input. A Film is 2:00–5:00 in 30s
+steps; none stated means 2:00; a stated length rounds up; longer caps at 5:00 —
+the result says `capped`, and then tell them.
 
 The result is one of:
 

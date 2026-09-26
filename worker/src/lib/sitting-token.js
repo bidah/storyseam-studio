@@ -19,7 +19,7 @@ export const SITTING_TOKEN_HEADER = "x-sitting-token";
 export const SITTING_ISSUER = "shot-studio-sitting";
 
 /**
- * How long a runner token is good for: long enough for a box to boot, a 4:30
+ * How long a runner token is good for: long enough for a box to boot, a 5:00
  * Film's slowest sitting (generation runs well behind realtime) and the upload;
  * short enough that a leaked one is dead before anyone can do much with it.
  */

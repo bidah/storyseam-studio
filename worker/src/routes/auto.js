@@ -2,7 +2,10 @@
 //
 //   GET  /api/auto/status         can a new Auto Film start right now?
 //                                 { ok, reason, paused, keys: { FAL_KEY, … } }
-//   POST /api/auto/films          start a Film on this project. Body { prompt }.
+//   POST /api/auto/films          start a Film on this project. Body { prompt, seconds? }.
+//                                 `seconds` is a chosen length, one of the Film's
+//                                 30s steps (120 … 300); it wins over a length the
+//                                 prompt states. Any other value is a 400.
 //                                 202 { ok, job }                     started now
 //                                 202 { ok, queued: true, position, film, job }
 //                                     queued behind the running Film (one at a
@@ -30,7 +33,7 @@
 // — one per project — and runs server-side; see lib/film-job.js.
 import { autoAvailable } from "../lib/auto-availability.js";
 import { normalizeProjectId } from "../lib/docs.js";
-import { MAX_PROMPT_CHARS } from "../lib/film-job.js";
+import { MAX_PROMPT_CHARS, checkFilmSeconds } from "../lib/film-job.js";
 import { readAutoSettings, writeAutoSettings } from "../lib/auto-settings.js";
 
 const REFUSAL_STATUS = { invalid: 400, busy: 409, allowance: 429, paused: 503, unavailable: 503 };
@@ -50,8 +53,12 @@ export function registerAuto(app) {
     let body;
     try { body = await c.req.json(); } catch { body = {}; }
     const prompt = typeof body?.prompt === "string" ? body.prompt.slice(0, MAX_PROMPT_CHARS + 1) : "";
+    const seconds = body?.seconds ?? undefined;
+    const badLength = checkFilmSeconds(seconds);
+    if (badLength) return c.json({ ok: false, refusal: { code: "invalid", message: badLength }, job: null }, 400);
     const res = await filmJobs(c).start({
       prompt,
+      ...(seconds !== undefined ? { seconds } : {}),
       userId,
       projectId: c.get("projectId"),
       episodeId: c.get("episodeId") || null,

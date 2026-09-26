@@ -14,11 +14,11 @@ import { USD_PER_MINUTE as SCORE_USD_PER_MINUTE } from './music-plan';
 // long the Film is, how many beats and pins that is, how many reels it takes,
 // and roughly what it will cost.
 //
-// A Film is 2:00–4:30 in 30s steps (CONTEXT.md, "Film"). No length stated means
+// A Film is 2:00–5:00 in 30s steps (CONTEXT.md, "Film"). No length stated means
 // 2:00; a stated length rounds UP to the next step, so "3:10" is 3:30 and
-// "90 seconds" is 2:00; anything past 4:30 is capped there, and the cap is
+// "90 seconds" is 2:00; anything past 5:00 is capped there, and the cap is
 // REPORTED — an author who asked for ten minutes should be told they are
-// getting four and a half, not find out by watching.
+// getting five, not find out by watching.
 //
 // Pure, and vendored by `npm run series:sync` into the Worker and the agent:
 // the confirm card shows the same plan the job runs and the chat quotes.
@@ -32,10 +32,10 @@ import { USD_PER_MINUTE as SCORE_USD_PER_MINUTE } from './music-plan';
 
 /** The Film's length steps (CONTEXT.md). */
 export const FILM_MIN_SECONDS = 120;
-export const FILM_MAX_SECONDS = 270;
+export const FILM_MAX_SECONDS = 300;
 export const FILM_STEP_SECONDS = 30;
 export const FILM_DEFAULT_SECONDS = FILM_MIN_SECONDS;
-/** Every length a Film can be: 120, 150, … 270. */
+/** Every length a Film can be: 120, 150, … 300. */
 export const FILM_STEPS: readonly number[] = Array.from(
   { length: (FILM_MAX_SECONDS - FILM_MIN_SECONDS) / FILM_STEP_SECONDS + 1 },
   (_, i) => FILM_MIN_SECONDS + i * FILM_STEP_SECONDS,
@@ -48,8 +48,8 @@ export const PIN_INTERVAL_SECONDS = 4;
  * The beat spacing a Film of this length is actually cut at: every 4s, unless
  * that would put more beats on the cue sheet than a Series takes
  * (`MAX_DIRECTIONS`, 64 — a whole-sheet ceiling, not a per-reel one). Then the
- * grid widens to the smallest whole second that fits: 4:30 is cut every 5s, 54
- * beats. The plan and the Auto job's cue sheet both read this, so the beat
+ * grid widens to the smallest whole second that fits: 4:30 and 5:00 are cut
+ * every 5s, 54 and 60 beats. The plan and the Auto job's cue sheet both read this, so the beat
  * count the author was quoted is the one the Series gets.
  */
 export function beatSpacing(seconds: number): number {
@@ -119,11 +119,11 @@ export type FilmEstimate = {
 export type FilmPlan = {
   /** The Film's length: one of `FILM_STEPS`. */
   seconds: number;
-  /** "2:00" … "4:30". */
+  /** "2:00" … "5:00". */
   length: string;
   /** What was asked for, in seconds, or null when nothing was stated. */
   requestedSeconds: number | null;
-  /** True when the request was longer than 4:30 and was cut down to it. */
+  /** True when the request was longer than 5:00 and was cut down to it. */
   capped: boolean;
   /** Beats on the cue sheet, one per `spacing` seconds (the last may be shorter). ≤ 64. */
   beats: number;

@@ -1,6 +1,7 @@
 // /director-story — the SIMPLE view: the hero and one input. Nothing else.
 //
-// Submitting starts a Film (POST /api/auto/films) and moves the URL to that
+// Submitting starts a Film (POST /api/auto/films { prompt, seconds } — the
+// length from the input's settings gear) and moves the URL to that
 // Film's own page, /director-story/create/:filmId (routes/director-story-film
 // .jsx) — the URL is the state, so a reload never loses the run. A Film queued
 // behind another keeps its id when it starts (worker/src/lib/film-queue.js), so
@@ -44,7 +45,7 @@ function SimpleStory({ signedIn }) {
     return () => { live = false; };
   }, [projectId]);
 
-  const start = async (prompt) => {
+  const start = async (prompt, seconds) => {
     if (submitting) return false;
     setSubmitting(true);
     setNote(null);
@@ -63,7 +64,8 @@ function SimpleStory({ signedIn }) {
       const { res, data } = await getJSON("/api/auto/films", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt }),
+        // The gear's length: it wins over any length the prompt states.
+        body: JSON.stringify(seconds ? { prompt, seconds } : { prompt }),
       });
       if (!res.ok || !data.ok) {
         setNote(data.refusal?.message || data.error || `Couldn't start (${res.status}).`);

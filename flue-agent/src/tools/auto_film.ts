@@ -13,13 +13,14 @@ import { defineTool } from "@flue/runtime";
 import * as v from "valibot";
 import { d } from "./_util.js";
 import type { Api, Json } from "../lib/api.js";
+import { FILM_STEPS, filmLength, formatLength } from "../lib/film-plan.js";
 
 type Step = {
   key?: string; label?: string; status?: string; summary?: string | null;
   error?: string | null; pending?: boolean;
 };
 type Job = {
-  id?: string; prompt?: string; status?: string; error?: string | null; auto?: boolean;
+  id?: string; prompt?: string; seconds?: number; status?: string; error?: string | null; auto?: boolean;
   steps?: Step[]; spend?: Record<string, number>; spent?: number;
   confirm?: { status?: string; after?: string; summary?: string; plan?: unknown };
   film?: Record<string, unknown>;
@@ -63,6 +64,7 @@ function viewJob(job: Job | null | undefined): Json {
   const out: Record<string, Json> = {
     id: job.id ?? null,
     prompt: job.prompt ?? null,
+    ...(typeof job.seconds === "number" ? { seconds: job.seconds } : {}),
     status: job.status ?? null,
     auto: job.auto !== false,
     steps: (job.steps || []).map((s) => ({
@@ -105,22 +107,30 @@ export const makeFilm = (api: Api) =>
         v.string(),
         "The author's idea in their own words — what the Film is about. Pass it through; do not expand it into a script (the job derives the Idea and the World itself). Max 4000 characters.",
       ),
-      length: v.optional(
+      seconds: v.optional(
         d(
-          v.string(),
-          'Optional length the author asked for, e.g. "3:00" or "three minutes". A Film is 2:00–4:30 in 30s steps: no length means 2:00, a stated one rounds UP, longer is capped at 4:30. Omit when the prompt already says it.',
+          v.number(),
+          `Optional length the author asked for, IN SECONDS (three minutes → 180, "3:10" → 190). A Film is 2:00–5:00 in 30s steps (${FILM_STEPS.join(", ")}): no length means 2:00, anything else rounds UP to the next step, longer is capped at 5:00 (the result says \`capped\` — tell the author). It wins over any length in the prompt — the same as the length setting on the Auto surface's input.`,
         ),
       ),
     }),
     async run({ data: input, signal }): Promise<{ output: Json }> {
-      const idea = String(input.prompt ?? "").trim();
-      const length = String(input.length ?? "").trim();
-      // PREPENDED, not appended: the job reads the FIRST length a prompt
-      // states (film-plan.ts parseLength), so an explicit length has to come
-      // before any the author's wording happens to contain to actually win.
-      const prompt = length ? `Length: ${length}. ${idea}` : idea;
+      const prompt = String(input.prompt ?? "").trim();
+      // The same `seconds` the surface's length gear sends: one of the steps,
+      // so a spoken "three minutes and ten" is rounded here, not refused there.
+      const asked = typeof input.seconds === "number" && Number.isFinite(input.seconds) && input.seconds > 0
+        ? input.seconds
+        : null;
+      const chosen = asked == null ? null : filmLength(asked);
+      const lengthNote = chosen
+        ? { seconds: chosen.seconds, length: formatLength(chosen.seconds), ...(chosen.capped ? { capped: true } : {}) }
+        : {};
       try {
-        const res = (await api.post("/api/auto/films", { prompt }, signal)) as {
+        const res = (await api.post(
+          "/api/auto/films",
+          chosen ? { prompt, seconds: chosen.seconds } : { prompt },
+          signal,
+        )) as {
           job?: Job; queued?: boolean; position?: number; film?: Job;
         };
         if (res.queued) {
@@ -130,6 +140,7 @@ export const makeFilm = (api: Api) =>
               queued: true,
               position: res.position ?? null,
               filmId: (res.film as Job | undefined)?.id ?? null,
+              ...lengthNote,
               running: viewJob(res.job),
               next: `Queued behind the Film already being made on this project (position ${res.position ?? "?"}). It starts on its own when that one ends. Tell the author; do not start it again.`,
             },
@@ -139,6 +150,7 @@ export const makeFilm = (api: Api) =>
           output: {
             started: true,
             filmId: res.job?.id ?? null,
+            ...lengthNote,
             job: viewJob(res.job),
             next: 'Started. navigate to "auto", tell the author the Film is being made there (20–40 minutes), and end the turn.',
           },

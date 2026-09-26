@@ -4,5 +4,5 @@ A reel holds 16 pins, so a Film longer than about a minute needs reel changes; w
 
 ## Consequences
 
-- Films are capped at 4:30: at a pin every ~4s, 5 reels minus what 4 seams cost leaves ~72 usable pins.
+- Films are capped at 5:00: the 64-beat ceiling widens the grid to a pin every 5s past 4:16, so 5:00 is 60 beats and 56 pins in 4 reels (3 seams) — inside both the 64-beat and the 5-reel limits. (The cap was 4:30 before that was checked against the Reel planner.)
 - A reel change moves the film by up to one Director chunk (15s) at each seam; that drift is accepted as the price of density.
