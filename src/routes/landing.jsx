@@ -47,15 +47,16 @@ import { HUD, DISPLAY, BODY } from "@/lib/hudTheme";
 // StorySeam homepage at `/` is drawn from the same system — one copy of the
 // tokens, two public pages.
 
-// The demo reel. Left empty until the clip is cut — the player then renders its
-// poster frame with a "coming" label instead of a broken <video>, so shipping
-// the page never waits on the render. Fill BOTH fields when it exists: a video
-// with no poster shows a black rectangle for as long as the first frame takes.
+// The demo reel: Mecha Launch, a scored Stage sitting upscaled to 1080p with the
+// ByteDance upscaler (the `upscales` doc of p_b2dafd94). An empty `src` renders
+// the "coming" placeholder instead of a broken <video>. Keep BOTH fields: a
+// video with no poster shows a black rectangle for as long as the first frame
+// takes.
 //   src:    an mp4 (or HLS) URL — R2 or any CDN
 //   poster: a still from the clip, same aspect ratio
 const LANDING_VIDEO = {
-  src: "",
-  poster: "",
+  src: "/files/media/p_b2dafd94/upscaled/c67cd49e-a8ba-4436-ab39-3efa93f5310f_1080p.mp4",
+  poster: "/director-harness-poster.jpg",
 };
 
 // The claims, in the order they matter to someone deciding whether this is real:
