@@ -33,7 +33,6 @@ import { ArrowUp, Check, Circle, CircleAlert, Loader2, Plus, RotateCw } from "lu
 import { useSession } from "@/lib/auth-client";
 import { getProjectId, setProjectId } from "@/lib/projectFetch";
 import { useProjectEvents } from "@/lib/useProjectEvents";
-import { Splash } from "@/components/Login";
 import { HUD, DISPLAY, BODY, MONO } from "@/lib/hudTheme";
 import { cn } from "@/lib/utils";
 
@@ -97,35 +96,25 @@ async function fetchCurrent() {
   return data.job || null;
 }
 
-// ── Auth + project gate ────────────────────────────────────────────────────
+// ── Auth gate ──────────────────────────────────────────────────────────────
+//
+// No loading screen: the hero and input need nothing fetched, so they render at
+// once. The session, the project and any Film already in progress resolve
+// quietly behind them; a signed-out visitor is sent to sign in.
 
 export function Component() {
   const { data: session, isPending } = useSession();
-  if (isPending) return <Splash />;
-  if (!session) return <Navigate to={`/login?next=${encodeURIComponent(PATH)}`} replace />;
-  return <ProjectGate />;
+  if (!isPending && !session) return <Navigate to={`/login?next=${encodeURIComponent(PATH)}`} replace />;
+  return <DirectorStory signedIn={!!session} />;
 }
 
-function ProjectGate() {
-  const [projectId, setPid] = useState(null);
-  const [error, setError] = useState(null);
-  useEffect(() => {
-    let live = true;
-    resolveProject()
-      .then((id) => live && setPid(id))
-      .catch((e) => live && setError(String(e?.message || e)));
-    return () => { live = false; };
-  }, []);
-  if (error) {
-    return (
-      <Page>
-        <p className="m-auto px-4 text-center text-[var(--br-secondary)]">{error}</p>
-      </Page>
-    );
-  }
-  if (!projectId) return <Splash />;
-  // Keyed so a project change (another tab) starts from a clean slate.
-  return <DirectorStory key={projectId} />;
+// Live updates for one project. A component of its own so the event stream
+// only opens once the project is known (the fetch shim scopes it).
+function LiveSync({ onEvent, onResync }) {
+  const { last, resyncs } = useProjectEvents("/api/data/events", { data: true });
+  useEffect(() => { if (last) onEvent(last); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [last]);
+  useEffect(() => { if (resyncs) onResync(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [resyncs]);
+  return null;
 }
 
 function Page({ children, className }) {
@@ -142,9 +131,9 @@ function Page({ children, className }) {
 
 // ── The page ───────────────────────────────────────────────────────────────
 
-function DirectorStory() {
+function DirectorStory({ signedIn }) {
   const [job, setJob] = useState(null);
-  const [loaded, setLoaded] = useState(false);
+  const [projectId, setPid] = useState(null);
   const [note, setNote] = useState(null); // the one line under the input
   const [submitting, setSubmitting] = useState(false);
   // A Film queued behind another keeps its id when it starts (film-queue.js),
@@ -164,22 +153,31 @@ function DirectorStory() {
     } catch { /* the next event or poll tries again */ }
   }, []);
 
-  // On load: resume a running or finished Film (unless it was dismissed).
+  // The project, resolved in the background once signed in. A submit made
+  // before it lands waits on the same promise.
+  const projectReady = useRef(null);
   useEffect(() => {
+    if (!signedIn || projectReady.current) return;
+    projectReady.current = resolveProject();
+    projectReady.current.then(setPid).catch((e) => setNote(String(e?.message || e)));
+  }, [signedIn]);
+
+  // Once the project is known: resume a running or finished Film (unless it
+  // was dismissed). The simple view is already on screen meanwhile.
+  useEffect(() => {
+    if (!projectId) return;
     let live = true;
     fetchCurrent()
       .then((current) => {
         if (!live) return;
         if (current && SHOWN.has(current.status) && current.id !== readDismissed()) setJob(current);
       })
-      .catch(() => {})
-      .finally(() => live && setLoaded(true));
+      .catch(() => {});
     return () => { live = false; };
-  }, []);
+  }, [projectId]);
 
   // Live updates: every step transition carries the whole public job.
-  const { last, resyncs } = useProjectEvents("/api/data/events", { data: true });
-  useEffect(() => {
+  const onEvent = (last) => {
     if (last?.resource !== "auto" || !last.job) return;
     const next = last.job;
     if (!job && next.id === queuedId.current) {
@@ -189,9 +187,7 @@ function DirectorStory() {
       return;
     }
     setJob((prev) => (prev && prev.id === next.id ? next : prev));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [last]);
-  useEffect(() => { if (resyncs) refresh(); }, [resyncs, refresh]);
+  };
 
   // Backstop poll while a Film is running.
   const active = !!job && ACTIVE.has(job.status);
@@ -206,6 +202,8 @@ function DirectorStory() {
     setSubmitting(true);
     setNote(null);
     try {
+      if (!projectReady.current) throw new Error("Still signing you in — try again in a moment.");
+      await projectReady.current;
       // Auto is always on here. The setting is per user; flip it on if off.
       const { data: settings } = await getJSON("/api/auto/settings");
       if (settings?.auto === false) {
@@ -245,9 +243,76 @@ function DirectorStory() {
     setNote(null);
   };
 
-  if (!loaded) return <Splash />;
-  if (job) return <StoryView job={job} onNew={newStory} />;
-  return <SimpleView onSubmit={start} submitting={submitting} note={note} />;
+  return (
+    <>
+      {projectId ? <LiveSync key={projectId} onEvent={onEvent} onResync={refresh} /> : null}
+      {job
+        ? <StoryView job={job} onNew={newStory} />
+        : <SimpleView onSubmit={start} submitting={submitting} note={note} />}
+    </>
+  );
+}
+
+// ── The dots behind the hero ───────────────────────────────────────────────
+//
+// Vanta's DOTS field (three.js r134, which Vanta is built against) with
+// `showLines: false` — the radiating sphere of lines in the middle is gone and
+// only the dots remain. Loaded lazily so three.js ships with this page alone,
+// and coloured from the page's own tokens so it follows the theme.
+
+function cssColor(name, fallback) {
+  const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  const probe = document.createElement("span");
+  probe.style.color = v || fallback;
+  document.body.appendChild(probe);
+  const rgb = getComputedStyle(probe).color.match(/\d+(\.\d+)?/g)?.map(Number) ?? [0, 0, 0];
+  probe.remove();
+  return (Math.round(rgb[0]) << 16) | (Math.round(rgb[1]) << 8) | Math.round(rgb[2]);
+}
+
+function DotsBackground() {
+  const ref = useRef(null);
+  useEffect(() => {
+    let effect = null;
+    let host = null;
+    let cancelled = false;
+    (async () => {
+      const [THREE, { default: DOTS }] = await Promise.all([
+        import("three"),
+        import("vanta/dist/vanta.dots.min"),
+      ]);
+      if (cancelled || !ref.current) return;
+      // Vanta rewrites the element it is given, so it gets one React never
+      // renders: created here, removed on cleanup.
+      host = document.createElement("div");
+      host.style.cssText = "position:absolute;inset:0";
+      ref.current.appendChild(host);
+      const dot = cssColor("--br-tertiary", "#e8622c");
+      effect = DOTS({
+        el: host,
+        THREE,
+        mouseControls: true,
+        touchControls: true,
+        gyroControls: false,
+        minHeight: 200,
+        minWidth: 200,
+        scale: 1,
+        scaleMobile: 1,
+        color: dot,
+        color2: dot,
+        backgroundColor: cssColor("--br-neutral", "#0b0c0e"),
+        size: 3,
+        spacing: 35,
+        showLines: false,
+      });
+    })().catch(() => { /* no WebGL: the plain background stands */ });
+    return () => {
+      cancelled = true;
+      try { effect?.destroy(); } catch { /* already torn down */ }
+      host?.remove();
+    };
+  }, []);
+  return <div ref={ref} aria-hidden className="pointer-events-none fixed inset-0 z-0" />;
 }
 
 // ── Simple view: hero + input ──────────────────────────────────────────────
@@ -256,12 +321,13 @@ function SimpleView({ onSubmit, submitting, note }) {
   const [prompt, setPrompt] = useState("");
   const ref = useRef(null);
 
-  // Grow with the text, up to a cap, then scroll inside.
+  // A real text area: five lines tall to start, grows with the text up to a
+  // cap, then scrolls inside.
   useLayoutEffect(() => {
     const el = ref.current;
     if (!el) return;
     el.style.height = "auto";
-    el.style.height = `${Math.min(el.scrollHeight, 240)}px`;
+    el.style.height = `${Math.max(Math.min(el.scrollHeight, 360), 136)}px`;
   }, [prompt]);
 
   const submit = async (e) => {
@@ -272,15 +338,18 @@ function SimpleView({ onSubmit, submitting, note }) {
   };
 
   return (
-    <Page className="items-center justify-center px-4 animate-in fade-in duration-300">
-      <main className="flex w-full max-w-2xl flex-col items-center gap-8 text-center">
+    <Page className="relative items-center justify-center px-4 animate-in fade-in duration-300">
+      <DotsBackground />
+      <main className="relative z-10 flex w-full max-w-2xl flex-col items-center gap-8 text-center">
+        {/* One line: wider than the input column, and sized down with the
+            viewport so it never wraps. */}
         <h1
-          className="w-full leading-[0.95]"
+          className="w-screen max-w-5xl whitespace-nowrap px-4 leading-none"
           style={{
             fontFamily: DISPLAY,
             fontWeight: 700,
             letterSpacing: "0.02em",
-            fontSize: "min(5rem, calc((100vw - 2rem) / 9))",
+            fontSize: "min(3.25rem, calc((100vw - 2rem) / 19))",
           }}
         >
           TEXT TO LONG FORM STORIES IN SECONDS
@@ -289,7 +358,7 @@ function SimpleView({ onSubmit, submitting, note }) {
           <div className="flex items-end gap-2 border border-[var(--br-secondary)]/40 bg-[var(--br-surface)] p-2 text-left focus-within:border-[var(--br-primary)]">
             <textarea
               ref={ref}
-              rows={1}
+              rows={5}
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
               onKeyDown={(e) => {
@@ -298,7 +367,7 @@ function SimpleView({ onSubmit, submitting, note }) {
               placeholder="Tell what story premise you have"
               aria-label="Story premise"
               disabled={submitting}
-              className="min-h-10 flex-1 resize-none bg-transparent px-2 py-2 text-base text-[var(--br-primary)] placeholder:text-[var(--br-secondary)] focus:outline-none disabled:opacity-60"
+              className="min-h-34 flex-1 resize-none bg-transparent px-3 py-3 text-base leading-relaxed text-[var(--br-primary)] placeholder:text-[var(--br-secondary)] focus:outline-none disabled:opacity-60"
             />
             <button
               type="submit"
