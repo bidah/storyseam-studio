@@ -10,7 +10,7 @@ import { runScoreStage } from "../../worker/src/lib/film-stages/score.js";
 import { createSeries, readSeries, readSittings, updateSittings } from "../../worker/src/lib/director.js";
 import { directorKey, mixArgs, mixJobScript, parseMeasurement, scoredName } from "../../worker/src/lib/film-score.js";
 import { bedVolumeExpression, pickTurns, DEFAULT_MIX } from "../../worker/src/lib/score-mix.ts";
-import { planTotalMs, renderCostUsd } from "../../worker/src/lib/music-plan.ts";
+import { planTotalMs, renderCostUsd, validatePlan } from "../../worker/src/lib/music-plan.ts";
 import { FILM_RATES_USD } from "../../worker/src/lib/film-plan.ts";
 
 const PID = "p1";
@@ -87,7 +87,7 @@ function fakeFal() {
       return Response.json({ audio: { url: `https://v3.fal.media/files/${m[1]}.mp3`, duration: FILM_SECONDS } });
     }
     if (u !== "https://queue.fal.run/elevenlabs/music/v2.5") throw new Error(`unexpected fetch ${u}`);
-    const id = `cue-request-${++n}`;
+    const id = `c${++n}-request`;
     submits.push({ body: JSON.parse(init.body), auth: init.headers.authorization, id });
     requests.set(id, { status: "IN_QUEUE" });
     return Response.json({ request_id: id });
@@ -97,6 +97,7 @@ function fakeFal() {
     submits,
     finish: () => { for (const r of requests.values()) if (r.status === "IN_QUEUE") r.status = "COMPLETED"; },
     failAll: () => { for (const r of requests.values()) if (r.status === "IN_QUEUE") Object.assign(r, { status: "FAILED", error: "fal could not write it" }); },
+    failOne: (id) => Object.assign(requests.get(id), { status: "FAILED", error: "fal could not write it" }),
   };
 }
 
@@ -169,12 +170,12 @@ describe("the Score stage", () => {
     job = await advanceFilm(job, deps); // cue filed → mix started
     step = job.steps.at(-1);
     expect(step.pending).toBe(true);
-    expect(step.result.cue).toMatchObject({ status: "done", url: `/director-media/cue_${seriesId}_cue-request-1.mp3` });
-    expect(await env.BUCKET.head(directorKey(PID, `cue_${seriesId}_cue-request-1.mp3`))).toBeTruthy();
+    expect(step.result.cue).toMatchObject({ status: "done", url: `/director-media/cue_${seriesId}_c1-request.mp3` });
+    expect(await env.BUCKET.head(directorKey(PID, `cue_${seriesId}_c1-request.mp3`))).toBeTruthy();
     const mixSpec = box.scorer.startMix.mock.calls[0][1];
     expect(mixSpec).toMatchObject({
       filmKey: directorKey(PID, SITTING_FILE),
-      cueKey: directorKey(PID, `cue_${seriesId}_cue-request-1.mp3`),
+      cueKey: directorKey(PID, `cue_${seriesId}_c1-request.mp3`),
       durationMs: 127400,
       hasAudio: true,
       mix: { ducks: [[40, 44]], spans: [] },
@@ -341,6 +342,138 @@ describe("the Score stage", () => {
     fal.finish();
     job = await advanceFilm(job, deps);
     expect(box.scorer.startMix.mock.calls[0][1].mix.spans).toEqual([]);
+  });
+
+  describe("from the Shot list's music cues", () => {
+    // Written on the PLANNED clock (the Film plan's 120 s); the film runs 127.4 s.
+    const MUSIC = [
+      { startShot: 1, cue: "wonder", energy: 2, note: "the dark lamp", startSec: 0, shotId: "01" },
+      { startShot: 8, cue: "whimsy", energy: 3, note: "the cat plays", startSec: 30, shotId: "08" },
+      { startShot: 16, cue: "silence", energy: 1, note: "held breath", startSec: 60, shotId: "16" },
+      { startShot: 18, cue: "action", energy: 5, note: "the storm", startSec: 66, shotId: "18" },
+      { startShot: 24, cue: "triumph", energy: 4, note: "relit", startSec: 90, shotId: "24" },
+    ];
+    const withCues = (sittingStage, deps) => [
+      { key: "shotlist", label: "Shot list", run: async () => ({ summary: "30 shots", result: { count: 30, seconds: 120, music: MUSIC } }) },
+      ...stagesWith(sittingStage, deps),
+    ];
+    const noWriter = {
+      json: vi.fn(async (opts) => {
+        if (/composition plan/.test(opts.messages[0].content)) throw new Error("the cue path never asks for a plan");
+        return { tags: ["warm strings", "celesta"] };
+      }),
+    };
+
+    it("renders one piece per family run, polls them all, mixes N cues at their offsets", async () => {
+      const { env, job: job0, seriesId, sittingStage } = await setup();
+      const box = fakeScorer(env);
+      const fal = fakeFal();
+      const deps = { env, model: noWriter, stages: withCues(sittingStage, { scorer: box.scorer, fetch: fal.fetch }) };
+      let job = await advanceFilm(job0, deps); // shot list
+      job = await advanceFilm(job, deps); // sitting
+      job = await advanceFilm(job, deps); // measure started
+      await box.finish("measure");
+      job = await advanceFilm(job, deps); // measured → pieces planned, all submitted
+      let step = job.steps.at(-1);
+      expect(step.result.planBy).toBe("cues");
+      // On the measured clock: 30 s → 31.85 → the cut at 31.2; 60 → 63.7 → 64.1; 66 → 70.1 (no cut); 90 → 95.6.
+      expect(step.result.cues.map((c) => [c.cue, c.at])).toEqual([
+        ["wonder", 0], ["whimsy", 31.2], ["silence", 64.1], ["action", 70.1], ["triumph", 95.6],
+      ]);
+      expect(step.result.pieces.map((p) => [p.cues, p.startMs, p.lengthMs])).toEqual([
+        [["wonder", "whimsy"], 0, 64_100], // into the silence: no overlap
+        [["action"], 70_100, 26_500], // 1 s into Triumph, for the crossfade
+        [["triumph"], 95_600, 31_800],
+      ]);
+      expect(fal.submits).toHaveLength(3);
+      expect(fal.submits.every((x) => x.auth === "Key platform-key")).toBe(true);
+      fal.submits.forEach((x, i) => {
+        const plan = { chunks: x.body.composition_plan.chunks, seed: x.body.seed };
+        expect(validatePlan(plan, step.result.pieces[i].lengthMs)).toEqual([]);
+        expect(Number.isInteger(x.body.seed)).toBe(true);
+      });
+      expect(new Set(fal.submits.map((x) => x.body.seed)).size).toBe(3);
+      expect(fal.submits[0].body.composition_plan.chunks.map((c) => c.text)).toEqual(["[Wonder]", "[Whimsy]"]);
+      expect(noWriter.json.mock.calls.every(([o]) => !/composition plan/.test(o.messages[0].content))).toBe(true);
+      expect(step.summary).toMatch(/Writing the score — 3 pieces, 0 of 3 done/);
+
+      job = await advanceFilm(job, deps); // still in the queue — nothing re-sent
+      expect(fal.submits).toHaveLength(3);
+      expect(box.scorer.startMix).not.toHaveBeenCalled();
+
+      fal.finish();
+      job = await advanceFilm(job, deps); // every piece filed → the mix started
+      step = job.steps.at(-1);
+      expect(step.result.pieces.every((p) => p.render.status === "done")).toBe(true);
+      expect(step.result.cue.url).toBe(`/director-media/cue_${seriesId}_c1-request.mp3`);
+      const spec = box.scorer.startMix.mock.calls[0][1];
+      expect(spec.cueKey).toBeUndefined();
+      expect(spec.cues).toEqual([
+        { key: directorKey(PID, `cue_${seriesId}_c1-request.mp3`), offsetMs: 0, durationMs: 64_100, fadeInSec: 1, fadeOutSec: 1.5 },
+        { key: directorKey(PID, `cue_${seriesId}_c2-request.mp3`), offsetMs: 70_100, durationMs: 26_500, fadeInSec: 1.5, fadeOutSec: 1 },
+        { key: directorKey(PID, `cue_${seriesId}_c3-request.mp3`), offsetMs: 95_600, durationMs: 31_800, fadeInSec: 1, fadeOutSec: 0 },
+      ]);
+      // The silence also mutes the bed, as a guarantee.
+      expect(spec.mix.spans).toEqual([{ from: 64.1, to: 70.1, db: -80, rampSec: 1.5 }]);
+      expect(spec.mix.ducks).toEqual([[40, 44]]);
+      // …and the real ffmpeg command takes the three pieces.
+      const script = mixJobScript({ WORKER_PUBLIC_URL: "https://studio.test", INGEST_TOKEN: "t" }, spec);
+      expect(script).toContain("adelay=delays=70100:all=1");
+      expect(script).toContain("amix=inputs=3:duration=longest:normalize=0");
+
+      await box.finish("mix");
+      job = await advanceFilm(job, deps);
+      step = job.steps.at(-1);
+      expect(step.status).toBe("done");
+      expect(step.summary).toBe("3 pieces: Wonder → Whimsy | silence | Action | Triumph · 1 silence · scored film filed beside the sitting");
+      const kept = (await readSittings(env, PID)).kept[0];
+      expect(kept.scoredFile).toBe(step.result.file);
+      expect(kept.cueUrl).toBe(step.result.cue.url);
+      expect(kept.cuePieces.map((p) => [p.url, p.offsetMs, p.cues])).toEqual(
+        step.result.pieces.map((p) => [p.render.url, p.startMs, p.cues]),
+      );
+      const series = await readSeries(env, PID, seriesId);
+      const filed = series.audioPieces.filter((p) => p.kind === "music");
+      expect(filed).toHaveLength(3);
+      expect(filed.find((p) => p.audioUrl === step.result.pieces[1].render.url).offset).toBe(70.1);
+      // Spend: two sandbox jobs and each piece at fal's per-minute price.
+      expect(job.spend.score).toBeCloseTo(
+        2 * FILM_RATES_USD.sandboxMinute + renderCostUsd(64_100) + renderCostUsd(26_500) + renderCostUsd(31_800), 6,
+      );
+    });
+
+    it("a failed piece throws; the retry re-renders only that piece", async () => {
+      const { env, job: job0, sittingStage } = await setup();
+      const box = fakeScorer(env);
+      const fal = fakeFal();
+      const deps = { env, model: noWriter, stages: withCues(sittingStage, { scorer: box.scorer, fetch: fal.fetch }) };
+      let job = await advanceFilm(job0, deps);
+      job = await advanceFilm(job, deps);
+      job = await advanceFilm(job, deps);
+      await box.finish("measure");
+      job = await advanceFilm(job, deps);
+      expect(fal.submits).toHaveLength(3);
+
+      fal.failOne("c2-request");
+      job = await advanceFilm(job, deps);
+      expect(job.steps.at(-1)).toMatchObject({ status: "retrying", failures: 1 });
+      expect(job.steps.at(-1).error).toMatch(/Piece 2 of the score failed \(request c2-request\)/);
+
+      fal.finish(); // the other two finish meanwhile
+      job = await advanceFilm(job, deps); // the retry: piece 2 sent again, alone
+      expect(fal.submits).toHaveLength(4);
+      expect(fal.submits[3].body.composition_plan.chunks.map((c) => c.text)).toEqual(["[Action]"]);
+      const pieces = job.steps.at(-1).result.pieces;
+      expect(pieces.map((p) => p.render.status)).toEqual(["done", "running", "done"]);
+      expect(pieces[1].render).toMatchObject({ requestId: "c4-request", attempt: 2 });
+
+      fal.finish();
+      job = await advanceFilm(job, deps);
+      expect(box.scorer.startMix).toHaveBeenCalledTimes(1);
+      await box.finish("mix");
+      job = await advanceFilm(job, deps);
+      expect(job.status).toBe("done");
+    });
   });
 
   it("throws without a kept sitting", async () => {

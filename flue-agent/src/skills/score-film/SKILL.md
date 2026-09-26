@@ -65,8 +65,22 @@ to nothing over it (1.5 s ramps out and back in).
 Rules of thumb: a 2–5 minute film has 2–4 silences, each 4–15 s, never in the
 first 3 s or the last 6 s. The music after a silence re-enters CHANGED — a
 silence is a hinge, not a pause — and every big story turn is marked by a change
-in the music. The Auto Film job's Score stage writes its plan by the same rules,
-from the shot list's story moments laid on the film's measured clock.
+in the music.
+
+## How the Auto Film scores (for reference)
+
+The Auto Film job does not write one plan after the fact. Its Shot list stage
+writes **music cues** with the shots — one fixed vocabulary (suspense, dread,
+adventure, action, party, wonder, whimsy, tender, triumph, sad, silence), each
+starting at a shot, with an energy 1–5. The Score stage lays them on the
+MEASURED film (scaled, then snapped to the nearest real cut) and renders
+**pieces**, not one song: consecutive cues of one family are one render (one
+chunk per cue); a change of family starts a new piece, crossfaded over a
+second; a `silence` cue is a gap nobody renders (and is still muted in the
+mix). 1–4 pieces per Film. A Film with no cues is scored the old way — one cue,
+written from the story moments. When the author asks why a Film's music turns
+where it does, the cue layer is the answer (the score step's `cues` and
+`pieces`).
 
 ## The brief is the Series', not the cue's
 

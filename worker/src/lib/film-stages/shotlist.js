@@ -12,11 +12,27 @@
 // agent's save_shotlist use — as a `replace`, so stored shot ids are preserved
 // by content and names are pulled to the World roster exactly as they are for
 // every other writer. The job never mints or renumbers ids itself.
+//
+// ── The music cue layer ────────────────────────────────────────────────────
+// The same answer carries the score's pacing: a top-level `music` list of cues
+// from ONE fixed vocabulary (MUSIC_CUES in src/lib/music-cues.ts — suspense,
+// dread, adventure, action, party, wonder, whimsy, tender, triumph, sad,
+// silence), each starting at a shot (1-based) and running until the next.
+// Written HERE, by the model deciding where the story turns, the music turns
+// with the story — the Score stage no longer has to guess sections from the
+// finished film. Pure code repairs the layer (`repairMusicCues`) and it rides
+// in this stage's RESULT (`result.music`, by shot index, planned second and
+// shot id), never in a document: it is the Film job's own intermediate state.
+// Shot ids are minted by saveShotlist and not returned by a replace, so they
+// are read back from the saved list. No music in the answer is no cues — the
+// stage still succeeds and the Score stage scores the old way.
 import { SHOTLIST_FIELDS } from "../auto-prompts.generated.js";
 import { planFilm, formatLength } from "../film-plan.ts";
 import { readWorld } from "../../routes/world.js";
 import { saveShotlist } from "../../routes/shotlist.js";
 import { DEFAULT_FILM_LANGUAGE } from "../film-sound.js";
+import { MUSIC_CUES, MUSIC_CUE_NAMES, musicCueRange, repairMusicCues } from "../music-cues.ts";
+import { readDoc } from "../docs.js";
 
 const str = (v) => (typeof v === "string" ? v : v == null ? "" : String(v)).trim();
 
@@ -29,6 +45,7 @@ export function shotlistMessages({ idea, world, seconds, language = DEFAULT_FILM
     .map((l) => `- ${l.slug || l.name} (${l.name})${l.description ? `: ${l.description}` : ""}`)
     .join("\n");
   const approx = Math.round(seconds / 4);
+  const [lo, hi] = musicCueRange(seconds);
   const system = [
     "You are the writing room of StorySeam's Auto pipeline, cutting a short film into its SHOT LIST.",
     "There is no screenplay and nobody to ask: the Idea and the World below ARE the story. Tell it",
@@ -50,9 +67,21 @@ export function shotlistMessages({ idea, world, seconds, language = DEFAULT_FILM
     "- `prompt` is ONE vivid, style-free paragraph (at most ~60 words) describing what the camera sees.",
     "- Do not include `id` — the studio keeps shot ids itself.",
     "",
+    "THE MUSIC. Beside the shots, write where the score turns — a list of music cues. Each cue starts",
+    "at a shot (`startShot`, the 1-based position of the shot in your `shots` list) and runs until the",
+    "next cue. `cue` is EXACTLY one of these names and nothing else:",
+    ...MUSIC_CUE_NAMES.map((n) => `  ${n}${MUSIC_CUES[n].family === "none" ? " — no music at all" : ` (${MUSIC_CUES[n].family})`}`),
+    `- ${lo}–${hi} cues for this film. The FIRST cue starts at shot 1.`,
+    "- Change the cue ONLY where the story TURNS (a discovery, a threat, a chase begins, a loss, a win) —",
+    "  never at every new shot. Each cue lasts at least ~8 seconds of film.",
+    "- `silence` is the score stopping on purpose: a held breath before a big action, a heavy exchange",
+    "  of dialogue, a reveal. Use 2–3 per film, 4–15 seconds each, and never as the first or the last cue.",
+    "- `energy` is 1 (barely there) to 5 (everything); `note` is a few words on why the music turns here.",
+    "",
     "Answer with ONE JSON object and nothing else:",
     '{ "shots": [{ "beat", "beatTitle", "location", "dur": number, "characters": [string],',
-    '  "camera", "action", "dialogue", "audioSync", "prompt" }] }',
+    '  "camera", "action", "dialogue", "audioSync", "prompt" }],',
+    '  "music": [{ "startShot": number, "cue": string, "energy": number, "note": string }] }',
   ].join("\n");
   const user = [
     `The Idea: ${idea || "(none)"}`,
@@ -94,7 +123,21 @@ export function parseShots(answer) {
   return shots;
 }
 
-/** deps (optional): { readWorld, saveShotlist }. */
+/**
+ * The saved shots' ids, by index — only when the stored list is the one just
+ * saved (same length). Never throws: a cue without a shot id still has its
+ * index and its planned second.
+ */
+async function savedShotIds(env, pid, count) {
+  try {
+    const shots = (await readDoc(env, pid, "shotlist", { shots: [] })).shots || [];
+    return shots.length === count ? shots.map((s) => (s?.id == null ? undefined : String(s.id))) : [];
+  } catch {
+    return [];
+  }
+}
+
+/** deps (optional): { readWorld, saveShotlist, shotIds }. */
 export async function runShotlistStage({ job, results, env, model }, deps = {}) {
   const pid = job.projectId;
   const world = await (deps.readWorld || readWorld)(env, pid);
@@ -112,8 +155,19 @@ export async function runShotlistStage({ job, results, env, model }, deps = {}) 
   if (saved?.error) throw new Error(saved.error);
   const count = saved?.count ?? shots.length;
   const shotSeconds = Math.round(shots.reduce((sum, s) => sum + s.dur, 0));
+  const music = repairMusicCues(answer?.music, {
+    durs: shots.map((s) => s.dur),
+    plannedSec: seconds,
+    ids: await (deps.shotIds || savedShotIds)(env, pid, shots.length),
+  });
+  const cues = music.length ? ` · ${music.length} music cue${music.length === 1 ? "" : "s"}` : "";
   return {
-    summary: `${count} shot${count === 1 ? "" : "s"}, ${formatLength(shotSeconds)} as written`,
-    result: { count, seconds: shotSeconds, ...(saved?.warnings?.length ? { warnings: saved.warnings } : {}) },
+    summary: `${count} shot${count === 1 ? "" : "s"}, ${formatLength(shotSeconds)} as written${cues}`,
+    result: {
+      count,
+      seconds: shotSeconds,
+      ...(music.length ? { music } : {}),
+      ...(saved?.warnings?.length ? { warnings: saved.warnings } : {}),
+    },
   };
 }

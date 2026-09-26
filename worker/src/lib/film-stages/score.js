@@ -10,35 +10,39 @@
 //      film's real length (ffprobe), where the picture cuts (ffmpeg's
 //      `select='gt(scene,0.3)'`) and its own audio's loudness per second (for
 //      the dialogue windows the bed ducks under).
-//   2. CUE — the plan is WRITTEN, the way the score-film skill writes one by
-//      hand: the shot list's story moments (one per beat / scene change) are
-//      laid on the MEASURED clock (`storyMoments` → `momentsOnFilm`: scaled by
-//      measured/planned, then snapped to the real picture cut where the moment
-//      landed), and the writing model gets them with the brief, the measured
-//      length and the dialogue windows. It answers the chunks — sections named
-//      for what that stretch IS, what arrives and what leaves, and which stretches
-//      are SILENCE ("we don't want music all the time"). Pure code repairs the
-//      arithmetic (`repairScorePlan`: exact length, chunk min/max/count, silence
-//      rules). A model that fails or answers garbage falls back to the old
-//      mechanical plan (`planFromFilm`: the brief, split at the hardest cuts) —
-//      the Film is never failed over its music being plain. The plan goes to
-//      ElevenLabs Music on fal on the PLATFORM key (`env.FAL_KEY`, ADR 0003)
-//      through the same helpers the Musicalized routes run
-//      (lib/musicalized-cue.js), polled to completion; the mp3 is filed on the
-//      Series like any cue.
-//   3. MIX — a second detached job lays the cue under the picture (`-c:v copy`,
-//      the film's own audio at full level, the bed faded in and ducked, AAC,
-//      faststart mp4) and uploads it; the scored film is filed BESIDE the
-//      sitting on its kept row (`scoredFile`). The unscored sitting is only
-//      read — it is kept, untouched.
+//   2. PIECES — the score's pacing was WRITTEN with the shot list: the Shot
+//      list stage's music cues (`results.shotlist.music`, one fixed vocabulary,
+//      src/lib/music-cues.ts) say where the story turns and to what. Here they
+//      are laid on the MEASURED film (`cuesOnFilm`: scaled by measured/planned,
+//      then snapped to the nearest real picture cut) and grouped into PIECES
+//      (`piecesFromCues`): consecutive cues of one family stay one render, one
+//      ElevenLabs chunk per cue; a change of family starts a new piece; a
+//      `silence` cue is a gap nobody renders. At most four pieces, each its own
+//      composition plan and seed, each running a second past its end where the
+//      next piece starts, for the crossfade. Every piece is sent to ElevenLabs
+//      Music on fal on the PLATFORM key (`env.FAL_KEY`, ADR 0003) through the
+//      Musicalized helpers (lib/musicalized-cue.js), all polled to completion
+//      and filed on the Series.
+//      FALLBACK — a shot list with no cues (older Films, a model that skipped
+//      them) is scored the old way, as ONE piece: the shot list's story moments
+//      on the measured clock go to the writing model, which answers the chunks
+//      (`writeScorePlan` → `repairScorePlan`), or failing that the mechanical
+//      plan (`planFromFilm`: the brief, split at the hardest cuts). The Film is
+//      never failed over its music being plain.
+//   3. MIX — a second detached job lays the pieces under the picture, each
+//      faded in and out and delayed to its offset, summed, then held at the bed
+//      level (`-c:v copy`, the film's own audio at full level, the bed ducked,
+//      AAC, faststart mp4) and uploads it; the scored film is filed BESIDE the
+//      sitting on its kept row (`scoredFile`, and `cuePieces`). The unscored
+//      sitting is only read — it is kept, untouched.
 //
 // ── Silences, twice ────────────────────────────────────────────────────────
-// ElevenLabs cannot render literal silence, so a silence exists in two layers:
-// in the PLAN it is a chunk (`[Held breath]`) asking for near silence and
-// forbidding drums, melody and pads — so the music around it is written
-// knowing it stops there; in the MIX its span (`silenceSpans`: -80 dB, 1.5 s
-// linear ramps out and back in) actually mutes the bed. The spans ride in the
-// mix settings to ffmpeg's volume expression and are filed with the scored film.
+// ElevenLabs cannot render literal silence. From cues, a silence is simply
+// never rendered — the pieces either side of it end and begin there, faded;
+// from the fallback plan it is a chunk (`[Held breath]`) asking for near
+// silence. Either way its span ALSO goes into the mix (`silenceSpans`: -80 dB,
+// 1.5 s linear ramps out and back in) as a guarantee, and is filed with the
+// scored film.
 //
 // ── Input: what the Sitting stage must hand over ───────────────────────────
 //   results.sitting = { sittingId, file, url, seriesId, … } (film-stages/sitting.js)
@@ -48,13 +52,17 @@
 //                 `/director-media/<file>` url (one is enough; if both are
 //                 missing it is read off the kept row). The sandbox downloads
 //                 it from `/files/<its R2 key>` — the same place `fileUrl` points.
+//   results.shotlist.music — the cue layer (optional; none → the fallback).
 //
 // ── Output (what the Film surface and later versions read) ─────────────────
 //   result = { seriesId, sittingId, url, file,            ← the SCORED film
 //              unscored: { file, url },                    ← the sitting, kept
-//              cue: { requestId, file, url, seconds, chunks, attempt, status },
-//              plan, brief, planBy: 'writer' | 'picture',
-//              moments: [{ at, planned, title, what, dialogue, snapped }],  ← story, measured clock
+//              pieces: [{ index, startMs, endMs, lengthMs, fadeInSec, fadeOutSec,
+//                         cues, plan, render: { requestId, file, url, status, attempt } }],
+//              cue, plan,                                  ← piece 0's, for old readers
+//              brief, planBy: 'cues' | 'writer' | 'picture',
+//              cues: [{ cue, energy, at, startSec, snapped, … }],   ← cues, measured clock
+//              moments: [{ at, planned, title, what, dialogue, snapped }],  ← fallback only
 //              silences: [{ from, to, section }],                           ← seconds, film clock
 //              measured: { durationMs, hasAudio, videoCodec, cuts, turns, ducks },
 //              measure: {jobId…}, mix: {jobId…} }
@@ -63,7 +71,8 @@
 // The stage's state is its own step result. Each call does what is due and
 // answers `{ pending: true }` until the scored film is filed. A step that
 // failed THROWS; the runner retries once, and the retry redoes exactly the
-// step that failed on the earlier attempt (the Stills stage's rule).
+// step that failed on the earlier attempt (the Stills stage's rule) — for the
+// renders, exactly the PIECES that failed; the finished ones are kept.
 import { readSeries, readSittings, directorUrl } from "../director.js";
 import { readDoc } from "../docs.js";
 import { normalizeShot } from "../shots.js";
@@ -82,6 +91,7 @@ import {
   silenceSpans,
   storyMoments,
 } from "../score-mix.ts";
+import { cuesOnFilm, piecesFromCues, piecesSummary } from "../music-cues.ts";
 import { filmPlanFor } from "./shotlist.js";
 import { daytonaScorer, directorFileOf, directorKey, parseMeasurement, scoredName, withDucks } from "../film-score.js";
 import { fileScoredFilm, pendingCueFor, pollCue, submitCue } from "../musicalized-cue.js";
@@ -233,6 +243,36 @@ async function momentsFor({ job, results, env, measured }, deps) {
   }
 }
 
+/** One piece covering the whole film — the old single cue, as a piece. */
+function wholeFilmPiece(plan, filmMs, render) {
+  return {
+    index: 0,
+    startMs: 0,
+    endMs: filmMs,
+    lengthMs: planTotalMs(plan),
+    fadeInSec: DEFAULT_MIX.fadeInSec,
+    fadeOutSec: 0,
+    cues: [],
+    plan,
+    ...(render ? { render } : {}),
+  };
+}
+
+/**
+ * The Shot list's music cues on the MEASURED film, grouped into the pieces to
+ * render. → { cues, pieces, silences }, or null when the shot list wrote no
+ * cues (or nothing renderable survives) — the caller then scores the old way.
+ */
+export function piecesForCues({ job, results, measured, brief }) {
+  const music = results?.shotlist?.music;
+  if (!Array.isArray(music) || !music.length) return null;
+  const plannedSec = Number(results?.cuesheet?.seconds) || filmPlanFor(job).seconds;
+  const cuts = measured.cuts || (measured.turns || []).map((at) => ({ at, score: 1 }));
+  const cues = cuesOnFilm(music, { plannedSec, filmMs: measured.durationMs, cuts });
+  const made = piecesFromCues(cues, measured.durationMs, brief, { seedBase: String(job.id || "") });
+  return made ? { cues, ...made } : null;
+}
+
 /**
  * deps (optional): { scorer } — `daytonaScorer` unless a test passes a fake;
  * { fetch } — fal's queue and the cue download; { readShots } — the shot list.
@@ -303,60 +343,104 @@ export async function runScoreStage({ job, results, env, attempt = 1, model }, d
   }
   const { durationMs } = state.measured;
 
-  // ── 2. The cue: planned from the measurement, rendered on the platform key ─
-  if (!state.plan) {
-    const series = seriesId ? await readSeries(env, pid, seriesId) : null;
-    state.brief = await briefFor({ job, results, series, model });
-    state.moments = await momentsFor({ job, results, env, measured: state.measured }, deps);
-    const written = await writeScorePlan({
-      model,
-      brief: state.brief,
-      filmMs: durationMs,
-      moments: state.moments,
-      ducks: state.measured.ducks,
-      turns: state.measured.turns,
-    });
-    if (written) {
-      state.plan = written.plan;
-      state.silences = written.silences;
-      state.planBy = "writer";
+  // ── 2. The score: planned from the cues (or the measurement), rendered ────
+  if (!state.pieces) {
+    if (state.plan) {
+      // A step written before pieces existed: its one cue is piece 0.
+      state.pieces = [wholeFilmPiece(state.plan, durationMs, state.cue)];
     } else {
-      state.plan = planFromFilm({ brief: state.brief, filmMs: durationMs, turns: state.measured.turns });
-      state.silences = [];
-      state.planBy = "picture";
+      const series = seriesId ? await readSeries(env, pid, seriesId) : null;
+      state.brief = await briefFor({ job, results, series, model });
+      const made = piecesForCues({ job, results, measured: state.measured, brief: state.brief });
+      if (made) {
+        state.cues = made.cues;
+        state.pieces = made.pieces;
+        state.silences = made.silences;
+        state.planBy = "cues";
+      } else {
+        state.moments = await momentsFor({ job, results, env, measured: state.measured }, deps);
+        const written = await writeScorePlan({
+          model,
+          brief: state.brief,
+          filmMs: durationMs,
+          moments: state.moments,
+          ducks: state.measured.ducks,
+          turns: state.measured.turns,
+        });
+        let plan;
+        if (written) {
+          plan = written.plan;
+          state.silences = written.silences;
+          state.planBy = "writer";
+        } else {
+          plan = planFromFilm({ brief: state.brief, filmMs: durationMs, turns: state.measured.turns });
+          state.silences = [];
+          state.planBy = "picture";
+        }
+        state.pieces = [wholeFilmPiece(plan, durationMs)];
+      }
     }
+    state.plan = state.pieces[0].plan;
   }
-  let cue = state.cue;
-  if (cue?.status === "running") {
-    const polled = await pollCue(env, pid, cue.requestId, { seriesId, key }, fetchFn);
-    if (polled.status === "done") {
-      cue = { ...cue, status: "done", file: polled.file, url: polled.url, seconds: polled.seconds ?? durationMs / 1000, pieceId: polled.pieceId };
-    } else if (polled.status === "error") {
-      cue = { ...cue, status: "error", error: polled.error };
-    } else {
-      cue = { ...cue, status: "running", queue: polled.queue ?? null };
+
+  // Every piece rendered on the platform key, polled across alarms. A render
+  // that failed on an EARLIER attempt is sent again; the others are kept.
+  const pieces = [...state.pieces];
+  for (let i = 0; i < pieces.length; i++) {
+    const piece = pieces[i];
+    let r = piece.render;
+    if (r?.status === "running") {
+      const polled = await pollCue(env, pid, r.requestId, { seriesId, key }, fetchFn);
+      if (polled.status === "done") {
+        r = { ...r, status: "done", file: polled.file, url: polled.url, seconds: polled.seconds ?? piece.lengthMs / 1000, pieceId: polled.pieceId };
+      } else if (polled.status === "error") {
+        r = { ...r, status: "error", error: polled.error };
+      } else {
+        r = { ...r, status: "running", queue: polled.queue ?? null };
+      }
     }
-  }
-  if (!cue || redo(cue)) {
-    // An eviction between the submit and the step's commit left a render parked
-    // for this Film — pick it up rather than pay for a second one.
-    const parked = !cue ? await pendingCueFor(env, pid, job.id) : null;
-    if (parked) {
-      cue = { requestId: parked.requestId, attempt, status: "running", chunks: state.plan.chunks.length };
-    } else {
-      const sent = await submitCue(env, pid, { seriesId, plan: state.plan, filmMs: durationMs, key, extra: { filmId: job.id } }, fetchFn);
-      if (!sent.ok) throw fail(`fal refused the cue: ${sent.error}${sent.errors ? ` — ${sent.errors.map((e) => e.message).join("; ")}` : ""}`);
-      spend += renderCostUsd(planTotalMs(state.plan));
-      cue = { requestId: sent.requestId, attempt, status: "running", chunks: state.plan.chunks.length };
+    if (!r || redo(r)) {
+      // An eviction between the submit and the step's commit left a render parked
+      // for this piece — pick it up rather than pay for a second one.
+      const parked = !r ? await pendingCueFor(env, pid, job.id, i) : null;
+      if (parked) {
+        r = { requestId: parked.requestId, attempt, status: "running", chunks: piece.plan.chunks.length };
+      } else {
+        const sent = await submitCue(env, pid, {
+          seriesId,
+          plan: piece.plan,
+          filmMs: piece.lengthMs,
+          key,
+          extra: { filmId: job.id, piece: i },
+        }, fetchFn);
+        if (!sent.ok) {
+          throw fail(`fal refused ${pieces.length > 1 ? `piece ${i + 1} of the score` : "the cue"}: ${sent.error}${sent.errors ? ` — ${sent.errors.map((e) => e.message).join("; ")}` : ""}`);
+        }
+        spend += renderCostUsd(planTotalMs(piece.plan));
+        r = { requestId: sent.requestId, attempt, status: "running", chunks: piece.plan.chunks.length };
+      }
     }
+    pieces[i] = { ...piece, render: r };
   }
-  state.cue = cue;
-  if (cue.status === "error") throw fail(`The cue render failed (request ${cue.requestId}) — ${String(cue.error || "fal failed it").slice(0, 400)}`);
-  if (cue.status === "running") {
-    return pending(`Writing the cue — ${clock(durationMs)} in ${state.plan.chunks.length} chunks${cue.queue ? ` (${cue.queue.toLowerCase().replace(/_/g, " ")})` : ""}`);
+  state.pieces = pieces;
+  // The first piece is the cue, for every reader that knows one.
+  state.cue = pieces[0].render;
+  const failed = pieces.find((p) => p.render.status === "error");
+  if (failed) {
+    const which = pieces.length > 1 ? `Piece ${failed.index + 1} of the score` : "The cue render";
+    throw fail(`${which} failed (request ${failed.render.requestId}) — ${String(failed.render.error || "fal failed it").slice(0, 400)}`);
+  }
+  const waiting = pieces.filter((p) => p.render.status === "running");
+  if (waiting.length) {
+    if (pieces.length === 1) {
+      const q = waiting[0].render.queue;
+      return pending(`Writing the cue — ${clock(durationMs)} in ${state.plan.chunks.length} chunks${q ? ` (${q.toLowerCase().replace(/_/g, " ")})` : ""}`);
+    }
+    return pending(`Writing the score — ${pieces.length} pieces, ${pieces.length - waiting.length} of ${pieces.length} done`);
   }
 
   // ── 3. Mix it under the picture, and file the scored film ──────────────────
+  const byCues = state.planBy === "cues";
   let mix = state.mix;
   if (mix?.status === "running") {
     const polled = await scorer.poll(env, mix.jobId);
@@ -366,9 +450,20 @@ export async function runScoreStage({ job, results, env, attempt = 1, model }, d
     const file = scoredName(sittingId, state.measured.videoCodec);
     // The ducks AND the silences: each silence mutes the bed, faded out and back in.
     const settings = { ducks: state.measured.ducks, spans: silenceSpans(state.silences || []) };
+    const where = byCues
+      ? {
+        cues: pieces.map((p) => ({
+          key: directorKey(pid, p.render.file),
+          offsetMs: p.startMs,
+          durationMs: p.lengthMs,
+          fadeInSec: p.fadeInSec,
+          fadeOutSec: p.fadeOutSec,
+        })),
+      }
+      : { cueKey: directorKey(pid, pieces[0].render.file) };
     const jobId = await scorer.startMix(env, {
       filmKey: directorKey(pid, filmFile),
-      cueKey: directorKey(pid, cue.file),
+      ...where,
       outKey: directorKey(pid, file),
       durationMs,
       hasAudio: state.measured.hasAudio,
@@ -378,12 +473,15 @@ export async function runScoreStage({ job, results, env, attempt = 1, model }, d
     spend += FILM_RATES_USD.sandboxMinute;
   }
   state.mix = mix;
-  if (mix.status === "error") throw fail(`Mixing the cue under the film failed — ${String(mix.error || "the sandbox failed").slice(0, 400)}`);
-  if (mix.status === "running") return pending("Laying the cue under the picture — the picture copied, not re-encoded");
+  if (mix.status === "error") throw fail(`Mixing the ${byCues ? "score" : "cue"} under the film failed — ${String(mix.error || "the sandbox failed").slice(0, 400)}`);
+  if (mix.status === "running") {
+    return pending(`Laying the ${byCues && pieces.length > 1 ? `${pieces.length} pieces` : "cue"} under the picture — the picture copied, not re-encoded`);
+  }
 
   if (!(await env.BUCKET.head(directorKey(pid, mix.file)))) {
     throw fail("The mix finished but uploaded no scored film.");
   }
+  const cue = pieces[0].render;
   const filed = await fileScoredFilm(env, pid, {
     sittingId,
     seriesId,
@@ -393,12 +491,21 @@ export async function runScoreStage({ job, results, env, attempt = 1, model }, d
     cueUrl: cue.url,
     mix: { ...DEFAULT_MIX, ...mix.settings },
     musicStyle: state.brief,
+    ...(byCues
+      ? {
+        pieces: pieces.map((p) => ({
+          file: p.render.file, url: p.render.url, offsetMs: p.startMs, lengthMs: p.lengthMs, plan: p.plan, cues: p.cues,
+        })),
+      }
+      : {}),
   });
   if (!filed.ok) throw fail(`The kept sitting ${sittingId} is gone — the scored film was not filed.`);
 
   state.url = directorUrl(mix.file);
   state.file = mix.file;
   const quiet = (state.silences || []).length;
-  const summary = `Cue ${clock(cue.seconds * 1000)} in ${state.plan.chunks.length} chunks${quiet ? ` · ${quiet} silence${quiet === 1 ? "" : "s"}` : ""} · scored film filed beside the sitting`;
+  const summary = byCues
+    ? `${piecesSummary(pieces, state.silences || [])} · scored film filed beside the sitting`
+    : `Cue ${clock(cue.seconds * 1000)} in ${state.plan.chunks.length} chunks${quiet ? ` · ${quiet} silence${quiet === 1 ? "" : "s"}` : ""} · scored film filed beside the sitting`;
   return { summary, result: state, spend };
 }

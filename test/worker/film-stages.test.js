@@ -221,6 +221,43 @@ describe("the Film stages after the World", () => {
     expect(out.result.count).toBe(45);
   });
 
+  it("Shot list: the music cue layer comes back in the same answer, repaired, in the stage result", async () => {
+    const { env, job, results } = await setup({ prompt: "a three minute film about a cat" });
+    const answer = {
+      ...shotsAnswer(45, 4),
+      music: [
+        { startShot: 40, cue: "tender", energy: 9, note: "home again" },
+        { startShot: 1, cue: "wonder", energy: 2, note: "the cliffs at night" },
+        { startShot: 10, cue: "Suspense", energy: 3 },
+        { startShot: 20, cue: "silence" },
+        { startShot: 22, cue: "action", energy: 5, note: "the storm hits" },
+        { startShot: 30, cue: "kazoo" }, // not in the vocabulary
+      ],
+    };
+    const model = fakeModel({ shots: answer });
+    const out = await runShotlistStage({ job, results, env, model });
+
+    const sys = model.json.mock.calls[0][0].messages[0].content;
+    expect(sys).toContain('"music": [{ "startShot": number, "cue": string, "energy": number, "note": string }]');
+    expect(sys).toContain("  suspense (tension)");
+    expect(sys).toContain("  silence — no music at all");
+    expect(sys).toMatch(/5–8 cues for this film/);
+
+    expect(out.result.music).toEqual([
+      { startShot: 1, cue: "wonder", energy: 2, note: "the cliffs at night", startSec: 0, shotId: "01" },
+      { startShot: 10, cue: "suspense", energy: 3, note: "", startSec: 36, shotId: "10" },
+      { startShot: 20, cue: "silence", energy: 1, note: "", startSec: 76, shotId: "20" },
+      { startShot: 22, cue: "action", energy: 5, note: "the storm hits", startSec: 84, shotId: "22" },
+      { startShot: 40, cue: "tender", energy: 5, note: "home again", startSec: 156, shotId: "40" },
+    ]);
+    expect(out.summary).toBe("45 shots, 3:00 as written · 5 music cues");
+
+    // No music in the answer: the stage still succeeds, with no cues.
+    const plain = await runShotlistStage({ job, results, env, model: fakeModel({ shots: shotsAnswer(45, 4) }) });
+    expect(plain.result.music).toBeUndefined();
+    expect(plain.summary).toBe("45 shots, 3:00 as written");
+  });
+
   it.each([
     ["a cat saves a lighthouse", 120, 4, 30],
     ["a three minute film", 180, 4, 45],

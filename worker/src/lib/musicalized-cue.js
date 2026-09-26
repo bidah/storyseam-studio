@@ -162,10 +162,15 @@ export async function pollCue(env, pid, requestId, { seriesId: askedSeries, key 
   return { status: "done", url: audioUrl, file, pieceId: filed ? pieceId : null, sent, bytes: bytes.byteLength, seconds };
 }
 
-/** The pending cue render a Film job parked (see `submitCue` `extra`), if any. */
-export async function pendingCueFor(env, pid, filmId) {
+/**
+ * The pending cue render a Film job parked (see `submitCue` `extra`), if any.
+ * `piece` narrows it to one of the Film's pieces (the Score stage stamps
+ * `extra.piece`); an entry parked before pieces existed counts as piece 0.
+ */
+export async function pendingCueFor(env, pid, filmId, piece) {
   const pending = (await readCues(env, pid)).pending || {};
-  const hit = Object.entries(pending).find(([, p]) => p?.filmId && p.filmId === filmId);
+  const hit = Object.entries(pending).find(([, p]) =>
+    p?.filmId && p.filmId === filmId && (piece === undefined || (Number(p.piece) || 0) === piece));
   return hit ? { requestId: hit[0], ...hit[1] } : null;
 }
 
@@ -176,10 +181,22 @@ export async function pendingCueFor(env, pid, filmId) {
  * piece, so the next take is mixed from the same numbers; the brief it was
  * scored by becomes the Series' standing one.
  *
+ * `pieces` (the Auto Film's score, several renders) = [{ file, url, offsetMs,
+ * lengthMs, plan, cues }]: all of them are kept on the row as `cuePieces`, and
+ * each one's Series piece gets its offset; the FIRST is also filed as the row's
+ * `cueFile`/`cueUrl`/`cuePlan`, so a reader that knows one cue still finds one.
+ *
  * `name` is the scored file, already in the bucket under the `director` kind.
  * → { ok: true, scoredUrl, file, seriesId } | { ok: false, missing: true }
  */
-export async function fileScoredFilm(env, pid, { sittingId, seriesId: askedSeries, name, plan, cueFile, cueUrl, mix, musicStyle }) {
+export async function fileScoredFilm(env, pid, { sittingId, seriesId: askedSeries, name, plan, cueFile, cueUrl, mix, musicStyle, pieces }) {
+  const many = Array.isArray(pieces) && pieces.length > 0;
+  if (many) {
+    plan = plan ?? pieces[0].plan;
+    cueFile = cueFile ?? pieces[0].file;
+    cueUrl = cueUrl ?? pieces[0].url;
+  }
+  const offsets = new Map((many ? pieces : []).map((p) => [p.url, (Number(p.offsetMs) || 0) / 1000]));
   const res = await updateSittings(env, pid, (db) => {
     const row = (db.kept || []).find((s) => s.id === sittingId);
     if (!row) return { abort: true, missing: true };
@@ -190,6 +207,18 @@ export async function fileScoredFilm(env, pid, { sittingId, seriesId: askedSerie
     row.cueFile = typeof cueFile === "string" ? cueFile : (row.cueFile ?? null);
     row.cueUrl = typeof cueUrl === "string" ? cueUrl : (row.cueUrl ?? null);
     row.mix = mix ?? row.mix ?? null;
+    if (many) {
+      row.cuePieces = pieces.map((p) => ({
+        file: p.file,
+        url: p.url,
+        offsetMs: Number(p.offsetMs) || 0,
+        lengthMs: Number(p.lengthMs) || null,
+        cues: Array.isArray(p.cues) ? p.cues : [],
+        plan: typeof p.plan === "string" ? p.plan : p.plan ? JSON.stringify(p.plan) : null,
+      }));
+    } else if (row.cuePieces) {
+      delete row.cuePieces; // a single cue replaced an earlier score's pieces
+    }
     return { seriesId: row.seriesId };
   });
   if (res?.missing) return { ok: false, missing: true };
@@ -202,13 +231,14 @@ export async function fileScoredFilm(env, pid, { sittingId, seriesId: askedSerie
       if (brief !== undefined) series.prompts = { ...(series.prompts || {}), musicStyle: brief || null };
       if (mix && cueUrl) {
         series.audioPieces = repairPieces(series.audioPieces).map((p) => {
-          if (p.audioUrl !== cueUrl) return p;
+          if (p.audioUrl !== cueUrl && !offsets.has(p.audioUrl)) return p;
           const spans = (mix.spans || []).map((sp) => `${sp.db} dB ${sp.from}–${sp.to} s`).join(", ");
           const next = audioPiece.safeParse({
             ...p,
             levelDb: Number(mix.baseDb),
             fadeInSec: Number(mix.fadeInSec),
             ducks: (mix.ducks || []).slice(0, 64),
+            ...(offsets.has(p.audioUrl) ? { offset: offsets.get(p.audioUrl) } : {}),
             model: [String(p.model || "").replace(/ — mixed .*$/, ""), `— mixed under ${String(sittingId).slice(0, 8)}, ${mix.baseDb} dB`, spans ? `/ ${spans}` : null]
               .filter(Boolean).join(" ").slice(0, 200),
           });

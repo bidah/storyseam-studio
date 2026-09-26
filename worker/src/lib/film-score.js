@@ -24,6 +24,13 @@
 // `rampSec`, see `levelExpression` in score-mix.ts), summed
 // with the film's own audio at full level and limited at 0.98 — the browser's
 // `mixDown`, as a filter graph. AAC, faststart mp4.
+//
+// Several pieces: the Film's score is rendered as up to four PIECES (one per
+// change of musical family — src/lib/music-cues.ts), so the mix takes `cues`:
+// each input faded in and out on its own (`afade`), delayed to its offset in
+// the film (`adelay`), and summed (`amix`, normalize=0 — a crossfade is two
+// fades that overlap, not a level change); the bed volume expression then runs
+// over the sum exactly as it runs over one cue. The single-`cue` path is kept.
 import { getSandbox, runNative } from "./ffmpeg.js";
 import { createJob, getJob, pollJob, startSandboxJob } from "./jobs.js";
 import { filesUrl, mediaKey } from "./media.js";
@@ -148,19 +155,55 @@ export function mixSettings(mix) {
   };
 }
 
-/** The ffmpeg arguments of the mix — exported for the tests. */
-export function mixArgs({ film, cue, out, durationMs, hasAudio, mix }) {
+const sec3 = (ms) => (Math.max(0, Number(ms) || 0) / 1000).toFixed(3);
+
+/**
+ * The bed of several pieces, as a filter graph ending in `[bed]`: input `i + 1`
+ * is `cues[i]` = { offsetMs, durationMs?, fadeInSec?, fadeOutSec? }. Each is
+ * cut to its own length, faded in and out, delayed to its offset; the sum is
+ * padded/cut to the film and held at the bed level. Exported for the tests.
+ */
+export function piecesBedGraph(cues, { durationMs, settings }) {
+  const dur = sec3(durationMs);
+  const parts = cues.map((c, i) => {
+    const len = Number(c.durationMs) > 0 ? Number(c.durationMs) / 1000 : null;
+    const fi = Math.max(0, Number(c.fadeInSec) || 0);
+    const fo = Math.max(0, Number(c.fadeOutSec) || 0);
+    const chain = [
+      "aresample=48000",
+      len ? `atrim=0:${len.toFixed(3)}` : null,
+      fi > 0 ? `afade=t=in:st=0:d=${fi}` : null,
+      fo > 0 && len ? `afade=t=out:st=${Math.max(0, len - fo).toFixed(3)}:d=${fo}` : null,
+      Number(c.offsetMs) > 0 ? `adelay=delays=${Math.round(Number(c.offsetMs))}:all=1` : null,
+    ].filter(Boolean).join(",");
+    return `[${i + 1}:a]${chain}[p${i}]`;
+  });
+  const labels = cues.map((_, i) => `[p${i}]`).join("");
+  const sum = cues.length > 1 ? `${labels}amix=inputs=${cues.length}:duration=longest:normalize=0,` : `${labels}`;
+  return `${parts.join(";")};${sum}apad,atrim=0:${dur},volume='${bedVolumeExpression(settings)}':eval=frame[bed]`;
+}
+
+/**
+ * The ffmpeg arguments of the mix — exported for the tests. One `cue` (the
+ * whole film long) or several `cues` (paths, with `pieces` giving each one's
+ * offset, length and fades).
+ */
+export function mixArgs({ film, cue, cues, pieces, out, durationMs, hasAudio, mix }) {
   const settings = mixSettings(mix);
   const webm = /\.webm$/i.test(String(out));
   const dur = (durationMs / 1000).toFixed(3);
+  const many = Array.isArray(cues) && cues.length > 0;
   const fade = settings.fadeInSec > 0 ? `,afade=t=in:st=0:d=${settings.fadeInSec}` : "";
-  const bed = `[1:a]aresample=48000,apad,atrim=0:${dur},volume='${bedVolumeExpression(settings)}':eval=frame${fade}[bed]`;
+  const bed = many
+    ? piecesBedGraph(cues.map((_, i) => pieces?.[i] || {}), { durationMs, settings })
+    : `[1:a]aresample=48000,apad,atrim=0:${dur},volume='${bedVolumeExpression(settings)}':eval=frame${fade}[bed]`;
+  const inputs = many ? cues.flatMap((c) => ["-i", c]) : ["-i", cue];
   const graph = hasAudio
     ? `${bed};[0:a]aresample=48000[film];[film][bed]amix=inputs=2:duration=first:normalize=0,alimiter=limit=0.98:level=false[a]`
     : `${bed};[bed]alimiter=limit=0.98:level=false[a]`;
   return [
     "-hide_banner", "-nostats", "-v", "error", "-y",
-    "-i", film, "-i", cue,
+    "-i", film, ...inputs,
     "-filter_complex", graph,
     "-map", "0:v:0", "-map", "[a]",
     "-c:v", "copy",
@@ -209,12 +252,22 @@ export function measureJobScript(env, { filmKey, outPath }) {
   ].join("\n");
 }
 
-/** The detached mix: download film + cue, mix, upload to `outKey` through `/ingest`. */
-export function mixJobScript(env, { filmKey, cueKey, outKey, durationMs, hasAudio, mix }) {
+/**
+ * The detached mix: download film + cue(s), mix, upload to `outKey` through
+ * `/ingest`. `cues` = [{ key, offsetMs, durationMs, fadeInSec, fadeOutSec }]
+ * lays several pieces; `cueKey` alone lays one cue under the whole film.
+ */
+export function mixJobScript(env, { filmKey, cueKey, cues, outKey, durationMs, hasAudio, mix }) {
   const dir = `/tmp/score-x-${crypto.randomUUID()}`;
   const base = String(env.WORKER_PUBLIC_URL || "").replace(/\/+$/, "");
   const out = `${dir}/scored.${/\.webm$/i.test(outKey) ? "webm" : "mp4"}`;
-  const args = mixArgs({ film: `${dir}/film`, cue: `${dir}/cue.mp3`, out, durationMs, hasAudio, mix });
+  const many = Array.isArray(cues) && cues.length > 0;
+  const downloads = many
+    ? cues.map((c, i) => `curl -fsS -o ${dir}/cue${i}.mp3 ${shq(filesUrl(env, c.key))}`)
+    : [`curl -fsS -o ${dir}/cue.mp3 ${shq(filesUrl(env, cueKey))}`];
+  const args = many
+    ? mixArgs({ film: `${dir}/film`, cues: cues.map((_, i) => `${dir}/cue${i}.mp3`), pieces: cues, out, durationMs, hasAudio, mix })
+    : mixArgs({ film: `${dir}/film`, cue: `${dir}/cue.mp3`, out, durationMs, hasAudio, mix });
   return [
     "set -eo pipefail",
     uploadFnBash(),
@@ -222,7 +275,7 @@ export function mixJobScript(env, { filmKey, cueKey, outKey, durationMs, hasAudi
     `TOKEN=${env.INGEST_TOKEN}`,
     `rm -rf ${dir} && mkdir -p ${dir}`,
     `curl -fsS -o ${dir}/film ${shq(filesUrl(env, filmKey))}`,
-    `curl -fsS -o ${dir}/cue.mp3 ${shq(filesUrl(env, cueKey))}`,
+    ...downloads,
     ["ffmpeg", ...args.map(shq)].join(" "),
     `upload_r2 ${out} ${shq(outKey)}`,
     `rm -rf ${dir}`,
@@ -240,7 +293,7 @@ async function daytonaClient(env) {
  *
  *   startMeasure(env, { filmKey })  → { jobId, outPath }
  *   readMeasure(env, jobId, outPath) → the report (the measurement's stdout)
- *   startMix(env, { filmKey, cueKey, outKey, durationMs, hasAudio, mix }) → jobId
+ *   startMix(env, { filmKey, cueKey | cues, outKey, durationMs, hasAudio, mix }) → jobId
  *   poll(env, jobId) → { status: 'running'|'done'|'error', error }
  */
 export const daytonaScorer = {

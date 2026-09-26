@@ -36,7 +36,10 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 // `score-mix.ts` is the score's mix and plan as numbers — the bed level, the
 // ducks, the picture's turns — which the Musicalized tab runs over decoded
 // samples and the Film job's Score stage runs as an ffmpeg expression.
-const MODULES = ["series.ts", "shot-sheet.ts", "music-plan.ts", "film-plan.ts", "score-mix.ts"];
+// `music-cues.ts` is the Film's music cue layer — the fixed cue vocabulary the
+// Shot list stage writes with, and the arithmetic that turns those cues into
+// the pieces the Score stage renders.
+const MODULES = ["series.ts", "shot-sheet.ts", "music-plan.ts", "film-plan.ts", "score-mix.ts", "music-cues.ts"];
 const PACKAGES = ["worker", "flue-agent"];
 
 /**
@@ -45,11 +48,12 @@ const PACKAGES = ["worker", "flue-agent"];
  * `zod` because all three packages depend on it at the same major. `./series`
  * because the copy lands beside its sibling in every target, so the relative
  * path resolves identically in Vite, wrangler and the flue build — and
- * `./music-plan` for the same reason (the Film plan prices the score with it).
+ * `./music-plan` for the same reason (the Film plan prices the score with it),
+ * and `./score-mix` (the music cues reuse its silences and its snapping).
  * Anything else — a `@/` alias, a path out of this directory — resolves in
  * exactly one of the three and breaks in the other two, silently, at deploy time.
  */
-const ALLOWED_IMPORTS = new Set(["zod", "./series", "./music-plan"]);
+const ALLOWED_IMPORTS = new Set(["zod", "./series", "./music-plan", "./score-mix"]);
 
 const banner = (module) =>
   `// VENDORED from src/lib/${module} — DO NOT EDIT HERE.\n` +
