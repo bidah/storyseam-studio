@@ -13,6 +13,7 @@
 //   src/lib/shot-sheet.ts   → worker + flue-agent copies    (npm run series:sync)
 //   shared/schemas/*.json   → worker + flue-agent copies    (npm run schemas:sync)
 //   src/lib/moodboard-document.js → worker copy             (npm run moodboard:sync)
+//   world-creation SKILL.md § shape → worker auto-prompts    (npm run auto:sync)
 //
 // Every one of them fails silently when it drifts. Edit the timeline model and
 // forget the sync, and the Vercel render path renders LAST WEEK'S composition
@@ -22,6 +23,7 @@
 
 import { join } from "node:path";
 import { ROOT, read, exists, stripBanner, rel } from "./lib.mjs";
+import { renderAutoPrompts, AUTO_PROMPTS_TARGET } from "../sync-auto-prompts.mjs";
 
 // [canonical, vendored copy, the command that re-syncs it]
 const PAIRS = [
@@ -90,6 +92,19 @@ export function run() {
     if (stripBanner(read(source)) !== stripBanner(read(copy))) {
       violations.push(
         `${copy} has drifted from ${source}. Run \`${command}\` (edit the canonical file, never the copy).`,
+      );
+    }
+  }
+  // Generated (not copied) — a section of the world-creation playbook turned
+  // into a JS string for the Auto Film job, so compare against a fresh render.
+  let rendered = null;
+  try { rendered = renderAutoPrompts(); } catch (err) { violations.push(String(err?.message || err)); }
+  if (rendered != null) {
+    if (!exists(AUTO_PROMPTS_TARGET)) {
+      violations.push(`${AUTO_PROMPTS_TARGET} has never been generated. Run \`npm run auto:sync\`.`);
+    } else if (read(AUTO_PROMPTS_TARGET) !== rendered) {
+      violations.push(
+        `${AUTO_PROMPTS_TARGET} has drifted from the world-creation playbook. Run \`npm run auto:sync\` (edit the SKILL.md, never the copy).`,
       );
     }
   }

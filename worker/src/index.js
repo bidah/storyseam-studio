@@ -88,6 +88,9 @@ export { ProjectEvents } from "./sse-do.js";
 // Fronted by the OAuth provider at the bottom of this file; see src/mcp-agent.js
 // and docs/mcp.md.
 export { ShotStudioMCP } from "./mcp-agent.js";
+// Durable Object holding a project's Auto Film job (routes/auto.js,
+// lib/film-job.js) — one per project, driven by alarms.
+export { FilmJobs } from "./film-job-do.js";
 
 // --- worker ⇄ flue identity ------------------------------------------------
 // The SPA is served from this Worker and holds the Better Auth session cookie;
