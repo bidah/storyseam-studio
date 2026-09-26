@@ -25,31 +25,41 @@ const sceneOf = (shot) =>
     shot.dialogue ? `Dialogue: ${shot.dialogue}` : "",
   ].filter(Boolean).join(" ");
 
-// The Auto grid's scene: the place by the NAME its model sheet is filed under
-// (the shot list writes the slug), and every character in the shot named
-// exactly as their sheet is. The shot sheet tags a reference into a shot only
-// where the shot's text says the sheet's name (`tagReferences` → "Mika
-// (Image 2)"), and picks which sheets a reel is handed by the same count — a
-// character who is in `characters` but not in the action sentence, or a place
-// written as `hollow-home`, reached neither.
+// The Auto grid's scene. Every part of it is written for a reader that is not
+// the Director too: the shot sheet draws ONE still per beat, and reads the
+// still's picture off the beat's text — the "End on …" sentence first, else the
+// longest sentence that is not speech (`endBrief` in shot-sheet.ts); the
+// opening frame is the scene's FIRST sentence. So:
+//
+//   - a new shot opens on its FRAME, as one sentence: the camera, the place by
+//     the NAME its model sheet is filed under (the shot list writes a slug),
+//     every character in it by their sheet's name, then what the camera sees
+//     (the shot's own `prompt`). The shot sheet tags a reference into a shot
+//     only where the text says the sheet's name — "Mika (Image 2)" — and picks
+//     which sheets a reel is handed by the same count;
+//   - every beat ENDS on the frame of the shot playing at its last second, so
+//     each still is the picture of the shot it pins, and a hold line — or a
+//     long line of action — never becomes the picture;
+//   - a shot carried on from the beat before is a SHORT hold line: the action
+//     is not told twice (the Director played it twice).
 const placeOf = (shot, places) => places?.[shot.location] || shot.location || "";
-const castOf = (shot) => (shot.characters?.length ? `${shot.characters.join(", ")}.` : "");
+const oneSentence = (text) =>
+  String(text || "").replace(/\s+/g, " ").trim().replace(/[.!?]+(\s|$)/g, ";$1").replace(/;\s*$/, "");
+const frameOf = (shot, places) => {
+  const where = [placeOf(shot, places), shot.characters?.length ? shot.characters.join(", ") : ""].filter(Boolean).join(" — ");
+  const what = oneSentence(shot.prompt || shot.action);
+  const camera = oneSentence(shot.camera);
+  return [camera, where].filter(Boolean).join(", ") + (what ? `: ${what}` : "");
+};
 const gridSceneOf = (shot, places) =>
   [
-    placeOf(shot, places) ? `At ${placeOf(shot, places)}.` : "",
-    castOf(shot),
+    `${frameOf(shot, places)}.`,
     shot.action,
     shot.dialogue ? `Dialogue: ${shot.dialogue}` : "",
   ].filter(Boolean).join(" ");
 
-// A shot carried on into the next beat: the place and the people, held —
-// never the action again.
-const holdOf = (shot, places) =>
-  [
-    placeOf(shot, places) ? `At ${placeOf(shot, places)}.` : "",
-    `The same shot continues${shot.characters?.length ? ` on ${shot.characters.join(", ")}` : ""}:`,
-    "hold the moment and let it settle — do not restart or repeat the action.",
-  ].filter(Boolean).join(" ");
+// A shot carried on into the next beat — never the action again.
+const holdOf = () => "The shot continues: hold it, do not restart the action.";
 
 /**
  * One beat per shot, at the shot's own accumulated offset — the author's derive.
@@ -159,10 +169,14 @@ export function beatsOnGrid(shots, { seconds, spacing, sound = "", places = null
       const lead = inWindow.reduce((a, b) => (b.overlap > a.overlap ? b : a));
       if (lead.shot.camera) sections.style = lead.shot.camera;
       const scene = inWindow
-        .map((sp) => (sp.start >= t - 1e-6 ? gridSceneOf(sp.shot, places) : holdOf(sp.shot, places)))
+        .map((sp) => (sp.start >= t - 1e-6 ? gridSceneOf(sp.shot, places) : holdOf()))
         .filter(Boolean)
         .join(" Then: ");
-      if (scene) sections.scene = scene;
+      // The frame this beat closes on: the shot playing at its last second.
+      // Spans are in film order, so that is the window's last.
+      const closing = inWindow[inWindow.length - 1];
+      const ending = `End on ${frameOf(closing.shot, places)}.`;
+      sections.scene = scene ? `${scene} ${ending}` : ending;
       const score = inWindow
         .filter((sp) => sp.start >= t - 1e-6)
         .map((sp) => sp.shot.audioSync)

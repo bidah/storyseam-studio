@@ -159,7 +159,9 @@ describe("the Shot sheet run stage", () => {
     expect(ledger.takes).toHaveLength(1);
     expect(ledger.takes[0]).toMatchObject({ filmId: "film-1", runId: done.result.runId, part: 1, parts: 1, status: "done" });
     const series = await readSeries(env, PID, results.sheets.seriesId);
-    expect(series.modelSheets.filter((s) => s.name.startsWith("shot sheet"))).toHaveLength(1);
+    // A Film's take is NOT filed back as a style sheet: its references are the
+    // sheets the Sheets stage drew, and a filed take is an mp4 on that list.
+    expect(series.modelSheets.filter((s) => s.name.startsWith("shot sheet"))).toHaveLength(0);
     expect(series.reelChanges || []).toEqual([]);
   });
 
@@ -193,9 +195,9 @@ describe("the Shot sheet run stage", () => {
     expect(done.pending).toBeUndefined();
     expect(done.result.clips.every((c) => c.status === "done" && c.videoUrl)).toBe(true);
     expect(fal.submits).toHaveLength(reels); // nothing paid twice
-    // One style model sheet per RUN, not per clip.
+    // No clip of a Film's run is filed back as a style sheet.
     const after = await readSeries(env, PID, results.sheets.seriesId);
-    expect(after.modelSheets.filter((s) => s.name.startsWith("shot sheet"))).toHaveLength(1);
+    expect(after.modelSheets.filter((s) => s.name.startsWith("shot sheet"))).toHaveLength(0);
   });
 
   it("a clip fal refuses throws; the retry re-submits only that clip", async () => {

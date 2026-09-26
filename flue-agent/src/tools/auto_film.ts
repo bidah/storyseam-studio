@@ -20,7 +20,7 @@ import { defineTool } from "@flue/runtime";
 import * as v from "valibot";
 import { d } from "./_util.js";
 import type { Api, Json } from "../lib/api.js";
-import { FILM_STEPS, filmLength, formatLength } from "../lib/film-plan.js";
+import { FILM_STEPS, FILM_STYLES, filmLength, formatLength } from "../lib/film-plan.js";
 
 type Step = {
   key?: string; label?: string; status?: string; summary?: string | null;
@@ -120,6 +120,12 @@ export const makeFilm = (api: Api) =>
           `Optional length the author asked for, IN SECONDS (three minutes → 180, "3:10" → 190). A Film is 2:00–5:00 in 30s steps (${FILM_STEPS.join(", ")}): no length means 2:00, anything else rounds UP to the next step, longer is capped at 5:00 (the result says \`capped\` — tell the author). It wins over any length in the prompt — the same as the length setting on the Auto surface's input.`,
         ),
       ),
+      style: v.optional(
+        d(
+          v.picklist(FILM_STYLES.map((st) => st.id) as [string, ...string[]]),
+          `Optional LOOK: ${FILM_STYLES.map((st) => `"${st.id}" (${st.label})`).join(", ")} — the same choice as the Look setting on the Auto surface's input. Pass it only when the author names a look; omitted, the Worker reads it off the prompt ("a pixar like story" → pixar), else 80s anime.`,
+        ),
+      ),
     }),
     async run({ data: input, signal }): Promise<{ output: Json }> {
       const prompt = String(input.prompt ?? "").trim();
@@ -135,7 +141,7 @@ export const makeFilm = (api: Api) =>
       try {
         const res = (await api.post(
           "/api/auto/films",
-          chosen ? { prompt, seconds: chosen.seconds } : { prompt },
+          { prompt, ...(chosen ? { seconds: chosen.seconds } : {}), ...(input.style ? { style: input.style } : {}) },
           signal,
         )) as { job?: Job; projectId?: string };
         const filmId = res.job?.id ?? null;

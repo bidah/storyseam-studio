@@ -231,7 +231,11 @@ export async function finishRender(env, pid, take, key, fetchFn = fetch) {
 
     // One style model sheet per RUN, not per clip: it is one pass of the look,
     // and three copies of it would spend the reference budget on themselves.
-    if (!take.part || take.part === 1) await updateSeries(env, pid, take.seriesId, (series) => {
+    // Never for an Auto Film's run (`filmId`): its sheets are the ones the
+    // Sheets stage drew, one per character and place, and nothing re-renders
+    // the sheet from a filed take — the entry was an mp4 posing as a style
+    // image on the Series' reference list, and nothing else.
+    if ((!take.part || take.part === 1) && !take.filmId) await updateSeries(env, pid, take.seriesId, (series) => {
       if (!series?.id) return { abort: true };
       const name = `shot sheet ${take.id.slice(0, 8)}`;
       const sheets = series.modelSheets || [];

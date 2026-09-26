@@ -60,10 +60,10 @@ export async function submitFilm({ job, queue = [] }, input, deps = {}) {
   // so the running one doesn't read as "busy".
   const check = await startFilm(null, input, deps);
   if (!check.ok) return check;
-  const { id, prompt, seconds, projectId, episodeId, userId } = check.job;
+  const { id, prompt, seconds, style, projectId, episodeId, userId } = check.job;
   // `seconds` rides along so the Film keeps its chosen length at the front.
   const item = {
-    id, prompt, ...(seconds != null ? { seconds } : {}), userId, projectId, episodeId, queuedAt: iso(deps.now?.()),
+    id, prompt, ...(seconds != null ? { seconds } : {}), ...(style ? { style } : {}), userId, projectId, episodeId, queuedAt: iso(deps.now?.()),
   };
   const next = [...queue, item];
   return { ok: true, queued: true, position: next.length, item, queue: next };
@@ -89,6 +89,7 @@ export async function startNextQueued({ job, queue = [] }, deps = {}) {
       id: item.id,
       prompt: item.prompt,
       ...(item.seconds != null ? { seconds: item.seconds } : {}),
+      ...(item.style ? { style: item.style } : {}),
       status: "refused",
       error: res.refusal.message,
       refusal: res.refusal,

@@ -63,11 +63,11 @@ function SimpleStory({ signedIn, sessionKnown }) {
     return () => { live = false; };
   }, [signedIn]);
 
-  const start = async (prompt, seconds) => {
+  const start = async (prompt, seconds, style) => {
     if (submitting) return false;
     if (!signedIn) {
       // Keep the premise across the Google round trip; it starts on return.
-      savePendingStory(prompt, seconds);
+      savePendingStory(prompt, seconds, style);
       setSignInOpen(true);
       return false;
     }
@@ -89,7 +89,8 @@ function SimpleStory({ signedIn, sessionKnown }) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         // The gear's length: it wins over any length the prompt states.
-        body: JSON.stringify(seconds ? { prompt, seconds } : { prompt }),
+        // The look, when one was picked; otherwise the Worker reads it off the prompt.
+        body: JSON.stringify({ prompt, ...(seconds ? { seconds } : {}), ...(style ? { style } : {}) }),
       });
       if (!res.ok || !data.ok) {
         setNote(data.refusal?.message || data.error || `Couldn't start (${res.status}).`);
@@ -126,7 +127,7 @@ function SimpleStory({ signedIn, sessionKnown }) {
     const pending = takePendingStory();
     if (!pending) return;
     setNote("Starting your story…");
-    start(pending.prompt, pending.seconds);
+    start(pending.prompt, pending.seconds, pending.style);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionKnown, signedIn]);
 

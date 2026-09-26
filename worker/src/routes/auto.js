@@ -6,7 +6,7 @@
 //                                 (lib/films.js — named "Story — <first words>",
 //                                 renamed to the World's title once it has one).
 //                                 USER-scoped: it never reads the request's
-//                                 project. Body { prompt, seconds? }.
+//                                 project. Body { prompt, seconds?, style? }.
 //                                 `seconds` is a chosen length, one of the Film's
 //                                 30s steps (120 … 300); it wins over a length the
 //                                 prompt states. Any other value is a 400.
@@ -55,7 +55,7 @@
 // closed. The job itself lives in the FilmJobs Durable Object (film-job-do.js)
 // — one per project — and runs server-side; see lib/film-job.js.
 import { autoAvailable } from "../lib/auto-availability.js";
-import { MAX_PROMPT_CHARS, checkFilmSeconds } from "../lib/film-job.js";
+import { MAX_PROMPT_CHARS, checkFilmSeconds, checkFilmStyle } from "../lib/film-job.js";
 import { readAutoSettings, writeAutoSettings } from "../lib/auto-settings.js";
 import { checkAllowance } from "../lib/film-allowance.js";
 import { activeFilm, filmJobsFor, filmProject, latestFilm, listFilms, recordFilm, storyProjectName } from "../lib/films.js";
@@ -97,6 +97,9 @@ export function registerAuto(app) {
     const seconds = body?.seconds ?? undefined;
     const badLength = checkFilmSeconds(seconds);
     if (badLength) return c.json(refusal("invalid", badLength), 400);
+    const style = body?.style || undefined;
+    const badStyle = checkFilmStyle(style);
+    if (badStyle) return c.json(refusal("invalid", badStyle), 400);
     const text = prompt.trim();
     if (!text) return c.json(refusal("invalid", "Write a prompt first."), 400);
     if (text.length > MAX_PROMPT_CHARS) {
@@ -126,6 +129,7 @@ export function registerAuto(app) {
     const res = await filmJobsFor(c.env, projectId).start({
       prompt: text,
       ...(seconds !== undefined ? { seconds } : {}),
+      ...(style ? { style } : {}),
       userId,
       projectId,
       episodeId: null,

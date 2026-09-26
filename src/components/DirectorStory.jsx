@@ -48,7 +48,7 @@ import { Link, Navigate, useLocation } from "react-router";
 import { ArrowUp, Check, ChevronDown, Circle, CircleAlert, Film, Loader2, Mic, Plus, RotateCw, Settings2, Square, X } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { FILM_DEFAULT_SECONDS, FILM_STEPS, formatLength } from "@/lib/film-plan";
+import { FILM_DEFAULT_SECONDS, FILM_STEPS, FILM_STYLES, formatLength } from "@/lib/film-plan";
 import { useVoiceRecording, transcribeAudio, formatDuration } from "@/lib/useVoiceRecording";
 import { authClient, useSession } from "@/lib/auth-client";
 import { isDesktop } from "@/lib/desktop";
@@ -307,7 +307,58 @@ function storeLength(seconds) {
   try { window.localStorage.setItem(LENGTH_KEY, String(seconds)); } catch { /* private mode: not remembered */ }
 }
 
-function StorySettings({ seconds, onSeconds, disabled }) {
+// The Film's look (film-plan.ts FILM_STYLES). "" = read it off the premise
+// ("a pixar like story") and fall back to the default — so nothing is sent.
+const STYLE_KEY = "director-story:style";
+function readStoredStyle() {
+  try {
+    const v = window.localStorage.getItem(STYLE_KEY) || "";
+    return FILM_STYLES.some((s) => s.id === v) ? v : "";
+  } catch {
+    return "";
+  }
+}
+function storeStyle(style) {
+  try { window.localStorage.setItem(STYLE_KEY, style); } catch { /* private mode: not remembered */ }
+}
+const STYLE_CHOICES = [{ id: "", label: "From the premise" }, ...FILM_STYLES.map((s) => ({ id: s.id, label: s.label }))];
+
+function SettingsLabel({ id, children, hint }) {
+  return (
+    <div className="mb-2 flex items-baseline justify-between gap-6">
+      <span
+        id={id}
+        className="text-[0.72rem] uppercase text-[var(--br-secondary)]"
+        style={{ fontFamily: MONO, letterSpacing: "0.08em" }}
+      >
+        {children}
+      </span>
+      {hint ? <span className="text-[0.72rem] text-[var(--br-secondary)]">{hint}</span> : null}
+    </div>
+  );
+}
+
+function Choice({ on, onClick, children }) {
+  return (
+    <button
+      type="button"
+      role="radio"
+      aria-checked={on}
+      onClick={onClick}
+      className={cn(
+        "-ml-px border px-2.5 py-1.5 text-[0.72rem] tabular-nums transition-colors first:ml-0",
+        on
+          ? "relative z-10 border-[var(--br-tertiary)] bg-[var(--br-tertiary)] text-[var(--br-on-primary)]"
+          : "border-[var(--br-secondary)]/40 text-[var(--br-primary)]/80 hover:text-[var(--br-primary)]",
+      )}
+      style={{ fontFamily: MONO }}
+    >
+      {children}
+    </button>
+  );
+}
+
+function StorySettings({ seconds, onSeconds, style, onStyle, disabled }) {
   return (
     <Popover>
       <PopoverTrigger asChild>
@@ -333,40 +384,28 @@ function StorySettings({ seconds, onSeconds, disabled }) {
         style={{ ...HUD, fontFamily: BODY }}
         data-story-settings-panel
       >
-        <div className="mb-2 flex items-baseline justify-between gap-6">
-          <span
-            id="story-length-label"
-            className="text-[0.72rem] uppercase text-[var(--br-secondary)]"
-            style={{ fontFamily: MONO, letterSpacing: "0.08em" }}
-          >
-            Length
-          </span>
-          <span className="text-[0.72rem] text-[var(--br-secondary)]">
-            {seconds === FILM_DEFAULT_SECONDS ? "default" : `default ${formatLength(FILM_DEFAULT_SECONDS)}`}
-          </span>
-        </div>
+        <SettingsLabel
+          id="story-length-label"
+          hint={seconds === FILM_DEFAULT_SECONDS ? "default" : `default ${formatLength(FILM_DEFAULT_SECONDS)}`}
+        >
+          Length
+        </SettingsLabel>
         <div role="radiogroup" aria-labelledby="story-length-label" className="flex">
-          {FILM_STEPS.map((step) => {
-            const on = step === seconds;
-            return (
-              <button
-                key={step}
-                type="button"
-                role="radio"
-                aria-checked={on}
-                onClick={() => onSeconds(step)}
-                className={cn(
-                  "-ml-px border px-2.5 py-1.5 text-[0.72rem] tabular-nums transition-colors first:ml-0",
-                  on
-                    ? "relative z-10 border-[var(--br-tertiary)] bg-[var(--br-tertiary)] text-[var(--br-on-primary)]"
-                    : "border-[var(--br-secondary)]/40 text-[var(--br-primary)]/80 hover:text-[var(--br-primary)]",
-                )}
-                style={{ fontFamily: MONO }}
-              >
-                {formatLength(step)}
-              </button>
-            );
-          })}
+          {FILM_STEPS.map((step) => (
+            <Choice key={step} on={step === seconds} onClick={() => onSeconds(step)}>
+              {formatLength(step)}
+            </Choice>
+          ))}
+        </div>
+        <div className="mt-4">
+          <SettingsLabel id="story-style-label">Look</SettingsLabel>
+          <div role="radiogroup" aria-labelledby="story-style-label" className="flex" data-story-style>
+            {STYLE_CHOICES.map((c) => (
+              <Choice key={c.id || "auto"} on={c.id === style} onClick={() => onStyle(c.id)}>
+                {c.label}
+              </Choice>
+            ))}
+          </div>
         </div>
       </PopoverContent>
     </Popover>
@@ -379,6 +418,11 @@ export function SimpleView({ onSubmit, submitting, note, running, below = null }
   const [prompt, setPrompt] = useState("");
   const [seconds, setSeconds] = useState(readStoredLength);
   const [chosen, setChosen] = useState(hasStoredLength);
+  const [style, setStyle] = useState(readStoredStyle);
+  const chooseStyle = (id) => {
+    setStyle(id);
+    storeStyle(id);
+  };
   const chooseSeconds = (s) => {
     setSeconds(s);
     setChosen(true);
@@ -426,7 +470,7 @@ export function SimpleView({ onSubmit, submitting, note, running, below = null }
     e?.preventDefault();
     const text = prompt.trim();
     if (!text || submitting) return;
-    if (await onSubmit(text, chosen ? seconds : undefined)) setPrompt("");
+    if (await onSubmit(text, chosen ? seconds : undefined, style || undefined)) setPrompt("");
   };
 
   return (
@@ -461,7 +505,7 @@ export function SimpleView({ onSubmit, submitting, note, running, below = null }
               disabled={submitting}
               className="min-h-34 flex-1 resize-none bg-transparent px-3 py-3 text-base leading-relaxed text-[var(--br-primary)] placeholder:text-[var(--br-secondary)] focus:outline-none disabled:opacity-60"
             />
-            {!listening && <StorySettings seconds={seconds} onSeconds={chooseSeconds} disabled={submitting} />}
+            {!listening && <StorySettings seconds={seconds} onSeconds={chooseSeconds} style={style} onStyle={chooseStyle} disabled={submitting} />}
             {listening ? (
               <div className="flex shrink-0 items-center gap-2">
                 <span className="flex items-center gap-1.5 text-xs tabular-nums text-[var(--br-secondary)]">
@@ -544,8 +588,8 @@ const PENDING_KEY = "director-story:pending";
 const PENDING_TTL_MS = 60 * 60 * 1000;
 export const RESUME_PARAM = "resume";
 
-export function savePendingStory(prompt, seconds) {
-  try { localStorage.setItem(PENDING_KEY, JSON.stringify({ prompt, seconds: seconds ?? null, at: Date.now() })); } catch { /* private mode */ }
+export function savePendingStory(prompt, seconds, style) {
+  try { localStorage.setItem(PENDING_KEY, JSON.stringify({ prompt, seconds: seconds ?? null, style: style ?? null, at: Date.now() })); } catch { /* private mode */ }
 }
 
 /** The premise saved before sign-in, taken (read AND cleared) → { prompt, seconds } | null. */
@@ -555,7 +599,7 @@ export function takePendingStory() {
     localStorage.removeItem(PENDING_KEY);
     const saved = raw ? JSON.parse(raw) : null;
     if (!saved?.prompt || Date.now() - Number(saved.at) > PENDING_TTL_MS) return null;
-    return { prompt: String(saved.prompt), seconds: saved.seconds ?? undefined };
+    return { prompt: String(saved.prompt), seconds: saved.seconds ?? undefined, style: saved.style ?? undefined };
   } catch {
     return null;
   }

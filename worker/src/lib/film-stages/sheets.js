@@ -19,6 +19,7 @@
 // Series — and a sheet already filed with a picture is not paid for twice.
 import { SHEET_FORM } from "../auto-prompts.generated.js";
 import { filmSoundLock } from "../film-sound.js";
+import { filmStyleFor } from "../film-plan.ts";
 import { absolutize, createSeries, directorUrl, readIndex, readSeries, upsertModelSheet } from "../director.js";
 import { artSettings } from "../series.ts";
 import { MAX_REFERENCE_SHEETS } from "../film-plan.ts";
@@ -47,7 +48,7 @@ const key = (name) => str(name).toLowerCase().replace(/\s+/g, " ");
 
 // ── The writing half ────────────────────────────────────────────────────────
 
-export function sheetMessages({ idea, world }) {
+export function sheetMessages({ idea, world, look = null }) {
   const cast = (world.characters || [])
     .map((c) => `- ${c.name}${c.role ? ` (${c.role})` : ""}: ${c.appearance || c.traits || "(no appearance given — design one)"}`)
     .join("\n");
@@ -70,6 +71,15 @@ export function sheetMessages({ idea, world }) {
     "",
     "Also write ONE `renderClause`: the house-style sentence every sheet carries verbatim (it is appended",
     "to each prompt for you — do not repeat it inside the prompts).",
+    ...(look
+      ? [
+          "",
+          "THE FILM'S LOOK IS ALREADY CHOSEN — do not invent another, and do not drift from it:",
+          look.look,
+          "The style sheets are frames OF this look (palette, light, texture, line), and the renderClause restates",
+          "it. Every character and place is designed to belong in it.",
+        ]
+      : []),
     "",
     "How a model sheet is drawn and prompted, as the studio's model-sheets playbook states it:",
     "",
@@ -109,8 +119,9 @@ export function sheetMessages({ idea, world }) {
  *
  * → [{ kind: 'style'|'character'|'location', name, prompt }]
  */
-export function planSheets(answer, world, max = MAX_REFERENCE_SHEETS) {
-  const clause = str(answer?.renderClause);
+export function planSheets(answer, world, max = MAX_REFERENCE_SHEETS, { look = null } = {}) {
+  // The chosen look leads every sheet's clause, whatever the model wrote.
+  const clause = [look ? `In the film's look: ${look.look}` : "", str(answer?.renderClause)].filter(Boolean).join(" ");
   const withClause = (p) => [str(p), clause].filter(Boolean).join("\n\n");
 
   let styles = (Array.isArray(answer?.styles) ? answer.styles : [])
@@ -121,7 +132,7 @@ export function planSheets(answer, world, max = MAX_REFERENCE_SHEETS) {
     styles = [{
       kind: "style",
       name: "House style",
-      prompt: withClause("A style frame for the whole film: palette swatches, film stock, grain, line and lighting. No characters."),
+      prompt: withClause(`A style frame for the whole film: palette swatches, film stock, grain, line and lighting${look ? `, in this look: ${look.look}` : ""}. No characters.`),
     }];
   }
 
@@ -241,14 +252,17 @@ export async function runSheetsStage({ job, results, env, model }, deps = {}) {
   if (!world?.characters?.length) throw new Error("There is no World to draw sheets from.");
   const idea = results?.world?.idea || "";
 
-  const answer = await model.json({ messages: sheetMessages({ idea, world }), maxTokens: 8000, temperature: 0.7 });
-  const plan = planSheets(answer, world);
+  const look = filmStyleFor({ style: job.style, prompt: job.prompt });
+  const answer = await model.json({ messages: sheetMessages({ idea, world, look }), maxTokens: 8000, temperature: 0.7 });
+  const plan = planSheets(answer, world, undefined, { look });
 
   const series = await ensureFilmSeries(env, pid, job, {
     title: world.title || results?.world?.title,
     // The sound lock rides on the Series prompt too: it is what `configure`
     // opens the sitting with, before the first beat says anything.
-    prompt: [idea, world.logline, filmSoundLock(job.language)].filter(Boolean).join("\n\n"),
+    // The look opens it, with its lock: the Series prompt is what the Director
+    // opens the sitting with and what every shot sheet's premise is.
+    prompt: [look.look, look.lock, idea, world.logline, filmSoundLock(job.language)].filter(Boolean).join("\n\n"),
   });
   const aspectRatio = artSettings(series).sheets.aspectRatio;
   const filed = new Map((series.modelSheets || []).filter((s) => s.imageUrl).map((s) => [s.name, s]));

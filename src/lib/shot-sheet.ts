@@ -554,7 +554,11 @@ export function referencesOf(
   series: Pick<Series, 'modelSheets'>,
   shots: Pick<Shot, 'text'>[] = [],
 ): Reference[] {
-  const drawn = series.modelSheets.filter((sheet) => Boolean(sheet.imageUrl));
+  // An IMAGE, never a filed take: a past shot sheet is kept as a style entry
+  // whose "image" is its mp4, and the endpoint takes images as references.
+  const drawn = series.modelSheets.filter(
+    (sheet) => Boolean(sheet.imageUrl) && !/\.(mp4|webm|mov|m4v)(\?|#|$)/i.test(String(sheet.imageUrl)),
+  );
   const text = shots.map((shot) => shot.text).join('\n');
   const mentions = (name: string) => {
     if (!text || !name.trim()) return 0;

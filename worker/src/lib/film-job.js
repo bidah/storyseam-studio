@@ -129,7 +129,7 @@ import { runStillsStage } from "./film-stages/stills.js";
 import { runSittingStage } from "./film-stages/sitting.js";
 import { runScoreStage } from "./film-stages/score.js";
 import { readAutoSettings } from "./auto-settings.js";
-import { planFilm, formatLength, FILM_STEPS, MAX_REFERENCE_SHEETS } from "./film-plan.ts";
+import { planFilm, formatLength, filmStyleFor, FILM_STEPS, FILM_STYLES, FILM_STYLE_IDS, MAX_REFERENCE_SHEETS } from "./film-plan.ts";
 
 /**
  * A Film length someone CHOSE (the /director-story gear, make_film's `seconds`)
@@ -137,6 +137,13 @@ import { planFilm, formatLength, FILM_STEPS, MAX_REFERENCE_SHEETS } from "./film
  * 2:00 default, decides — but a value that is not exactly one of the 30s steps
  * is refused, not rounded: a control sent it, and rounding would hide the bug.
  */
+/** A look someone CHOSE must be one of the house looks; none is fine. → message | null */
+export function checkFilmStyle(style) {
+  if (style === undefined || style === null || style === "") return null;
+  if (FILM_STYLE_IDS.includes(style)) return null;
+  return `A Film's look is one of ${FILM_STYLES.map((s) => `${s.id} (${s.label})`).join(", ")}.`;
+}
+
 export function checkFilmSeconds(seconds) {
   if (seconds === undefined || seconds === null) return null;
   if (typeof seconds === "number" && FILM_STEPS.includes(seconds)) return null;
@@ -277,12 +284,14 @@ export function publicJob(job) {
  * → `{ ok: true, job }` | `{ ok: false, refusal: { code, message } }`, code
  *   'invalid' | 'busy' | 'paused' | 'unavailable' | 'allowance'.
  */
-export async function startFilm(existing, { prompt, seconds, userId, projectId, episodeId }, deps = {}) {
+export async function startFilm(existing, { prompt, seconds, style, userId, projectId, episodeId }, deps = {}) {
   const env = deps.env;
   const text = str(prompt);
   if (!text) return refuse("invalid", "Write a prompt first.");
   const badLength = checkFilmSeconds(seconds);
   if (badLength) return refuse("invalid", badLength);
+  const badStyle = checkFilmStyle(style);
+  if (badStyle) return refuse("invalid", badStyle);
   if (text.length > MAX_PROMPT_CHARS) {
     return refuse("invalid", `Keep the prompt under ${MAX_PROMPT_CHARS} characters.`);
   }
@@ -307,6 +316,9 @@ export async function startFilm(existing, { prompt, seconds, userId, projectId, 
       prompt: text,
       // The chosen length, when one was chosen: it wins over the prompt's.
       ...(seconds != null ? { seconds } : {}),
+      // The look, settled at the start — chosen, or read off the prompt — so
+      // every stage (and a retry weeks later) draws in the same one.
+      style: filmStyleFor({ style, prompt: text }).id,
       status: "running",
       error: null,
       projectId: projectId ?? null,

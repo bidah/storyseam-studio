@@ -160,12 +160,12 @@ describe("GET /api/auto/films/:id", () => {
 
   it("404s an unknown id, and another project's id", async () => {
     const p1 = fakeStorage();
-    await saveJob(p1, job("mine", "done"));
+    await saveJob(p1, job("own", "done"));
     const env = envWith({ p1 });
     const miss = await appFor(env)("/api/auto/films/nope");
     expect(miss.status).toBe(404);
     expect(await miss.json()).toMatchObject({ ok: false, code: "not-found" });
-    expect((await appFor(env, "p2")("/api/auto/films/mine")).status).toBe(404);
+    expect((await appFor(env, "p2")("/api/auto/films/own")).status).toBe(404);
   });
 
   it("leaves /current to its own handler", async () => {

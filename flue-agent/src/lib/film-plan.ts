@@ -359,3 +359,70 @@ export function planFilm(input: FilmPlanInput = {}): FilmPlan {
     estimate: estimateFilm({ seconds, seams: grid.seams, pinsPerReel: grid.pinsPerReel, referenceSheets }),
   };
 }
+
+// ── The Film's LOOK ─────────────────────────────────────────────────────────
+//
+// A Film used to have the look the art department's model happened to write,
+// and a prompt that said "pixar" came back as whatever it invented. So the look
+// is CHOSEN — the /director-story gear, make_film's `style` — from a short list
+// of house looks written once, each carried verbatim: the style sheet is drawn
+// from it, every sheet's render clause names it, and the Series' prompt (what
+// the Director opens every sitting with, and what every shot sheet's premise
+// is) states it with its lock. Nothing downstream re-describes it.
+//
+// Both were learned against real takes: `anime-80s` is the look the Mecha
+// Launch shot sheet was drawn in (the one that came closest), `pixar` is the
+// studio's own 3D preset (Settings › style presets, preset-3d-pixar).
+export type FilmStyle = {
+  id: string;
+  label: string;
+  /** The look, as the style sheet and the premise state it. */
+  look: string;
+  /** What it must never become, stated as a lock. */
+  lock: string;
+};
+
+export const FILM_STYLES: readonly FilmStyle[] = [
+  {
+    id: 'anime-80s',
+    label: '80s anime',
+    look:
+      '1980s cel-animated anime OVA. Style: hand-painted cel animation in the spirit of Macross, Gundam and ' +
+      'Bubblegum Crisis — flat cel shading with hard shadow shapes, thin ink outlines, gouache-textured painted ' +
+      'backgrounds, muted-but-saturated palette, soft airbrushed bloom, subtle film grain and slight VHS colour bleed.',
+    lock:
+      '[LOOK LOCK] This piece is ANIMATION, drawn by hand, in every shot and at every second. It is never live ' +
+      'action, never photographic, never 3D CGI, and it never becomes any of those part way through. If a shot ' +
+      'could be mistaken for live-action footage, it is wrong: draw it as a cel.',
+  },
+  {
+    id: 'pixar',
+    label: '3D Pixar',
+    look:
+      'Stylized 3D CG animation in the Pixar / DreamWorks tradition: appealing rounded character design with ' +
+      'expressive faces and clean silhouettes, soft global illumination with a warm motivated key light and gentle ' +
+      'fill, subsurface scattering on skin, physically-based materials, believable cloth and hair, a rich but ' +
+      'controlled cinematic colour palette, shallow depth of field with soft bokeh, a polished high-quality render. ' +
+      'Motion with real weight, anticipation and follow-through.',
+    lock:
+      '[LOOK LOCK] This piece is 3D CG ANIMATION, in every shot and at every second. It is never flat 2D, never ' +
+      'hand-drawn linework, never photoreal live action, never uncanny realism, and it never becomes any of those ' +
+      'part way through. No morphing, no warping, no jitter.',
+  },
+];
+
+export const FILM_STYLE_IDS: readonly string[] = FILM_STYLES.map((s) => s.id);
+export const DEFAULT_FILM_STYLE = 'anime-80s';
+
+/**
+ * The Film's look: the one CHOSEN, else the one the prompt names ("a pixar
+ * like story", "80s anime"), else the default. Never null.
+ */
+export function filmStyleFor({ style, prompt }: { style?: string | null; prompt?: string | null }): FilmStyle {
+  const chosen = FILM_STYLES.find((s) => s.id === style);
+  if (chosen) return chosen;
+  const text = String(prompt || '').toLowerCase();
+  if (/\bpixar\b|dreamworks|\b3d\b|\bcgi?\b/.test(text)) return FILM_STYLES.find((s) => s.id === 'pixar')!;
+  if (/\banime\b|\b(19)?80s\b|\bcel\b|macross|gundam/.test(text)) return FILM_STYLES.find((s) => s.id === 'anime-80s')!;
+  return FILM_STYLES.find((s) => s.id === DEFAULT_FILM_STYLE)!;
+}
