@@ -64,6 +64,7 @@ export function cutScript(env, spec) {
     `rm -rf ${jd} && mkdir -p ${jd} && cd ${jd}`,
     `curl -fsS -o in.mp4 ${shq(spec.videoUrl)}`,
   ];
+  // Cut every frame first (each is a fraction of a second of decoding)...
   spec.frames.forEach((f, i) => {
     const at = Math.max(0, Number(f.at) || 0);
     const from = Math.max(0, at - LEAD_SECONDS);
@@ -74,9 +75,18 @@ export function cutScript(env, spec) {
       `ffmpeg -v error -y -ss ${sec(from)} -t ${sec(within + 0.5)} -i in.mp4 -vf ${shq(`select=lte(t\\,${sec(within)})`)} -vsync passthrough -update 1 ${out}`,
       // A grab past the last frame decodes nothing — take the frame there instead.
       `[ -s ${out} ] || ffmpeg -v error -y -sseof -0.1 -i in.mp4 -frames:v 1 -update 1 ${out}`,
-      `curl -fsS -X PUT -H ${shq(`authorization: Bearer ${env.INGEST_TOKEN}`)} -H 'content-type: image/png' -T ${out} ${shq(`${base}/ingest/${f.key}`)}`,
     );
   });
+  // ...then upload them all at once. One PUT after another was the whole cost
+  // of this step (a round trip each, ~17 per clip); the uploads are
+  // independent, so they run in parallel and the job fails if any one does.
+  lines.push("pids=\"\"");
+  spec.frames.forEach((f, i) => {
+    lines.push(
+      `curl -fsS -X PUT -H ${shq(`authorization: Bearer ${env.INGEST_TOKEN}`)} -H 'content-type: image/png' -T f${i}.png ${shq(`${base}/ingest/${f.key}`)} & pids="$pids $!"`,
+    );
+  });
+  lines.push('fail=0; for p in $pids; do wait "$p" || fail=1; done; [ "$fail" = 0 ]');
   lines.push(`cd /tmp && rm -rf ${jd}`);
   return lines.join("\n");
 }

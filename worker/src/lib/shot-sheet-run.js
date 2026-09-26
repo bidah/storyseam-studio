@@ -12,7 +12,7 @@
 import { absolutizeSeries, updateSeries, updateSheets } from "./director.js";
 import { putMedia } from "./media.js";
 import { endpointFor, planSheets, renderBody, slotsOf, validateSheet, withSeams } from "./shot-sheet.ts";
-import { seriesInput } from "./series.ts";
+import { MAX_SHEET_REFS, seriesInput } from "./series.ts";
 import { falAuthorization } from "../routes/stage.js";
 
 export const FAL_QUEUE = "https://queue.fal.run";
@@ -244,7 +244,11 @@ export async function finishRender(env, pid, take, key, fetchFn = fetch) {
           prompt: take.sheet?.premise ?? null,
           imageUrl: `/director-media/${file}`,
           model: take.endpoint,
-          refs: (take.sheet?.references || []).map((r) => r.url),
+          // A model sheet records at most MAX_SHEET_REFS (8) refs; a sheet is
+          // drawn with up to 9. Nothing validated this write, so 9 left the
+          // Series invalid and the next validated write (the Stills stage
+          // setting the first frame) was refused.
+          refs: (take.sheet?.references || []).map((r) => r.url).slice(0, MAX_SHEET_REFS),
         },
       ];
       series.updatedAt = nowIso();
