@@ -29,19 +29,18 @@
 // lib/director.js for why. Bytes go to R2 under `media/<pid>/director/`.
 import {
   absolutizeSeries,
-  newSeriesId,
+  createSeries,
+  replaceCueSheet,
   readIndex,
   readSeries,
-  seriesDocName,
   updateIndex,
   updateSeries,
 } from "../lib/director.js";
 import { readDoc } from "../lib/docs.js";
 import { readStillsContext } from "../lib/stills.js";
 import { normalizeShot } from "../lib/shots.js";
+import { beatsFromShots } from "../lib/cue-derive.js";
 import {
-  MIN_END_IMAGE_GAP_SECONDS,
-  MIN_OPENING_END_IMAGE_SECONDS,
   applyPatch,
   archiveReplacedAudio,
   artSettings,
@@ -49,7 +48,6 @@ import {
   recipe,
   reels,
   screening,
-  seriesFields,
   seriesInput,
   seriesPatch,
   stampCueTiming,
@@ -130,7 +128,7 @@ export function registerDirector(app) {
     let body;
     try { body = await c.req.json(); } catch { body = {}; }
 
-    const parsed = seriesFields.safeParse({
+    const created = await createSeries(c.env, pid, {
       title: String(body.title || "").trim() || "Untitled Series",
       prompt: String(body.prompt || "").trim(),
       // The Stage is a browser, so a Series written here is landscape unless the
@@ -141,22 +139,8 @@ export function registerDirector(app) {
       ...(body.resolution ? { resolution: body.resolution } : {}),
       ...(body.imageUrl ? { imageUrl: body.imageUrl } : {}),
     });
-    if (!parsed.success) return c.json({ error: "Invalid Series", issues: fieldErrors(parsed.error) }, 400);
-
-    const id = newSeriesId();
-    const at = nowIso();
-    const row = { ...parsed.data, id, createdAt: at, updatedAt: at };
-
-    // The index is the PRIMARY (it is compare-and-swapped) and the Series rides
-    // as an `also` row, so either both land or neither does. A Series written
-    // without its index entry is a document nothing can reach; an index entry
-    // written without its Series is the `missing` list above.
-    await updateIndex(c.env, pid, (index) => {
-      index.seq = (index.seq || 0) + 1;
-      index.seriesIds = [...(index.seriesIds || []), id];
-      index.selectedId = id;
-      return {};
-    }, { also: [{ name: seriesDocName(id), value: row }] });
+    if (!created.ok) return c.json({ error: "Invalid Series", issues: created.issues }, 400);
+    const row = created.series;
 
     return c.json({ ok: true, ...seriesView(c.env, pid, row) });
   });
@@ -313,65 +297,11 @@ export function registerDirector(app) {
     }
 
     const stills = pin ? await readStillsContext(c.env, pid, shots) : null;
+    // The shot → beat mapping (and why each part lands where it does) lives in
+    // lib/cue-derive.js, shared with the Auto Film job's cue-sheet stage.
+    const { beats, skippedPins, filmSeconds } = beatsFromShots(shots, (shotId) => stills?.resolve(shotId)?.take || null);
 
-    const beats = [];
-    const skippedPins = [];
-    let clock = 0;
-    let lastPin = null;
-    for (const shot of shots) {
-      const offset = Math.round(clock);
-      const seconds = Number(shot.dur) || 0;
-      clock += seconds;
-
-      const until = Math.round(clock);
-      const sections = {};
-      sections.range = seconds
-        ? `Seconds ${offset}–${until} of the film.`
-        : `From second ${offset}.`;
-      if (shot.camera) sections.style = shot.camera;
-      const scene = [
-        shot.location ? `${shot.location}.` : "",
-        shot.action,
-        shot.dialogue ? `Dialogue: ${shot.dialogue}` : "",
-      ].filter(Boolean).join(" ");
-      if (scene) sections.scene = scene;
-      if (shot.audioSync) sections.score = shot.audioSync;
-
-      const beat = { offset, prompt: sections };
-
-      // A pin is the EXACT frame the chunk ending at this offset lands on, and
-      // the endpoint spaces them: three seconds apart, and the first one clear
-      // of the longer opening chunk. A storyboard still that cannot legally be
-      // pinned is reported rather than dropped silently — the author decides
-      // whether to move the beat or let the shot go unpinned.
-      const take = stills?.resolve(shot.id)?.take;
-      if (take?.file) {
-        const tooEarly = offset < MIN_OPENING_END_IMAGE_SECONDS;
-        const tooClose = lastPin !== null && offset - lastPin < MIN_END_IMAGE_GAP_SECONDS;
-        if (tooEarly || tooClose) {
-          skippedPins.push({
-            shot: shot.id,
-            offset,
-            why: tooEarly
-              ? `inside the opening chunk (the first pin must be at least ${MIN_OPENING_END_IMAGE_SECONDS}s in)`
-              : `only ${offset - lastPin}s after the pin at ${lastPin}s (the Director needs ${MIN_END_IMAGE_GAP_SECONDS}s)`,
-          });
-        } else {
-          beat.endImageUrl = `/storyboard-media/${take.file}`;
-          lastPin = offset;
-        }
-      }
-      beats.push(beat);
-    }
-
-    const res = await updateSeries(c.env, pid, id, (row) => {
-      if (!row?.id) return { abort: true, missing: true };
-      const candidate = stampCueTiming({ ...row, directions: beats });
-      const check = seriesInput.safeParse(candidate);
-      if (!check.success) return { abort: true, issues: fieldErrors(check.error) };
-      Object.assign(row, candidate, { updatedAt: nowIso() });
-      return {};
-    });
+    const res = await replaceCueSheet(c.env, pid, id, beats);
     if (res.missing) return c.json({ error: "No such Series" }, 404);
     if (res.issues) return c.json({ error: "The derived cue sheet would be refused", issues: res.issues }, 400);
 
@@ -381,7 +311,7 @@ export function registerDirector(app) {
       derived: beats.length,
       pinned: beats.filter((b) => b.endImageUrl).length,
       skippedPins,
-      filmSeconds: Math.round(clock),
+      filmSeconds,
       ...seriesView(c.env, pid, next),
     });
   });
