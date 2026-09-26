@@ -13,9 +13,24 @@
 
 export const GROQ_DIRECT_BASE = "https://api.groq.com/openai/v1";
 
-// One constant. Fast, and a large output ceiling (a whole Shot list or Cue
-// sheet comes back in one answer), with JSON mode.
-export const GROQ_DEFAULT_MODEL = "openai/gpt-oss-120b";
+// One constant: Qwen 3.8 27B on Groq (a Groq *preview* model — evaluation
+// grade, may change). Qwen3 reasons before it answers, so its reasoning is
+// asked to be hidden (`reasoning_format`) and any <think> block that slips
+// through is stripped before JSON is parsed.
+export const GROQ_DEFAULT_MODEL = "qwen/qwen3.8-27b";
+
+// Per-model output ceilings. A request above the ceiling is refused outright by
+// Groq, so a caller asking for more is clamped rather than failed.
+export const GROQ_MAX_COMPLETION = {
+  "qwen/qwen3.8-27b": 16384,
+};
+
+const isReasoningModel = (model) => /qwen3|gpt-oss|deepseek-r1/i.test(model);
+
+// Qwen3 can emit its thinking inline as <think>…</think> ahead of the answer.
+export function stripThinking(text) {
+  return String(text).replace(/<think>[\s\S]*?<\/think>/gi, "").trim();
+}
 
 export class GroqError extends Error {
   constructor(message, { status, body } = {}) {
@@ -42,7 +57,8 @@ export async function groqChat(
 
   const body = { model, messages };
   if (json) body.response_format = { type: "json_object" };
-  if (maxTokens) body.max_completion_tokens = maxTokens;
+  if (maxTokens) body.max_completion_tokens = Math.min(maxTokens, GROQ_MAX_COMPLETION[model] ?? maxTokens);
+  if (isReasoningModel(model) && /qwen/i.test(model)) body.reasoning_format = "hidden";
   if (temperature != null) body.temperature = temperature;
 
   const res = await fetch(`${groqBase(env)}/chat/completions`, {
@@ -67,7 +83,7 @@ export async function groqChat(
   if (choice.finish_reason === "length") {
     throw new GroqError("Groq answer was cut off at the output limit (finish_reason=length)", { status: res.status, body: text });
   }
-  return content;
+  return stripThinking(content);
 }
 
 // JSON-mode helper → the parsed object. Tolerates a ```json fence.
