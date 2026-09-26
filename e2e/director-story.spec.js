@@ -35,8 +35,14 @@ const doneJob = () =>
   });
 
 const HERO = /text to long form video stories in seconds/i;
-const filmRoute = (id, body) => ({ [`/api/auto/films/${id}`]: body });
-const NOT_FOUND = { __status: 404, __body: { ok: false, code: "not-found", error: "No such Film on this project." } };
+// Every Film runs in a project of its own: the page looks it up by id
+// (GET /api/auto/films/:id/project) before it reads the job.
+const FILM_PROJECT = "p_film";
+const filmRoute = (id, body, projectId = FILM_PROJECT) => ({
+  [`/api/auto/films/${id}/project`]: { projectId },
+  [`/api/auto/films/${id}`]: body,
+});
+const NOT_FOUND = { __status: 404, __body: { ok: false, code: "not-found", error: "No such Film." } };
 
 async function expectNoStudioShell(page) {
   await expect(page.locator("header")).toHaveCount(0);
@@ -58,7 +64,7 @@ test.describe("director story", () => {
   });
 
   test("signed in → hero and input only", async ({ page }) => {
-    await mockBackend(page, { routes: { "/api/auto/films/current": { job: null, queue: [] } } });
+    await mockBackend(page, { routes: { "/api/auto/films/latest": { job: null } } });
     await page.goto("/director-story");
 
     await expect(page.getByRole("heading", { name: HERO })).toBeVisible();
@@ -75,7 +81,7 @@ test.describe("director story", () => {
 
   test("a running Film does not hijack /director-story — it offers a link", async ({ page }) => {
     await mockBackend(page, {
-      routes: { "/api/auto/films/current": { job: job(), queue: [] }, ...filmRoute("film_1", { job: job() }) },
+      routes: { "/api/auto/films/latest": { filmId: "film_1", projectId: FILM_PROJECT, job: job() }, ...filmRoute("film_1", { job: job() }) },
     });
     await page.goto("/director-story");
 
@@ -90,7 +96,7 @@ test.describe("director story", () => {
 
   test("submitting navigates to the Film's page, and a reload stays on it", async ({ page }) => {
     await mockBackend(page, {
-      routes: { "/api/auto/films/current": { job: null, queue: [] }, ...filmRoute("film_1", { job: job({ steps: [] }) }) },
+      routes: { "/api/auto/films/latest": { job: null }, ...filmRoute("film_1", { job: job({ steps: [] }) }) },
     });
     let posted = null;
     await page.route("**/api/auto/films", (route) => {
@@ -122,7 +128,7 @@ test.describe("director story", () => {
   test("the settings gear picks the length: 3:00 sends seconds 180, is remembered, and shows on the story", async ({ page }) => {
     const chosen = job({ steps: [], seconds: 180 });
     await mockBackend(page, {
-      routes: { "/api/auto/films/current": { job: null, queue: [] }, ...filmRoute("film_1", { job: chosen }) },
+      routes: { "/api/auto/films/latest": { job: null }, ...filmRoute("film_1", { job: chosen }) },
     });
     let posted = null;
     await page.route("**/api/auto/films", (route) => {
@@ -157,20 +163,19 @@ test.describe("director story", () => {
     await expect(page.locator("[data-length]")).toHaveText("3:00");
   });
 
-  test("a queued submit navigates to its id and says Queued", async ({ page }) => {
-    const queued = { id: "film_2", prompt: "A second story", status: "queued", position: 1, steps: [], spend: {} };
+  test("a second story while one is being made is refused, with the link to the running one", async ({ page }) => {
     await mockBackend(page, {
-      routes: { "/api/auto/films/current": { job: job(), queue: [] }, ...filmRoute("film_2", { job: queued }) },
+      routes: { "/api/auto/films/latest": { job: null }, ...filmRoute("film_1", { job: job() }) },
     });
     await page.route("**/api/auto/films", (route) =>
       route.fulfill({
-        status: 202,
+        status: 409,
         contentType: "application/json",
         body: JSON.stringify({
-          ok: true,
-          queued: true,
-          position: 1,
-          film: { id: "film_2", prompt: "A second story", position: 1 },
+          ok: false,
+          refusal: { code: "busy", message: "A story is already being made — wait for it to finish, then start the next one." },
+          filmId: "film_1",
+          projectId: FILM_PROJECT,
           job: job(),
         }),
       }),
@@ -180,8 +185,19 @@ test.describe("director story", () => {
     await input.fill("A second story");
     await input.press("Enter");
 
-    await expect(page).toHaveURL(/\/director-story\/create\/film_2$/);
-    await expect(page.locator("[data-queued]")).toHaveText(/Queued — position 1/);
+    await expect(page).toHaveURL(/\/director-story$/);
+    await expect(page.locator("[data-note]")).toHaveText(/already being made/);
+    await page.locator("[data-running-link]").click();
+    await expect(page).toHaveURL(/\/director-story\/create\/film_1$/);
+  });
+
+  test("a Film's page reads the job in the Film's OWN project, whatever the current one is", async ({ page }) => {
+    await mockBackend(page, { routes: filmRoute("film_1", { job: job() }) });
+    const scoped = page.waitForRequest((req) => new URL(req.url()).pathname === "/api/auto/films/film_1");
+    await page.goto("/director-story/create/film_1");
+    const req = await scoped;
+    expect(req.headers()["x-project-id"]).toBe(FILM_PROJECT);
+    await expect(page.locator("[data-story-view]")).toBeVisible();
   });
 
   test("loading a running Film's page directly → 100vh steps view", async ({ page }) => {
@@ -204,7 +220,7 @@ test.describe("director story", () => {
 
   test("loading a done Film's page → the Film fills ~70% of the view", async ({ page }) => {
     await mockBackend(page, {
-      routes: { "/api/auto/films/current": { job: null, queue: [] }, ...filmRoute("film_1", { job: doneJob() }) },
+      routes: { "/api/auto/films/latest": { job: null }, ...filmRoute("film_1", { job: doneJob() }) },
     });
     await page.route("**/files/film-test.mp4", (route) => route.fulfill({ status: 404, body: "" }));
     await page.goto("/director-story/create/film_1");
@@ -281,11 +297,14 @@ test.describe("director story", () => {
     await expect(page.locator('[data-step="stills"]')).toHaveAttribute("data-status", "failed");
   });
 
-  test("an id this project doesn't have → the not-found line", async ({ page }) => {
-    await mockBackend(page, { routes: filmRoute("film_nope", NOT_FOUND) });
+  test("an unknown id → a clean not-found", async ({ page }) => {
+    await mockBackend(page, {
+      routes: { "/api/auto/films/film_nope/project": NOT_FOUND, "/api/auto/films/film_nope": NOT_FOUND },
+    });
     await page.goto("/director-story/create/film_nope");
 
-    await expect(page.getByText("This story isn't in your current project.")).toBeVisible();
+    await expect(page.getByText("There's no story here.")).toBeVisible();
+    await expect(page.getByText(/current project/)).toHaveCount(0);
     await page.getByRole("link", { name: /new story/i }).click();
     await expect(page).toHaveURL(/\/director-story$/);
     await expect(page.getByRole("heading", { name: HERO })).toBeVisible();

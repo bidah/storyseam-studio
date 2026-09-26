@@ -69,6 +69,33 @@ async function canManageProject(env, userId, id) {
   return row.organization_id ? canManageOrg(env, row.organization_id, userId) : false;
 }
 
+/**
+ * Create a project owned by `userId`, in their personal org (or `organizationId`
+ * when they may manage it). The ONE way a project is made — POST /api/projects
+ * and the Auto Film start (routes/auto.js, a project per Film) both come here.
+ * → { project } | { error: "Forbidden" }
+ */
+export async function createProject(env, userId, { name, organizationId } = {}) {
+  const clean = (name || "").toString().trim() || "Untitled project";
+  let orgId = await ensurePersonalOrg(env, userId);
+  if (organizationId && organizationId !== orgId) {
+    if (await canManageOrg(env, organizationId, userId)) orgId = organizationId;
+    else return { error: "Forbidden" };
+  }
+  const id = newProjectId();
+  const ts = new Date().toISOString();
+  await env.DB.prepare(
+    "INSERT INTO projects (id, name, created_at, updated_at, archived, owner_user_id, organization_id) VALUES (?, ?, ?, ?, 0, ?, ?)",
+  ).bind(id, clean, ts, ts, userId, orgId).run();
+  return { project: { id, name: clean, created_at: ts, updated_at: ts, organization_id: orgId, access: "owner" } };
+}
+
+/** Archive a project (the soft delete DELETE /api/projects/:id does). */
+export async function archiveProject(env, id) {
+  const ts = new Date().toISOString();
+  await env.DB.prepare("UPDATE projects SET archived = 1, updated_at = ? WHERE id = ?").bind(ts, id).run();
+}
+
 export function registerProjects(app) {
   app.get("/api/projects", async (c) => {
     const userId = c.get("userId");
@@ -108,22 +135,9 @@ export function registerProjects(app) {
     if (!userId) return c.json({ error: "Unauthorized" }, 401);
     let body;
     try { body = await c.req.json(); } catch { body = {}; }
-    const name = (body?.name || "").toString().trim() || "Untitled project";
-
-    // The project lands in the user's personal org by default; an explicit
-    // organizationId is honoured only if the user may manage that org.
-    let orgId = await ensurePersonalOrg(c.env, userId);
-    if (body?.organizationId && body.organizationId !== orgId) {
-      if (await canManageOrg(c.env, body.organizationId, userId)) orgId = body.organizationId;
-      else return c.json({ error: "Forbidden" }, 403);
-    }
-
-    const id = newProjectId();
-    const ts = new Date().toISOString();
-    await c.env.DB.prepare(
-      "INSERT INTO projects (id, name, created_at, updated_at, archived, owner_user_id, organization_id) VALUES (?, ?, ?, ?, 0, ?, ?)",
-    ).bind(id, name, ts, ts, userId, orgId).run();
-    return c.json({ project: { id, name, created_at: ts, updated_at: ts, organization_id: orgId, access: "owner" } });
+    const res = await createProject(c.env, userId, { name: body?.name, organizationId: body?.organizationId });
+    if (res.error) return c.json({ error: res.error }, 403);
+    return c.json({ project: res.project });
   });
 
   app.patch("/api/projects/:id", async (c) => {
@@ -148,8 +162,7 @@ export function registerProjects(app) {
       const row = await c.env.DB.prepare("SELECT COUNT(*) AS n FROM projects WHERE owner_user_id = ? AND archived = 0").bind(userId).first();
       if ((row?.n ?? 0) <= 1) return c.json({ error: "Cannot delete your last project" }, 409);
     }
-    const ts = new Date().toISOString();
-    await c.env.DB.prepare("UPDATE projects SET archived = 1, updated_at = ? WHERE id = ?").bind(ts, id).run();
+    await archiveProject(c.env, id);
     if ((await getActiveProject(c.env, userId)) === id) await setActiveProject(c.env, userId, "");
     return c.json({ ok: true });
   });

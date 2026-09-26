@@ -10,7 +10,8 @@
 // Series' own validation has to accept the result.
 import { describe, it, expect, vi } from "vitest";
 import { Hono } from "hono";
-import { makeEnv } from "./_fakes.js";
+import { readFileSync } from "node:fs";
+import { makeEnv, makeDocsDB } from "./_fakes.js";
 import { confirmPlan, startFilm } from "../../worker/src/lib/film-job.js";
 import { startNextQueued, submitFilm } from "../../worker/src/lib/film-queue.js";
 import { registerAuto } from "../../worker/src/routes/auto.js";
@@ -158,7 +159,13 @@ describe("job.seconds", () => {
 describe("POST /api/auto/films { seconds }", () => {
   const appWith = () => {
     const start = vi.fn(async (input) => ({ ok: true, job: { id: "f1", prompt: input.prompt, seconds: input.seconds } }));
-    const env = { FILM_JOBS: { idFromName: (n) => n, get: () => ({ start }) } };
+    // The start route makes the Film's own project (a real schema) and checks
+    // availability + allowance first, so it needs the DB and the keys too.
+    const env = {
+      ...makeEnv({ DB: makeDocsDB(readFileSync(new URL("../../worker/schema.sql", import.meta.url), "utf8")) }),
+      FAL_KEY: "f", DAYTONA_API_KEY: "d", GROQ_API_KEY: "g",
+      FILM_JOBS: { idFromName: (n) => n, get: () => ({ start, film: async () => null }) },
+    };
     const app = new Hono();
     app.use("*", async (c, next) => {
       c.set("userId", "u1");

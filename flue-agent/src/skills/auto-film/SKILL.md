@@ -9,8 +9,7 @@ description: >-
   Never say a Film is done unless get_film reports status "done". Pass the
   author's idea through as the prompt — do not write the script, shot list or
   cue sheet yourself; the job does. A refusal (allowance used up, paused,
-  busy) starts nothing: say why, do not retry. Queued: say its position.
-  Stopped: offer retry_film (resumes at the failed step), only on a yes. Draw
+  busy — one Film at a time) starts nothing: say why, do not retry. Stopped: offer retry_film (resumes at the failed step), only on a yes. Draw
   a render_ui confirm card ONLY when a job is "awaiting-confirm" (Auto is
   off), from its `confirm` fields, and call confirm_film / decline_film only
   on the author's actual answer. Do NOT use for a Director Series the author
@@ -41,11 +40,13 @@ the result says `capped`, and then tell them.
 
 The result is one of:
 
-- `started: true` — go on to step 3.
-- `queued: true` — another Film is being made on this project. Tell them it
-  is queued at `position` and starts on its own. Do not start it again.
+- `started: true` — go on to step 3. The Film is being made in a NEW project
+  of its own (`projectId`, named after the story) — not in this chat's
+  project, so nothing from this project's World leaks into it. Say so.
 - `refused: true` — relay `message` in plain words. Nothing was made or
-  counted. Do not retry, do not rephrase the prompt to get around it.
+  counted. Do not retry, do not rephrase the prompt to get around it. `busy`
+  means another of their Films is still being made (one at a time); offer to
+  check on it (`get_film`) instead.
 
 ## 3. Send them to it, and stop
 
@@ -93,9 +94,10 @@ Then end the turn. On their yes, `confirm_film` with the job id; on a no,
 
 `retry_film` re-runs a `stopped` Film from the step that stopped it — the
 "Retry from <step>" button on its story page. Everything before that step is
-kept and not paid for again; the Film's Series is repaired first. Only the
-project's latest Film, and only on the author's ask. It refuses (never queues)
-when another Film is running or queued, a newer one has run since, Auto is
+kept and not paid for again; the Film's Series is repaired first. The Worker
+finds the Film's own project from its id. Only on the author's ask. It refuses
+(never queues) when another of their Films is being made, a newer one has run
+in that project since, Auto is
 paused or the allowance is used up — relay `message` and stop. After a retry,
 say which step it resumed at (`resumedAt.label`) and END THE TURN.
 

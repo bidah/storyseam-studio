@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { useLoaderData, useRevalidator } from "react-router";
+import { useEffect, useState } from "react";
+import { Link, useLoaderData, useRevalidator } from "react-router";
 import { Ban, CheckCircle2, CircleAlert, CircleHelp, Clapperboard, Clock, ExternalLink, Loader2, MapPin, OctagonX, Play, RotateCw, Sparkles, Users } from "lucide-react";
 import { invalidateTabCache } from "@/lib/tabCache";
 import { swr, useRevalidateOnMount } from "@/lib/swr";
@@ -33,10 +33,23 @@ async function getJSON(url) {
   return data;
 }
 
+// Every Film runs in a project of its OWN (worker/src/lib/films.js), so this
+// surface shows the user's LATEST Film wherever it runs (user-scoped), falling
+// back to this project's current job for a Film started before that. Its step
+// events land on the Film's project's channel, not this one's — so while it is
+// being made the surface polls (POLL_MS) instead of waiting on the firehose.
+const POLL_MS = 5000;
+
+async function readFilms() {
+  const latest = await getJSON("/api/auto/films/latest");
+  if (latest?.job) return { job: latest.job, queue: [] };
+  return getJSON("/api/auto/films/current");
+}
+
 export function loader() {
   return swr(KEY, async () => {
     const [current, status, allowance, settings] = await Promise.all([
-      getJSON("/api/auto/films/current"),
+      readFilms(),
       getJSON("/api/auto/status").catch(() => null),
       getJSON("/api/auto/allowance").catch(() => null),
       getJSON("/api/auto/settings").catch(() => null),
@@ -495,6 +508,12 @@ function AutoSurface() {
     : started;
   const running = shown?.status === "running" || shown?.status === "awaiting-confirm";
 
+  useEffect(() => {
+    if (!running) return;
+    const t = setInterval(() => { invalidateTabCache(KEY); revalidate(); }, POLL_MS);
+    return () => clearInterval(t);
+  }, [running, revalidate]);
+
   const answer = async (kind) => {
     if (!shown?.id || answering) return;
     setAnswering(kind);
@@ -585,9 +604,11 @@ function AutoSurface() {
               {allowance?.ok ? `${allowance.remaining} of ${allowance.limit} Films left this month` : null}
             </span>
           </div>
-          <Button type="submit" disabled={!prompt.trim() || submitting || !!blocked}>
+          {/* One Film at a time per user: while one is being made, starting
+              another is refused by the Worker, so the button waits too. */}
+          <Button type="submit" disabled={!prompt.trim() || submitting || !!blocked || running}>
             {submitting ? <Loader2 size={14} className="animate-spin" /> : running ? <Clock size={14} /> : <Sparkles size={14} />}
-            {running ? "Queue Film" : "Make Film"}
+            {running ? "Film in progress" : "Make Film"}
           </Button>
         </div>
       </form>
@@ -603,6 +624,14 @@ function AutoSurface() {
             <p className={cn("line-clamp-2 text-sm", !shown.prompt && "italic text-muted-foreground")}>
               {shown.prompt}
             </p>
+            {shown.id && (
+              <Link
+                to={`/director-story/create/${encodeURIComponent(shown.id)}`}
+                className="flex shrink-0 items-center gap-1 text-xs text-muted-foreground underline-offset-4 hover:underline"
+              >
+                <ExternalLink size={12} aria-hidden /> Its page
+              </Link>
+            )}
             {shown.status === "stopped" && <Badge variant="destructive">Stopped</Badge>}
             {shown.status === "refused" && <Badge variant="muted">Didn't start</Badge>}
             {shown.status === "declined" && <Badge variant="muted">Declined</Badge>}

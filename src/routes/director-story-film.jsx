@@ -1,15 +1,16 @@
 // /director-story/create/:filmId — the STORY view of ONE Film.
 //
-// The URL is the state: the page reads its Film by id (GET /api/auto/films/:id
-// — the running job, a queued one, or a finished/stopped one from the
-// project's history), so a reload anywhere in a run lands back here, on the
-// same Film. Live updates ride the project's `data` channel (<LiveSync>),
-// filtered to this Film's id, with a slow poll as the backstop while it is
-// running or queued.
+// The URL is the state. Every Film runs in a project of its own, so the page
+// first asks which one (GET /api/auto/films/:id/project — user-scoped), sets it
+// on the fetch shim, THEN reads the Film by id (GET /api/auto/films/:id — the
+// running job, a queued one, or a finished/stopped one from that project's
+// history). A reload or a shared link lands on the same Film whatever the
+// studio's "current" project is. Live updates ride the Film's project's `data`
+// channel (<LiveSync>), filtered to this Film's id, with a slow poll as the
+// backstop while it is running or queued.
 //
-// A Film id belongs to ONE project. If this project has no such Film (the
-// author switched projects in the studio, or the link is someone else's) the
-// page says so and offers a new story — it never crashes.
+// An id that isn't one of the user's Films (unknown, someone else's, aged out)
+// gets a clean not-found and the way to a new story — it never crashes.
 //
 // No loading screen: the steps render at once, all waiting, and fill in when
 // the job arrives. The shared pieces live in components/DirectorStory.jsx.
@@ -26,7 +27,7 @@ import {
   StoryView,
   fetchFilm,
   retryFilm,
-  useDirectorProject,
+  useFilmProject,
 } from "@/components/DirectorStory";
 import { MONO } from "@/lib/hudTheme";
 
@@ -40,8 +41,9 @@ export function Component() {
 function FilmStory({ signedIn }) {
   const { filmId } = useParams();
   const navigate = useNavigate();
-  const { projectId, error } = useDirectorProject(signedIn);
-  // `undefined` = not read yet; `null` = not in this project.
+  // The Film's own project, looked up from its id (and set on the shim).
+  const { projectId, error } = useFilmProject(signedIn, filmId);
+  // `undefined` = not read yet; `null` = no such Film.
   const [job, setJob] = useState(undefined);
   const [retrying, setRetrying] = useState(false);
   const [retryError, setRetryError] = useState(null);
@@ -96,7 +98,7 @@ function FilmStory({ signedIn }) {
     }
   };
 
-  if (job === null) return <Stranded message="This story isn't in your current project." />;
+  if (job === null) return <Stranded message="There's no story here." />;
   if (error && job === undefined) return <Stranded message={error} />;
 
   return (

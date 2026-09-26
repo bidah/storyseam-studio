@@ -167,10 +167,23 @@ describe("Auto film tools", () => {
     expect(api.calls[2].body).toEqual({ prompt: "x" });
   });
 
-  it("make_film reports a queue position", async () => {
-    const api = makeApi({ post: { ok: true, queued: true, position: 2, film: { id: "film-2" }, job: { id: "film-1", status: "running" } } });
+  it("make_film reports the Film's own new project and its page", async () => {
+    const api = makeApi({ post: { ok: true, projectId: "p_new", job: { id: "film-2", status: "running", steps: [], spend: {} } } });
     const out: any = await run(makeFilm(api), { prompt: "x" });
-    expect(out).toMatchObject({ started: false, queued: true, position: 2, filmId: "film-2" });
+    expect(out).toMatchObject({ started: true, filmId: "film-2", projectId: "p_new", page: "/director-story/create/film-2" });
+  });
+
+  it("make_film relays a busy refusal with the Film still being made", async () => {
+    const api: any = {
+      post: async () => {
+        throw Object.assign(new Error("busy"), {
+          status: 409,
+          body: { ok: false, refusal: { code: "busy", message: "A story is already being made" }, filmId: "film-1", job: { id: "film-1", status: "running", steps: [] } },
+        });
+      },
+    };
+    const out: any = await run(makeFilm(api), { prompt: "x" });
+    expect(out).toMatchObject({ started: false, refused: true, code: "busy", runningFilmId: "film-1" });
   });
 
   it("make_film turns a refusal into a message instead of throwing", async () => {
@@ -197,7 +210,7 @@ describe("Auto film tools", () => {
       },
     });
     const a: any = await run(getFilm(running));
-    expect(running.calls[0].path).toBe("/api/auto/films/current");
+    expect(running.calls[0].path).toBe("/api/auto/films/latest");
     expect(a.job.steps[0]).toEqual({ key: "world", label: "World", status: "done", summary: "3 characters" });
     expect(a.job.film).toBeUndefined();
 

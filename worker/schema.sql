@@ -275,3 +275,18 @@ CREATE TABLE IF NOT EXISTS auto_settings (
   auto       INTEGER NOT NULL DEFAULT 1,
   updated_at TEXT NOT NULL
 );
+
+-- A project per Film (CONTEXT.md, "Film"): every Auto Film runs in a NEW
+-- project of its own, so its World, shot list and every other project-level
+-- doc start empty instead of merging into the author's current project. This
+-- maps a Film to that project, per user: the /director-story page by URL, the
+-- agent's get_film / retry_film, "one Film at a time per user" and the user's
+-- latest Film all read it. Read and written ONLY through worker/src/lib/films.js.
+-- Prod gets it from migrations/005-films.sql.
+CREATE TABLE IF NOT EXISTS films (
+  film_id    TEXT PRIMARY KEY,
+  project_id TEXT NOT NULL,                -- references projects(id)
+  user_id    TEXT NOT NULL,                -- references "user"(id)
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_films_user ON films (user_id, created_at DESC);

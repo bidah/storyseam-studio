@@ -1,26 +1,28 @@
 // /director-story — the SIMPLE view: the hero and one input. Nothing else.
 //
 // Submitting starts a Film (POST /api/auto/films { prompt, seconds } — the
-// length from the input's settings gear) and moves the URL to that
-// Film's own page, /director-story/create/:filmId (routes/director-story-film
-// .jsx) — the URL is the state, so a reload never loses the run. A Film queued
-// behind another keeps its id when it starts (worker/src/lib/film-queue.js), so
-// a queued one navigates to its id too and that page says "Queued".
+// length from the input's settings gear) IN A NEW PROJECT OF ITS OWN, made by
+// the Worker, and moves the URL to that Film's own page,
+// /director-story/create/:filmId (routes/director-story-film.jsx) — the URL is
+// the state, so a reload never loses the run.
 //
-// Visiting here while a Film is running does NOT hijack the page: it stays the
-// simple view, with one small link to the running Film. The shared pieces
-// (auth, project, the views) live in components/DirectorStory.jsx.
+// Visiting here while a Film is being made does NOT hijack the page: it stays
+// the simple view, with one small link to it. That Film is the USER's latest
+// (GET /api/auto/films/latest — user-scoped, whatever project it is in), since
+// a user makes one Film at a time. The shared pieces (auth, project, the
+// views) live in components/DirectorStory.jsx.
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router";
 import {
   ACTIVE,
   AuthGate,
   SimpleView,
-  fetchCurrent,
+  fetchLatest,
   filmPath,
   getJSON,
   useDirectorProject,
 } from "@/components/DirectorStory";
+import { setProjectId } from "@/lib/projectFetch";
 
 export function Component() {
   return <AuthGate>{(signedIn) => <SimpleStory signedIn={signedIn} />}</AuthGate>;
@@ -28,22 +30,23 @@ export function Component() {
 
 function SimpleStory({ signedIn }) {
   const navigate = useNavigate();
-  const { projectId, error, ready } = useDirectorProject(signedIn);
+  // Only the settings write below needs a project in scope; the Film makes its own.
+  const { error, ready } = useDirectorProject(signedIn);
   const [note, setNote] = useState(null); // the one line under the input
   const [submitting, setSubmitting] = useState(false);
   const [running, setRunning] = useState(null);
 
   useEffect(() => { if (error) setNote(error); }, [error]);
 
-  // A Film already in progress on this project → offer the link to it.
+  // A Film of this user's still being made → offer the link to it.
   useEffect(() => {
-    if (!projectId) return;
+    if (!signedIn) return;
     let live = true;
-    fetchCurrent()
-      .then((current) => { if (live && current && ACTIVE.has(current.status)) setRunning(current); })
+    fetchLatest()
+      .then((latest) => { if (live && latest && ACTIVE.has(latest.status)) setRunning(latest); })
       .catch(() => {});
     return () => { live = false; };
-  }, [projectId]);
+  }, [signedIn]);
 
   const start = async (prompt, seconds) => {
     if (submitting) return false;
@@ -69,15 +72,18 @@ function SimpleStory({ signedIn }) {
       });
       if (!res.ok || !data.ok) {
         setNote(data.refusal?.message || data.error || `Couldn't start (${res.status}).`);
+        // Refused because another of theirs is being made: offer the way there.
+        if (data.refusal?.code === "busy" && data.filmId) setRunning({ ...(data.job || {}), id: data.filmId });
         return false;
       }
-      // Started → the job's id; queued → the queue item's id (it becomes the
-      // job's id when it starts).
-      const id = data.queued ? (data.film?.id ?? data.item?.id) : data.job?.id;
+      const id = data.job?.id;
       if (!id) {
         setNote("The story started, but its page couldn't be found — reload to see it.");
         return true;
       }
+      // The Film's own project: its page looks it up again by id, but setting
+      // it now saves the round trip before the first read.
+      if (data.projectId) setProjectId(data.projectId);
       navigate(filmPath(id));
       return true;
     } catch (err) {

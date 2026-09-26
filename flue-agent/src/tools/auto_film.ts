@@ -9,6 +9,13 @@
 // card an Auto-off job asks. It never drives a stage itself, and it never waits
 // for one — a turn cannot outlive the job, and a tight poll loop only burns the
 // author's turn while the Film is still an hour of Worker alarms away.
+//
+// Every Film runs in a NEW project of its own, which the Worker makes when it
+// starts (worker/src/lib/films.js) — never in this chat's project, whose World
+// would bleed into it. So these tools never address a Film through the chat's
+// project: the start route is user-scoped, `get_film` with no id reads the
+// author's LATEST Film (/api/auto/films/latest), and every by-id route finds
+// the Film's project from the Worker's films lookup.
 import { defineTool } from "@flue/runtime";
 import * as v from "valibot";
 import { d } from "./_util.js";
@@ -101,7 +108,7 @@ export const makeFilm = (api: Api) =>
   defineTool({
     name: "make_film",
     description:
-      `Start an Auto Film from a prompt — the same job the Auto surface's prompt box starts ("make me a two-minute mecha short"). ${PIPELINE} It returns at once: the job id, or \`queued: true\` with a \`position\` when a Film is already being made on this project, or \`started: false\` with the refusal's message (empty/too-long prompt, the project is busy, the monthly Film allowance is used up, Auto is paused/unavailable) — relay a refusal in plain words and start nothing else. After a start, navigate to "auto" so the author watches the cards there, tell them the Film is being made and roughly how long it takes, and END THE TURN. Do NOT poll get_film in a loop; check back with get_film only when the author asks. Never say a Film is done unless get_film reports status "done". Check get_auto_status first when you don't know the allowance.`,
+      `Start an Auto Film from a prompt — the same job the Auto surface's prompt box starts ("make me a two-minute mecha short"). ${PIPELINE} The Film is made in a NEW project of its own (named after the story; \`projectId\` in the result) — never in this chat's project, so nothing from this project's World or shot list leaks into it. An author makes ONE Film at a time. It returns at once: the job id, or \`started: false\` with the refusal's message (empty/too-long prompt, \`busy\` — another of their Films is still being made, the monthly Film allowance is used up, Auto is paused/unavailable) — relay a refusal in plain words and start nothing else. After a start, navigate to "auto" so the author watches the cards there, tell them the Film is being made and roughly how long it takes, and END THE TURN. Do NOT poll get_film in a loop; check back with get_film only when the author asks. Never say a Film is done unless get_film reports status "done". Check get_auto_status first when you don't know the allowance.`,
     input: v.object({
       prompt: d(
         v.string(),
@@ -130,33 +137,23 @@ export const makeFilm = (api: Api) =>
           "/api/auto/films",
           chosen ? { prompt, seconds: chosen.seconds } : { prompt },
           signal,
-        )) as {
-          job?: Job; queued?: boolean; position?: number; film?: Job;
-        };
-        if (res.queued) {
-          return {
-            output: {
-              started: false,
-              queued: true,
-              position: res.position ?? null,
-              filmId: (res.film as Job | undefined)?.id ?? null,
-              ...lengthNote,
-              running: viewJob(res.job),
-              next: `Queued behind the Film already being made on this project (position ${res.position ?? "?"}). It starts on its own when that one ends. Tell the author; do not start it again.`,
-            },
-          };
-        }
+        )) as { job?: Job; projectId?: string };
+        const filmId = res.job?.id ?? null;
         return {
           output: {
             started: true,
-            filmId: res.job?.id ?? null,
+            filmId,
+            projectId: res.projectId ?? null,
+            ...(filmId ? { page: `/director-story/create/${encodeURIComponent(filmId)}` } : {}),
             ...lengthNote,
             job: viewJob(res.job),
-            next: 'Started. navigate to "auto", tell the author the Film is being made there (20–40 minutes), and end the turn.',
+            next: 'Started, in a new project of its own. navigate to "auto", tell the author the Film is being made there (20–40 minutes) and that it has its own project, and end the turn.',
           },
         };
       } catch (err) {
-        const body = (err as { body?: { refusal?: { code?: string; message?: string }; job?: Job } }).body;
+        const body = (err as {
+          body?: { refusal?: { code?: string; message?: string }; job?: Job; filmId?: string };
+        }).body;
         if (body?.refusal) {
           return {
             output: {
@@ -164,6 +161,7 @@ export const makeFilm = (api: Api) =>
               refused: true,
               code: body.refusal.code ?? null,
               message: body.refusal.message ?? null,
+              ...(body.filmId ? { runningFilmId: body.filmId } : {}),
               running: viewJob(body.job),
             },
           };
@@ -177,12 +175,12 @@ export const getFilm = (api: Api) =>
   defineTool({
     name: "get_film",
     description:
-      `The project's current Auto Film: its status (running | awaiting-confirm | done | stopped | declined | refused), every stage that has started with its state and one-line summary, what it has cost so far, the Films queued behind it — and, ONLY when status is "done", the Film itself (\`film.url\`, seconds, title). ${PIPELINE} Call it when the author asks how their Film is going, not on a timer: never call it twice in one turn to wait for progress. A running job is not a done one — never tell the author a Film is ready unless this says "done". A "stopped" job names the stage and reason and keeps everything made so far; say so.`,
+      `The author's latest Auto Film (each Film has a project of its own — this finds it wherever it is, not in this chat's project): its status (running | awaiting-confirm | done | stopped | declined | refused), every stage that has started with its state and one-line summary, what it has cost so far, the Films queued behind it — and, ONLY when status is "done", the Film itself (\`film.url\`, seconds, title). ${PIPELINE} Call it when the author asks how their Film is going, not on a timer: never call it twice in one turn to wait for progress. A running job is not a done one — never tell the author a Film is ready unless this says "done". A "stopped" job names the stage and reason and keeps everything made so far; say so.`,
     input: v.object({
       filmId: v.optional(
         d(
           v.string(),
-          "Optional: read ONE Film by its id (make_film's `filmId`, or the id in a /director-story/create/<id> link) instead of the current one — works for a running, queued (status \"queued\" + position) or finished/stopped Film from this project's recent history. Omit for the current Film and its queue.",
+          "Optional: read ONE Film by its id (make_film's `filmId`, or the id in a /director-story/create/<id> link) instead of the latest — any of the author's Films, running or finished/stopped, whichever project it is in. Omit for the latest Film.",
         ),
       ),
     }),
@@ -191,11 +189,12 @@ export const getFilm = (api: Api) =>
       if (filmId) {
         const id = encodeURIComponent(filmId);
         try {
-          const res = (await api.get(`/api/auto/films/${id}`, signal)) as { job?: Job | null };
+          const res = (await api.get(`/api/auto/films/${id}`, signal)) as { job?: Job | null; projectId?: string | null };
           const job = res.job as (Job & { position?: number }) | null | undefined;
           return {
             output: {
               job: viewJob(job),
+              projectId: res.projectId ?? null,
               ...(job?.status === "queued"
                 ? { position: job.position ?? null, next: "Queued behind the Film being made on this project; it starts on its own." }
                 : {}),
@@ -203,11 +202,20 @@ export const getFilm = (api: Api) =>
           };
         } catch (err) {
           if ((err as { status?: number }).status === 404) {
-            return { output: { job: null, notFound: true, next: "No Film with that id on this project (it may belong to another project, or have aged out of the last 50)." } };
+            return { output: { job: null, notFound: true, next: "None of the author's Films has that id (it may be someone else's, or have aged out of the last 50)." } };
           }
           throw err;
         }
       }
+      // The author's latest Film, in whichever project it was made.
+      const latest = (await api.get("/api/auto/films/latest", signal)) as {
+        job?: Job | null; filmId?: string; projectId?: string;
+      };
+      if (latest.job) {
+        return { output: { job: viewJob(latest.job), projectId: latest.projectId ?? null, queue: [] } };
+      }
+      // None recorded: a Film started before every Film had its own project
+      // can only be in this chat's project.
       const res = (await api.get("/api/auto/films/current", signal)) as { job?: Job | null; queue?: unknown[] };
       return {
         output: {
@@ -262,7 +270,7 @@ export const retryFilm = (api: Api) =>
   defineTool({
     name: "retry_film",
     description:
-      "Retry a STOPPED Auto Film from the step that stopped it — the same as the \"Retry from <step>\" button on its story page. Every earlier step's output and spend is kept (the World, sheets and clips are NOT paid for again), the Film's Series is repaired first, and the job runs on server-side from the failed step. Only for the project's latest Film, only when get_film says \"stopped\", and only on the author's ask. It REFUSES (never queues) when another Film is running or queued, when a newer Film has run since, or when Auto is paused / the allowance is used up — relay `message` and do not retry again. A stopped Film never counted against the allowance, and a retried one that finishes counts once. After a retry, tell the author which step it resumed at and END THE TURN; do not poll get_film.",
+      "Retry a STOPPED Auto Film from the step that stopped it — the same as the \"Retry from <step>\" button on its story page. Every earlier step's output and spend is kept (the World, sheets and clips are NOT paid for again), the Film's Series is repaired first, and the job runs on server-side from the failed step. The Worker finds the Film's own project from its id. Only for the latest Film in that project, only when get_film says \"stopped\", and only on the author's ask. It REFUSES (never queues) when another of the author's Films is being made, when a newer Film has run since, or when Auto is paused / the allowance is used up — relay `message` and do not retry again. A stopped Film never counted against the allowance, and a retried one that finishes counts once. After a retry, tell the author which step it resumed at and END THE TURN; do not poll get_film.",
     input: v.object({
       filmId: d(v.string(), "The stopped Film's id, from get_film (`job.id`) or make_film (`filmId`)."),
     }),
