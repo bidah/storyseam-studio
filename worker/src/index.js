@@ -78,6 +78,7 @@ import { registerAppState } from "./routes/appstate.js";
 import { registerNavigate } from "./routes/navigate.js";
 import { registerApprovals } from "./routes/approvals.js";
 import { registerMcp } from "./routes/mcp.js";
+import { registerFilmAllowance } from "./routes/film-allowance.js";
 import { OAuthProvider } from "@cloudflare/workers-oauth-provider";
 import { ShotStudioMCP } from "./mcp-agent.js";
 
@@ -729,6 +730,8 @@ registerAppState(app);
 registerNavigate(app);
 registerApprovals(app);
 registerMcp(app);
+// Auto: the per-user monthly Film allowance.
+registerFilmAllowance(app);
 
 // --- remote-MCP OAuth consent screen ---------------------------------------
 // The per-user MCP connector (Settings › Connectors) is an OAuth-fronted server
