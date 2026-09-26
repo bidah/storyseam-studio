@@ -49,6 +49,16 @@ export const router = createBrowserRouter([
     lazy: () => import("@/routes/landing"),
     ErrorBoundary: RouteError,
   },
+  // Text to story: a prompt in, a Film back — and NOTHING else. A sibling of
+  // RootLayout so the studio shell (header, tab bar, agent panel) never wraps
+  // it. It is not public: the module redirects a signed-out visitor to
+  // /login?next=/director-story and picks the project itself, since the
+  // shell's ProjectProvider isn't here to do it.
+  {
+    path: "/director-story",
+    lazy: () => import("@/routes/director-story"),
+    ErrorBoundary: RouteError,
+  },
   // PUBLIC read-only share view behind a share link — the World and Script tabs.
   // A SIBLING of RootLayout, not a child: the shell's LoginGate (session +
   // provider key) and header must never wrap it — a link viewer has neither.
