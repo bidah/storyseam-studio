@@ -148,12 +148,3 @@
 /api/musical/song                 # multipart audio upload from a file input; the agent works from
                                   # the uploaded stem/mix via the split, never raw file bytes
 /api/musical/reset                # the author's "start the shot bible over" button — a UI clear
-
-# --- [gap] Auto (prompt to Film, issue #64) ----------------------------------
-/api/auto/films                   # agent tool lands in #73 (make_film/get_film)
-/api/auto/films/current           # agent tool lands in #73 (make_film/get_film)
-/api/auto/status                  # agent tool lands in #73 (make_film/get_film)
-/api/auto/allowance               # agent tool lands in #73 (make_film/get_film)
-/api/auto/settings                # agent tool lands in #73 (make_film/get_film)
-/api/auto/films/*/confirm         # agent tool lands in #73 (make_film/get_film)
-/api/auto/films/*/decline         # agent tool lands in #73 (make_film/get_film)

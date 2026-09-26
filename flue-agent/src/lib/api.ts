@@ -92,9 +92,17 @@ export function createApi(
       data = { raw: text };
     }
     if (!res.ok) {
-      const msg =
-        (data as { error?: string })?.error ?? `${res.status} ${res.statusText}`;
-      throw new Error(`Shot Studio API ${path} failed: ${msg}`);
+      // A route that REFUSES (rather than errors) answers with
+      // `{ refusal: { code, message } }` and no `error` — the Auto film start
+      // does. Its message is the one worth showing, not "409 Conflict".
+      const body = data as { error?: string; refusal?: { message?: string } };
+      const msg = body?.error ?? body?.refusal?.message ?? `${res.status} ${res.statusText}`;
+      // `status` and `body` ride on the error so a tool that expects a refusal
+      // can read its code instead of parsing the message.
+      throw Object.assign(new Error(`Shot Studio API ${path} failed: ${msg}`), {
+        status: res.status,
+        body: data,
+      });
     }
     return data as T;
   }

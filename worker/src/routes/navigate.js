@@ -34,6 +34,9 @@ const VIEWS = new Set([
   // here on purpose — "go install it" is a navigation the agent should be able
   // to make.
   "plugins", "settings", "members", "shots", "multishot",
+  // Auto — prompt to Film. Not a plugin (no header tab yet), reachable at /auto;
+  // the agent's make_film sends the author there to watch the job's cards.
+  "auto",
 ]);
 
 // A navigate may still name an UNINSTALLED plugin. That is deliberately not an

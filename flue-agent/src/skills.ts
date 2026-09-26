@@ -36,6 +36,8 @@ import directorSitting from "./skills/director-sitting/SKILL.md";
 import upscaleVideo from "./skills/upscale-video/SKILL.md";
 import shotSheet from "./skills/shot-sheet/SKILL.md";
 import scoreFilm from "./skills/score-film/SKILL.md";
+// Auto — the one-prompt path: a server-side job makes the whole Film.
+import autoFilm from "./skills/auto-film/SKILL.md";
 
 export const skills = [
   generativeUi,
@@ -82,6 +84,9 @@ export const skills = [
   directorSitting,
   shotSheet,
   scoreFilm,
+  // Auto: the same pipeline as all of the above, run end to end by a job on
+  // the Worker from one prompt. The agent starts it and reads it, nothing more.
+  autoFilm,
   // Upscale: the last step before a finished film leaves the studio.
   upscaleVideo,
   trimVideo,
