@@ -49,6 +49,25 @@ because the picture is what it has to turn with.
 The **first chunk's** styles set the genre for the whole piece, so the Series'
 standing music brief (`musicStyle`) belongs in it, split into tags.
 
+## Silences — the score does not play all the time
+
+A score that never stops has nothing to say when it matters. Mark stretches
+where the story wants breath as **silence** chunks: a heavy exchange of
+dialogue, a held moment right before a big action, a reveal. Name them for the
+moment (`[Held breath]`, `[Silence]`), ask for `near silence`, `room tone
+only`, `single sustained very soft note fading to nothing`, and block drums,
+percussion, melody and pads in `negative_styles`. ElevenLabs cannot render true
+silence — the chunk keeps the music around it honest (it is written knowing it
+stops there); the MIX makes the silence real: pass each silence chunk's
+`{ from, to }` seconds to `score_sitting` as `silences`, and the bed fades out
+to nothing over it (1.5 s ramps out and back in).
+
+Rules of thumb: a 2–5 minute film has 2–4 silences, each 4–15 s, never in the
+first 3 s or the last 6 s. The music after a silence re-enters CHANGED — a
+silence is a hinge, not a pause — and every big story turn is marked by a change
+in the music. The Auto Film job's Score stage writes its plan by the same rules,
+from the shot list's story moments laid on the film's measured clock.
+
 ## The brief is the Series', not the cue's
 
 `prompts.musicStyle` is the standing prompt every cue of a Series is made by —
@@ -75,8 +94,9 @@ or trimmed to fit afterwards — a plan that is short is fixed in the plan.
    what the render will cost in dollars. Tell the author the figure.
 4. **`render_cue`** — costs money. Poll it with the same tool.
 5. **`score_sitting`** — the cue is not the scored film. When the poll says
-   `done`, pass its `url` with the sitting's id: the Worker lays the cue under
-   the picture and files the scored film beside the sitting. Then tell the
+   `done`, pass its `url` with the sitting's id (and the plan's `silences`):
+   the Worker lays the cue under the picture and files the scored film beside
+   the sitting. Then tell the
    author it is ready (the Musicalized tab shows the two together).
 
 ## How the mix is made
@@ -94,9 +114,10 @@ not deterministic, so where a line actually lands is a property of the take.
 A hand-typed window list is right for one film and wrong for every one after it.
 
 The bed sits at a low base level throughout. The mix model also carries
-per-stretch level `spans` — the idea being that −21 dB reads as under-the-
-dialogue in an interior and vanishes entirely in a vacuum — but nothing authors
-them yet, so today the base is flat and the ducks do the work.
+per-stretch level `spans` — −21 dB reads as under-the-dialogue in an interior
+and vanishes entirely in a vacuum. The silences are spans too: −80 dB with a
+`rampSec`, so the level travels linearly out of the bed and back rather than
+switching.
 
 ## Keep the plan
 

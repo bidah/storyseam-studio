@@ -16,17 +16,27 @@
 // The level model — dB, spans, ducks, the default mix and the ffmpeg
 // expression — is shared with the Auto Film job's server-side mix, so it lives
 // in src/lib/score-mix.ts (vendored into the Worker) and is re-exported here.
-import { DEFAULT_MIX, dbToGain, gainToDb, levelExpression, type LevelSpan, type MixSettings } from '../lib/score-mix';
+import {
+  DEFAULT_MIX,
+  dbToGain,
+  gainToDb,
+  inRamp,
+  levelExpression,
+  rampOf,
+  spanGainAt,
+  type LevelSpan,
+  type MixSettings,
+} from '../lib/score-mix';
 export { DEFAULT_MIX, dbToGain, gainToDb, levelExpression };
 export type { LevelSpan, MixSettings };
 
-/** The bed's linear gain at one second of the film. */
+/**
+ * The bed's linear gain at one second of the film. The span level (with its
+ * ramps — a Score silence fades out and back in) is `spanGainAt`, the same
+ * function the server's ffmpeg expression is written from.
+ */
 export function levelAt(settings: MixSettings, t: number): number {
-  let db = settings.baseDb;
-  for (const span of settings.spans) {
-    if (t >= span.from && t < span.to) db = span.db;
-  }
-  let gain = dbToGain(db);
+  let gain = spanGainAt(settings, t);
   for (const [from, to] of settings.ducks) {
     if (t >= from && t < to) gain *= dbToGain(settings.duckDb);
   }
@@ -37,19 +47,32 @@ export function levelAt(settings: MixSettings, t: number): number {
 /**
  * The seconds at which the gain changes, in order — what a GainNode is
  * scheduled with and what the render steps through. Between two of these the
- * level is flat (except inside the fade, which is a ramp from 0).
+ * level is flat, except inside the fade and a span's ramps, which are slopes.
  */
 export function levelBreakpoints(settings: MixSettings): number[] {
   const points = new Set<number>([0, settings.fadeInSec]);
   for (const span of settings.spans) {
     points.add(span.from);
     points.add(span.to);
+    const r = rampOf(span);
+    if (r > 0) {
+      points.add(span.from + r);
+      points.add(span.to - r);
+    }
   }
   for (const [from, to] of settings.ducks) {
     points.add(from);
     points.add(to);
   }
   return [...points].filter((t) => Number.isFinite(t) && t >= 0).sort((a, b) => a - b);
+}
+
+/** True when the level ARRIVES at `t` along a ramp (so a GainNode should ramp to it, not step). */
+export function endsRamp(settings: MixSettings, t: number): boolean {
+  return settings.spans.some((span) => {
+    const r = rampOf(span);
+    return r > 0 && (Math.abs(t - (span.from + r)) < 1e-9 || Math.abs(t - span.to) < 1e-9);
+  });
 }
 
 /**
@@ -90,9 +113,9 @@ export function mixDown(
   let gain = levelAt(settings, 0);
   for (let i = 0; i < film.length; i++) {
     const t = i / sampleRate;
-    // Inside the fade the gain is a ramp and is recomputed per sample; past it,
-    // only at a breakpoint. Cheap enough either way; the fade is a second.
-    if (t < settings.fadeInSec) {
+    // Inside the fade (and a span's ramps) the gain is a slope and is
+    // recomputed per sample; elsewhere, only at a breakpoint.
+    if (t < settings.fadeInSec || inRamp(settings, t)) {
       gain = levelAt(settings, t);
     } else if (next < breakpoints.length && t >= breakpoints[next]) {
       while (next < breakpoints.length && t >= breakpoints[next]) next++;

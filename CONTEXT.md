@@ -53,6 +53,10 @@ Every Film is made in a project of its OWN, created when it starts ("Story — <
 
 A Film is 2:00–5:00 long in 30s steps (default 2:00; a length chosen in the input's settings gear wins; otherwise a stated length rounds up; longer is capped at 5:00), pinned about every 4s — every 5s from 4:30, where 4s would pass the Series' 64-beat ceiling. 5:00 is the ceiling because at 5s it is 60 beats, 56 pins in 4 reels (3 seams), inside the 64-beat and 5-reel limits.
 
+**Silence**:
+A stretch of a Film's score where the music stops — a heavy exchange of dialogue, a held moment before a big action, a reveal. Written into the score's plan as its own section (asking for near silence, so the music around it knows it stops there) AND muted in the mix, faded out and back in over a second and a half. A 2–5 minute Film typically has 2–4, each 4–15s, never in the first 3s or the last 6s. The music after a silence comes back changed.
+_Avoid_: gap, pause, dropout
+
 **Auto**:
 The author's only surface: they write a prompt and get a Film back. NOT a chat — an agent-based pipeline: a job on the Worker runs every step in order and shows progress on the same surface. Writing steps (Idea, World, sheet prompts, Shot list, Cue sheet) are direct LLM calls on Groq through AI Gateway, chosen for speed; the rest (sheets, clips, cutting, the sitting, scoring) runs server-side — nothing depends on the author's tab staying open. The flue chat is not on this path. A toggle beside the prompt input, ON by default: on, nothing asks; off, the agent asks once — after the World, before anything is paid for. Auto runs on StorySeam's own fal and Daytona keys, handled internally — the author never adds or sees a key, and StorySeam pays for every Film.
 

@@ -177,7 +177,7 @@ describe("the Score stage", () => {
       cueKey: directorKey(PID, `cue_${seriesId}_cue-request-1.mp3`),
       durationMs: 127400,
       hasAudio: true,
-      mix: { ducks: [[40, 44]] },
+      mix: { ducks: [[40, 44]], spans: [] },
     });
 
     await box.finish("mix");
@@ -252,6 +252,95 @@ describe("the Score stage", () => {
     const kept = (await readSittings(env, PID)).kept[0];
     expect(kept.file).toBe(SITTING_FILE);
     expect(kept.scoredFile).toBeUndefined();
+  });
+
+  it("the writing model writes the plan from the story on the measured clock — silences muted in the mix", async () => {
+    const { env, job: job0, sittingStage } = await setup();
+    const box = fakeScorer(env);
+    const fal = fakeFal();
+    const shots = [
+      { id: "01", beat: "1", beatTitle: "The lamp is dark", dur: 30, location: "Lighthouse", action: "The cat climbs." },
+      { id: "02", beat: "2", beatTitle: "The storm hits", dur: 30, location: "Gallery", action: "Waves smash the glass.", dialogue: "CAT: Hold on." },
+      { id: "03", beat: "3", beatTitle: "The lamp relit", dur: 60, location: "Lamp room", action: "Light sweeps the sea." },
+    ];
+    const asked = [];
+    const writer = {
+      json: vi.fn(async (opts) => {
+        const text = opts.messages.map((m) => m.content).join("\n");
+        if (!/composition plan/.test(text)) return { tags: ["warm strings", "celesta"] };
+        asked.push(text);
+        return {
+          chunks: [
+            { section: "The lamp is dark", positive_styles: ["soft pads"], negative_styles: ["drums"], duration_ms: 30000 },
+            { section: "Held breath", silence: true, positive_styles: ["near silence"], duration_ms: 8000 },
+            { section: "The storm hits", positive_styles: ["taiko", "brass"], negative_styles: ["pads"], duration_ms: 25000 },
+            { section: "Relit", positive_styles: ["soaring strings"], duration_ms: 58000 },
+            { section: "End", positive_styles: ["final sustained chord"], duration_ms: 6000 },
+          ],
+        };
+      }),
+    };
+    const stages = stagesWith(sittingStage, { scorer: box.scorer, fetch: fal.fetch, readShots: async () => shots });
+    const deps = { env, model: writer, stages };
+    let job = await advanceFilm(job0, deps);
+    job = await advanceFilm(job, deps);
+    await box.finish("measure");
+    job = await advanceFilm(job, deps); // measured → the plan written → cue submitted
+    let step = job.steps.at(-1);
+    expect(step.result.planBy).toBe("writer");
+    // The story on the MEASURED clock: 120 s planned → 127.4 s, so the storm
+    // (30 s planned) scales to 31.85 s and snaps to the nearest real cut, 31.2 s
+    // (0.65 s early, inside the 1 s allowance; the cut at 33.0 s is further).
+    expect(step.result.moments.map((m) => m.title)).toEqual(["The lamp is dark", "The storm hits", "The lamp relit"]);
+    expect(step.result.moments[1]).toMatchObject({ at: 31.2, planned: 30, snapped: true, dialogue: true });
+    expect(step.result.measured.cuts).toHaveLength(5);
+    expect(asked[0]).toContain("31.2s — The storm hits [dialogue]");
+    expect(asked[0]).toContain("EXACTLY 127400");
+    const chunks = fal.submits[0].body.composition_plan.chunks;
+    expect(chunks.reduce((a, c) => a + c.duration_ms, 0)).toBe(127400);
+    expect(chunks.map((c) => c.text)).toEqual(["[The lamp is dark]", "[Held breath]", "[The storm hits]", "[Relit]", "[End]"]);
+    expect(chunks[0].positive_styles.slice(0, 2)).toEqual(["warm strings", "celesta"]);
+    expect(step.result.silences).toHaveLength(1);
+    const [silence] = step.result.silences;
+
+    fal.finish();
+    job = await advanceFilm(job, deps); // mix started — with the silence as a faded span
+    const mixSpec = box.scorer.startMix.mock.calls[0][1];
+    expect(mixSpec.mix.ducks).toEqual([[40, 44]]);
+    expect(mixSpec.mix.spans).toEqual([{ from: silence.from, to: silence.to, db: -80, rampSec: 1.5 }]);
+
+    await box.finish("mix");
+    job = await advanceFilm(job, deps);
+    step = job.steps.at(-1);
+    expect(step.status).toBe("done");
+    expect(step.summary).toMatch(/1 silence ·/);
+    const kept = (await readSittings(env, PID)).kept[0];
+    expect(kept.mix.spans).toEqual(mixSpec.mix.spans);
+  });
+
+  it("a writing model that fails falls back to the picture's plan — the Film is not failed", async () => {
+    const { env, job: job0, sittingStage } = await setup();
+    const box = fakeScorer(env);
+    const fal = fakeFal();
+    const broken = {
+      json: async (opts) => {
+        if (/composition plan/.test(opts.messages[0].content)) throw new Error("the model timed out");
+        return { tags: ["warm strings"] };
+      },
+    };
+    const deps = { env, model: broken, stages: stagesWith(sittingStage, { scorer: box.scorer, fetch: fal.fetch, readShots: async () => [] }) };
+    let job = await advanceFilm(job0, deps);
+    job = await advanceFilm(job, deps);
+    await box.finish("measure");
+    job = await advanceFilm(job, deps);
+    const step = job.steps.at(-1);
+    expect(step.status).toBe("running");
+    expect(step.result.planBy).toBe("picture");
+    expect(step.result.silences).toEqual([]);
+    expect(fal.submits).toHaveLength(1);
+    fal.finish();
+    job = await advanceFilm(job, deps);
+    expect(box.scorer.startMix.mock.calls[0][1].mix.spans).toEqual([]);
   });
 
   it("throws without a kept sitting", async () => {

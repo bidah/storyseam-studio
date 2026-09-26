@@ -1,4 +1,4 @@
-import { levelAt, levelBreakpoints, type MixSettings } from './mix';
+import { endsRamp, levelAt, levelBreakpoints, type MixSettings } from './mix';
 import { SAMPLE_RATE } from './film';
 
 // Hearing the mix before it is written: the film plays in its own <video>,
@@ -72,7 +72,7 @@ export function makePreview(cue: Float32Array, settings: MixSettings): Preview {
     for (const t of levelBreakpoints(current)) {
       if (t <= at) continue;
       const when = now + (t - at) / video.playbackRate;
-      if (t <= current.fadeInSec) gain.gain.linearRampToValueAtTime(levelAt(current, t), when);
+      if (t <= current.fadeInSec || endsRamp(current, t)) gain.gain.linearRampToValueAtTime(levelAt(current, t), when);
       else gain.gain.setValueAtTime(levelAt(current, t), when);
     }
 

@@ -19,7 +19,9 @@
 // ── Mix ─────────────────────────────────────────────────────────────────────
 // `-c:v copy`: the picture's packets are moved, not decoded, so the scored film
 // is bit-for-bit the picture that was kept. The cue is padded/cut to the film,
-// faded in, held at the bed level (ducked under every measured window), summed
+// faded in, held at the bed level (ducked under every measured window, and
+// faded out to nothing over every Score silence — a `spans` entry with a
+// `rampSec`, see `levelExpression` in score-mix.ts), summed
 // with the film's own audio at full level and limited at 0.98 — the browser's
 // `mixDown`, as a filter graph. AAC, faststart mp4.
 import { getSandbox, runNative } from "./ffmpeg.js";
@@ -133,7 +135,13 @@ export function mixSettings(mix) {
   const num = (v, d) => (Number.isFinite(Number(v)) ? Number(v) : d);
   return {
     baseDb: num(m.baseDb, DEFAULT_MIX.baseDb),
-    spans: Array.isArray(m.spans) ? m.spans.filter((s) => Number.isFinite(s?.from) && Number.isFinite(s?.to) && Number.isFinite(s?.db)) : [],
+    // A span keeps its `rampSec` (a Score silence fades out and back in); one
+    // without keeps the old hard switch.
+    spans: Array.isArray(m.spans)
+      ? m.spans
+        .filter((s) => Number.isFinite(s?.from) && Number.isFinite(s?.to) && Number.isFinite(s?.db) && s.to > s.from)
+        .map((s) => ({ from: s.from, to: s.to, db: s.db, ...(Number(s.rampSec) > 0 ? { rampSec: Number(s.rampSec) } : {}) }))
+      : [],
     ducks: Array.isArray(m.ducks) ? m.ducks.filter((d) => Array.isArray(d) && d.length === 2 && d.every(Number.isFinite)) : [],
     duckDb: num(m.duckDb, DEFAULT_MIX.duckDb),
     fadeInSec: Math.max(0, num(m.fadeInSec, DEFAULT_MIX.fadeInSec)),

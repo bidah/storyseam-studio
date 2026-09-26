@@ -25,6 +25,32 @@ const sceneOf = (shot) =>
     shot.dialogue ? `Dialogue: ${shot.dialogue}` : "",
   ].filter(Boolean).join(" ");
 
+// The Auto grid's scene: the place by the NAME its model sheet is filed under
+// (the shot list writes the slug), and every character in the shot named
+// exactly as their sheet is. The shot sheet tags a reference into a shot only
+// where the shot's text says the sheet's name (`tagReferences` → "Mika
+// (Image 2)"), and picks which sheets a reel is handed by the same count — a
+// character who is in `characters` but not in the action sentence, or a place
+// written as `hollow-home`, reached neither.
+const placeOf = (shot, places) => places?.[shot.location] || shot.location || "";
+const castOf = (shot) => (shot.characters?.length ? `${shot.characters.join(", ")}.` : "");
+const gridSceneOf = (shot, places) =>
+  [
+    placeOf(shot, places) ? `At ${placeOf(shot, places)}.` : "",
+    castOf(shot),
+    shot.action,
+    shot.dialogue ? `Dialogue: ${shot.dialogue}` : "",
+  ].filter(Boolean).join(" ");
+
+// A shot carried on into the next beat: the place and the people, held —
+// never the action again.
+const holdOf = (shot, places) =>
+  [
+    placeOf(shot, places) ? `At ${placeOf(shot, places)}.` : "",
+    `The same shot continues${shot.characters?.length ? ` on ${shot.characters.join(", ")}` : ""}:`,
+    "hold the moment and let it settle — do not restart or repeat the action.",
+  ].filter(Boolean).join(" ");
+
 /**
  * One beat per shot, at the shot's own accumulated offset — the author's derive.
  *
@@ -89,9 +115,23 @@ export function beatsFromShots(shots, takeFor = () => null) {
  * with the most time in the window leads the `style`, all of them feed the
  * `scene`. No pins: the stills they would pin are drawn by a later stage.
  *
+ * A shot is ACTED once. A six-second shot spans two four-second beats, and a
+ * beat that restates the shot's action makes the Director play it again — the
+ * "repeated animation" a sitting showed. So a shot's action and dialogue go in
+ * the beat where it STARTS; a beat it merely continues into gets a hold line
+ * (where we are, who is there, carry on — do not restart it).
+ *
+ * `places` (optional) maps a location slug to the name its model sheet is
+ * filed under, so the scene names the place as the sheet does.
+ *
+ * `sound` (optional) is a section every beat carries verbatim: the spoken
+ * language and what may be heard. The Film job's stream carries no music —
+ * the score is laid under it afterwards — and a beat that does not say so
+ * gets a soundtrack, and an anime look gets Japanese.
+ *
  * → `{ beats, shotsByOffset: { [offset]: shotId[] }, filmSeconds }`
  */
-export function beatsOnGrid(shots, { seconds, spacing }) {
+export function beatsOnGrid(shots, { seconds, spacing, sound = "", places = null }) {
   const total = Math.max(1, Math.round(Number(seconds) || 0));
   const step = Math.max(1, Math.round(Number(spacing) || 4));
   const list = shots.filter(Boolean);
@@ -118,14 +158,22 @@ export function beatsOnGrid(shots, { seconds, spacing }) {
     if (inWindow.length) {
       const lead = inWindow.reduce((a, b) => (b.overlap > a.overlap ? b : a));
       if (lead.shot.camera) sections.style = lead.shot.camera;
-      const scene = inWindow.map((sp) => sceneOf(sp.shot)).filter(Boolean).join(" Then: ");
+      const scene = inWindow
+        .map((sp) => (sp.start >= t - 1e-6 ? gridSceneOf(sp.shot, places) : holdOf(sp.shot, places)))
+        .filter(Boolean)
+        .join(" Then: ");
       if (scene) sections.scene = scene;
-      const score = inWindow.map((sp) => sp.shot.audioSync).filter(Boolean).join(" / ");
+      const score = inWindow
+        .filter((sp) => sp.start >= t - 1e-6)
+        .map((sp) => sp.shot.audioSync)
+        .filter(Boolean)
+        .join(" / ");
       if (score) sections.score = score;
       shotsByOffset[t] = inWindow.map((sp) => sp.shot.id).filter(Boolean);
     } else {
       shotsByOffset[t] = [];
     }
+    if (sound) sections.sound = sound;
     beats.push({ offset: t, prompt: sections });
   }
   return { beats, shotsByOffset, filmSeconds: total };

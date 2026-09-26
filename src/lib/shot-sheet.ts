@@ -358,14 +358,15 @@ export function validateSheet(sheet: unknown): SheetError[] {
  *
  * A sectioned prompt (ADR-0013) is not all scenery. `range` is a time span,
  * `style` is the house clause repeated on every beat, `score` asks for music
- * and `shot` is the standing instruction about how to hold the frame — none of
+ * `shot` is the standing instruction about how to hold the frame, and `sound`
+ * is what may be heard (the Auto Film's language and no-music lock) — none of
  * them is a thing to draw, and all four of them at the top of a shot line is
  * how a sheet ends up asking for "0-4s" as a picture. Only what is left is.
  *
  * Read off the live h3-ref row, where the first slot came out as the time range
  * followed by the style clause.
  */
-export const UNDRAWN_SECTIONS = ['range', 'style', 'score', 'shot'];
+export const UNDRAWN_SECTIONS = ['range', 'style', 'score', 'shot', 'sound'];
 
 /** What a beat's prompt DESCRIBES, sections and all — its scene, and nothing standing. */
 export function visibleText(

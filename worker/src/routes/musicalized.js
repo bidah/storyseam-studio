@@ -41,6 +41,7 @@ import { putMedia } from "../lib/media.js";
 import { planTotalMs, renderCostUsd, validatePlan } from "../lib/music-plan.ts";
 import { MUSIC_ENDPOINT, fileScoredFilm, pollCue, submitCue } from "../lib/musicalized-cue.js";
 import { directorFileOf, measureFilm, mixScoredFilm, scoredName } from "../lib/film-score.js";
+import { silenceSpans } from "../lib/score-mix.ts";
 
 export { MUSIC_ENDPOINT };
 
@@ -207,6 +208,12 @@ async function scoreOnServer(c, pid) {
   }
   // The measured dialogue windows unless the caller brought its own.
   const mix = { ducks: measured.ducks, ...(body.mix && typeof body.mix === "object" ? body.mix : {}) };
+  // `silences: [{ from, to }]` (seconds) — the plan's silence chunks, muted in
+  // the mix with the same faded spans the Film job's Score stage lays.
+  const silences = (Array.isArray(body.silences) ? body.silences : [])
+    .map((s) => ({ from: Number(s?.from), to: Number(s?.to), section: "" }))
+    .filter((s) => Number.isFinite(s.from) && Number.isFinite(s.to) && s.to > s.from);
+  if (silences.length) mix.spans = [...(Array.isArray(mix.spans) ? mix.spans : []), ...silenceSpans(silences)];
   const name = scoredName(sittingId, measured.videoCodec);
   try {
     await mixScoredFilm(c.env, pid, {

@@ -18,6 +18,7 @@
 // again by that tag when the stage re-runs, so a retry never makes a second
 // Series — and a sheet already filed with a picture is not paid for twice.
 import { SHEET_FORM } from "../auto-prompts.generated.js";
+import { filmSoundLock } from "../film-sound.js";
 import { absolutize, createSeries, directorUrl, readIndex, readSeries, upsertModelSheet } from "../director.js";
 import { artSettings } from "../series.ts";
 import { MAX_REFERENCE_SHEETS } from "../film-plan.ts";
@@ -245,7 +246,9 @@ export async function runSheetsStage({ job, results, env, model }, deps = {}) {
 
   const series = await ensureFilmSeries(env, pid, job, {
     title: world.title || results?.world?.title,
-    prompt: [idea, world.logline].filter(Boolean).join("\n\n"),
+    // The sound lock rides on the Series prompt too: it is what `configure`
+    // opens the sitting with, before the first beat says anything.
+    prompt: [idea, world.logline, filmSoundLock(job.language)].filter(Boolean).join("\n\n"),
   });
   const aspectRatio = artSettings(series).sheets.aspectRatio;
   const filed = new Map((series.modelSheets || []).filter((s) => s.imageUrl).map((s) => [s.name, s]));

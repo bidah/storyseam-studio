@@ -118,6 +118,10 @@ export const scoreSitting = (api: Api) =>
       seriesId: d(v.optional(v.string()), "The sitting's Series; defaults to the sitting's own."),
       musicStyle: d(v.optional(v.string()), "The brief it was scored by — saved as the Series' standing `musicStyle`."),
       plan: d(v.optional(v.string()), "The composition plan the cue was rendered from, as JSON — kept on the sitting so the version can be argued with later."),
+      silences: d(
+        v.optional(v.array(v.object({ from: v.number(), to: v.number() }))),
+        "The plan's SILENCE chunks, in seconds on the film's clock ({ from, to } = where each silence chunk starts and ends). The bed is faded out to nothing over each (1.5 s ramps) — ElevenLabs cannot render true silence, so the mix makes it.",
+      ),
     }),
     async run({ data: input, signal }) {
       return { output: await api.post("/api/musicalized/scored", input, signal) };

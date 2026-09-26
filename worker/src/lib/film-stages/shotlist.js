@@ -16,13 +16,14 @@ import { SHOTLIST_FIELDS } from "../auto-prompts.generated.js";
 import { planFilm, formatLength } from "../film-plan.ts";
 import { readWorld } from "../../routes/world.js";
 import { saveShotlist } from "../../routes/shotlist.js";
+import { DEFAULT_FILM_LANGUAGE } from "../film-sound.js";
 
 const str = (v) => (typeof v === "string" ? v : v == null ? "" : String(v)).trim();
 
 /** The Film's length: what the plan quoted for this prompt (or an explicit `job.seconds`). */
 export const filmPlanFor = (job) => planFilm({ prompt: job.prompt, seconds: job.seconds ?? null });
 
-export function shotlistMessages({ idea, world, seconds }) {
+export function shotlistMessages({ idea, world, seconds, language = DEFAULT_FILM_LANGUAGE }) {
   const cast = (world.characters || []).map((c) => `- ${c.name}${c.role ? ` — ${c.role}` : ""}`).join("\n");
   const places = (world.locations || [])
     .map((l) => `- ${l.slug || l.name} (${l.name})${l.description ? `: ${l.description}` : ""}`)
@@ -42,6 +43,10 @@ export function shotlistMessages({ idea, world, seconds }) {
     "- There is no script, so beats are the story's own movements (B1, B2, …) — one per place/scene.",
     "- `location` is one of the World's place SLUGS listed below.",
     "- `characters` uses the World's names EXACTLY.",
+    "- `action` names every character in the shot by that exact name (never \"he\" or \"the pilot\"): the",
+    "  studio finds each character's model sheet by their name in the text.",
+    `- \`dialogue\` is written in ${language}, and only ${language}.`,
+    "- `audioSync` is sound effects and foley only — never music (the score is laid under the film later).",
     "- `prompt` is ONE vivid, style-free paragraph (at most ~60 words) describing what the camera sees.",
     "- Do not include `id` — the studio keeps shot ids itself.",
     "",
@@ -97,7 +102,7 @@ export async function runShotlistStage({ job, results, env, model }, deps = {}) 
   const idea = results?.world?.idea || "";
 
   const answer = await model.json({
-    messages: shotlistMessages({ idea, world, seconds }),
+    messages: shotlistMessages({ idea, world, seconds, language: job.language || DEFAULT_FILM_LANGUAGE }),
     maxTokens: 32000,
     temperature: 0.7,
   });
