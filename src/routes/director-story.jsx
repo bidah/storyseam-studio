@@ -277,10 +277,11 @@ function DotsBackground() {
     let host = null;
     let cancelled = false;
     (async () => {
-      const [THREE, { default: DOTS }] = await Promise.all([
-        import("three"),
-        import("vanta/dist/vanta.dots.min"),
-      ]);
+      // Vanta writes onto the THREE it is handed and also looks for
+      // window.THREE; an ES module namespace is frozen, so it gets a plain copy.
+      const THREE = { ...(await import("three")) };
+      window.THREE = THREE;
+      const { default: DOTS } = await import("vanta/dist/vanta.dots.min");
       if (cancelled || !ref.current) return;
       // Vanta rewrites the element it is given, so it gets one React never
       // renders: created here, removed on cleanup.
@@ -340,11 +341,11 @@ function SimpleView({ onSubmit, submitting, note }) {
   return (
     <Page className="relative items-center justify-center px-4 animate-in fade-in duration-300">
       <DotsBackground />
-      <main className="relative z-10 flex w-full max-w-2xl flex-col items-center gap-8 text-center">
-        {/* One line: wider than the input column, and sized down with the
-            viewport so it never wraps. */}
+      {/* The headline sets the column's width (one line, sized with the
+          viewport so it never wraps) and the input fills exactly that width. */}
+      <main className="relative z-10 flex w-fit max-w-full flex-col items-stretch gap-8 text-center">
         <h1
-          className="w-screen max-w-5xl whitespace-nowrap px-4 leading-none"
+          className="whitespace-nowrap leading-none"
           style={{
             fontFamily: DISPLAY,
             fontWeight: 700,
