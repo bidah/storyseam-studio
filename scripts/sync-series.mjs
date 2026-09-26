@@ -30,8 +30,10 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 // ARE the Series' ceilings, restated as "which pins fit in one clip".
 // `music-plan.ts` is here for the same reason one step later — a composition
 // plan is refused by fal whole, so the page, the Worker and the agent check it
-// with one function.
-const MODULES = ["series.ts", "shot-sheet.ts", "music-plan.ts"];
+// with one function. `film-plan.ts` is the Auto quote — a Film's length, its
+// reels and its estimated cost — which the confirm card shows, the Film job
+// runs and the chat repeats: one plan, not three different promises.
+const MODULES = ["series.ts", "shot-sheet.ts", "music-plan.ts", "film-plan.ts"];
 const PACKAGES = ["worker", "flue-agent"];
 
 /**
@@ -39,11 +41,12 @@ const PACKAGES = ["worker", "flue-agent"];
  *
  * `zod` because all three packages depend on it at the same major. `./series`
  * because the copy lands beside its sibling in every target, so the relative
- * path resolves identically in Vite, wrangler and the flue build. Anything else
- * — a `@/` alias, a path out of this directory — resolves in exactly one of the
- * three and breaks in the other two, silently, at deploy time.
+ * path resolves identically in Vite, wrangler and the flue build — and
+ * `./music-plan` for the same reason (the Film plan prices the score with it).
+ * Anything else — a `@/` alias, a path out of this directory — resolves in
+ * exactly one of the three and breaks in the other two, silently, at deploy time.
  */
-const ALLOWED_IMPORTS = new Set(["zod", "./series"]);
+const ALLOWED_IMPORTS = new Set(["zod", "./series", "./music-plan"]);
 
 const banner = (module) =>
   `// VENDORED from src/lib/${module} — DO NOT EDIT HERE.\n` +
