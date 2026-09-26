@@ -87,6 +87,11 @@ async function cerebrasJSON(env, { messages, maxTokens, temperature, signal } = 
     messages,
     response_format: { type: "json_object" },
     max_completion_tokens: Math.min(maxTokens || CEREBRAS_MAX_TOKENS, CEREBRAS_MAX_TOKENS),
+    // Qwen 3.8 reasons before it answers, and the reasoning spends the SAME
+    // completion budget: on a sheets request it burned 5.4k of 8k tokens
+    // thinking and the JSON was cut off. The writing steps don't need it, and
+    // without it they are faster.
+    disable_reasoning: true,
   };
   if (temperature != null) body.temperature = temperature;
   const res = await fetch(`${base}/chat/completions`, {

@@ -36,7 +36,7 @@ describe("cerebras writer", () => {
     expect(await writerModel(env).json({ messages: [{ role: "user", content: "x" }], maxTokens: 8000 })).toEqual({ ok: true });
     const [url, init] = fetch.mock.calls[0];
     expect(url).toBe("https://gw/cerebras/chat/completions");
-    expect(JSON.parse(init.body)).toMatchObject({ model: "qwen-3.8-27b", max_completion_tokens: 8000 });
+    expect(JSON.parse(init.body)).toMatchObject({ model: "qwen-3.8-27b", max_completion_tokens: 8000, disable_reasoning: true });
     expect(init.headers.authorization).toBe("Bearer csk");
     vi.unstubAllGlobals();
   });
