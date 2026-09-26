@@ -252,7 +252,9 @@ export async function runSheetsStage({ job, results, env, model }, deps = {}) {
   if (!world?.characters?.length) throw new Error("There is no World to draw sheets from.");
   const idea = results?.world?.idea || "";
 
-  const look = filmStyleFor({ style: job.style, prompt: job.prompt });
+  // The Look stage's pick (chosen, or the premise classified); a Film from
+  // before that stage existed reads its look the old way.
+  const look = filmStyleFor({ style: results?.look?.style || job.style, prompt: job.prompt });
   const answer = await model.json({ messages: sheetMessages({ idea, world, look }), maxTokens: 8000, temperature: 0.7 });
   const plan = planSheets(answer, world, undefined, { look });
 

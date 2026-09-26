@@ -164,7 +164,7 @@ test.describe("director story", () => {
     await expect(page.locator("[data-story-view]")).toBeVisible();
     // The gear's default length rides along.
     expect(posted).toEqual({ prompt: "A lighthouse keeper's cat relights the lamp" });
-    await expect(page.locator("[data-step]")).toHaveCount(8);
+    await expect(page.locator("[data-step]")).toHaveCount(9); // Look, Idea + World … Score
     await expect(page.locator("[data-prompt]")).toHaveText(/lighthouse keeper/);
 
     // The URL is the state: a reload lands on the same Film.

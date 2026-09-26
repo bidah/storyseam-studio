@@ -65,6 +65,7 @@ export const filmPath = (id) => `${PATH}/create/${encodeURIComponent(id)}`;
 // ids). The job only lists a step once it has STARTED, so the ones still ahead
 // come from here; a label on the job wins over this one.
 const STAGES = [
+  { key: "look", label: "Look" },
   { key: "world", label: "Idea + World" },
   { key: "sheets", label: "Reference sheets" },
   { key: "shotlist", label: "Shot list" },
@@ -321,7 +322,7 @@ function readStoredStyle() {
 function storeStyle(style) {
   try { window.localStorage.setItem(STYLE_KEY, style); } catch { /* private mode: not remembered */ }
 }
-const STYLE_CHOICES = [{ id: "", label: "From the premise" }, ...FILM_STYLES.map((s) => ({ id: s.id, label: s.label }))];
+const STYLE_CHOICES = [{ id: "", label: "Auto" }, ...FILM_STYLES.map((s) => ({ id: s.id, label: s.label }))];
 
 function SettingsLabel({ id, children, hint }) {
   return (

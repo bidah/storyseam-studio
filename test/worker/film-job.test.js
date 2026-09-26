@@ -56,6 +56,13 @@ describe("the Film job — world stage", () => {
     };
 
     let job = await startedJob(env);
+    // The Look stage runs first (no AI binding here, so it falls back to keywords).
+    job = await advanceFilm(job, { env, model, saveWorld, commit });
+    expect(events.map((e) => [e.kind, e.step])).toEqual([
+      ["step.started", "look"],
+      ["step.done", "look"],
+    ]);
+    events.length = 0;
     job = await advanceFilm(job, { env, model, saveWorld, commit });
 
     expect(events.map((e) => [e.kind, e.step])).toEqual([
@@ -68,9 +75,12 @@ describe("the Film job — world stage", () => {
       expect(e.job.userId).toBeUndefined(); // the broadcast never carries who
     }
     // The started event already shows the card as running…
-    expect(events[0].job.steps).toEqual([expect.objectContaining({ key: "world", label: "Idea + World", status: "running" })]);
+    expect(events[0].job.steps).toEqual([
+      expect.objectContaining({ key: "look", label: "Look", status: "done" }),
+      expect.objectContaining({ key: "world", label: "Idea + World", status: "running" }),
+    ]);
     // …and the done event marks it complete with its summary.
-    const step = job.steps[0];
+    const step = job.steps.find((s) => s.key === "world");
     expect(step).toMatchObject({ key: "world", status: "done", summary: "The Last Lamp — 2 characters, 1 place" });
     expect(step.result.idea).toBe(ANSWER.idea);
     expect(step.result.characters.map((c) => c.name)).toEqual(["Mote", "Old Ada"]);
@@ -98,9 +108,16 @@ describe("the Film job — world stage", () => {
     job = await runFilm(job, {
       env, model: fakeModel({ idea: "x" }), saveWorld, commit: async (_j, ev) => events.push(ev),
     });
-    expect(events.map((e) => e.kind)).toEqual(["step.started", "step.retrying", "step.failed", "film.stopped"]);
+    expect(events.map((e) => [e.kind, e.step ?? null])).toEqual([
+      ["step.started", "look"],
+      ["step.done", "look"],
+      ["step.started", "world"],
+      ["step.retrying", "world"],
+      ["step.failed", "world"],
+      ["film.stopped", null],
+    ]);
     expect(job.status).toBe("stopped");
-    expect(job.steps[0]).toMatchObject({ status: "failed", error: expect.stringMatching(/no World/) });
+    expect(job.steps.find((s) => s.key === "world")).toMatchObject({ status: "failed", error: expect.stringMatching(/no World/) });
   });
 
   it("re-runs a step left running by an evicted object instead of starting a second card", async () => {
@@ -114,7 +131,7 @@ describe("the Film job — world stage", () => {
   });
 
   it("keeps the stage list ordered and keyed", () => {
-    expect(FILM_STAGES.map((s) => s.key)).toEqual(["world", "sheets", "shotlist", "cuesheet", "run", "stills", "sitting", "score"]);
+    expect(FILM_STAGES.map((s) => s.key)).toEqual(["look", "world", "sheets", "shotlist", "cuesheet", "run", "stills", "sitting", "score"]);
     expect(worldMessages("p")).toHaveLength(2);
     expect(() => parseIdeaWorld({ idea: "i", world: { characters: [] } })).toThrow(/no characters/);
     expect(publicJob(null)).toBeNull();

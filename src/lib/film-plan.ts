@@ -366,12 +366,17 @@ export function planFilm(input: FilmPlanInput = {}): FilmPlan {
 // the Director opens every sitting with, and what every shot sheet's premise
 // is) states it with its lock. Nothing downstream re-describes it.
 //
-// Both were learned against real takes: `anime-80s` is the look the Mecha
-// Launch shot sheet was drawn in (the one that came closest), `pixar` is the
-// studio's own 3D preset (Settings › style presets, preset-3d-pixar).
+// `anime-80s` is the look the Mecha Launch shot sheet was drawn in (the one
+// that came closest); the other three are the studio's own style presets
+// (Settings › style presets: preset-3d-pixar, preset-live-action, preset-2d).
+//
+// When nobody chooses, the Film's first stage (Look) asks a classifier which
+// of these the premise is, from each one's `fits` — see film-stages/look.js.
 export type FilmStyle = {
   id: string;
   label: string;
+  /** What kind of story wears this look — the classifier's criterion for it. */
+  fits: string;
   /** The look, as the style sheet and the premise state it. */
   look: string;
   /** What it must never become, stated as a lock. */
@@ -382,6 +387,9 @@ export const FILM_STYLES: readonly FilmStyle[] = [
   {
     id: 'anime-80s',
     label: '80s anime',
+    fits:
+      'Anime or Japanese animation: mecha, robots, pilots, space battles, sci-fi action, cyberpunk, shonen ' +
+      'adventure, magical girls, or anything asked for as anime, cel animation or the 80s.',
     look:
       '1980s cel-animated anime OVA. Style: hand-painted cel animation in the spirit of Macross, Gundam and ' +
       'Bubblegum Crisis — flat cel shading with hard shadow shapes, thin ink outlines, gouache-textured painted ' +
@@ -394,6 +402,9 @@ export const FILM_STYLES: readonly FilmStyle[] = [
   {
     id: 'pixar',
     label: '3D Pixar',
+    fits:
+      'A 3D animated family film in the Pixar / DreamWorks tradition: kids, toys, talking animals, pets, ' +
+      'whimsical comedy adventures, heartfelt family stories, or anything asked for as Pixar, 3D or CGI.',
     look:
       'Stylized 3D CG animation in the Pixar / DreamWorks tradition: appealing rounded character design with ' +
       'expressive faces and clean silhouettes, soft global illumination with a warm motivated key light and gentle ' +
@@ -405,20 +416,56 @@ export const FILM_STYLES: readonly FilmStyle[] = [
       'hand-drawn linework, never photoreal live action, never uncanny realism, and it never becomes any of those ' +
       'part way through. No morphing, no warping, no jitter.',
   },
+  {
+    id: 'live-action',
+    label: 'Live action',
+    fits:
+      'Live action with real people: realistic drama, thriller, crime, romance, documentary-style or grounded ' +
+      'stories, historical pieces, or anything asked for as live action, cinematic, realistic or photoreal.',
+    look:
+      'Photorealistic live-action cinematography shot on a full-frame cinema camera with a fast prime lens, natural ' +
+      'motivated lighting, soft shallow depth of field with gentle bokeh, a filmic colour grade with true-to-life skin ' +
+      'tones, subtle film grain, realistic skin texture and fabric detail, natural human proportions, grounded practical ' +
+      'locations, strong cinematic composition. Naturalistic motion with controlled camera work and realistic motion blur.',
+    lock:
+      '[LOOK LOCK] This piece is LIVE ACTION, photographed, in every shot and at every second. It is never an ' +
+      'illustration, never a cartoon, never flat 2D shading, never a 3D-render or CGI plastic look, and it never ' +
+      'becomes any of those part way through. No morphing, no warping, no unnatural speed-ramping.',
+  },
+  {
+    id: '2d-folklore',
+    label: '2D folklore',
+    fits:
+      'A 2D hand-drawn storybook tale: folklore, fairy tales, fables, myths, forest spirits, quiet or melancholic ' +
+      'journeys, bedtime stories, or anything asked for as 2D, hand-drawn, storybook or illustrated.',
+    look:
+      'Flat 2D hand-drawn animation, clean confident vector linework, a strictly limited muted palette of teal, mustard ' +
+      'yellow and dusty rose, gouache-textured flat painterly backgrounds with subtle paper grain, Scandinavian folklore ' +
+      'storybook illustration style, soft diffused light, flat ambient shading with no gradients, minimalist rounded ' +
+      'character design with simple sparse facial features, strong graphic composition with generous negative space. ' +
+      'Cozy, adventurous, slightly melancholic atmosphere. Slow gentle camera with layered parallax, no orbiting.',
+    lock:
+      '[LOOK LOCK] This piece is FLAT 2D ANIMATION, hand-drawn, in every shot and at every second. It is never 3D ' +
+      'rendering, never photorealism, never CGI shading or volumetric depth, and it never becomes any of those part ' +
+      'way through.',
+  },
 ];
 
 export const FILM_STYLE_IDS: readonly string[] = FILM_STYLES.map((s) => s.id);
 export const DEFAULT_FILM_STYLE = 'anime-80s';
 
 /**
- * The Film's look: the one CHOSEN, else the one the prompt names ("a pixar
- * like story", "80s anime"), else the default. Never null.
+ * The Film's look without a classifier: the one CHOSEN, else the one the
+ * prompt names outright ("a pixar like story", "80s anime"), else the default.
+ * The Look stage's fallback when the classifier cannot answer. Never null.
  */
 export function filmStyleFor({ style, prompt }: { style?: string | null; prompt?: string | null }): FilmStyle {
   const chosen = FILM_STYLES.find((s) => s.id === style);
   if (chosen) return chosen;
   const text = String(prompt || '').toLowerCase();
   if (/\bpixar\b|dreamworks|\b3d\b|\bcgi?\b/.test(text)) return FILM_STYLES.find((s) => s.id === 'pixar')!;
+  if (/live[- ]action|photoreal|realistic\b/.test(text)) return FILM_STYLES.find((s) => s.id === 'live-action')!;
+  if (/\b2d\b|folklore|fairy ?tale|storybook|hand[- ]drawn/.test(text)) return FILM_STYLES.find((s) => s.id === '2d-folklore')!;
   if (/\banime\b|\b(19)?80s\b|\bcel\b|macross|gundam/.test(text)) return FILM_STYLES.find((s) => s.id === 'anime-80s')!;
   return FILM_STYLES.find((s) => s.id === DEFAULT_FILM_STYLE)!;
 }

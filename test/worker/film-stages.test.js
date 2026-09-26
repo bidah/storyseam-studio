@@ -97,6 +97,7 @@ async function setup({ prompt = "a cat saves a lighthouse", env = makeEnv({ FAL_
 describe("the Film stages after the World", () => {
   it("appends sheets → shotlist → cuesheet after world, one card each", () => {
     expect(FILM_STAGES.map((s) => [s.key, s.label])).toEqual([
+      ["look", "Look"],
       ["world", "Idea + World"],
       ["sheets", "Reference sheets"],
       ["shotlist", "Shot list"],

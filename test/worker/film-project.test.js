@@ -126,7 +126,8 @@ describe("a project per Film", () => {
     const a = await r1.json();
     expect(a.projectId).toMatch(/^p_/);
     expect(a.projectId).not.toBe("p_mecha");
-    await FILM_JOBS.get(a.projectId).advance(model(worldAnswer("Sky Forge", ["Rin", "Old Tomo"])));
+    await FILM_JOBS.get(a.projectId).advance(model(worldAnswer("Sky Forge", ["Rin", "Old Tomo"]))); // Look
+    await FILM_JOBS.get(a.projectId).advance(model(worldAnswer("Sky Forge", ["Rin", "Old Tomo"]))); // World
     await FILM_JOBS.get(a.projectId).end("done");
 
     const r2 = await start("Two friends lost in the woods", { project: "p_mecha" });
@@ -134,7 +135,8 @@ describe("a project per Film", () => {
     const b = await r2.json();
     expect(b.projectId).not.toBe(a.projectId);
     expect(b.projectId).not.toBe("p_mecha");
-    await FILM_JOBS.get(b.projectId).advance(model(worldAnswer("The Boundary Stone", ["Sara", "Helena"])));
+    await FILM_JOBS.get(b.projectId).advance(model(worldAnswer("The Boundary Stone", ["Sara", "Helena"]))); // Look
+    await FILM_JOBS.get(b.projectId).advance(model(worldAnswer("The Boundary Stone", ["Sara", "Helena"]))); // World
 
     const w1 = await readWorld(env, a.projectId);
     const w2 = await readWorld(env, b.projectId);

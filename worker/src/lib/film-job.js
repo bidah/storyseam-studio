@@ -31,8 +31,8 @@
 // ── Stages ─────────────────────────────────────────────────────────────────
 //
 // FILM_STAGES is an ordered list; the job runs them in order, one per
-// `advanceFilm` call. This slice has ONE, `world` ("Idea + World"). The Auto
-// pipeline appends, in order: sheets → shotlist → cuesheet → run → stills →
+// `advanceFilm` call: `look` (which house look — chosen, or the premise
+// classified), `world` ("Idea + World"), then in order: sheets → shotlist → cuesheet → run → stills →
 // sitting → score. A stage is
 //
 //   { key, label, paid?: true, run(ctx) → { summary, result, spend? } }
@@ -121,6 +121,7 @@ import { checkAllowance, countFilm } from "./film-allowance.js";
 import { readIndex, readSeries, repairSeries, updateSittings } from "./director.js";
 import { runWithContext } from "./request-context.js";
 import { WORLD_SHAPE } from "./auto-prompts.generated.js";
+import { runLookStage } from "./film-stages/look.js";
 import { runSheetsStage } from "./film-stages/sheets.js";
 import { runShotlistStage } from "./film-stages/shotlist.js";
 import { runCueSheetStage } from "./film-stages/cuesheet.js";
@@ -129,7 +130,7 @@ import { runStillsStage } from "./film-stages/stills.js";
 import { runSittingStage } from "./film-stages/sitting.js";
 import { runScoreStage } from "./film-stages/score.js";
 import { readAutoSettings } from "./auto-settings.js";
-import { planFilm, formatLength, filmStyleFor, FILM_STEPS, FILM_STYLES, FILM_STYLE_IDS, MAX_REFERENCE_SHEETS } from "./film-plan.ts";
+import { planFilm, formatLength, FILM_STEPS, FILM_STYLES, FILM_STYLE_IDS, MAX_REFERENCE_SHEETS } from "./film-plan.ts";
 
 /**
  * A Film length someone CHOSE (the /director-story gear, make_film's `seconds`)
@@ -256,6 +257,8 @@ async function runWorldStage({ job, model, env, saveWorld }) {
 
 /** The ordered stages. Later slices append; keys are stable public ids. */
 export const FILM_STAGES = Object.freeze([
+  // The look first: every later stage is written and drawn in it.
+  { key: "look", label: "Look", run: (ctx) => runLookStage(ctx) },
   { key: "world", label: "Idea + World", run: runWorldStage },
   // Each later stage's logic lives in its own module under ./film-stages/.
   { key: "sheets", label: "Reference sheets", run: (ctx) => runSheetsStage(ctx) },
@@ -316,9 +319,9 @@ export async function startFilm(existing, { prompt, seconds, style, userId, proj
       prompt: text,
       // The chosen length, when one was chosen: it wins over the prompt's.
       ...(seconds != null ? { seconds } : {}),
-      // The look, settled at the start — chosen, or read off the prompt — so
-      // every stage (and a retry weeks later) draws in the same one.
-      style: filmStyleFor({ style, prompt: text }).id,
+      // The look, when one was CHOSEN; otherwise the Look stage classifies the
+      // premise (film-stages/look.js) and every later stage reads its pick.
+      ...(style ? { style } : {}),
       status: "running",
       error: null,
       projectId: projectId ?? null,
