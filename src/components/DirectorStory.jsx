@@ -236,8 +236,9 @@ function DotsBackground() {
 //
 // The defaults a story is made with, changeable before sending. For now that is
 // the Film's LENGTH: 2:00 unless changed, any 30s step up to the ceiling
-// (film-plan.ts FILM_STEPS). It is sent as `seconds` with the prompt and wins
-// over a length the prompt's wording states. Remembered per browser — a
+// (film-plan.ts FILM_STEPS). Once the author has CHOSEN a length here it is
+// sent as `seconds` and wins over a length the prompt's wording states; until
+// then nothing is sent, so "a four-minute short" in the prompt still counts. Remembered per browser — a
 // convenience only, so every storage access is allowed to fail.
 
 const LENGTH_KEY = "director-story:length";
@@ -249,6 +250,10 @@ export function readStoredLength() {
   } catch {
     return FILM_DEFAULT_SECONDS;
   }
+}
+
+function hasStoredLength() {
+  try { return FILM_STEPS.includes(Number(window.localStorage.getItem(LENGTH_KEY))); } catch { return false; }
 }
 
 function storeLength(seconds) {
@@ -326,8 +331,10 @@ function StorySettings({ seconds, onSeconds, disabled }) {
 export function SimpleView({ onSubmit, submitting, note, running }) {
   const [prompt, setPrompt] = useState("");
   const [seconds, setSeconds] = useState(readStoredLength);
+  const [chosen, setChosen] = useState(hasStoredLength);
   const chooseSeconds = (s) => {
     setSeconds(s);
+    setChosen(true);
     storeLength(s);
   };
   const ref = useRef(null);
@@ -372,7 +379,7 @@ export function SimpleView({ onSubmit, submitting, note, running }) {
     e?.preventDefault();
     const text = prompt.trim();
     if (!text || submitting) return;
-    if (await onSubmit(text, seconds)) setPrompt("");
+    if (await onSubmit(text, chosen ? seconds : undefined)) setPrompt("");
   };
 
   return (
