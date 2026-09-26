@@ -25,7 +25,7 @@
 // is refused in one place, before a render is paid for.
 import { absolutizeSeries, readSeries, readSheets, updateSeries, updateSheets } from "../lib/director.js";
 import { putMedia } from "../lib/media.js";
-import { endpointFor, renderBody, sheetFrom, slotsOf, validateSheet } from "../lib/shot-sheet.ts";
+import { endpointFor, renderBody, sheetsFrom, slotsOf, validateSheet } from "../lib/shot-sheet.ts";
 import { falAuthorization } from "./stage.js";
 
 const FAL_QUEUE = "https://queue.fal.run";
@@ -79,9 +79,11 @@ export function registerShotSheet(app) {
     let body;
     try { body = await c.req.json(); } catch { body = {}; }
 
-    const sheet = buildSheet(c, pid, series, body);
-    const errors = validateSheet(sheet);
-    return c.json({ sheet, endpoint: endpointFor(sheet), request: renderBody(sheet), errors });
+    const sheets = buildSheets(c, pid, series, body);
+    const parts = sheets.map((sheet) => ({ sheet, endpoint: endpointFor(sheet), request: renderBody(sheet) }));
+    // `sheet`/`endpoint`/`request` are the first clip's, for callers that read
+    // one; `parts` is the whole run.
+    return c.json({ ...parts[0], parts, errors: runErrors(sheets) });
   });
 
   // ── Render ────────────────────────────────────────────────────────────────
@@ -104,41 +106,57 @@ export function registerShotSheet(app) {
     let body;
     try { body = await c.req.json(); } catch { body = {}; }
 
-    const sheet = buildSheet(c, pid, series, body);
-    const errors = validateSheet(sheet);
+    // A cue sheet longer than one clip holds is drawn as a RUN of clips. Every
+    // clip is checked before any of them is paid for.
+    const sheets = buildSheets(c, pid, series, body);
+    const errors = runErrors(sheets);
     if (errors.length) return c.json({ error: "This sheet would be refused", errors }, 400);
 
-    const endpoint = endpointFor(sheet);
-    const submitted = await fetch(`${FAL_QUEUE}/${endpoint}`, {
-      method: "POST",
-      headers: { "content-type": "application/json", authorization: falAuthorization(key) },
-      body: JSON.stringify(renderBody(sheet)),
-    });
-    const queued = await submitted.json().catch(() => null);
-    if (!submitted.ok || !queued?.request_id) {
-      return c.json({ error: queued?.detail || `fal refused the sheet (${submitted.status})` }, 502);
+    const runId = crypto.randomUUID();
+    const takes = [];
+    let failed = null;
+    for (const [index, sheet] of sheets.entries()) {
+      const endpoint = endpointFor(sheet);
+      const submitted = await fetch(`${FAL_QUEUE}/${endpoint}`, {
+        method: "POST",
+        headers: { "content-type": "application/json", authorization: falAuthorization(key) },
+        body: JSON.stringify(renderBody(sheet)),
+      });
+      const queued = await submitted.json().catch(() => null);
+      if (!submitted.ok || !queued?.request_id) {
+        const reason = queued?.detail || `fal refused the sheet (${submitted.status})`;
+        failed = sheets.length > 1 ? `Clip ${index + 1} of ${sheets.length}: ${typeof reason === "string" ? reason : JSON.stringify(reason)}` : reason;
+        break;
+      }
+      takes.push({
+        id: queued.request_id,
+        seriesId,
+        runId,
+        part: index + 1,
+        parts: sheets.length,
+        status: "running",
+        endpoint,
+        // The WHOLE sheet, kept verbatim. A take whose prompt was lost is a look
+        // that cannot be redrawn, and the grab times are only meaningful beside
+        // the shot list they were derived from.
+        sheet,
+        startedAt: nowIso(),
+        file: null,
+        error: null,
+      });
     }
+    // Nothing was queued: nothing was spent, and nothing is filed.
+    if (!takes.length) return c.json({ error: failed }, 502);
 
-    const take = {
-      id: queued.request_id,
-      seriesId,
-      status: "running",
-      endpoint,
-      // The WHOLE sheet, kept verbatim. A take whose prompt was lost is a look
-      // that cannot be redrawn, and the grab times are only meaningful beside
-      // the shot list they were derived from.
-      sheet,
-      startedAt: nowIso(),
-      file: null,
-      error: null,
-    };
+    // Filed even when a later clip was refused — the ones already queued are
+    // being paid for, and a take nobody can see is money nobody can use.
     await updateSheets(c.env, pid, (db) => {
       db.seq = (db.seq || 0) + 1;
-      db.takes = [take, ...(db.takes || [])];
+      db.takes = [...takes, ...(db.takes || [])];
       return {};
     });
 
-    return c.json({ ok: true, take });
+    return c.json({ ok: true, runId, take: takes[0], takes, ...(failed ? { error: failed } : {}) });
   });
 
   // Poll one take, and FINALIZE it the first time the queue says COMPLETED:
@@ -217,15 +235,33 @@ export function registerShotSheet(app) {
  * that is not already refused. The duration is the author's — it is the one
  * number that trades "how many pins fit" against "how long each is held".
  */
-function buildSheet(c, pid, series, body) {
+function buildSheets(c, pid, series, body) {
   const resolved = absolutizeSeries(c.env, pid, series);
   const chosen = Array.isArray(body.slots) && body.slots.length
     ? body.slots.map(Number)
     : slotsOf(resolved).filter((s) => !s.refused).map((s) => s.offset);
   const duration = Number.isInteger(body.duration) ? body.duration : undefined;
-  const sheet = sheetFrom(resolved, chosen, duration);
-  if (Number.isInteger(body.seed)) sheet.seed = body.seed;
-  return sheet;
+  const sheets = sheetsFrom(resolved, chosen, duration);
+  if (Number.isInteger(body.seed)) for (const sheet of sheets) sheet.seed = body.seed;
+  return sheets;
+}
+
+// Every clip's refusals, named by clip when there is more than one. A reason
+// every clip shares (an empty premise) is said once.
+function runErrors(sheets) {
+  const seen = new Set();
+  const out = [];
+  sheets.forEach((sheet, index) => {
+    for (const error of validateSheet(sheet)) {
+      const message = sheets.length > 1 && error.shot !== undefined
+        ? `Clip ${index + 1}: ${error.message}`
+        : error.message;
+      if (seen.has(message)) continue;
+      seen.add(message);
+      out.push({ ...error, message, ...(sheets.length > 1 ? { part: index + 1 } : {}) });
+    }
+  });
+  return out;
 }
 
 /**
@@ -284,7 +320,9 @@ async function finishRender(env, pid, take, key) {
       return { row };
     });
 
-    await updateSeries(env, pid, take.seriesId, (series) => {
+    // One style model sheet per RUN, not per clip: it is one pass of the look,
+    // and three copies of it would spend the reference budget on themselves.
+    if (!take.part || take.part === 1) await updateSeries(env, pid, take.seriesId, (series) => {
       if (!series?.id) return { abort: true };
       const name = `shot sheet ${take.id.slice(0, 8)}`;
       const sheets = series.modelSheets || [];

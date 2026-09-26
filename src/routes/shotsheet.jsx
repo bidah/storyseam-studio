@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLoaderData, useRevalidator } from "react-router";
 import {
   AlertTriangle, Check, Grid2x2, Loader2, Pin, Scissors, Sparkles,
@@ -13,7 +13,7 @@ import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
 import { Empty, Panel, ErrorNote, Eyebrow, fmtTime } from "@/components/shared";
-import { MAX_DURATION_SECONDS, MIN_DURATION_SECONDS, grabTimes } from "@/lib/shot-sheet";
+import { MAX_DURATION_SECONDS, MIN_DURATION_SECONDS, grabTimes, splitShots } from "@/lib/shot-sheet";
 import { MAX_END_IMAGES, MIN_END_IMAGE_GAP_SECONDS } from "@/lib/series";
 import { grabFrames } from "@/director/frames";
 
@@ -41,7 +41,11 @@ async function sheetApi(url, opts) {
     ...opts,
   });
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error || `${res.status}`);
+  if (!res.ok) {
+    // A refused sheet names its reasons in `errors` — they are the useful part.
+    const reasons = (data.errors || []).map((e) => e.message || String(e)).filter(Boolean);
+    throw new Error([data.error || `${res.status}`, ...reasons].join(" — "));
+  }
   return data;
 }
 
@@ -371,50 +375,158 @@ function CutTake({ take, seriesId, slots, onPinned }) {
   );
 }
 
-/* ---- every take this Series has rendered --------------------------------- */
+/* ---- every run this Series has rendered ---------------------------------- */
 
-// Newest first. Picking a row loads it below for cutting; a take still drawing
-// can be picked too, and shows its progress in the same place.
-function TakeList({ takes, selectedId, onSelect }) {
+// A RUN is one press of Render. A cue sheet longer than one clip holds is drawn
+// as several clips (see `splitShots`), all sharing a `runId`; a take filed
+// before runs existed is a run of one.
+function groupRuns(takes) {
+  const runs = new Map();
+  for (const t of takes) {
+    const id = t.runId || t.id;
+    if (!runs.has(id)) runs.set(id, { id, takes: [], startedAt: t.startedAt });
+    runs.get(id).takes.push(t);
+  }
+  return [...runs.values()].map((run) => {
+    const clips = [...run.takes].sort((a, b) => (a.part || 1) - (b.part || 1));
+    const status = clips.some((t) => t.status === "running")
+      ? "running"
+      : clips.every((t) => t.status === "done") ? "done" : clips.some((t) => t.status === "done") ? "partial" : "error";
+    const frames = clips.reduce((n, t) => n + (t.sheet?.shots?.length || 0), 0);
+    return { ...run, clips, status, frames };
+  });
+}
+
+const statusVariant = (status) =>
+  status === "done" ? "success" : status === "running" ? "info" : "warning";
+
+// The seconds of the cue sheet a clip covers, from its first frame to its last.
+function clipRange(take) {
+  const shots = take.sheet?.shots || [];
+  if (!shots.length) return "";
+  return `${fmtTime(shots[0].offset)}–${fmtTime(shots[shots.length - 1].offset)}`;
+}
+
+// Newest first. Picking a row loads the run below for cutting; a run still
+// drawing can be picked too, and shows its progress in the same place.
+function RunList({ runs, selectedId, onSelect }) {
   return (
     <Panel>
       <div className="space-y-2">
-        <Eyebrow>Takes · {takes.length}</Eyebrow>
+        <Eyebrow>Runs · {runs.length}</Eyebrow>
         <div className="divide-y divide-border rounded-md border border-border">
-          {takes.map((t, i) => (
-            <button
-              key={t.id}
-              type="button"
-              onClick={() => onSelect(t.id)}
-              className={cn(
-                "flex w-full items-center gap-3 px-3 py-2 text-left text-sm hover:bg-muted/50",
-                t.id === selectedId && "bg-muted",
-              )}
-            >
-              {t.status === "done" && t.url ? (
-                <video src={t.url} muted preload="metadata" className="h-10 w-16 shrink-0 rounded border border-border object-cover" />
-              ) : (
-                <div className="flex h-10 w-16 shrink-0 items-center justify-center rounded border border-border text-muted-foreground">
-                  {t.status === "running" ? <Loader2 size={14} className="animate-spin" /> : <AlertTriangle size={14} />}
+          {runs.map((r, i) => {
+            const poster = r.clips.find((t) => t.status === "done" && t.url);
+            return (
+              <button
+                key={r.id}
+                type="button"
+                onClick={() => onSelect(r.id)}
+                className={cn(
+                  "flex w-full items-center gap-3 px-3 py-2 text-left text-sm hover:bg-muted/50",
+                  r.id === selectedId && "bg-muted",
+                )}
+              >
+                {poster ? (
+                  <video src={poster.url} muted preload="metadata" className="h-10 w-16 shrink-0 rounded border border-border object-cover" />
+                ) : (
+                  <div className="flex h-10 w-16 shrink-0 items-center justify-center rounded border border-border text-muted-foreground">
+                    {r.status === "running" ? <Loader2 size={14} className="animate-spin" /> : <AlertTriangle size={14} />}
+                  </div>
+                )}
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2">
+                    <span className="font-medium">Run {runs.length - i}</span>
+                    <Badge variant={statusVariant(r.status)}>{r.status}</Badge>
+                  </div>
+                  <div className="truncate text-xs text-muted-foreground">
+                    {r.startedAt ? new Date(r.startedAt).toLocaleString() : ""}
+                    {` · ${r.clips.length} clip${r.clips.length === 1 ? "" : "s"}`}
+                    {r.frames ? ` · ${r.frames} frames` : ""}
+                  </div>
                 </div>
-              )}
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2">
-                  <span className="font-medium">Take {takes.length - i}</span>
-                  <Badge variant={t.status === "done" ? "success" : t.status === "error" ? "warning" : "info"}>
-                    {t.status}
-                  </Badge>
-                </div>
-                <div className="truncate text-xs text-muted-foreground">
-                  {t.startedAt ? new Date(t.startedAt).toLocaleString() : ""}
-                  {t.sheet?.shots?.length ? ` · ${t.sheet.shots.length} frames` : ""}
-                  {t.endpoint ? ` · ${t.endpoint}` : ""}
-                </div>
-              </div>
-              {t.id === selectedId ? <Check size={14} className="shrink-0 text-emerald-500" /> : null}
-            </button>
-          ))}
+                {r.id === selectedId ? <Check size={14} className="shrink-0 text-emerald-500" /> : null}
+              </button>
+            );
+          })}
         </div>
+      </div>
+    </Panel>
+  );
+}
+
+// The run's finished clips played back to back, as the one film they are.
+function RunPlayer({ clips }) {
+  const [index, setIndex] = useState(0);
+  const [playing, setPlaying] = useState(false);
+  const ref = useRef(null);
+  const current = clips[Math.min(index, clips.length - 1)];
+  useEffect(() => {
+    if (playing) ref.current?.play().catch(() => {});
+  }, [index, playing]);
+  if (!current) return null;
+  return (
+    <div className="space-y-2">
+      <video
+        ref={ref}
+        key={current.id}
+        src={current.url}
+        controls
+        className="w-full rounded-md border border-border"
+        onPlay={() => setPlaying(true)}
+        onPause={(e) => { if (!e.currentTarget.ended) setPlaying(false); }}
+        onEnded={() => {
+          if (index + 1 < clips.length) setIndex(index + 1);
+          else setPlaying(false);
+        }}
+      />
+      <div className="flex flex-wrap items-center gap-1.5">
+        {clips.map((clip, i) => (
+          <Button
+            key={clip.id}
+            size="sm"
+            variant={i === index ? "default" : "outline"}
+            className="h-7 text-xs"
+            onClick={() => { setIndex(i); setPlaying(true); }}
+          >
+            Clip {clip.part || i + 1} · {clipRange(clip)}
+          </Button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function RunPanel({ run, seriesId, slots, onPinned }) {
+  const done = run.clips.filter((t) => t.status === "done" && t.url);
+  const many = run.clips.length > 1;
+  return (
+    <Panel>
+      <div className="space-y-4">
+        <div className="flex items-center gap-2">
+          <Eyebrow>{many ? `Run · ${run.clips.length} clips` : "Take"}</Eyebrow>
+          <Badge variant={statusVariant(run.status)}>{run.status}</Badge>
+        </div>
+        {many && done.length ? <RunPlayer clips={done} /> : null}
+        {run.clips.map((take) => (
+          <div key={take.id} className={cn("space-y-3", many && "rounded-md border border-border p-3")}>
+            {many ? (
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-medium">Clip {take.part} of {take.parts}</span>
+                <span className="font-mono text-xs text-muted-foreground">{clipRange(take)}</span>
+                <Badge variant={statusVariant(take.status)}>{take.status}</Badge>
+              </div>
+            ) : null}
+            {take.error ? <ErrorNote>{take.error}</ErrorNote> : null}
+            {take.status === "done" && take.url ? (
+              <CutTake key={take.id} take={take} seriesId={seriesId} slots={slots} onPinned={onPinned} />
+            ) : take.status === "running" ? (
+              <p className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Loader2 size={14} className="animate-spin" /> drawing — this takes a few minutes
+              </p>
+            ) : null}
+          </div>
+        ))}
       </div>
     </Panel>
   );
@@ -435,7 +547,7 @@ function ShotSheetTab() {
   // Every render is its own take and its own file — a new Render adds a row,
   // it never takes over the one you were cutting from.
   const [takes, setTakes] = useState([]);
-  const [selectedTakeId, setSelectedTakeId] = useState(null);
+  const [selectedRunId, setSelectedRunId] = useState(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
@@ -448,9 +560,10 @@ function ShotSheetTab() {
       setChosen(next.slots.filter((s) => !s.refused).map((s) => s.offset));
       const list = next.takes || [];
       setTakes(list);
-      // Keep the take being cut from selected across a reload (pinning reloads).
-      setSelectedTakeId((prev) =>
-        list.some((t) => t.id === prev) ? prev : (list.find((t) => t.status === "done") || list[0])?.id ?? null);
+      // Keep the run being cut from selected across a reload (pinning reloads).
+      const runIdOf = (t) => t?.runId || t?.id || null;
+      setSelectedRunId((prev) =>
+        list.some((t) => runIdOf(t) === prev) ? prev : runIdOf(list.find((t) => t.status === "done") || list[0]));
     } catch (e) {
       setError(e.message);
     }
@@ -481,7 +594,20 @@ function ShotSheetTab() {
     return () => clearInterval(timer);
   }, [runningIds, revalidate]);
 
-  const take = takes.find((t) => t.id === selectedTakeId) || null;
+  const runs = useMemo(() => groupRuns(takes), [takes]);
+  const selectedRun = runs.find((r) => r.id === selectedRunId) || null;
+
+  // How the chosen frames will be split, worked out the same way the Worker
+  // will — so the button can say "3 clips" before anything is spent.
+  const plannedClips = useMemo(() => {
+    if (!sheet) return [];
+    const wanted = new Set(chosen);
+    const shots = sheet.slots
+      .filter((slot) => wanted.has(slot.offset) && !slot.refused)
+      .map((slot) => ({ offset: slot.offset, kind: slot.kind, text: slot.brief }));
+    const secs = Number(duration);
+    return Number.isInteger(secs) && secs >= MIN_DURATION_SECONDS ? splitShots(shots, secs) : [shots];
+  }, [sheet, chosen, duration]);
 
   const run = async (fn) => {
     setBusy(true);
@@ -511,7 +637,7 @@ function ShotSheetTab() {
         </select>
       </div>
 
-      {error ? <ErrorNote>{error}</ErrorNote> : null}
+      {error && !sheet ? <ErrorNote>{error}</ErrorNote> : null}
 
       {sheet ? (
         <>
@@ -566,14 +692,28 @@ function ShotSheetTab() {
                 const started = await sheetApi(`${url}/render`, {
                   method: "POST", body: JSON.stringify(body),
                 });
-                setTakes((prev) => [started.take, ...prev.filter((t) => t.id !== started.take.id)]);
-                setSelectedTakeId(started.take.id);
+                const fresh = started.takes || [started.take];
+                const ids = new Set(fresh.map((t) => t.id));
+                setTakes((prev) => [...fresh, ...prev.filter((t) => !ids.has(t.id))]);
+                setSelectedRunId(started.runId || started.take.id);
+                // Some clips queued, a later one refused: the queued ones are
+                // real renders, so they are kept — and the refusal is shown.
+                if (started.error) setError(started.error);
               })}
             >
               {busy ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
-              Render — costs money
+              {plannedClips.length > 1 ? `Render ${plannedClips.length} clips — costs money` : "Render — costs money"}
             </Button>
+            {plannedClips.length > 1 ? (
+              <span className="text-xs text-muted-foreground">
+                {chosen.length} frames don’t fit one {duration}s clip — drawn as {plannedClips.length} clips of{" "}
+                {plannedClips.map((c) => c.length).join(" · ")} frames, in running order.
+              </span>
+            ) : null}
           </div>
+          {/* Next to the buttons, not at the top of the page: Render sits below
+              a long list of frames, and an error up there is one nobody sees. */}
+          {error ? <ErrorNote>{error}</ErrorNote> : null}
 
           {preview ? (
             <Panel>
@@ -588,50 +728,43 @@ function ShotSheetTab() {
                     ))}
                   </div>
                 ) : null}
-                <div className="space-y-1.5">
-                  <p className="text-xs text-muted-foreground">
-                    Reference images, in the order the prompt names them — each name in a shot is tagged with its image.
-                  </p>
-                  <References references={preview.sheet?.references} />
-                </div>
-                <Textarea readOnly rows={12} value={preview.request?.prompt || ""} className="font-mono text-xs" />
-                <p className="text-xs text-muted-foreground">
-                  {preview.endpoint} · frames cut at{" "}
-                  {(preview.sheet ? grabTimes(preview.sheet) : []).map((t) => t.toFixed(2)).join("s, ")}s
-                </p>
+                {(preview.parts || [preview]).map((part, i, all) => (
+                  <div key={i} className={cn("space-y-2", all.length > 1 && "rounded-md border border-border p-3")}>
+                    {all.length > 1 ? (
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-medium">Clip {i + 1} of {all.length}</span>
+                        <span className="font-mono text-xs text-muted-foreground">{part.sheet ? clipRange(part) : ""}</span>
+                      </div>
+                    ) : null}
+                    <div className="space-y-1.5">
+                      <p className="text-xs text-muted-foreground">
+                        Reference images, in the order the prompt names them — each name in a shot is tagged with its image.
+                      </p>
+                      <References references={part.sheet?.references} />
+                    </div>
+                    <Textarea readOnly rows={12} value={part.request?.prompt || ""} className="font-mono text-xs" />
+                    <p className="text-xs text-muted-foreground">
+                      {part.endpoint} · frames cut at{" "}
+                      {(part.sheet ? grabTimes(part.sheet) : []).map((t) => t.toFixed(2)).join("s, ")}s
+                    </p>
+                  </div>
+                ))}
               </div>
             </Panel>
           ) : null}
 
-          {takes.length > 1 ? (
-            <TakeList takes={takes} selectedId={selectedTakeId} onSelect={setSelectedTakeId} />
+          {runs.length > 1 ? (
+            <RunList runs={runs} selectedId={selectedRunId} onSelect={setSelectedRunId} />
           ) : null}
 
-          {take ? (
-            <Panel>
-              <div className="space-y-3">
-                <div className="flex items-center gap-2">
-                  <Eyebrow>Take</Eyebrow>
-                  <Badge variant={take.status === "done" ? "success" : take.status === "error" ? "warning" : "info"}>
-                    {take.status}
-                  </Badge>
-                </div>
-                {take.error ? <ErrorNote>{take.error}</ErrorNote> : null}
-                {take.status === "done" && take.url ? (
-                  <CutTake
-                    key={take.id}
-                    take={take}
-                    seriesId={seriesId}
-                    slots={sheet.slots}
-                    onPinned={() => { invalidateTabCache("shotsheet"); revalidate(); load(seriesId); }}
-                  />
-                ) : take.status === "running" ? (
-                  <p className="flex items-center gap-2 text-sm text-muted-foreground">
-                    <Loader2 size={14} className="animate-spin" /> drawing — this takes a few minutes
-                  </p>
-                ) : null}
-              </div>
-            </Panel>
+          {selectedRun ? (
+            <RunPanel
+              key={selectedRun.id}
+              run={selectedRun}
+              seriesId={seriesId}
+              slots={sheet.slots}
+              onPinned={() => { invalidateTabCache("shotsheet"); revalidate(); load(seriesId); }}
+            />
           ) : null}
         </>
       ) : (

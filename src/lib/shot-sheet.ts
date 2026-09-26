@@ -622,3 +622,55 @@ export function sheetFrom(
     ...renderSettings(series),
   };
 }
+
+// ------------------------------------------------------- a run of clips
+
+/**
+ * The chosen shots, cut into as few clips as the two ceilings allow.
+ *
+ * One clip holds `maxShots(duration)` frames (each needs `MIN_SHOT_SECONDS` to
+ * settle) and pins at most `MAX_END_IMAGES` of them. A cue sheet with more
+ * beats than that is not refused — it is drawn as a RUN: several clips, in
+ * running order, each a complete sheet of its own with its own grab times, so
+ * cutting clip 2 can never land a frame on a beat from clip 1. Parts are kept
+ * as even as possible rather than filled greedily, so the last clip is not two
+ * frames held for seven seconds each.
+ */
+export function splitShots(shots: Shot[], duration: number = MAX_DURATION_SECONDS): Shot[][] {
+  if (!shots.length) return [];
+  const room = Math.max(1, maxShots(duration));
+  const pinCount = shots.filter((shot) => shot.kind === 'pin').length;
+  let parts = Math.max(1, Math.ceil(shots.length / room), Math.ceil(pinCount / MAX_END_IMAGES));
+  for (;;) {
+    const out: Shot[][] = [];
+    const base = Math.floor(shots.length / parts);
+    const extra = shots.length % parts;
+    let at = 0;
+    for (let i = 0; i < parts; i++) {
+      const size = base + (i < extra ? 1 : 0);
+      out.push(shots.slice(at, at + size));
+      at += size;
+    }
+    const fits = out.every(
+      (part) => part.length <= room && part.filter((shot) => shot.kind === 'pin').length <= MAX_END_IMAGES,
+    );
+    if (fits || parts >= shots.length) return out;
+    parts += 1;
+  }
+}
+
+/**
+ * The sheets a Series and a choice of slots amount to — one per clip of the
+ * run. Each carries the references ITS shots name, so a clip set in the hangar
+ * is handed the hangar's sheet even when another clip needed the nine slots.
+ */
+export function sheetsFrom(
+  series: Parameters<typeof sheetFrom>[0],
+  chosen: number[],
+  duration = MAX_DURATION_SECONDS,
+): Sheet[] {
+  const whole = sheetFrom(series, chosen, duration);
+  const parts = splitShots(whole.shots, duration);
+  if (parts.length <= 1) return [whole];
+  return parts.map((shots) => ({ ...whole, shots, references: referencesOf(series, shots) }));
+}
