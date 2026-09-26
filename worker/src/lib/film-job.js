@@ -10,10 +10,13 @@
 //
 // ── Shape (later slices EXTEND this, never reshape it) ─────────────────────
 //
-//   job  = { id, prompt, status: 'running'|'done'|'stopped'|'refused', error,
-//            projectId, episodeId, userId, createdAt, updatedAt, steps: [step],
+//   job  = { id, prompt, status: 'running'|'awaiting-confirm'|'done'|'stopped'
+//            |'refused'|'declined', error, projectId, episodeId, userId,
+//            auto, createdAt, updatedAt, steps: [step],
 //            spend: { [stageKey]: dollars }, stopped?: { stage, label, reason,
-//            kept: [{ key, label, summary }], spent } }
+//            kept: [{ key, label, summary }], spent },
+//            confirm?: { status: 'awaiting'|'confirmed'|'declined', after,
+//            summary, plan, askedAt, answeredAt } }
 //   step = { key, label, status: 'running'|'retrying'|'done'|'failed',
 //            startedAt, endedAt, summary, result, error, failures }
 //
@@ -59,6 +62,21 @@
 // `film.refused` replaces film.started when a QUEUED Film reaches the front
 // and the kill switch or the allowance says no (lib/film-queue.js).
 //
+// ── The Auto toggle and the one confirm card (#65) ────────────────────────
+//
+// `job.auto` is the owner's Auto toggle (lib/auto-settings.js), read when the
+// job STARTS. On, nothing asks. Off, the job pauses ONCE, right after the
+// `CONFIRM_AFTER` stage (the World) and before any paid stage runs: status
+// `awaiting-confirm`, `job.confirm` holds the Film plan (planFilm — length,
+// reels, sheets, estimate per stage and total) the confirm card draws.
+//
+//   … step.done(world) → film.awaiting-confirm → film.confirmed → step.started…
+//                                             ↘ film.declined (the end)
+//
+// A declined Film has spent nothing after the World and never counts
+// (allowanceKindOf is `failed` for anything but `done`); the queue moves on.
+// The confirm card is NOT a step: steps map 1:1 onto FILM_STAGES by position.
+//
 // ── Allowance ──────────────────────────────────────────────────────────────
 //
 // `startFilm` checks the kill switch (autoAvailable) and the Film allowance
@@ -74,12 +92,21 @@ import { WORLD_SHAPE } from "./auto-prompts.generated.js";
 import { runSheetsStage } from "./film-stages/sheets.js";
 import { runShotlistStage } from "./film-stages/shotlist.js";
 import { runCueSheetStage } from "./film-stages/cuesheet.js";
+import { readAutoSettings } from "./auto-settings.js";
+import { planFilm, MAX_REFERENCE_SHEETS } from "./film-plan.ts";
 
 export const FILM_EVENT_RESOURCE = "auto";
 export const FILM_EVENTS = Object.freeze([
   "film.queued", "film.started", "film.refused", "step.started", "step.retrying",
   "step.done", "step.failed", "film.done", "film.stopped",
+  "film.awaiting-confirm", "film.confirmed", "film.declined",
 ]);
+
+/** The stage after which an Auto-off job pauses to ask. */
+export const CONFIRM_AFTER = "world";
+
+/** A job that holds the project: a new prompt queues behind it. */
+export const isActive = (job) => job?.status === "running" || job?.status === "awaiting-confirm";
 export const MAX_PROMPT_CHARS = 4000;
 
 const iso = (now) => new Date(now ?? Date.now()).toISOString();
@@ -198,7 +225,7 @@ export async function startFilm(existing, { prompt, userId, projectId, episodeId
     return refuse("invalid", `Keep the prompt under ${MAX_PROMPT_CHARS} characters.`);
   }
   if (!userId) return refuse("invalid", "Sign in to make a Film.");
-  if (existing?.status === "running") {
+  if (isActive(existing)) {
     return refuse("busy", "A Film is already being made on this project — wait for it to finish.");
   }
 
@@ -207,6 +234,8 @@ export async function startFilm(existing, { prompt, userId, projectId, episodeId
 
   const allowance = await (deps.allowance || checkAllowance)(env, userId, deps.now?.());
   if (!allowance.ok) return refuse("allowance", allowance.message);
+
+  const { auto } = await (deps.autoSettings || readAutoSettings)(env, userId);
 
   const at = iso(deps.now?.());
   return {
@@ -219,6 +248,7 @@ export async function startFilm(existing, { prompt, userId, projectId, episodeId
       projectId: projectId ?? null,
       episodeId: episodeId ?? null,
       userId,
+      auto: auto !== false,
       createdAt: at,
       updatedAt: at,
       steps: [],
@@ -338,11 +368,79 @@ export async function advanceFilm(job, deps) {
     return job;
   }
 
+  // Auto off: ask once, after the World, before anything is paid for.
+  if (stage.key === CONFIRM_AFTER && job.auto === false && !job.confirm) {
+    const confirm = { status: "awaiting", after: stage.key, ...confirmPlan(job, step.result), askedAt: now(), answeredAt: null };
+    job = { ...job, status: "awaiting-confirm", confirm, updatedAt: now() };
+    await commit(job, event("film.awaiting-confirm", job));
+    return job;
+  }
+
   if (job.steps.length >= stages.length) {
     job = { ...job, status: "done", updatedAt: now() };
     await commit(job, event("film.done", job));
   }
   return job;
+}
+
+// ── The confirm card ────────────────────────────────────────────────────────
+
+const money = (n) => `$${(Number(n) || 0).toFixed(2)}`;
+
+/**
+ * The Film plan the confirm card shows: planFilm on the prompt, with one
+ * reference sheet per character and place the World made (at fal's ceiling).
+ * → { summary, plan: { seconds, length, capped, reels, pins, sheets, estimate } }
+ */
+export function confirmPlan(job, worldResult) {
+  const drawn = (worldResult?.characters?.length || 0) + (worldResult?.places?.length || 0);
+  const sheets = Math.min(MAX_REFERENCE_SHEETS, Math.max(1, drawn));
+  const p = planFilm({ prompt: job.prompt, referenceSheets: sheets });
+  const plan = {
+    seconds: p.seconds,
+    length: p.length,
+    capped: p.capped,
+    requestedSeconds: p.requestedSeconds,
+    reels: p.reels,
+    pins: p.pins,
+    sheets,
+    estimate: p.estimate,
+  };
+  const n = (k, one) => `${k} ${one}${k === 1 ? "" : "s"}`;
+  const summary = `${p.length} · ${n(p.reels, "reel")} · ${n(sheets, "sheet")} · about ${money(p.estimate.total)}`;
+  return { summary, plan };
+}
+
+/**
+ * The author said yes: the job runs on (the DO schedules the next alarm).
+ * → `{ ok: true, job }` | `{ ok: false, code: 'not-found'|'not-awaiting' }`
+ */
+export async function confirmFilm(job, filmId, deps = {}) {
+  const gate = answerable(job, filmId);
+  if (gate) return gate;
+  const at = iso(deps.now?.());
+  const next = { ...job, status: "running", updatedAt: at, confirm: { ...job.confirm, status: "confirmed", answeredAt: at } };
+  await (deps.commit || (async () => {}))(next, event("film.confirmed", next));
+  return { ok: true, job: next };
+}
+
+/**
+ * The author said no: the job ends `declined`. Nothing after the World runs,
+ * nothing more is spent, and it never counts against the allowance.
+ */
+export async function declineFilm(job, filmId, deps = {}) {
+  const gate = answerable(job, filmId);
+  if (gate) return gate;
+  const at = iso(deps.now?.());
+  const next = { ...job, status: "declined", updatedAt: at, confirm: { ...job.confirm, status: "declined", answeredAt: at } };
+  await (deps.commit || (async () => {}))(next, event("film.declined", next));
+  return { ok: true, job: next };
+}
+
+function answerable(job, filmId) {
+  if (!job || (filmId && job.id !== filmId)) return { ok: false, code: "not-found" };
+  if (job.status !== "awaiting-confirm") return { ok: false, code: "not-awaiting" };
+  return null;
 }
 
 /** Drive a job until it stops (tests; the DO advances one attempt per alarm). */

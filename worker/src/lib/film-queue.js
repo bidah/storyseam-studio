@@ -14,7 +14,7 @@
 // it may have used the last one, or the switch may have been thrown meanwhile.
 // A queued Film refused at the front becomes a `refused` job (event
 // `film.refused`) so the surface can say why it never started.
-import { startFilm } from "./film-job.js";
+import { isActive, startFilm } from "./film-job.js";
 
 /** How many Films may wait behind the running one. */
 export const MAX_QUEUE = 3;
@@ -41,7 +41,8 @@ export const publicQueue = (queue) => (queue || []).map(publicQueued);
  *   { ok: false, refusal: { code, message } }
  */
 export async function submitFilm({ job, queue = [] }, input, deps = {}) {
-  const busy = job?.status === "running" || queue.length > 0;
+  // A Film waiting on its confirm card holds the project too (#65).
+  const busy = isActive(job) || queue.length > 0;
   if (!busy) {
     const res = await startFilm(job, input, deps);
     return res.ok ? { ...res, queue } : res;
@@ -73,7 +74,7 @@ export async function submitFilm({ job, queue = [] }, input, deps = {}) {
  * → { job: started job | null, queue: what's left, refused: [refused job] }
  */
 export async function startNextQueued({ job, queue = [] }, deps = {}) {
-  if (job?.status === "running") return { job: null, queue, refused: [] };
+  if (isActive(job)) return { job: null, queue, refused: [] };
   const rest = [...queue];
   const refused = [];
   while (rest.length) {

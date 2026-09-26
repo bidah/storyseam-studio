@@ -263,3 +263,15 @@ CREATE TABLE IF NOT EXISTS film_counts (
   PRIMARY KEY (user_id, film_id)
 );
 CREATE INDEX IF NOT EXISTS idx_film_counts_period ON film_counts (user_id, period);
+
+-- The Auto toggle (CONTEXT.md, "Auto"; issue #65): ON by default — nothing
+-- asks; OFF — the Film job pauses ONCE, after the World and before anything is
+-- paid for, on a confirm card. Per-USER (it follows the author across projects
+-- and devices), so a table rather than a `docs` row. NO ROW = Auto on. Read and
+-- written ONLY through worker/src/lib/auto-settings.js. Prod gets it from
+-- migrations/004-auto-settings.sql.
+CREATE TABLE IF NOT EXISTS auto_settings (
+  user_id    TEXT PRIMARY KEY,             -- references "user"(id)
+  auto       INTEGER NOT NULL DEFAULT 1,
+  updated_at TEXT NOT NULL
+);

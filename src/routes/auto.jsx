@@ -1,11 +1,13 @@
 import { useState } from "react";
 import { useLoaderData, useRevalidator } from "react-router";
-import { CheckCircle2, CircleAlert, Clock, Loader2, MapPin, OctagonX, RotateCw, Sparkles, Users } from "lucide-react";
+import { Ban, CheckCircle2, CircleAlert, CircleHelp, Clock, Loader2, MapPin, OctagonX, Play, RotateCw, Sparkles, Users } from "lucide-react";
 import { invalidateTabCache } from "@/lib/tabCache";
 import { swr, useRevalidateOnMount } from "@/lib/swr";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ErrorNote, Eyebrow } from "@/components/shared";
 import { cn } from "@/lib/utils";
@@ -33,12 +35,19 @@ async function getJSON(url) {
 
 export function loader() {
   return swr(KEY, async () => {
-    const [current, status, allowance] = await Promise.all([
+    const [current, status, allowance, settings] = await Promise.all([
       getJSON("/api/auto/films/current"),
       getJSON("/api/auto/status").catch(() => null),
       getJSON("/api/auto/allowance").catch(() => null),
+      getJSON("/api/auto/settings").catch(() => null),
     ]);
-    return { job: current.job || null, queue: current.queue || [], status, allowance };
+    return {
+      job: current.job || null,
+      queue: current.queue || [],
+      status,
+      allowance,
+      auto: settings?.auto !== false,
+    };
   });
 }
 
@@ -220,6 +229,89 @@ function StoppedCard({ job }) {
   );
 }
 
+const STAGE_LABELS = {
+  referenceSheets: "Reference sheets",
+  clips: "Shot sheet clips",
+  sitting: "The sitting",
+  score: "Score",
+  sandbox: "Sandbox time",
+};
+
+// Auto off: the one question the job asks — after the World, before anything
+// is paid for. Built from the Film plan the job stored on `job.confirm`.
+function ConfirmCard({ job, onAnswer, answering }) {
+  const confirm = job.confirm || {};
+  const plan = confirm.plan || {};
+  const perStage = Object.entries(plan.estimate?.perStage || {});
+  const awaiting = job.status === "awaiting-confirm";
+  const badge =
+    confirm.status === "confirmed" ? { variant: "success", label: "Confirmed" }
+    : confirm.status === "declined" ? { variant: "muted", label: "Declined" }
+    : { variant: "warning", label: "Waiting for you" };
+  return (
+    <Card className="gap-0 border-amber-500/40 py-0" data-step="confirm" data-status={confirm.status}>
+      <CardHeader className="flex flex-row items-center justify-between gap-3 border-b px-4 py-3 [.border-b]:pb-3">
+        <CardTitle className="flex items-center gap-2 text-sm font-semibold">
+          <CircleHelp size={16} className="text-amber-500" aria-hidden /> Confirm
+        </CardTitle>
+        <Badge variant={badge.variant}>{badge.label}</Badge>
+      </CardHeader>
+      <CardContent className="space-y-4 p-4">
+        <p className="text-sm">
+          {awaiting
+            ? "The World is ready. Nothing has been paid for yet — here is the Film this prompt will make."
+            : confirm.status === "declined"
+              ? "Declined. Nothing was spent after the World, and this Film doesn't count against your allowance."
+              : "Confirmed — the Film is being made."}
+        </p>
+        <dl className="grid grid-cols-3 gap-3 text-sm">
+          <div>
+            <dt className="text-xs text-muted-foreground">Length</dt>
+            <dd className="font-medium tabular-nums">{plan.length}{plan.capped ? " (capped)" : ""}</dd>
+          </div>
+          <div>
+            <dt className="text-xs text-muted-foreground">Reels</dt>
+            <dd className="font-medium tabular-nums">{plan.reels}</dd>
+          </div>
+          <div>
+            <dt className="text-xs text-muted-foreground">Sheets</dt>
+            <dd className="font-medium tabular-nums">{plan.sheets}</dd>
+          </div>
+        </dl>
+        {perStage.length > 0 && (
+          <div className="space-y-1.5">
+            <Eyebrow>Estimated cost</Eyebrow>
+            <ul className="space-y-1">
+              {perStage.map(([key, s]) => (
+                <li key={key} className="flex justify-between text-sm">
+                  <span>{STAGE_LABELS[key] || key}</span>
+                  <span className="tabular-nums">{dollars(s.usd)}</span>
+                </li>
+              ))}
+              <li className="flex justify-between border-t pt-1 text-sm font-medium">
+                <span>Total</span>
+                <span className="tabular-nums">{dollars(plan.estimate?.total)}</span>
+              </li>
+            </ul>
+          </div>
+        )}
+        {awaiting && (
+          <div className="flex flex-wrap justify-end gap-2">
+            <Button variant="outline" onClick={() => onAnswer("decline")} disabled={!!answering}>
+              {answering === "decline" ? <Loader2 size={14} className="animate-spin" /> : <Ban size={14} />}
+              Decline
+            </Button>
+            <Button onClick={() => onAnswer("confirm")} disabled={!!answering}>
+              {answering === "confirm" ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />}
+              Confirm
+            </Button>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 // Films waiting behind the running one — one Film at a time per project.
 function QueueList({ queue }) {
   if (!queue?.length) return null;
@@ -239,7 +331,7 @@ function QueueList({ queue }) {
 }
 
 function AutoSurface() {
-  const { job, queue, status, allowance } = useLoaderData();
+  const { job, queue, status, allowance, auto: savedAuto } = useLoaderData();
   const { revalidate } = useRevalidator();
   useRevalidateOnMount(KEY);
 
@@ -249,6 +341,28 @@ function AutoSurface() {
   // The POST answer, shown until the loader catches up with the same job.
   const [started, setStarted] = useState(null);
   const [queuedNote, setQueuedNote] = useState(null);
+  // The Auto toggle — per user, server-side. Local state is the optimistic view.
+  const [autoOverride, setAutoOverride] = useState(null);
+  const auto = autoOverride ?? savedAuto;
+  const [answering, setAnswering] = useState(null);
+  const [answerError, setAnswerError] = useState(null);
+
+  const setAuto = async (next) => {
+    setAutoOverride(next);
+    try {
+      const res = await fetch("/api/auto/settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ auto: next }),
+      });
+      if (!res.ok) throw new Error(`Couldn't save the Auto setting (${res.status}).`);
+      invalidateTabCache(KEY);
+      revalidate();
+    } catch (err) {
+      setAutoOverride(!next);
+      setRefusal(String(err?.message || err));
+    }
+  };
 
   // A newer job (a queued Film that has since started) wins over the POST answer.
   const shown =
@@ -256,7 +370,27 @@ function AutoSurface() {
     : !job ? started
     : job.id === started.id || (job.createdAt || "") > (started.createdAt || "") ? job
     : started;
-  const running = shown?.status === "running";
+  const running = shown?.status === "running" || shown?.status === "awaiting-confirm";
+
+  const answer = async (kind) => {
+    if (!shown?.id || answering) return;
+    setAnswering(kind);
+    setAnswerError(null);
+    try {
+      const id = encodeURIComponent(shown.id);
+      const url = kind === "confirm" ? `/api/auto/films/${id}/confirm` : `/api/auto/films/${id}/decline`;
+      const res = await fetch(url, { method: "POST" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.ok) throw new Error(data.error || `Couldn't ${kind} (${res.status}).`);
+      if (data.job) setStarted(data.job);
+    } catch (err) {
+      setAnswerError(String(err?.message || err));
+    } finally {
+      setAnswering(null);
+      invalidateTabCache(KEY);
+      revalidate();
+    }
+  };
   const paused = status && !status.ok ? status.reason : null;
   const overAllowance = allowance && allowance.ok === false ? allowance.message : null;
   const blocked = paused || overAllowance;
@@ -316,9 +450,18 @@ function AutoSurface() {
           disabled={submitting}
         />
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <span className="text-xs text-muted-foreground">
-            {allowance?.ok ? `${allowance.remaining} of ${allowance.limit} Films left this month` : null}
-          </span>
+          <div className="flex flex-wrap items-center gap-4">
+            <div className="flex items-center gap-2">
+              <Switch id="auto-toggle" checked={auto} onCheckedChange={setAuto} aria-describedby="auto-toggle-hint" />
+              <Label htmlFor="auto-toggle" className="text-sm">Auto</Label>
+              <span id="auto-toggle-hint" className="text-xs text-muted-foreground">
+                {auto ? "Nothing asks" : "Asks once, before anything is paid for"}
+              </span>
+            </div>
+            <span className="text-xs text-muted-foreground">
+              {allowance?.ok ? `${allowance.remaining} of ${allowance.limit} Films left this month` : null}
+            </span>
+          </div>
           <Button type="submit" disabled={!prompt.trim() || submitting || !!blocked}>
             {submitting ? <Loader2 size={14} className="animate-spin" /> : running ? <Clock size={14} /> : <Sparkles size={14} />}
             {running ? "Queue Film" : "Make Film"}
@@ -339,6 +482,7 @@ function AutoSurface() {
             </p>
             {shown.status === "stopped" && <Badge variant="destructive">Stopped</Badge>}
             {shown.status === "refused" && <Badge variant="muted">Didn't start</Badge>}
+            {shown.status === "declined" && <Badge variant="muted">Declined</Badge>}
           </div>
           {shown.steps.length === 0 && running && (
             <p className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -348,8 +492,17 @@ function AutoSurface() {
           {shown.status === "refused" && (
             <ErrorNote>This queued Film couldn't start: {shown.error}</ErrorNote>
           )}
+          {/* The confirm card sits right after the step it followed (the World). */}
           {shown.steps.map((s) => (
-            <StepCard key={s.key} step={s} />
+            <div key={s.key} className="space-y-3">
+              <StepCard step={s} />
+              {shown.confirm?.after === s.key && (
+                <>
+                  <ConfirmCard job={shown} onAnswer={answer} answering={answering} />
+                  {answerError && <ErrorNote>{answerError}</ErrorNote>}
+                </>
+              )}
+            </div>
           ))}
           {shown.status === "stopped" && <StoppedCard job={shown} />}
         </section>
