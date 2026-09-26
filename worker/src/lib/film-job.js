@@ -104,6 +104,7 @@ import { runShotlistStage } from "./film-stages/shotlist.js";
 import { runCueSheetStage } from "./film-stages/cuesheet.js";
 import { runRunStage } from "./film-stages/run.js";
 import { runStillsStage } from "./film-stages/stills.js";
+import { runSittingStage } from "./film-stages/sitting.js";
 import { readAutoSettings } from "./auto-settings.js";
 import { planFilm, MAX_REFERENCE_SHEETS } from "./film-plan.ts";
 
@@ -220,6 +221,7 @@ export const FILM_STAGES = Object.freeze([
   { key: "cuesheet", label: "Cue sheet", run: (ctx) => runCueSheetStage(ctx) },
   { key: "run", label: "Shot sheet run", paid: true, run: (ctx) => runRunStage(ctx) },
   { key: "stills", label: "Stills", paid: true, run: (ctx) => runStillsStage(ctx) },
+  { key: "sitting", label: "Sitting", paid: true, run: (ctx) => runSittingStage(ctx) },
 ]);
 
 // ── Job lifecycle ───────────────────────────────────────────────────────────

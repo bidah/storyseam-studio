@@ -37,6 +37,7 @@ import { registerSounds } from "./routes/sounds.js";
 import { registerMusical } from "./routes/musical.js";
 import { registerDirector } from "./routes/director.js";
 import { registerStage } from "./routes/stage.js";
+import { registerSittingRunner } from "./routes/sitting-runner.js";
 import { registerUpscale } from "./routes/upscale.js";
 import { registerShotSheet } from "./routes/shot-sheet.js";
 import { registerMusicalized } from "./routes/musicalized.js";
@@ -264,6 +265,10 @@ app.use("*", async (c, next) => {
   //                  can-manage). Scoping it to an active project would 400 an
   //                  invitee accepting their first invite — they have no project
   //                  yet — so it's exempt here and gated inside the route.
+  //   /api/sitting-runner/  the Auto Sitting runner page in a Daytona box
+  //                  (routes/sitting-runner.js). No cookie; every route
+  //                  verifies its short-lived job token (lib/sitting-token.js),
+  //                  which names its own project, episode, Series and Film.
   const isData =
     p.startsWith("/api/") &&
     !p.startsWith("/api/auth/") &&
@@ -272,7 +277,8 @@ app.use("*", async (c, next) => {
     !p.startsWith("/api/extract") &&
     !p.startsWith("/api/agent/") &&
     !p.startsWith("/api/mcp") &&
-    !p.startsWith("/api/share/");
+    !p.startsWith("/api/share/") &&
+    !p.startsWith("/api/sitting-runner/");
   // A WRITE we can't scope must never reach storage: `normalizeProjectId(null)`
   // resolves to `p_default`, and `p_default` is a REAL project (Whistlewood), so
   // an unscoped mutation silently lands in someone's actual world/shot list
@@ -343,6 +349,9 @@ app.use("*", async (c, next) => {
   // Org/membership changes are tenant bookkeeping, not project doc state — a new
   // invite or scope tweak shouldn't make every open project tab refetch.
   if (p.startsWith("/api/orgs")) return;
+  // The Sitting runner's progress beats and upload: the Film job announces its
+  // own step events, and these carry no project the firehose could name.
+  if (p.startsWith("/api/sitting-runner/")) return;
   if (!c.res || c.res.status >= 400) return;
   broadcast(
     c.env,
@@ -703,6 +712,7 @@ registerMusical(app);
 // the sheet its pins are drawn on, and the score laid under what it kept.
 registerDirector(app);
 registerStage(app);
+registerSittingRunner(app);
 registerShotSheet(app);
 registerMusicalized(app);
 // Upscale: a finished sitting or Deliver render, taken to a higher resolution on fal.

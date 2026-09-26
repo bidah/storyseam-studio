@@ -210,6 +210,100 @@ const HOP_HEADERS = new Set([
   "x-project-id", "x-episode-id", "x-client-id", "x-flue-agent-user",
 ]);
 
+/**
+ * Forward one fal client call, pinned and capped, with `key` as the credential.
+ *
+ * Shared by the Stage's proxy (the author's BYOK key) and the Auto Sitting
+ * runner's (routes/sitting-runner.js — the platform key, ADR 0003). `env` may
+ * override `MAX_SESSION_SECONDS` for a caller whose sittings run longer.
+ */
+export async function forwardToFal(c, key, { env = c.env } = {}) {
+  const targetUrl = c.req.header(TARGET_URL_HEADER);
+  if (!targetUrl) return c.json({ error: `${TARGET_URL_HEADER} is required` }, 400);
+
+  // Read the body ONCE. It is needed three times — the endpoint pin, the
+  // session cap, and the forwarded request — and a body can only be consumed
+  // once.
+  const method = c.req.method.toUpperCase();
+  const body = method === "GET" || method === "HEAD" ? undefined : await c.req.text();
+
+  const badTarget = refuseTarget(targetUrl, body);
+  if (badTarget) return badTarget;
+
+  const capped = refuseCappedSession(targetUrl, body, { env });
+  if (capped) return capped;
+
+  if (!key) {
+    return c.json(
+      { error: "A Director sitting needs your fal key — add it in Settings.", code: "no_fal_key" },
+      401,
+    );
+  }
+
+  const headers = new Headers();
+  for (const [name, value] of c.req.raw.headers) {
+    if (!HOP_HEADERS.has(name.toLowerCase())) headers.set(name, value);
+  }
+  // `Key ` is not decoration. fal's scheme is `Authorization: Key <creds>`;
+  // the bare key comes back as 401 "unrecognized auth scheme".
+  headers.set("authorization", falAuthorization(key));
+
+  const upstream = await fetch(targetUrl, { method, headers, body });
+  // Passed through rather than re-read: `/session` answers with an SDP answer
+  // the client parses, and buffering it here would buy nothing.
+  const out = new Headers(upstream.headers);
+  out.delete("content-encoding");
+  out.delete("content-length");
+  return new Response(upstream.body, { status: upstream.status, headers: out });
+}
+
+/**
+ * What a sitting of this Series sends: `configure` plus every appended reel,
+ * and the whole film's length. One builder for the Stage and the Auto runner.
+ */
+export function screeningFor(env, pid, series) {
+  const resolved = absolutizeSeries(env, pid, series);
+  const plan = screening(resolved);
+  return { configure: recipe(resolved), reels: plan.reels, filmSeconds: plan.filmSeconds };
+}
+
+/**
+ * File a recording as a kept sitting — the bytes to R2 under `director`, the
+ * record into the `director-sittings` ledger. `body` may be an ArrayBuffer or a
+ * stream of known length; `extra` rides on the record (the Auto runner stamps
+ * its Film id). → the ledger entry.
+ */
+export async function fileSitting(env, pid, { series, body, bytes, contentType, seconds, extra = {} }) {
+  const type = contentType || "video/webm";
+  const ext = /mp4/i.test(type) ? "mp4" : "webm";
+  const id = crypto.randomUUID();
+  const name = `sitting_${series.id}_${id}.${ext}`;
+  await putMedia(env, pid, "director", name, body, type);
+
+  const entry = {
+    id,
+    seriesId: series.id,
+    title: series.title,
+    file: name,
+    contentType: type,
+    bytes,
+    seconds: Number(seconds) || 0,
+    recordedAt: new Date().toISOString(),
+    // The sheet this sitting was shot against, stamped now. A sitting whose
+    // cue sheet has since moved is still a film of the sheet it was made
+    // from, and the Musicalized tab needs to know which one that was.
+    cueTiming: series.audioVersion?.cueTiming ?? null,
+    beats: (series.directions || []).length,
+    ...extra,
+  };
+  await updateSittings(env, pid, (db) => {
+    db.seq = (db.seq || 0) + 1;
+    db.kept = [entry, ...(db.kept || [])];
+    return {};
+  });
+  return entry;
+}
+
 export function registerStage(app) {
   // ── The proxy ─────────────────────────────────────────────────────────────
   //
@@ -217,49 +311,12 @@ export function registerStage(app) {
   // package does for us here is the forwarding, and everything that MATTERS —
   // the host pin, the path pin, the endpoint pin, the cap — is above and would
   // have to be written anyway. One fewer alpha dependency in the Worker.
-  app.all("/api/stage/fal/proxy", async (c) => {
-    const targetUrl = c.req.header(TARGET_URL_HEADER);
-    if (!targetUrl) return c.json({ error: `${TARGET_URL_HEADER} is required` }, 400);
-
-    // Read the body ONCE. It is needed three times — the endpoint pin, the
-    // session cap, and the forwarded request — and a body can only be consumed
-    // once.
-    const method = c.req.method.toUpperCase();
-    const body = method === "GET" || method === "HEAD" ? undefined : await c.req.text();
-
-    const badTarget = refuseTarget(targetUrl, body);
-    if (badTarget) return badTarget;
-
-    const capped = refuseCappedSession(targetUrl, body, { env: c.env });
-    if (capped) return capped;
-
+  app.all("/api/stage/fal/proxy", (c) =>
     // BYOK, like every other generation in this studio: the author's own fal key
     // arrives per request and is never persisted. `FAL_KEY` is the operator's
     // optional dev fallback.
-    const key = c.req.header("x-fal-key") || c.env.FAL_KEY || "";
-    if (!key) {
-      return c.json(
-        { error: "A Director sitting needs your fal key — add it in Settings.", code: "no_fal_key" },
-        401,
-      );
-    }
-
-    const headers = new Headers();
-    for (const [name, value] of c.req.raw.headers) {
-      if (!HOP_HEADERS.has(name.toLowerCase())) headers.set(name, value);
-    }
-    // `Key ` is not decoration. fal's scheme is `Authorization: Key <creds>`;
-    // the bare key comes back as 401 "unrecognized auth scheme".
-    headers.set("authorization", falAuthorization(key));
-
-    const upstream = await fetch(targetUrl, { method, headers, body });
-    // Passed through rather than re-read: `/session` answers with an SDP answer
-    // the client parses, and buffering it here would buy nothing.
-    const out = new Headers(upstream.headers);
-    out.delete("content-encoding");
-    out.delete("content-length");
-    return new Response(upstream.body, { status: upstream.status, headers: out });
-  });
+    forwardToFal(c, c.req.header("x-fal-key") || c.env.FAL_KEY || ""),
+  );
 
   // ── What a sitting would send ─────────────────────────────────────────────
 
@@ -267,15 +324,14 @@ export function registerStage(app) {
     const pid = c.get("projectId");
     const series = await readSeries(c.env, pid, c.req.param("id"));
     if (!series) return c.json({ error: "No such Series" }, 404);
-    const resolved = absolutizeSeries(c.env, pid, series);
-    const plan = screening(resolved);
+    const plan = screeningFor(c.env, pid, series);
     return c.json({
       seriesId: series.id,
       title: series.title,
       aspectRatio: series.aspectRatio,
       resolution: series.resolution,
       endpoint: DIRECTOR_ENDPOINT,
-      configure: recipe(resolved),
+      configure: plan.configure,
       reels: plan.reels,
       filmSeconds: plan.filmSeconds,
       maxSessionSeconds: maxSessionSeconds(c.env),
@@ -311,33 +367,14 @@ export function registerStage(app) {
     const series = await readSeries(c.env, pid, seriesId);
     if (!series) return c.json({ error: "A sitting belongs to a Series — send a `seriesId` that exists" }, 404);
 
-    const type = file.type || "video/webm";
-    const ext = /mp4/i.test(type) ? "mp4" : "webm";
-    const id = crypto.randomUUID();
-    const name = `sitting_${seriesId}_${id}.${ext}`;
-    await putMedia(c.env, pid, "director", name, bytes, type);
-
-    const entry = {
-      id,
-      seriesId,
-      title: series.title,
-      file: name,
-      contentType: type,
+    const entry = await fileSitting(c.env, pid, {
+      series,
+      body: bytes,
       bytes: bytes.byteLength,
-      seconds: Number(form.seconds) || 0,
-      recordedAt: new Date().toISOString(),
-      // The sheet this sitting was shot against, stamped now. A sitting whose
-      // cue sheet has since moved is still a film of the sheet it was made
-      // from, and the Musicalized tab needs to know which one that was.
-      cueTiming: series.audioVersion?.cueTiming ?? null,
-      beats: (series.directions || []).length,
-    };
-    await updateSittings(c.env, pid, (db) => {
-      db.seq = (db.seq || 0) + 1;
-      db.kept = [entry, ...(db.kept || [])];
-      return {};
+      contentType: file.type,
+      seconds: form.seconds,
     });
-    return c.json({ ok: true, sitting: { ...entry, url: directorUrl(name) } });
+    return c.json({ ok: true, sitting: { ...entry, url: directorUrl(entry.file) } });
   });
 
   // Forgetting a sitting drops the RECORD. The bytes stay in R2, the same
