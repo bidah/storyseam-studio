@@ -3,8 +3,13 @@
 //   GET  /api/auto/status         can a new Auto Film start right now?
 //                                 { ok, reason, paused, keys: { FAL_KEY, … } }
 //   POST /api/auto/films          start a Film on this project. Body { prompt }.
-//                                 202 { ok, job } | 4xx/503 { ok:false, refusal:{code,message}, job }
-//   GET  /api/auto/films/current  the project's current Film job (for a reload) { job }
+//                                 202 { ok, job }                     started now
+//                                 202 { ok, queued: true, position, film, job }
+//                                     queued behind the running Film (one at a
+//                                     time per project — lib/film-queue.js)
+//                                 4xx/503 { ok:false, refusal:{code,message}, job }
+//   GET  /api/auto/films/current  the project's current Film job and the Films
+//                                 waiting behind it (for a reload) { job, queue }
 //
 // `keys` is presence only (booleans), never a value. All behind the ownership
 // middleware like every /api route: the caller is signed in and may reach the
@@ -42,6 +47,8 @@ export function registerAuto(app) {
   });
 
   app.get("/api/auto/films/current", async (c) => {
-    return c.json({ job: await filmJobs(c).current() });
+    const stub = filmJobs(c);
+    const [job, queue] = await Promise.all([stub.current(), stub.queued()]);
+    return c.json({ job, queue });
   });
 }

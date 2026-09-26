@@ -92,15 +92,15 @@ describe("the Film job — world stage", () => {
     expect(world.locations.map((l) => l.slug)).toEqual(["lamp-room"]);
   });
 
-  it("fails the step and the job when the model's answer has no World", async () => {
+  it("retries once, then stops the job when the model's answer has no World", async () => {
     const env = envWith();
     const events = [];
     let job = await startedJob(env);
     job = await runFilm(job, {
       env, model: fakeModel({ idea: "x" }), saveWorld, commit: async (_j, ev) => events.push(ev),
     });
-    expect(events.map((e) => e.kind)).toEqual(["step.started", "step.failed", "film.failed"]);
-    expect(job.status).toBe("failed");
+    expect(events.map((e) => e.kind)).toEqual(["step.started", "step.retrying", "step.failed", "film.stopped"]);
+    expect(job.status).toBe("stopped");
     expect(job.steps[0]).toMatchObject({ status: "failed", error: expect.stringMatching(/no World/) });
   });
 

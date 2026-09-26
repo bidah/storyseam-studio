@@ -10,10 +10,12 @@
 //
 // ── Shape (later slices EXTEND this, never reshape it) ─────────────────────
 //
-//   job  = { id, prompt, status: 'running'|'done'|'failed', error,
-//            projectId, episodeId, userId, createdAt, updatedAt, steps: [step] }
-//   step = { key, label, status: 'running'|'done'|'failed',
-//            startedAt, endedAt, summary, result, error }
+//   job  = { id, prompt, status: 'running'|'done'|'stopped'|'refused', error,
+//            projectId, episodeId, userId, createdAt, updatedAt, steps: [step],
+//            spend: { [stageKey]: dollars }, stopped?: { stage, label, reason,
+//            kept: [{ key, label, summary }], spent } }
+//   step = { key, label, status: 'running'|'retrying'|'done'|'failed',
+//            startedAt, endedAt, summary, result, error, failures }
 //
 // `steps` grows as stages START — a card appears when its step starts, so the
 // surface never draws a stage that hasn't begun. `summary` is one line for the
@@ -25,8 +27,24 @@
 // FILM_STAGES is an ordered list; the job runs them in order, one per
 // `advanceFilm` call. This slice has ONE, `world` ("Idea + World"). The Auto
 // pipeline appends, in order: sheets → shotlist → cuesheet → run → stills →
-// sitting → score. A stage is `{ key, label, run(ctx) → { summary, result } }`;
-// a throw fails the step and the job.
+// sitting → score. A stage is
+//
+//   { key, label, paid?: true, run(ctx) → { summary, result, spend? } }
+//
+// ctx = { job, results, attempt (1|2), env, model, saveWorld }. `spend` is what
+// the stage cost StorySeam, in dollars; a stage that throws after paying for
+// something attaches it as `err.spend`. Both are summed into `job.spend[key]`.
+// `paid` marks a stage that spends money (sheets, clips, the sitting, scoring);
+// it is descriptive — EVERY stage retries once, because a flaky writing call is
+// as worth one more try as a flaky render, and one rule is easier to trust.
+//
+// ── Retry once, then stop ──────────────────────────────────────────────────
+//
+// A stage that throws is retried ONCE, on the next advance (the card says
+// "Retrying"). A second throw STOPS the job: status `stopped` (our side failed;
+// everything already made is kept, nothing is deleted), `job.stopped` names the
+// stage, the reason, the kept outputs and the spend — what the Stopped card
+// shows. A stopped Film never counts against the allowance (allowanceKindOf).
 //
 // ── Events ─────────────────────────────────────────────────────────────────
 //
@@ -35,7 +53,11 @@
 // live-sync `data` channel as `{ resource: "auto", kind, filmId, step, job }`
 // — no new EventSource. Kinds, in the order a job emits them:
 //
-//   film.started → (step.started → step.done | step.failed)… → film.done | film.failed
+//   film.queued? → film.started → (step.started → step.retrying? →
+//     step.done | step.failed)… → film.done | film.stopped
+//
+// `film.refused` replaces film.started when a QUEUED Film reaches the front
+// and the kill switch or the allowance says no (lib/film-queue.js).
 //
 // ── Allowance ──────────────────────────────────────────────────────────────
 //
@@ -52,7 +74,8 @@ import { WORLD_SHAPE } from "./auto-prompts.generated.js";
 
 export const FILM_EVENT_RESOURCE = "auto";
 export const FILM_EVENTS = Object.freeze([
-  "film.started", "step.started", "step.done", "step.failed", "film.done", "film.failed",
+  "film.queued", "film.started", "film.refused", "step.started", "step.retrying",
+  "step.done", "step.failed", "film.done", "film.stopped",
 ]);
 export const MAX_PROMPT_CHARS = 4000;
 
@@ -192,6 +215,7 @@ export async function startFilm(existing, { prompt, userId, projectId, episodeId
       createdAt: at,
       updatedAt: at,
       steps: [],
+      spend: {},
     },
   };
 }
@@ -200,7 +224,7 @@ function refuse(code, message) {
   return { ok: false, refusal: { code, message } };
 }
 
-const event = (kind, job, step) => ({
+export const event = (kind, job, step) => ({
   resource: FILM_EVENT_RESOURCE,
   kind,
   filmId: job.id,
@@ -208,20 +232,52 @@ const event = (kind, job, step) => ({
   job: publicJob(job),
 });
 
+/** Add `amount` (dollars) to `job.spend[key]`; a non-number or <=0 is nothing. */
+function addSpend(job, key, amount) {
+  const n = Number(amount);
+  if (!Number.isFinite(n) || n <= 0) return job;
+  const spend = { ...(job.spend || {}) };
+  spend[key] = Math.round(((spend[key] || 0) + n) * 1e6) / 1e6;
+  return { ...job, spend };
+}
+
+/** The whole job's spend so far, in dollars. */
+export function totalSpend(job) {
+  const sum = Object.values(job?.spend || {}).reduce((a, n) => a + (Number(n) || 0), 0);
+  return Math.round(sum * 1e6) / 1e6;
+}
+
 /**
- * Run the job's NEXT stage to completion and return the new job. A step left
- * `running` (the DO was evicted mid-stage) is run again from its start.
+ * What a Film's outcome counts as against the allowance (film-allowance.js
+ * `countFilm` kinds). Only a finished Film is a `new` one; a stopped, refused
+ * or still-running job is `failed` — StorySeam's error is never the author's
+ * cost (CONTEXT.md › Film allowance).
+ */
+export function allowanceKindOf(job) {
+  return job?.status === "done" ? "new" : "failed";
+}
+
+/**
+ * Run the job's NEXT stage attempt and return the new job. A step left
+ * `running` or `retrying` (the DO was evicted mid-stage) is run again from its
+ * start — an eviction is not a failure and does not use up the retry.
  *
- * deps: { env, model: { json(opts) }, saveWorld, commit(job, event), now? }
+ * Retry once: a stage that throws is marked `retrying` (step.retrying) and the
+ * job stays `running`; the NEXT call runs it again. A second throw stops the
+ * job (step.failed → film.stopped) — see the header.
+ *
+ * deps: { env, model: { json(opts) }, saveWorld, commit(job, event), now?,
+ *         stages? (default FILM_STAGES — tests pass fake runners) }
  */
 export async function advanceFilm(job, deps) {
   if (!job || job.status !== "running") return job;
+  const stages = deps.stages || FILM_STAGES;
   const now = () => iso(deps.now?.());
   const commit = deps.commit || (async () => {});
 
   const last = job.steps[job.steps.length - 1];
-  const resuming = last?.status === "running";
-  const stage = resuming ? FILM_STAGES.find((s) => s.key === last.key) : FILM_STAGES[job.steps.length];
+  const resuming = last?.status === "running" || last?.status === "retrying";
+  const stage = resuming ? stages.find((s) => s.key === last.key) : stages[job.steps.length];
 
   if (!stage) {
     job = { ...job, status: "done", updatedAt: now() };
@@ -231,41 +287,60 @@ export async function advanceFilm(job, deps) {
 
   let step = resuming
     ? last
-    : { key: stage.key, label: stage.label, status: "running", startedAt: now(), endedAt: null, summary: null, result: null, error: null };
+    : { key: stage.key, label: stage.label, status: "running", startedAt: now(), endedAt: null, summary: null, result: null, error: null, failures: 0 };
   job = { ...job, updatedAt: now(), steps: resuming ? job.steps : [...job.steps, step] };
-  const replace = (s) => ({ ...job, updatedAt: now(), steps: job.steps.map((x) => (x.key === s.key ? s : x)) });
+  const replace = (j, s) => ({ ...j, updatedAt: now(), steps: j.steps.map((x) => (x.key === s.key ? s : x)) });
   if (!resuming) await commit(job, event("step.started", job, step));
 
   const results = Object.fromEntries(job.steps.filter((s) => s.status === "done").map((s) => [s.key, s.result]));
+  const attempt = (step.failures || 0) + 1;
   try {
     // Doc writes are attributed and episode-scoped from the request context
     // (lib/request-context.js); a job has no request, so it opens its own.
     const out = await runWithContext(
       { userId: job.userId, caller: "auto", chatId: null, episodeId: job.episodeId || undefined },
-      () => stage.run({ job, results, env: deps.env, model: deps.model, saveWorld: deps.saveWorld }),
+      () => stage.run({ job, results, attempt, env: deps.env, model: deps.model, saveWorld: deps.saveWorld }),
     );
-    step = { ...step, status: "done", endedAt: now(), summary: out?.summary ?? null, result: out?.result ?? null };
-    job = replace(step);
+    step = { ...step, status: "done", endedAt: now(), summary: out?.summary ?? null, result: out?.result ?? null, error: null };
+    job = replace(addSpend(job, stage.key, out?.spend), step);
     await commit(job, event("step.done", job, step));
   } catch (err) {
     const message = String(err?.message || err);
-    step = { ...step, status: "failed", endedAt: now(), error: message };
-    job = { ...replace(step), status: "failed", error: `${stage.label}: ${message}` };
+    // A throwing stage may already have paid for something (err.spend).
+    job = addSpend(job, stage.key, err?.spend);
+    const failures = (step.failures || 0) + 1;
+    if (failures < 2) {
+      step = { ...step, status: "retrying", failures, error: message };
+      job = replace(job, step);
+      await commit(job, event("step.retrying", job, step));
+      return job;
+    }
+    step = { ...step, status: "failed", failures, endedAt: now(), error: message };
+    job = replace(job, step);
+    const kept = job.steps
+      .filter((s) => s.status === "done")
+      .map((s) => ({ key: s.key, label: s.label, summary: s.summary }));
+    job = {
+      ...job,
+      status: "stopped",
+      error: `${stage.label}: ${message}`,
+      stopped: { stage: stage.key, label: stage.label, reason: message, kept, spent: totalSpend(job) },
+    };
     await commit(job, event("step.failed", job, step));
-    await commit(job, event("film.failed", job));
+    await commit(job, event("film.stopped", job));
     return job;
   }
 
-  if (job.steps.length >= FILM_STAGES.length) {
+  if (job.steps.length >= stages.length) {
     job = { ...job, status: "done", updatedAt: now() };
     await commit(job, event("film.done", job));
   }
   return job;
 }
 
-/** Drive a job until it stops (tests; the DO advances one stage per alarm). */
+/** Drive a job until it stops (tests; the DO advances one attempt per alarm). */
 export async function runFilm(job, deps) {
-  let guard = FILM_STAGES.length + 2;
+  let guard = (deps.stages || FILM_STAGES).length * 2 + 2;
   while (job?.status === "running" && guard-- > 0) job = await advanceFilm(job, deps);
   return job;
 }

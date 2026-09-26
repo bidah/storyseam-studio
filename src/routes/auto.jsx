@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useLoaderData, useRevalidator } from "react-router";
-import { CheckCircle2, CircleAlert, Loader2, MapPin, Sparkles, Users } from "lucide-react";
+import { CheckCircle2, CircleAlert, Clock, Loader2, MapPin, OctagonX, RotateCw, Sparkles, Users } from "lucide-react";
 import { invalidateTabCache } from "@/lib/tabCache";
 import { swr, useRevalidateOnMount } from "@/lib/swr";
 import { Button } from "@/components/ui/button";
@@ -38,18 +38,20 @@ export function loader() {
       getJSON("/api/auto/status").catch(() => null),
       getJSON("/api/auto/allowance").catch(() => null),
     ]);
-    return { job: current.job || null, status, allowance };
+    return { job: current.job || null, queue: current.queue || [], status, allowance };
   });
 }
 
 function StepIcon({ status }) {
   if (status === "done") return <CheckCircle2 size={16} className="text-emerald-500" aria-hidden />;
   if (status === "failed") return <CircleAlert size={16} className="text-destructive" aria-hidden />;
+  if (status === "retrying") return <RotateCw size={16} className="animate-spin text-amber-500" aria-hidden />;
   return <Loader2 size={16} className="animate-spin text-muted-foreground" aria-hidden />;
 }
 
 const STATUS_BADGE = {
   running: { variant: "info", label: "Running" },
+  retrying: { variant: "warning", label: "Retrying" },
   done: { variant: "success", label: "Complete" },
   failed: { variant: "destructive", label: "Failed" },
 };
@@ -117,6 +119,11 @@ function StepCard({ step }) {
         {step.status === "running" && (
           <p className="text-sm text-muted-foreground">Working on it…</p>
         )}
+        {step.status === "retrying" && (
+          <p className="text-sm text-muted-foreground">
+            The first try failed{step.error ? ` (${step.error})` : ""} — trying once more.
+          </p>
+        )}
         {step.status === "failed" && <ErrorNote>{step.error || "This step failed."}</ErrorNote>}
         {step.status === "done" && step.summary && (
           <p className="text-xs text-muted-foreground">{step.summary}</p>
@@ -127,8 +134,88 @@ function StepCard({ step }) {
   );
 }
 
+const dollars = (n) => `$${(Number(n) || 0).toFixed(2)}`;
+
+// A Film that failed twice on one step: say plainly what was kept and what was
+// spent. Nothing made before the stop is deleted, and it doesn't count against
+// the allowance (CONTEXT.md › Film allowance).
+function StoppedCard({ job }) {
+  const stopped = job.stopped || {};
+  const kept = stopped.kept || [];
+  const spend = Object.entries(job.spend || {}).filter(([, n]) => Number(n) > 0);
+  const labelOf = (key) => job.steps.find((s) => s.key === key)?.label || key;
+  return (
+    <Card className="gap-0 border-destructive/40 py-0" data-step="stopped">
+      <CardHeader className="flex flex-row items-center justify-between gap-3 border-b px-4 py-3 [.border-b]:pb-3">
+        <CardTitle className="flex items-center gap-2 text-sm font-semibold">
+          <OctagonX size={16} className="text-destructive" aria-hidden /> Stopped
+        </CardTitle>
+        <Badge variant="destructive">Stopped</Badge>
+      </CardHeader>
+      <CardContent className="space-y-4 p-4">
+        <p className="text-sm">
+          {stopped.label || "A step"} failed twice, so the Film stopped there
+          {stopped.reason ? `: ${stopped.reason}` : "."} This Film doesn't count against your allowance.
+        </p>
+        <div className="space-y-1.5">
+          <Eyebrow>Kept</Eyebrow>
+          {kept.length ? (
+            <ul className="space-y-1">
+              {kept.map((k) => (
+                <li key={k.key} className="text-sm">
+                  <span className="font-medium">{k.label}</span>
+                  {k.summary && <span className="text-muted-foreground"> · {k.summary}</span>}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="text-sm text-muted-foreground">Nothing was finished before the stop.</p>
+          )}
+        </div>
+        <div className="space-y-1.5">
+          <Eyebrow>Spent</Eyebrow>
+          {spend.length ? (
+            <ul className="space-y-1">
+              {spend.map(([key, n]) => (
+                <li key={key} className="flex justify-between text-sm">
+                  <span>{labelOf(key)}</span>
+                  <span className="tabular-nums">{dollars(n)}</span>
+                </li>
+              ))}
+              <li className="flex justify-between border-t pt-1 text-sm font-medium">
+                <span>Total</span>
+                <span className="tabular-nums">{dollars(stopped.spent)}</span>
+              </li>
+            </ul>
+          ) : (
+            <p className="text-sm text-muted-foreground">Nothing was spent.</p>
+          )}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+// Films waiting behind the running one — one Film at a time per project.
+function QueueList({ queue }) {
+  if (!queue?.length) return null;
+  return (
+    <section className="space-y-2" aria-live="polite">
+      <Eyebrow className="flex items-center gap-1.5"><Clock size={12} /> Queued behind the current Film</Eyebrow>
+      <ol className="space-y-1.5">
+        {queue.map((q) => (
+          <li key={q.id} className="flex items-start gap-2 rounded-md border px-3 py-2 text-sm" data-queued={q.id}>
+            <Badge variant="muted">{q.position}</Badge>
+            <span className="line-clamp-2">{q.prompt}</span>
+          </li>
+        ))}
+      </ol>
+    </section>
+  );
+}
+
 function AutoSurface() {
-  const { job, status, allowance } = useLoaderData();
+  const { job, queue, status, allowance } = useLoaderData();
   const { revalidate } = useRevalidator();
   useRevalidateOnMount(KEY);
 
@@ -137,8 +224,14 @@ function AutoSurface() {
   const [refusal, setRefusal] = useState(null);
   // The POST answer, shown until the loader catches up with the same job.
   const [started, setStarted] = useState(null);
+  const [queuedNote, setQueuedNote] = useState(null);
 
-  const shown = job && (!started || job.id === started.id) ? job : started || job;
+  // A newer job (a queued Film that has since started) wins over the POST answer.
+  const shown =
+    !started ? job
+    : !job ? started
+    : job.id === started.id || (job.createdAt || "") > (started.createdAt || "") ? job
+    : started;
   const running = shown?.status === "running";
   const paused = status && !status.ok ? status.reason : null;
   const overAllowance = allowance && allowance.ok === false ? allowance.message : null;
@@ -150,6 +243,7 @@ function AutoSurface() {
     if (!text || submitting) return;
     setSubmitting(true);
     setRefusal(null);
+    setQueuedNote(null);
     try {
       const res = await fetch("/api/auto/films", {
         method: "POST",
@@ -159,6 +253,9 @@ function AutoSurface() {
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data.ok) {
         setRefusal(data.refusal?.message || data.error || `Couldn't start (${res.status}).`);
+      } else if (data.queued) {
+        setQueuedNote(`Queued behind the current Film (position ${data.position}). It starts when that one ends.`);
+        setPrompt("");
       } else {
         setStarted(data.job);
         setPrompt("");
@@ -192,20 +289,23 @@ function AutoSurface() {
             if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) submit(e);
           }}
           rows={4}
-          disabled={submitting || running}
+          disabled={submitting}
         />
         <div className="flex flex-wrap items-center justify-between gap-3">
           <span className="text-xs text-muted-foreground">
             {allowance?.ok ? `${allowance.remaining} of ${allowance.limit} Films left this month` : null}
           </span>
-          <Button type="submit" disabled={!prompt.trim() || submitting || running || !!blocked}>
-            {submitting ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
-            Make Film
+          <Button type="submit" disabled={!prompt.trim() || submitting || !!blocked}>
+            {submitting ? <Loader2 size={14} className="animate-spin" /> : running ? <Clock size={14} /> : <Sparkles size={14} />}
+            {running ? "Queue Film" : "Make Film"}
           </Button>
         </div>
       </form>
 
       {(refusal || blocked) && <ErrorNote>{refusal || blocked}</ErrorNote>}
+      {queuedNote && !refusal && <p className="text-sm text-muted-foreground">{queuedNote}</p>}
+
+      <QueueList queue={queue} />
 
       {shown && (
         <section className="space-y-3" aria-live="polite">
@@ -213,16 +313,21 @@ function AutoSurface() {
             <p className={cn("line-clamp-2 text-sm", !shown.prompt && "italic text-muted-foreground")}>
               {shown.prompt}
             </p>
-            {shown.status === "failed" && <Badge variant="destructive">Stopped</Badge>}
+            {shown.status === "stopped" && <Badge variant="destructive">Stopped</Badge>}
+            {shown.status === "refused" && <Badge variant="muted">Didn't start</Badge>}
           </div>
           {shown.steps.length === 0 && running && (
             <p className="flex items-center gap-2 text-sm text-muted-foreground">
               <Loader2 size={14} className="animate-spin" /> Starting…
             </p>
           )}
+          {shown.status === "refused" && (
+            <ErrorNote>This queued Film couldn't start: {shown.error}</ErrorNote>
+          )}
           {shown.steps.map((s) => (
             <StepCard key={s.key} step={s} />
           ))}
+          {shown.status === "stopped" && <StoppedCard job={shown} />}
         </section>
       )}
     </div>
