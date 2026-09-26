@@ -61,8 +61,8 @@ conversation's instance id.
 **A new caller of `/api` must carry one of the two.** Agent tools get it for free
 by going through `flue-agent/src/lib/api.ts`; a call path that bypasses that
 client needs the header itself. The exempt prefixes (`/api/auth/`,
-`/api/projects`, `/api/extract`, `/api/agent/`, `/api/mcp`) each carry their own
-credential — the list is commented at the middleware.
+`/api/projects`, `/api/extract`, `/api/agent/`, `/api/mcp`, `/api/sitting-runner/`)
+each carry their own credential — the list is commented at the middleware.
 
 ## Shared capability schemas
 

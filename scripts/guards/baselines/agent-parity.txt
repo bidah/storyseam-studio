@@ -16,10 +16,20 @@
 /api/script/events                # SSE subscription
 /api/timeline/events              # SSE subscription
 /api/projects                     # project switching is a client concern; the agent is scoped to one
-# The three Director paths that are browser work by nature, not by omission. An
-# agent has no peer connection, no decoded video and no muxer — and each of these
-# is the browser doing the one thing it is uniquely able to do.
-/api/stage/fal/proxy              # the WebRTC session itself; only a browser can hold one
+# The Director paths that are browser work by nature, not by omission. An agent
+# has no peer connection, no decoded video and no muxer — and each of these is
+# the browser doing the one thing it is uniquely able to do.
+#
+# The Sitting is no longer a gap (#69): an Auto Film's `sitting` stage plays the
+# whole Screening server-side, in headless Chrome on Daytona, with this same
+# session/transport/recorder code — so the pipeline reaches a kept sitting with
+# no tab open (the agent starts it through the Film job). What stays below is the
+# Stage's BYOK channel for the author's OWN live sitting, and the runner page's
+# token-authed plumbing, which only that headless page ever calls.
+/api/stage/fal/proxy              # the author's live WebRTC session on Stage (BYOK); the server-side Sitting is the Film job's
+/api/sitting-runner/screening     # the headless runner page's job-token routes (src/sitting-runner/) —
+/api/sitting-runner/progress      # called only by the page the Film job's box opens, never by a person
+/api/sitting-runner/fal/proxy     # or the agent; the agent reaches the Sitting by starting the Film job
 /api/shotsheet/pins               # the browser's UPLOAD of frames it cut off the decoded take on screen. Server-side
                                   # the same cut + pin is the Auto job's Stills stage (Daytona ffmpeg,
                                   # worker/src/lib/film-stages/stills.js); the agent pins via /api/director/series/*/pin

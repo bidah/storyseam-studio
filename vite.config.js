@@ -23,6 +23,17 @@ export default defineConfig({
       "@": fileURLToPath(new URL("./src", import.meta.url)),
     },
   },
+  build: {
+    rollupOptions: {
+      input: {
+        main: fileURLToPath(new URL("./index.html", import.meta.url)),
+        // The Auto Sitting runner (src/sitting-runner/, issue #69): its own
+        // small entry, served as a static asset at /sitting-runner.html and
+        // opened by headless Chrome in a Daytona box.
+        "sitting-runner": fileURLToPath(new URL("./sitting-runner.html", import.meta.url)),
+      },
+    },
+  },
   server: {
     port: 3333,
     proxy: buildDevProxy(WORKER, APP_ORIGIN),

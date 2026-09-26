@@ -24,9 +24,21 @@ export const DIRECTOR_ENDPOINT = 'minimax/h3-max/director';
  * the module-level variable, and means nothing this file does can change the
  * configuration of a client somebody else is holding.
  */
-function clientFor(falKey: string | null) {
+export type StageTransportOptions = {
+  /**
+   * Where the fal client's calls go. The Stage's own proxy by default; the
+   * Auto Sitting runner (headless Chromium on Daytona, ADR 0001) points this at
+   * its token-authenticated twin, which spends the platform key instead.
+   */
+  proxyUrl?: string;
+  /** Extra headers stamped on every proxied call — the runner's job token. */
+  headers?: Record<string, string>;
+};
+
+function clientFor(falKey: string | null, options: StageTransportOptions = {}) {
+  const extra = options.headers ?? {};
   return createFalClient({
-    proxyUrl: '/api/stage/fal/proxy',
+    proxyUrl: options.proxyUrl ?? '/api/stage/fal/proxy',
     // BYOK, like every other generation in this studio: the author's own fal
     // key rides each request and is never persisted server-side. The proxy
     // falls back to the operator's `FAL_KEY` in development, so sending
@@ -34,16 +46,20 @@ function clientFor(falKey: string | null) {
     //
     // `projectFetch` cannot do this for us — the fal client builds its own
     // requests — so the key is stamped here, on the one path that needs it.
-    requestMiddleware: async (request) =>
-      falKey
-        ? { ...request, headers: { ...request.headers, 'x-fal-key': falKey } }
-        : request,
+    requestMiddleware: async (request) => ({
+      ...request,
+      headers: { ...request.headers, ...extra, ...(falKey ? { 'x-fal-key': falKey } : {}) },
+    }),
   });
 }
 
-export function stageTransport(falKey: string | null, endpointId = DIRECTOR_ENDPOINT): TransportFactory {
+export function stageTransport(
+  falKey: string | null,
+  endpointId = DIRECTOR_ENDPOINT,
+  options: StageTransportOptions = {},
+): TransportFactory {
   return (emit) => {
-    const fal = clientFor(falKey);
+    const fal = clientFor(falKey, options);
 
     const handle = fal.realtime.open(wma(endpointId), {
       // Declared before the offer is created: a WebRTC answer cannot introduce

@@ -37,7 +37,7 @@ const CONTAINERS = [
   'video/webm',
 ];
 
-function supportedContainer(): string | null {
+export function supportedContainer(): string | null {
   if (typeof MediaRecorder === 'undefined') return null;
   return CONTAINERS.find((type) => MediaRecorder.isTypeSupported(type)) ?? null;
 }
@@ -46,7 +46,7 @@ function supportedContainer(): string | null {
  * The container without its codec parameters, which is what the route matches
  * on and what the object is stored as.
  */
-function baseType(mimeType: string): string {
+export function baseType(mimeType: string): string {
   return mimeType.split(';')[0].trim().toLowerCase();
 }
 
