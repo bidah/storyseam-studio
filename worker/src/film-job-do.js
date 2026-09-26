@@ -27,7 +27,7 @@
 // rather than a sixth EventSource.
 
 import { DurableObject } from "cloudflare:workers";
-import { advanceFilm, confirmFilm, declineFilm, event, groqModel, isActive, publicJob } from "./lib/film-job.js";
+import { advanceFilm, confirmFilm, declineFilm, event, groqModel, isActive, nextAlarmDelay, publicJob } from "./lib/film-job.js";
 import { publicQueue, startNextQueued, submitFilm } from "./lib/film-queue.js";
 import { broadcast } from "./lib/broadcast.js";
 import { saveWorld } from "./routes/world.js";
@@ -98,7 +98,8 @@ export class FilmJobs extends DurableObject {
         commit: (j, ev) => this.commit(j, ev),
       });
       if (job?.status === "running") {
-        await this.ctx.storage.setAlarm(Date.now());
+        // A pending stage (a render in flight) is asked again later, not now.
+        await this.ctx.storage.setAlarm(Date.now() + nextAlarmDelay(job));
         return;
       }
     }

@@ -134,8 +134,56 @@ function SheetsResult({ result }) {
   );
 }
 
+// The Shot sheet run: the plan (reels, the seams they open on, the frames those
+// seams cost), then one card per clip — each completing with its take's video.
+// Drawn while the step is still pending, so clips fill in as fal finishes them.
+function RunResult({ result }) {
+  const plan = result?.plan;
+  const clips = result?.clips || [];
+  if (!plan) return null;
+  const at = (s) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+  return (
+    <div className="space-y-3">
+      <div className="rounded-md border p-3 text-xs" data-run-plan>
+        <Eyebrow>Plan</Eyebrow>
+        <p className="mt-1">
+          {plan.reels.length} reel{plan.reels.length === 1 ? "" : "s"}
+          {plan.seams.length ? ` · seams at ${plan.seams.map(at).join(", ")}` : " · no seams"}
+          {` · ${plan.skipped.length} frame${plan.skipped.length === 1 ? "" : "s"} skipped`}
+        </p>
+        {plan.skipped.length > 0 && (
+          <ul className="mt-1 space-y-0.5 text-muted-foreground">
+            {plan.skipped.map((f) => (
+              <li key={f.offset}>{at(f.offset)} — {f.reason}</li>
+            ))}
+          </ul>
+        )}
+      </div>
+      <ul className="grid gap-2 sm:grid-cols-2">
+        {clips.map((c) => (
+          <li key={c.part} className="space-y-1 rounded-md border p-2" data-clip={c.part} data-status={c.status}>
+            <p className="flex items-center justify-between gap-2 text-xs">
+              <span className="font-medium">Clip {c.part} · reel {c.reel}</span>
+              <span className="text-muted-foreground">
+                {c.frames} frames from {at(c.opensAt)}
+              </span>
+            </p>
+            {c.status === "done" && c.videoUrl ? (
+              <video src={c.videoUrl} controls muted playsInline className="aspect-video w-full rounded bg-muted" />
+            ) : (
+              <p className="flex aspect-video items-center justify-center gap-2 rounded bg-muted text-xs text-muted-foreground">
+                <Loader2 size={14} className="animate-spin" /> Rendering…
+              </p>
+            )}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 // One card per step. Stages without a result view render their summary alone.
-const RESULT_VIEWS = { world: WorldResult, sheets: SheetsResult };
+const RESULT_VIEWS = { world: WorldResult, sheets: SheetsResult, run: RunResult };
 
 function StepCard({ step }) {
   const badge = STATUS_BADGE[step.status] || STATUS_BADGE.running;
@@ -149,7 +197,7 @@ function StepCard({ step }) {
         <Badge variant={badge.variant}>{badge.label}</Badge>
       </CardHeader>
       <CardContent className="space-y-3 p-4">
-        {step.status === "running" && (
+        {step.status === "running" && !step.pending && (
           <p className="text-sm text-muted-foreground">Working on it…</p>
         )}
         {step.status === "retrying" && (
@@ -158,10 +206,10 @@ function StepCard({ step }) {
           </p>
         )}
         {step.status === "failed" && <ErrorNote>{step.error || "This step failed."}</ErrorNote>}
-        {step.status === "done" && step.summary && (
+        {(step.status === "done" || step.pending) && step.summary && (
           <p className="text-xs text-muted-foreground">{step.summary}</p>
         )}
-        {step.status === "done" && View && <View result={step.result} />}
+        {(step.status === "done" || step.pending) && View && <View result={step.result} />}
       </CardContent>
     </Card>
   );
