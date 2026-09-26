@@ -22,7 +22,9 @@
 // has this project produced", most recent first, across every Series.
 import { readDoc, updateDoc } from "./docs.js";
 import { filesUrl, mediaKey } from "./media.js";
-import { fieldErrors, seriesFields, seriesInput, stampCueTiming } from "./series.ts";
+import {
+  applyPatch, archiveReplacedAudio, fieldErrors, seriesFields, seriesInput, seriesPatch, stampCueTiming,
+} from "./series.ts";
 
 /** The index doc. `seq` numbers new Series so two creates never collide. */
 export const emptyIndex = () => ({ seriesIds: [], selectedId: null, seq: 0 });
@@ -148,6 +150,71 @@ export async function upsertModelSheet(env, pid, seriesId, sheet) {
   if (res.missing) return { missing: true };
   if (res.issues) return { issues: res.issues };
   return { ok: true, sheets: res.sheets };
+}
+
+/**
+ * Patch a Series' fields — `PUT /api/director/series/:id` without the request
+ * (the Auto job's Stills stage sets the opening frame through it). The whole
+ * Series is re-validated, so a patch the endpoint would refuse is not written.
+ *
+ * → `{ ok: true }` | `{ missing: true }` | `{ invalid }` (the patch's own
+ *   shape) | `{ issues }` (what the Series would then break)
+ */
+export async function patchSeries(env, pid, seriesId, body) {
+  const parsed = seriesPatch.safeParse(body ?? {});
+  if (!parsed.success) return { invalid: fieldErrors(parsed.error) };
+  const res = await updateSeries(env, pid, seriesId, (series) => {
+    if (!series?.id) return { abort: true, missing: true };
+    // Swapping which sound a Series is shot against archives the one it had —
+    // a render that is replaced is kept, never overwritten, because a version
+    // whose prompt was lost cannot be made again in the same hand.
+    const patch = archiveReplacedAudio(series, parsed.data);
+    const next = stampCueTiming(applyPatch(series, patch));
+    const check = seriesInput.safeParse(next);
+    if (!check.success) return { abort: true, issues: fieldErrors(check.error) };
+    Object.assign(series, next, { updatedAt: nowIso() });
+    return {};
+  });
+  if (res.missing) return { missing: true };
+  if (res.issues) return { issues: res.issues };
+  return { ok: true };
+}
+
+/**
+ * Pin a frame to the beat at `offset`, or clear it —
+ * `POST /api/director/series/:id/pin` without the request. ONE frame per call:
+ * pinning runs the whole cue sheet's validation (spacing, count, the opening
+ * chunk, per reel), and a pin belongs to the beat whose chunk ENDS at that
+ * second, so it is addressed by offset.
+ *
+ * → `{ ok: true }` | `{ missing: true }` | `{ noBeat: true }` | `{ issues }`
+ */
+export async function pinBeat(env, pid, seriesId, { offset, imageUrl, clear, prompt, model, refs } = {}) {
+  const res = await updateSeries(env, pid, seriesId, (series) => {
+    if (!series?.id) return { abort: true, missing: true };
+    const beats = [...(series.directions || [])];
+    const at = beats.findIndex((b) => b.offset === offset);
+    if (at < 0) return { abort: true, noBeat: true };
+    beats[at] = {
+      ...beats[at],
+      endImageUrl: clear ? null : String(imageUrl || ""),
+      // Kept beside the pin for the same reason a model sheet keeps its
+      // prompt: a pin whose prompt was lost is a shot that cannot be redrawn
+      // in the same hand. None of it reaches the Director.
+      endImagePrompt: clear ? null : (prompt ?? beats[at].endImagePrompt ?? null),
+      endImageModel: clear ? null : (model ?? beats[at].endImageModel ?? null),
+      endImageRefs: clear ? null : (refs ?? beats[at].endImageRefs ?? null),
+    };
+    const candidate = stampCueTiming({ ...series, directions: beats });
+    const check = seriesInput.safeParse(candidate);
+    if (!check.success) return { abort: true, issues: fieldErrors(check.error) };
+    Object.assign(series, candidate, { updatedAt: nowIso() });
+    return {};
+  });
+  if (res.missing) return { missing: true };
+  if (res.noBeat) return { noBeat: true };
+  if (res.issues) return { issues: res.issues };
+  return { ok: true };
 }
 
 // ─── Media ───────────────────────────────────────────────────────────────────
