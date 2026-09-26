@@ -49,14 +49,21 @@ export const router = createBrowserRouter([
     lazy: () => import("@/routes/landing"),
     ErrorBoundary: RouteError,
   },
-  // Text to story: a prompt in, a Film back — and NOTHING else. A sibling of
+  // Text to story: a prompt in, a Film back — and NOTHING else. Siblings of
   // RootLayout so the studio shell (header, tab bar, agent panel) never wraps
-  // it. It is not public: the module redirects a signed-out visitor to
-  // /login?next=/director-story and picks the project itself, since the
-  // shell's ProjectProvider isn't here to do it.
+  // them. Not public: each redirects a signed-out visitor to /login?next=<its
+  // own url> and picks the project itself, since the shell's ProjectProvider
+  // isn't here to do it (components/DirectorStory.jsx). The URL is the state:
+  // /director-story is the prompt box; a Film lives at /create/:filmId, so a
+  // reload mid-run lands back on it.
   {
     path: "/director-story",
     lazy: () => import("@/routes/director-story"),
+    ErrorBoundary: RouteError,
+  },
+  {
+    path: "/director-story/create/:filmId",
+    lazy: () => import("@/routes/director-story-film"),
     ErrorBoundary: RouteError,
   },
   // PUBLIC read-only share view behind a share link — the World and Script tabs.

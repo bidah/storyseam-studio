@@ -46,6 +46,8 @@ function nextFor(status?: string): string {
       return "Stopped on our side. Everything already made is kept, and a stopped Film does not count against the allowance. Say which stage stopped and why.";
     case "declined":
       return "The author declined at the confirm card. Nothing after the World was made or paid for.";
+    case "queued":
+      return "Waiting behind the Film already being made on this project; it starts on its own when that one ends. Do not start it again.";
     case "refused":
       return "Refused when it reached the front of the queue — see `error`. Nothing was made.";
     default:
@@ -164,8 +166,36 @@ export const getFilm = (api: Api) =>
     name: "get_film",
     description:
       `The project's current Auto Film: its status (running | awaiting-confirm | done | stopped | declined | refused), every stage that has started with its state and one-line summary, what it has cost so far, the Films queued behind it — and, ONLY when status is "done", the Film itself (\`film.url\`, seconds, title). ${PIPELINE} Call it when the author asks how their Film is going, not on a timer: never call it twice in one turn to wait for progress. A running job is not a done one — never tell the author a Film is ready unless this says "done". A "stopped" job names the stage and reason and keeps everything made so far; say so.`,
-    input: v.object({}),
-    async run({ signal }) {
+    input: v.object({
+      filmId: v.optional(
+        d(
+          v.string(),
+          "Optional: read ONE Film by its id (make_film's `filmId`, or the id in a /director-story/create/<id> link) instead of the current one — works for a running, queued (status \"queued\" + position) or finished/stopped Film from this project's recent history. Omit for the current Film and its queue.",
+        ),
+      ),
+    }),
+    async run({ data: input, signal }): Promise<{ output: Json }> {
+      const filmId = String(input?.filmId ?? "").trim();
+      if (filmId) {
+        const id = encodeURIComponent(filmId);
+        try {
+          const res = (await api.get(`/api/auto/films/${id}`, signal)) as { job?: Job | null };
+          const job = res.job as (Job & { position?: number }) | null | undefined;
+          return {
+            output: {
+              job: viewJob(job),
+              ...(job?.status === "queued"
+                ? { position: job.position ?? null, next: "Queued behind the Film being made on this project; it starts on its own." }
+                : {}),
+            },
+          };
+        } catch (err) {
+          if ((err as { status?: number }).status === 404) {
+            return { output: { job: null, notFound: true, next: "No Film with that id on this project (it may belong to another project, or have aged out of the last 50)." } };
+          }
+          throw err;
+        }
+      }
       const res = (await api.get("/api/auto/films/current", signal)) as { job?: Job | null; queue?: unknown[] };
       return {
         output: {

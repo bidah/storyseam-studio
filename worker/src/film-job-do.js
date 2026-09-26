@@ -15,6 +15,9 @@
 //     → { ok, job } | { ok, queued: true, position, film, job } | { ok:false, refusal, job }
 //   current() → the job (without userId) | null
 //   queued()  → the waiting Films (without userId), each with its position
+//   film(id)  → one Film by id — the current job, a queued one (status
+//             "queued", with its position) or an ENDED one from the bounded
+//             history (lib/film-history.js) — | null
 //   confirm(filmId) / decline(filmId)
 //             → { ok, job } | { ok:false, code: 'not-found'|'not-awaiting', job }
 //             the answer to the one confirm card an Auto-off job asks (#65):
@@ -29,11 +32,13 @@
 import { DurableObject } from "cloudflare:workers";
 import { advanceFilm, confirmFilm, declineFilm, event, groqModel, isActive, nextAlarmDelay, publicJob } from "./lib/film-job.js";
 import { publicQueue, startNextQueued, submitFilm } from "./lib/film-queue.js";
+import { JOB_KEY, QUEUE_KEY, readFilm, saveJob } from "./lib/film-history.js";
 import { broadcast } from "./lib/broadcast.js";
 import { saveWorld } from "./routes/world.js";
 
-const KEY = "job";
-const QUEUE = "queue";
+// Same keys lib/film-history.js reads and writes.
+const KEY = JOB_KEY;
+const QUEUE = QUEUE_KEY;
 
 export class FilmJobs extends DurableObject {
   async current() {
@@ -42,6 +47,10 @@ export class FilmJobs extends DurableObject {
 
   async queued() {
     return publicQueue(await this.ctx.storage.get(QUEUE));
+  }
+
+  async film(id) {
+    return readFilm(this.ctx.storage, id);
   }
 
   async start(input) {
@@ -123,8 +132,12 @@ export class FilmJobs extends DurableObject {
 
   // Persist FIRST, then announce — a tab that reloads on the event must read
   // the state the event describes.
+  //
+  // An ENDED job is also archived into the history, so it stays readable by
+  // id after the next Film replaces it. The job being replaced is archived
+  // too when it ended before the history existed.
   async commit(job, ev) {
-    await this.ctx.storage.put(KEY, job);
+    await saveJob(this.ctx.storage, job);
     await this.announce(job.projectId, ev);
   }
 

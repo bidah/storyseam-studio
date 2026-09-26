@@ -10,6 +10,13 @@
 //                                 4xx/503 { ok:false, refusal:{code,message}, job }
 //   GET  /api/auto/films/current  the project's current Film job and the Films
 //                                 waiting behind it (for a reload) { job, queue }
+//   GET  /api/auto/films/:id      one Film by id: the running job, a queued one
+//                                 (status "queued" + position) or an ended one
+//                                 from the project's bounded history (the last
+//                                 50 — lib/film-history.js). Same shape as
+//                                 `current`'s job. 200 { job } | 404 { ok:false,
+//                                 code:"not-found" } — a Film id belongs to ONE
+//                                 project, so another project's id is a 404.
 //   POST /api/auto/films/:id/confirm  answer the one confirm card an Auto-off
 //   POST /api/auto/films/:id/decline  job asks after the World (#65).
 //                                 200 { ok, job } | 404/409 { ok:false, code, job }
@@ -57,6 +64,14 @@ export function registerAuto(app) {
     const stub = filmJobs(c);
     const [job, queue] = await Promise.all([stub.current(), stub.queued()]);
     return c.json({ job, queue });
+  });
+
+  // Registered AFTER /current so that literal path wins over the :id pattern.
+  app.get("/api/auto/films/:id", async (c) => {
+    const id = c.req.param("id");
+    const job = await filmJobs(c).film(id);
+    if (!job) return c.json({ ok: false, code: "not-found", error: "No such Film on this project." }, 404);
+    return c.json({ job });
   });
 
   const ANSWER_STATUS = { "not-found": 404, "not-awaiting": 409 };
