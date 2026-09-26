@@ -27,3 +27,21 @@ describe("writer", () => {
     expect(() => parseJSONAnswer("no json here")).toThrow(/did not parse/);
   });
 });
+
+describe("cerebras writer", () => {
+  it("posts Qwen 3.8 27B to the Cerebras gateway base and parses the answer", async () => {
+    const fetch = vi.fn(async () => new Response(JSON.stringify({ choices: [{ message: { content: '{"ok":true}' }, finish_reason: "stop" }] })));
+    vi.stubGlobal("fetch", fetch);
+    const env = { AUTO_WRITER: "cerebras", CEREBRAS_API_KEY: "csk", CEREBRAS_GATEWAY_URL: "https://gw/cerebras/" };
+    expect(await writerModel(env).json({ messages: [{ role: "user", content: "x" }], maxTokens: 8000 })).toEqual({ ok: true });
+    const [url, init] = fetch.mock.calls[0];
+    expect(url).toBe("https://gw/cerebras/chat/completions");
+    expect(JSON.parse(init.body)).toMatchObject({ model: "qwen-3.8-27b", max_completion_tokens: 8000 });
+    expect(init.headers.authorization).toBe("Bearer csk");
+    vi.unstubAllGlobals();
+  });
+
+  it("fails clearly without its key", async () => {
+    await expect(writerModel({ AUTO_WRITER: "cerebras" }).json({ messages: [{ role: "user", content: "x" }] })).rejects.toThrow(/CEREBRAS_API_KEY/);
+  });
+});

@@ -17,6 +17,8 @@
 export const AUTO_PAUSE_KEY = "auto:paused";
 
 // Secret name → what it pays for. All three are Worker secrets a human sets.
+import { writerKey, writerProvider } from "./writer.js";
+
 export const AUTO_KEYS = {
   FAL_KEY: "fal (sheets, clips, the sitting)",
   DAYTONA_API_KEY: "Daytona (cutting and scoring)",
@@ -25,8 +27,8 @@ export const AUTO_KEYS = {
 // The writing steps' key depends on who writes them (lib/writer.js): Workers AI
 // needs only the Worker's AI binding; Groq needs its key.
 function requiredKeys(env) {
-  const groq = String(env?.AUTO_WRITER || "").trim().toLowerCase() === "groq";
-  return groq ? { ...AUTO_KEYS, GROQ_API_KEY: "Groq (writing steps)" } : AUTO_KEYS;
+  const key = writerKey(env);
+  return key ? { ...AUTO_KEYS, [key]: `${writerProvider(env)} (writing steps)` } : AUTO_KEYS;
 }
 
 const GENERIC_PAUSE = "Auto is paused for now — new Films can't start. Films already running will finish.";
