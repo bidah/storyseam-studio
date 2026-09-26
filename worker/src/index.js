@@ -215,6 +215,15 @@ app.use("*", async (c, next) => {
   );
 });
 
+// The Auto Film routes that name no project (routes/auto.js): start a Film (it
+// makes its own project), the user's latest Film, and a Film's project lookup.
+// Exact shapes only — every other /api/auto route stays project-scoped.
+function isUserScopedAuto(method, p) {
+  if (method === "POST" && p === "/api/auto/films") return true;
+  if (method === "GET" && p === "/api/auto/films/latest") return true;
+  return method === "GET" && /^\/api\/auto\/films\/[^/]+\/project$/.test(p);
+}
+
 // Resolve the active project (x-project-id header, ?projectId=, else the user's
 // active/most-recent project) AND enforce per-user ownership on data routes so
 // one user can't read another's project by guessing an id.
@@ -269,8 +278,16 @@ app.use("*", async (c, next) => {
   //                  (routes/sitting-runner.js). No cookie; every route
   //                  verifies its short-lived job token (lib/sitting-token.js),
   //                  which names its own project, episode, Series and Film.
+  //   three Auto Film routes (isUserScopedAuto) — USER-scoped, not project-
+  //                  scoped: starting a Film MAKES its own project, and the
+  //                  Film→project lookup and "latest Film" are asked before any
+  //                  project is known (a reload or a shared link). The session
+  //                  cookie / agent assertion is still the credential: each of
+  //                  them 401s without a userId, and reads only the caller's
+  //                  own rows in the `films` table (routes/auto.js).
   const isData =
     p.startsWith("/api/") &&
+    !isUserScopedAuto(c.req.method, p) &&
     !p.startsWith("/api/auth/") &&
     !p.startsWith("/api/projects") &&
     !p.startsWith("/api/orgs") &&

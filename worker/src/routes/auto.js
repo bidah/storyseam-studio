@@ -2,24 +2,34 @@
 //
 //   GET  /api/auto/status         can a new Auto Film start right now?
 //                                 { ok, reason, paused, keys: { FAL_KEY, … } }
-//   POST /api/auto/films          start a Film on this project. Body { prompt, seconds? }.
+//   POST /api/auto/films          start a Film IN A NEW PROJECT OF ITS OWN
+//                                 (lib/films.js — named "Story — <first words>",
+//                                 renamed to the World's title once it has one).
+//                                 USER-scoped: it never reads the request's
+//                                 project. Body { prompt, seconds? }.
 //                                 `seconds` is a chosen length, one of the Film's
 //                                 30s steps (120 … 300); it wins over a length the
 //                                 prompt states. Any other value is a 400.
-//                                 202 { ok, job }                     started now
-//                                 202 { ok, queued: true, position, film, job }
-//                                     queued behind the running Film (one at a
-//                                     time per project — lib/film-queue.js)
+//                                 202 { ok, job, projectId }          started now
 //                                 4xx/503 { ok:false, refusal:{code,message}, job }
+//                                 — `busy` (409) while the user's previous Film is
+//                                 still being made: one Film at a time per USER.
+//                                 Nothing (no project) is created on a refusal.
+//   GET  /api/auto/films/latest   USER-scoped: the user's latest Film
+//                                 { filmId, projectId, job } | { job: null }
+//   GET  /api/auto/films/:id/project  USER-scoped: which project a Film runs in
+//                                 200 { projectId } | 404 — only the user's own.
 //   GET  /api/auto/films/current  the project's current Film job and the Films
 //                                 waiting behind it (for a reload) { job, queue }
 //   GET  /api/auto/films/:id      one Film by id: the running job, a queued one
 //                                 (status "queued" + position) or an ended one
 //                                 from the project's bounded history (the last
 //                                 50 — lib/film-history.js). Same shape as
-//                                 `current`'s job. 200 { job } | 404 { ok:false,
-//                                 code:"not-found" } — a Film id belongs to ONE
-//                                 project, so another project's id is a 404.
+//                                 `current`'s job. 200 { job, projectId } | 404
+//                                 { ok:false, code:"not-found" }. The Film's
+//                                 project comes from the films lookup (the
+//                                 user's own Films); a Film older than the
+//                                 lookup is read from the request's project.
 //   POST /api/auto/films/:id/confirm  answer the one confirm card an Auto-off
 //   POST /api/auto/films/:id/decline  job asks after the World (#65).
 //                                 200 { ok, job } | 404/409 { ok:false, code, job }
@@ -37,19 +47,36 @@
 //   PUT  /api/auto/settings       body { auto: boolean } → { auto }
 //                                 Per USER, not per project (lib/auto-settings.js).
 //
-// `keys` is presence only (booleans), never a value. All behind the ownership
-// middleware like every /api route: the caller is signed in and may reach the
-// project. The job itself lives in the FilmJobs Durable Object (film-job-do.js)
+// `keys` is presence only (booleans), never a value. The project-scoped routes
+// sit behind the ownership middleware like every /api route. The three
+// USER-scoped ones (start, latest, :id/project) are exempted from project
+// scoping in index.js (isUserScopedAuto) because they name no project — or make
+// one — and each refuses a request with no signed-in user itself (401): fail
+// closed. The job itself lives in the FilmJobs Durable Object (film-job-do.js)
 // — one per project — and runs server-side; see lib/film-job.js.
 import { autoAvailable } from "../lib/auto-availability.js";
-import { normalizeProjectId } from "../lib/docs.js";
 import { MAX_PROMPT_CHARS, checkFilmSeconds } from "../lib/film-job.js";
 import { readAutoSettings, writeAutoSettings } from "../lib/auto-settings.js";
+import { checkAllowance } from "../lib/film-allowance.js";
+import { activeFilm, filmJobsFor, filmProject, latestFilm, recordFilm, storyProjectName } from "../lib/films.js";
+import { archiveProject, createProject } from "./projects.js";
 
 const REFUSAL_STATUS = { invalid: 400, busy: 409, allowance: 429, paused: 503, unavailable: 503 };
 
-const filmJobs = (c) =>
-  c.env.FILM_JOBS.get(c.env.FILM_JOBS.idFromName(normalizeProjectId(c.get("projectId"))));
+const filmJobs = (c) => filmJobsFor(c.env, c.get("projectId"));
+
+const BUSY_MESSAGE = "A story is already being made — wait for it to finish, then start the next one.";
+
+// The DO holding Film `id`: its own project when the films lookup knows it (a
+// Film of this user's), else the request's project (a Film started before
+// every Film had a project of its own). → { stub, projectId }
+async function filmHome(c, id) {
+  const own = await filmProject(c.env, id, c.get("userId"));
+  const projectId = own || c.get("projectId");
+  return { stub: filmJobsFor(c.env, projectId), projectId: projectId ?? null };
+}
+
+const refusal = (code, message) => ({ ok: false, refusal: { code, message }, job: null });
 
 export function registerAuto(app) {
   app.get("/api/auto/status", async (c) => {
@@ -57,6 +84,10 @@ export function registerAuto(app) {
     return c.json({ ok, reason, paused, keys });
   });
 
+  // Start a Film — in a project of its own. The checks that can refuse run
+  // BEFORE the project is made, so a refusal leaves nothing behind; the DO runs
+  // them again (it is the one that must never start a refused Film), and a
+  // refusal there archives the project that was made for it.
   app.post("/api/auto/films", async (c) => {
     const userId = c.get("userId");
     if (!userId) return c.json({ error: "Sign in required" }, 401);
@@ -65,16 +96,70 @@ export function registerAuto(app) {
     const prompt = typeof body?.prompt === "string" ? body.prompt.slice(0, MAX_PROMPT_CHARS + 1) : "";
     const seconds = body?.seconds ?? undefined;
     const badLength = checkFilmSeconds(seconds);
-    if (badLength) return c.json({ ok: false, refusal: { code: "invalid", message: badLength }, job: null }, 400);
-    const res = await filmJobs(c).start({
-      prompt,
+    if (badLength) return c.json(refusal("invalid", badLength), 400);
+    const text = prompt.trim();
+    if (!text) return c.json(refusal("invalid", "Write a prompt first."), 400);
+    if (text.length > MAX_PROMPT_CHARS) {
+      return c.json(refusal("invalid", `Keep the prompt under ${MAX_PROMPT_CHARS} characters.`), 400);
+    }
+
+    // One Film at a time per USER (the per-project queue can't see across projects).
+    const active = await activeFilm(c.env, userId);
+    if (active) {
+      return c.json({ ...refusal("busy", BUSY_MESSAGE), job: active.job, filmId: active.filmId, projectId: active.projectId }, 409);
+    }
+
+    const avail = await autoAvailable(c.env);
+    if (!avail.ok) {
+      const code = avail.paused ? "paused" : "unavailable";
+      return c.json(refusal(code, avail.reason), REFUSAL_STATUS[code]);
+    }
+    const allowance = await checkAllowance(c.env, userId);
+    if (!allowance.ok) return c.json(refusal("allowance", allowance.message), REFUSAL_STATUS.allowance);
+
+    const made = await createProject(c.env, userId, { name: storyProjectName(text) });
+    if (!made.project) return c.json(refusal("unavailable", "Couldn't make a project for the story."), 503);
+    const projectId = made.project.id;
+    // The live-sync announcement after this write belongs to the NEW project.
+    c.set("projectId", projectId);
+
+    const res = await filmJobsFor(c.env, projectId).start({
+      prompt: text,
       ...(seconds !== undefined ? { seconds } : {}),
       userId,
-      projectId: c.get("projectId"),
-      episodeId: c.get("episodeId") || null,
+      projectId,
+      episodeId: null,
     });
-    if (!res.ok) return c.json(res, REFUSAL_STATUS[res.refusal?.code] || 400);
-    return c.json(res, 202);
+    if (!res.ok) {
+      await archiveProject(c.env, projectId).catch(() => {});
+      return c.json(res, REFUSAL_STATUS[res.refusal?.code] || 400);
+    }
+    const filmId = res.job?.id ?? res.film?.id;
+    // A failed record costs the by-URL lookup, not the Film: it is running.
+    if (filmId) {
+      await recordFilm(c.env, { filmId, projectId, userId }).catch((err) =>
+        console.error("films: couldn't record", filmId, err?.message || err));
+    }
+    return c.json({ ...res, projectId }, 202);
+  });
+
+  // USER-scoped: the user's latest Film, wherever it runs.
+  app.get("/api/auto/films/latest", async (c) => {
+    const userId = c.get("userId");
+    if (!userId) return c.json({ error: "Sign in required" }, 401);
+    const latest = await latestFilm(c.env, userId);
+    if (!latest) return c.json({ job: null });
+    const job = await filmJobsFor(c.env, latest.projectId).film(latest.filmId);
+    return c.json({ filmId: latest.filmId, projectId: latest.projectId, job: job || null });
+  });
+
+  // USER-scoped: which project a Film runs in. Only the user's own Films.
+  app.get("/api/auto/films/:id/project", async (c) => {
+    const userId = c.get("userId");
+    if (!userId) return c.json({ error: "Sign in required" }, 401);
+    const projectId = await filmProject(c.env, c.req.param("id"), userId);
+    if (!projectId) return c.json({ ok: false, code: "not-found", error: "No such story." }, 404);
+    return c.json({ projectId });
   });
 
   app.get("/api/auto/films/current", async (c) => {
@@ -83,18 +168,20 @@ export function registerAuto(app) {
     return c.json({ job, queue });
   });
 
-  // Registered AFTER /current so that literal path wins over the :id pattern.
+  // Registered AFTER /current and /latest so those literal paths win over :id.
   app.get("/api/auto/films/:id", async (c) => {
     const id = c.req.param("id");
-    const job = await filmJobs(c).film(id);
-    if (!job) return c.json({ ok: false, code: "not-found", error: "No such Film on this project." }, 404);
-    return c.json({ job });
+    const { stub, projectId } = await filmHome(c, id);
+    const job = await stub.film(id);
+    if (!job) return c.json({ ok: false, code: "not-found", error: "No such Film." }, 404);
+    return c.json({ job, projectId });
   });
 
   const ANSWER_STATUS = { "not-found": 404, "not-awaiting": 409 };
   for (const answer of ["confirm", "decline"]) {
     app.post(`/api/auto/films/:id/${answer}`, async (c) => {
-      const res = await filmJobs(c)[answer](c.req.param("id"));
+      const id = c.req.param("id");
+      const res = await (await filmHome(c, id)).stub[answer](id);
       if (!res.ok) return c.json(res, ANSWER_STATUS[res.code] || 400);
       return c.json(res);
     });
@@ -107,7 +194,14 @@ export function registerAuto(app) {
     "not-found": 404, "not-latest": 409, busy: 409, "not-stopped": 409, allowance: 429, paused: 503, unavailable: 503,
   };
   app.post("/api/auto/films/:id/retry", async (c) => {
-    const res = await filmJobs(c).retry(c.req.param("id"));
+    const id = c.req.param("id");
+    const { stub } = await filmHome(c, id);
+    // One Film at a time per USER: another of theirs still being made refuses.
+    const active = await activeFilm(c.env, c.get("userId"));
+    if (active && active.filmId !== id) {
+      return c.json({ ok: false, code: "busy", message: BUSY_MESSAGE, job: null }, 409);
+    }
+    const res = await stub.retry(id);
     if (!res.ok) return c.json(res, RETRY_STATUS[res.code] || 400);
     return c.json(res, 202);
   });

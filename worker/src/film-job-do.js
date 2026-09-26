@@ -1,6 +1,11 @@
 // FilmJobs — the Durable Object that holds a project's Film job (one instance
 // per project: the Worker addresses it with idFromName(projectId)).
 //
+// Every new Film starts in a project of its OWN (lib/films.js), so in practice
+// one instance holds one Film and its queue stays empty; the queue survives for
+// Films started before that, and one-at-a-time is now enforced per USER at the
+// start route (routes/auto.js), where the films table can see across projects.
+//
 // It stores the CURRENT job plus a QUEUE of Films waiting behind it (one Film
 // at a time per project — lib/film-queue.js), and drives the job with alarms,
 // one stage attempt per alarm, so nothing depends on a request (or the
@@ -42,6 +47,7 @@ import { JOB_KEY, QUEUE_KEY, historyKey, readFilm, saveJob } from "./lib/film-hi
 import { runWithContext } from "./lib/request-context.js";
 import { broadcast } from "./lib/broadcast.js";
 import { saveWorld } from "./routes/world.js";
+import { nameFilmProject } from "./lib/films.js";
 
 // Same keys lib/film-history.js reads and writes.
 const KEY = JOB_KEY;
@@ -167,6 +173,12 @@ export class FilmJobs extends DurableObject {
   async commit(job, ev) {
     await saveJob(this.ctx.storage, job);
     await this.announce(job.projectId, ev);
+    // The Film's own project (lib/films.js) is named after the prompt until the
+    // World has a title — then after the World. Cosmetic: never fails a stage.
+    if (ev?.kind === "step.done" && ev.step === "world") {
+      const title = job.steps?.find((s) => s.key === "world")?.result?.title;
+      await nameFilmProject(this.env, job.id, title).catch(() => {});
+    }
   }
 
   async announce(projectId, ev) {

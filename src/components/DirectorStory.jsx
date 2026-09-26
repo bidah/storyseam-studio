@@ -21,14 +21,16 @@
 //
 //   1. Auth. No session → /login?next=<the full current path>, which returns
 //      here after Google sign-in (routes/login.jsx honours `next`).
-//   2. Project scope. /api/auto/* is project-scoped through the projectFetch
-//      shim (installed in main.jsx for every route). We pick the project exactly
-//      the way ProjectProvider does — the last-used one in this browser if it is
-//      still reachable, else the server's active one, else the first — and set
-//      it on the shim. `GET /api/projects` always answers with at least one
-//      project (it creates "My Project" for a user who has none), so there is no
-//      separate "make a project" path to get wrong, and the Film lands in the
-//      same project the studio would open — its Editor media pool lists it.
+//   2. Project scope. Every Film runs in a NEW project of its own, made by the
+//      Worker when it starts (POST /api/auto/films answers with its
+//      `projectId`) — never in the studio's current project, whose World would
+//      bleed into the Film's. The story page therefore finds its project from
+//      the Film id (GET /api/auto/films/:id/project, user-scoped) and sets it on
+//      the projectFetch shim before it reads the job, so a reload or a shared
+//      link lands in the right project whatever the "current" one is
+//      (useFilmProject). The simple page still resolves a project the way
+//      ProjectProvider does (useDirectorProject) — only for the per-user
+//      settings call, which the middleware scopes like any other write.
 //   3. Live updates. The FilmJobs DO broadcasts every step on the project's
 //      `data` channel as `{ resource: "auto", job }`; `useProjectEvents` works
 //      without the shell, so <LiveSync> subscribes directly and the story page
@@ -101,16 +103,33 @@ export async function resolveProject() {
   return pick;
 }
 
-export async function fetchCurrent() {
-  const { res, data } = await getJSON("/api/auto/films/current");
-  if (!res.ok) throw new Error(data.error || `Couldn't read the current story (${res.status}).`);
+/**
+ * The signed-in user's latest Film, wherever it runs (user-scoped) → the job
+ * (with its id) | null.
+ */
+export async function fetchLatest() {
+  const { res, data } = await getJSON("/api/auto/films/latest");
+  if (!res.ok) throw new Error(data.error || `Couldn't read your latest story (${res.status}).`);
   return data.job || null;
 }
 
 /**
- * One Film by id in the current project → the job, or `null` when this project
- * has no such Film (a 404: another project's id, or one aged out of history).
- * Any other failure throws.
+ * Which project a Film runs in (user-scoped: only the user's own Films) →
+ * project id | null (unknown id, someone else's, or a Film started before every
+ * Film had a project of its own). Any other failure throws.
+ */
+export async function fetchFilmProject(id) {
+  const { res, data } = await getJSON(`/api/auto/films/${encodeURIComponent(id)}/project`);
+  if (res.status === 404) return null;
+  if (!res.ok) throw new Error(data.error || `Couldn't find the story (${res.status}).`);
+  return data.projectId || null;
+}
+
+/**
+ * One Film by id → the job, or `null` when there is no such Film (a 404: an
+ * unknown id, someone else's, or one aged out of history). The Worker finds the
+ * Film's own project itself; the shim's project only matters for a Film older
+ * than the lookup. Any other failure throws.
  */
 export async function fetchFilm(id) {
   const { res, data } = await getJSON(`/api/auto/films/${encodeURIComponent(id)}`);
@@ -146,6 +165,32 @@ export function useDirectorProject(signedIn) {
     ready.current.then(setPid).catch((e) => setError(String(e?.message || e)));
   }, [signedIn]);
   return { projectId, error, ready };
+}
+
+// The project ONE Film runs in, looked up from its id and set on the shim
+// before anything reads the job — so the live channel and every call are
+// scoped to the Film's own project. A Film the lookup doesn't know (started
+// before every Film had its own project) falls back to the studio's project,
+// the only place it can be. → { projectId, error }
+export function useFilmProject(signedIn, filmId) {
+  const [projectId, setPid] = useState(null);
+  const [error, setError] = useState(null);
+  useEffect(() => {
+    if (!signedIn || !filmId) return;
+    let live = true;
+    setPid(null);
+    setError(null);
+    fetchFilmProject(filmId)
+      .then((pid) => {
+        if (!pid) return resolveProject();
+        setProjectId(pid);
+        return pid;
+      })
+      .then((pid) => { if (live) setPid(pid); })
+      .catch((e) => { if (live) setError(String(e?.message || e)); });
+    return () => { live = false; };
+  }, [signedIn, filmId]);
+  return { projectId, error };
 }
 
 // Live updates for one project. A component of its own so the event stream
@@ -468,7 +513,7 @@ export function SimpleView({ onSubmit, submitting, note, running }) {
         <p className="min-h-5 text-sm text-[var(--br-secondary)]" aria-live="polite" data-note>
           {voiceNote || note}
         </p>
-        {/* A Film already being made on this project: never hijack the page
+        {/* A Film of this user's still being made: never hijack the page
             onto it, just offer the way there. */}
         {running?.id ? (
           <Link
