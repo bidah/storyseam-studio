@@ -15,6 +15,11 @@
 //     → { ok, job } | { ok, queued: true, position, film, job } | { ok:false, refusal, job }
 //   current() → the job (without userId) | null
 //   queued()  → the waiting Films (without userId), each with its position
+//   confirm(filmId) / decline(filmId)
+//             → { ok, job } | { ok:false, code: 'not-found'|'not-awaiting', job }
+//             the answer to the one confirm card an Auto-off job asks (#65):
+//             confirm re-arms the alarm; decline ends the job and starts the
+//             next queued Film.
 //
 // Every transition is broadcast on the project's existing live-sync `data`
 // channel (the ProjectEvents DO) as `{ resource: "auto", kind, filmId, step,
@@ -22,7 +27,7 @@
 // rather than a sixth EventSource.
 
 import { DurableObject } from "cloudflare:workers";
-import { advanceFilm, event, groqModel, publicJob } from "./lib/film-job.js";
+import { advanceFilm, confirmFilm, declineFilm, event, groqModel, isActive, publicJob } from "./lib/film-job.js";
 import { publicQueue, startNextQueued, submitFilm } from "./lib/film-queue.js";
 import { broadcast } from "./lib/broadcast.js";
 import { saveWorld } from "./routes/world.js";
@@ -51,7 +56,7 @@ export class FilmJobs extends DurableObject {
         resource: "auto", kind: "film.queued", filmId: res.item.id, step: null, job: publicJob(job),
       });
       // Nothing running but a queue (a drain was interrupted) → drain it now.
-      if (job?.status !== "running") await this.ctx.storage.setAlarm(Date.now());
+      if (!isActive(job)) await this.ctx.storage.setAlarm(Date.now());
       return {
         ok: true,
         queued: true,
@@ -62,6 +67,23 @@ export class FilmJobs extends DurableObject {
     }
 
     await this.commit(res.job, event("film.started", res.job));
+    await this.ctx.storage.setAlarm(Date.now());
+    return { ok: true, job: publicJob(res.job) };
+  }
+
+  async confirm(filmId) {
+    const job = await this.ctx.storage.get(KEY);
+    const res = await confirmFilm(job, filmId, { commit: (j, ev) => this.commit(j, ev) });
+    if (!res.ok) return { ...res, job: publicJob(job) };
+    await this.ctx.storage.setAlarm(Date.now());
+    return { ok: true, job: publicJob(res.job) };
+  }
+
+  async decline(filmId) {
+    const job = await this.ctx.storage.get(KEY);
+    const res = await declineFilm(job, filmId, { commit: (j, ev) => this.commit(j, ev) });
+    if (!res.ok) return { ...res, job: publicJob(job) };
+    // The declined Film is over: the queue moves on.
     await this.ctx.storage.setAlarm(Date.now());
     return { ok: true, job: publicJob(res.job) };
   }
@@ -80,6 +102,8 @@ export class FilmJobs extends DurableObject {
         return;
       }
     }
+    // Waiting on the confirm card: no alarm until the author answers.
+    if (isActive(job)) return;
     await this.startNext(job);
   }
 

@@ -139,3 +139,6 @@
 /api/auto/films/current           # agent tool lands in #73 (make_film/get_film)
 /api/auto/status                  # agent tool lands in #73 (make_film/get_film)
 /api/auto/allowance               # agent tool lands in #73 (make_film/get_film)
+/api/auto/settings                # agent tool lands in #73 (make_film/get_film)
+/api/auto/films/*/confirm         # agent tool lands in #73 (make_film/get_film)
+/api/auto/films/*/decline         # agent tool lands in #73 (make_film/get_film)
