@@ -106,6 +106,7 @@ function FilmStory({ signedIn }) {
       {projectId ? <LiveSync key={projectId} onEvent={onEvent} onResync={refresh} /> : null}
       <StoryView
         job={job || { id: filmId, prompt: "", status: "loading", steps: [] }}
+        projectId={projectId}
         onNew={onNew}
         onRetry={onRetry}
         retrying={retrying}

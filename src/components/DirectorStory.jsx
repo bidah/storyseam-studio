@@ -768,9 +768,14 @@ export function LatestStories({ onPick }) {
 
 // ── Story view: 100dvh — prompt, steps, and the Film ────────────────────────
 
+// A DONE Film never runs a stage it has no step for — one made before that
+// stage existed (the Look) — so it is not drawn as one still ahead. A stopped
+// Film keeps its steps ahead: Retry runs them.
+
 function stepsOf(job) {
   const byKey = new Map((job.steps || []).map((s) => [s.key, s]));
-  const known = STAGES.map((st) => {
+  const stages = job.status === "done" && byKey.size ? STAGES.filter((st) => byKey.has(st.key)) : STAGES;
+  const known = stages.map((st) => {
     const s = byKey.get(st.key);
     return {
       key: st.key,
@@ -809,7 +814,16 @@ export async function retryFilm(id) {
   return data.job || null;
 }
 
-export function StoryView({ job, onNew, onRetry, retrying = false, retryError = null }) {
+// A Film's media, addressed to ITS project. The page's fetch shim sends
+// `x-project-id`, but a <video> element cannot send a header: without the
+// project in the url the Worker resolves the user's ACTIVE project, where a
+// Film's file (in a project of its own) is a 404 — and the player just spins.
+export function filmMediaUrl(url, projectId) {
+  if (!url || !projectId || /[?&]projectId=/.test(url)) return url;
+  return `${url}${url.includes("?") ? "&" : "?"}projectId=${encodeURIComponent(projectId)}`;
+}
+
+export function StoryView({ job, projectId = null, onNew, onRetry, retrying = false, retryError = null }) {
   const steps = stepsOf(job);
   const done = job.status === "done" && job.film?.url;
   const stopped = job.status === "stopped";
@@ -873,7 +887,7 @@ export function StoryView({ job, onNew, onRetry, retrying = false, retryError = 
           <div className="flex min-h-0 flex-1 flex-col animate-in fade-in duration-700">
             <div className="flex h-[70dvh] shrink-0 items-center justify-center bg-black px-4 py-3 sm:px-8">
               <video
-                src={job.film.url}
+                src={filmMediaUrl(job.film.url, projectId || job.projectId)}
                 controls
                 playsInline
                 preload="metadata"
