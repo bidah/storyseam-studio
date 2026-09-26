@@ -75,3 +75,15 @@ describe("the Film job — look stage", () => {
     expect(text).not.toContain(anime.look);
   });
 });
+
+describe("readLookAnswer — the gateway's wrapped answer", () => {
+  it("reads { state, result: { answers } } as returned through AI Gateway", async () => {
+    const { readLookAnswer } = await import("../../worker/src/lib/film-stages/look.js");
+    const out = {
+      state: "Completed",
+      result: { model: "jev-1.13.0", answers: { look: { type: "choice", choice: "anime-80s", confidence: 1, probabilities: { "2d-folklore": 0, "live-action": 0, "anime-80s": 1, pixar: 0 } } } },
+      gatewayMetadata: { keySource: "Unified" },
+    };
+    expect(readLookAnswer(out)).toMatchObject({ style: "anime-80s", confidence: 1, probabilities: { "anime-80s": 1 } });
+  });
+});

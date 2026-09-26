@@ -21,6 +21,11 @@
 import { FILM_STYLES, filmStyleFor } from "../film-plan.ts";
 
 export const LOOK_MODEL = "typesafe/jev";
+// Jev is a partner model, billed through AI Gateway's unified billing (the
+// account's gateway credits), which needs an AUTHENTICATED gateway — `default`
+// is not one, and turning it on there would refuse the writer's Cerebras calls.
+// A binding call through an authenticated gateway is authenticated for us.
+export const LOOK_GATEWAY = "auto-look";
 const PREMISE_CHARS = 6000; // well inside Jev's 32k window
 
 const pct = (p) => `${Math.round((Number(p) || 0) * 100)}%`;
@@ -44,7 +49,9 @@ export function lookQuestion(prompt) {
 
 /** Jev's answer → { style, confidence, probabilities } | null when it is not one of the looks. */
 export function readLookAnswer(out) {
-  const a = out?.answers?.look;
+  // Through a gateway the answer comes wrapped: { state, result: { model, answers } }.
+  const body = out?.result?.answers ? out.result : out;
+  const a = body?.answers?.look;
   if (!a || !FILM_STYLES.some((s) => s.id === a.choice)) return null;
   const probabilities = Object.fromEntries(
     FILM_STYLES.map((s) => [s.id, Math.max(0, Math.min(1, Number(a.probabilities?.[s.id]) || 0))]),
@@ -62,7 +69,7 @@ export async function runLookStage({ job, env }) {
   if (env?.AI?.run) {
     try {
       const out = await env.AI.run(LOOK_MODEL, lookQuestion(job.prompt), {
-        gateway: { id: env.AI_GATEWAY_ID || "default" },
+        gateway: { id: env.LOOK_GATEWAY_ID || LOOK_GATEWAY },
       });
       const read = readLookAnswer(out);
       if (read) {
@@ -71,7 +78,7 @@ export async function runLookStage({ job, env }) {
           .map(([id, p]) => `${labelOf(id)} ${pct(p)}`);
         return {
           summary: `${labelOf(read.style)} · ${pct(read.probabilities[read.style])}${others.length ? ` — ${others.join(", ")}` : ""}`,
-          result: { ...read, by: "jev", model: out?.model || LOOK_MODEL },
+          result: { ...read, by: "jev", model: out?.result?.model || out?.model || LOOK_MODEL },
         };
       }
       failure = "the classifier answered no look";
