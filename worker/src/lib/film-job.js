@@ -71,6 +71,9 @@ import { autoAvailable } from "./auto-availability.js";
 import { checkAllowance } from "./film-allowance.js";
 import { runWithContext } from "./request-context.js";
 import { WORLD_SHAPE } from "./auto-prompts.generated.js";
+import { runSheetsStage } from "./film-stages/sheets.js";
+import { runShotlistStage } from "./film-stages/shotlist.js";
+import { runCueSheetStage } from "./film-stages/cuesheet.js";
 
 export const FILM_EVENT_RESOURCE = "auto";
 export const FILM_EVENTS = Object.freeze([
@@ -165,6 +168,10 @@ async function runWorldStage({ job, model, env, saveWorld }) {
 /** The ordered stages. Later slices append; keys are stable public ids. */
 export const FILM_STAGES = Object.freeze([
   { key: "world", label: "Idea + World", run: runWorldStage },
+  // Each later stage's logic lives in its own module under ./film-stages/.
+  { key: "sheets", label: "Reference sheets", run: (ctx) => runSheetsStage(ctx) },
+  { key: "shotlist", label: "Shot list", run: (ctx) => runShotlistStage(ctx) },
+  { key: "cuesheet", label: "Cue sheet", run: (ctx) => runCueSheetStage(ctx) },
 ]);
 
 // ── Job lifecycle ───────────────────────────────────────────────────────────

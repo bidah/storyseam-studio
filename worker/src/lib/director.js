@@ -22,6 +22,7 @@
 // has this project produced", most recent first, across every Series.
 import { readDoc, updateDoc } from "./docs.js";
 import { filesUrl, mediaKey } from "./media.js";
+import { fieldErrors, seriesFields, seriesInput, stampCueTiming } from "./series.ts";
 
 /** The index doc. `seq` numbers new Series so two creates never collide. */
 export const emptyIndex = () => ({ seriesIds: [], selectedId: null, seq: 0 });
@@ -71,6 +72,82 @@ export function updateSeries(env, pid, seriesId, mutate, opts) {
 /** `s_` + short uuid, matching the project id's shape. */
 export function newSeriesId() {
   return "s_" + crypto.randomUUID().slice(0, 8);
+}
+
+const nowIso = () => new Date().toISOString();
+
+/**
+ * Create a Series and index it, atomically — what `POST /api/director/series`
+ * does, callable without a request (the Auto Film job files its reference
+ * sheets and cue sheet on one).
+ *
+ * `fields` are the author's fields (title, prompt, aspectRatio, …), validated
+ * by `seriesFields`; `extra` rides on the row unvalidated (e.g. the Auto job's
+ * `filmId`, which is how a re-run stage finds the Series it already made).
+ *
+ * → `{ ok: true, series }` | `{ ok: false, issues }`
+ */
+export async function createSeries(env, pid, fields, extra = {}) {
+  const parsed = seriesFields.safeParse(fields);
+  if (!parsed.success) return { ok: false, issues: fieldErrors(parsed.error) };
+  const id = newSeriesId();
+  const at = nowIso();
+  const row = { ...parsed.data, ...extra, id, createdAt: at, updatedAt: at };
+  // The index is the PRIMARY (it is compare-and-swapped) and the Series rides
+  // as an `also` row, so either both land or neither does. A Series written
+  // without its index entry is a document nothing can reach; an index entry
+  // written without its Series is the `missing` list GET /api/director reports.
+  await updateIndex(env, pid, (index) => {
+    index.seq = (index.seq || 0) + 1;
+    index.seriesIds = [...(index.seriesIds || []), id];
+    index.selectedId = id;
+    return {};
+  }, { also: [{ name: seriesDocName(id), value: row }] });
+  return { ok: true, series: row };
+}
+
+/**
+ * Replace a Series' whole cue sheet, re-validated against every ceiling the
+ * endpoint enforces. The write `derive` and the Auto job's cue-sheet stage share.
+ *
+ * → `{ ok: true, beats }` | `{ missing: true }` | `{ issues }`
+ */
+export async function replaceCueSheet(env, pid, seriesId, beats) {
+  const res = await updateSeries(env, pid, seriesId, (row) => {
+    if (!row?.id) return { abort: true, missing: true };
+    const candidate = stampCueTiming({ ...row, directions: beats });
+    const check = seriesInput.safeParse(candidate);
+    if (!check.success) return { abort: true, issues: fieldErrors(check.error) };
+    Object.assign(row, candidate, { updatedAt: nowIso() });
+    return {};
+  });
+  if (res.missing) return { missing: true };
+  if (res.issues) return { issues: res.issues };
+  return { ok: true, beats: beats.length };
+}
+
+/**
+ * Add a model sheet to a Series, or replace the one with the same name —
+ * `POST /api/director/series/:id/sheets` without the request.
+ *
+ * → `{ ok: true, sheets }` | `{ missing: true }` | `{ issues }`
+ */
+export async function upsertModelSheet(env, pid, seriesId, sheet) {
+  const res = await updateSeries(env, pid, seriesId, (series) => {
+    if (!series?.id) return { abort: true, missing: true };
+    const sheets = [...(series.modelSheets || [])];
+    const at = sheets.findIndex((s) => s.name === sheet.name);
+    if (at >= 0) sheets[at] = { ...sheets[at], ...sheet };
+    else sheets.push(sheet);
+    const candidate = { ...series, modelSheets: sheets };
+    const check = seriesInput.safeParse(candidate);
+    if (!check.success) return { abort: true, issues: fieldErrors(check.error) };
+    Object.assign(series, candidate, { updatedAt: nowIso() });
+    return { sheets: sheets.length };
+  });
+  if (res.missing) return { missing: true };
+  if (res.issues) return { issues: res.issues };
+  return { ok: true, sheets: res.sheets };
 }
 
 // ─── Media ───────────────────────────────────────────────────────────────────

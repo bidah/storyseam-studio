@@ -95,7 +95,7 @@ export function run() {
       );
     }
   }
-  // Generated (not copied) — a section of the world-creation playbook turned
+  // Generated (not copied) — sections of the world-creation, shot-list and model-sheets playbooks turned
   // into a JS string for the Auto Film job, so compare against a fresh render.
   let rendered = null;
   try { rendered = renderAutoPrompts(); } catch (err) { violations.push(String(err?.message || err)); }
@@ -104,7 +104,7 @@ export function run() {
       violations.push(`${AUTO_PROMPTS_TARGET} has never been generated. Run \`npm run auto:sync\`.`);
     } else if (read(AUTO_PROMPTS_TARGET) !== rendered) {
       violations.push(
-        `${AUTO_PROMPTS_TARGET} has drifted from the world-creation playbook. Run \`npm run auto:sync\` (edit the SKILL.md, never the copy).`,
+        `${AUTO_PROMPTS_TARGET} has drifted from the world-creation / shot-list / model-sheets playbooks. Run \`npm run auto:sync\` (edit the SKILL.md, never the copy).`,
       );
     }
   }

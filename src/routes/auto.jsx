@@ -100,9 +100,33 @@ function WorldResult({ result }) {
   );
 }
 
-// One card per step. Stages a later slice adds render their summary until they
-// get a result view of their own here.
-const RESULT_VIEWS = { world: WorldResult };
+// What the Reference sheets step filed on the Film's Series: one thumbnail each,
+// style first — the same pictures the Director tab lists as model sheets.
+function SheetsResult({ result }) {
+  const sheets = result?.sheets || [];
+  if (!sheets.length) return null;
+  return (
+    <ul className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+      {sheets.map((s) => (
+        <li key={s.name} className="space-y-1">
+          <img
+            src={s.imageUrl}
+            alt={s.name}
+            loading="lazy"
+            className="aspect-video w-full rounded-md border bg-muted object-cover"
+          />
+          <p className="truncate text-xs">
+            <span className="font-medium">{s.name}</span>
+            <span className="text-muted-foreground"> · {s.kind}</span>
+          </p>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+// One card per step. Stages without a result view render their summary alone.
+const RESULT_VIEWS = { world: WorldResult, sheets: SheetsResult };
 
 function StepCard({ step }) {
   const badge = STATUS_BADGE[step.status] || STATUS_BADGE.running;

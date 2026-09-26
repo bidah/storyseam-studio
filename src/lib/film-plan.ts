@@ -1,4 +1,5 @@
 import {
+  MAX_DIRECTIONS,
   MAX_END_IMAGES,
   MIN_END_IMAGE_GAP_SECONDS,
   MIN_OPENING_END_IMAGE_SECONDS,
@@ -18,7 +19,8 @@ import { USD_PER_MINUTE as SCORE_USD_PER_MINUTE } from './music-plan';
 // Pure, and vendored by `npm run series:sync` into the Worker and the agent:
 // the confirm card shows the same plan the job runs and the chat quotes.
 //
-// The reel count here is an ESTIMATE on an even ~4s pin grid, made against the
+// The reel count here is an ESTIMATE on an even ~4s pin grid (wider when 4s
+// would pass the Series' 64-beat ceiling — see `beatSpacing`), made against the
 // same per-reel ceilings the Series enforces (16 pins, first ≥5s in, ≥3s
 // apart; a seam drops its opening beat's pin and any pin <5s after it — ADR
 // 0002). The Reel planner is what cuts the real cue sheet; this is what the
@@ -37,6 +39,19 @@ export const FILM_STEPS: readonly number[] = Array.from(
 
 /** "Pinned about every 4s" — one beat, closing on one pin, per this many seconds. */
 export const PIN_INTERVAL_SECONDS = 4;
+
+/**
+ * The beat spacing a Film of this length is actually cut at: every 4s, unless
+ * that would put more beats on the cue sheet than a Series takes
+ * (`MAX_DIRECTIONS`, 64 — a whole-sheet ceiling, not a per-reel one). Then the
+ * grid widens to the smallest whole second that fits: 4:30 is cut every 5s, 54
+ * beats. The plan and the Auto job's cue sheet both read this, so the beat
+ * count the author was quoted is the one the Series gets.
+ */
+export function beatSpacing(seconds: number): number {
+  const s = Number.isFinite(seconds) && seconds > 0 ? seconds : 0;
+  return Math.max(PIN_INTERVAL_SECONDS, Math.ceil(s / MAX_DIRECTIONS));
+}
 /** A plan needing more seams than this is refused (PRD #59, Reel planner). */
 export const MAX_SEAMS = 4;
 /** How far one seam may move the film: up to one Director chunk (ADR 0002). */
@@ -106,8 +121,10 @@ export type FilmPlan = {
   requestedSeconds: number | null;
   /** True when the request was longer than 4:30 and was cut down to it. */
   capped: boolean;
-  /** Beats on the cue sheet at ~4s each (the last may be shorter). */
+  /** Beats on the cue sheet, one per `spacing` seconds (the last may be shorter). ≤ 64. */
   beats: number;
+  /** Seconds between beats: 4, or wider when 4 would pass the 64-beat ceiling. */
+  spacing: number;
   /** Pins actually drawn and pinned, after the reel rules take theirs. */
   pins: number;
   /** Frames on the 4s grid the reel rules make unpinnable — never drawn. */
@@ -224,11 +241,12 @@ export function filmLength(requested: number | null | undefined): { seconds: num
 // ── Reels on an even pin grid ─────────────────────────────────────────────
 
 /**
- * Lay pins every `PIN_INTERVAL_SECONDS` and cut reels greedily under the
- * per-reel rules: a reel closes at 16 pins; the next opens on the following
- * grid beat (a seam), whose pin is dropped along with any pin < 5s after it.
+ * Lay pins every `spacing` seconds (default: `beatSpacing(seconds)`) and cut
+ * reels greedily under the per-reel rules: a reel closes at 16 pins; the next
+ * opens on the following grid beat (a seam), whose pin is dropped along with
+ * any pin < 5s after it.
  */
-export function reelsOnGrid(seconds: number): {
+export function reelsOnGrid(seconds: number, spacing: number = beatSpacing(seconds)): {
   pins: number;
   skippedFrames: number;
   reels: number;
@@ -239,7 +257,7 @@ export function reelsOnGrid(seconds: number): {
   let reelStart = 0;
   let lastPin = -Infinity;
   let skipped = 0;
-  for (let t = PIN_INTERVAL_SECONDS; t <= seconds; t += PIN_INTERVAL_SECONDS) {
+  for (let t = spacing; t <= seconds; t += spacing) {
     const current = pinsPerReel.length - 1;
     if (pinsPerReel[current] >= MAX_END_IMAGES) {
       // Seam: this beat opens the next reel and loses its pin.
@@ -310,7 +328,8 @@ export function planFilm(input: FilmPlanInput = {}): FilmPlan {
       : null;
   const requestedSeconds = explicit ?? parseLength(input.prompt);
   const { seconds, capped } = filmLength(requestedSeconds);
-  const grid = reelsOnGrid(seconds);
+  const spacing = beatSpacing(seconds);
+  const grid = reelsOnGrid(seconds, spacing);
   const referenceSheets = Math.min(
     MAX_REFERENCE_SHEETS,
     Math.max(1, Math.round(input.referenceSheets ?? DEFAULT_REFERENCE_SHEETS)),
@@ -320,7 +339,8 @@ export function planFilm(input: FilmPlanInput = {}): FilmPlan {
     length: formatLength(seconds),
     requestedSeconds,
     capped,
-    beats: Math.ceil(seconds / PIN_INTERVAL_SECONDS),
+    beats: Math.ceil(seconds / spacing),
+    spacing,
     pins: grid.pins,
     skippedFrames: grid.skippedFrames,
     reels: grid.reels,

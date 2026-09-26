@@ -45,7 +45,7 @@ async function startedJob(env, over = {}) {
 }
 
 describe("the Film job — world stage", () => {
-  it("runs Idea + World against a fake model, saves the World, and emits start → done in order", async () => {
+  it("runs Idea + World against a fake model, saves the World, and emits start → done in order (the job then moves on)", async () => {
     const env = envWith();
     const model = fakeModel();
     const events = [];
@@ -56,12 +56,11 @@ describe("the Film job — world stage", () => {
     };
 
     let job = await startedJob(env);
-    job = await runFilm(job, { env, model, saveWorld, commit });
+    job = await advanceFilm(job, { env, model, saveWorld, commit });
 
     expect(events.map((e) => [e.kind, e.step])).toEqual([
       ["step.started", "world"],
       ["step.done", "world"],
-      ["film.done", null],
     ]);
     for (const e of events) {
       expect(e.resource).toBe("auto");
@@ -76,7 +75,7 @@ describe("the Film job — world stage", () => {
     expect(step.result.idea).toBe(ANSWER.idea);
     expect(step.result.characters.map((c) => c.name)).toEqual(["Mote", "Old Ada"]);
     expect(step.result.places).toEqual([{ name: "Lamp room", description: "Brass and glass, lit orange" }]);
-    expect(job.status).toBe("done");
+    expect(job.status).toBe("running"); // the sheets stage is next
 
     // The model was prompted with the playbook's World shape and the author's prompt.
     const { messages } = model.json.mock.calls[0][0];
@@ -111,11 +110,11 @@ describe("the Film job — world stage", () => {
     const events = [];
     job = await advanceFilm(job, { env, model: fakeModel(), saveWorld, commit: async (_j, ev) => events.push(ev) });
     expect(job.steps).toHaveLength(1);
-    expect(events.map((e) => e.kind)).toEqual(["step.done", "film.done"]);
+    expect(events.map((e) => e.kind)).toEqual(["step.done"]);
   });
 
   it("keeps the stage list ordered and keyed", () => {
-    expect(FILM_STAGES.map((s) => s.key)).toEqual(["world"]);
+    expect(FILM_STAGES.map((s) => s.key)).toEqual(["world", "sheets", "shotlist", "cuesheet"]);
     expect(worldMessages("p")).toHaveLength(2);
     expect(() => parseIdeaWorld({ idea: "i", world: { characters: [] } })).toThrow(/no characters/);
     expect(publicJob(null)).toBeNull();

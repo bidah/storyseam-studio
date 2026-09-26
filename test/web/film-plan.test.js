@@ -7,13 +7,14 @@ import {
   FILM_RATES_USD,
   FILM_STEPS,
   MAX_SEAMS,
+  beatSpacing,
   filmLength,
   formatLength,
   parseLength,
   planFilm,
   reelsOnGrid,
 } from "@/lib/film-plan";
-import { MAX_END_IMAGES } from "@/lib/series";
+import { MAX_DIRECTIONS, MAX_END_IMAGES } from "@/lib/series";
 
 describe("parseLength", () => {
   it.each([
@@ -102,16 +103,19 @@ describe("every 30s step", () => {
     expect(FILM_STEPS.map(formatLength)).toEqual(["2:00", "2:30", "3:00", "3:30", "4:00", "4:30"]);
   });
 
-  it.each(FILM_STEPS.map((s) => [s]))("%is: beats at ~4s, pins fit the reel ceilings in ≤5 reels", (seconds) => {
+  it.each(FILM_STEPS.map((s) => [s]))("%is: beats at ~4s (≤64), pins fit the reel ceilings in ≤5 reels", (seconds) => {
     const plan = planFilm({ seconds });
     expect(plan.seconds).toBe(seconds);
     expect(plan.capped).toBe(false);
-    expect(plan.beats).toBe(Math.ceil(seconds / 4));
+    expect(plan.spacing).toBe(beatSpacing(seconds));
+    expect(plan.beats).toBe(Math.ceil(seconds / plan.spacing));
+    // A Series takes at most 64 beats, whole-sheet.
+    expect(plan.beats).toBeLessThanOrEqual(MAX_DIRECTIONS);
     expect(plan.reels).toBeLessThanOrEqual(5);
     expect(plan.seams).toBe(plan.reels - 1);
     expect(plan.seams).toBeLessThanOrEqual(MAX_SEAMS);
     expect(plan.clips).toBe(plan.reels);
-    expect(plan.pins + plan.skippedFrames).toBe(Math.floor(seconds / 4));
+    expect(plan.pins + plan.skippedFrames).toBe(Math.floor(seconds / plan.spacing));
     expect(plan.pins).toBeLessThanOrEqual(plan.reels * MAX_END_IMAGES);
     // Each reel is full before the next opens.
     expect(plan.pins).toBeGreaterThan((plan.reels - 1) * MAX_END_IMAGES);
@@ -119,25 +123,37 @@ describe("every 30s step", () => {
 
   it("step table: pins / reels", () => {
     const rows = FILM_STEPS.map((seconds) => {
-      const { pins, reels, seams, skippedFrames } = planFilm({ seconds });
-      return [seconds, pins, reels, seams, skippedFrames];
+      const { spacing, beats, pins, reels, seams, skippedFrames } = planFilm({ seconds });
+      return [seconds, spacing, beats, pins, reels, seams, skippedFrames];
     });
     expect(rows).toEqual([
       // A 4s grid loses the 4s pin (inside the opening 5s) and two per seam:
       // the seam beat's own pin and the next one, 4s after it.
-      [120, 27, 2, 1, 3],
-      [150, 32, 2, 1, 5], // the grid ends inside what would be reel 3's opening 5s
-      [180, 40, 3, 2, 5],
-      [210, 47, 3, 2, 5],
-      [240, 53, 4, 3, 7],
-      [270, 60, 4, 3, 7],
+      [120, 4, 30, 27, 2, 1, 3],
+      [150, 4, 38, 32, 2, 1, 5], // the grid ends inside what would be reel 3's opening 5s
+      [180, 4, 45, 40, 3, 2, 5],
+      [210, 4, 53, 47, 3, 2, 5],
+      [240, 4, 60, 53, 4, 3, 7],
+      // 4:30 at 4s is 68 beats — past the Series' 64 — so it is cut every 5s.
+      // At 5s a seam loses only its own pin (the next is 5s on, clear of the opening).
+      [270, 5, 54, 51, 4, 3, 3],
     ]);
+  });
+});
+
+describe("beatSpacing", () => {
+  it("is 4s until 4s would pass 64 beats, then the smallest whole second that fits", () => {
+    expect(beatSpacing(120)).toBe(4);
+    expect(beatSpacing(256)).toBe(4);
+    expect(beatSpacing(257)).toBe(5);
+    expect(beatSpacing(270)).toBe(5);
+    for (const s of FILM_STEPS) expect(Math.ceil(s / beatSpacing(s))).toBeLessThanOrEqual(MAX_DIRECTIONS);
   });
 });
 
 describe("reelsOnGrid", () => {
   it("47 pins at 4s → 3 reels, 2 seams, 4 frames lost to seams (plus the one inside the opening 5s)", () => {
-    const grid = reelsOnGrid(47 * 4);
+    const grid = reelsOnGrid(47 * 4, 4);
     expect(grid.reels).toBe(3);
     expect(grid.seams).toBe(2);
     expect(grid.skippedFrames).toBe(1 + 4);
