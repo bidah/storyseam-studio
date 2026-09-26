@@ -631,6 +631,16 @@ const FILM_STATUS = {
   refused: "Refused",
 };
 
+// A premise can run to paragraphs: at most PREMISE_CHARS, cut on a word, then
+// an ellipsis — and the row clamps it to four lines on top of that.
+const PREMISE_CHARS = 240;
+function clip(text) {
+  const t = String(text || "").replace(/\s+/g, " ").trim();
+  if (t.length <= PREMISE_CHARS) return t;
+  const cut = t.slice(0, PREMISE_CHARS);
+  return `${cut.slice(0, cut.lastIndexOf(" ") > 180 ? cut.lastIndexOf(" ") : PREMISE_CHARS).trimEnd()}…`;
+}
+
 function when(iso) {
   const t = Date.parse(iso);
   if (!Number.isFinite(t)) return "";
@@ -694,7 +704,7 @@ export function LatestStories({ onPick }) {
                   <span className="min-w-0 flex-1">
                     <span className="block truncate font-semibold">{f.title || f.prompt || "Untitled story"}</span>
                     {f.prompt && f.title ? (
-                      <span className="line-clamp-2 block text-sm text-[var(--br-secondary)]">{f.prompt}</span>
+                      <span className="line-clamp-4 block text-sm text-[var(--br-secondary)]" data-latest-prompt>{clip(f.prompt)}</span>
                     ) : null}
                     <span className="mt-1 block text-xs text-[var(--br-secondary)]" style={{ fontFamily: MONO }}>
                       {[FILM_STATUS[f.status] || f.status, f.seconds ? formatLength(Math.round(f.seconds)) : null, when(f.createdAt)]
