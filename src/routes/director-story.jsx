@@ -350,10 +350,10 @@ function SimpleView({ onSubmit, submitting, note }) {
             fontFamily: DISPLAY,
             fontWeight: 700,
             letterSpacing: "0.02em",
-            fontSize: "min(3.25rem, calc((100vw - 2rem) / 19))",
+            fontSize: "min(2.8rem, calc((100vw - 2rem) / 22))",
           }}
         >
-          TEXT TO LONG FORM STORIES IN SECONDS
+          TEXT TO LONG FORM VIDEO STORIES IN SECONDS
         </h1>
         <form onSubmit={submit} className="w-full">
           <div className="flex items-end gap-2 border border-[var(--br-secondary)]/40 bg-[var(--br-surface)] p-2 text-left focus-within:border-[var(--br-primary)]">

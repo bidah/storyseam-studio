@@ -48,7 +48,7 @@ test.describe("director story", () => {
     await mockBackend(page, { routes: { "/api/auto/films/current": { job: null, queue: [] } } });
     await page.goto("/director-story");
 
-    await expect(page.getByRole("heading", { name: /text to long form stories in seconds/i })).toBeVisible();
+    await expect(page.getByRole("heading", { name: /text to long form video stories in seconds/i })).toBeVisible();
     await expect(page.getByPlaceholder("Tell what story premise you have")).toBeVisible();
     await expect(page.getByRole("button", { name: "Make the story" })).toBeVisible();
     await expectNoStudioShell(page);
@@ -112,6 +112,6 @@ test.describe("director story", () => {
 
     // "New story" goes back to the simple view.
     await page.getByRole("button", { name: /new story/i }).click();
-    await expect(page.getByRole("heading", { name: /text to long form stories in seconds/i })).toBeVisible();
+    await expect(page.getByRole("heading", { name: /text to long form video stories in seconds/i })).toBeVisible();
   });
 });
