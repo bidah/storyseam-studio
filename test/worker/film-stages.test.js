@@ -155,7 +155,7 @@ describe("the Film stages after the World", () => {
     expect(submitted).toHaveLength(7);
     for (const s of submitted) {
       expect(s.key).toBe("platform-key");
-      expect(s.input.aspect_ratio).toBe("16:9");
+      expect(s.input.image_size).toBe("landscape_16_9");
     }
     expect(submitted.slice(0, 2).map((s) => s.endpoint)).toEqual([SHEET_MODEL.endpoint, SHEET_MODEL.endpoint]);
     for (const s of submitted.slice(2)) {

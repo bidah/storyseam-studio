@@ -21,14 +21,23 @@ import { SHEET_FORM } from "../auto-prompts.generated.js";
 import { absolutize, createSeries, directorUrl, readIndex, readSeries, upsertModelSheet } from "../director.js";
 import { artSettings } from "../series.ts";
 import { MAX_REFERENCE_SHEETS } from "../film-plan.ts";
-import { FAL_IMAGE_MODELS, falPoll, falSubmit } from "../fal.js";
+import { falPoll, falSubmit } from "../fal.js";
 import { putMedia } from "../media.js";
 import { readWorld } from "../../routes/world.js";
 
 export const MAX_STYLE_SHEETS = 2;
-export const SHEET_MODEL = FAL_IMAGE_MODELS[0];
-/** Model sheets are looked at, never played: 2k so each view is big enough to reference. */
-export const SHEET_RESOLUTION = "2K";
+// GPT Image 2.5 Flare on fal: text-to-image for a sheet drawn from its prompt
+// alone, /edit for one drawn against other sheets (the style sheets first).
+export const SHEET_MODEL = {
+  id: "fal:openai/gpt-image-2.5/flare",
+  label: "GPT Image 2.5 Flare · fal",
+  endpoint: "openai/gpt-image-2.5/flare/text-to-image",
+  editEndpoint: "openai/gpt-image-2.5/flare/edit",
+};
+/** Model sheets are looked at, never played: high quality so each view is big enough to reference. */
+export const SHEET_QUALITY = "high";
+// Flare takes an image_size preset, not an aspect ratio.
+const IMAGE_SIZE = { "16:9": "landscape_16_9", "9:16": "portrait_16_9", "1:1": "square_hd", "4:3": "landscape_4_3", "3:4": "portrait_4_3" };
 const POLL_MS = 3000;
 const POLL_TIMEOUT_MS = 6 * 60 * 1000;
 
@@ -162,7 +171,9 @@ export async function ensureFilmSeries(env, pid, job, { title, prompt }) {
   const res = await createSeries(
     env,
     pid,
-    { title: str(title).slice(0, 200) || "Auto Film", prompt: str(prompt) || job.prompt, aspectRatio: "16:9" },
+    // 480p on purpose: the Sitting streams at the Series' resolution, and an
+    // Auto Film is shot at 480p by default.
+    { title: str(title).slice(0, 200) || "Auto Film", prompt: str(prompt) || job.prompt, aspectRatio: "16:9", resolution: "480p" },
     { filmId: job.id, source: "auto" },
   );
   if (!res.ok) throw new Error(`Could not create the Film's Series: ${Object.values(res.issues || {}).join("; ")}`);
@@ -191,9 +202,10 @@ export async function drawSheet({ env, pid, job, sheet, aspectRatio, refs = [] }
   const endpoint = refs.length ? SHEET_MODEL.editEndpoint : SHEET_MODEL.endpoint;
   const { requestId } = await fal.submit(falKey, endpoint, {
     prompt: sheet.prompt,
-    aspect_ratio: aspectRatio,
-    resolution: SHEET_RESOLUTION,
+    image_size: IMAGE_SIZE[aspectRatio] || "landscape_16_9",
+    quality: SHEET_QUALITY,
     num_images: 1,
+    output_format: "png",
     ...(refs.length ? { image_urls: refs } : {}),
   });
 
