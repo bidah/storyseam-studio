@@ -230,3 +230,36 @@ CREATE TABLE IF NOT EXISTS org_invitations (
 );
 CREATE INDEX IF NOT EXISTS idx_org_invitations_org ON org_invitations (organization_id);
 CREATE INDEX IF NOT EXISTS idx_org_invitations_email ON org_invitations (email);
+
+-- ─── Film allowance (Auto) ──────────────────────────────────────────────────
+--
+-- How many Films a user may make on StorySeam's own keys (CONTEXT.md, "Film
+-- allowance"; ADR 0003). Per-USER platform data, not per-project doc state, so
+-- it is a table rather than a `docs` row. Read and written ONLY through
+-- worker/src/lib/film-allowance.js. Prod gets it from
+-- migrations/003-film-allowance.sql, which also carries the override SQL.
+--
+-- film_allowances  the creator-set limit. NO ROW = the default (10 a month); a
+--                  row exists only for a user whose limit was overridden. No
+--                  UI — the creators change it by direct database update.
+CREATE TABLE IF NOT EXISTS film_allowances (
+  user_id       TEXT PRIMARY KEY,             -- references "user"(id)
+  monthly_limit INTEGER NOT NULL DEFAULT 10,
+  updated_at    TEXT NOT NULL
+);
+
+-- film_counts  the ledger of Films that COUNTED. Only `new` and `reshoot` are
+--              ever written — a music-only rescore and a failed Film never land
+--              here. Keyed (user_id, film_id) so counting one Film twice is a
+--              no-op (a re-shoot passes its VERSION id as film_id). `period` is
+--              the UTC calendar month ('YYYY-MM'); the allowance "resets" on the
+--              1st simply because a new month has no rows yet.
+CREATE TABLE IF NOT EXISTS film_counts (
+  user_id    TEXT NOT NULL,
+  film_id    TEXT NOT NULL,
+  kind       TEXT NOT NULL,                   -- new | reshoot
+  period     TEXT NOT NULL,                   -- 'YYYY-MM', UTC
+  counted_at TEXT NOT NULL,                   -- ISO timestamp
+  PRIMARY KEY (user_id, film_id)
+);
+CREATE INDEX IF NOT EXISTS idx_film_counts_period ON film_counts (user_id, period);
