@@ -10,10 +10,11 @@
 // was never made.
 //
 // What the agent does: writes the plan — the sections, what arrives, what
-// leaves, how hard the model holds to each — and spends the render. What the
-// browser does: measures the film, finds where the picture turns, ducks the cue
-// under the dialogue it actually found, and writes the new file by COPYING the
-// picture's packets rather than re-encoding them.
+// leaves, how hard the model holds to each — and spends the render; then
+// `score_sitting` has the Worker measure the film, duck the cue under the
+// dialogue it actually found, and write the new file by COPYING the picture's
+// packets rather than re-encoding them (ffmpeg in a sandbox — the same mix the
+// Auto Film job's Score stage runs; the Musicalized tab does it in the browser).
 import { defineTool } from "@flue/runtime";
 import * as v from "valibot";
 import { d } from "./_util.js";
@@ -84,7 +85,7 @@ export const renderCue = (api: Api) =>
   defineTool({
     name: "render_cue",
     description:
-      "Spend the render: one continuous cue, as long as the film, from this plan. Costs real money — run plan_score first and tell the author the figure. Returns a `requestId`; pass it back to poll. When it lands, the mp3 is kept in the project and filed on the Series with the plan verbatim as its prompt, so \"the same but quieter\" is a small edit rather than a new piece. THE CUE IS NOT THE SCORED FILM. Laying it under the picture — ducked beneath the dialogue, at a level that changes with the room, with the picture's packets copied rather than re-encoded — happens in the browser. Finish by telling the author the cue is ready and to open the Musicalized tab.",
+      "Spend the render: one continuous cue, as long as the film, from this plan. Costs real money — run plan_score first and tell the author the figure. Returns a `requestId`; pass it back to poll. When it lands, the mp3 is kept in the project and filed on the Series with the plan verbatim as its prompt, so \"the same but quieter\" is a small edit rather than a new piece. THE CUE IS NOT THE SCORED FILM. Laying it under the picture — ducked beneath the dialogue, with the picture's packets copied rather than re-encoded — is score_sitting, with the `url` this returns when it reports `done`. (The Musicalized tab can also mix it by hand in the browser.)",
     input: v.object({
       seriesId: d(v.string(), "The Series this cue belongs to (from get_musicalized). It is what the finished piece is filed on."),
       requestId: d(v.optional(v.string()), "Instead of rendering: poll this request and report where it has got to."),
@@ -103,5 +104,22 @@ export const renderCue = (api: Api) =>
       }
       const { requestId: _unused, ...body } = input;
       return { output: await api.post("/api/musicalized/cue", body, signal) };
+    },
+  });
+
+export const scoreSitting = (api: Api) =>
+  defineTool({
+    name: "score_sitting",
+    description:
+      "Lay a finished cue under a kept sitting and file the scored film beside it — the last step of scoring, done on the server. The Worker measures the film in a sandbox, ducks the cue under the loud windows it measured off THIS take, and writes an mp4 with the picture's packets COPIED (never re-encoded), the film's own audio untouched and the cue faded in beneath it. The sitting itself is kept as it was. Run it after render_cue reports `done`, passing that poll's `url`. Takes a minute or two. No fal spend — the cue is already paid for.",
+    input: v.object({
+      sittingId: d(v.string(), "The kept sitting to score (get_musicalized `sittings[].id`)."),
+      cueUrl: d(v.string(), "The finished cue's url, `/director-media/cue_….mp3` — the `url` render_cue returned when it reported `done`."),
+      seriesId: d(v.optional(v.string()), "The sitting's Series; defaults to the sitting's own."),
+      musicStyle: d(v.optional(v.string()), "The brief it was scored by — saved as the Series' standing `musicStyle`."),
+      plan: d(v.optional(v.string()), "The composition plan the cue was rendered from, as JSON — kept on the sitting so the version can be argued with later."),
+    }),
+    async run({ data: input, signal }) {
+      return { output: await api.post("/api/musicalized/scored", input, signal) };
     },
   });

@@ -54,45 +54,7 @@ export function clock(seconds: number): string {
   return `${Math.floor(whole / 60)}:${String(whole % 60).padStart(2, '0')}`;
 }
 
-/**
- * Where the film's own audio is doing something the score must get out from
- * under — its dialogue and its impacts, MEASURED.
- *
- * The mix's `ducks` used to be a hand-typed list, which is fine for one film
- * and wrong for every one after it: the windows are a property of the take, and
- * a take is not deterministic. So they are read off the film instead.
- *
- * `withinDb` of the film's own peak, because what matters is loud RELATIVE to
- * this film — a quiet vacuum scene and a shouted corridor should both duck on
- * their own terms. Windows closer than `joinSec` are merged: a bed that lifts
- * for half a second between two lines pumps, which is more distracting than
- * either level on its own.
- */
-export function duckWindows(
-  loudness: number[],
-  { withinDb = 6, joinSec = 1.5, minSec = 0.5 } = {},
-): [number, number][] {
-  if (!loudness.length) return [];
-  const peak = Math.max(...loudness);
-  const floor = peak - withinDb;
-
-  const raw: [number, number][] = [];
-  let start: number | null = null;
-  loudness.forEach((db, second) => {
-    if (db >= floor) {
-      if (start === null) start = second;
-    } else if (start !== null) {
-      raw.push([start, second]);
-      start = null;
-    }
-  });
-  if (start !== null) raw.push([start, loudness.length]);
-
-  const out: [number, number][] = [];
-  for (const [from, to] of raw) {
-    const last = out[out.length - 1];
-    if (last && from - last[1] <= joinSec) last[1] = to;
-    else out.push([from, to]);
-  }
-  return out.filter(([from, to]) => to - from >= minSec);
-}
+// `duckWindows` — where the film's own audio is loud enough that the score
+// must get out from under it — is shared with the Auto Film job's server-side
+// mix, so it lives in src/lib/score-mix.ts and is re-exported here.
+export { duckWindows } from '../lib/score-mix';

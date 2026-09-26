@@ -3,8 +3,8 @@ name: score-film
 description: >-
   Write one continuous cue under a kept Director sitting — a composition plan in
   chunks that turn where the PICTURE turns, rendered as a single piece as long
-  as the film, then laid under it in the browser with the film's own audio
-  untouched. Use when the author asks to score a sitting, add music under a
+  as the film, then laid under it by score_sitting with the film's own audio
+  untouched and the picture copied, not re-encoded. Use when the author asks to score a sitting, add music under a
   film, make a musicalized version, or when a kept sitting has no scored version
   yet. The rule that decides whether the score works: measure the chunks from
   the FILM, never from the cue sheet — the Director's chunks run long, so a plan
@@ -74,16 +74,20 @@ or trimmed to fit afterwards — a plan that is short is fixed in the plan.
 3. **`plan_score`** — free. It checks the chunks, checks they add up, and says
    what the render will cost in dollars. Tell the author the figure.
 4. **`render_cue`** — costs money. Poll it with the same tool.
-5. **Stop.** The cue is not the scored film. Tell the author it is ready and to
-   open the Musicalized tab.
+5. **`score_sitting`** — the cue is not the scored film. When the poll says
+   `done`, pass its `url` with the sitting's id: the Worker lays the cue under
+   the picture and files the scored film beside the sitting. Then tell the
+   author it is ready (the Musicalized tab shows the two together).
 
-## Why the mix is the browser's
+## How the mix is made
 
 The picture's packets are **copied**, never re-encoded — so the film that gets
-scored is bit-for-bit the film that was kept. The browser has it decoded
-already; it measures where the film's own audio is loud, ducks the cue under
-those windows rather than under where the cue sheet said they would be, and
-writes the new file beside the sitting.
+scored is bit-for-bit the film that was kept. `score_sitting` measures where
+the film's own audio is loud (ffmpeg, in a sandbox — the same mix the Auto
+Film job runs), ducks the cue under those windows rather than under where the
+cue sheet said they would be, and writes the new file beside the sitting. The
+Musicalized tab can do the same by hand in the browser, with every level
+adjustable.
 
 The ducks are measured for the same reason the plan's length is: a sitting is
 not deterministic, so where a line actually lands is a property of the take.
