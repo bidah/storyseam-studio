@@ -192,12 +192,17 @@ export async function finishRender(env, pid, take, key, fetchFn = fetch) {
 
   let result = null;
   try {
-    const status = await fetchFn(`${FAL_QUEUE}/${take.endpoint}/requests/${take.id}/status`, { headers });
+    // fal's queue answers status/result on the APP's base path (owner/app), not
+    // the full endpoint: `minimax/h3-max/reference-to-video/requests/<id>/status`
+    // is a 405, so a poll on it never saw COMPLETED and the run waited forever
+    // on clips that were done in seconds.
+    const base = String(take.endpoint).split("/").slice(0, 2).join("/");
+    const status = await fetchFn(`${FAL_QUEUE}/${base}/requests/${take.id}/status`, { headers });
     const state = await status.json().catch(() => null);
     if (state?.status === "FAILED") return fail(state?.error || "fal reported FAILED");
     if (state?.status !== "COMPLETED") return take;
 
-    const done = await fetchFn(`${FAL_QUEUE}/${take.endpoint}/requests/${take.id}`, { headers });
+    const done = await fetchFn(`${FAL_QUEUE}/${base}/requests/${take.id}`, { headers });
     result = await done.json().catch(() => null);
   } catch (e) {
     // A transient network failure is not a finished render — leave the row
