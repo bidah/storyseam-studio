@@ -67,16 +67,24 @@ const KEYS = { FAL_KEY: "f", DAYTONA_API_KEY: "d", GROQ_API_KEY: "g" };
 const kv = (map = {}) => ({ get: vi.fn(async (k) => map[k] ?? null) });
 
 describe("autoAvailable", () => {
-  it("is available with every key set and no pause", async () => {
-    const r = await autoAvailable({ ...KEYS, AUTH_KV: kv() });
+  it("is available with every key set and no pause (Workers AI writer: no Groq key needed)", async () => {
+    const r = await autoAvailable({ FAL_KEY: "f", DAYTONA_API_KEY: "d", AUTH_KV: kv() });
     expect(r).toMatchObject({ ok: true, reason: null, paused: false, missing: [] });
-    expect(r.keys).toEqual({ FAL_KEY: true, DAYTONA_API_KEY: true, GROQ_API_KEY: true });
+    expect(r.keys).toEqual({ FAL_KEY: true, DAYTONA_API_KEY: true });
+  });
+
+  it("requires the Groq key only when Groq writes (AUTO_WRITER=groq)", async () => {
+    const r = await autoAvailable({ FAL_KEY: "f", DAYTONA_API_KEY: "d", AUTO_WRITER: "groq", AUTH_KV: kv() });
+    expect(r.ok).toBe(false);
+    expect(r.missing).toEqual(["GROQ_API_KEY"]);
+    const ok = await autoAvailable({ ...KEYS, AUTO_WRITER: "groq", AUTH_KV: kv() });
+    expect(ok.ok).toBe(true);
   });
 
   it("reports missing keys by name", async () => {
     const r = await autoAvailable({ FAL_KEY: "f", AUTH_KV: kv() });
     expect(r.ok).toBe(false);
-    expect(r.missing).toEqual(["DAYTONA_API_KEY", "GROQ_API_KEY"]);
+    expect(r.missing).toEqual(["DAYTONA_API_KEY"]);
     expect(r.reason).toMatch(/set up/);
   });
 

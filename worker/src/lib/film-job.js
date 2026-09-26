@@ -110,7 +110,7 @@
 // on is stamped `film: { id, title, completedAt }`, which is what `/api/pool`
 // (the Editor's media pool, the agent's list_media_pool) lists as
 // "Film — <title>". `film.done` carries it all.
-import { groqJSON } from "./groq.js";
+import { writerModel } from "./writer.js";
 import { autoAvailable } from "./auto-availability.js";
 import { checkAllowance, countFilm } from "./film-allowance.js";
 import { updateSittings } from "./director.js";
@@ -591,4 +591,5 @@ export async function runFilm(job, deps) {
 }
 
 /** The production model: Groq through AI Gateway (lib/groq.js). */
-export const groqModel = (env) => ({ json: (opts) => groqJSON(env, opts) });
+// The writing model — Workers AI Kimi by default, Groq behind AUTO_WRITER=groq (lib/writer.js).
+export const groqModel = (env) => writerModel(env);

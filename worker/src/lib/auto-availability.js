@@ -20,8 +20,14 @@ export const AUTO_PAUSE_KEY = "auto:paused";
 export const AUTO_KEYS = {
   FAL_KEY: "fal (sheets, clips, the sitting)",
   DAYTONA_API_KEY: "Daytona (cutting and scoring)",
-  GROQ_API_KEY: "Groq (writing steps)",
 };
+
+// The writing steps' key depends on who writes them (lib/writer.js): Workers AI
+// needs only the Worker's AI binding; Groq needs its key.
+function requiredKeys(env) {
+  const groq = String(env?.AUTO_WRITER || "").trim().toLowerCase() === "groq";
+  return groq ? { ...AUTO_KEYS, GROQ_API_KEY: "Groq (writing steps)" } : AUTO_KEYS;
+}
 
 const GENERIC_PAUSE = "Auto is paused for now — new Films can't start. Films already running will finish.";
 
@@ -34,7 +40,7 @@ function pauseReason(v) {
 // → { ok, reason, paused, keys: {NAME: bool}, missing: [NAME] }. Never throws;
 // a KV read failure is treated as "not paused" (the keys check still applies).
 export async function autoAvailable(env) {
-  const keys = Object.fromEntries(Object.keys(AUTO_KEYS).map((k) => [k, !!env?.[k]]));
+  const keys = Object.fromEntries(Object.keys(requiredKeys(env)).map((k) => [k, !!env?.[k]]));
   const missing = Object.keys(keys).filter((k) => !keys[k]);
 
   let paused = pauseReason(env?.AUTO_PAUSED);
