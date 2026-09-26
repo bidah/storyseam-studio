@@ -29,7 +29,8 @@
   // Non-secret config. Secrets are set with `wrangler secret put <NAME>`:
   //   R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY  (presign R2 for the
   //     Daytona ffmpeg sandbox — see src/lib/ffmpeg.js)
-  //   DAYTONA_API_KEY                (ffmpeg orchestration)
+  //   DAYTONA_API_KEY                (ffmpeg orchestration — and Auto's cutting
+  //     and scoring, on StorySeam's own account; see docs/adr/0003)
   //   HIGGSFIELD_MCP_TOKEN           (optional; static-login shortcut)
   //   GOOGLE_CLIENT_SECRET           ("Sign in with Google" — the OAuth client
   //     secret pairing GOOGLE_CLIENT_ID below. Create a Web application OAuth
@@ -40,7 +41,19 @@
   //   FAL_KEY                        (OPTIONAL fal.ai fallback key. The primary
   //     path is BYOK: each user's own key rides per-request as x-fal-key from
   //     their browser's localStorage and is never stored server-side. This env
-  //     secret only backstops requests without one — dev / single-tenant use.)
+  //     secret only backstops requests without one — dev / single-tenant use.
+  //     It is ALSO the platform key every Auto Film runs on (ADR 0003): Auto
+  //     never uses an author's key, so prod must have it set.)
+  //   GROQ_API_KEY                   (Auto's writing steps — Idea, World, sheet
+  //     prompts, Shot list, Cue sheet — on StorySeam's Groq account. See
+  //     src/lib/groq.js.)
+  //   GROQ_GATEWAY_URL               (the Cloudflare AI Gateway Groq base,
+  //     https://gateway.ai.cloudflare.com/v1/<account_id>/<gateway_id>/groq —
+  //     not secret, but per-account; unset = Groq direct, dev only.)
+  //   Auto kill switch — NOT a secret, a KV key, so it flips without a deploy:
+  //     npx wrangler kv key put --binding AUTH_KV --remote auto:paused "<reason>"
+  //     npx wrangler kv key delete --binding AUTH_KV --remote auto:paused
+  //     GET /api/auto/status reports it (src/lib/auto-availability.js).
   //   ATLAS_KEY                      (OPTIONAL Atlas Cloud fallback key — same
   //     BYOK model as FAL_KEY, header x-atlas-key. See src/lib/atlas.js.)
   //   MCP_TOKEN                      (bearer token for POST /api/mcp, the MCP
