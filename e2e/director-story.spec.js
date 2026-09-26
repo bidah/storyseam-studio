@@ -227,6 +227,60 @@ test.describe("director story", () => {
     await expect(page.getByRole("heading", { name: HERO })).toBeVisible();
   });
 
+  const stoppedJob = () =>
+    job({
+      status: "stopped",
+      error: "Stills: The first frame was refused: Too big",
+      steps: [
+        ...["world", "sheets", "shotlist", "cuesheet", "run"].map((key) => ({ key, label: key, status: "done" })),
+        { key: "stills", label: "Stills", status: "failed", error: "The first frame was refused: Too big" },
+      ],
+      stopped: { stage: "stills", label: "Stills", reason: "The first frame was refused: Too big", kept: [], spent: 6.4 },
+    });
+
+  test("a stopped Film offers Retry from its failed step, which POSTs and flips the step to running", async ({ page }) => {
+    await mockBackend(page, { routes: filmRoute("film_1", { job: stoppedJob() }) });
+    let posted = 0;
+    await page.route("**/api/auto/films/film_1/retry", (route) => {
+      expect(route.request().method()).toBe("POST");
+      posted += 1;
+      const running = stoppedJob();
+      running.status = "running";
+      running.error = null;
+      delete running.stopped;
+      running.steps[5] = { key: "stills", label: "Stills", status: "running", error: null };
+      return route.fulfill({ status: 202, contentType: "application/json", body: JSON.stringify({ ok: true, job: running }) });
+    });
+    await page.goto("/director-story/create/film_1");
+
+    await expect(page.locator('[data-step="stills"]')).toHaveAttribute("data-status", "failed");
+    await expect(page.locator("[data-stopped]")).toBeVisible();
+    const retry = page.getByRole("button", { name: "Retry from Stills" });
+    await expect(retry).toBeVisible();
+    await expect(page.getByRole("button", { name: /new story/i })).toBeVisible();
+
+    await retry.click();
+    await expect(page.locator('[data-step="stills"]')).toHaveAttribute("data-status", "running");
+    expect(posted).toBe(1);
+    await expect(page.locator("[data-stopped]")).toHaveCount(0);
+    await expect(page.getByRole("button", { name: /retry from/i })).toHaveCount(0);
+  });
+
+  test("a refused retry shows its reason as the stopped line", async ({ page }) => {
+    await mockBackend(page, { routes: filmRoute("film_1", { job: stoppedJob() }) });
+    await page.route("**/api/auto/films/film_1/retry", (route) =>
+      route.fulfill({
+        status: 409,
+        contentType: "application/json",
+        body: JSON.stringify({ ok: false, code: "busy", message: "Another story is being made on this project — wait for it to finish." }),
+      }),
+    );
+    await page.goto("/director-story/create/film_1");
+    await page.getByRole("button", { name: "Retry from Stills" }).click();
+    await expect(page.locator("[data-stopped]")).toHaveText(/Another story is being made/);
+    await expect(page.locator('[data-step="stills"]')).toHaveAttribute("data-status", "failed");
+  });
+
   test("an id this project doesn't have → the not-found line", async ({ page }) => {
     await mockBackend(page, { routes: filmRoute("film_nope", NOT_FOUND) });
     await page.goto("/director-story/create/film_nope");

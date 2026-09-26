@@ -44,7 +44,7 @@ function nextFor(status?: string): string {
     case "done":
       return "Finished. The Film is at `film.url`.";
     case "stopped":
-      return "Stopped on our side. Everything already made is kept, and a stopped Film does not count against the allowance. Say which stage stopped and why.";
+      return "Stopped on our side. Everything already made is kept, and a stopped Film does not count against the allowance. Say which stage stopped and why, and offer to retry it from that stage (retry_film) — only on the author's yes.";
     case "declined":
       return "The author declined at the confirm card. Nothing after the World was made or paid for.";
     case "queued":
@@ -252,6 +252,40 @@ const answerTool = (api: Api, answer: "confirm" | "decline") =>
               job: viewJob(body.job),
             },
           };
+        }
+        throw err;
+      }
+    },
+  });
+
+export const retryFilm = (api: Api) =>
+  defineTool({
+    name: "retry_film",
+    description:
+      "Retry a STOPPED Auto Film from the step that stopped it — the same as the \"Retry from <step>\" button on its story page. Every earlier step's output and spend is kept (the World, sheets and clips are NOT paid for again), the Film's Series is repaired first, and the job runs on server-side from the failed step. Only for the project's latest Film, only when get_film says \"stopped\", and only on the author's ask. It REFUSES (never queues) when another Film is running or queued, when a newer Film has run since, or when Auto is paused / the allowance is used up — relay `message` and do not retry again. A stopped Film never counted against the allowance, and a retried one that finishes counts once. After a retry, tell the author which step it resumed at and END THE TURN; do not poll get_film.",
+    input: v.object({
+      filmId: d(v.string(), "The stopped Film's id, from get_film (`job.id`) or make_film (`filmId`)."),
+    }),
+    async run({ data: input, signal }): Promise<{ output: Json }> {
+      const id = encodeURIComponent(String(input.filmId));
+      try {
+        const res = (await api.post(`/api/auto/films/${id}/retry`, {}, signal)) as {
+          job?: Job; repaired?: { fixes?: string[] } | null;
+        };
+        const resumed = res.job?.steps?.at(-1);
+        return {
+          output: {
+            ok: true,
+            resumedAt: resumed ? { key: resumed.key ?? null, label: resumed.label ?? null } : null,
+            repaired: (res.repaired?.fixes ?? []) as Json,
+            job: viewJob(res.job),
+            next: "Retrying server-side from the failed step. Tell the author, and end the turn.",
+          },
+        };
+      } catch (err) {
+        const body = (err as { body?: { code?: string; message?: string; job?: Job } }).body;
+        if (body?.code) {
+          return { output: { ok: false, code: body.code, message: body.message ?? null, job: viewJob(body.job) } };
         }
         throw err;
       }

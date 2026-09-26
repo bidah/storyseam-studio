@@ -17,9 +17,11 @@
 //            kept: [{ key, label, summary }], spent },
 //            confirm?: { status: 'awaiting'|'confirmed'|'declined', after,
 //            summary, plan, askedAt, answeredAt },
-//            film?, spent?, allowance? (set when `done` — see "The Film") }
+//            film?, spent?, allowance? (set when `done` — see "The Film"),
+//            retries?: [{ stage, label, reason, at, repaired? }] (retryFilm) }
 //   step = { key, label, status: 'running'|'retrying'|'done'|'failed',
-//            startedAt, endedAt, summary, result, error, failures, pending? }
+//            startedAt, endedAt, summary, result, error, failures, pending?,
+//            attemptBase? (attempts made before a retry) }
 //
 // `steps` grows as stages START — a card appears when its step starts, so the
 // surface never draws a stage that hasn't begun. `summary` is one line for the
@@ -70,6 +72,9 @@
 //   film.queued? → film.started → (step.started → step.progress* →
 //     step.retrying? → step.done | step.failed)… → film.done | film.stopped
 //
+// A stopped Film can be RETRIED from the step that stopped it (`retryFilm`):
+// film.stopped → film.retried → (the failed step runs again…) → …
+//
 // `film.refused` replaces film.started when a QUEUED Film reaches the front
 // and the kill switch or the allowance says no (lib/film-queue.js).
 //
@@ -113,7 +118,7 @@
 import { writerModel } from "./writer.js";
 import { autoAvailable } from "./auto-availability.js";
 import { checkAllowance, countFilm } from "./film-allowance.js";
-import { updateSittings } from "./director.js";
+import { readIndex, readSeries, repairSeries, updateSittings } from "./director.js";
 import { runWithContext } from "./request-context.js";
 import { WORLD_SHAPE } from "./auto-prompts.generated.js";
 import { runSheetsStage } from "./film-stages/sheets.js";
@@ -143,7 +148,7 @@ export const FILM_EVENTS = Object.freeze([
   "film.queued", "film.started", "film.refused", "step.started", "step.retrying",
   "step.done", "step.failed", "film.done", "film.stopped",
   "film.awaiting-confirm", "film.confirmed", "film.declined",
-  "step.progress",
+  "step.progress", "film.retried",
 ]);
 
 /** How long a pending stage waits before it is asked again (fal takes minutes). */
@@ -391,7 +396,10 @@ export async function advanceFilm(job, deps) {
   if (!resuming) await commit(job, event("step.started", job, step));
 
   const results = Object.fromEntries(job.steps.filter((s) => s.status === "done").map((s) => [s.key, s.result]));
-  const attempt = (step.failures || 0) + 1;
+  // `attemptBase` counts the attempts made before a retry (retryFilm), so a
+  // retried stage's attempt number keeps rising and it redoes the work that
+  // failed on the earlier attempts rather than waiting on it.
+  const attempt = (step.attemptBase || 0) + (step.failures || 0) + 1;
   try {
     // Doc writes are attributed and episode-scoped from the request context
     // (lib/request-context.js); a job has no request, so it opens its own.
@@ -451,6 +459,129 @@ export async function advanceFilm(job, deps) {
     await commit(job, event("film.done", job));
   }
   return job;
+}
+
+// ── Retry from the failed step ──────────────────────────────────────────────
+//
+// A Film that stopped at Stills has already paid for its World, sheets and
+// clips; starting over re-buys all of them. `retryFilm` instead puts the SAME
+// job back to `running` with the failed step running again: every earlier
+// step's result and the whole `spend` are kept, `job.stopped` is cleared (and
+// recorded in `job.retries`), and the runner resumes AT that step — the stages
+// are written to resume (sheets finds its Series by filmId, the run resubmits
+// only clips without a live take, stills keeps its per-clip cuts in its own
+// result). The failed step gets a fresh retry-once budget; its attempt number
+// keeps rising (`attemptBase`) so work that failed before is redone.
+//
+// Only the project's LATEST Film, only when it is `stopped`, and only when
+// nothing is queued. A retry REFUSES rather than queues: the queue holds new
+// prompts, and a Film queued ahead of the retry would start first and make the
+// stopped one no longer the latest. The kill switch and the allowance are
+// checked like a start. A stopped Film never counted, so a retry that finishes
+// is its first and only count — countFilm is idempotent on the job id anyway.
+//
+// Before it resumes, the Film's Series is repaired (`repairFilmSeries` →
+// director.js sanitizeSeries) so a value an earlier step wrote outside the
+// Series' limits cannot refuse the same write again.
+
+/** The Director Series a Film files onto: from a step's result, else by `filmId`. */
+export async function filmSeriesId(env, job) {
+  for (const s of job?.steps || []) {
+    if (s?.result?.seriesId) return s.result.seriesId;
+  }
+  const index = await readIndex(env, job.projectId);
+  for (const id of index.seriesIds || []) {
+    const s = await readSeries(env, job.projectId, id);
+    if (s?.filmId === job.id) return s.id;
+  }
+  return null;
+}
+
+/** Sanitize the Film's Series before a retry. → { seriesId, fixes } */
+export async function repairFilmSeries(env, job) {
+  const seriesId = await filmSeriesId(env, job);
+  if (!seriesId) return { seriesId: null, fixes: [] };
+  const res = await repairSeries(env, job.projectId, seriesId);
+  return { seriesId, fixes: res.fixes || [] };
+}
+
+const retryRefusal = (code, message) => ({ ok: false, code, message });
+
+/**
+ * Retry a stopped Film from the step that stopped it.
+ *
+ * state: { job (the project's current — latest — job), queue, archived (the
+ *          Film from the history, when `job` is a different one) }
+ * deps:  { env, commit, now?, availability?, allowance?, repair?(job) }
+ *
+ * → { ok: true, job, repaired } | { ok: false, code, message }, code
+ *   'not-found' | 'not-latest' | 'busy' | 'not-stopped' | 'paused' |
+ *   'unavailable' | 'allowance'.
+ */
+export async function retryFilm({ job, queue = [], archived = null } = {}, filmId, deps = {}) {
+  if (!job || job.id !== filmId) {
+    if (!archived) return retryRefusal("not-found", "No such story on this project.");
+    return isActive(job)
+      ? retryRefusal("busy", "Another story is being made on this project — wait for it to finish.")
+      : retryRefusal("not-latest", "A newer story has run on this project since — start a new story instead.");
+  }
+  if (job.status !== "stopped") {
+    return retryRefusal("not-stopped", "Only a story that stopped can be retried.");
+  }
+  if ((queue || []).length) {
+    return retryRefusal("busy", "Another story is waiting to start on this project — wait for it to finish.");
+  }
+  const at = job.stopped?.stage;
+  let i = at ? job.steps.findIndex((s) => s.key === at) : -1;
+  if (i < 0) i = job.steps.findIndex((s) => s.status === "failed");
+  if (i < 0) return retryRefusal("not-stopped", "This story has no failed step to retry.");
+
+  const avail = await (deps.availability || autoAvailable)(deps.env);
+  if (!avail.ok) return retryRefusal(avail.paused ? "paused" : "unavailable", avail.reason);
+  if (job.userId) {
+    const allowance = await (deps.allowance || checkAllowance)(deps.env, job.userId, deps.now?.());
+    if (!allowance.ok) return retryRefusal("allowance", allowance.message);
+  }
+
+  let repaired = null;
+  if (deps.repair) {
+    try {
+      repaired = await deps.repair(job);
+    } catch (err) {
+      // A repair that could not run is no reason to refuse: the step runs, and
+      // if the Series still refuses it, it stops again with that reason.
+      repaired = { error: String(err?.message || err) };
+    }
+  }
+
+  const now = iso(deps.now?.());
+  const failed = job.steps[i];
+  const step = {
+    ...failed,
+    status: "running",
+    pending: false,
+    error: null,
+    endedAt: null,
+    startedAt: now,
+    failures: 0,
+    attemptBase: (failed.attemptBase || 0) + (failed.failures || 0),
+  };
+  const { stopped, ...rest } = job;
+  const next = {
+    ...rest,
+    status: "running",
+    error: null,
+    updatedAt: now,
+    // Steps map 1:1 onto FILM_STAGES by position; nothing after the failed one
+    // ever started, but drop anything there so the runner resumes HERE.
+    steps: [...job.steps.slice(0, i), step],
+    retries: [
+      ...(job.retries || []),
+      { stage: step.key, label: step.label, reason: stopped?.reason ?? failed.error ?? null, at: now, ...(repaired ? { repaired } : {}) },
+    ],
+  };
+  await (deps.commit || (async () => {}))(next, event("film.retried", next, step));
+  return { ok: true, job: next, repaired };
 }
 
 // ── The Film ────────────────────────────────────────────────────────────────

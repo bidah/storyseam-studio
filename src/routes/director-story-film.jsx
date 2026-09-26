@@ -25,6 +25,7 @@ import {
   Page,
   StoryView,
   fetchFilm,
+  retryFilm,
   useDirectorProject,
 } from "@/components/DirectorStory";
 import { MONO } from "@/lib/hudTheme";
@@ -42,6 +43,8 @@ function FilmStory({ signedIn }) {
   const { projectId, error } = useDirectorProject(signedIn);
   // `undefined` = not read yet; `null` = not in this project.
   const [job, setJob] = useState(undefined);
+  const [retrying, setRetrying] = useState(false);
+  const [retryError, setRetryError] = useState(null);
 
   const refresh = useCallback(async () => {
     try {
@@ -51,7 +54,7 @@ function FilmStory({ signedIn }) {
   }, [filmId]);
 
   // A new id in the URL (a submit from here, or history navigation) starts over.
-  useEffect(() => { setJob(undefined); }, [filmId]);
+  useEffect(() => { setJob(undefined); setRetryError(null); }, [filmId]);
 
   useEffect(() => {
     if (projectId) refresh();
@@ -76,13 +79,36 @@ function FilmStory({ signedIn }) {
 
   const onNew = () => navigate(PATH);
 
+  // Retry a stopped Film from its failed step: the answer is the running job,
+  // so the failed step flips back to running at once; the live events and the
+  // poll carry it on from there. A refusal replaces the stopped line.
+  const onRetry = async () => {
+    setRetrying(true);
+    setRetryError(null);
+    try {
+      const next = await retryFilm(filmId);
+      if (next) setJob(next);
+      else refresh();
+    } catch (err) {
+      setRetryError(err.message);
+    } finally {
+      setRetrying(false);
+    }
+  };
+
   if (job === null) return <Stranded message="This story isn't in your current project." />;
   if (error && job === undefined) return <Stranded message={error} />;
 
   return (
     <>
       {projectId ? <LiveSync key={projectId} onEvent={onEvent} onResync={refresh} /> : null}
-      <StoryView job={job || { id: filmId, prompt: "", status: "loading", steps: [] }} onNew={onNew} />
+      <StoryView
+        job={job || { id: filmId, prompt: "", status: "loading", steps: [] }}
+        onNew={onNew}
+        onRetry={onRetry}
+        retrying={retrying}
+        retryError={retryError}
+      />
     </>
   );
 }

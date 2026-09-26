@@ -23,7 +23,7 @@
 import { readDoc, updateDoc } from "./docs.js";
 import { filesUrl, mediaKey } from "./media.js";
 import {
-  applyPatch, archiveReplacedAudio, fieldErrors, seriesFields, seriesInput, seriesPatch, stampCueTiming,
+  MAX_SHEET_REFS, applyPatch, archiveReplacedAudio, fieldErrors, seriesFields, seriesInput, seriesPatch, stampCueTiming,
 } from "./series.ts";
 
 /** The index doc. `seq` numbers new Series so two creates never collide. */
@@ -69,6 +69,49 @@ export async function readSeries(env, pid, seriesId) {
  */
 export function updateSeries(env, pid, seriesId, mutate, opts) {
   return updateDoc(env, pid, seriesDocName(seriesId), null, mutate, opts);
+}
+
+/**
+ * Bring a Series back inside the limits its own schema states, where an older
+ * write left it outside them — so a value written before a ceiling was
+ * enforced at its source cannot block every later write to the Series (each
+ * write re-validates the WHOLE row). Pure: returns the repaired copy and what
+ * it changed, and the SAME object when nothing needed fixing.
+ *
+ * Today: every model sheet's `refs` trimmed to MAX_SHEET_REFS (an Auto run once
+ * filed a style sheet with 9, and the Stills stage's opening-frame patch was
+ * then refused with "expected array to have <=8 items"). Add the next such
+ * repair here.
+ *
+ * → { series, fixes: [string] }
+ */
+export function sanitizeSeries(series) {
+  const fixes = [];
+  if (!series || typeof series !== "object" || !Array.isArray(series.modelSheets)) return { series, fixes };
+  const modelSheets = series.modelSheets.map((sheet, i) => {
+    if (!Array.isArray(sheet?.refs) || sheet.refs.length <= MAX_SHEET_REFS) return sheet;
+    fixes.push(`model sheet "${sheet.name || i + 1}": ${sheet.refs.length} refs trimmed to ${MAX_SHEET_REFS}`);
+    return { ...sheet, refs: sheet.refs.slice(0, MAX_SHEET_REFS) };
+  });
+  return fixes.length ? { series: { ...series, modelSheets }, fixes } : { series, fixes };
+}
+
+/**
+ * sanitizeSeries, written through the Series' compare-and-swap — nothing is
+ * written when nothing needed fixing.
+ *
+ * → { ok: true, fixes } | { missing: true }
+ */
+export async function repairSeries(env, pid, seriesId) {
+  const res = await updateSeries(env, pid, seriesId, (row) => {
+    if (!row?.id) return { abort: true, missing: true };
+    const { series, fixes } = sanitizeSeries(row);
+    if (!fixes.length) return { abort: true, fixes };
+    Object.assign(row, series, { updatedAt: nowIso() });
+    return { fixes };
+  });
+  if (res?.missing) return { missing: true };
+  return { ok: true, fixes: res?.fixes || [] };
 }
 
 /** `s_` + short uuid, matching the project id's shape. */

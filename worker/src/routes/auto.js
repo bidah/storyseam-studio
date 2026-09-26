@@ -23,6 +23,16 @@
 //   POST /api/auto/films/:id/confirm  answer the one confirm card an Auto-off
 //   POST /api/auto/films/:id/decline  job asks after the World (#65).
 //                                 200 { ok, job } | 404/409 { ok:false, code, job }
+//   POST /api/auto/films/:id/retry    re-run a STOPPED Film from the step that
+//                                 stopped it, keeping every earlier step's
+//                                 result and spend (its Series is repaired
+//                                 first). Only the project's latest Film, and
+//                                 only with nothing running or queued — it
+//                                 REFUSES rather than queues.
+//                                 202 { ok, job, repaired }
+//                                 404 not-found | 409 not-latest|busy|not-stopped
+//                                 | 429 allowance | 503 paused|unavailable
+//                                 → { ok:false, code, message, job }
 //   GET  /api/auto/settings       the signed-in user's Auto toggle { auto }
 //   PUT  /api/auto/settings       body { auto: boolean } → { auto }
 //                                 Per USER, not per project (lib/auto-settings.js).
@@ -89,6 +99,18 @@ export function registerAuto(app) {
       return c.json(res);
     });
   }
+
+  // Retry a stopped Film from the step that stopped it. Refuses (never queues)
+  // when it isn't the project's latest Film, isn't stopped, or another Film is
+  // running or waiting — see lib/film-job.js retryFilm.
+  const RETRY_STATUS = {
+    "not-found": 404, "not-latest": 409, busy: 409, "not-stopped": 409, allowance: 429, paused: 503, unavailable: 503,
+  };
+  app.post("/api/auto/films/:id/retry", async (c) => {
+    const res = await filmJobs(c).retry(c.req.param("id"));
+    if (!res.ok) return c.json(res, RETRY_STATUS[res.code] || 400);
+    return c.json(res, 202);
+  });
 
   app.get("/api/auto/settings", async (c) => {
     const userId = c.get("userId");
