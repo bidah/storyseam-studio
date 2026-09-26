@@ -208,8 +208,17 @@ function StillsResult({ result }) {
   );
 }
 
+// The Score: the scored film once it is filed (the unscored sitting is kept
+// beside it, not shown — CONTEXT.md › Film).
+function ScoreResult({ result }) {
+  if (!result?.url) return null;
+  return (
+    <video src={result.url} controls preload="metadata" className="aspect-video w-full rounded-md border bg-black" data-scored />
+  );
+}
+
 // One card per step. Stages without a result view render their summary alone.
-const RESULT_VIEWS = { world: WorldResult, sheets: SheetsResult, run: RunResult, stills: StillsResult };
+const RESULT_VIEWS = { world: WorldResult, sheets: SheetsResult, run: RunResult, stills: StillsResult, score: ScoreResult };
 
 function StepCard({ step }) {
   const badge = STATUS_BADGE[step.status] || STATUS_BADGE.running;

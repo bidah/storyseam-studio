@@ -34,7 +34,7 @@ import {
 import { forgetSitting, getStage, listSittings, preflightSitting } from "./stage.js";
 import { getUpscale, listUpscales, upscaleVideo } from "./upscale.js";
 import { getShotSheet, previewShotSheet, renderShotSheet } from "./shot_sheet.js";
-import { getMusicalized, planScore, renderCue } from "./musicalized.js";
+import { getMusicalized, planScore, renderCue, scoreSitting } from "./musicalized.js";
 // Moodboard (the reference wall)
 import { getMoodboard } from "./get_moodboard.js";
 import { addMoodboardCard, removeMoodboardCard } from "./add_moodboard_card.js";
@@ -246,6 +246,7 @@ export function createTools(api: Api): ToolDefinition[] {
     getMusicalized(api),
     planScore(api),
     renderCue(api),
+    scoreSitting(api),
     // Upscale
     listUpscales(api),
     upscaleVideo(api),

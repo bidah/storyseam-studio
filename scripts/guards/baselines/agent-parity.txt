@@ -26,6 +26,10 @@
 # no tab open (the agent starts it through the Film job). What stays below is the
 # Stage's BYOK channel for the author's OWN live sitting, and the runner page's
 # token-authed plumbing, which only that headless page ever calls.
+#
+# The scored mix is no longer a gap either (#70): `score_sitting` posts JSON to
+# /api/musicalized/scored and the Worker mixes it in a Daytona sandbox (picture
+# stream-copied), the same mix as the Film job's `score` stage.
 /api/stage/fal/proxy              # the author's live WebRTC session on Stage (BYOK); the server-side Sitting is the Film job's
 /api/sitting-runner/screening     # the headless runner page's job-token routes (src/sitting-runner/) —
 /api/sitting-runner/progress      # called only by the page the Film job's box opens, never by a person
@@ -33,7 +37,6 @@
 /api/shotsheet/pins               # the browser's UPLOAD of frames it cut off the decoded take on screen. Server-side
                                   # the same cut + pin is the Auto job's Stills stage (Daytona ffmpeg,
                                   # worker/src/lib/film-stages/stills.js); the agent pins via /api/director/series/*/pin
-/api/musicalized/scored           # the mix, muxed in the browser so the picture is copied rather than re-encoded
 
 /api/projects/*
 /api/projects/*/activate

@@ -171,11 +171,13 @@ it is vendored: the form checks the ceilings while a sheet is being typed, the
 Worker checks them on the way in, and the agent checks them before it spends a
 sitting. Every route answers with an `issues` map and every surface shows it.
 
-Three things are the BROWSER's, and each is in `scripts/guards/baselines/
-agent-parity.txt` with its reason: the WebRTC session itself, cutting frames off
-a decoded take, and muxing the scored film (the picture's packets are copied
-rather than re-encoded, so a scored sitting is bit-for-bit the one that was
-kept).
+Two things are the BROWSER's, and each is in `scripts/guards/baselines/
+agent-parity.txt` with its reason: the WebRTC session itself, and cutting frames
+off a decoded take. Muxing the scored film was the third; it now also runs
+server-side (`score_sitting` and the Auto Film job's Score stage — ffmpeg in a
+Daytona sandbox, `worker/src/lib/film-score.js`). Either way the picture's
+packets are copied rather than re-encoded, so a scored sitting is bit-for-bit
+the one that was kept.
 
 **What connects to what** — this is a plugin of *this* studio, not a second app
 sharing its header. The Shot list derives the cue sheet (`derive_cue_sheet`);

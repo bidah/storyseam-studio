@@ -492,7 +492,7 @@ export const PLUGINS: PluginSpec[] = [
       "musicalized", "score the film", "score the sitting", "music under it",
       "lay a score", "compose a cue", "scored version",
     ],
-    tools: ["get_musicalized", "plan_score", "render_cue"],
+    tools: ["get_musicalized", "plan_score", "render_cue", "score_sitting"],
     skills: ["score-film"],
     // NOT seedable, and the four Director surfaces are the first plugins that
     // are not. Seeding exists for a project that predates the marketplace and

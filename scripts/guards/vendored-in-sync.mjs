@@ -62,6 +62,8 @@ const PAIRS = [
   ["src/lib/music-plan.ts", "flue-agent/src/lib/music-plan.ts", "npm run series:sync"],
   ["src/lib/film-plan.ts", "worker/src/lib/film-plan.ts", "npm run series:sync"],
   ["src/lib/film-plan.ts", "flue-agent/src/lib/film-plan.ts", "npm run series:sync"],
+  ["src/lib/score-mix.ts", "worker/src/lib/score-mix.ts", "npm run series:sync"],
+  ["src/lib/score-mix.ts", "flue-agent/src/lib/score-mix.ts", "npm run series:sync"],
   // The moodboard op reducer. Applied optimistically on the client AND
   // authoritatively inside the Worker's updateDoc CAS — a drifted copy means
   // cards that silently snap back to a different position after a reload.

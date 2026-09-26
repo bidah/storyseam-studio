@@ -114,7 +114,7 @@ describe("the Film job — world stage", () => {
   });
 
   it("keeps the stage list ordered and keyed", () => {
-    expect(FILM_STAGES.map((s) => s.key)).toEqual(["world", "sheets", "shotlist", "cuesheet", "run", "stills", "sitting"]);
+    expect(FILM_STAGES.map((s) => s.key)).toEqual(["world", "sheets", "shotlist", "cuesheet", "run", "stills", "sitting", "score"]);
     expect(worldMessages("p")).toHaveLength(2);
     expect(() => parseIdeaWorld({ idea: "i", world: { characters: [] } })).toThrow(/no characters/);
     expect(publicJob(null)).toBeNull();

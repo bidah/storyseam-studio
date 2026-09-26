@@ -13,36 +13,12 @@
 // without an AudioContext, and the same code drives the live preview (a
 // GainNode scheduled from `levelAt`) and the final render.
 
-/** dB → linear gain. -16 dB → 0.158, -21 dB → 0.089, -4.5 dB → 0.6. */
-export function dbToGain(db: number): number {
-  return Math.pow(10, db / 20);
-}
-
-export function gainToDb(gain: number): number {
-  return gain <= 0 ? -99 : 20 * Math.log10(gain);
-}
-
-/** A stretch of the film where the bed sits at a different level: exteriors, mostly. */
-export type LevelSpan = { from: number; to: number; db: number };
-
-export type MixSettings = {
-  /** The bed's level everywhere a span does not say otherwise. -21 dB, measured in interiors. */
-  baseDb: number;
-  /** Where it sits elsewhere: -16 dB in vacuum, where -21 vanishes. */
-  spans: LevelSpan[];
-  /** Dialogue windows, MEASURED, where the bed drops by `duckDb`. */
-  ducks: [number, number][];
-  duckDb: number;
-  fadeInSec: number;
-};
-
-export const DEFAULT_MIX: MixSettings = {
-  baseDb: -21,
-  spans: [],
-  ducks: [],
-  duckDb: -4.5,
-  fadeInSec: 1,
-};
+// The level model — dB, spans, ducks, the default mix and the ffmpeg
+// expression — is shared with the Auto Film job's server-side mix, so it lives
+// in src/lib/score-mix.ts (vendored into the Worker) and is re-exported here.
+import { DEFAULT_MIX, dbToGain, gainToDb, levelExpression, type LevelSpan, type MixSettings } from '../lib/score-mix';
+export { DEFAULT_MIX, dbToGain, gainToDb, levelExpression };
+export type { LevelSpan, MixSettings };
 
 /** The bed's linear gain at one second of the film. */
 export function levelAt(settings: MixSettings, t: number): number {
@@ -74,17 +50,6 @@ export function levelBreakpoints(settings: MixSettings): number[] {
     points.add(to);
   }
   return [...points].filter((t) => Number.isFinite(t) && t >= 0).sort((a, b) => a - b);
-}
-
-/** The ffmpeg expression the script would have been given — for the record on the row. */
-export function levelExpression(settings: MixSettings): string {
-  const base = dbToGain(settings.baseDb).toFixed(3);
-  if (settings.spans.length === 0) return base;
-  const nested = settings.spans.reduceRight(
-    (inner, span) => `if(between(t,${span.from},${span.to}),${dbToGain(span.db).toFixed(3)},${inner})`,
-    base,
-  );
-  return nested;
 }
 
 /**

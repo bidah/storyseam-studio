@@ -33,7 +33,10 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 // with one function. `film-plan.ts` is the Auto quote — a Film's length, its
 // reels and its estimated cost — which the confirm card shows, the Film job
 // runs and the chat repeats: one plan, not three different promises.
-const MODULES = ["series.ts", "shot-sheet.ts", "music-plan.ts", "film-plan.ts"];
+// `score-mix.ts` is the score's mix and plan as numbers — the bed level, the
+// ducks, the picture's turns — which the Musicalized tab runs over decoded
+// samples and the Film job's Score stage runs as an ffmpeg expression.
+const MODULES = ["series.ts", "shot-sheet.ts", "music-plan.ts", "film-plan.ts", "score-mix.ts"];
 const PACKAGES = ["worker", "flue-agent"];
 
 /**

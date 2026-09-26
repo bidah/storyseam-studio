@@ -104,6 +104,7 @@ describe("the Film stages after the World", () => {
       ["run", "Shot sheet run"],
       ["stills", "Stills"],
       ["sitting", "Sitting"],
+      ["score", "Score"],
     ]);
   });
 
