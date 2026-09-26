@@ -35,6 +35,8 @@ import { forgetSitting, getStage, listSittings, preflightSitting } from "./stage
 import { getUpscale, listUpscales, upscaleVideo } from "./upscale.js";
 import { getShotSheet, previewShotSheet, renderShotSheet } from "./shot_sheet.js";
 import { getMusicalized, planScore, renderCue, scoreSitting } from "./musicalized.js";
+// Auto — prompt to Film, run server-side by the FilmJobs Durable Object.
+import { confirmFilm, declineFilm, getAutoStatus, getFilm, makeFilm, setAuto } from "./auto_film.js";
 // Moodboard (the reference wall)
 import { getMoodboard } from "./get_moodboard.js";
 import { addMoodboardCard, removeMoodboardCard } from "./add_moodboard_card.js";
@@ -247,6 +249,13 @@ export function createTools(api: Api): ToolDefinition[] {
     planScore(api),
     renderCue(api),
     scoreSitting(api),
+    // Auto — prompt to Film (the job runs server-side; these start and read it)
+    getAutoStatus(api),
+    makeFilm(api),
+    getFilm(api),
+    confirmFilm(api),
+    declineFilm(api),
+    setAuto(api),
     // Upscale
     listUpscales(api),
     upscaleVideo(api),
@@ -312,6 +321,9 @@ export function createReadTools(api: Api): ToolDefinition[] {
     previewShotSheet(api),
     getMusicalized(api),
     planScore(api),
+    // Auto — whether a Film can start, and how the current one is going
+    getAutoStatus(api),
+    getFilm(api),
     // Upscale — what can be upscaled and how the jobs are going
     listUpscales(api),
     getUpscale(api),

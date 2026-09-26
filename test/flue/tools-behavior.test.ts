@@ -10,6 +10,7 @@ import { editTimeline } from "../../flue-agent/src/tools/edit_timeline";
 import { commitPacing } from "../../flue-agent/src/tools/commit_pacing";
 import { selectReference } from "../../flue-agent/src/tools/select_reference";
 import { pinDraft } from "../../flue-agent/src/tools/pin_draft";
+import { makeFilm, getFilm } from "../../flue-agent/src/tools/auto_film";
 
 // A recording fake api: each verb logs its call and returns a preset payload.
 function makeApi(responses: { get?: any; post?: any; req?: any } = {}) {
@@ -144,5 +145,53 @@ describe("pin_draft (two-step: resolve then pin)", () => {
     expect(out.ok).toBe(false);
     expect(out.error).toMatch(/No draft named "ghost"/);
     expect(api.calls.some((c) => c.path === "/api/script/pin")).toBe(false);
+  });
+});
+
+describe("Auto film tools", () => {
+  it("make_film POSTs the same body the Auto surface does, putting an explicit length first", async () => {
+    const api = makeApi({ post: { ok: true, job: { id: "film-1", status: "running", steps: [], spend: {} } } });
+    const out: any = await run(makeFilm(api), { prompt: "a mecha short", length: "3:00" });
+    expect(api.calls[0]).toMatchObject({ verb: "post", path: "/api/auto/films", body: { prompt: "Length: 3:00. a mecha short" } });
+    expect(out).toMatchObject({ started: true, filmId: "film-1", job: { status: "running" } });
+  });
+
+  it("make_film reports a queue position", async () => {
+    const api = makeApi({ post: { ok: true, queued: true, position: 2, film: { id: "film-2" }, job: { id: "film-1", status: "running" } } });
+    const out: any = await run(makeFilm(api), { prompt: "x" });
+    expect(out).toMatchObject({ started: false, queued: true, position: 2, filmId: "film-2" });
+  });
+
+  it("make_film turns a refusal into a message instead of throwing", async () => {
+    const api: any = {
+      post: async () => {
+        throw Object.assign(new Error("Shot Studio API /api/auto/films failed: used up"), {
+          status: 429,
+          body: { ok: false, refusal: { code: "allowance", message: "You've made all 10 Films this month." }, job: null },
+        });
+      },
+    };
+    const out: any = await run(makeFilm(api), { prompt: "x" });
+    expect(out).toMatchObject({ started: false, refused: true, code: "allowance", message: "You've made all 10 Films this month." });
+  });
+
+  it("get_film shows stage summaries, and the Film only when done", async () => {
+    const running = makeApi({
+      get: {
+        job: {
+          id: "f", status: "running", spend: { world: 0.01 }, film: { url: "nope" },
+          steps: [{ key: "world", label: "World", status: "done", summary: "3 characters", result: { big: true } }],
+        },
+        queue: [],
+      },
+    });
+    const a: any = await run(getFilm(running));
+    expect(running.calls[0].path).toBe("/api/auto/films/current");
+    expect(a.job.steps[0]).toEqual({ key: "world", label: "World", status: "done", summary: "3 characters" });
+    expect(a.job.film).toBeUndefined();
+
+    const done = makeApi({ get: { job: { id: "f", status: "done", steps: [], spend: {}, film: { url: "https://x/film.mp4", seconds: 120 } }, queue: [] } });
+    const b: any = await run(getFilm(done));
+    expect(b.job.film).toEqual({ url: "https://x/film.mp4", seconds: 120 });
   });
 });

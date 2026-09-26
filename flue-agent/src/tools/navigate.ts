@@ -7,7 +7,7 @@ export const navigate = (api: Api) =>
   defineTool({
     name: "navigate",
     description:
-      "Move the author's open app to a tab — the counterpart to view_screen (which tells you where they ARE). Use it right after you make something they should look at: finish a shot list and send them to \"shotlist\", attach a still and send them to \"animatic\", stitch a cut and send them to \"cuts\". Views: the three core surfaces — world (the Bible), script, editor — plus any plugin this project has INSTALLED: episode (pre-installed), agents, moodboard, shotlist, images (image generation), videos (video generation), nodes (the visual node canvas), animatic, radio, sounds, musical, cuts, library. Plus \"plugins\" (the marketplace) and \"settings\". Sending someone to a plugin they have not installed lands them on its install prompt, not on the work — so check `get_status.plugins` first and offer the install instead (see the plugin-gate skill). `hash` scrolls to and flashes one item once the tab loads — \"ep-<bundleId>\" on episode, \"snd-<track>\" on sounds, \"locations\" on world. This is a REQUEST, not a guarantee: it reaches whatever tabs are open right now, and none may be, so never describe the result as though you watched their screen — say what you did, not what they are now seeing. Use it sparingly and only when there is something specific to see; yanking someone off the tab they are working on is worse than a sentence telling them where to look.",
+      "Move the author's open app to a tab — the counterpart to view_screen (which tells you where they ARE). Use it right after you make something they should look at: finish a shot list and send them to \"shotlist\", attach a still and send them to \"animatic\", stitch a cut and send them to \"cuts\". Views: the three core surfaces — world (the Bible), script, editor — plus any plugin this project has INSTALLED: episode (pre-installed), agents, moodboard, shotlist, images (image generation), videos (video generation), nodes (the visual node canvas), animatic, radio, sounds, musical, cuts, library. Plus \"plugins\" (the marketplace), \"settings\", and \"auto\" (the Auto surface, where a Film started by make_film shows its progress cards). Sending someone to a plugin they have not installed lands them on its install prompt, not on the work — so check `get_status.plugins` first and offer the install instead (see the plugin-gate skill). `hash` scrolls to and flashes one item once the tab loads — \"ep-<bundleId>\" on episode, \"snd-<track>\" on sounds, \"locations\" on world. This is a REQUEST, not a guarantee: it reaches whatever tabs are open right now, and none may be, so never describe the result as though you watched their screen — say what you did, not what they are now seeing. Use it sparingly and only when there is something specific to see; yanking someone off the tab they are working on is worse than a sentence telling them where to look.",
     input: v.object({
       view: d(
         v.picklist([
@@ -32,6 +32,8 @@ export const navigate = (api: Api) =>
           // Chrome, and the two hidden sample-code surfaces.
           "plugins",
           "settings",
+          // Auto — prompt to Film. Not a plugin: reachable at /auto.
+          "auto",
           "shots",
           "multishot",
         ]),
