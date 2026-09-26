@@ -339,3 +339,18 @@ export const setAuto = (api: Api) =>
       return { output: await api.req("/api/auto/settings", "PUT", { auto: Boolean(input.auto) }, signal) };
     },
   });
+
+export const listFilms = (api: Api) =>
+  defineTool({
+    name: "list_films",
+    description:
+      "The author's Auto Films, newest first — the \"Latest stories\" list under the /director-story prompt box. Each row: filmId, projectId (every Film has a project of its own), title, prompt, status (running | awaiting-confirm | done | stopped | declined | refused | unknown), seconds, and the finished film's `url` when done. Use it when the author asks what stories they have made, or to find one by name before get_film / retry_film. Read-only.",
+    input: v.object({
+      limit: v.optional(d(v.number(), "How many to list, newest first (default 30, at most 100).")),
+    }),
+    async run({ data: input, signal }): Promise<{ output: Json }> {
+      const limit = Math.max(1, Math.min(100, Math.round(Number(input?.limit) || 30)));
+      const path = "/api/auto/films/mine";
+      return { output: (await api.get(`${path}?limit=${limit}`, signal)) as Json };
+    },
+  });

@@ -45,11 +45,13 @@
 // user's stored Auto setting is off we turn it on before starting.
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Link, Navigate, useLocation } from "react-router";
-import { ArrowUp, Check, Circle, CircleAlert, Loader2, Mic, Plus, RotateCw, Settings2, Square, X } from "lucide-react";
+import { ArrowUp, Check, ChevronDown, Circle, CircleAlert, Film, Loader2, Mic, Plus, RotateCw, Settings2, Square, X } from "lucide-react";
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { FILM_DEFAULT_SECONDS, FILM_STEPS, formatLength } from "@/lib/film-plan";
 import { useVoiceRecording, transcribeAudio, formatDuration } from "@/lib/useVoiceRecording";
-import { useSession } from "@/lib/auth-client";
+import { authClient, useSession } from "@/lib/auth-client";
+import { isDesktop } from "@/lib/desktop";
 import { getProjectId, setProjectId } from "@/lib/projectFetch";
 import { useProjectEvents } from "@/lib/useProjectEvents";
 import { HUD, DISPLAY, BODY, MONO } from "@/lib/hudTheme";
@@ -373,7 +375,7 @@ function StorySettings({ seconds, onSeconds, disabled }) {
 
 // ── Simple view: hero + input ──────────────────────────────────────────────
 
-export function SimpleView({ onSubmit, submitting, note, running }) {
+export function SimpleView({ onSubmit, submitting, note, running, below = null }) {
   const [prompt, setPrompt] = useState("");
   const [seconds, setSeconds] = useState(readStoredLength);
   const [chosen, setChosen] = useState(hasStoredLength);
@@ -524,8 +526,188 @@ export function SimpleView({ onSubmit, submitting, note, running }) {
             A story is being made → view it
           </Link>
         ) : null}
+        {below}
       </main>
     </Page>
+  );
+}
+
+// ── Signed out: the premise waits across the Google round trip ──────────────
+//
+// /director-story opens WITHOUT a session: the hero and the box are the pitch.
+// Submitting signed out keeps the premise (and the gear's length) in
+// localStorage and opens the sign-in modal; Google returns to
+// `/director-story?resume=1`, which starts that premise and moves to its Film's
+// own page — the visitor never types it twice. An hour old and it is dropped:
+// a premise from yesterday is not what someone signing in today meant.
+const PENDING_KEY = "director-story:pending";
+const PENDING_TTL_MS = 60 * 60 * 1000;
+export const RESUME_PARAM = "resume";
+
+export function savePendingStory(prompt, seconds) {
+  try { localStorage.setItem(PENDING_KEY, JSON.stringify({ prompt, seconds: seconds ?? null, at: Date.now() })); } catch { /* private mode */ }
+}
+
+/** The premise saved before sign-in, taken (read AND cleared) → { prompt, seconds } | null. */
+export function takePendingStory() {
+  try {
+    const raw = localStorage.getItem(PENDING_KEY);
+    localStorage.removeItem(PENDING_KEY);
+    const saved = raw ? JSON.parse(raw) : null;
+    if (!saved?.prompt || Date.now() - Number(saved.at) > PENDING_TTL_MS) return null;
+    return { prompt: String(saved.prompt), seconds: saved.seconds ?? undefined };
+  } catch {
+    return null;
+  }
+}
+
+export function SignInDialog({ open, onOpenChange }) {
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState(null);
+  const callbackURL = `${PATH}?${RESUME_PARAM}=1`;
+  const signIn = async () => {
+    setBusy(true);
+    setErr(null);
+    try {
+      // The desktop app runs OAuth in its own window through /login; the
+      // premise is already saved, so it resumes the same way.
+      if (isDesktop) {
+        window.location.assign(`/login?next=${encodeURIComponent(callbackURL)}`);
+        return;
+      }
+      await authClient.signIn.social({ provider: "google", callbackURL });
+    } catch (e) {
+      setErr(String(e?.message || e));
+      setBusy(false);
+    }
+  };
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent
+        className="max-w-sm rounded-none border-[var(--br-secondary)]/40 bg-[var(--br-surface)] text-[var(--br-primary)]"
+        style={{ ...HUD, fontFamily: BODY }}
+      >
+        <DialogTitle style={{ fontFamily: DISPLAY, letterSpacing: "0.04em" }} className="text-2xl font-bold uppercase">
+          Sign in to make your story
+        </DialogTitle>
+        <DialogDescription className="text-[var(--br-secondary)]">
+          Your premise is saved — it starts the moment you are back.
+        </DialogDescription>
+        <button
+          type="button"
+          onClick={signIn}
+          disabled={busy}
+          className="mt-2 flex h-11 items-center justify-center gap-2 bg-[var(--br-tertiary)] font-semibold text-[var(--br-on-primary)] transition-opacity hover:opacity-90 disabled:opacity-60"
+          data-google-signin
+        >
+          {busy ? <Loader2 size={16} className="animate-spin" /> : null}
+          Continue with Google
+        </button>
+        {err ? <p className="text-sm text-[var(--br-tertiary)]">{err}</p> : null}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ── Latest stories: under the box, a list in a modal ────────────────────────
+
+/** The signed-in user's Films, newest first (user-scoped). */
+export async function fetchMyFilms() {
+  const { res, data } = await getJSON("/api/auto/films/mine");
+  // A Worker without the list yet answers through `/films/:id` — "no such
+  // Film" — which, from here, means there is nothing to list.
+  if (res.status === 404) return [];
+  if (!res.ok) throw new Error(data.error || `Couldn't read your stories (${res.status}).`);
+  return data.films || [];
+}
+
+const FILM_STATUS = {
+  done: "Done",
+  running: "Being made",
+  "awaiting-confirm": "Waiting on you",
+  queued: "Queued",
+  stopped: "Stopped",
+  declined: "Declined",
+  refused: "Refused",
+};
+
+function when(iso) {
+  const t = Date.parse(iso);
+  if (!Number.isFinite(t)) return "";
+  return new Date(t).toLocaleDateString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+}
+
+export function LatestStories({ onPick }) {
+  const [films, setFilms] = useState(null);
+  const [open, setOpen] = useState(false);
+  const [error, setError] = useState(null);
+  // Read on open, so a story finished since the page loaded is listed.
+  useEffect(() => {
+    if (!open) return;
+    let live = true;
+    setError(null);
+    fetchMyFilms().then((f) => live && setFilms(f)).catch((e) => live && setError(String(e?.message || e)));
+    return () => { live = false; };
+  }, [open]);
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="-mt-10 flex items-center gap-1.5 self-center border border-[var(--br-secondary)]/40 bg-black/50 px-3 py-1.5 text-sm text-[var(--br-secondary)] backdrop-blur-sm transition-colors hover:border-[var(--br-primary)]/60 hover:text-[var(--br-primary)]"
+        aria-haspopup="dialog"
+        data-latest-stories
+      >
+        Latest stories <ChevronDown size={14} aria-hidden />
+      </button>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent
+          className="flex max-h-[80dvh] max-w-lg flex-col gap-3 rounded-none border border-[var(--br-secondary)]/40 bg-black/70 p-0 text-[var(--br-primary)] backdrop-blur-md"
+          style={{ ...HUD, fontFamily: BODY }}
+        >
+          <div className="px-5 pt-5">
+            <DialogTitle style={{ fontFamily: DISPLAY, letterSpacing: "0.04em" }} className="text-2xl font-bold uppercase">
+              Latest stories
+            </DialogTitle>
+            <DialogDescription className="text-[var(--br-secondary)]">
+              {films?.length ? "Pick one to open it." : "Everything you make shows up here."}
+            </DialogDescription>
+          </div>
+          {error ? <p className="px-5 pb-5 text-sm text-[var(--br-tertiary)]">{error}</p> : null}
+          {!error && films && !films.length ? (
+            <p className="px-5 pb-5 text-sm text-[var(--br-secondary)]" data-latest-empty>No stories created yet.</p>
+          ) : null}
+          {!error && !films ? (
+            <p className="flex items-center gap-2 px-5 pb-5 text-sm text-[var(--br-secondary)]">
+              <Loader2 size={14} className="animate-spin" /> Loading your stories…
+            </p>
+          ) : null}
+          <ul className="min-h-0 flex-1 overflow-y-auto px-2 pb-3" data-latest-list>
+            {(films || []).map((f) => (
+              <li key={f.filmId}>
+                <button
+                  type="button"
+                  onClick={() => { setOpen(false); onPick(f); }}
+                  className="flex w-full items-start gap-3 px-3 py-3 text-left transition-colors hover:bg-[var(--br-neutral)]"
+                >
+                  <Film size={16} className="mt-0.5 shrink-0 text-[var(--br-secondary)]" aria-hidden />
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate font-semibold">{f.title || f.prompt || "Untitled story"}</span>
+                    {f.prompt && f.title ? (
+                      <span className="line-clamp-2 block text-sm text-[var(--br-secondary)]">{f.prompt}</span>
+                    ) : null}
+                    <span className="mt-1 block text-xs text-[var(--br-secondary)]" style={{ fontFamily: MONO }}>
+                      {[FILM_STATUS[f.status] || f.status, f.seconds ? formatLength(Math.round(f.seconds)) : null, when(f.createdAt)]
+                        .filter(Boolean).join(" · ")}
+                    </span>
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
 

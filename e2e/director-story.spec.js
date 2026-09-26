@@ -51,10 +51,58 @@ async function expectNoStudioShell(page) {
 }
 
 test.describe("director story", () => {
-  test("unauthenticated → redirected to login with next", async ({ page }) => {
+  test("signed out → the page opens; submitting keeps the premise and asks for Google", async ({ page }) => {
     await mockBackend(page, { signedIn: false });
     await page.goto("/director-story");
-    await expect(page).toHaveURL(/\/login\?next=%2Fdirector-story$/);
+    await expect(page.getByRole("heading", { name: HERO })).toBeVisible();
+    await expect(page.locator("[data-latest-stories]")).toHaveCount(0);
+    await page.getByPlaceholder("Tell what story premise you have").fill("A lighthouse keeper's cat");
+    await page.getByRole("button", { name: "Make the story" }).click();
+    await expect(page.getByRole("dialog")).toContainText(/sign in to make your story/i);
+    await expect(page.locator("[data-google-signin]")).toBeVisible();
+    const saved = await page.evaluate(() => JSON.parse(localStorage.getItem("director-story:pending")));
+    expect(saved).toMatchObject({ prompt: "A lighthouse keeper's cat" });
+  });
+
+  test("back from sign-in (?resume=1) → the saved premise starts and lands on its Film", async ({ page }) => {
+    await mockBackend(page, {
+      routes: { "/api/auto/films/latest": { job: null }, "/api/auto/films/mine": { films: [] }, ...filmRoute("film_1", { job: job({ steps: [] }) }) },
+    });
+    let posted = null;
+    await page.route("**/api/auto/films", (route) => {
+      posted = route.request().postDataJSON();
+      return route.fulfill({ status: 202, contentType: "application/json", body: JSON.stringify({ ok: true, job: job({ steps: [] }) }) });
+    });
+    await page.addInitScript(() => {
+      localStorage.setItem("director-story:pending", JSON.stringify({ prompt: "A saved premise", seconds: null, at: Date.now() }));
+    });
+    await page.goto("/director-story?resume=1");
+    await expect(page).toHaveURL(/\/director-story\/create\/film_1$/);
+    expect(posted).toMatchObject({ prompt: "A saved premise" });
+  });
+
+  test("Latest stories with none yet → 'No stories created'", async ({ page }) => {
+    await mockBackend(page, { routes: { "/api/auto/films/latest": { job: null }, "/api/auto/films/mine": { films: [] } } });
+    await page.goto("/director-story");
+    await page.locator("[data-latest-stories]").click();
+    await expect(page.locator("[data-latest-empty]")).toHaveText(/no stories created/i);
+  });
+
+  test("Latest stories → a scrollable modal; picking one opens its Film", async ({ page }) => {
+    const films = Array.from({ length: 25 }, (_, i) => ({
+      filmId: `film_${i + 1}`, projectId: `p_${i + 1}`, title: `Story ${i + 1}`, prompt: `Premise ${i + 1}`,
+      status: i ? "done" : "running", seconds: 120, createdAt: "2026-09-26T00:00:00.000Z",
+    }));
+    await mockBackend(page, {
+      routes: { "/api/auto/films/latest": { job: null }, "/api/auto/films/mine": { films }, ...filmRoute("film_3", { job: doneJob() }, "p_3") },
+    });
+    await page.goto("/director-story");
+    await page.locator("[data-latest-stories]").click();
+    const list = page.locator("[data-latest-list]");
+    await expect(list.getByRole("button")).toHaveCount(25);
+    expect(await list.evaluate((el) => el.scrollHeight > el.clientHeight)).toBe(true);
+    await list.getByRole("button", { name: /Story 3\b/ }).click();
+    await expect(page).toHaveURL(/\/director-story\/create\/film_3$/);
   });
 
   test("unauthenticated on a Film's page → next is that page", async ({ page }) => {

@@ -58,7 +58,7 @@ import { autoAvailable } from "../lib/auto-availability.js";
 import { MAX_PROMPT_CHARS, checkFilmSeconds } from "../lib/film-job.js";
 import { readAutoSettings, writeAutoSettings } from "../lib/auto-settings.js";
 import { checkAllowance } from "../lib/film-allowance.js";
-import { activeFilm, filmJobsFor, filmProject, latestFilm, recordFilm, storyProjectName } from "../lib/films.js";
+import { activeFilm, filmJobsFor, filmProject, latestFilm, listFilms, recordFilm, storyProjectName } from "../lib/films.js";
 import { archiveProject, createProject } from "./projects.js";
 
 const REFUSAL_STATUS = { invalid: 400, busy: 409, allowance: 429, paused: 503, unavailable: 503 };
@@ -151,6 +151,31 @@ export function registerAuto(app) {
     if (!latest) return c.json({ job: null });
     const job = await filmJobsFor(c.env, latest.projectId).film(latest.filmId);
     return c.json({ filmId: latest.filmId, projectId: latest.projectId, job: job || null });
+  });
+
+  // USER-scoped: the user's Films, newest first — "Latest stories" on
+  // /director-story. Each row's status, prompt and finished film come from its
+  // own project's job (read in parallel; a job the DO has aged out still lists,
+  // with what the table knows).
+  app.get("/api/auto/films/mine", async (c) => {
+    const userId = c.get("userId");
+    if (!userId) return c.json({ error: "Sign in required" }, 401);
+    const rows = await listFilms(c.env, userId, { limit: c.req.query("limit") });
+    const films = await Promise.all(rows.map(async (row) => {
+      const job = await filmJobsFor(c.env, row.projectId).film(row.filmId).catch(() => null);
+      const film = job?.status === "done" ? job.film || null : null;
+      return {
+        ...row,
+        title: film?.title
+          || (job?.steps || []).find((st) => st.key === "world")?.result?.title
+          || (row.title ? row.title.replace(/^Story — /, "") : null),
+        prompt: job?.prompt || null,
+        status: job?.status || "unknown",
+        seconds: film?.seconds ?? job?.seconds ?? null,
+        url: film?.url || null,
+      };
+    }));
+    return c.json({ films });
   });
 
   // USER-scoped: which project a Film runs in. Only the user's own Films.

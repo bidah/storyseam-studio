@@ -6,30 +6,45 @@
 // /director-story/create/:filmId (routes/director-story-film.jsx) — the URL is
 // the state, so a reload never loses the run.
 //
+// Signed OUT, the page still opens (it is the pitch). Submitting then saves the
+// premise and opens the Google sign-in modal; Google returns here with
+// `?resume=1`, and the saved premise starts on its own — straight on to its
+// Film's page.
+//
+// Signed in, "Latest stories" under the box lists the user's Films (user-
+// scoped, whichever project each is in); picking one opens its page.
+//
 // Visiting here while a Film is being made does NOT hijack the page: it stays
-// the simple view, with one small link to it. That Film is the USER's latest
-// (GET /api/auto/films/latest — user-scoped, whatever project it is in), since
-// a user makes one Film at a time. The shared pieces (auth, project, the
-// views) live in components/DirectorStory.jsx.
-import { useEffect, useState } from "react";
-import { useNavigate } from "react-router";
+// the simple view, with one small link to it. The shared pieces live in
+// components/DirectorStory.jsx.
+import { useEffect, useRef, useState } from "react";
+import { useNavigate, useSearchParams } from "react-router";
 import {
   ACTIVE,
-  AuthGate,
+  LatestStories,
+  RESUME_PARAM,
+  SignInDialog,
   SimpleView,
   fetchLatest,
   filmPath,
   getJSON,
+  savePendingStory,
+  takePendingStory,
   useDirectorProject,
 } from "@/components/DirectorStory";
+import { useSession } from "@/lib/auth-client";
 import { setProjectId } from "@/lib/projectFetch";
 
 export function Component() {
-  return <AuthGate>{(signedIn) => <SimpleStory signedIn={signedIn} />}</AuthGate>;
+  const { data: session, isPending } = useSession();
+  return <SimpleStory signedIn={!!session} sessionKnown={!isPending} />;
 }
 
-function SimpleStory({ signedIn }) {
+function SimpleStory({ signedIn, sessionKnown }) {
   const navigate = useNavigate();
+  const [params, setParams] = useSearchParams();
+  const [signInOpen, setSignInOpen] = useState(false);
+  const resumed = useRef(false);
   // Only the settings write below needs a project in scope; the Film makes its own.
   const { error, ready } = useDirectorProject(signedIn);
   const [note, setNote] = useState(null); // the one line under the input
@@ -50,6 +65,12 @@ function SimpleStory({ signedIn }) {
 
   const start = async (prompt, seconds) => {
     if (submitting) return false;
+    if (!signedIn) {
+      // Keep the premise across the Google round trip; it starts on return.
+      savePendingStory(prompt, seconds);
+      setSignInOpen(true);
+      return false;
+    }
     setSubmitting(true);
     setNote(null);
     try {
@@ -94,5 +115,36 @@ function SimpleStory({ signedIn }) {
     }
   };
 
-  return <SimpleView onSubmit={start} submitting={submitting} note={note} running={running} />;
+  // Back from Google (`?resume=1`): start the premise saved before sign-in.
+  useEffect(() => {
+    if (!sessionKnown || resumed.current || !params.has(RESUME_PARAM)) return;
+    resumed.current = true;
+    const next = new URLSearchParams(params);
+    next.delete(RESUME_PARAM);
+    setParams(next, { replace: true });
+    if (!signedIn) return;
+    const pending = takePendingStory();
+    if (!pending) return;
+    setNote("Starting your story…");
+    start(pending.prompt, pending.seconds);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionKnown, signedIn]);
+
+  const openFilm = (film) => {
+    if (film.projectId) setProjectId(film.projectId);
+    navigate(filmPath(film.filmId));
+  };
+
+  return (
+    <>
+      <SimpleView
+        onSubmit={start}
+        submitting={submitting}
+        note={note}
+        running={running}
+        below={signedIn ? <LatestStories onPick={openFilm} /> : null}
+      />
+      <SignInDialog open={signInOpen} onOpenChange={setSignInOpen} />
+    </>
+  );
 }

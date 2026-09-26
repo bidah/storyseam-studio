@@ -221,6 +221,7 @@ app.use("*", async (c, next) => {
 function isUserScopedAuto(method, p) {
   if (method === "POST" && p === "/api/auto/films") return true;
   if (method === "GET" && p === "/api/auto/films/latest") return true;
+  if (method === "GET" && p === "/api/auto/films/mine") return true;
   return method === "GET" && /^\/api\/auto\/films\/[^/]+\/project$/.test(p);
 }
 
@@ -278,7 +279,7 @@ app.use("*", async (c, next) => {
   //                  (routes/sitting-runner.js). No cookie; every route
   //                  verifies its short-lived job token (lib/sitting-token.js),
   //                  which names its own project, episode, Series and Film.
-  //   three Auto Film routes (isUserScopedAuto) — USER-scoped, not project-
+  //   four Auto Film routes (isUserScopedAuto) — USER-scoped, not project-
   //                  scoped: starting a Film MAKES its own project, and the
   //                  Film→project lookup and "latest Film" are asked before any
   //                  project is known (a reload or a shared link). The session

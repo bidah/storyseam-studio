@@ -82,6 +82,32 @@ export async function latestFilm(env, userId) {
   return row ? { filmId: row.film_id, projectId: row.project_id, createdAt: row.created_at } : null;
 }
 
+/**
+ * The user's Films, newest first → [{ filmId, projectId, title, createdAt }].
+ * `title` is the Film's project name ("Story — <World title>"), which the World
+ * stage renames once the story has one. The "Latest stories" list on
+ * /director-story; each row is then read from its own project's job.
+ */
+export async function listFilms(env, userId, { limit = 30 } = {}) {
+  if (!userId) return [];
+  try {
+    const { results } = await env.DB.prepare(
+      `SELECT f.film_id, f.project_id, f.created_at, p.name
+         FROM films f LEFT JOIN projects p ON p.id = f.project_id
+        WHERE f.user_id = ? ORDER BY f.created_at DESC, f.rowid DESC LIMIT ?`,
+    ).bind(userId, Math.max(1, Math.min(100, Number(limit) || 30))).all();
+    return (results || []).map((r) => ({
+      filmId: r.film_id,
+      projectId: r.project_id,
+      title: r.name || null,
+      createdAt: r.created_at,
+    }));
+  } catch (err) {
+    console.warn("films list unavailable:", err?.message || err);
+    return [];
+  }
+}
+
 /** A job that still holds its maker: running, waiting on its confirm card, or queued. */
 const holds = (job) => ["running", "awaiting-confirm", "queued"].includes(job?.status);
 

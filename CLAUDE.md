@@ -63,8 +63,8 @@ by going through `flue-agent/src/lib/api.ts`; a call path that bypasses that
 client needs the header itself. The exempt prefixes (`/api/auth/`,
 `/api/projects`, `/api/extract`, `/api/agent/`, `/api/mcp`, `/api/sitting-runner/`)
 each carry their own credential — the list is commented at the middleware.
-Three Auto Film routes (`POST /api/auto/films`, `GET /api/auto/films/latest`,
-`GET /api/auto/films/:id/project`) are USER-scoped rather than project-scoped
+Four Auto Film routes (`POST /api/auto/films`, `GET /api/auto/films/latest`,
+`GET /api/auto/films/mine`, `GET /api/auto/films/:id/project`) are USER-scoped rather than project-scoped
 (`isUserScopedAuto`): a Film makes its own project, so they still need a signed-in
 user and 401 without one, but name no project.
 
