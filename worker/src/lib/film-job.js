@@ -16,7 +16,8 @@
 //            spend: { [stageKey]: dollars }, stopped?: { stage, label, reason,
 //            kept: [{ key, label, summary }], spent },
 //            confirm?: { status: 'awaiting'|'confirmed'|'declined', after,
-//            summary, plan, askedAt, answeredAt } }
+//            summary, plan, askedAt, answeredAt },
+//            film?, spent?, allowance? (set when `done` — see "The Film") }
 //   step = { key, label, status: 'running'|'retrying'|'done'|'failed',
 //            startedAt, endedAt, summary, result, error, failures, pending? }
 //
@@ -91,12 +92,28 @@
 //
 // `startFilm` checks the kill switch (autoAvailable) and the Film allowance
 // (checkAllowance) BEFORE anything is created; a refusal starts nothing.
-// countFilm is NOT called here yet: a Film counts once it is kept (a sitting
-// plus a score), which is a later stage — a job that stops after the World has
-// not made a Film.
+// countFilm runs in `completeFilm`, once the score is filed and the job turns
+// `done` — never for a stopped, declined or refused job. It is idempotent on
+// the job id, so a completion delivered twice (the DO evicted between the
+// count and the `film.done` commit) still counts once.
+//
+// ── The Film (#71) ─────────────────────────────────────────────────────────
+//
+// When the last stage (score) completes, `completeFilm` turns the job `done`:
+//
+//   job.film  = { url, file, unscored: { file, url }, seconds, seriesId,
+//                 sittingId, title, idea }      ← url is the SCORED film
+//   job.spent = totalSpend(job)                 ← beside job.spend (per stage)
+//   job.allowance = { counted, duplicate?, kind } | { error }
+//
+// and registers the Film as a project file: the kept sitting row it was scored
+// on is stamped `film: { id, title, completedAt }`, which is what `/api/pool`
+// (the Editor's media pool, the agent's list_media_pool) lists as
+// "Film — <title>". `film.done` carries it all.
 import { groqJSON } from "./groq.js";
 import { autoAvailable } from "./auto-availability.js";
-import { checkAllowance } from "./film-allowance.js";
+import { checkAllowance, countFilm } from "./film-allowance.js";
+import { updateSittings } from "./director.js";
 import { runWithContext } from "./request-context.js";
 import { WORLD_SHAPE } from "./auto-prompts.generated.js";
 import { runSheetsStage } from "./film-stages/sheets.js";
@@ -343,7 +360,9 @@ export async function advanceFilm(job, deps) {
   const stage = resuming ? stages.find((s) => s.key === last.key) : stages[job.steps.length];
 
   if (!stage) {
-    job = { ...job, status: "done", updatedAt: now() };
+    // Every stage is done but the job never turned `done` (evicted between the
+    // last step.done and film.done): finish it now. Counting is idempotent.
+    job = await completeFilm(job, deps);
     await commit(job, event("film.done", job));
     return job;
   }
@@ -412,10 +431,96 @@ export async function advanceFilm(job, deps) {
   }
 
   if (job.steps.length >= stages.length) {
-    job = { ...job, status: "done", updatedAt: now() };
+    job = await completeFilm(job, deps);
     await commit(job, event("film.done", job));
   }
   return job;
+}
+
+// ── The Film ────────────────────────────────────────────────────────────────
+
+/**
+ * What the finished job hands the surface, from the score stage's result (the
+ * SCORED film), the sitting's (its length) and the World's (the title).
+ * `null` when there is no scored film — a pipeline whose stages were swapped
+ * out (tests) finishes without one.
+ */
+export function filmOf(job) {
+  const done = (key) => job?.steps?.find((s) => s.key === key && s.status === "done")?.result || null;
+  const score = done("score");
+  if (!score?.url) return null;
+  const sitting = done("sitting");
+  const world = done("world");
+  const measured = Number(score.measured?.durationMs);
+  const seconds = Number.isFinite(measured) && measured > 0
+    ? Math.round(measured / 100) / 10
+    : Number(sitting?.seconds) || null;
+  return {
+    url: score.url,
+    file: score.file || null,
+    unscored: score.unscored || null,
+    seconds,
+    seriesId: score.seriesId || sitting?.seriesId || null,
+    sittingId: score.sittingId || sitting?.sittingId || null,
+    title: str(world?.title) || str(world?.idea) || str(job?.prompt).slice(0, 80) || "Film",
+    idea: str(world?.idea) || null,
+  };
+}
+
+/** "Film — <title>": the name the Film goes by among the project's files. */
+export const filmFileName = (film) => `Film — ${film?.title || "Untitled"}`;
+
+/**
+ * Register the Film as a project file: stamp the kept sitting it was scored on
+ * with `film: { id, title, completedAt }`. `/api/pool` lists every stamped row
+ * as a video the Editor (and the agent) can lay on a timeline. A row that is
+ * gone is reported, not thrown — the Film is still done.
+ */
+export async function fileFilm(env, projectId, job, film) {
+  if (!film?.sittingId) return { ok: false, missing: true };
+  const at = new Date().toISOString();
+  const res = await updateSittings(env, projectId, (db) => {
+    const row = (db.kept || []).find((s) => s.id === film.sittingId);
+    if (!row) return { abort: true, missing: true };
+    if (row.film?.id === job.id && row.film?.title === film.title) return { abort: true, same: true };
+    row.film = { id: job.id, title: film.title, completedAt: row.film?.completedAt || at };
+    return {};
+  });
+  if (res?.missing) return { ok: false, missing: true };
+  return { ok: true };
+}
+
+/**
+ * The job turns `done`: the Film, the spend total, the project file and the
+ * allowance count (kind `new`, once per job id). Neither the filing nor the
+ * count may lose a finished Film — a failure is recorded on the job instead.
+ *
+ * deps: { env, now?, countFilm?, fileFilm? } (tests pass fakes)
+ */
+export async function completeFilm(job, deps = {}) {
+  const env = deps.env;
+  const at = iso(deps.now?.());
+  const film = filmOf(job);
+  let next = { ...job, status: "done", updatedAt: at, film, spent: totalSpend(job) };
+
+  if (film) {
+    try {
+      const filed = await (deps.fileFilm || fileFilm)(env, job.projectId, job, film);
+      if (filed && filed.ok === false) next.film = { ...film, filed: false };
+    } catch (err) {
+      next.film = { ...film, filed: false, fileError: String(err?.message || err) };
+    }
+  }
+
+  const kind = allowanceKindOf(next);
+  try {
+    next.allowance = job.userId
+      ? await (deps.countFilm || countFilm)(env, job.userId, { filmId: job.id, kind }, deps.now?.())
+      : { counted: false, kind };
+  } catch (err) {
+    next.allowance = { counted: false, kind, error: String(err?.message || err) };
+  }
+  return next;
 }
 
 // ── The confirm card ────────────────────────────────────────────────────────

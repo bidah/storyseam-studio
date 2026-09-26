@@ -245,6 +245,12 @@ export function filmLength(requested: number | null | undefined): { seconds: num
  * reels greedily under the per-reel rules: a reel closes at 16 pins; the next
  * opens on the following grid beat (a seam), whose pin is dropped along with
  * any pin < 5s after it.
+ *
+ * A pin sits where a BEAT starts — the cue sheet's beats open at 0, spacing,
+ * 2·spacing … and the last one opens before the Film's end. So the grid stops
+ * short of `seconds`: the Film's very last second closes the last beat, it
+ * does not open one, and quoting a pin there promised one more frame than the
+ * run ever draws (#67 found it; #71 fixed it).
  */
 export function reelsOnGrid(seconds: number, spacing: number = beatSpacing(seconds)): {
   pins: number;
@@ -257,7 +263,7 @@ export function reelsOnGrid(seconds: number, spacing: number = beatSpacing(secon
   let reelStart = 0;
   let lastPin = -Infinity;
   let skipped = 0;
-  for (let t = spacing; t <= seconds; t += spacing) {
+  for (let t = spacing; t < seconds; t += spacing) {
     const current = pinsPerReel.length - 1;
     if (pinsPerReel[current] >= MAX_END_IMAGES) {
       // Seam: this beat opens the next reel and loses its pin.

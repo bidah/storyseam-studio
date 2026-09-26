@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useLoaderData, useRevalidator } from "react-router";
-import { Ban, CheckCircle2, CircleAlert, CircleHelp, Clock, Loader2, MapPin, OctagonX, Play, RotateCw, Sparkles, Users } from "lucide-react";
+import { Ban, CheckCircle2, CircleAlert, CircleHelp, Clapperboard, Clock, ExternalLink, Loader2, MapPin, OctagonX, Play, RotateCw, Sparkles, Users } from "lucide-react";
 import { invalidateTabCache } from "@/lib/tabCache";
 import { swr, useRevalidateOnMount } from "@/lib/swr";
 import { Button } from "@/components/ui/button";
@@ -208,17 +208,9 @@ function StillsResult({ result }) {
   );
 }
 
-// The Score: the scored film once it is filed (the unscored sitting is kept
-// beside it, not shown — CONTEXT.md › Film).
-function ScoreResult({ result }) {
-  if (!result?.url) return null;
-  return (
-    <video src={result.url} controls preload="metadata" className="aspect-video w-full rounded-md border bg-black" data-scored />
-  );
-}
-
 // One card per step. Stages without a result view render their summary alone.
-const RESULT_VIEWS = { world: WorldResult, sheets: SheetsResult, run: RunResult, stills: StillsResult, score: ScoreResult };
+// The Score has none: the scored film it files plays once, on the Film card.
+const RESULT_VIEWS = { world: WorldResult, sheets: SheetsResult, run: RunResult, stills: StillsResult };
 
 function StepCard({ step }) {
   const badge = STATUS_BADGE[step.status] || STATUS_BADGE.running;
@@ -305,6 +297,54 @@ function StoppedCard({ job }) {
             </ul>
           ) : (
             <p className="text-sm text-muted-foreground">Nothing was spent.</p>
+          )}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+// "2:04" — the Film's measured length.
+const clockOf = (seconds) => {
+  const s = Math.max(0, Math.round(Number(seconds) || 0));
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+};
+
+// The Film: what the prompt came back as, at the end of the cards. The scored
+// film plays large, titled with the Idea's title; it is also a project file
+// (the Editor's media pool lists it as "Film — <title>"). What it cost sits
+// small beneath it — the per-stage breakdown stays on the stored job.
+function FilmCard({ job }) {
+  const film = job.film;
+  if (!film?.url) return null;
+  return (
+    <Card className="gap-0 border-emerald-500/40 py-0" data-step="film">
+      <CardHeader className="flex flex-row items-center justify-between gap-3 border-b px-4 py-3 [.border-b]:pb-3">
+        <CardTitle className="flex min-w-0 items-center gap-2 text-base font-semibold">
+          <Clapperboard size={18} className="shrink-0 text-emerald-500" aria-hidden />
+          <span className="truncate">{film.title || "Your Film"}</span>
+        </CardTitle>
+        <Badge variant="success">Film</Badge>
+      </CardHeader>
+      <CardContent className="space-y-3 p-4">
+        <video
+          src={film.url}
+          controls
+          preload="metadata"
+          className="aspect-video w-full rounded-md border bg-black"
+          data-film
+        />
+        {film.idea && <p className="text-sm text-muted-foreground">{film.idea}</p>}
+        <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
+          <span className="flex items-center gap-3">
+            {film.seconds ? <span className="tabular-nums">{clockOf(film.seconds)}</span> : null}
+            <a href={film.url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 underline-offset-2 hover:text-foreground hover:underline">
+              <ExternalLink size={12} aria-hidden /> Open the file
+            </a>
+            <span>In the Editor's media pool as “Film — {film.title}”</span>
+          </span>
+          {job.spent != null && (
+            <span className="tabular-nums" title="What this Film cost StorySeam">Cost {dollars(job.spent)}</span>
           )}
         </div>
       </CardContent>
@@ -588,6 +628,7 @@ function AutoSurface() {
             </div>
           ))}
           {shown.status === "stopped" && <StoppedCard job={shown} />}
+          {shown.status === "done" && <FilmCard job={shown} />}
         </section>
       )}
     </div>

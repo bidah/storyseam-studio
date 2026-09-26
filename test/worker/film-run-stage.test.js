@@ -176,9 +176,9 @@ describe("the Shot sheet run stage", () => {
     const reels = first.result.plan.reels.length;
     expect(reels).toBe(plan.reels);
     expect(reels).toBe(expected);
-    // The run draws the pins the plan quoted, less one: film-plan's grid counts
-    // a pin at the Film's very last second, which is no beat on the cue sheet.
-    expect(first.result.clips.flatMap((c) => c.offsets).filter((o) => o > 0)).toHaveLength(plan.pins - 1);
+    // The run draws exactly the pins the plan quoted (#71: the plan used to
+    // count one more, at the Film's very last second, which is no beat).
+    expect(first.result.clips.flatMap((c) => c.offsets).filter((o) => o > 0)).toHaveLength(plan.pins);
     expect(first.result.clips).toHaveLength(reels);
     expect(fal.submits).toHaveLength(reels);
     expect(first.result.clips.map((c) => c.opensAt)).toEqual([0, ...first.result.plan.seams]);
