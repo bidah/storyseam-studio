@@ -79,6 +79,8 @@ const PREFIX_KIND = {
   "/gen/": "gen", "/sound-media/": "sound-media", "/media/": "shots",
   "/final/": "final", "/multishot-media/": "multishot", "/refs/": "refs",
   "/storyboard-media/": "storyboard", "/stills/": "stills",
+  // A finished Film (Auto) and any kept sitting: /api/pool offers them.
+  "/director-media/": "director",
 };
 function absolutizeTracks(tracks, base, pid) {
   return (tracks || []).map((t) => ({

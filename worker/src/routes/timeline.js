@@ -23,6 +23,7 @@ import timelineSchema from "../schemas/timeline.json";
 import { listMedia, putMedia, mediaKey } from "../lib/media.js";
 import { putImageWithVariants, variantKey, IMAGE_TIER_NAMES } from "../lib/images.js";
 import { broadcast } from "../lib/broadcast.js";
+import { readSittings, directorUrl } from "../lib/director.js";
 
 // ---------------------------------------------------------------------------
 // Constants + pure helpers — ported verbatim from server/index.js.
@@ -543,6 +544,23 @@ function applyTimelineOps(tl, ops) {
 const broadcastTimeline = (c, pid, clientId) =>
   broadcast(c.env, pid, "timeline", { at: new Date().toISOString(), clientId: clientId ?? null }, c.executionCtx);
 
+/** The project's finished Films as media-pool videos, newest first. */
+export async function filmsInPool(env, pid) {
+  const ledger = await readSittings(env, pid);
+  return (ledger.kept || [])
+    .filter((row) => row?.film?.id && row.scoredFile)
+    .sort((a, b) => String(b.film.completedAt || "").localeCompare(String(a.film.completedAt || "")))
+    .map((row) => ({
+      id: `pool-film-${row.film.id}`,
+      mediaType: "video",
+      bundle: "film",
+      name: `Film — ${row.film.title || "Untitled"}`,
+      src: directorUrl(row.scoredFile),
+      filmId: row.film.id,
+      seconds: Number(row.seconds) || null,
+    }));
+}
+
 export function registerTimeline(app) {
   // Read the saved editor timeline (null if none yet), plus the list of cut
   // generations the editor can load from.
@@ -642,6 +660,12 @@ export function registerTimeline(app) {
       });
     }
     video.sort((a, b) => bundleNum(a.bundle) - bundleNum(b.bundle) || a.id.localeCompare(b.id));
+
+    // Films (Auto, #71): a finished Film is an ordinary project file. The job
+    // stamps the kept sitting it scored with `film: { id, title }`; the SCORED
+    // film filed beside it is what the pool offers, newest first, named
+    // "Film — <title>". The unscored sitting is kept, not listed.
+    video.push(...(await filmsInPool(c.env, pid)));
 
     const audio = [];
     const sdb = await readDoc(c.env, pid, "sounds", { tracks: [] });

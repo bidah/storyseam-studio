@@ -115,7 +115,9 @@ describe("every 30s step", () => {
     expect(plan.seams).toBe(plan.reels - 1);
     expect(plan.seams).toBeLessThanOrEqual(MAX_SEAMS);
     expect(plan.clips).toBe(plan.reels);
-    expect(plan.pins + plan.skippedFrames).toBe(Math.floor(seconds / plan.spacing));
+    // Every beat but the first opens on a pin or loses it — and nothing more:
+    // the Film's last second closes the last beat, it is no pin (#71).
+    expect(plan.pins + plan.skippedFrames).toBe(plan.beats - 1);
     expect(plan.pins).toBeLessThanOrEqual(plan.reels * MAX_END_IMAGES);
     // Each reel is full before the next opens.
     expect(plan.pins).toBeGreaterThan((plan.reels - 1) * MAX_END_IMAGES);
@@ -129,14 +131,14 @@ describe("every 30s step", () => {
     expect(rows).toEqual([
       // A 4s grid loses the 4s pin (inside the opening 5s) and two per seam:
       // the seam beat's own pin and the next one, 4s after it.
-      [120, 4, 30, 27, 2, 1, 3],
+      [120, 4, 30, 26, 2, 1, 3],
       [150, 4, 38, 32, 2, 1, 5], // the grid ends inside what would be reel 3's opening 5s
-      [180, 4, 45, 40, 3, 2, 5],
+      [180, 4, 45, 39, 3, 2, 5],
       [210, 4, 53, 47, 3, 2, 5],
-      [240, 4, 60, 53, 4, 3, 7],
+      [240, 4, 60, 52, 4, 3, 7],
       // 4:30 at 4s is 68 beats — past the Series' 64 — so it is cut every 5s.
       // At 5s a seam loses only its own pin (the next is 5s on, clear of the opening).
-      [270, 5, 54, 51, 4, 3, 3],
+      [270, 5, 54, 50, 4, 3, 3],
     ]);
   });
 });
@@ -152,12 +154,19 @@ describe("beatSpacing", () => {
 });
 
 describe("reelsOnGrid", () => {
-  it("47 pins at 4s → 3 reels, 2 seams, 4 frames lost to seams (plus the one inside the opening 5s)", () => {
-    const grid = reelsOnGrid(47 * 4, 4);
+  it("48 beats at 4s → 3 reels, 2 seams, 4 frames lost to seams (plus the one inside the opening 5s)", () => {
+    const grid = reelsOnGrid(48 * 4, 4);
     expect(grid.reels).toBe(3);
     expect(grid.seams).toBe(2);
     expect(grid.skippedFrames).toBe(1 + 4);
     expect(grid.pinsPerReel).toEqual([16, 16, 10]);
+  });
+
+  it("lays no pin at the Film's last second — beats open before the end, never on it (#71)", () => {
+    // 120s at 4s: beats open at 0…116; the 120s mark closes the last one.
+    const grid = reelsOnGrid(120, 4);
+    expect(grid.pins + grid.skippedFrames).toBe(120 / 4 - 1);
+    expect(reelsOnGrid(12, 4).pins).toBe(1); // beats at 0, 4, 8 → pin at 8 only (4 is inside the opening 5s)
   });
 
   it("4:30 fits in at most 5 reels", () => {
