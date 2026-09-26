@@ -101,6 +101,7 @@ describe("the Film stages after the World", () => {
       ["sheets", "Reference sheets"],
       ["shotlist", "Shot list"],
       ["cuesheet", "Cue sheet"],
+      ["run", "Shot sheet run"],
     ]);
   });
 

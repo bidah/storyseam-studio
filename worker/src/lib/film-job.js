@@ -18,7 +18,7 @@
 //            confirm?: { status: 'awaiting'|'confirmed'|'declined', after,
 //            summary, plan, askedAt, answeredAt } }
 //   step = { key, label, status: 'running'|'retrying'|'done'|'failed',
-//            startedAt, endedAt, summary, result, error, failures }
+//            startedAt, endedAt, summary, result, error, failures, pending? }
 //
 // `steps` grows as stages START — a card appears when its step starts, so the
 // surface never draws a stage that hasn't begun. `summary` is one line for the
@@ -41,6 +41,16 @@
 // it is descriptive — EVERY stage retries once, because a flaky writing call is
 // as worth one more try as a flaky render, and one rule is easier to trust.
 //
+// ── Pending stages ─────────────────────────────────────────────────────────
+//
+// A stage that waits on something slow (fal renders clips for minutes) returns
+// `{ pending: true, summary, result, spend? }` instead of finishing: the step
+// stays `running` with `pending: true`, its summary/result update the card
+// (step.progress, only when they changed), its spend is counted, and the job
+// is advanced again after PENDING_POLL_MS (the DO asks `nextAlarmDelay`). A
+// pending answer is NOT a failure and does not use up the retry. The stage
+// keeps its own state somewhere durable and picks it up on the next call.
+//
 // ── Retry once, then stop ──────────────────────────────────────────────────
 //
 // A stage that throws is retried ONCE, on the next advance (the card says
@@ -56,8 +66,8 @@
 // live-sync `data` channel as `{ resource: "auto", kind, filmId, step, job }`
 // — no new EventSource. Kinds, in the order a job emits them:
 //
-//   film.queued? → film.started → (step.started → step.retrying? →
-//     step.done | step.failed)… → film.done | film.stopped
+//   film.queued? → film.started → (step.started → step.progress* →
+//     step.retrying? → step.done | step.failed)… → film.done | film.stopped
 //
 // `film.refused` replaces film.started when a QUEUED Film reaches the front
 // and the kill switch or the allowance says no (lib/film-queue.js).
@@ -92,6 +102,7 @@ import { WORLD_SHAPE } from "./auto-prompts.generated.js";
 import { runSheetsStage } from "./film-stages/sheets.js";
 import { runShotlistStage } from "./film-stages/shotlist.js";
 import { runCueSheetStage } from "./film-stages/cuesheet.js";
+import { runRunStage } from "./film-stages/run.js";
 import { readAutoSettings } from "./auto-settings.js";
 import { planFilm, MAX_REFERENCE_SHEETS } from "./film-plan.ts";
 
@@ -100,7 +111,14 @@ export const FILM_EVENTS = Object.freeze([
   "film.queued", "film.started", "film.refused", "step.started", "step.retrying",
   "step.done", "step.failed", "film.done", "film.stopped",
   "film.awaiting-confirm", "film.confirmed", "film.declined",
+  "step.progress",
 ]);
+
+/** How long a pending stage waits before it is asked again (fal takes minutes). */
+export const PENDING_POLL_MS = 15_000;
+
+/** When the DO should run the job's next attempt: later for a pending stage, else now. */
+export const nextAlarmDelay = (job) => (job?.steps?.at(-1)?.pending ? PENDING_POLL_MS : 0);
 
 /** The stage after which an Auto-off job pauses to ask. */
 export const CONFIRM_AFTER = "world";
@@ -199,6 +217,7 @@ export const FILM_STAGES = Object.freeze([
   { key: "sheets", label: "Reference sheets", run: (ctx) => runSheetsStage(ctx) },
   { key: "shotlist", label: "Shot list", run: (ctx) => runShotlistStage(ctx) },
   { key: "cuesheet", label: "Cue sheet", run: (ctx) => runCueSheetStage(ctx) },
+  { key: "run", label: "Shot sheet run", paid: true, run: (ctx) => runRunStage(ctx) },
 ]);
 
 // ── Job lifecycle ───────────────────────────────────────────────────────────
@@ -338,7 +357,16 @@ export async function advanceFilm(job, deps) {
       { userId: job.userId, caller: "auto", chatId: null, episodeId: job.episodeId || undefined },
       () => stage.run({ job, results, attempt, env: deps.env, model: deps.model, saveWorld: deps.saveWorld }),
     );
-    step = { ...step, status: "done", endedAt: now(), summary: out?.summary ?? null, result: out?.result ?? null, error: null };
+    if (out?.pending) {
+      // Not finished yet (see "Pending stages"): keep the step running, show
+      // its progress, and come back on a later alarm. Not a failure.
+      const changed = out.summary !== step.summary || JSON.stringify(out.result ?? null) !== JSON.stringify(step.result);
+      step = { ...step, status: "running", pending: true, summary: out.summary ?? step.summary, result: out.result ?? step.result };
+      job = replace(addSpend(job, stage.key, out.spend), step);
+      if (changed || out.spend > 0) await commit(job, event("step.progress", job, step));
+      return job;
+    }
+    step = { ...step, status: "done", pending: false, endedAt: now(), summary: out?.summary ?? null, result: out?.result ?? null, error: null };
     job = replace(addSpend(job, stage.key, out?.spend), step);
     await commit(job, event("step.done", job, step));
   } catch (err) {
@@ -347,12 +375,12 @@ export async function advanceFilm(job, deps) {
     job = addSpend(job, stage.key, err?.spend);
     const failures = (step.failures || 0) + 1;
     if (failures < 2) {
-      step = { ...step, status: "retrying", failures, error: message };
+      step = { ...step, status: "retrying", pending: false, failures, error: message };
       job = replace(job, step);
       await commit(job, event("step.retrying", job, step));
       return job;
     }
-    step = { ...step, status: "failed", failures, endedAt: now(), error: message };
+    step = { ...step, status: "failed", pending: false, failures, endedAt: now(), error: message };
     job = replace(job, step);
     const kept = job.steps
       .filter((s) => s.status === "done")
