@@ -38,6 +38,11 @@
                                   # the agent gets the resulting token via the worker token bridge
 /api/share/script/*               # the PUBLIC share-link viewer page (/share/script/<token>); the
                                   # agent manages links via share_script and never plays the viewer
+/api/share/*                      # the PUBLIC share manifest (which tabs a link exposes), read by the
+                                  # unified /share/<token> viewer page; the agent manages links via
+                                  # share_script / share_world and never plays the viewer
+/api/share/world/*                # the PUBLIC shared-world viewer payload (/share/<token>?tab=world);
+                                  # same viewer-only plumbing as the shared-script route above
 
 # --- [gui-only] moodboard canvas transport -----------------------------------
 # The Moodboard's agent capability is /api/moodboard/cards (add_moodboard_card,

@@ -50,6 +50,7 @@ import { newDraft } from "./new_draft.js";
 import { pinDraft } from "./pin_draft.js";
 import { recordScriptReview } from "./record_script_review.js";
 import { shareScript } from "./share_script.js";
+import { shareWorld } from "./share_world.js";
 import { getShotlist } from "./get_shotlist.js";
 import { getShotDirector } from "./get_shot_director.js";
 import { saveShotDirector } from "./save_shot_director.js";
@@ -163,6 +164,7 @@ export function createTools(api: Api): ToolDefinition[] {
     pinDraft(api),
     recordScriptReview(api),
     shareScript(api),
+    shareWorld(api),
     // Shotlist / Episode
     getShotlist(api),
     saveShotlist(api),

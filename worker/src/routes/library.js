@@ -231,7 +231,14 @@ export function registerLibrary(app) {
       httpMetadata: { contentType: obj.httpMetadata?.contentType || "image/png" },
     });
     deriveInBackground(c.env, c.executionCtx, { pid, kind: "asset", file: rel });
-    return c.json({ ok: true, rel, name: `${base}.${ext}`, folder: dir, url: `/asset/${rel}` });
+    // `refUrl` too: the caller that just imported an image usually wants to hand
+    // it to an image model next, and `url` is a project-scoped relative path an
+    // external fetcher can't resolve. Saves a full /api/library listing just to
+    // read back one field.
+    return c.json({
+      ok: true, rel, name: `${base}.${ext}`, folder: dir,
+      url: `/asset/${rel}`, thumb: `/thumb/${rel}`, refUrl: assetRefUrl(c.env, pid, rel),
+    });
   });
 
   // Toggle a source image's membership in the final_selection set. Verbatim db

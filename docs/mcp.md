@@ -195,17 +195,74 @@ correct.
 Reads across the whole pipeline (`list_projects`, `get_status`, `get_world`,
 `get_script`, `list_drafts`, `lint_script`, `get_script_reviews`, `get_shotlist`,
 `list_shots`, `get_episode`, `list_episodes`, `get_radio`, `get_sounds`,
-`get_cuts`, `list_library`, `get_musical`, `list_history`, `list_doc_history`);
-session context (`use_project`, `use_episode`, `create_project`); writes
-(`add_world_character`/`_location`, `save_script`, `new_draft`, `pin_draft`,
+`get_cuts`, `get_storyboard`, `get_visual_world`, `list_library`, `get_musical`,
+`list_history`, `list_doc_history`); session context (`use_project`,
+`use_episode`, `create_project`); writes (`add_world_character`/`_location`,
+`update_world_character`/`_location`, `save_script`, `new_draft`, `pin_draft`,
 `sign_script`, `save_shotlist`, `create_episode`, `set_episode_style`,
-`save_episode_prompt`, `select_take`, `restore_version`); and generation
-kickoffs that **spend render credits** (`generate_storyboard`, `render_video`,
-`stitch_cut`, polled via `get_job`). The flue **skills** are exposed as MCP
-**prompts** (`worker/src/mcp-prompts.js`) — `orient`, `script-writing`,
-`world-creation`, `shot-list`, `generate-storyboard`, `generate-multishot`,
-`complete-cut`, `recover-lost-content` — so the client's model can load a
-playbook and then drive the tools the way flue does.
+`save_episode_prompt`, `select_take`, `restore_version`); the image surfaces
+below; and the long jobs (`render_timeline_video`, `stitch_cut`, polled via
+`get_job`). The flue **skills** are exposed as MCP **prompts**
+(`worker/src/mcp-prompts.js`) — `orient`, `script-writing`, `world-creation`,
+`shot-list`, `generate-storyboard`, `generate-multishot`, `complete-cut`,
+`recover-lost-content` — so the client's model can load a playbook and then
+drive the tools the way flue does.
+
+## Images — getting one IN, then pinning it to something
+
+Every image picker the app itself ships starts from something already inside the
+project: a library `rel`, a Visual-tab generation id, a still's file. A remote
+MCP client starts from **neither** — it holds a URL its model just produced, or
+the bytes of a file the user pointed it at. That mismatch was a real hole: the
+connector shipped with no upload tool and no attach tools, so a client asked to
+set a character's sheet image could only put an image field on
+`add_world_character` — where it normalized to `null` and the call still
+answered `ok`. Two silent failures, and a duplicate roster entry from the retry.
+
+The fix is one entry point plus one input shape:
+
+- **`upload_image`** brings an image in from outside — `url` (a direct https
+  image URL) or `data` (base64 bytes / a data: URI), png/jpeg/webp/gif, 20MB.
+  It walks the same two steps the browser's MediaPicker Upload tab does —
+  `POST /api/upload` then `POST /api/library/import` — and returns the library
+  `rel`, plus `refUrl`, the absolute full-resolution URL an external image model
+  can fetch.
+- Every attach tool takes **either** `rel` (an image already in the project) or
+  `url` / `data` (imported in the same call), and `clear: true` to unlink. So the
+  one-call path a model reaches for first is the path that works.
+
+The attach surfaces, one per image-reference use case the app has:
+
+| Use case | Tool |
+| --- | --- |
+| Character sheet (the World portrait; rides into every render they're in) | `attach_character_sheet` |
+| Wide-shot miniature (full-figure, for establishing shots) | `attach_character_miniature` |
+| Location sheet (auto-supplied to shots at that location) | `attach_location_sheet` |
+| Storyboard still for a shot (the animatic's picture) | `attach_still` → `select_still` |
+| A bundle's scene references (what its render is conditioned on) | `select_reference`, `link_reference`, `auto_assign_refs` |
+| The still a bundle's video opens on | `set_first_frame` |
+| Style-reference video, episode-wide or per scene | `set_video_reference` |
+| Concept art on the World › Visual tab | `attach_visual_generation` → `save_generation_to_library` |
+| Moodboard reference cards | `add_moodboard_card` |
+| The final-selection shortlist | `toggle_library` |
+
+Two supporting server-side changes make that surface honest, and they apply to
+**every** caller, not just MCP:
+
+- `normalizeSheetImage` (`worker/src/routes/world.js`) now accepts a bare URL
+  string, `refUrl`/`src` aliases, and a `rel` alone (deriving `/asset/` +
+  `/thumb/`). The GUI always sent the full `{ rel, url, thumb, name }`; agents
+  hold exactly one of those fields, and a strict reading turned them into `null`.
+- The character/location create + update routes now **400** on an image field
+  that carries no usable reference, instead of storing `null` — silence there is
+  indistinguishable from "no image", which is what let a caller report success
+  and link nothing.
+
+The one thing an MCP client still can't do is upload a **video** from local
+bytes; `set_video_reference` and `attach_episode_video` take a public URL.
+
+Note the token server (`POST /api/mcp`) does **not** carry any of this — it is
+the deliberately small read-only slice described at the top of this file.
 
 ## Approval / spend
 

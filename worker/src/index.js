@@ -32,6 +32,7 @@ import { registerRadio } from "./routes/radio.js";
 import { registerAnimatic } from "./routes/animatic.js";
 import { registerScript } from "./routes/script.js";
 import { registerShare } from "./routes/share.js";
+import { registerShareConfig } from "./routes/share-config.js";
 import { registerSounds } from "./routes/sounds.js";
 import { registerMusical } from "./routes/musical.js";
 import { registerDirector } from "./routes/director.js";
@@ -59,6 +60,7 @@ import { registerExtract } from "./routes/extract.js";
 import { registerChatTitle } from "./routes/chat-title.js";
 import { registerChats } from "./routes/chats.js";
 import { registerStatus } from "./routes/status.js";
+import { registerAuto } from "./routes/auto.js";
 import { registerPlugins } from "./routes/plugins.js";
 import { registerSuggestions } from "./routes/suggestions.js";
 import { createAuth } from "./auth.js";
@@ -247,9 +249,12 @@ app.use("*", async (c, next) => {
   //                  assertion on the Authorization header.
   //   /api/mcp       the external MCP surface. It requires its own bearer token
   //                  and resolves its project explicitly.
-  //   /api/share/    the public read-only share views (routes/share.js). The
+  //   /api/share/    the public read-only share views (routes/share.js) — the
+  //                  manifest, the shared script, and the shared world. The
   //                  share token is the credential — it names its project and
   //                  is verified against that project's share doc. GET-only.
+  //                  (The AUTHED /api/share-config management half is NOT under
+  //                  this prefix, so it stays behind the ownership middleware.)
   //   /api/orgs      the teams surface (routes/orgs.js). It manages ORG state,
   //                  not project state, and authorises itself (member-of vs.
   //                  can-manage). Scoping it to an active project would 400 an
@@ -687,6 +692,7 @@ registerRadio(app);
 registerAnimatic(app);
 registerScript(app);
 registerShare(app);
+registerShareConfig(app);
 registerSounds(app);
 registerMusical(app);
 // The Director half of the studio: the cue sheet, the live sitting it plays as,
@@ -716,6 +722,7 @@ registerExtract(app);
 registerChatTitle(app);
 registerChats(app);
 registerStatus(app);
+registerAuto(app);
 registerPlugins(app);
 registerSuggestions(app);
 registerAppState(app);

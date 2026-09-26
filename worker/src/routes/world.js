@@ -14,7 +14,7 @@
 // one `characters` (the episode's cast). See lib/format.js for feature vs series.
 import { readDoc, updateDoc, DEFAULT_EPISODE } from "../lib/docs.js";
 import { requestContext } from "../lib/request-context.js";
-import { assetRefUrl } from "../lib/media.js";
+import { assetRefUrl, filesUrl, mediaKey } from "../lib/media.js";
 import {
   normalizeProductionType, DEFAULT_PRODUCTION_TYPE, PRODUCTION_TYPE_IDS,
 } from "../lib/production-type.js";
@@ -72,13 +72,47 @@ const slugify = (s) => str(s).trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").r
 // full-res `url`, small `thumb`, and display `name` so the World tab can render a
 // thumbnail without another lookup. Anything unshaped (or an explicit unlink)
 // normalizes to null.
+//
+// TOLERANT ON INPUT, because the GUI is not the only caller. The World tab picks
+// from the MediaPicker and always sends the full `{ rel, url, thumb, name }`; an
+// agent or an MCP client holds ONE of those — a `rel` from list_library, or a
+// bare URL string — and a strict reading of "unshaped" turned those into `null`,
+// i.e. a save that reported ok and linked nothing. (That is exactly how an MCP
+// client burned a turn believing it had pinned a character sheet.) So: a bare
+// string is a URL; `refUrl`/`src` are accepted aliases for `url`; and a `rel`
+// alone derives its own `/asset/` + `/thumb/` paths, which is where every
+// library image is served from. The routes below then REJECT anything that
+// still can't be shaped, instead of silently storing null — see `imageError`.
 function normalizeSheetImage(raw) {
-  if (!raw || typeof raw !== "object") return null;
-  const url = str(raw.url);
+  if (!raw) return null;
+  if (typeof raw === "string") {
+    const url = raw.trim();
+    return url ? { rel: "", url, thumb: "", name: "" } : null;
+  }
+  if (typeof raw !== "object") return null;
   const rel = str(raw.rel);
+  const url = str(raw.url) || str(raw.refUrl) || str(raw.src) || (rel ? `/asset/${rel}` : "");
   if (!url && !rel) return null;
-  return { rel, url, thumb: str(raw.thumb), name: str(raw.name) };
+  return {
+    rel,
+    url,
+    thumb: str(raw.thumb) || (rel ? `/thumb/${rel}` : ""),
+    name: str(raw.name),
+  };
 }
+
+// The 400 a caller gets when it sent SOMETHING for an image field that carries
+// no usable reference. Silence here is the worst outcome: `null` is
+// indistinguishable from "no image", so the caller reports success and the
+// author finds an empty sheet slot later.
+const imageError = (field) =>
+  `'${field}' is not a usable image reference. Pass the library image as { rel, url } ` +
+  `(rel from GET /api/library), or a plain https URL string. Send null to unlink.`;
+
+// Which image fields of a character/location body are truthy but unshapeable.
+const IMAGE_FIELDS = ["sheetImage", "miniatureImage"];
+const unshapedImage = (body) =>
+  IMAGE_FIELDS.find((f) => body && body[f] && !normalizeSheetImage(body[f]));
 
 // A voice attached to a character: a liked take from the Sound Studio. We snapshot
 // the display name and the playable `url` (relative `/sound-media/<file>`) plus the
@@ -297,6 +331,58 @@ export async function buildWorldView(env, pid) {
   };
 }
 
+// ── Public read-only projection (the /api/share/world/:token viewer) ───────────
+// A share-link viewer has no session and no project header, so every image must
+// resolve to an UNGATED absolute `/files/...` URL — the gated `/asset/*` and
+// `/sound-media/*` routes read `c.get("projectId")` and would 401. So we strip
+// each sheet down to its ungated `url` (the library `rel` → `/files/.../asset/`)
+// and each voice to an ungated `/files/.../sound-media/` clip. Nothing here is
+// editable and nothing that isn't public (ids kept only to key React lists).
+const publicImage = (env, pid, img) => {
+  if (!img) return null;
+  const url = img.rel ? assetRefUrl(env, pid, img.rel) : "";
+  return url ? { url, name: str(img.name) } : null;
+};
+
+const publicVoice = (env, pid, vref) => {
+  if (!vref?.url) return null;
+  const m = /\/sound-media\/(.+)$/.exec(vref.url);
+  const url = m ? filesUrl(env, mediaKey(pid, "sound-media", m[1])) : "";
+  return url ? { name: str(vref.name), v: vref.v ?? null, url } : null;
+};
+
+// The written world exactly as the World tab shows it, stripped to the public,
+// read-only shape. Deliberately NOT episode-scoped via requestContext (the public
+// route has no identity store): a series link lands on the first episode's roster
+// and depth, which is the shared bible's default view.
+export async function buildSharedWorld(env, pid) {
+  const world = await readWorld(env, pid);
+  const bible = await readEpisodeBible(env, pid, DEFAULT_EPISODE, world);
+  const byId = new Map(world.characters.map((c) => [c.id, c]));
+  const roster = bible.characterIds.map((id) => byId.get(id)).filter(Boolean);
+  const is2d = normalizeProductionType(world.productionType) === "2d";
+  return {
+    title: world.title,
+    logline: world.logline,
+    productionType: world.productionType,
+    format: world.format,
+    map: world.map,
+    depth: bible.depth,
+    characters: roster.map((c) => ({
+      id: c.id,
+      name: c.name, archetype: c.archetype, role: c.role, want: c.want, need: c.need,
+      traits: c.traits, arc: c.arc, voice: c.voice, appearance: c.appearance,
+      sheetImage: publicImage(env, pid, c.sheetImage),
+      miniatureImage: is2d ? publicImage(env, pid, c.miniatureImage) : null,
+      voiceRef: publicVoice(env, pid, c.voiceRef),
+    })),
+    locations: world.locations.map((l) => ({
+      id: l.id, name: l.name, slug: l.slug, description: l.description,
+      sheetImage: publicImage(env, pid, l.sheetImage),
+    })),
+  };
+}
+
 // Every MUTATION goes through this, never a bare read-then-write. A plain
 // read-modify-write is last-writer-wins, and these routes are hammered
 // concurrently — the agent adds a cast in one burst, the Animatic creates a
@@ -449,6 +535,8 @@ export function registerWorld(app) {
     const pid = c.get("projectId");
     let body;
     try { body = await c.req.json(); } catch { body = {}; }
+    const bad = unshapedImage(body);
+    if (bad) return c.json({ error: imageError(bad) }, 400);
     const { character } = await editWorld(c.env, pid, (world) => {
       const char = normalizeChar({ name: "New character", ...body }, world.characters.length);
       world.characters.push(char);
@@ -470,6 +558,8 @@ export function registerWorld(app) {
     const id = c.req.param("id");
     let patch;
     try { patch = await c.req.json(); } catch { patch = {}; }
+    const bad = unshapedImage(patch);
+    if (bad) return c.json({ error: imageError(bad) }, 400);
     const res = await editWorld(c.env, pid, (world) => {
       const idx = world.characters.findIndex((x) => x.id === id);
       if (idx < 0) return { abort: true, missing: true };
@@ -552,6 +642,8 @@ export function registerWorld(app) {
     const pid = c.get("projectId");
     let body;
     try { body = await c.req.json(); } catch { body = {}; }
+    const bad = unshapedImage(body);
+    if (bad) return c.json({ error: imageError(bad) }, 400);
     const { location, world } = await editWorld(c.env, pid, (world) => {
       const loc = normalizeLocation({ name: "New location", ...body }, world.locations.length);
       world.locations.push(loc);
@@ -567,6 +659,8 @@ export function registerWorld(app) {
     const id = c.req.param("id");
     let patch;
     try { patch = await c.req.json(); } catch { patch = {}; }
+    const bad = unshapedImage(patch);
+    if (bad) return c.json({ error: imageError(bad) }, 400);
     const res = await editWorld(c.env, pid, (world) => {
       const idx = world.locations.findIndex((x) => x.id === id);
       if (idx < 0) return { abort: true, missing: true };

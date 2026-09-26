@@ -1,23 +1,58 @@
-// PUBLIC share surface — the read-only script view behind a share link.
+// PUBLIC share surface — the read-only project view behind a share link.
 //
 // This prefix is exempt from the ownership middleware (see the isData chain in
 // index.js): a share-link viewer has no session and no project header. The
-// token IS the credential — it names a project (lib/share-token.js) and the
+// token IS the credential — it names a project (lib/share-token.js) and each
 // route verifies it against that project's `script-share` doc, so a revoked or
 // fabricated token dies here with a 404. Everything is a GET; nothing under
 // /api/share may ever mutate.
+//
+// One token, two independently-toggled surfaces: the SCRIPT and the written
+// WORLD. `script-share` holds `{ token, draftId, script, world }`; a viewer sees
+// only the tabs the author enabled (isScriptShared / isWorldShared).
 import { readDoc } from "../lib/docs.js";
 import { readStore, pinnedDraft, countLines } from "../lib/script-store.js";
-import { shareTokenProject, shareTokensMatch } from "../lib/share-token.js";
+import { buildSharedWorld } from "./world.js";
+import {
+  shareTokenProject,
+  shareTokensMatch,
+  isScriptShared,
+  isWorldShared,
+} from "../lib/share-token.js";
 
-// Doc holding a project's active share token and which draft it points at
-// ({ token, draftId } — either may be null). Written only by the authed
-// /api/script/share routes in routes/script.js. A null `draftId` (or one whose
-// draft was since deleted) resolves to the PINNED draft, so old links never 404
-// on a deleted version.
+// Doc holding a project's active share token, which surfaces are on, and which
+// script draft the link points at ({ token, draftId, script, world }). Written
+// only by the authed routes (routes/share-config.js + the legacy /api/script/share
+// in routes/script.js). A null `draftId` (or one whose draft was since deleted)
+// resolves to the PINNED draft, so old links never 404 on a deleted version.
 export const SHARE_DOC = "script-share";
 
+// Resolve + verify a presented token against its project's share config. Returns
+// { pid, cfg } on a real, live token, else null. One indistinguishable failure
+// path for malformed, revoked and never-issued tokens — a prober learns nothing.
+async function resolveShare(env, token) {
+  const pid = shareTokenProject(token);
+  if (!pid) return null;
+  const cfg = await readDoc(env, pid, SHARE_DOC, null);
+  if (!cfg?.token || !(await shareTokensMatch(cfg.token, token))) return null;
+  return { pid, cfg };
+}
+
 export function registerShare(app) {
+  // Manifest: which surfaces this link exposes, so the unified /share/:token page
+  // knows which tabs to draw before fetching either payload. 404 when the token
+  // is bad OR every surface is off (a fully-revoked link is indistinguishable
+  // from a fabricated one).
+  app.get("/api/share/:token", async (c) => {
+    const gone = () => c.json({ error: "This share link is no longer available" }, 404);
+    const r = await resolveShare(c.env, c.req.param("token"));
+    if (!r) return gone();
+    const script = isScriptShared(r.cfg);
+    const world = isWorldShared(r.cfg);
+    if (!script && !world) return gone();
+    return c.json({ script, world });
+  });
+
   // Resolve a share link to a read-only projection of the shared script. The
   // viewer can switch between EVERY draft in the store — so the response carries
   // the full draft list (id/name/lineCount/updatedAt, no proposals) plus the
@@ -26,14 +61,12 @@ export function registerShare(app) {
   // Deliberately NOT buildScriptView: proposals, sign-off and reviews stay the
   // author's business.
   app.get("/api/share/script/:token", async (c) => {
-    const token = c.req.param("token");
-    const pid = shareTokenProject(token);
-    // One indistinguishable 404 for malformed, revoked, and never-issued
-    // tokens — a prober learns nothing about which projects exist.
     const gone = () => c.json({ error: "This share link is no longer available" }, 404);
-    if (!pid) return gone();
-    const cfg = await readDoc(c.env, pid, SHARE_DOC, null);
-    if (!cfg?.token || !(await shareTokensMatch(cfg.token, token))) return gone();
+    const r = await resolveShare(c.env, c.req.param("token"));
+    // A live token whose SCRIPT surface is off (world-only share) 404s here just
+    // like a revoked one.
+    if (!r || !isScriptShared(r.cfg)) return gone();
+    const { pid, cfg } = r;
     const store = await readStore(c.env, pid);
 
     // The default draft the link lands on: the author's chosen one, else pinned.
@@ -55,5 +88,14 @@ export function registerShare(app) {
       doc: d.doc ?? null,
       updatedAt: d.updatedAt || null,
     });
+  });
+
+  // Resolve a share link to the read-only written world (buildSharedWorld strips
+  // it to public, ungated-media shape). 404 when the WORLD surface is off.
+  app.get("/api/share/world/:token", async (c) => {
+    const gone = () => c.json({ error: "This share link is no longer available" }, 404);
+    const r = await resolveShare(c.env, c.req.param("token"));
+    if (!r || !isWorldShared(r.cfg)) return gone();
+    return c.json(await buildSharedWorld(c.env, r.pid));
   });
 }

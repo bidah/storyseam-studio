@@ -17,8 +17,10 @@
 // like one, so don't undo them without a reason:
 //   1. The name here MUST match <title> and the domain (StorySeam / storyseam.app).
 //      Claiming an unrelated brand on an unknown host is the strongest signal.
-//   2. Don't claim affiliation with a third party ("powered by X"). Higgsfield,
-//      fal.ai and Atlas Cloud are render accounts the USER connects; say that.
+//   2. Don't claim affiliation with a third party ("powered by X"). In the
+//      studio, Higgsfield, fal.ai and Atlas Cloud are render accounts the USER
+//      connects; Auto Films run on StorySeam's own account (docs/adr/0003).
+//      Say both, and promise nothing about where keys are kept.
 //   3. Say plainly what the site is, and what signing in does, above the fold.
 //
 // After the session exists a SECOND gate may block on the selected render
@@ -152,7 +154,7 @@ const FEATURES = [
     label: "Switch provider",
     note: "Higgsfield, fal.ai or Atlas Cloud",
     blurb:
-      "Bring your own rendering account and switch between them whenever you like. Keys you paste stay in this browser only, and generation bills to you, not to us.",
+      "Bring your own rendering account and switch between them whenever you like. Generation there bills to your account, not to us.",
   },
   {
     icon: Users,
@@ -433,7 +435,7 @@ export function SignInPage() {
           </div>
 
           <p className="mt-6 max-w-lg border-t border-[var(--br-secondary)]/25 pt-6 text-xs leading-relaxed text-[var(--br-secondary)]">
-            {t("Generation runs on a rendering account you connect yourself — Higgsfield, fal.ai or Atlas Cloud — so images, video and audio bill to you. StorySeam is not affiliated with those services. API keys you paste are kept in this browser only and are never stored on our servers.")}
+            {t("Films made with Auto run on StorySeam's own account — you never add a key, and StorySeam pays for them. In the studio you can also render with your own Higgsfield, fal.ai or Atlas Cloud account, and that generation bills to you. StorySeam is not affiliated with those services.")}
           </p>
 
           {/* Reachable WITHOUT signing in — /privacy and /terms are routed as
