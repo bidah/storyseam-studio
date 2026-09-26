@@ -16,3 +16,12 @@ describe("finishRender polls fal on the app base path", () => {
     expect(seen[0]).toBe("https://queue.fal.run/minimax/h3-max/requests/req_1/status");
   });
 });
+
+import { MUSIC_STATUS_QUEUE, MUSIC_QUEUE } from "../../worker/src/lib/musicalized-cue.js";
+
+describe("the music cue polls fal on the app base path", () => {
+  it("submits to elevenlabs/music/v2.5 but polls elevenlabs/music", () => {
+    expect(MUSIC_QUEUE).toBe("https://queue.fal.run/elevenlabs/music/v2.5");
+    expect(MUSIC_STATUS_QUEUE).toBe("https://queue.fal.run/elevenlabs/music");
+  });
+});

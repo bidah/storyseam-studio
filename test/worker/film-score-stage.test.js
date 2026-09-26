@@ -80,7 +80,7 @@ function fakeFal() {
   const fetch = vi.fn(async (url, init = {}) => {
     const u = String(url);
     if (u.startsWith("https://v3.fal.media/")) return new Response(new Uint8Array([73, 68, 51, 4]));
-    const m = /^https:\/\/queue\.fal\.run\/elevenlabs\/music\/v2\.5\/requests\/([^/]+)(\/status)?$/.exec(u);
+    const m = /^https:\/\/queue\.fal\.run\/elevenlabs\/music\/requests\/([^/]+)(\/status)?$/.exec(u);
     if (m) {
       const req = requests.get(m[1]);
       if (m[2]) return Response.json({ status: req.status, ...(req.error ? { error: req.error } : {}) });

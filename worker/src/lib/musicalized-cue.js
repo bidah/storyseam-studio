@@ -15,6 +15,10 @@ import { falAuthorization } from "../routes/stage.js";
 
 export const MUSIC_ENDPOINT = "elevenlabs/music/v2.5";
 export const MUSIC_QUEUE = `https://queue.fal.run/${MUSIC_ENDPOINT}`;
+// fal's queue answers status and results on the APP's base path (owner/app),
+// not the full endpoint: `elevenlabs/music/v2.5/requests/<id>/status` is a 405,
+// so a cue polled there reads as running forever. Submit to MUSIC_QUEUE; poll here.
+export const MUSIC_STATUS_QUEUE = `https://queue.fal.run/${MUSIC_ENDPOINT.split("/").slice(0, 2).join("/")}`;
 
 const nowIso = () => new Date().toISOString();
 // A render nobody polled for a day is not coming back for its body.
@@ -81,14 +85,14 @@ export async function pollCue(env, pid, requestId, { seriesId: askedSeries, key 
   const seriesId = askedSeries || pending?.seriesId || "";
 
   const headers = { authorization: falAuthorization(key) };
-  const status = await fetchFn(`${MUSIC_QUEUE}/requests/${requestId}/status`, { headers });
+  const status = await fetchFn(`${MUSIC_STATUS_QUEUE}/requests/${requestId}/status`, { headers });
   const state = await status.json().catch(() => null);
   if (state?.status !== "COMPLETED") {
     if (state?.status === "FAILED") return { status: "error", error: state?.error || "the render failed" };
     return { status: "running", queue: state?.status || null, queuePosition: state?.queue_position ?? null };
   }
 
-  const done = await fetchFn(`${MUSIC_QUEUE}/requests/${requestId}`, { headers });
+  const done = await fetchFn(`${MUSIC_STATUS_QUEUE}/requests/${requestId}`, { headers });
   // A render that ran and failed reports its failure HERE, not in the status.
   if (!done.ok) {
     const detail = await done.text().catch(() => "");
