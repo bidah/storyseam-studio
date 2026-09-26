@@ -51,6 +51,17 @@ like a model that cannot follow a prompt.
 5. **Poll** with the same tool and the `takeId`.
 6. **Stop.** Tell the author the take is ready and to open the Shot sheet tab.
 
+## More frames than one reel: the run plans the reels
+
+A reel holds 16 pins. When the chosen frames need more, the run plans the
+**reels** first and draws **one clip per reel** — a clip never crosses a seam.
+Rendering writes the plan's seams onto the Series as `reelChanges` (re-planned
+from scratch every time). A seam costs frames: the beat a later reel opens on
+has no pin, and no pin may sit under 5s after it, so those chosen frames are
+**not drawn** — `preview_shot_sheet` lists them in `plan.skipped`; say so to the
+author before rendering. More than 4 reel changes is refused before anything is
+paid for.
+
 ## The sheet is assembled, never typed
 
 The prompt's numbered shot list and the times the frames are grabbed at come out

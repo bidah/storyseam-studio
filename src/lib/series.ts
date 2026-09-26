@@ -260,6 +260,12 @@ export const MAX_END_IMAGES = 16;
 export const MAX_AUDIO_BEATS = 8;
 
 /**
+ * How many times one Series may change reels — so at most five reels. See
+ * `reelChanges`.
+ */
+export const MAX_REEL_CHANGES = 4;
+
+/**
  * The three things a model sheet can be about.
  *
  * `character` is one figure held still across a piece — a person, a mecha, a
@@ -754,7 +760,7 @@ const rules = {
    * represented and its audio tails have finished", so the seam lands on the
    * chunk grid rather than on the second written here. See `reels()`.
    */
-  reelChanges: z.array(z.number().int().min(1).max(86_400)).max(4),
+  reelChanges: z.array(z.number().int().min(1).max(86_400)).max(MAX_REEL_CHANGES),
   /**
    * The model sheets, in the order the author wrote them.
    *

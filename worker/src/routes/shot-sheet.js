@@ -25,7 +25,8 @@
 // is refused in one place, before a render is paid for.
 import { absolutizeSeries, readSeries, readSheets, updateSeries, updateSheets } from "../lib/director.js";
 import { putMedia } from "../lib/media.js";
-import { endpointFor, renderBody, sheetsFrom, slotsOf, validateSheet } from "../lib/shot-sheet.ts";
+import { endpointFor, planSheets, renderBody, slotsOf, validateSheet, withSeams } from "../lib/shot-sheet.ts";
+import { seriesInput } from "../lib/series.ts";
 import { falAuthorization } from "./stage.js";
 
 const FAL_QUEUE = "https://queue.fal.run";
@@ -42,7 +43,7 @@ export function registerShotSheet(app) {
   // ── What this Series' sheet WOULD be ──────────────────────────────────────
   //
   // Every frame the cue sheet needs, whether it is already drawn, what the shot
-  // line for it would say, and which of them fit in one clip. Read before
+  // line for it would say, and the Series' current reel changes. Read before
   // rendering, so the author chooses the slots rather than discovering the
   // choice was made for them.
   app.get("/api/shotsheet/:seriesId", async (c) => {
@@ -60,6 +61,8 @@ export function registerShotSheet(app) {
       seriesId,
       title: series.title,
       slots: slotsOf(resolved),
+      // The reel changes the last run wrote — the pin checks count per reel.
+      reelChanges: series.reelChanges || [],
       clause: series.prompts?.shotSheet || null,
       // With its playable url — the tab plays `take.url`, and a take read back
       // after a reload used to arrive without one, as an empty player.
@@ -79,11 +82,18 @@ export function registerShotSheet(app) {
     let body;
     try { body = await c.req.json(); } catch { body = {}; }
 
-    const sheets = buildSheets(c, pid, series, body);
-    const parts = sheets.map((sheet) => ({ sheet, endpoint: endpointFor(sheet), request: renderBody(sheet) }));
+    const { plan, sheets } = buildRun(c, pid, series, body);
+    const parts = sheets.map((sheet, index) => ({
+      reel: index + 1,
+      opensAt: plan.reels[index].opensAt,
+      sheet,
+      endpoint: endpointFor(sheet),
+      request: renderBody(sheet),
+    }));
     // `sheet`/`endpoint`/`request` are the first clip's, for callers that read
-    // one; `parts` is the whole run.
-    return c.json({ ...parts[0], parts, errors: runErrors(sheets) });
+    // one; `parts` is the whole run, one clip per reel; `plan` is the reels,
+    // the seams they open on and the frames those seams cost.
+    return c.json({ ...parts[0], parts, plan: planView(plan), errors: runErrors(plan, sheets) });
   });
 
   // ── Render ────────────────────────────────────────────────────────────────
@@ -106,11 +116,35 @@ export function registerShotSheet(app) {
     let body;
     try { body = await c.req.json(); } catch { body = {}; }
 
-    // A cue sheet longer than one clip holds is drawn as a RUN of clips. Every
-    // clip is checked before any of them is paid for.
-    const sheets = buildSheets(c, pid, series, body);
-    const errors = runErrors(sheets);
-    if (errors.length) return c.json({ error: "This sheet would be refused", errors }, 400);
+    // The run plans the REELS first and draws one clip per reel (ADR 0002).
+    // Every clip, and the plan itself, is checked before any of it is paid for.
+    const { plan, sheets } = buildRun(c, pid, series, body);
+    const errors = runErrors(plan, sheets);
+    if (errors.length) return c.json({ error: "This sheet would be refused", errors, plan: planView(plan) }, 400);
+
+    // The seams go on the Series BEFORE fal is paid — re-planned from scratch,
+    // so a render always leaves `reelChanges` matching the clips it drew. A pin
+    // left inside a new seam's window is cleared (the Series would refuse it,
+    // and every pin after it). If the seams would make the Series refuse
+    // something it did not refuse already, nothing is written and nothing spent.
+    const seamed = await updateSeries(c.env, pid, seriesId, (row) => {
+      if (!row?.id) return { abort: true, missing: true };
+      const { reelChanges, directions, cleared } = withSeams(row, plan.seams);
+      const candidate = { ...row, reelChanges, directions };
+      const before = issuesOf(row);
+      const introduced = issuesOf(candidate).filter((message) => !before.includes(message));
+      if (introduced.length) return { abort: true, introduced };
+      Object.assign(row, candidate, { updatedAt: nowIso() });
+      return { cleared };
+    });
+    if (seamed.missing) return c.json({ error: "No such Series" }, 404);
+    if (seamed.introduced) {
+      return c.json({
+        error: "The Series would refuse these reel changes",
+        errors: seamed.introduced.map((message) => ({ message })),
+        plan: planView(plan),
+      }, 400);
+    }
 
     const runId = crypto.randomUUID();
     const takes = [];
@@ -133,6 +167,8 @@ export function registerShotSheet(app) {
         seriesId,
         runId,
         part: index + 1,
+        // One clip per reel: part N draws reel N, which opens on this beat.
+        opensAt: plan.reels[index].opensAt,
         parts: sheets.length,
         status: "running",
         endpoint,
@@ -156,7 +192,16 @@ export function registerShotSheet(app) {
       return {};
     });
 
-    return c.json({ ok: true, runId, take: takes[0], takes, ...(failed ? { error: failed } : {}) });
+    return c.json({
+      ok: true,
+      runId,
+      take: takes[0],
+      takes,
+      plan: planView(plan),
+      // Offsets whose old pin sat inside a new seam's window and was cleared.
+      cleared: seamed.cleared || [],
+      ...(failed ? { error: failed } : {}),
+    });
   });
 
   // Poll one take, and FINALIZE it the first time the queue says COMPLETED:
@@ -235,26 +280,49 @@ export function registerShotSheet(app) {
  * that is not already refused. The duration is the author's — it is the one
  * number that trades "how many pins fit" against "how long each is held".
  */
-function buildSheets(c, pid, series, body) {
+function buildRun(c, pid, series, body) {
   const resolved = absolutizeSeries(c.env, pid, series);
   const chosen = Array.isArray(body.slots) && body.slots.length
     ? body.slots.map(Number)
     : slotsOf(resolved).filter((s) => !s.refused).map((s) => s.offset);
   const duration = Number.isInteger(body.duration) ? body.duration : undefined;
-  const sheets = sheetsFrom(resolved, chosen, duration);
-  if (Number.isInteger(body.seed)) for (const sheet of sheets) sheet.seed = body.seed;
-  return sheets;
+  const run = planSheets(resolved, chosen, duration);
+  if (Number.isInteger(body.seed)) for (const sheet of run.sheets) sheet.seed = body.seed;
+  return run;
 }
 
-// Every clip's refusals, named by clip when there is more than one. A reason
-// every clip shares (an empty premise) is said once.
-function runErrors(sheets) {
+// The plan as a caller reads it: which beats each reel covers, not its shot text
+// (that is in `parts`).
+function planView(plan) {
+  return {
+    reels: plan.reels.map((reel) => ({
+      reel: reel.reel,
+      opensAt: reel.opensAt,
+      frames: reel.shots.length,
+      offsets: reel.shots.map((shot) => shot.offset),
+    })),
+    seams: plan.seams,
+    skipped: plan.skipped,
+    clips: plan.clips.length,
+    refused: plan.refused,
+  };
+}
+
+// What the Director's own Series validation says, as a list of messages.
+function issuesOf(series) {
+  const check = seriesInput.safeParse(series);
+  return check.success ? [] : check.error.issues.map((issue) => issue.message);
+}
+
+// The plan's refusal first, then every clip's, named by reel when there is more
+// than one. A reason every clip shares (an empty premise) is said once.
+function runErrors(plan, sheets) {
   const seen = new Set();
-  const out = [];
+  const out = plan.refused ? [{ message: plan.refused }] : [];
   sheets.forEach((sheet, index) => {
     for (const error of validateSheet(sheet)) {
       const message = sheets.length > 1 && error.shot !== undefined
-        ? `Clip ${index + 1}: ${error.message}`
+        ? `Reel ${index + 1}: ${error.message}`
         : error.message;
       if (seen.has(message)) continue;
       seen.add(message);
