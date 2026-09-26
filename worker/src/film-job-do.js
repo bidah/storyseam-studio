@@ -1,15 +1,20 @@
 // FilmJobs — the Durable Object that holds a project's Film job (one instance
 // per project: the Worker addresses it with idFromName(projectId)).
 //
-// It stores ONE job — the current one — and drives it with alarms, one stage
-// per alarm, so nothing depends on a request (or the author's tab) staying
-// open: the alarm re-arms itself until the job stops, and an alarm that dies
-// mid-stage is retried by the runtime and re-runs that stage. What a stage does
+// It stores the CURRENT job plus a QUEUE of Films waiting behind it (one Film
+// at a time per project — lib/film-queue.js), and drives the job with alarms,
+// one stage attempt per alarm, so nothing depends on a request (or the
+// author's tab) staying open: the alarm re-arms itself until the job ends, and
+// an alarm that dies mid-stage is retried by the runtime and re-runs that
+// stage. When the job ends (done / stopped) the same alarm starts the next
+// queued Film, re-checking its allowance at that moment. What a stage does
 // lives in lib/film-job.js; this file only persists, broadcasts and schedules.
 //
 // Spoken to over RPC by routes/auto.js:
-//   start({ prompt, userId, projectId, episodeId }) → { ok, job } | { ok:false, refusal }
-//   current()                                        → the job (without userId) | null
+//   start({ prompt, userId, projectId, episodeId })
+//     → { ok, job } | { ok, queued: true, position, film, job } | { ok:false, refusal, job }
+//   current() → the job (without userId) | null
+//   queued()  → the waiting Films (without userId), each with its position
 //
 // Every transition is broadcast on the project's existing live-sync `data`
 // channel (the ProjectEvents DO) as `{ resource: "auto", kind, filmId, step,
@@ -17,45 +22,89 @@
 // rather than a sixth EventSource.
 
 import { DurableObject } from "cloudflare:workers";
-import { advanceFilm, groqModel, publicJob, startFilm } from "./lib/film-job.js";
+import { advanceFilm, event, groqModel, publicJob } from "./lib/film-job.js";
+import { publicQueue, startNextQueued, submitFilm } from "./lib/film-queue.js";
 import { broadcast } from "./lib/broadcast.js";
 import { saveWorld } from "./routes/world.js";
 
 const KEY = "job";
+const QUEUE = "queue";
 
 export class FilmJobs extends DurableObject {
   async current() {
     return publicJob(await this.ctx.storage.get(KEY));
   }
 
+  async queued() {
+    return publicQueue(await this.ctx.storage.get(QUEUE));
+  }
+
   async start(input) {
-    const existing = await this.ctx.storage.get(KEY);
-    const res = await startFilm(existing, input, { env: this.env });
-    if (!res.ok) return { ...res, job: publicJob(existing) };
-    await this.commit(res.job, {
-      resource: "auto", kind: "film.started", filmId: res.job.id, step: null, job: publicJob(res.job),
-    });
+    const job = await this.ctx.storage.get(KEY);
+    const queue = (await this.ctx.storage.get(QUEUE)) || [];
+    const res = await submitFilm({ job, queue }, input, { env: this.env });
+    if (!res.ok) return { ...res, job: publicJob(job) };
+
+    if (res.queued) {
+      await this.ctx.storage.put(QUEUE, res.queue);
+      await this.announce(job?.projectId ?? res.item.projectId, {
+        resource: "auto", kind: "film.queued", filmId: res.item.id, step: null, job: publicJob(job),
+      });
+      // Nothing running but a queue (a drain was interrupted) → drain it now.
+      if (job?.status !== "running") await this.ctx.storage.setAlarm(Date.now());
+      return {
+        ok: true,
+        queued: true,
+        position: res.position,
+        film: publicQueue(res.queue)[res.position - 1],
+        job: publicJob(job),
+      };
+    }
+
+    await this.commit(res.job, event("film.started", res.job));
     await this.ctx.storage.setAlarm(Date.now());
     return { ok: true, job: publicJob(res.job) };
   }
 
   async alarm() {
-    const job = await this.ctx.storage.get(KEY);
-    if (!job || job.status !== "running") return;
-    const next = await advanceFilm(job, {
-      env: this.env,
-      model: groqModel(this.env),
-      saveWorld,
-      commit: (j, ev) => this.commit(j, ev),
-    });
-    if (next?.status === "running") await this.ctx.storage.setAlarm(Date.now());
+    let job = await this.ctx.storage.get(KEY);
+    if (job?.status === "running") {
+      job = await advanceFilm(job, {
+        env: this.env,
+        model: groqModel(this.env),
+        saveWorld,
+        commit: (j, ev) => this.commit(j, ev),
+      });
+      if (job?.status === "running") {
+        await this.ctx.storage.setAlarm(Date.now());
+        return;
+      }
+    }
+    await this.startNext(job);
+  }
+
+  // The job ended (or there was none): start the first queued Film that may.
+  async startNext(job) {
+    const queue = (await this.ctx.storage.get(QUEUE)) || [];
+    if (!queue.length) return;
+    const res = await startNextQueued({ job, queue }, { env: this.env });
+    await this.ctx.storage.put(QUEUE, res.queue);
+    for (const refused of res.refused) await this.commit(refused, event("film.refused", refused));
+    if (res.job) {
+      await this.commit(res.job, event("film.started", res.job));
+      await this.ctx.storage.setAlarm(Date.now());
+    }
   }
 
   // Persist FIRST, then announce — a tab that reloads on the event must read
   // the state the event describes.
   async commit(job, ev) {
     await this.ctx.storage.put(KEY, job);
-    await broadcast(this.env, job.projectId, "data", {
+    await this.announce(job.projectId, ev);
+  }
+
+  async announce(projectId, ev) {
+    await broadcast(this.env, projectId, "data", {
       ...ev,
       path: "/api/auto/films",
       clientId: null,
