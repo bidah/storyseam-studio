@@ -53,7 +53,7 @@ const PACKAGES = ["worker", "flue-agent"];
  * Anything else — a `@/` alias, a path out of this directory — resolves in
  * exactly one of the three and breaks in the other two, silently, at deploy time.
  */
-const ALLOWED_IMPORTS = new Set(["zod", "./series", "./music-plan", "./score-mix"]);
+const ALLOWED_IMPORTS = new Set(["zod", "./series", "./music-plan", "./score-mix", "./specialists"]);
 
 const banner = (module) =>
   `// VENDORED from src/lib/${module} — DO NOT EDIT HERE.\n` +

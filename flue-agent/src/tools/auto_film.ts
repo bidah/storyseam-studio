@@ -147,7 +147,7 @@ export const makeFilm = (api: Api) =>
       specialists: v.optional(
         d(
           v.array(v.picklist(SPECIALIST_IDS as [string, ...string[]])),
-          `With depth "deep": which specialists read the script, by id (${SPECIALIST_IDS.join(", ")}). Omitted, the default room reads it: ${DEFAULT_DEEP_SPECIALISTS.join(", ")}. Each pass is about ${ROOM_PASS_SECONDS}s plus one rewrite (${ROOM_REWRITE_SECONDS}s) — quote roomEstimate-style time when the author asks.`,
+          `With depth "deep": which specialists read the script, by id (${SPECIALIST_IDS.join(", ")}). Omitted, the default room reads it: ${DEFAULT_DEEP_SPECIALISTS.join(", ")}. The room runs on Claude Fable in rounds by roster stage (outline → draft → polish → lock): a round's passes read side by side (about ${ROOM_PASS_SECONDS}s), then one rewrite (about ${ROOM_REWRITE_SECONDS}s) — quote roomEstimate-style time when the author asks.`,
         ),
       ),
       resolution: v.optional(

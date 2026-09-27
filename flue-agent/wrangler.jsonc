@@ -21,12 +21,26 @@
     {
       "tag": "v1",
       "new_sqlite_classes": ["FlueWhistlewoodAgent"]
+    },
+    {
+      // agents/writers-room.ts — one instance per Deep Film pass.
+      "tag": "v2",
+      "new_sqlite_classes": ["FlueWritersRoomAgent"]
     }
   ],
   // Workers AI binding — powers the `cloudflare/@cf/…` chat models (Kimi K2.6 et
   // al.), billed to this account, auto-routed through Cloudflare AI Gateway. No
   // external model API key needed.
   "ai": { "binding": "AI" },
+  // The Deep Film's writers' room (src/cloudflare.ts WritersRoomWorkflow):
+  // started by the main worker's Film job through POST /rooms/:id (app.ts).
+  "workflows": [
+    {
+      "name": "shot-studio-writers-room",
+      "binding": "WRITERS_ROOM",
+      "class_name": "WritersRoomWorkflow"
+    }
+  ],
   // Capture console output (incl. the observe() error lines in app.ts) in
   // Cloudflare Workers Logs — visible in the dashboard Logs tab and `wrangler
   // tail`. The main shot-studio-uploads worker already has this; the agent

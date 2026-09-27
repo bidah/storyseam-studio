@@ -106,6 +106,9 @@ const threeActSub = defineSubagent({
 export function createSubagents(
   api: Api,
   searchTools: ToolDefinition[] = [],
+  // The Film's writers' room (agents/writers-room.ts) records each pass itself,
+  // with the round it belongs to, so its specialists don't also log one.
+  { recordReviews = true }: { recordReviews?: boolean } = {},
 ): SubagentDefinition[] {
   // `record_script_review` is the ONE non-read tool a specialist carries, and it
   // writes no script content — it stamps this specialist's log book so the app
@@ -121,7 +124,7 @@ export function createSubagents(
   // pause for the author (only its final text comes back), so a card drawn from
   // inside a delegation would never get an answer.
   const readTools = [...createReadTools(api), ...searchTools];
-  const doctorTools = [...readTools, recordScriptReview(api)];
+  const doctorTools = recordReviews ? [...readTools, recordScriptReview(api)] : readTools;
   const mountDoctorTools = () => {
     for (const tool of doctorTools) useTool(tool);
   };

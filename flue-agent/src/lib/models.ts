@@ -17,6 +17,13 @@
 // Keep these in lockstep with src/lib/agentModel.js + mobile-app/src/lib/agent-model.ts.
 export const DEFAULT_MODEL = "cloudflare/@cf/moonshotai/kimi-k2.6";
 
+// The Deep Film's writers' room (agents/writers-room.ts) always runs on Claude
+// Fable, through the Workers AI binding and AI Gateway's Unified Billing
+// (lib/output-cap.ts routes `anthropic/…` to the authenticated gateway) — the
+// same model and billing the main worker's Claude writer uses. It is NOT a
+// chat-picker model, so it stays out of ALLOWED_MODELS.
+export const ROOM_MODEL = "cloudflare/anthropic/claude-fable-5.1";
+
 // The only model specifiers a client may select. Anything else is ignored and
 // the conversation falls back to DEFAULT_MODEL, so a client can never push an
 // arbitrary model string to the provider.

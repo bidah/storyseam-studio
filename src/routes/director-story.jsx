@@ -39,6 +39,7 @@ import {
   savePendingStory,
   storeFlow,
   takePendingStory,
+  clearStoryDraft,
   useDirectorProject,
 } from "@/components/DirectorStory";
 import { useSession } from "@/lib/auth-client";
@@ -179,7 +180,7 @@ function SimpleStory({ signedIn, sessionKnown }) {
     if (!pending) return;
     chooseFlow(pending.flow);
     setNote("Starting your story…");
-    start(pending.prompt, pending.opts, pending.flow);
+    start(pending.prompt, pending.opts, pending.flow).then((ok) => { if (ok) clearStoryDraft(); });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionKnown, signedIn]);
 

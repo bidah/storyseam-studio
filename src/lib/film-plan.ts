@@ -5,6 +5,7 @@ import {
   MIN_OPENING_END_IMAGE_SECONDS,
 } from './series';
 import { USD_PER_MINUTE as SCORE_USD_PER_MINUTE } from './music-plan';
+import { SPECIALIST_BY_ID } from './specialists';
 
 // THE FILM PLAN — what a prompt amounts to before anything is paid for: how
 // long the Film is, how many beats and pins that is, how many reels it takes,
@@ -579,17 +580,25 @@ export const FILM_DEPTH_IDS: readonly string[] = FILM_DEPTHS.map((d) => d.id);
 export const DEFAULT_FILM_DEPTH: FilmDepth = 'fast';
 /** The room a Deep Film opens with when nobody picks: the arc first, then the three passes that move a first draft most. */
 export const DEFAULT_DEEP_SPECIALISTS: readonly string[] = ['story_architect', 'scene_doctor', 'motivation_doctor', 'dialogue_doctor'];
-/** How long each part of the story work takes, in seconds. ESTIMATES against the default writer. */
+/** How long each part of the story work takes, in seconds. The script is the Film's writer; the room is Claude Fable. */
 export const SCRIPT_WRITE_SECONDS = 75;
-export const ROOM_PASS_SECONDS = 45;
-export const ROOM_REWRITE_SECONDS = 90;
+/** One specialist's pass: a flue agent reading the draft with its tools, on Claude Fable. A round's passes run side by side. */
+export const ROOM_PASS_SECONDS = 150;
+/** One round's rewrite: Claude Fable applying that round's notes as a new pinned draft. */
+export const ROOM_REWRITE_SECONDS = 120;
 
-/** What a room of `specialists` costs in wall-clock: its passes plus the one rewrite. */
-export function roomEstimate(specialists: readonly string[]): { passes: number; seconds: number; label: string } {
-  const passes = new Set(specialists.filter((s) => typeof s === 'string' && s)).size;
-  const seconds = passes ? passes * ROOM_PASS_SECONDS + ROOM_REWRITE_SECONDS : 0;
+/**
+ * What a room of `specialists` costs in wall-clock. The room runs in ROUNDS, one
+ * per roster stage with anyone in it (outline → draft → polish → lock): a
+ * round's passes read side by side, then one rewrite, then the next round.
+ */
+export function roomEstimate(specialists: readonly string[]): { passes: number; rounds: number; seconds: number; label: string } {
+  const ids = [...new Set(specialists.filter((s) => typeof s === 'string' && s))];
+  const passes = ids.length;
+  const rounds = new Set(ids.map((id) => SPECIALIST_BY_ID.get(id)?.stage ?? id)).size;
+  const seconds = rounds * (ROOM_PASS_SECONDS + ROOM_REWRITE_SECONDS);
   const minutes = Math.max(1, Math.round(seconds / 60));
-  return { passes, seconds, label: passes ? `≈ ${minutes} min` : '—' };
+  return { passes, rounds, seconds, label: passes ? `≈ ${minutes} min` : '—' };
 }
 
 export type FilmEngine = 'director' | 'seedance' | 'h3';

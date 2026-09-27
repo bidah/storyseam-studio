@@ -323,6 +323,23 @@ export function registerScript(app) {
 
   // Delete a draft (never the last one). If the pinned draft is removed, pin the
   // most recently updated of what remains.
+  // One draft's screenplay, by id — pinned or not. The Film page shows the
+  // script a Film's Script step and writers' room wrote (each is a saved draft
+  // of the Film's project); the agent reads it through get_script's `draftId`.
+  app.get("/api/script/drafts/:id", async (c) => {
+    try {
+      const store = await readStore(c.env, c.get("projectId"));
+      const d = store.drafts.find((x) => x.id === c.req.param("id"));
+      if (!d) return c.json({ error: `no draft ${c.req.param("id")}` }, 404);
+      return c.json({
+        id: d.id, name: d.name, title: d.title || "", updatedAt: d.updatedAt,
+        pinned: d.id === store.pinnedId, elements: elementsFromDoc(d.doc),
+      });
+    } catch (e) {
+      return c.json({ error: String(e.message || e) }, 500);
+    }
+  });
+
   app.delete("/api/script/drafts/:id", async (c) => {
     const pid = c.get("projectId");
     try {

@@ -421,4 +421,64 @@ app.use("/agents/whistlewood/:id", applyModelSelection);
 
 app.route("/agents/whistlewood", createAgentRouter(Whistlewood));
 
+// --- The Deep Film's writers' room -------------------------------------------
+// The main worker's Film job starts the room here and asks after it; the work
+// itself is WritersRoomWorkflow (cloudflare.ts). Same credential as a chat: the
+// worker-minted `x-flue-proxy-user` token, whose user must be the Film's owner
+// named in the body — the workflow then acts as that user on /api.
+type WorkflowBinding = {
+  create(opts: { id: string; params: unknown }): Promise<{ id: string; status(): Promise<unknown> }>;
+  get(id: string): Promise<{ id: string; status(): Promise<unknown> }>;
+};
+const ROOM_BINDING = "WRITERS_ROOM";
+const ROOM_ID = /^room-[A-Za-z0-9_-]{1,90}$/;
+
+const requireRoomUser: MiddlewareHandler = async (c, next) => {
+  const secret = proxySecret();
+  if (!secret) return c.json({ error: "server misconfigured" }, 500);
+  const claims = await verifyProxyUser(c.req.header(PROXY_HEADER), secret);
+  if (!claims) return c.json({ error: "Unauthorized" }, 401);
+  if (!ROOM_ID.test(c.req.param("id") || "")) return c.json({ error: "Bad room id" }, 400);
+  c.set("roomUser" as never, claims.sub as never);
+  await next();
+};
+const roomBinding = (c: { env: unknown }) =>
+  (c.env as Record<string, WorkflowBinding | undefined>)[ROOM_BINDING];
+
+app.use("/rooms/:id", requireRoomUser);
+
+app.post("/rooms/:id", async (c) => {
+  const wf = roomBinding(c);
+  if (!wf) return c.json({ error: "The writers' room workflow is not bound on this worker." }, 500);
+  const body = (await c.req.json().catch(() => null)) as
+    | { filmId?: string; projectId?: string; userId?: string; rounds?: unknown[]; brief?: string; episodeId?: string | null }
+    | null;
+  if (!body?.filmId || !body.projectId || !Array.isArray(body.rounds) || !body.rounds.length) {
+    return c.json({ error: "A room needs filmId, projectId and rounds." }, 400);
+  }
+  if (body.userId !== c.get("roomUser" as never)) return c.json({ error: "Forbidden" }, 403);
+  const id = c.req.param("id");
+  try {
+    const instance = await wf.create({ id, params: { ...body, brief: String(body.brief || "") } });
+    return c.json({ instanceId: instance.id, status: await instance.status() }, 201);
+  } catch (err) {
+    // Already started (a Film step re-run after an eviction): attach to it.
+    const existing = await wf.get(id).catch(() => null);
+    if (existing) return c.json({ instanceId: existing.id, status: await existing.status(), existing: true });
+    return c.json({ error: String((err as Error)?.message || err) }, 500);
+  }
+});
+
+app.get("/rooms/:id", async (c) => {
+  const wf = roomBinding(c);
+  if (!wf) return c.json({ error: "The writers' room workflow is not bound on this worker." }, 500);
+  try {
+    const instance = await wf.get(c.req.param("id"));
+    const status = (await instance.status()) as Record<string, unknown>;
+    return c.json({ instanceId: instance.id, ...status });
+  } catch (err) {
+    return c.json({ error: String((err as Error)?.message || err) }, 404);
+  }
+});
+
 export default app;

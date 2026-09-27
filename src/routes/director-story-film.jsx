@@ -15,7 +15,7 @@
 // No loading screen: the steps render at once, all waiting, and fill in when
 // the job arrives. The shared pieces live in components/DirectorStory.jsx.
 import { useCallback, useEffect, useState } from "react";
-import { Link, useLocation, useNavigate, useParams } from "react-router";
+import { Link, useLocation, useParams } from "react-router";
 import { Plus } from "lucide-react";
 import {
   ACTIVE,
@@ -45,7 +45,6 @@ export function FilmPage({ flow }) {
 
 function FilmStory({ flow, signedIn }) {
   const { filmId } = useParams();
-  const navigate = useNavigate();
   // The engine the Film was started with, handed over by whoever navigated
   // here, so the waiting steps are the right pipeline's before the job arrives.
   const engine = useLocation().state?.engine ?? flow.engine;
@@ -87,7 +86,6 @@ function FilmStory({ flow, signedIn }) {
     return () => clearInterval(t);
   }, [polled, refresh]);
 
-  const onNew = () => navigate(flow.path);
 
   // Retry a stopped Film from its failed step: the answer is the running job,
   // so the failed step flips back to running at once; the live events and the
@@ -115,7 +113,6 @@ function FilmStory({ flow, signedIn }) {
       <StoryView
         job={job || { id: filmId, prompt: "", status: "loading", steps: [], ...(engine ? { engine } : {}) }}
         projectId={projectId}
-        onNew={onNew}
         onRetry={onRetry}
         retrying={retrying}
         retryError={retryError}

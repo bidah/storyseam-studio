@@ -46,11 +46,11 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Link, Navigate, useLocation } from "react-router";
 import {
-  ArrowUp, AudioLines, Check, ChevronDown, Circle, Clapperboard, CircleAlert, Copy, Download, Film, Link2Off, Loader2, Mic, PenLine, Plus, RotateCw, Settings2,
+  ArrowUp, AudioLines, Check, ChevronDown, ChevronLeft, ChevronRight, Circle, Clapperboard, CircleAlert, Copy, Download, Film, Link2Off, Loader2, Mic, PenLine, Plus, RotateCw, Search, Settings2,
   Share2, SlidersHorizontal, Square, Users, X, icons as LUCIDE,
 } from "lucide-react";
 import { studioPath } from "@/lib/home";
-import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   DEFAULT_DEEP_SPECIALISTS, DEFAULT_FILM_RESOLUTION, DEFAULT_FILM_SCORE, DEFAULT_FILM_VOICES, FILM_DEFAULT_SECONDS, FILM_RESOLUTIONS, FILM_DEPTHS, FILM_STEPS, FILM_STYLES, FILM_VOICES, FILM_WRITERS, STORY_FLOW_DEFAULT_SECONDS,
@@ -476,7 +476,7 @@ const STYLE_CHOICES = [{ id: "", label: "Auto" }, ...FILM_STYLES.map((s) => ({ i
 
 function SettingsLabel({ id, children, hint }) {
   return (
-    <div className="mb-2 flex items-baseline justify-between gap-6">
+    <div className="mb-2 flex flex-wrap items-baseline justify-between gap-x-6 gap-y-0.5">
       <span
         id={id}
         className="text-[0.72rem] uppercase text-[var(--br-secondary)]"
@@ -514,108 +514,157 @@ function StorySettings({ flow, seconds, onSeconds, resolution, onResolution, sco
   // Only a story engine auditions its cast; the Director has no audio input.
   const storyFlow = isStoryEngine(flow.engine);
   const voice = FILM_VOICES.find((x) => x.id === voices) || FILM_VOICES[0];
-  return (
-    <Popover>
-      <PopoverTrigger asChild>
-        <button
-          type="button"
-          aria-label="Story settings"
-          disabled={disabled}
-          className="flex h-10 shrink-0 items-center gap-1.5 px-2 text-[var(--br-secondary)] transition-colors hover:text-[var(--br-primary)] disabled:opacity-40 data-[state=open]:text-[var(--br-primary)]"
-          data-story-settings
+  // A phone gets the whole screen: the popover grew wider than the viewport and
+  // ran off its edge. Desktop keeps the popover beside the button.
+  const narrow = useNarrow();
+  const [open, setOpen] = useState(false);
+  const trigger = (
+    <button
+      type="button"
+      aria-label="Story settings"
+      disabled={disabled}
+      className="flex min-h-10 min-w-0 max-w-full items-center gap-1.5 px-2 text-left text-[var(--br-secondary)] transition-colors hover:text-[var(--br-primary)] disabled:opacity-40 data-[state=open]:text-[var(--br-primary)]"
+      data-story-settings
+    >
+      <Settings2 size={16} className="shrink-0" aria-hidden />
+      {/* The look rides on the button too: it is remembered per browser, so
+          what will be sent must be visible before sending — an unseen
+          "Auto" once made a story the author meant as anime live action. */}
+      <span className="text-[0.72rem] uppercase tabular-nums" style={{ fontFamily: MONO, letterSpacing: "0.08em" }} data-story-settings-summary>
+        {formatLength(seconds)} · {resolution} · {FILM_STYLES.find((st) => st.id === style)?.label || "Auto look"}{score ? "" : " · no score"}{storyFlow ? ` · ${voice.label}` : ""}
+      </span>
+    </button>
+  );
+  const panel = (
+    <>
+      <SettingsLabel
+        id="story-length-label"
+        hint={seconds === flow.defaultSeconds ? "default" : `default ${formatLength(flow.defaultSeconds)}`}
+      >
+        Length
+      </SettingsLabel>
+      <div role="radiogroup" aria-labelledby="story-length-label" className="flex flex-wrap gap-y-1.5">
+        {flow.steps.map((step) => (
+          <Choice key={step} on={step === seconds} onClick={() => onSeconds(step)}>
+            {formatLength(step)}
+          </Choice>
+        ))}
+      </div>
+      <div className="mt-4">
+        <SettingsLabel
+          id="story-resolution-label"
+          hint={resolution === DEFAULT_FILM_RESOLUTION ? "default" : `default ${DEFAULT_FILM_RESOLUTION}`}
         >
-          <Settings2 size={16} aria-hidden />
-          {/* The look rides on the button too: it is remembered per browser, so
-              what will be sent must be visible before sending — an unseen
-              "Auto" once made a story the author meant as anime live action. */}
-          <span className="text-[0.72rem] uppercase tabular-nums" style={{ fontFamily: MONO, letterSpacing: "0.08em" }} data-story-settings-summary>
-            {formatLength(seconds)} · {resolution} · {FILM_STYLES.find((st) => st.id === style)?.label || "Auto look"}{score ? "" : " · no score"}{storyFlow ? ` · ${voice.label}` : ""}
-          </span>
-        </button>
-      </PopoverTrigger>
+          Resolution
+        </SettingsLabel>
+        <div role="radiogroup" aria-labelledby="story-resolution-label" className="flex flex-wrap gap-y-1.5" data-story-resolution>
+          {FILM_RESOLUTIONS.map((r) => (
+            <Choice key={r} on={r === resolution} onClick={() => onResolution(r)}>
+              {r}
+            </Choice>
+          ))}
+        </div>
+      </div>
+      <div className="mt-4">
+        <SettingsLabel id="story-score-label" hint={score ? "one continuous cue under the finished film" : "no music laid under it"}>
+          Score
+        </SettingsLabel>
+        <div role="radiogroup" aria-labelledby="story-score-label" className="flex flex-wrap gap-y-1.5" data-story-score>
+          <Choice on={score} onClick={() => onScore(true)}>On</Choice>
+          <Choice on={!score} onClick={() => onScore(false)}>Off</Choice>
+        </div>
+      </div>
+      {storyFlow ? (
+        <div className="mt-4">
+          <SettingsLabel id="story-voices-label" hint={voice.blurb}>
+            Voices
+          </SettingsLabel>
+          <div role="radiogroup" aria-labelledby="story-voices-label" className="flex flex-wrap gap-y-1.5" data-story-voices>
+            {FILM_VOICES.map((x) => (
+              <Choice key={x.id} on={x.id === voices} onClick={() => onVoices(x.id)}>
+                {x.label}
+              </Choice>
+            ))}
+          </div>
+        </div>
+      ) : null}
+      <div className="mt-4">
+        <SettingsLabel id="story-style-label">Look</SettingsLabel>
+        <div role="radiogroup" aria-labelledby="story-style-label" className="flex flex-wrap gap-y-1.5" data-story-style>
+          {STYLE_CHOICES.map((c) => (
+            <Choice key={c.id || "auto"} on={c.id === style} onClick={() => onStyle(c.id)}>
+              {c.label}
+            </Choice>
+          ))}
+        </div>
+      </div>
+      <div className="mt-4">
+        <SettingsLabel id="story-model-label">Writing model</SettingsLabel>
+        <div role="radiogroup" aria-labelledby="story-model-label" className="flex flex-wrap gap-y-1.5" data-story-writer>
+          {writers.map((w) => (
+            <Choice key={w.id} on={w.id === writer} onClick={() => onWriter(w.id)}>
+              {w.label}
+            </Choice>
+          ))}
+        </div>
+      </div>
+    </>
+  );
+  if (narrow) {
+    return (
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogTrigger asChild>{trigger}</DialogTrigger>
+        <DialogContent
+          className="inset-0 top-0 left-0 flex h-dvh max-h-dvh w-full max-w-none translate-x-0 translate-y-0 flex-col gap-0 overflow-y-auto border-0 bg-[var(--br-surface)] p-4 pt-[max(1rem,env(safe-area-inset-top))] pb-[max(1rem,env(safe-area-inset-bottom))] text-[var(--br-primary)] data-[state=closed]:zoom-out-100 data-[state=open]:zoom-in-100 sm:max-w-none"
+          style={{ ...HUD, fontFamily: BODY }}
+          data-story-settings-panel
+        >
+          <DialogTitle style={{ fontFamily: DISPLAY, letterSpacing: "0.04em" }} className="mb-5 pr-8 text-xl font-bold uppercase">
+            Story settings
+          </DialogTitle>
+          <DialogDescription className="sr-only">Length, resolution, score, voices, look and writing model for the next story.</DialogDescription>
+          {panel}
+          <button
+            type="button"
+            onClick={() => setOpen(false)}
+            className="mt-auto w-full bg-[var(--br-tertiary)] px-3 py-3 text-[0.8rem] uppercase text-[var(--br-on-primary)] transition-opacity hover:opacity-90"
+            style={{ fontFamily: MONO, letterSpacing: "0.08em" }}
+          >
+            Done
+          </button>
+        </DialogContent>
+      </Dialog>
+    );
+  }
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>{trigger}</PopoverTrigger>
       {/* Portaled out of the page, so it carries the page's tokens itself. */}
       <PopoverContent
         side="top"
         align="end"
         sideOffset={8}
-        className="w-auto border-[var(--br-secondary)]/40 bg-[var(--br-surface)] p-3 text-[var(--br-primary)]"
+        className="w-auto max-w-[calc(100vw-2rem)] border-[var(--br-secondary)]/40 bg-[var(--br-surface)] p-3 text-[var(--br-primary)]"
         style={{ ...HUD, fontFamily: BODY }}
         data-story-settings-panel
       >
-        <SettingsLabel
-          id="story-length-label"
-          hint={seconds === flow.defaultSeconds ? "default" : `default ${formatLength(flow.defaultSeconds)}`}
-        >
-          Length
-        </SettingsLabel>
-        <div role="radiogroup" aria-labelledby="story-length-label" className="flex">
-          {flow.steps.map((step) => (
-            <Choice key={step} on={step === seconds} onClick={() => onSeconds(step)}>
-              {formatLength(step)}
-            </Choice>
-          ))}
-        </div>
-        <div className="mt-4">
-          <SettingsLabel
-            id="story-resolution-label"
-            hint={resolution === DEFAULT_FILM_RESOLUTION ? "default" : `default ${DEFAULT_FILM_RESOLUTION}`}
-          >
-            Resolution
-          </SettingsLabel>
-          <div role="radiogroup" aria-labelledby="story-resolution-label" className="flex" data-story-resolution>
-            {FILM_RESOLUTIONS.map((r) => (
-              <Choice key={r} on={r === resolution} onClick={() => onResolution(r)}>
-                {r}
-              </Choice>
-            ))}
-          </div>
-        </div>
-        <div className="mt-4">
-          <SettingsLabel id="story-score-label" hint={score ? "one continuous cue under the finished film" : "no music laid under it"}>
-            Score
-          </SettingsLabel>
-          <div role="radiogroup" aria-labelledby="story-score-label" className="flex" data-story-score>
-            <Choice on={score} onClick={() => onScore(true)}>On</Choice>
-            <Choice on={!score} onClick={() => onScore(false)}>Off</Choice>
-          </div>
-        </div>
-        {storyFlow ? (
-          <div className="mt-4">
-            <SettingsLabel id="story-voices-label" hint={voice.blurb}>
-              Voices
-            </SettingsLabel>
-            <div role="radiogroup" aria-labelledby="story-voices-label" className="flex" data-story-voices>
-              {FILM_VOICES.map((x) => (
-                <Choice key={x.id} on={x.id === voices} onClick={() => onVoices(x.id)}>
-                  {x.label}
-                </Choice>
-              ))}
-            </div>
-          </div>
-        ) : null}
-        <div className="mt-4">
-          <SettingsLabel id="story-style-label">Look</SettingsLabel>
-          <div role="radiogroup" aria-labelledby="story-style-label" className="flex" data-story-style>
-            {STYLE_CHOICES.map((c) => (
-              <Choice key={c.id || "auto"} on={c.id === style} onClick={() => onStyle(c.id)}>
-                {c.label}
-              </Choice>
-            ))}
-          </div>
-        </div>
-        <div className="mt-4">
-          <SettingsLabel id="story-model-label">Writing model</SettingsLabel>
-          <div role="radiogroup" aria-labelledby="story-model-label" className="flex" data-story-writer>
-            {writers.map((w) => (
-              <Choice key={w.id} on={w.id === writer} onClick={() => onWriter(w.id)}>
-                {w.label}
-              </Choice>
-            ))}
-          </div>
-        </div>
+        {panel}
       </PopoverContent>
     </Popover>
   );
+}
+
+// Below Tailwind's `sm` — a phone, where a popover has no room beside its button.
+function useNarrow() {
+  const query = "(max-width: 639px)";
+  const [narrow, setNarrow] = useState(() => typeof window !== "undefined" && window.matchMedia(query).matches);
+  useEffect(() => {
+    const mq = window.matchMedia(query);
+    const on = () => setNarrow(mq.matches);
+    mq.addEventListener("change", on);
+    return () => mq.removeEventListener("change", on);
+  }, []);
+  return narrow;
 }
 
 // The LLM that writes the Film — Idea, World, sheet prompts, Shot list, cues
@@ -829,20 +878,36 @@ function DepthPicker({ depth, onDepth, room, onRoom, disabled }) {
           </div>
           <div role="radiogroup" aria-labelledby="story-depth-label">
             {FILM_DEPTHS.map((d) => (
-              <button
-                key={d.id}
-                type="button"
-                role="radio"
-                aria-checked={d.id === depth}
-                onClick={() => pick(d.id)}
-                className="flex w-full items-start gap-2 px-2 py-2 text-left transition-colors hover:bg-[var(--br-secondary)]/10"
-              >
-                <Check size={14} aria-hidden className={cn("mt-0.5 shrink-0", d.id === depth ? "opacity-100" : "opacity-0")} />
-                <span className="flex flex-col">
-                  <span className="text-sm">{d.label}</span>
-                  <span className="text-xs text-[var(--br-secondary)]">{d.blurb}</span>
-                </span>
-              </button>
+              <div key={d.id} className="flex items-stretch transition-colors hover:bg-[var(--br-secondary)]/10">
+                <button
+                  type="button"
+                  role="radio"
+                  aria-checked={d.id === depth}
+                  onClick={() => pick(d.id)}
+                  className="flex min-w-0 flex-1 items-start gap-2 px-2 py-2 text-left"
+                >
+                  <Check size={14} aria-hidden className={cn("mt-0.5 shrink-0", d.id === depth ? "opacity-100" : "opacity-0")} />
+                  <span className="flex flex-col">
+                    <span className="text-sm">{d.label}</span>
+                    <span className="text-xs text-[var(--br-secondary)]">{d.blurb}</span>
+                  </span>
+                </button>
+                {/* The room, browsable from the row itself: the same dialog as
+                    "Choose the room" below, with each specialist's detail. The
+                    room only runs on Deep, so opening it picks Deep. */}
+                {d.id === "deep" ? (
+                  <button
+                    type="button"
+                    aria-label="Browse the writers' room"
+                    title="Browse the writers' room"
+                    onClick={() => pick("deep")}
+                    className="flex shrink-0 items-center px-2 text-[var(--br-secondary)] transition-colors hover:text-[var(--br-primary)]"
+                    data-story-room-browse
+                  >
+                    <Search size={14} aria-hidden />
+                  </button>
+                ) : null}
+              </div>
             ))}
           </div>
           {depth === "deep" ? (
@@ -921,8 +986,30 @@ function GenModePicker({ flow, onFlow, disabled }) {
 
 // ── Simple view: hero + input ──────────────────────────────────────────────
 
+// The premise being typed survives a reload: saved on every keystroke, cleared
+// once a story is actually made from it. One key for every mode — switching
+// Gen mode is not a reason to lose what was written.
+const DRAFT_KEY = "director-story:draft";
+
+function readDraft() {
+  try { return window.localStorage.getItem(DRAFT_KEY) || ""; } catch { return ""; }
+}
+
+/** Drop the typed premise — for a story started without going through the box. */
+export function clearStoryDraft() {
+  try { window.localStorage.removeItem(DRAFT_KEY); } catch { /* private mode */ }
+}
+
+function writeDraft(text) {
+  try {
+    if (text.trim()) window.localStorage.setItem(DRAFT_KEY, text);
+    else window.localStorage.removeItem(DRAFT_KEY);
+  } catch { /* private mode: not remembered */ }
+}
+
 export function SimpleView({ flow = FLOWS.director, onFlow, onSubmit, submitting, note, running, below = null }) {
-  const [prompt, setPrompt] = useState("");
+  const [prompt, setPrompt] = useState(readDraft);
+  useEffect(() => { writeDraft(prompt); }, [prompt]);
   const [seconds, setSeconds] = useState(() => readStoredLength(flow));
   const [chosen, setChosen] = useState(() => hasStoredLength(flow));
   // Each mode remembers its own length (only Seedance offers 1:00).
@@ -1044,7 +1131,9 @@ export function SimpleView({ flow = FLOWS.director, onFlow, onSubmit, submitting
           TEXT TO LONG FORM VIDEO STORIES IN SECONDS
         </h1>
         <form onSubmit={submit} className="w-full">
-          <div className="flex items-end gap-2 border border-[var(--br-secondary)]/40 bg-[var(--br-surface)] p-2 text-left focus-within:border-[var(--br-primary)]">
+          {/* The premise gets the box's full width; the controls sit in a row
+              under it (sharing one row squeezed the text into a narrow column). */}
+          <div className="flex flex-col gap-2 border border-[var(--br-secondary)]/40 bg-[var(--br-surface)] p-2 text-left focus-within:border-[var(--br-primary)]">
             <textarea
               ref={ref}
               rows={5}
@@ -1056,8 +1145,9 @@ export function SimpleView({ flow = FLOWS.director, onFlow, onSubmit, submitting
               placeholder="Tell what story premise you have"
               aria-label="Story premise"
               disabled={submitting}
-              className="min-h-34 flex-1 resize-none bg-transparent px-3 py-3 text-base leading-relaxed text-[var(--br-primary)] placeholder:text-[var(--br-secondary)] focus:outline-none disabled:opacity-60"
+              className="min-h-34 w-full resize-none bg-transparent px-3 py-3 text-base leading-relaxed text-[var(--br-primary)] placeholder:text-[var(--br-secondary)] focus:outline-none disabled:opacity-60"
             />
+            <div className="flex flex-wrap items-center justify-end gap-x-2 gap-y-1">
             {!listening && onFlow && <GenModePicker flow={flow} onFlow={onFlow} disabled={submitting} />}
             {!listening && <DepthPicker depth={depth} onDepth={chooseDepth} room={room} onRoom={chooseRoom} disabled={submitting} />}
             {!listening && (
@@ -1117,6 +1207,7 @@ export function SimpleView({ flow = FLOWS.director, onFlow, onSubmit, submitting
                 <Mic size={18} />
               </button>
             )}
+            </div>
           </div>
         </form>
         <p className="min-h-5 text-sm text-[var(--br-secondary)]" aria-live="polite" data-note>
@@ -1366,14 +1457,14 @@ function stepsOf(job) {
       label: s?.label || st.label,
       status: s ? s.status : "pending",
       summary: s?.status === "failed" ? s.error : s?.summary || null,
-      // The Voices step's auditions are played from the card (VoicesCard).
-      ...(st.key === "voices" && s?.status === "done" ? { result: s.result || null } : {}),
+      // A done step opens its result in a dialog (StepResultDialog).
+      ...(s?.status === "done" ? { result: s.result || null } : {}),
     };
   });
   // A stage the worker added later than this list: show it rather than drop it.
   for (const s of job.steps || []) {
     if (!all.some((st) => st.key === s.key)) {
-      known.push({ key: s.key, label: s.label, status: s.status, summary: s.summary || null });
+      known.push({ key: s.key, label: s.label, status: s.status, summary: s.summary || null, ...(s.status === "done" ? { result: s.result || null } : {}) });
     }
   }
   return known;
@@ -1429,8 +1520,13 @@ async function shareCall(filmId, method) {
 
 const ACTION =
   "flex items-center gap-1.5 border border-[var(--br-secondary)]/40 px-3 py-1.5 text-[0.72rem] uppercase text-[var(--br-primary)] transition-colors hover:border-[var(--br-primary)] disabled:opacity-50";
+// A finished Film's actions: a compact row in the header, right of the prompt.
+const ROW_ACTION = cn(ACTION, "shrink-0");
+// The Film's width on the page: a 16:9 box no taller than 70% of the viewport.
+// The prompt card above it is capped to the same width so the two line up.
+const FILM_W = "max-w-[calc(70dvh*16/9)]";
 
-export function FilmActions({ job, projectId }) {
+export function FilmActions({ job, projectId, children = null }) {
   const [link, setLink] = useState(undefined); // undefined = not read; null = not shared
   const [busy, setBusy] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -1469,10 +1565,10 @@ export function FilmActions({ job, projectId }) {
   };
 
   return (
-    <div className="flex flex-wrap items-center justify-center gap-2" data-film-actions>
+    <div className="flex flex-wrap items-center justify-end gap-2" data-film-actions>
       <Popover onOpenChange={onOpen}>
         <PopoverTrigger asChild>
-          <button type="button" className={ACTION} style={{ fontFamily: MONO, letterSpacing: "0.08em" }} data-share>
+          <button type="button" className={ROW_ACTION} style={{ fontFamily: MONO, letterSpacing: "0.08em" }} data-share>
             <Share2 size={12} aria-hidden /> Share
           </button>
         </PopoverTrigger>
@@ -1528,12 +1624,13 @@ export function FilmActions({ job, projectId }) {
       <a
         href={filmMediaUrl(job.film.url, projectId || job.projectId)}
         download={filmFileName(job.film)}
-        className={ACTION}
+        className={ROW_ACTION}
         style={{ fontFamily: MONO, letterSpacing: "0.08em" }}
         data-download
       >
         <Download size={12} aria-hidden /> Download
       </a>
+      {children}
     </div>
   );
 }
@@ -1567,7 +1664,529 @@ function VoicesCard({ result, projectId }) {
   );
 }
 
-export function StoryView({ job, projectId = null, onNew, onRetry, retrying = false, retryError = null }) {
+// A Film-page dialog: the whole screen on a phone (a card there is a strip of
+// text between two bands of page), a centered card from `sm` up.
+const PAGE_DIALOG =
+  "h-[100dvh] max-h-[100dvh] max-w-full content-start overflow-y-auto rounded-none border-0 bg-[var(--br-surface)] text-[var(--br-primary)] " +
+  "sm:h-auto sm:max-h-[85dvh] sm:max-w-xl sm:border sm:border-[var(--br-secondary)]/40 " +
+  // The close button, as a square with a visible gray border rather than a
+  // faint bare X (dialog.jsx's default, which the rest of the app keeps).
+  "[&>[data-slot=dialog-close]]:flex [&>[data-slot=dialog-close]]:size-9 [&>[data-slot=dialog-close]]:items-center [&>[data-slot=dialog-close]]:justify-center " +
+  "[&>[data-slot=dialog-close]]:top-3 [&>[data-slot=dialog-close]]:right-3 [&>[data-slot=dialog-close]]:border [&>[data-slot=dialog-close]]:border-[var(--br-secondary)]/70 " +
+  "[&>[data-slot=dialog-close]]:bg-black/40! [&>[data-slot=dialog-close]]:text-[var(--br-primary)]! [&>[data-slot=dialog-close]]:opacity-100 " +
+  "[&>[data-slot=dialog-close]:hover]:border-[var(--br-primary)] [&>[data-slot=dialog-close]_svg]:size-4";
+
+/** A saved draft's screenplay, read on demand (GET /api/script/drafts/:id). */
+function Screenplay({ draftId }) {
+  const [state, setState] = useState({ loading: true, draft: null, error: null });
+  useEffect(() => {
+    if (!draftId) return;
+    let live = true;
+    setState({ loading: true, draft: null, error: null });
+    fetch(`/api/script/drafts/${encodeURIComponent(draftId)}`)
+      .then(async (res) => {
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || `Couldn't load the script (${res.status}).`);
+        return data;
+      })
+      .then((draft) => { if (live) setState({ loading: false, draft, error: null }); })
+      .catch((e) => { if (live) setState({ loading: false, draft: null, error: String(e?.message || e) }); });
+    return () => { live = false; };
+  }, [draftId]);
+  if (!draftId) return null;
+  if (state.loading) return <p className="flex items-center gap-2 text-xs text-[var(--br-secondary)]"><Loader2 size={12} className="animate-spin" aria-hidden /> Loading the script…</p>;
+  if (state.error) return <p className="text-xs text-[var(--br-tertiary)]">{state.error}</p>;
+  const els = state.draft?.elements || [];
+  return (
+    <div className="space-y-2 border border-[var(--br-secondary)]/25 bg-black/30 px-4 py-4 text-[0.82rem] leading-relaxed" style={{ fontFamily: MONO }} data-screenplay>
+      {els.map((el, i) => {
+        switch (el.type) {
+          case "scene_heading":
+            return <p key={i} className={cn("font-bold uppercase text-[var(--br-primary)]", i > 0 && "pt-3")}>{el.text}</p>;
+          case "character":
+            return <p key={i} className="pt-1 text-center uppercase text-[var(--br-primary)]">{el.text}</p>;
+          case "parenthetical":
+            return <p key={i} className="-mt-2 text-center text-[var(--br-secondary)]">{el.text}</p>;
+          case "dialogue":
+            return <p key={i} className="-mt-2 mx-auto max-w-[80%] text-[var(--br-primary)]/90">{el.text}</p>;
+          case "transition":
+            return <p key={i} className="text-right uppercase text-[var(--br-secondary)]">{el.text}</p>;
+          default:
+            return <p key={i} className="text-[var(--br-primary)]/80">{el.text}</p>;
+        }
+      })}
+    </div>
+  );
+}
+
+/** Label: value rows, skipping the empty ones. */
+function Fields({ rows }) {
+  const shown = rows.filter(([, v]) => typeof v === "string" && v.trim());
+  if (!shown.length) return null;
+  return (
+    <dl className="space-y-1.5">
+      {shown.map(([k, v]) => (
+        <div key={k} className="text-sm leading-snug">
+          <dt className="inline text-[var(--br-secondary)]">{k}: </dt>
+          <dd className="inline text-[var(--br-primary)]/90">{v}</dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
+/** One character, place or prop: its sheet (when linked), name, and every field it has. */
+function EntryCard({ image, name, sub, rows, projectId }) {
+  const src = image ? filmMediaUrl(image, projectId) : null;
+  return (
+    <li className="flex gap-3 border border-[var(--br-secondary)]/25 bg-black/20 p-3">
+      {src ? (
+        <a href={src} target="_blank" rel="noreferrer" className="shrink-0">
+          <img src={src} alt={name} loading="lazy" className="size-16 border border-[var(--br-secondary)]/30 object-cover" />
+        </a>
+      ) : null}
+      <div className="min-w-0 flex-1 space-y-1.5">
+        <p className="text-base text-[var(--br-primary)]">
+          {name}
+          {sub ? <span className="text-xs text-[var(--br-secondary)]"> · {sub}</span> : null}
+        </p>
+        <Fields rows={rows} />
+      </div>
+    </li>
+  );
+}
+
+/**
+ * The Idea + World step: the Film's WHOLE World (GET /api/world — the Film
+ * page is scoped to the Film's project), every character with all of its
+ * fields, the places and props in full, and the story's map. While it loads,
+ * or if it can't, the step's own summary stands in.
+ */
+function WorldDetails({ result, projectId }) {
+  const [world, setWorld] = useState(null);
+  const [error, setError] = useState(null);
+  useEffect(() => {
+    let live = true;
+    fetch("/api/world")
+      .then(async (res) => {
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || `Couldn't load the World (${res.status}).`);
+        return data;
+      })
+      .then((w) => { if (live) setWorld(w); })
+      .catch((e) => { if (live) setError(String(e?.message || e)); });
+    return () => { live = false; };
+  }, []);
+  const w = world || {};
+  const characters = w.charactersLibrary || w.characters || result.characters || [];
+  const places = w.locations || result.places || [];
+  const props = w.props || result.props || [];
+  const map = w.map || {};
+  const depth = w.depth || {};
+  return (
+    <div className="space-y-5" data-world-details>
+      {!world && !error ? (
+        <p className="flex items-center gap-2 text-xs text-[var(--br-secondary)]"><Loader2 size={12} className="animate-spin" aria-hidden /> Loading the World…</p>
+      ) : null}
+      {error ? <p className="text-xs text-[var(--br-tertiary)]">{error}</p> : null}
+      <div className="space-y-2">
+        {(w.title || result.title) ? <p className="text-base text-[var(--br-primary)]">{w.title || result.title}</p> : null}
+        {(w.logline || result.logline) ? <p className="text-sm italic text-[var(--br-secondary)]">{w.logline || result.logline}</p> : null}
+        {result.idea ? <Fields rows={[["Idea", result.idea]]} /> : null}
+      </div>
+      <Fields rows={[["World", map.world], ["Protagonist", map.protagonist], ["Antagonist", map.antagonist], ["Stakes", map.stakes], ["Theme", map.theme]]} />
+      <Fields rows={[["Premise", depth.premise], ["Want vs need", depth.wantVsNeed], ["Conflict", depth.conflict], ["Obstacles", depth.obstacles], ["Structure", depth.structure]]} />
+      {characters.length ? (
+        <div>
+          <PreviewLabel>Characters</PreviewLabel>
+          <ul className="space-y-2">
+            {characters.map((c, i) => (
+              <EntryCard
+                key={c.id || `${c.name}-${i}`}
+                image={c.sheetImage || c.miniatureImage}
+                name={c.name}
+                sub={c.archetype}
+                projectId={projectId}
+                rows={[["Role", c.role], ["Wants", c.want], ["Needs", c.need], ["Traits", c.traits], ["Arc", c.arc], ["Voice", c.voice], ["Looks", c.appearance]]}
+              />
+            ))}
+          </ul>
+        </div>
+      ) : null}
+      {places.length ? (
+        <div>
+          <PreviewLabel>Places</PreviewLabel>
+          <ul className="space-y-2">
+            {places.map((l, i) => (
+              <EntryCard key={l.id || `${l.name}-${i}`} image={l.sheetImage} name={l.name} projectId={projectId} rows={[["", l.description]].map(([, v]) => ["About", v])} />
+            ))}
+          </ul>
+        </div>
+      ) : null}
+      {props.length ? (
+        <div>
+          <PreviewLabel>Props</PreviewLabel>
+          <ul className="space-y-2">
+            {props.map((x, i) => (
+              <EntryCard key={x.id || `${x.name}-${i}`} image={x.sheetImage} name={x.name} sub={x.owner ? `${x.owner}'s` : null} projectId={projectId} rows={[["About", x.description]]} />
+            ))}
+          </ul>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+// ── What each step came back with ───────────────────────────────────────────
+//
+// A done step is a button: tapping it opens its result in a dialog over the
+// page — the cast and places the World wrote, the script's beats, the room's
+// notes, the sheets as thumbnails, the voices to play, the shot list's
+// segments, the frames and clips. Only what the step's `result` already
+// carries is shown; nothing is fetched. A step with nothing to show keeps its
+// summary line as its whole preview.
+
+const PreviewLabel = ({ children }) => (
+  <p className="mb-1.5 text-[0.68rem] uppercase text-[var(--br-secondary)]" style={{ fontFamily: MONO, letterSpacing: "0.08em" }}>
+    {children}
+  </p>
+);
+
+function Thumbs({ items, projectId }) {
+  const shown = items.filter((x) => x?.imageUrl);
+  const [at, setAt] = useState(null);
+  if (!shown.length) return null;
+  return (
+    <>
+      <ul className="grid grid-cols-3 gap-2 sm:grid-cols-4" data-thumbs>
+        {shown.map((x, i) => (
+          <li key={`${x.name}-${i}`} className="min-w-0">
+            <button type="button" onClick={() => setAt(i)} className="block w-full" aria-label={`Open ${x.caption || x.name || "image"}`}>
+              <img src={filmMediaUrl(x.imageUrl, projectId)} alt={x.name || ""} loading="lazy" className="aspect-square w-full border border-[var(--br-secondary)]/30 bg-black/40 object-cover transition-opacity hover:opacity-80" />
+            </button>
+            <span className="mt-1 block truncate text-[0.7rem] text-[var(--br-secondary)]">{x.caption || x.name}</span>
+          </li>
+        ))}
+      </ul>
+      <Lightbox items={shown} at={at} onAt={setAt} projectId={projectId} />
+    </>
+  );
+}
+
+/**
+ * One image at a time, over the dialog that opened it: swipe on a phone, the
+ * chevrons or the arrow keys on a desktop. `at` null is closed.
+ */
+function Lightbox({ items, at, onAt, projectId }) {
+  const open = at != null && !!items[at];
+  const n = items.length;
+  const go = (d) => onAt((i) => (i == null ? i : (i + d + n) % n));
+  const touch = useRef(null);
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e) => {
+      if (e.key === "ArrowRight") { e.preventDefault(); go(1); }
+      else if (e.key === "ArrowLeft") { e.preventDefault(); go(-1); }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, n]); // eslint-disable-line react-hooks/exhaustive-deps
+  const item = open ? items[at] : null;
+  const arrow = "absolute top-1/2 z-10 hidden size-10 -translate-y-1/2 items-center justify-center border border-[var(--br-secondary)]/70 bg-black/60 text-[var(--br-primary)] transition-colors hover:border-[var(--br-primary)] sm:flex";
+  return (
+    <Dialog open={open} onOpenChange={(o) => { if (!o) onAt(null); }}>
+      <DialogContent
+        className={cn(PAGE_DIALOG, "flex flex-col gap-3 bg-black sm:max-w-4xl")}
+        style={{ ...HUD, fontFamily: BODY }}
+        data-lightbox
+        onTouchStart={(e) => { touch.current = e.touches[0]?.clientX ?? null; }}
+        onTouchEnd={(e) => {
+          const x0 = touch.current;
+          touch.current = null;
+          const x1 = e.changedTouches[0]?.clientX;
+          if (x0 == null || x1 == null || Math.abs(x1 - x0) < 40) return;
+          go(x1 < x0 ? 1 : -1);
+        }}
+      >
+        <DialogTitle className="pr-12 text-sm font-normal text-[var(--br-primary)]">
+          {item?.caption || item?.name || "Image"}
+          <span className="ml-2 text-xs text-[var(--br-secondary)]" style={{ fontFamily: MONO }}>{open ? `${at + 1} / ${n}` : ""}</span>
+        </DialogTitle>
+        <DialogDescription className="sr-only">Swipe, or use the arrow keys, to move between images.</DialogDescription>
+        <div className="relative flex min-h-0 flex-1 items-center justify-center">
+          {n > 1 ? (
+            <button type="button" onClick={() => go(-1)} className={cn(arrow, "left-2")} aria-label="Previous image">
+              <ChevronLeft size={18} aria-hidden />
+            </button>
+          ) : null}
+          {item ? (
+            <img
+              key={item.imageUrl}
+              src={filmMediaUrl(item.imageUrl, projectId)}
+              alt={item.name || ""}
+              className="max-h-[80dvh] max-w-full select-none object-contain"
+              draggable={false}
+            />
+          ) : null}
+          {n > 1 ? (
+            <button type="button" onClick={() => go(1)} className={cn(arrow, "right-2")} aria-label="Next image">
+              <ChevronRight size={18} aria-hidden />
+            </button>
+          ) : null}
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function NameList({ items, clamp = false }) {
+  if (!items?.length) return null;
+  return (
+    <ul className="space-y-1.5">
+      {items.map((x, i) => (
+        <li key={`${x.name}-${i}`} className={cn("text-sm leading-snug", clamp && "line-clamp-3")}>
+          <span className="text-[var(--br-primary)]">{x.name}</span>
+          {x.detail ? <span className="text-[var(--br-secondary)]"> — {x.detail}</span> : null}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+const sheetCaption = (x) => String(x.subject || x.name || "").replace(/\s+—\s+.*$/, "");
+
+function StepResultBody({ step, projectId }) {
+  const r = step.result || {};
+  const media = (u) => filmMediaUrl(u, projectId);
+  switch (step.key) {
+    case "look": {
+      const style = FILM_STYLES.find((x) => x.id === r.style);
+      return <p className="text-sm">{style?.label || r.style || "—"}{r.by ? <span className="text-[var(--br-secondary)]"> · {r.by}</span> : null}</p>;
+    }
+    case "world":
+      return <WorldDetails result={r} projectId={projectId} />;
+    case "script":
+      return (
+        <div className="space-y-4">
+          {r.title ? <p className="text-base text-[var(--br-primary)]">{r.title}</p> : null}
+          {r.logline ? <p className="text-sm italic text-[var(--br-secondary)]">{r.logline}</p> : null}
+          <p className="text-xs text-[var(--br-secondary)]" style={{ fontFamily: MONO }}>
+            {[r.arc, r.scenes != null && `${r.scenes} scenes`, r.words != null && `${r.words} words`, r.dialogueWords != null && `${r.dialogueWords} of dialogue`].filter(Boolean).join(" · ")}
+          </p>
+          {r.draftId ? (<div><PreviewLabel>The script · {r.draftName || "draft"}</PreviewLabel><Screenplay draftId={r.draftId} /></div>) : null}
+          {r.beats?.length ? (<div><PreviewLabel>Beats</PreviewLabel><NameList items={r.beats.map((b) => ({ name: b.name, detail: b.what }))} /></div>) : null}
+        </div>
+      );
+    case "room": {
+      const rounds = Array.isArray(r.rounds) && r.rounds.length ? r.rounds : null;
+      const specialists = r.specialists || [];
+      const byId = new Map(specialists.map((x) => [x.id, x]));
+      const reader = (x) => (
+        <li key={x.id} className="text-sm leading-snug">
+          <span className="text-[var(--br-primary)]">{x.chip || x.label}</span>
+          {x.findings != null ? <span className="text-[var(--br-secondary)]"> · {x.findings} notes</span> : null}
+          {x.summary ? <span className="block text-xs text-[var(--br-secondary)]">{x.summary}</span> : null}
+        </li>
+      );
+      const changes = (list) => list?.length ? (
+        <ul className="mt-2 list-disc space-y-1 pl-4 text-xs text-[var(--br-primary)]/85">{list.map((c, i) => <li key={i}>{c}</li>)}</ul>
+      ) : null;
+      const finalDraft = r.rewrite?.draftId ? (
+        <div><PreviewLabel>The script after the room · {r.rewrite.draftName}</PreviewLabel><Screenplay draftId={r.rewrite.draftId} /></div>
+      ) : null;
+      return rounds ? (
+        <div className="space-y-5">
+          {finalDraft}
+          {rounds.map((rd) => (
+            <div key={rd.round}>
+              <PreviewLabel>Round {rd.round} · {rd.stage}</PreviewLabel>
+              <ul className="space-y-2">{rd.specialists.map((id) => byId.get(id)).filter(Boolean).map(reader)}</ul>
+              {rd.rewrite ? (<div className="mt-2"><p className="text-xs text-[var(--br-secondary)]">Rewritten as “{rd.rewrite.draftName}”</p>{changes(rd.rewrite.changes)}</div>) : null}
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="space-y-4">
+          <ul className="space-y-2">{specialists.map(reader)}</ul>
+          {r.rewrite ? (<div><PreviewLabel>Rewrite · {r.rewrite.draftName}</PreviewLabel>{changes(r.rewrite.changes)}</div>) : null}
+          {finalDraft}
+        </div>
+      );
+    }
+    case "sheets": {
+      const items = (r.refs || r.sheets || []).map((x) => ({ ...x, caption: sheetCaption(x) }));
+      const style = r.style?.imageUrl ? [{ name: r.style.name || "House style", imageUrl: r.style.imageUrl }] : [];
+      const group = (kind) => items.filter((x) => x.kind === kind);
+      const other = items.filter((x) => !["character", "location", "prop"].includes(x.kind));
+      return (
+        <div className="space-y-4">
+          {group("character").length ? (<div><PreviewLabel>Characters</PreviewLabel><Thumbs items={group("character")} projectId={projectId} /></div>) : null}
+          {group("location").length ? (<div><PreviewLabel>Places</PreviewLabel><Thumbs items={group("location")} projectId={projectId} /></div>) : null}
+          {group("prop").length ? (<div><PreviewLabel>Props</PreviewLabel><Thumbs items={group("prop")} projectId={projectId} /></div>) : null}
+          {[...style, ...other].length ? (<div><PreviewLabel>Style</PreviewLabel><Thumbs items={[...style, ...other]} projectId={projectId} /></div>) : null}
+        </div>
+      );
+    }
+    case "voices":
+      return <VoicesCard result={r} projectId={projectId} />;
+    case "shotlist":
+    case "prompts":
+      if (Array.isArray(r.segments) && r.segments.length) {
+        return (
+          <ol className="space-y-3">
+            {r.segments.map((g) => (
+              <li key={g.index} className="text-sm leading-snug">
+                <span className="text-[var(--br-primary)]">{g.index + 1}. {g.title}</span>
+                <span className="text-xs text-[var(--br-secondary)]" style={{ fontFamily: MONO }}> · {g.dur}s</span>
+                {g.location ? <span className="block text-xs text-[var(--br-secondary)]">{g.location}{g.characters?.length ? ` · ${g.characters.join(", ")}` : ""}</span> : null}
+                {g.goal ? <span className="block text-xs text-[var(--br-primary)]/80">{g.goal}</span> : null}
+                {g.imageRefs?.length ? <span className="block text-xs text-[var(--br-secondary)]">{g.imageRefs.map((x) => x.name).join(" · ")}</span> : null}
+              </li>
+            ))}
+          </ol>
+        );
+      }
+      return (
+        <div className="space-y-3">
+          <p className="text-sm">{[r.count != null && `${r.count} shots`, r.seconds && formatLength(r.seconds)].filter(Boolean).join(" · ") || "—"}</p>
+          {r.music?.length ? (<div><PreviewLabel>Music cues</PreviewLabel><NameList items={r.music.map((m) => ({ name: m.cue || m.name || "cue", detail: m.note }))} /></div>) : null}
+        </div>
+      );
+    case "cuesheet":
+    {
+      const count = (v) => (Array.isArray(v) ? v.length : typeof v === "number" ? v : null);
+      const pins = count(r.pins), reels = count(r.reels);
+      return <p className="text-sm">{[r.beats != null && `${r.beats} beats`, pins != null && `${pins} pins`, reels != null && `${reels} reel${reels === 1 ? "" : "s"}`, r.length].filter(Boolean).join(" · ") || "—"}</p>;
+    }
+    case "stills":
+      return <Thumbs items={(r.frames || []).map((f) => ({ name: `${f.offset}s`, imageUrl: f.imageUrl, caption: `${f.offset}s${f.kind === "opening" ? " · first frame" : ""}` }))} projectId={projectId} />;
+    case "run":
+      if (Array.isArray(r.segments)) {
+        return (
+          <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            {r.segments.filter((g) => g.url).map((g) => (
+              <li key={g.index} className="min-w-0">
+                <video controls preload="metadata" playsInline src={media(g.url)} className="aspect-video w-full bg-black" />
+                <span className="mt-1 block truncate text-[0.7rem] text-[var(--br-secondary)]">{g.index + 1}. {g.title}</span>
+              </li>
+            ))}
+          </ul>
+        );
+      }
+      return null;
+    case "stitch":
+    case "score":
+    case "sitting": {
+      const url = r.url || r.scored?.url || r.film?.url || r.unscored?.url;
+      return url ? <video controls preload="metadata" playsInline src={media(url)} className="aspect-video w-full bg-black" /> : null;
+    }
+    default:
+      return null;
+  }
+}
+
+/** A step row's text: a button when there is a result to open, plain otherwise. */
+function StepBody({ step, onOpen, children }) {
+  if (!onOpen) return <span className="min-w-0 flex-1">{children}</span>;
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      aria-label={`Show what ${step.label} came back with`}
+      className="-mx-2 -my-1 min-w-0 flex-1 rounded-none px-2 py-1 text-left transition-colors hover:bg-white/5 focus-visible:bg-white/5 focus-visible:outline-none"
+      data-step-open={step.key}
+    >
+      {children}
+    </button>
+  );
+}
+
+function StepResultDialog({ step, projectId, onClose }) {
+  return (
+    <Dialog open={!!step} onOpenChange={(o) => { if (!o) onClose(); }}>
+      <DialogContent
+        className={PAGE_DIALOG}
+        style={{ ...HUD, fontFamily: BODY }}
+        data-step-result={step?.key}
+      >
+        <DialogTitle style={{ fontFamily: DISPLAY, letterSpacing: "0.04em" }} className="text-xl font-bold uppercase">
+          {step?.label}
+        </DialogTitle>
+        <DialogDescription className="text-xs text-[var(--br-secondary)]">{step?.summary}</DialogDescription>
+        {step ? <StepResultBody step={step} projectId={projectId} /> : null}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// What a finished Film was made WITH — the settings its job carries, read
+// back as the input names them (Gen mode, Writer, Fast · Deep, the gear's
+// length / resolution / look / voices / score), plus what it came to.
+const dollars = (n) => (typeof n === "number" && Number.isFinite(n) ? `$${n.toFixed(2)}` : null);
+const specialistName = (id) => {
+  const label = SPECIALISTS.find((s) => s.id === id)?.label || id;
+  const bare = String(label).replace(/^the /i, "");
+  return bare.charAt(0).toUpperCase() + bare.slice(1);
+};
+function tookFor(job) {
+  const ms = Date.parse(job.updatedAt) - Date.parse(job.createdAt);
+  if (!Number.isFinite(ms) || ms <= 0) return null;
+  const min = Math.round(ms / 60000);
+  return min < 60 ? `${Math.max(1, min)} min` : `${Math.floor(min / 60)} h ${min % 60} min`;
+}
+
+export function FilmDetails({ job }) {
+  const writers = useWriterChoices();
+  const story = isStoryEngine(job.engine);
+  const flow = FLOWS[job.engine] || FLOWS.director;
+  const seconds = job.film?.seconds || job.seconds || null;
+  const lookId = job.steps?.find((s) => s.key === "look")?.result?.style || job.style;
+  const look = FILM_STYLES.find((s) => s.id === lookId);
+  const writer = writers.find((w) => w.id === (job.writer || "default"));
+  const deep = job.depth === "deep";
+  const room = deep ? (job.specialists?.length ? job.specialists : DEFAULT_DEEP_SPECIALISTS) : [];
+  const voices = story ? FILM_VOICES.find((v) => v.id === filmVoicesOf(job.voices, job.engine)) : null;
+  const segments = story ? job.steps?.find((s) => s.key === "shotlist")?.result?.durations : null;
+  const rows = [
+    ["Model", flow.label],
+    ["Length", seconds ? formatLength(Math.round(seconds)) : null],
+    ["Resolution", job.resolution || DEFAULT_FILM_RESOLUTION],
+    ["Segments", segments?.length ? `${segments.length} × ${[...new Set(segments)].map((d) => `${d}s`).join(" / ")}` : null],
+    ["Look", look?.label || null],
+    ["Writer", writer?.label || null],
+    ["Story", deep ? `Deep · ${room.length} ${room.length === 1 ? "pass" : "passes"}` : "Fast"],
+    ["Voices", story ? voices?.label || "None" : null],
+    ["Score", job.score === false ? "Off" : "On"],
+    ["Cost", dollars(job.spent)],
+    ["Made in", tookFor(job)],
+  ].filter(([, v]) => v);
+
+  return (
+    <section
+      className={cn("w-full border border-[var(--br-secondary)]/30 bg-[var(--br-surface)] px-4 py-3", FILM_W)}
+      aria-label="How this story was made"
+      data-film-details
+    >
+      <dl className="grid grid-cols-2 gap-x-6 gap-y-2 sm:grid-cols-4 lg:grid-cols-6">
+        {rows.map(([k, v]) => (
+          <div key={k} className="min-w-0" data-detail={k.toLowerCase().replace(/\s+/g, "-")}>
+            <dt className="text-[0.65rem] uppercase text-[var(--br-secondary)]" style={{ fontFamily: MONO, letterSpacing: "0.08em" }}>
+              {k}
+            </dt>
+            <dd className="truncate text-sm text-[var(--br-primary)]" title={v}>{v}</dd>
+          </div>
+        ))}
+      </dl>
+      {deep && room.length ? (
+        <p className="mt-2 border-t border-[var(--br-secondary)]/20 pt-2 text-xs text-[var(--br-secondary)]" data-detail="room">
+          Writers' room: {room.map(specialistName).join(" · ")}
+        </p>
+      ) : null}
+    </section>
+  );
+}
+
+export function StoryView({ job, projectId = null, onRetry, retrying = false, retryError = null }) {
   const steps = stepsOf(job);
   const done = job.status === "done" && job.film?.url;
   const stopped = job.status === "stopped";
@@ -1577,6 +2196,10 @@ export function StoryView({ job, projectId = null, onNew, onRetry, retrying = fa
     : null;
   const waiting = job.status === "awaiting-confirm";
   const queued = job.status === "queued";
+  // On a phone the prompt is two lines; tapping it opens the whole of it.
+  const [promptOpen, setPromptOpen] = useState(false);
+  // The done step whose result is open in its dialog.
+  const [openStep, setOpenStep] = useState(null);
   // The chosen length; an older Film without one shows what its cue sheet planned.
   const length =
     job.seconds ||
@@ -1591,81 +2214,116 @@ export function StoryView({ job, projectId = null, onNew, onRetry, retrying = fa
         : null;
 
   return (
-    <Page className="h-dvh min-h-0 overflow-hidden animate-in fade-in zoom-in-[0.98] duration-500" >
-      <div className="flex h-dvh flex-col" data-story-view data-status={job.status}>
-        {/* The prompt, small, and the way back to a new one. */}
-        <div className="flex shrink-0 items-center gap-3 border-b border-[var(--br-secondary)]/25 px-4 py-3 sm:px-8">
-          <p className="min-w-0 flex-1 truncate text-sm text-[var(--br-secondary)]" title={job.prompt} data-prompt>
-            {job.prompt}
-          </p>
-          {length ? (
-            <span
-              className="shrink-0 text-[0.72rem] tabular-nums text-[var(--br-secondary)]"
-              style={{ fontFamily: MONO, letterSpacing: "0.08em" }}
-              title="Length"
-              data-length
-            >
-              {formatLength(length)}
-            </span>
-          ) : null}
-          {stopped && onRetry && failedLabel ? (
-            <button
-              type="button"
-              onClick={onRetry}
-              disabled={retrying}
-              className="flex shrink-0 items-center gap-1.5 border border-[var(--br-secondary)]/40 px-3 py-1.5 text-[0.72rem] uppercase text-[var(--br-primary)] transition-colors hover:border-[var(--br-primary)] disabled:opacity-50"
-              style={{ fontFamily: MONO, letterSpacing: "0.08em" }}
-              data-retry
-            >
-              <RotateCw size={12} className={cn(retrying && "animate-spin")} aria-hidden /> Retry from {failedLabel}
-            </button>
-          ) : null}
-          <button
-            type="button"
-            onClick={onNew}
-            className="flex shrink-0 items-center gap-1.5 border border-[var(--br-secondary)]/40 px-3 py-1.5 text-[0.72rem] uppercase text-[var(--br-primary)] transition-colors hover:border-[var(--br-primary)]"
+    // A finished Film's page scrolls as ONE page (video, details, actions, steps);
+    // a running one keeps its own height and scrolls the step list inside it.
+    <Page className={cn("animate-in fade-in zoom-in-[0.98] duration-500", done ? "min-h-dvh" : "h-dvh min-h-0 overflow-hidden")}>
+      <div className={cn("flex flex-col", done ? "min-h-dvh" : "h-dvh")} data-story-view data-status={job.status}>
+        {/* The header strip: the wordmark on the left, "New story" on the
+            right, nothing else — both go home, where stories are made. */}
+        <div className="flex shrink-0 items-center justify-between gap-3 border-b border-[var(--br-secondary)]/25 px-4 py-3 sm:px-8">
+          <Link
+            to="/"
+            className="text-[1.35rem] leading-none"
+            style={{ fontFamily: DISPLAY, fontWeight: 600, letterSpacing: "0.02em" }}
+            data-wordmark
+          >
+            STORYSEAM
+          </Link>
+          <Link
+            to="/"
+            className={ROW_ACTION}
             style={{ fontFamily: MONO, letterSpacing: "0.08em" }}
+            data-new
           >
             <Plus size={12} aria-hidden /> New story
-          </button>
+          </Link>
         </div>
 
+        {/* The prompt on its own row, in a card the video's width. From `sm`
+            up it is in full, wrapping, never truncated. On a phone a long
+            premise would push the steps off the screen, so it is two lines
+            with an ellipsis, and a tap opens the whole of it in a dialog.
+            The length sits in its corner. */}
+        <div className="flex shrink-0 justify-center px-4 pt-3 sm:px-8">
+          <div className={cn("flex w-full items-start gap-3 border border-[var(--br-secondary)]/40 bg-[var(--br-surface)] px-4 py-3", FILM_W)}>
+            <button
+              type="button"
+              onClick={() => setPromptOpen(true)}
+              aria-label="Show the whole prompt"
+              className="min-w-0 flex-1 text-left sm:hidden"
+              data-prompt-compact
+            >
+              <span className="line-clamp-2 break-words text-sm leading-relaxed text-[var(--br-secondary)]">{job.prompt}</span>
+            </button>
+            <p className="hidden min-w-0 flex-1 whitespace-pre-wrap break-words text-sm leading-relaxed text-[var(--br-secondary)] sm:block" data-prompt>
+              {job.prompt}
+            </p>
+            {length ? (
+              <span
+                className="shrink-0 text-[0.72rem] tabular-nums text-[var(--br-secondary)]"
+                style={{ fontFamily: MONO, letterSpacing: "0.08em" }}
+                title="Length"
+                data-length
+              >
+                {formatLength(length)}
+              </span>
+            ) : null}
+          </div>
+        </div>
+        <Dialog open={promptOpen} onOpenChange={setPromptOpen}>
+          <DialogContent
+            className={PAGE_DIALOG}
+            style={{ ...HUD, fontFamily: BODY }}
+            data-prompt-dialog
+          >
+            <DialogTitle style={{ fontFamily: MONO, letterSpacing: "0.08em" }} className="text-xs font-normal uppercase text-[var(--br-secondary)]">
+              The prompt{length ? ` · ${formatLength(length)}` : ""}
+            </DialogTitle>
+            <DialogDescription className="whitespace-pre-wrap break-words text-sm leading-relaxed text-[var(--br-primary)]">
+              {job.prompt}
+            </DialogDescription>
+          </DialogContent>
+        </Dialog>
+
         {done ? (
-          <div className="flex min-h-0 flex-1 flex-col animate-in fade-in duration-700">
-            <div className="flex h-[70dvh] shrink-0 items-center justify-center bg-black px-4 py-3 sm:px-8">
+          <div className="flex flex-1 flex-col animate-in fade-in duration-700">
+            {/* The Film in its own 16:9 box, centered — never the screen's full
+                width; capped so the details below start above the fold. */}
+            <div className="flex shrink-0 flex-col items-center gap-3 px-4 py-3 sm:px-8">
+              {/* The Film's actions on their own row right above the picture,
+                  flush with its right edge. */}
+              <div className={cn("flex w-full flex-wrap items-center justify-between gap-2", FILM_W)}>
+                {/* The way INTO the studio, on the left: the Film's own project,
+                    in the url, with the layers the pipeline made — world, script,
+                    shot list, the stills or the segments, the score — each on its
+                    own tab, the agent beside them, and the Film on the Editor's
+                    timeline. Share and Download on the right. */}
+                {projectId || job.projectId ? (
+                  <Link
+                    to={studioPath(projectId || job.projectId, "editor")}
+                    className={ROW_ACTION}
+                    style={{ fontFamily: MONO, letterSpacing: "0.08em" }}
+                    data-continue
+                  >
+                    <SlidersHorizontal size={12} aria-hidden /> Continue working on the video
+                  </Link>
+                ) : <span aria-hidden />}
+                <FilmActions job={job} projectId={projectId} />
+              </div>
+              {/* The video at its OWN ratio (a 480p film is not exactly 16:9),
+                  capped to the same height and width as the cards around it —
+                  no fixed box, so no letterbox bars inside the player. */}
               <video
                 src={filmMediaUrl(job.film.url, projectId || job.projectId)}
                 controls
                 playsInline
                 preload="metadata"
-                className="h-full w-full object-contain"
+                className={cn("block h-auto max-h-[70dvh] w-auto max-w-full", FILM_W)}
                 data-film
               />
             </div>
-            <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 overflow-y-auto px-4 py-3 sm:px-8">
-              <FilmActions job={job} projectId={projectId} />
-              {/* The way INTO the studio: the Film's own project, in the url,
-                  with the layers the pipeline made — world, script, shot list,
-                  the stills or the segments, the score — each on its own tab,
-                  the agent beside them, and the Film on the Editor's timeline. */}
-              {projectId || job.projectId ? (
-                <Link
-                  to={studioPath(projectId || job.projectId, "editor")}
-                  className={ACTION}
-                  style={{ fontFamily: MONO, letterSpacing: "0.08em" }}
-                  data-continue
-                >
-                  <SlidersHorizontal size={12} aria-hidden /> Continue working on the video
-                </Link>
-              ) : null}
-              <ol className="mx-auto flex flex-wrap justify-center gap-x-5 gap-y-2" aria-label="Steps" data-steps="compact">
-                {steps.map((s) => (
-                  <li key={s.key} className="flex items-center gap-1.5 text-xs text-[var(--br-secondary)]" data-step={s.key} data-status={s.status}>
-                    <StepIcon status={s.status} size={14} />
-                    <span>{s.label}</span>
-                  </li>
-                ))}
-              </ol>
+            <div className="flex flex-1 flex-col items-center gap-3 px-4 py-3 sm:px-8">
+              <FilmDetails job={job} />
             </div>
           </div>
         ) : (
@@ -1685,7 +2343,10 @@ export function StoryView({ job, projectId = null, onNew, onRetry, retrying = fa
                     <span className="mt-0.5 flex size-5 shrink-0 items-center justify-center">
                       <StepIcon status={s.status} />
                     </span>
-                    <span className="min-w-0 flex-1">
+                    <StepBody
+                      step={s}
+                      onOpen={s.status === "done" && s.result ? () => setOpenStep(s) : null}
+                    >
                       <span className="flex items-baseline justify-between gap-3">
                         <span className={cn(s.status === "running" || s.status === "retrying" ? "text-[var(--br-primary)]" : "text-[var(--br-primary)]/80")}>
                           {s.label}
@@ -1700,15 +2361,40 @@ export function StoryView({ job, projectId = null, onNew, onRetry, retrying = fa
                       {s.summary && s.status !== "pending" && (
                         <span className="block truncate text-xs text-[var(--br-secondary)]">{s.summary}</span>
                       )}
-                      {s.key === "voices" && s.result ? <VoicesCard result={s.result} projectId={projectId || job.projectId} /> : null}
-                    </span>
+                    </StepBody>
+                    {s.status === "done" && s.result ? (
+                      <button
+                        type="button"
+                        onClick={() => setOpenStep(s)}
+                        aria-label={`See what ${s.label} came back with`}
+                        className="mt-0.5 flex size-7 shrink-0 items-center justify-center border border-[var(--br-secondary)]/40 text-[var(--br-secondary)] transition-colors hover:border-[var(--br-primary)]/60 hover:text-[var(--br-primary)] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--br-primary)]/60"
+                        data-step-details={s.key}
+                      >
+                        <Search size={13} aria-hidden />
+                      </button>
+                    ) : null}
                   </li>
                 ))}
               </ol>
+              <StepResultDialog step={openStep} projectId={projectId || job.projectId} onClose={() => setOpenStep(null)} />
               {stopped && (
-                <p className="text-sm text-[var(--br-tertiary)]" data-stopped>
-                  {retryError || "This story couldn't be finished. It doesn't count against your allowance."}
-                </p>
+                <div className="space-y-3">
+                  <p className="text-sm text-[var(--br-tertiary)]" data-stopped>
+                    {retryError || "This story couldn't be finished. It doesn't count against your allowance."}
+                  </p>
+                  {onRetry && failedLabel ? (
+                    <button
+                      type="button"
+                      onClick={onRetry}
+                      disabled={retrying}
+                      className={ROW_ACTION}
+                      style={{ fontFamily: MONO, letterSpacing: "0.08em" }}
+                      data-retry
+                    >
+                      <RotateCw size={12} className={cn(retrying && "animate-spin")} aria-hidden /> Retry from {failedLabel}
+                    </button>
+                  ) : null}
+                </div>
               )}
               {queued && (
                 <p className="text-sm text-[var(--br-secondary)]" data-queued>

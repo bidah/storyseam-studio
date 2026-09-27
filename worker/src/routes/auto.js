@@ -78,6 +78,8 @@ import { checkAllowance } from "../lib/film-allowance.js";
 import { activeFilm, filmJobsFor, filmProject, latestFilm, listFilms, recordFilm, storyProjectName } from "../lib/films.js";
 import { archiveProject, createProject } from "./projects.js";
 import { filmShareToken, shareFilm, unshareFilm } from "../lib/film-share.js";
+import { readDoc } from "../lib/docs.js";
+import { finishRoom, recordRoomPass, rewriteRound, roomDocName } from "../lib/film-stages/room.js";
 
 const REFUSAL_STATUS = { invalid: 400, busy: 409, allowance: 429, paused: 503, unavailable: 503 };
 
@@ -261,6 +263,57 @@ export function registerAuto(app) {
     const job = await stub.film(id);
     if (!job) return c.json({ ok: false, code: "not-found", error: "No such Film." }, 404);
     return c.json({ job, projectId });
+  });
+
+  // The Deep Film's writers' room, run by the flue worker's WritersRoomWorkflow
+  // (flue-agent/src/cloudflare.ts). These four are ITS surface — the Film's
+  // room stage started it and only polls the `film-room:<id>` doc — so the
+  // workflow reads what is already done, reports each specialist's pass, asks
+  // for each round's rewrite (Claude, here, because the budget and the
+  // author's locked lines are worker code) and says when it is finished.
+  //   GET  /api/auto/films/:id/room          → the room doc
+  //   POST /api/auto/films/:id/room/pass     { round, specialist, summary, findings, report }
+  //   POST /api/auto/films/:id/room/rewrite  { round } → the saved draft (idempotent)
+  //   POST /api/auto/films/:id/room/finish   { status: "done" | "failed", error? }
+  const roomJob = async (c) => {
+    const id = c.req.param("id");
+    const { stub } = await filmHome(c, id);
+    const job = await stub.film(id);
+    if (!job) return { res: c.json({ ok: false, code: "not-found", error: "No such Film." }, 404) };
+    if (job.depth !== "deep") return { res: c.json({ ok: false, code: "not-deep", error: "This Film has no writers' room." }, 409) };
+    return { job };
+  };
+  const roomError = (c, err) => c.json({ ok: false, error: String(err?.message || err) }, err?.status || 500);
+  app.get("/api/auto/films/:id/room", async (c) => {
+    const { job, res } = await roomJob(c);
+    if (res) return res;
+    return c.json({ ok: true, room: await readDoc(c.env, job.projectId, roomDocName(job.id), null) });
+  });
+  app.post("/api/auto/films/:id/room/pass", async (c) => {
+    const { job, res } = await roomJob(c);
+    if (res) return res;
+    try {
+      const body = await c.req.json();
+      return c.json({ ok: true, pass: await recordRoomPass(c.env, job.projectId, job.id, body || {}) });
+    } catch (err) {
+      return roomError(c, err);
+    }
+  });
+  app.post("/api/auto/films/:id/room/rewrite", async (c) => {
+    const { job, res } = await roomJob(c);
+    if (res) return res;
+    try {
+      const { round } = await c.req.json();
+      return c.json({ ok: true, rewrite: await rewriteRound(c.env, job, round) });
+    } catch (err) {
+      return roomError(c, err);
+    }
+  });
+  app.post("/api/auto/films/:id/room/finish", async (c) => {
+    const { job, res } = await roomJob(c);
+    if (res) return res;
+    const body = await c.req.json().catch(() => ({}));
+    return c.json(await finishRoom(c.env, job.projectId, job.id, body || {}));
   });
 
   const ANSWER_STATUS = { "not-found": 404, "not-awaiting": 409 };

@@ -84,9 +84,22 @@ export function installWorkersAiOutputCap(): void {
   // project); wrangler.jsonc's `"ai": { "binding": "AI" }` is what supplies it.
   const binding = (env as unknown as { AI: CloudflareAIBinding }).AI;
   const base = cloudflareBindingProvider({ binding });
+  // `cloudflare/anthropic/…` (the Film's writers' room runs on Claude Fable)
+  // goes through the binding too, but on AI Gateway's Unified Billing:
+  // Cloudflare holds the Anthropic credential and bills the account's gateway
+  // credits, which needs an AUTHENTICATED gateway — the `default` one is not.
+  // The main worker's Claude writer uses the same one (worker/src/lib/writer.js
+  // CLAUDE_GATEWAY). One binding provider takes one gateway, so the anthropic
+  // family gets its own and every other model keeps the default route.
+  const claudeGateway =
+    (process.env.CLAUDE_GATEWAY_ID as string | undefined) || "auto-look";
+  const claude = cloudflareBindingProvider({ binding, gateway: { id: claudeGateway } });
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const byFamily = <K extends "stream" | "streamSimple">(key: K) => ((model: any, context: any, options: any) =>
+    (String(model?.id ?? "").startsWith("anthropic/") ? claude[key] : base[key])(model, context, options)) as typeof base[K];
   setProvider({
     ...base,
-    stream: withOutputCap(base.stream),
-    streamSimple: withOutputCap(base.streamSimple),
+    stream: withOutputCap(byFamily("stream")),
+    streamSimple: withOutputCap(byFamily("streamSimple")),
   });
 }
