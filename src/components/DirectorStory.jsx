@@ -1113,6 +1113,23 @@ export function SimpleView({ flow = FLOWS.director, onFlow, onSubmit, submitting
     if (await onSubmit(text, opts)) setPrompt("");
   };
 
+  // On a phone the pickers leave the box for a card of their own under it, so
+  // the box is the premise and its send button and nothing else.
+  const narrow = useNarrow();
+  const options = listening ? null : (
+    <>
+      {onFlow && <GenModePicker flow={flow} onFlow={onFlow} disabled={submitting} />}
+      <DepthPicker depth={depth} onDepth={chooseDepth} room={room} onRoom={chooseRoom} disabled={submitting} />
+      <StorySettings
+        flow={flow} seconds={seconds} onSeconds={chooseSeconds} resolution={resolution} onResolution={chooseResolution}
+        score={score} onScore={chooseScore}
+        voices={voices} onVoices={chooseVoices}
+        style={style} onStyle={chooseStyle}
+        writer={writer} onWriter={chooseWriter} disabled={submitting}
+      />
+    </>
+  );
+
   return (
     <Page className="relative items-center justify-center px-4 animate-in fade-in duration-300">
       <DotsBackground />
@@ -1148,17 +1165,7 @@ export function SimpleView({ flow = FLOWS.director, onFlow, onSubmit, submitting
               className="min-h-34 w-full resize-none bg-transparent px-3 py-3 text-base leading-relaxed text-[var(--br-primary)] placeholder:text-[var(--br-secondary)] focus:outline-none disabled:opacity-60"
             />
             <div className="flex flex-wrap items-center justify-end gap-x-2 gap-y-1">
-            {!listening && onFlow && <GenModePicker flow={flow} onFlow={onFlow} disabled={submitting} />}
-            {!listening && <DepthPicker depth={depth} onDepth={chooseDepth} room={room} onRoom={chooseRoom} disabled={submitting} />}
-            {!listening && (
-              <StorySettings
-                flow={flow} seconds={seconds} onSeconds={chooseSeconds} resolution={resolution} onResolution={chooseResolution}
-                score={score} onScore={chooseScore}
-                voices={voices} onVoices={chooseVoices}
-                style={style} onStyle={chooseStyle}
-                writer={writer} onWriter={chooseWriter} disabled={submitting}
-              />
-            )}
+            {!narrow && options}
             {listening ? (
               <div className="flex shrink-0 items-center gap-2">
                 <span className="flex items-center gap-1.5 text-xs tabular-nums text-[var(--br-secondary)]">
@@ -1209,6 +1216,11 @@ export function SimpleView({ flow = FLOWS.director, onFlow, onSubmit, submitting
             )}
             </div>
           </div>
+          {narrow && options ? (
+            <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 border border-[var(--br-secondary)]/40 bg-[var(--br-surface)] p-2" data-story-options>
+              {options}
+            </div>
+          ) : null}
         </form>
         <p className="min-h-5 text-sm text-[var(--br-secondary)]" aria-live="polite" data-note>
           {voiceNote || note}
@@ -1391,10 +1403,11 @@ export function LatestStories({ onPick }) {
       </button>
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent
-          className="flex max-h-[80dvh] max-w-lg flex-col gap-3 rounded-none border border-[var(--br-secondary)]/40 bg-black/70 p-0 text-[var(--br-primary)] backdrop-blur-md"
+          className="flex max-h-[80dvh] max-w-lg flex-col gap-3 rounded-none border border-[var(--br-secondary)]/40 bg-black/70 p-0 text-[var(--br-primary)] backdrop-blur-md max-sm:top-0 max-sm:left-0 max-sm:h-dvh max-sm:max-h-dvh max-sm:max-w-none max-sm:translate-x-0 max-sm:translate-y-0 max-sm:border-0 max-sm:bg-[var(--br-surface)] max-sm:pb-[env(safe-area-inset-bottom)] max-sm:data-[state=closed]:zoom-out-100 max-sm:data-[state=open]:zoom-in-100"
           style={{ ...HUD, fontFamily: BODY }}
         >
-          <div className="px-5 pt-5">
+          {/* A phone gets the whole screen: the list is the point of it. */}
+          <div className="px-5 pt-5 pr-12 max-sm:pt-[max(1.25rem,env(safe-area-inset-top))]">
             <DialogTitle style={{ fontFamily: DISPLAY, letterSpacing: "0.04em" }} className="text-2xl font-bold uppercase">
               Latest stories
             </DialogTitle>
