@@ -34,6 +34,7 @@ import { pinnedDraft, readStore } from "../script-store.js";
 import { cleanElements, docToElements, formatScreenplay, screenplayStats } from "../script-elements.js";
 import { roomNotesFor } from "./room-notes.js";
 import { SCREENPLAY_FORMAT, SCREENWRITER_CRAFT, saveScriptDraft, filmBudgetFor, takesBrief } from "./script.js";
+import { authorLines, authorLinesBrief, restoreLines } from "./author-lines.js";
 
 const str = (v) => (typeof v === "string" ? v : v == null ? "" : String(v)).trim();
 const ROSTER_INDEX = new Map(SPECIALISTS.map((s, i) => [s.id, i]));
@@ -70,7 +71,7 @@ function worldBrief(world) {
 }
 
 /** One specialist's read of the draft. */
-export function passMessages({ specialist, world, elements }) {
+export function passMessages({ specialist, world, elements, locked = [] }) {
   const notes = roomNotesFor(specialist.id);
   const system = [
     `You are ${specialist.label} — one of the fifteen script specialists in StorySeam's writers' room — reading`,
@@ -83,6 +84,9 @@ export function passMessages({ specialist, world, elements }) {
     ...notes.reads.map((r) => `- ${r}`),
     "",
     `The author's brief: ${specialist.brief}.`,
+    ...(locked.length
+      ? ["", ...authorLinesBrief(locked), "Write NO finding that changes, cuts or replaces one of them — note around them instead."]
+      : []),
     "",
     "Answer with ONE JSON object and nothing else:",
     '{ "summary": string, "findings": [{ "severity": "high" | "medium" | "low", "where": string, "issue": string, "fix": string }] }',
@@ -101,7 +105,7 @@ export function passMessages({ specialist, world, elements }) {
 }
 
 /** The rewrite: the draft plus the room's notes → the second draft. */
-export function rewriteMessages({ world, elements, passes, budget, language = DEFAULT_FILM_LANGUAGE }) {
+export function rewriteMessages({ world, elements, passes, budget, language = DEFAULT_FILM_LANGUAGE, locked = [] }) {
   const notes = passes
     .map((p) => {
       const s = SPECIALIST_BY_ID.get(p.id);
@@ -118,6 +122,9 @@ export function rewriteMessages({ world, elements, passes, budget, language = DE
     `The film still runs EXACTLY ${budget.seconds} seconds: ${budget.scenes} scenes and at most ${budget.dialogueWords} words of`,
     `dialogue in total, in ${language} only. Every character and place keeps its EXACT World name.`,
     ...(budget.takes ? ["", ...takesBrief(budget)] : []),
+    ...(locked.length
+      ? ["", ...authorLinesBrief(locked), "A note that asks to change one of them is overruled: the line stays exactly as it is."]
+      : []),
     "",
     SCREENWRITER_CRAFT,
     "",
@@ -182,12 +189,14 @@ export async function runRoomStage({ job, results, env, model }, deps = {}) {
   const elements = docToElements(draft?.doc);
   if (elements.length < 8) throw new Error("The Film has no screenplay to read — the script step did not finish.");
   const world = await (deps.readWorld || readWorld)(env, pid);
+  // Lines the author quoted in the prompt — no pass may touch them (author-lines.js).
+  const locked = authorLines(job.prompt);
   const n = (k, one) => `${k} ${one}${k === 1 ? "" : one.endsWith("s") ? "es" : "s"}`;
 
   const next = room.find((id) => !state.passes?.[id]);
   if (next) {
     const specialist = SPECIALIST_BY_ID.get(next);
-    const answer = await model.json({ messages: passMessages({ specialist, world, elements }), maxTokens: 8000, temperature: 0.5 });
+    const answer = await model.json({ messages: passMessages({ specialist, world, elements, locked }), maxTokens: 8000, temperature: 0.5 });
     const pass = parsePass(answer);
     const at = new Date().toISOString();
     await (deps.recordReview || recordReview)(env, pid, next, {
@@ -212,20 +221,40 @@ export async function runRoomStage({ job, results, env, model }, deps = {}) {
     const passes = room.map((id) => ({ id, ...state.passes[id] }));
     const budget = filmBudgetFor(job);
     const answer = await model.json({
-      messages: rewriteMessages({ world, elements, passes, budget, language: job.language || DEFAULT_FILM_LANGUAGE }),
+      messages: rewriteMessages({ world, elements, passes, budget, language: job.language || DEFAULT_FILM_LANGUAGE, locked }),
       maxTokens: 16000,
       temperature: 0.7,
     });
     const rewrite = parseRewrite(answer, draft.title || results?.script?.title || world.title);
-    const saved = await (deps.saveScriptDraft || saveScriptDraft)(env, pid, { name: "After the room", title: rewrite.title, elements: rewrite.elements });
-    const stats = screenplayStats(rewrite.elements);
-    state.rewrite = { ...saved, title: rewrite.title, changes: rewrite.changes, ...stats, at: new Date().toISOString() };
+    // The author's lines, checked in code: a rewrite that dropped one gets it
+    // back where it was; one with no clear place for it is not used at all —
+    // the first draft stays pinned, since it still has the author's words.
+    const kept = restoreLines(locked, elements, rewrite.elements);
+    if (kept) {
+      const changes = [
+        ...kept.restored.map((l) => `Kept the author's line “${l}” as written.`),
+        ...rewrite.changes,
+      ].slice(0, 12);
+      const saved = await (deps.saveScriptDraft || saveScriptDraft)(env, pid, { name: "After the room", title: rewrite.title, elements: kept.elements });
+      const stats = screenplayStats(kept.elements);
+      state.rewrite = { ...saved, title: rewrite.title, changes, ...stats, at: new Date().toISOString() };
+    } else {
+      console.warn("film room: the rewrite dropped the author's line(s); keeping the first draft", job.id);
+      const stats = screenplayStats(elements);
+      state.rewrite = {
+        draftId: draft.id, draftName: draft.name, updatedAt: draft.updatedAt, title: draft.title || rewrite.title,
+        changes: ["The rewrite changed the author's own lines, so the first draft was kept."], kept: true,
+        ...stats, at: new Date().toISOString(),
+      };
+    }
     await updateDoc(env, pid, doc, { ...EMPTY }, (d) => { d.rewrite = state.rewrite; });
   }
 
   const notes = room.reduce((a, id) => a + (state.passes[id]?.notes?.length || 0), 0);
   return {
-    summary: `${n(room.length, "pass")} · ${n(notes, "note")} · rewritten as “${state.rewrite.draftName}” (${n(state.rewrite.scenes, "scene")}, ${n(state.rewrite.lines, "line")})`,
+    summary: state.rewrite.kept
+      ? `${n(room.length, "pass")} · ${n(notes, "note")} · kept “${state.rewrite.draftName}” — the rewrite changed the author's own lines`
+      : `${n(room.length, "pass")} · ${n(notes, "note")} · rewritten as “${state.rewrite.draftName}” (${n(state.rewrite.scenes, "scene")}, ${n(state.rewrite.lines, "line")})`,
     result: view(state, room),
   };
 }
