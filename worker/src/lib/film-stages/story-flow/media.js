@@ -41,8 +41,15 @@ function preamble(env, dir) {
   return ["set -eo pipefail", uploadFnBash(), `BASE=${base}`, `TOKEN=${env.INGEST_TOKEN}`, `rm -rf ${dir} && mkdir -p ${dir}`];
 }
 
-/** Download the rendered segment, file it, and cut the tail the next one extends. */
-export function cutScript(env, { sourceUrl, clipKey, tailKey }) {
+/**
+ * Download the rendered segment, file it, and cut what the next one continues
+ * from: the tail Seedance extends (`tailKey`, its last seconds as a clip)
+ * and/or the LAST FRAME H3 opens on (`frameKey`, a jpeg — H3 treats a
+ * reference video as a performance to re-enact, so it is handed a still).
+ * The frame is decoded from the last second with every frame overwriting the
+ * same file, so what is left is the final one, not the one nearest a keyframe.
+ */
+export function cutScript(env, { sourceUrl, clipKey, tailKey, frameKey }) {
   const dir = `/tmp/sf-cut-${crypto.randomUUID()}`;
   return [
     ...preamble(env, dir),
@@ -52,6 +59,12 @@ export function cutScript(env, { sourceUrl, clipKey, tailKey }) {
       ? [
           `ffmpeg -hide_banner -v error -y -sseof -${EXTENSION_TAIL_SECONDS} -i ${dir}/clip.mp4 -c:v libx264 -preset veryfast -crf 18 -pix_fmt yuv420p -c:a aac -b:a 160k -movflags +faststart ${dir}/tail.mp4`,
           `upload_r2 ${dir}/tail.mp4 ${shq(tailKey)}`,
+        ]
+      : []),
+    ...(frameKey
+      ? [
+          `ffmpeg -hide_banner -v error -y -sseof -1 -i ${dir}/clip.mp4 -an -update 1 -q:v 2 ${dir}/frame.jpg`,
+          `upload_r2 ${dir}/frame.jpg ${shq(frameKey)}`,
         ]
       : []),
     `rm -rf ${dir}`,

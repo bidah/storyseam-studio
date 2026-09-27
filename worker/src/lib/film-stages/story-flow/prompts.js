@@ -36,6 +36,8 @@ import {
   filmStyleFor,
 } from "../../film-plan.ts";
 import { DEFAULT_FILM_LANGUAGE, filmSoundLock } from "../../film-sound.js";
+import { segmentDirection } from "./direction.js";
+import { segmentSpeakers } from "./lines.js";
 
 const key = (name) => String(name || "").trim().toLowerCase().replace(/\s+/g, " ");
 /** fal: at most 30 images a generation, 50 files in all. */
@@ -170,7 +172,7 @@ function referenceMap(registry, { extension, words = [], audio = [] }) {
     for (const a of audio) {
       lines.push(
         `${a.token} defines ${a.voice.name}'s voice timbre, accent, cadence and delivery — every line ${a.voice.name} speaks is in this voice. ` +
-          "Do not use its words, its pacing or any sound from it.",
+          "None of its words are spoken in this video; do not use its pacing or any sound from it.",
       );
     }
   }
@@ -182,24 +184,35 @@ function referenceMap(registry, { extension, words = [], audio = [] }) {
  * audioRefs: [{ token, name, url }], hasAudio }. `look` is a FILM_STYLES entry;
  * `total` the number of segments; `voices` the Voices stage's auditions ([]
  * for a Film without the pass — nothing about the prompt changes then).
+ *
+ * What the model can read as speech, it speaks (film-1fd51691, 2026-09-27, on
+ * H3 — the same model family of failure): so the film's title is not quoted
+ * in the goal, a voice is bound only for a character who has a line in THIS
+ * segment (an unscripted segment handed an audition spoke the audition), and
+ * the direction pasted is the segment's own (./direction.js), never a
+ * film-wide note that names another place — a narrated journey played the
+ * whole journey in one segment.
  */
 export function compileSegment(segment, {
-  refs, look, direction, title, total, language = DEFAULT_FILM_LANGUAGE, mode = defaultMode(look), previous = null, voices = [],
+  refs, look, direction, total, language = DEFAULT_FILM_LANGUAGE, mode = defaultMode(look), previous = null, voices = [],
 }) {
   const people = mode === "full";
   const extension = segment.index > 0 && mode !== "no-video";
   const registry = segmentRegistry(segment, refs, { people });
-  // fal: audio needs at least one image or video reference beside it.
-  const audio = registry.length || extension ? segmentVoices(segment, voices) : [];
+  // A voice only for a character who speaks here; and fal: audio needs at
+  // least one image or video reference beside it.
+  const speakers = segmentSpeakers(segment);
+  const audio = registry.length || extension ? segmentVoices({ characters: speakers }, voices) : [];
   const words = people ? [] : characterWords(segment, refs);
   const names = segment.characters || [];
+  const dir = segmentDirection(segment, direction, refs);
   const lines = [...referenceMap(registry, { extension, words, audio }), ""];
 
   lines.push("[Generation Goal]");
   lines.push(
     extension
-      ? `Extend @Video1 forward: segment ${segment.index + 1} of ${total} of the short film "${title}". ${sentence(segment.goal)}`.trim()
-      : `Generate segment ${segment.index + 1} of ${total} of the short film "${title}". ${sentence(segment.goal)}`.trim(),
+      ? `Extend @Video1 forward with the next ${segment.dur} seconds of the same short film (part ${segment.index + 1} of ${total}). ${sentence(segment.goal)}`.trim()
+      : `Generate ${segment.dur} seconds of a short film (part ${segment.index + 1} of ${total}). ${sentence(segment.goal)}`.trim(),
   );
   lines.push("");
 
@@ -207,12 +220,18 @@ export function compileSegment(segment, {
   lines.push(`Look: ${look.look}`);
   lines.push(look.lock);
   if (segment.location) lines.push(`Place: ${segment.location}.`);
-  if (direction?.environment) lines.push(`Environment: ${sentence(direction.environment)}`);
-  if (direction?.camera) lines.push(`Camera language: ${sentence(direction.camera)}`);
+  if (dir.environment) lines.push(`Environment: ${sentence(dir.environment)}`);
+  if (dir.camera) lines.push(`Camera language: ${sentence(dir.camera)}`);
+  // The scope lock: this segment is its own stages in its own place, nothing
+  // before or after them, whatever else the prompt happens to name.
+  lines.push(
+    `This generation is only the stages below${segment.location ? `, and it stays in ${segment.location} throughout` : ""}. ` +
+      "It shows nothing that happens before or after them and ends exactly on the last stage's end state; any other place this prompt names belongs to other parts of the film.",
+  );
   // The Film's sound lock (film-sound.js): the language, and NO MUSIC — the
   // Score stage lays the music under the final cut, and a bed the model baked
   // in cannot be ducked or cut out.
-  lines.push(`${filmSoundLock(language)}${direction?.sound ? ` Sound bed: ${sentence(direction.sound)}` : ""}`);
+  lines.push(`${filmSoundLock(language)}${dir.sound ? ` Sound bed: ${sentence(dir.sound)}` : ""}`);
   lines.push("");
 
   if (segment.index > 0 && !extension) {
@@ -258,6 +277,9 @@ export function compileSegment(segment, {
     [
       names.length ? `Keep ${names.join(", ")} exactly as their references define them — face, hair, clothing, proportions — one instance each, and keep each voice the same.` : "",
       audio.length ? `${audio.map((a) => `${a.voice.name} keeps the voice ${a.token} defines`).join("; ")} — never another voice.` : "",
+      speakers.length
+        ? `Only the quoted lines in the stages are spoken, each exactly once by its named speaker; nobody says anything else${names.some((n) => !speakers.includes(n)) ? `, and ${names.filter((n) => !speakers.includes(n)).join(" and ")} ${names.filter((n) => !speakers.includes(n)).length === 1 ? "does" : "do"} not speak at all` : ""}.`
+        : "Nobody speaks in this generation: no talking, whispering or murmuring.",
       segment.location ? `Keep ${segment.location}'s layout and light.` : "",
       "Keep prop ownership, object counts, screen direction and the camera axis consistent from stage to stage.",
       "The look never changes part way through.",
@@ -313,7 +335,6 @@ export function compileSegments({ job, results }, modeOf = () => null) {
   if (!shotlist?.segments?.length) throw new Error("The Film has no segments yet — the shot list step did not finish.");
   if (!sheets?.refs) throw new Error("The Film has no sheets yet — the sheets step did not finish.");
   const look = filmStyleFor({ style: results?.look?.style || job.style, prompt: job.prompt });
-  const title = results?.world?.title || "Untitled";
   const total = shotlist.segments.length;
   // The Voices stage's auditions (story-flow/voices.js), when the Film ran one.
   const voices = Array.isArray(results?.voices?.voices) ? results.voices.voices : [];
@@ -325,7 +346,6 @@ export function compileSegments({ job, results }, modeOf = () => null) {
       refs: sheets.refs,
       look,
       direction: shotlist.direction,
-      title,
       total,
       language: job.language || DEFAULT_FILM_LANGUAGE,
       mode: modeOf(segment.index) || defaultMode(look),

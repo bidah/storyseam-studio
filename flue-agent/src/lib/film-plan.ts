@@ -526,11 +526,13 @@ export function filmStyleFor({ style, prompt }: { style?: string | null; prompt?
 // go in as reference images, a shot list of ≤15s segments), with three
 // differences the recipe has to carry:
 //
-//   - H3 has no `task: extension`; it continues a video through its reference
-//     list instead. So segment k is handed the LAST SECONDS of segment k−1
-//     (EXTENSION_TAIL_SECONDS, cut on the box exactly as for Seedance) as
-//     `reference_video_urls` — "Video 1" — and the prompt says to open on its
-//     last frame and carry its motion.
+//   - H3 has no `task: extension`, and a reference VIDEO is a performance it
+//     re-enacts (handed segment 3's last 3s as Video 1, segment 4 of
+//     film-1fd51691 replayed the fall it ended on). So segment k is handed the
+//     LAST FRAME of segment k−1 (a jpeg cut on the box, beside the tail Seedance
+//     extends) as one more reference image, and the prompt says to open on it
+//     exactly; Video 1 survives only as the fallback for a job in flight whose
+//     previous segment was cut before frames were.
 //   - H3 takes at most 9 reference images (12 files with the video) and cites
 //     them by ORDER — "Image 1, Image 2…", not Seedance's @Image1 — so a
 //     segment binds at most four characters (two images each) beside its plate.

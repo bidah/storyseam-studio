@@ -250,15 +250,27 @@ on fal's `minimax/h3/reference-to-video`, which is not live either. It runs
 `H3_STAGES` (`film-job.js`): the story flow's Look, World, Script, sheets, Shot
 list and final cut, with its own prompts and video run in
 `worker/src/lib/film-stages/h3/`. Three things differ, all in `film-plan.ts`
-› The H3 FLOW: H3 has no `extension` task, so segment k is handed the last 3s
-of segment k−1 as `reference_video_urls` ("Video 1") and told to open on its
-last frame; H3 cites references by order ("Image 1, Image 2", not `@Image1`)
-and takes at most 9 images; and the prompt is compiled in the promptsama H3
-skill's production order (`h3/h3-skill.js`, vendored verbatim from
-https://www.promptsama.ai/minimax-h3.md — the Shot list writer reads it whole,
-the way the Seedance one reads `seedance-skill.js`; `STORY_ENGINES` in
-`story-flow/shotlist.js` is where an engine's skill and continuation wording
-are named). 480p/720p map onto H3's native 480P/768P.
+› The H3 FLOW: H3 has no `extension` task and re-enacts a reference VIDEO as
+a performance, so segment k is handed the **last frame** of segment k−1 as one
+more reference image (cut on the box beside the tail) and told to open on it
+exactly — Video 1 is only the fallback for a job in flight whose previous
+segment has a tail and no frame; H3 cites references by order ("Image 1,
+Image 2", not `@Image1`) and takes at most 9 images; and the prompt is H3's
+own six-field brief (`h3/prompts.js`; the Shot list writer still reads the
+promptsama skill `h3/h3-skill.js` whole, the way the Seedance one reads
+`seedance-skill.js`; `STORY_ENGINES` in `story-flow/shotlist.js` is where an
+engine's skill and continuation wording are named). 480p/720p map onto H3's
+native 480P/768P.
+
+**What a video model can read as speech, it speaks** (film-1fd51691: a stage
+name, "segment two of Concrete King", the audition's words, a line said
+twice). So both compilers share `story-flow/lines.js` (who has a line in a
+segment: a voice reference is bound ONLY for them) and
+`story-flow/direction.js` (each segment carries its own `environment` and
+`sound`; a film-wide direction field that names another World place is
+dropped rather than pasted, because a narrated journey played the whole
+journey in one segment), no title or stage name reaches a prompt, and every
+segment carries a scope lock (only its own stages, in its own place).
 
 ### The score — every engine's last stage
 

@@ -59,7 +59,7 @@ export const STORY_ENGINES = {
     chain: [
       "as a chain of SEGMENTS: each segment is ONE generation (Omni Reference: the character and place sheets",
       "go in as Image 1, Image 2 …), and every segment after the first CONTINUES the one before it (the model",
-      "is handed the last seconds of the previous segment as Video 1 and opens on its final frame).",
+      "is handed the LAST FRAME of the previous segment as an image and opens on it exactly).",
     ],
     plan: (job) => planH3({ prompt: job.prompt, seconds: job.seconds ?? null }),
     // H3 speaks what it can read as speech: a stage name, a quoted title, the
@@ -163,6 +163,10 @@ export function storyFlowShotlistMessages({ idea, world, durations, screenplay =
     "- `camera` is shot size, angle and movement, plainly. No decorative adjectives, no look/style words —",
     "  the look is added for you.",
     "- `goal` is one sentence: what this segment shows.",
+    "- `environment` is THIS segment's place at this moment — its light, time of day, weather, what is",
+    "  physically there — and `sound` its sound bed (ambience and effects, never music, never speech). Each",
+    "  describes ONLY this segment's `location`, never another place of the film and never a change of place:",
+    "  the video model renders every place a prompt names.",
     "",
     "THE MUSIC. Beside the segments, write where the score turns — a list of music cues. Each cue starts",
     "at a STAGE (`startShot`, the 1-based position of the stage counting every segment's stages in order)",
@@ -178,15 +182,16 @@ export function storyFlowShotlistMessages({ idea, world, durations, screenplay =
     "Answer with ONE JSON object and nothing else:",
     '{ "direction": { "environment": string, "camera": string, "sound": string },',
     '  "segments": [{ "title": string, "goal": string, "location": string, "characters": [string],',
+    '    "environment": string, "sound": string,',
     '    "stages": [{ "name": string, "seconds": number, "initial": string, "event": string, "camera": string,',
     `      "audio": string,${eng.lines ? ' "lines": [{ "speaker": string, "delivery": string, "text": string }],' : ""} "end": string }] }],`,
     '  "music": [{ "startShot": number, "cue": string, "energy": number, "note": string }] }',
-    "`direction` is the whole film's: environment and time of day, camera language, the sound bed (never music).",
+    "`direction` is the whole film's: the era and season, the camera language, the texture of the sound.",
     "It is pasted, word for word, into EVERY segment's prompt, so each field must be true at every second of every",
     "segment: constant qualities (palette, light quality, era, lens and movement style, the texture of the sound),",
     "never a progression. Never name a place or a scene, never write \"starts with… moves to… ends at…\" — a",
-    "segment told the film's journey plays the whole journey in its fifteen seconds. What changes from place to",
-    "place belongs in that segment's stages.",
+    "segment told the film's journey plays the whole journey in its fifteen seconds; a field that names a",
+    "place is thrown away. What changes from place to place belongs in each segment's `environment` and `sound`.",
   ].join("\n");
   const user = [
     `The Idea: ${idea || "(none)"}`,
@@ -270,6 +275,10 @@ export function parseSegments(answer, world, durations) {
       location: place?.name || str(s.location) || "",
       locationSlug: place?.slug || "",
       characters,
+      // This segment's own place at this moment and its sound bed — what the
+      // compilers paste instead of the film-wide direction (./direction.js).
+      environment: str(s.environment),
+      sound: str(s.sound),
       stages: stagesRaw.map((st, j) => ({
         name: str(st.name) || `Stage ${j + 1}`,
         seconds: secs[j],

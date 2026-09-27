@@ -10,9 +10,16 @@
 //
 //   subject_definitions  — <Subject n>: each character (its turnaround and
 //                          face, cited as fal's tokens Image 1, Image 2 …) and
-//                          the place (its plate); <Video 1>, from segment 2 on,
-//                          the cut of the previous segment's last seconds;
-//                          <Audio n>, the auditions (the Voices stage,
+//                          the place (its plate); from segment 2 on, the LAST
+//                          FRAME of the previous segment as one more image —
+//                          the frame this one opens on (H3 treats a reference
+//                          VIDEO as a performance to re-enact: handed the
+//                          previous segment's last 3s as Video 1, segment 4 of
+//                          film-1fd51691 replayed segment 3's fall, with a
+//                          character who was not in its cast — so the seam is
+//                          a still; Video 1 survives only as the fallback for a
+//                          job whose previous segment was cut before frames
+//                          were); <Audio n>, the auditions (the Voices stage,
 //                          ../story-flow/voices.js) of the characters who
 //                          SPEAK here, each bound to its speaker ID (S1…).
 //   summary              — the task types and what this part of the film is.
@@ -45,6 +52,10 @@ import {
   h3ResolutionOf,
 } from "../../film-plan.ts";
 import { DEFAULT_FILM_LANGUAGE, filmSoundLock } from "../../film-sound.js";
+import { segmentDirection } from "../story-flow/direction.js";
+import { stageLines, stageSound, unquote } from "../story-flow/lines.js";
+
+export { stageLines, stageSound };
 
 const key = (name) => String(name || "").trim().toLowerCase().replace(/\s+/g, " ");
 const str = (v) => (typeof v === "string" ? v : v == null ? "" : String(v)).trim();
@@ -60,10 +71,11 @@ const sentence = (t) => {
 // refusal is the same shape — a safety checker that reads a photoreal
 // character sheet as a real person:
 //
-//   full       character sheets + place plate (+ Video 1 from segment 2).
+//   full       character sheets + place plate (+ the seam frame from segment 2).
 //   no-people  place plate only; each character is bound IN WORDS.
-//   no-video   no-people, and no Video 1 either: a fresh generation whose
-//              first beat restates the previous segment's end state.
+//   no-video   no-people, and no seam (no frame, no Video 1) either: a fresh
+//              generation whose first beat restates the previous segment's
+//              end state in words.
 export const REF_MODES = ["full", "no-people", "no-video"];
 export const defaultMode = (look) => (look?.id === "live-action" ? "no-people" : "full");
 export function nextMode(mode, index) {
@@ -97,13 +109,23 @@ export function segmentVoices(segment, voices) {
 }
 
 /**
- * The images one segment binds, in list order: its characters (turnaround
- * then face), then its place's plate — at most MAX_H3_REFERENCE_IMAGES, and
- * no more than fit under the 12-file ceiling beside the video and the audio
- * (`maxImages`); the plate kept (a crowded segment loses its last faces before
- * its place). → [{ token, ref }] with token "Image n" (1-based, the array slot).
+ * The seam: the previous segment's last frame, bound as one more image. Its
+ * URL is not known when the prompts are compiled (the frame is cut when that
+ * segment is done), so the Video run fills it in at submit time (./run.js
+ * segmentInput) — the compiled ref carries `seam: true` and no `imageUrl`.
  */
-export function segmentRegistry(segment, refs, { people = true, maxImages = MAX_H3_REFERENCE_IMAGES } = {}) {
+export const SEAM_REF = Object.freeze({ kind: "seam", view: "frame", subject: "previous shot", name: "Previous shot — last frame", imageUrl: null });
+
+/**
+ * The images one segment binds, in list order: its characters (turnaround
+ * then face), then its place's plate, then (with `seam`) the previous
+ * segment's last frame — at most MAX_H3_REFERENCE_IMAGES, and no more than fit
+ * under the 12-file ceiling beside the video and the audio (`maxImages`); the
+ * plate and the seam kept (a crowded segment loses its last faces before its
+ * place or its seam). → [{ token, ref }] with token "Image n" (1-based, the
+ * array slot).
+ */
+export function segmentRegistry(segment, refs, { people = true, maxImages = MAX_H3_REFERENCE_IMAGES, seam = false } = {}) {
   const picked = [];
   for (const name of people ? segment.characters || [] : []) {
     for (const view of ["body", "face"]) {
@@ -112,56 +134,15 @@ export function segmentRegistry(segment, refs, { people = true, maxImages = MAX_
     }
   }
   const plate = refs.find((x) => x.view === "plate" && key(x.subject) === key(segment.location));
+  const fixed = [...(plate ? [plate] : []), ...(seam ? [SEAM_REF] : [])];
   const cap = Math.max(0, Math.min(MAX_H3_REFERENCE_IMAGES, maxImages));
-  const room = Math.max(0, plate ? cap - 1 : cap);
-  const list = [...picked.slice(0, room), ...(plate && cap > 0 ? [plate] : [])];
+  const room = Math.max(0, cap - fixed.length);
+  const list = [...picked.slice(0, room), ...fixed.slice(0, cap)];
   return list.map((ref, i) => ({ token: `Image ${i + 1}`, ref }));
 }
 
 /** Seconds → H3's timeline clock, MM:SS.mmm. */
 const stamp = (s) => `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}.000`;
-/** A note with its quotation marks taken out — H3 speaks what it reads as quoted. */
-const unquote = (t) => String(t || "").replace(/["“”]/g, "").trim();
-
-/**
- * A stage's spoken lines → [{ speaker, delivery, text }]. The Shot list writes
- * them apart from the sound (`lines`, STORY_ENGINES.h3); a Shot list from
- * before that has them inside `audio` as `Name, delivery: "line"`, and each
- * quote is read back out, its speaker the last cast name before it.
- */
-export function stageLines(stage, names = []) {
-  if (Array.isArray(stage.lines)) return stage.lines.filter((l) => str(l?.text));
-  const audio = String(stage.audio || "");
-  const out = [];
-  let from = 0;
-  for (const m of audio.matchAll(/["“]([^"”]+)["”]/g)) {
-    const before = audio.slice(from, m.index);
-    from = m.index + m[0].length;
-    const hit = names
-      .map((n) => ({ n, at: before.toLowerCase().lastIndexOf(key(n)) }))
-      .filter((x) => x.at >= 0)
-      .sort((a, b) => b.at - a.at)[0];
-    const clause = before.split(/[.!?]\s/).at(-1) || "";
-    const delivery = hit ? clause.slice(clause.toLowerCase().indexOf(key(hit.n)) + hit.n.length) : "";
-    out.push({
-      speaker: hit?.n || "",
-      delivery: delivery.replace(/\b(says|said|asks|shouts|calls out|whispers|replies)\b/gi, "").replace(/[:,]/g, " ").replace(/\s+/g, " ").trim(),
-      text: m[1].trim(),
-    });
-  }
-  return out;
-}
-
-/** A stage's sound, with any spoken line (and the sentence carrying it) taken out. */
-export function stageSound(stage) {
-  const audio = String(stage.audio || "").trim();
-  if (Array.isArray(stage.lines)) return unquote(audio);
-  return audio
-    .split(/(?<=[.!?])\s+/)
-    .filter((s) => !/["“”]/.test(s))
-    .join(" ")
-    .trim();
-}
 
 /** Characters bound in words only (no image): their identity note. */
 const identity = (refs, name) => refs.find((r) => r.kind === "character" && key(r.subject) === key(name))?.inherit;
@@ -191,12 +172,18 @@ const identity = (refs, name) => refs.find((r) => r.kind === "character" && key(
  *     a soundscape under every pause — H3 fills silence with mumbling.
  */
 export function compileSegment(segment, {
-  refs, look, direction, total, language = DEFAULT_FILM_LANGUAGE, mode = defaultMode(look), previous = null, voices = [],
+  refs, look, direction, total, language = DEFAULT_FILM_LANGUAGE, mode = defaultMode(look), previous = null, voices = [], seam = "frame",
 }) {
   const people = mode === "full";
   const extension = segment.index > 0 && mode !== "no-video";
+  // How the seam is carried: the previous segment's last frame as an image
+  // (the rule), or its last seconds as Video 1 (only for a segment whose
+  // predecessor was cut before frames were — a job in flight at the change).
+  const video = extension && seam === "video";
+  const frame = extension && !video;
   const names = segment.characters || [];
   const lang = String(language || DEFAULT_FILM_LANGUAGE).trim() || DEFAULT_FILM_LANGUAGE;
+  const dir = segmentDirection(segment, direction, refs);
 
   // Who speaks, in the order they first do — that order is the speaker IDs.
   const staged = segment.stages.map((st) => ({ ...st, spoken: stageLines(st, names), sound: stageSound(st) }));
@@ -213,10 +200,11 @@ export function compileSegment(segment, {
   // A voice only for a character who speaks here. The audio first: it and the
   // video take their files off the images' room.
   let audio = segmentVoices({ characters: speakers }, voices);
-  const maxImages = MAX_H3_REFERENCE_FILES - (extension ? 1 : 0) - audio.length;
-  const registry = segmentRegistry(segment, refs, { people, maxImages });
+  const maxImages = MAX_H3_REFERENCE_FILES - (video ? 1 : 0) - audio.length;
+  const registry = segmentRegistry(segment, refs, { people, maxImages, seam: frame });
   // H3: audio needs at least one image or video reference beside it.
-  if (!registry.length && !extension) audio = [];
+  if (!registry.length && !video) audio = [];
+  const seamTok = registry.find((r) => r.ref.kind === "seam")?.token || null;
 
   // <Subject n>: each character, then the place.
   const subjects = names.map((name, i) => ({ label: `<Subject ${i + 1}>`, name }));
@@ -244,19 +232,26 @@ export function compileSegment(segment, {
   if (place) {
     out.push(`${place.label} is the setting, ${place.name}${plate ? `: its layout, architecture, landmarks and light follow ${plate.token}; ignore any people or objects in it.` : "."}`);
   }
-  if (extension) out.push(`<Video 1> is the last ${EXTENSION_TAIL_SECONDS} seconds of the previous shot of this same film, the starting point this video continues from.`);
+  if (seamTok) {
+    out.push(
+      `${seamTok} is the exact last frame of the previous shot of this same film: the frame this video opens on, ` +
+        "with every character, prop, camera position, framing and light exactly as they are in it. It is a moment, not a scene to play out.",
+    );
+  }
+  if (video) out.push(`<Video 1> is the last ${EXTENSION_TAIL_SECONDS} seconds of the previous shot of this same film, the starting point this video continues from.`);
   for (const a of audio) {
     const s = subjects.find((x) => key(x.name) === key(a.voice.name));
     out.push(`<${a.token}> is the voice-timbre reference for ${s ? `${s.label} ` : ""}${a.voice.name} (${sid(a.voice.name)}): an isolated recording of that voice alone.`);
   }
   out.push("");
 
-  const kinds = ["reference generation", ...(extension ? ["video continuation"] : []), ...(audio.length ? ["audio reference"] : [])];
+  const kinds = ["reference generation", ...(video ? ["video continuation"] : []), ...(audio.length ? ["audio reference"] : [])];
   out.push("summary:");
   out.push(
     `[${kinds.join(" + ")}] The target video is one continuous ${segment.dur}-second part (${segment.index + 1} of ${total}) of a short film. ` +
       `${unquote(sentence(segment.goal)) || ""}${place ? ` It takes place only in ${place.label}.` : ""}` +
-      `${extension ? " It continues directly from the last frame of <Video 1>." : ""}` +
+      `${seamTok ? ` It opens on ${seamTok} exactly and continues from it without a cut.` : ""}` +
+      `${video ? " It continues directly from the last frame of <Video 1>." : ""}` +
       `${audio.length ? ` ${audio.map((a) => `<${a.token}>`).join(" and ")} ${audio.length === 1 ? "gives" : "give"} only voice timbre.` : ""}`,
   );
   out.push("");
@@ -266,7 +261,8 @@ export function compileSegment(segment, {
     out.push(`${s.label} (appears throughout): fully_preserved - identity, face, hair, build, clothing and colours retained.`);
   }
   if (place) out.push(`${place.label} (the setting): partially_preserved - layout, architecture, landmarks and light retained; the action happens in it.`);
-  if (extension) out.push("<Video 1> (continuation starting point): fully_preserved - the target opens on its last frame: the same positions, props, camera and light.");
+  if (seamTok) out.push(`${seamTok} (opening frame): fully_preserved - the first frame of the target matches it: the same positions, props, camera, framing and light; then the action continues from there.`);
+  if (video) out.push("<Video 1> (continuation starting point): fully_preserved - the target opens on its last frame: the same positions, props, camera and light.");
   for (const a of audio) {
     out.push(`<${a.token}> (voice of ${a.voice.name}): reference - only timbre, accent and cadence are referenced; none of its words are spoken in the target video.`);
   }
@@ -274,15 +270,16 @@ export function compileSegment(segment, {
 
   out.push("detailed_description:");
   out.push(`The target video is in this style: ${look.look} ${look.lock}`.trim());
-  if (direction?.environment) out.push(unquote(sentence(direction.environment)));
-  if (direction?.camera) out.push(`Camera language: ${unquote(sentence(direction.camera))}`);
+  if (dir.environment) out.push(unquote(sentence(dir.environment)));
+  if (dir.camera) out.push(`Camera language: ${unquote(sentence(dir.camera))}`);
   let at = 0;
   staged.forEach((st, i) => {
     const from = at;
     at += st.seconds;
     const parts = [];
     if (i === 0) {
-      if (extension) parts.push("The shot begins from the last frame of <Video 1> and continues it without a cut.");
+      if (seamTok) parts.push(`The shot begins on ${seamTok} exactly and continues it without a cut.`);
+      else if (video) parts.push("The shot begins from the last frame of <Video 1> and continues it without a cut.");
       else if (segment.index > 0 && previous?.stages?.at(-1)?.end) {
         parts.push(`The shot opens on the moment the previous shot ended: ${unquote(sentence(previous.stages.at(-1).end))}`);
       }
@@ -335,8 +332,8 @@ export function compileSegment(segment, {
   out.push("overall_soundscape:");
   out.push(
     [
-      direction?.sound ? unquote(sentence(direction.sound)) : "",
-      `The ambience of ${place ? place.name : "the setting"} runs under every moment, so no pause is empty${extension ? ", continuous with the sound of <Video 1>" : ""}.`,
+      dir.sound ? unquote(sentence(dir.sound)) : "",
+      `The ambience of ${place ? place.name : "the setting"} runs under every moment, so no pause is empty${video ? ", continuous with the sound of <Video 1>" : ""}.`,
       "Any crowd is heard as footsteps, movement and traffic, never as words.",
       filmSoundLock(lang),
     ].filter(Boolean).join(" "),
@@ -348,10 +345,11 @@ export function compileSegment(segment, {
   return {
     prompt: out.join("\n").replace(/\n{3,}/g, "\n\n").trim(),
     task: extension ? "extension" : "reference",
-    hasVideo: extension,
+    hasVideo: video,
+    hasFrame: frame && Boolean(seamTok),
     hasAudio: audio.length > 0,
     mode,
-    imageRefs: registry.map(({ token, ref }) => ({ token, name: ref.name, imageUrl: ref.imageUrl })),
+    imageRefs: registry.map(({ token, ref }) => ({ token, name: ref.name, imageUrl: ref.imageUrl, ...(ref.kind === "seam" ? { seam: true } : {}) })),
     audioRefs: audio.map(({ token, voice }) => ({ token, name: voice.name, url: voice.url, seconds: Number(voice.seconds) || AUDITION_SECONDS })),
   };
 }
@@ -388,13 +386,12 @@ export function segmentErrors(seg) {
  * Pure: the Video run compiles again rather than carrying twenty prompts in
  * the job (the Durable Object keeps the whole job under one 128 KB key).
  */
-export function compileH3Segments({ job, results }, modeOf = () => null) {
+export function compileH3Segments({ job, results }, modeOf = () => null, seamOf = () => "frame") {
   const shotlist = results?.shotlist;
   const sheets = results?.sheets;
   if (!shotlist?.segments?.length) throw new Error("The Film has no segments yet — the shot list step did not finish.");
   if (!sheets?.refs) throw new Error("The Film has no sheets yet — the sheets step did not finish.");
   const look = filmStyleFor({ style: results?.look?.style || job.style, prompt: job.prompt });
-  const title = results?.world?.title || "Untitled";
   const total = shotlist.segments.length;
   // The Voices stage's auditions (story-flow/voices.js), when the Film ran one.
   const voices = Array.isArray(results?.voices?.voices) ? results.voices.voices : [];
@@ -406,12 +403,12 @@ export function compileH3Segments({ job, results }, modeOf = () => null) {
       refs: sheets.refs,
       look,
       direction: shotlist.direction,
-      title,
       total,
       language: job.language || DEFAULT_FILM_LANGUAGE,
       mode: modeOf(segment.index) || defaultMode(look),
       previous: shotlist.segments[segment.index - 1] || null,
       voices,
+      seam: seamOf(segment.index) || "frame",
     }),
   }));
   const resolution = filmResolutionOf(job?.resolution);
@@ -427,7 +424,7 @@ export async function runH3PromptsStage({ job, results }) {
   const refsUsed = new Set(compiled.segments.flatMap((s) => s.imageRefs.map((r) => r.name))).size;
   const voicesUsed = new Set(compiled.segments.flatMap((s) => s.audioRefs.map((r) => r.name))).size;
   return {
-    summary: `${total} prompt${total === 1 ? "" : "s"} · ${refsUsed} references bound${voicesUsed ? ` · ${voicesUsed} voice${voicesUsed === 1 ? "" : "s"} bound` : ""} · ${compiled.h3Resolution} ${compiled.aspectRatio} · Video 1 from segment 2${compiled.segments[0]?.mode === "no-people" ? " · characters in words (live action)" : ""}`,
+    summary: `${total} prompt${total === 1 ? "" : "s"} · ${refsUsed} references bound${voicesUsed ? ` · ${voicesUsed} voice${voicesUsed === 1 ? "" : "s"} bound` : ""} · ${compiled.h3Resolution} ${compiled.aspectRatio} · opens on the previous shot's last frame from segment 2${compiled.segments[0]?.mode === "no-people" ? " · characters in words (live action)" : ""}`,
     // What each segment binds, not its prompt text (see compileH3Segments).
     result: {
       seriesId: compiled.seriesId,

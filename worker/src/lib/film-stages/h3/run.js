@@ -7,17 +7,22 @@
 // one before it:
 //
 //   segment 1   the sheets alone (Image 1, Image 2 …), 16:9.
-//   segment k   Video 1 = the LAST seconds of segment k−1 (EXTENSION_TAIL_
-//               SECONDS, cut on the box), plus its own sheets. H3 has no
-//               `extension` task: the video rides in `reference_video_urls`
-//               and the prompt says to open on its last frame.
-//   every one   Audio 1… = the auditions of the characters in it (the Voices
-//               stage) in `reference_audio_urls`, when the Film ran one.
+//   segment k   the LAST FRAME of segment k−1 (a jpeg cut on the box) as one
+//               more image — the frame it opens on — plus its own sheets. H3
+//               has no `extension` task, and a reference VIDEO is a
+//               performance it re-enacts (./prompts.js), so the seam is a
+//               still. Video 1 (the last EXTENSION_TAIL_SECONDS as a clip)
+//               is sent only when k−1 was cut before frames were — a job in
+//               flight at the change — and the cut keeps making both.
+//   every one   Audio 1… = the auditions of the characters who SPEAK in it
+//               (the Voices stage) in `reference_audio_urls`, when the Film
+//               ran one.
 //
 // Per segment:  submit → (fal renders) → cut (box: file the clip in R2, cut the
-// tail) → done, then the next one is submitted in the same call. The state
-// machine, the retry rules and the reference-mode step-down are the story
-// flow's, verbatim — see story-flow/run.js for the account of each.
+// frame and the tail) → done, then the next one is submitted in the same
+// call. The state machine, the retry rules and the reference-mode step-down
+// are the story flow's, verbatim — see story-flow/run.js for the account of
+// each.
 import { FILM_RATES_USD, H3_ENDPOINT, H3_PROMPT_EXPANSION, h3SegmentUsd } from "../../film-plan.ts";
 import { absolutize, directorUrl } from "../../director.js";
 import { falPoll, falSubmit } from "../../fal.js";
@@ -34,16 +39,18 @@ export function segmentSpend(seg, resolution) {
 }
 
 /**
- * The fal request for one compiled segment. `tailUrl` is the previous
- * segment's cut (Video 1); `reference_audio_urls` are the characters'
- * auditions (Audio 1…, the Voices stage), in the compiled order, when any.
+ * The fal request for one compiled segment. `frameUrl` is the previous
+ * segment's last frame (the compiled image ref marked `seam`, whose URL is
+ * only known now); `tailUrl` its cut (Video 1), for a segment compiled with
+ * the video seam; `reference_audio_urls` are the characters' auditions
+ * (Audio 1…, the Voices stage), in the compiled order, when any.
  */
-export function segmentInput(env, pid, seg, { h3Resolution, aspectRatio, tailUrl }) {
+export function segmentInput(env, pid, seg, { h3Resolution, aspectRatio, tailUrl, frameUrl }) {
   const audio = (seg.audioRefs || []).map((r) => absolutize(env, pid, r.url));
   return {
     prompt: seg.prompt,
-    reference_image_urls: seg.imageRefs.map((r) => absolutize(env, pid, r.imageUrl)),
-    ...(seg.task === "extension" && tailUrl ? { reference_video_urls: [tailUrl] } : {}),
+    reference_image_urls: seg.imageRefs.map((r) => (r.seam ? frameUrl : absolutize(env, pid, r.imageUrl))),
+    ...(seg.hasVideo && tailUrl ? { reference_video_urls: [tailUrl] } : {}),
     ...(audio.length ? { reference_audio_urls: audio } : {}),
     duration: Number(seg.dur),
     resolution: h3Resolution,
@@ -60,7 +67,7 @@ const slug = (s) => str(s).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-
  *
  * result = { seriesId, segments: [{ index, dur, title, status: 'queued'|
  *   'rendering'|'cutting'|'done', requestId, renderAttempt, sourceUrl, seed,
- *   cutJobId, cutAttempt, file, url, tailFile, extended }] }
+ *   cutJobId, cutAttempt, file, url, frameFile, tailFile, extended }] }
  */
 export async function runH3RunStage({ job, results, env, attempt = 1 }, deps = {}) {
   const fal = deps.fal || { submit: falSubmit, poll: falPoll };
@@ -76,7 +83,13 @@ export async function runH3RunStage({ job, results, env, attempt = 1 }, deps = {
   const segs = results.prompts.segments.map((c) => ({
     index: c.index, dur: c.dur, title: c.title, status: "queued", ...(had.get(c.index) || {}),
   }));
-  const compiled = compileH3Segments({ job, results }, (i) => segs[i]?.mode || null);
+  // The seam each segment is compiled with: the frame, unless the segment
+  // before it was cut (by the Worker as it was) with a tail and no frame.
+  const seamOf = (i) => {
+    const before = segs[i - 1];
+    return before?.tailFile && !before?.frameFile ? "video" : "frame";
+  };
+  const compiled = compileH3Segments({ job, results }, (i) => segs[i]?.mode || null, seamOf);
   const tag = slug(job.id);
   const total = segs.length;
   let spend = 0;
@@ -113,12 +126,18 @@ export async function runH3RunStage({ job, results, env, attempt = 1 }, deps = {
 
     if (seg.status === "queued") {
       let tailUrl = null;
-      if (c.task === "extension") {
+      let frameUrl = null;
+      if (c.hasFrame) {
+        const before = segs[seg.index - 1];
+        if (!before?.frameFile) throw fail(`${where}: the previous segment has no last frame to open on.`);
+        frameUrl = filesUrl(env, storyKey(pid, before.frameFile));
+      }
+      if (c.hasVideo) {
         const before = segs[seg.index - 1];
         if (!before?.tailFile) throw fail(`${where}: the previous segment has no cut to continue from.`);
         tailUrl = filesUrl(env, storyKey(pid, before.tailFile));
       }
-      const input = segmentInput(env, pid, c, { h3Resolution: compiled.h3Resolution, aspectRatio: compiled.aspectRatio, tailUrl });
+      const input = segmentInput(env, pid, c, { h3Resolution: compiled.h3Resolution, aspectRatio: compiled.aspectRatio, tailUrl, frameUrl });
       let requestId;
       try {
         ({ requestId } = await fal.submit(key, H3_ENDPOINT, input));
@@ -146,14 +165,16 @@ export async function runH3RunStage({ job, results, env, attempt = 1 }, deps = {
       const stamp = crypto.randomUUID().slice(0, 6);
       const file = `h3-${tag}-seg${n}-${stamp}.mp4`;
       const last = seg.index === total - 1;
+      const frameFile = last ? null : `h3-${tag}-seg${n}-last-${stamp}.jpg`;
       const tailFile = last ? null : `h3-${tag}-seg${n}-tail-${stamp}.mp4`;
       const cutJobId = await box.startCut(env, {
         sourceUrl: seg.sourceUrl,
         clipKey: storyKey(pid, file),
+        frameKey: frameFile ? storyKey(pid, frameFile) : null,
         tailKey: tailFile ? storyKey(pid, tailFile) : null,
       });
       spend += FILM_RATES_USD.sandboxMinute;
-      Object.assign(seg, { status: "cutting", cutJobId, cutAttempt: attempt, file, tailFile });
+      Object.assign(seg, { status: "cutting", cutJobId, cutAttempt: attempt, file, frameFile, tailFile });
       return pending();
     }
 
