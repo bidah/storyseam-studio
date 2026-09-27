@@ -230,7 +230,15 @@ export function compileSegment(segment, {
     out.push(`${s.label} is ${s.name}, one character${note ? `: ${unquote(sentence(note))}` : "."}${from.length ? ` ${from.join("; ")}.` : " There is no reference image; keep them exactly as described."}`);
   }
   if (place) {
-    out.push(`${place.label} is the setting, ${place.name}${plate ? `: its layout, architecture, landmarks and light follow ${plate.token}; ignore any people or objects in it.` : "."}`);
+    // A DESIGN reference, not a backdrop: told only "layout, architecture,
+    // landmarks and light", H3 re-shot the plate — its camera angle, its
+    // framing, the mural where the plate had it (film-6767fc11, 2026-09-27).
+    out.push(
+      `${place.label} is the setting, ${place.name}${plate
+        ? `. ${plate.token} is a design reference for this place, not a background: take its architecture, materials, colours, landmarks and light, ` +
+          "and see the place from the camera each shot below describes — never the image's own framing, viewpoint or composition, and never the image as a flat backdrop. Ignore any people or objects in it."
+        : "."}`,
+    );
   }
   if (seamTok) {
     out.push(
@@ -260,7 +268,7 @@ export function compileSegment(segment, {
   for (const s of subjects) {
     out.push(`${s.label} (appears throughout): fully_preserved - identity, face, hair, build, clothing and colours retained.`);
   }
-  if (place) out.push(`${place.label} (the setting): partially_preserved - layout, architecture, landmarks and light retained; the action happens in it.`);
+  if (place) out.push(`${place.label} (the setting): partially_preserved - architecture, materials, colours, landmarks and light retained; its reference image's framing, viewpoint and composition are not reused, each shot sees the place from its own camera.`);
   if (seamTok) out.push(`${seamTok} (opening frame): fully_preserved - the first frame of the target matches it: the same positions, props, camera, framing and light; then the action continues from there.`);
   if (video) out.push("<Video 1> (continuation starting point): fully_preserved - the target opens on its last frame: the same positions, props, camera and light.");
   for (const a of audio) {

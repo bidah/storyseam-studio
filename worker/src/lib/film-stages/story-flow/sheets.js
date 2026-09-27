@@ -138,13 +138,19 @@ export function planStoryFlowSheets(answer, world, look, max = MAX_STORY_FLOW_SH
         `A head-and-shoulders portrait of ${c.name}: ${note}. Front-facing, neutral expression, plain light-grey background, even light. No text.`),
     });
   }
+  // A plate is EMPTY whatever the writer's prompt says: film-6767fc11's
+  // "Brownstone Block" plate came back with a skateboarding kid in it, a
+  // stranger the video model is then free to cast.
+  const EMPTY = "The place alone and EMPTY: no people, no figures, no characters, no animals anywhere in the frame.";
   const plates = (world.locations || []).filter((x) => str(x?.name)).map((l) => {
     const w = places.get(key(l.name)) || {};
     return {
       kind: "location", view: "plate", subject: l.name, name: `${l.name} — ${VIEW_LABEL.plate}`,
       inherit: str(w.layout) || l.description || "",
-      prompt: withClause(str(w.plate) ||
-        `A wide establishing view of ${l.name}: ${l.description || "a place from this story"}. Empty of people, eye-level. No text.`),
+      // First as well as last: an image model weighs the opening words most,
+      // and a writer's plate prompt has been known to put a person in.
+      prompt: withClause([EMPTY, str(w.plate) ||
+        `A wide establishing view of ${l.name}: ${l.description || "a place from this story"}. Eye-level. No text.`, EMPTY].join(" ")),
     };
   });
   return [style, ...bodies, ...plates, ...faces].slice(0, max);

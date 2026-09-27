@@ -156,7 +156,8 @@ function referenceMap(registry, { extension, words = [], audio = [] }) {
   if (plates.length) lines.push("[Scenes]");
   for (const p of plates) {
     lines.push(
-      `${p.ref.subject} references ${p.token}. Use only its layout, architecture, landmarks and light${p.ref.inherit ? `: ${sentence(p.ref.inherit)}` : "."}` +
+      `${p.ref.subject} references ${p.token} as a design reference, not a background. Use only its architecture, materials, colours, landmarks and light${p.ref.inherit ? `: ${sentence(p.ref.inherit)}` : "."}` +
+        " Do not use its framing, camera viewpoint or composition — each stage sees the place from the camera it describes — and never show it as a flat backdrop." +
         " Do not use any people, creatures or foreground objects from it.",
     );
   }
