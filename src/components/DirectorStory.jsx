@@ -533,6 +533,7 @@ function StorySettings({ flow, seconds, onSeconds, resolution, onResolution, sco
       <span className="text-[0.72rem] uppercase tabular-nums" style={{ fontFamily: MONO, letterSpacing: "0.08em" }} data-story-settings-summary>
         {formatLength(seconds)} · {resolution} · {FILM_STYLES.find((st) => st.id === style)?.label || "Auto look"}{score ? "" : " · no score"}{storyFlow ? ` · ${voice.label}` : ""}
       </span>
+      <ChevronDown size={12} className="shrink-0" aria-hidden />
     </button>
   );
   const panel = (
