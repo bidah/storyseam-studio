@@ -146,7 +146,9 @@ async function claudeJSON(env, { messages, maxTokens, temperature } = {}) {
     messages: messages.filter((m) => m.role !== "system"),
     max_tokens: Math.min(maxTokens || CLAUDE_MAX_TOKENS, CLAUDE_MAX_TOKENS),
   };
-  if (temperature != null) inputs.temperature = temperature;
+  // No `temperature`: Fable 5.1 refuses the parameter outright — any value comes
+  // back from the binding as "7003: User Input Error" (verified 2026-09-27), which
+  // stopped every Claude-written Film at its World.
   const out = await env.AI.run(env.CLAUDE_WRITER_MODEL || CLAUDE_WRITER_MODEL, inputs, {
     gateway: { id: env.CLAUDE_GATEWAY_ID || env.LOOK_GATEWAY_ID || CLAUDE_GATEWAY },
   });

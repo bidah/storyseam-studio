@@ -149,6 +149,11 @@ export function storyFlowShotlistMessages({ idea, world, durations, screenplay =
     '      "audio": string, "end": string }] }],',
     '  "music": [{ "startShot": number, "cue": string, "energy": number, "note": string }] }',
     "`direction` is the whole film's: environment and time of day, camera language, the sound bed (never music).",
+    "It is pasted, word for word, into EVERY segment's prompt, so each field must be true at every second of every",
+    "segment: constant qualities (palette, light quality, era, lens and movement style, the texture of the sound),",
+    "never a progression. Never name a place or a scene, never write \"starts with… moves to… ends at…\" — a",
+    "segment told the film's journey plays the whole journey in its fifteen seconds. What changes from place to",
+    "place belongs in that segment's stages.",
   ].join("\n");
   const user = [
     `The Idea: ${idea || "(none)"}`,

@@ -214,6 +214,14 @@ export function compileSegment(segment, {
   lines.push(sentence(segment.goal) || `${segment.title}.`);
   if (segment.location) lines.push(`Place: ${segment.location}.`);
   if (direction?.environment) lines.push(`Environment: ${sentence(direction.environment)}`);
+  // The scope lock. H3 renders every place a prompt names: a film-wide
+  // Environment or Camera note that narrated the journey ("from the apartment
+  // to the street to the skate spot") made segment 1 play the whole film in its
+  // fifteen seconds and end where segment 4 should (2026-09-27, film-1fd51691).
+  lines.push(
+    `This segment is ${segment.stages.length === 1 ? "only the moment" : "only the moments"} in the shot list below${segment.location ? `, and it stays in ${segment.location} throughout` : ""}. ` +
+      "It shows nothing that happens before or after them and ends exactly on the shot list's last end state; any other place this prompt names belongs to other segments of the film.",
+  );
   lines.push("");
 
   const spoken = dialogueLines(segment);

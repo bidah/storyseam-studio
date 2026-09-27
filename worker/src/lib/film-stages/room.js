@@ -182,7 +182,7 @@ export async function runRoomStage({ job, results, env, model }, deps = {}) {
   const elements = docToElements(draft?.doc);
   if (elements.length < 8) throw new Error("The Film has no screenplay to read — the script step did not finish.");
   const world = await (deps.readWorld || readWorld)(env, pid);
-  const n = (k, one) => `${k} ${one}${k === 1 ? "" : "s"}`;
+  const n = (k, one) => `${k} ${one}${k === 1 ? "" : one.endsWith("s") ? "es" : "s"}`;
 
   const next = room.find((id) => !state.passes?.[id]);
   if (next) {
