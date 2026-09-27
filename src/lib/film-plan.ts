@@ -777,6 +777,13 @@ export const filmVoicesOf = (voices?: string | null, engine?: string | null): Fi
  */
 export const AUDITION_SECONDS = 5;
 /**
+ * What the filed voice reference is cut to — shorter than the audition that
+ * was rendered (H3 renders no less than 5s). A reference past ~4s makes H3
+ * mumble for half a second at the start of a take (MiniMax-H3 HF discussion
+ * #76), and timbre is all a reference is for.
+ */
+export const VOICE_REF_SECONDS = 4;
+/**
  * What every character reads — the SAME lines, so the auditions compare.
  * Neutral, about six seconds spoken, and at least 100 characters because
  * ElevenLabs' voice design refuses a shorter text; the filed mp3 is cut to

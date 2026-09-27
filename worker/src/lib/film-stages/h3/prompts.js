@@ -4,26 +4,27 @@
 // The story flow's prompts stage, written to the MiniMax H3 skill
 // (./h3-skill.js). Pure code, no model: every segment the Shot list wrote is
 // COMPILED into the one H3 prompt and request it is rendered with (fal's
-// minimax/h3/reference-to-video), in the skill's production order:
+// minimax/h3/reference-to-video). The prompt is H3's OWN brief — the six
+// fields its prompt expansion writes, because the Film sends it with expansion
+// off (film-plan.ts › The H3 FLOW), so nothing else puts it in that shape:
 //
-//   [REFERENCE USE]      — H3 cites its references by MODALITY AND ORDER:
-//                          "Image 1, Image 2 …" for `reference_image_urls`,
-//                          "Video 1" for `reference_video_urls`. Only THIS
-//                          segment's references: each character in it as two
-//                          images of one person (turnaround + face), its place
-//                          as an empty plate; every token bound to one named
-//                          job, with what NOT to take from it. From segment 2
-//                          on, Video 1 is the cut of the previous segment's
-//                          last seconds. Audio 1… are the characters'
-//                          AUDITIONS (the Voices stage, ../story-flow/
-//                          voices.js): each defines one character's voice.
-//   [IDENTITY / CONTINUITY LOCKS] — one instance each, the look, and from
-//                          segment 2 the continuation from Video 1's last frame.
-//   [SCENE]              — the segment's goal, place, environment.
-//   [DIALOGUE]           — every line, bound to its speaker, in the language,
-//                          in the voice its Audio n defines.
-//   [SHOT LIST]          — the writer's stages as consecutive time ranges.
-//   [CAMERA] / [PRODUCTION SOUND] / [NEGATIVES]
+//   subject_definitions  — <Subject n>: each character (its turnaround and
+//                          face, cited as fal's tokens Image 1, Image 2 …) and
+//                          the place (its plate); <Video 1>, from segment 2 on,
+//                          the cut of the previous segment's last seconds;
+//                          <Audio n>, the auditions (the Voices stage,
+//                          ../story-flow/voices.js) of the characters who
+//                          SPEAK here, each bound to its speaker ID (S1…).
+//   summary              — the task types and what this part of the film is.
+//   retention_analysis   — what each reference keeps; a voice is a timbre
+//                          `reference` whose words are never spoken.
+//   detailed_description — the look, then the writer's stages as [Shot n] at
+//                          H3's MM:SS.mmm clock, every line as
+//                          `<Subject 1> Leo (S1) … says <d>[English] words.</d>`
+//                          with the lips closing after it; who stays silent;
+//                          the scope lock; the negatives.
+//   overall_soundscape   — the ambience under every pause, and the sound lock.
+//   non_diegetic_music   — N/A (the Score stage lays the music under it).
 //
 // So every "Image n" / "Audio n" points at an existing array slot and the
 // arrays are built from the same registry in the same order. Validated against
@@ -46,7 +47,7 @@ import {
 import { DEFAULT_FILM_LANGUAGE, filmSoundLock } from "../../film-sound.js";
 
 const key = (name) => String(name || "").trim().toLowerCase().replace(/\s+/g, " ");
-const clock = (s) => `${s}s`;
+const str = (v) => (typeof v === "string" ? v : v == null ? "" : String(v)).trim();
 /** A note as a sentence: trimmed, ending on a full stop. */
 const sentence = (t) => {
   const x = String(t || "").trim();
@@ -117,165 +118,235 @@ export function segmentRegistry(segment, refs, { people = true, maxImages = MAX_
   return list.map((ref, i) => ({ token: `Image ${i + 1}`, ref }));
 }
 
-/** Characters bound in words only (no image): name + identity note. */
-function characterWords(segment, refs) {
-  return (segment.characters || []).map((name) => {
-    const note = refs.find((r) => r.kind === "character" && key(r.subject) === key(name))?.inherit;
-    return `${name} has no reference image: ${note ? sentence(note) : "keep them exactly as first shown."}`;
-  });
+/** Seconds → H3's timeline clock, MM:SS.mmm. */
+const stamp = (s) => `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}.000`;
+/** A note with its quotation marks taken out — H3 speaks what it reads as quoted. */
+const unquote = (t) => String(t || "").replace(/["“”]/g, "").trim();
+
+/**
+ * A stage's spoken lines → [{ speaker, delivery, text }]. The Shot list writes
+ * them apart from the sound (`lines`, STORY_ENGINES.h3); a Shot list from
+ * before that has them inside `audio` as `Name, delivery: "line"`, and each
+ * quote is read back out, its speaker the last cast name before it.
+ */
+export function stageLines(stage, names = []) {
+  if (Array.isArray(stage.lines)) return stage.lines.filter((l) => str(l?.text));
+  const audio = String(stage.audio || "");
+  const out = [];
+  let from = 0;
+  for (const m of audio.matchAll(/["“]([^"”]+)["”]/g)) {
+    const before = audio.slice(from, m.index);
+    from = m.index + m[0].length;
+    const hit = names
+      .map((n) => ({ n, at: before.toLowerCase().lastIndexOf(key(n)) }))
+      .filter((x) => x.at >= 0)
+      .sort((a, b) => b.at - a.at)[0];
+    const clause = before.split(/[.!?]\s/).at(-1) || "";
+    const delivery = hit ? clause.slice(clause.toLowerCase().indexOf(key(hit.n)) + hit.n.length) : "";
+    out.push({
+      speaker: hit?.n || "",
+      delivery: delivery.replace(/\b(says|said|asks|shouts|calls out|whispers|replies)\b/gi, "").replace(/[:,]/g, " ").replace(/\s+/g, " ").trim(),
+      text: m[1].trim(),
+    });
+  }
+  return out;
 }
 
-/** [REFERENCE USE] — every asset with one bounded job and what it must not contribute. */
-function referenceUse(registry, { extension, audio = [] }) {
-  const lines = [];
-  const chars = new Map();
-  for (const r of registry.filter((x) => x.ref.kind === "character")) {
-    const list = chars.get(r.ref.subject) || [];
-    list.push(r);
-    chars.set(r.ref.subject, list);
-  }
-  for (const [name, list] of chars) {
-    const body = list.find((x) => x.ref.view === "body");
-    const face = list.find((x) => x.ref.view === "face");
-    if (body) lines.push(`${body.token} defines ${name}'s full body, build, clothing and colours only (front, three-quarter, side and back of ONE figure). Ignore its grey background, its turnaround layout and any text.`);
-    if (face) lines.push(`${face.token} defines ${name}'s face, hair and features only. Ignore its background and framing.`);
-    if (list.length > 1) lines.push(`${list.map((x) => x.token).join(" and ")} are the same ${name}.`);
-  }
-  for (const p of registry.filter((x) => x.ref.view === "plate")) {
-    lines.push(`${p.token} defines ${p.ref.subject}'s layout, architecture, landmarks and light only. Ignore its people, creatures and foreground objects.`);
-  }
-  if (extension) {
-    lines.push(
-      `Video 1 is the last ${EXTENSION_TAIL_SECONDS} seconds of the previous shot of this same film. ` +
-        "It defines where every character and object is, the camera position and framing, the light, the sound and the direction of motion at the seam. Continue it; do not restage it.",
-    );
-  }
-  for (const a of audio) {
-    lines.push(`${a.token} defines only ${a.voice.name}'s voice timbre, accent, cadence and delivery. Ignore its words and pacing.`);
-  }
-  return lines;
+/** A stage's sound, with any spoken line (and the sentence carrying it) taken out. */
+export function stageSound(stage) {
+  const audio = String(stage.audio || "").trim();
+  if (Array.isArray(stage.lines)) return unquote(audio);
+  return audio
+    .split(/(?<=[.!?])\s+/)
+    .filter((s) => !/["“”]/.test(s))
+    .join(" ")
+    .trim();
 }
 
-/** The lines a segment's stages carry, in order: `Speaker, delivery: "line"` as the writer wrote them. */
-function dialogueLines(segment) {
-  return segment.stages.map((st) => String(st.audio || "").trim()).filter((a) => /"[^"]+"/.test(a));
-}
+/** Characters bound in words only (no image): their identity note. */
+const identity = (refs, name) => refs.find((r) => r.kind === "character" && key(r.subject) === key(name))?.inherit;
 
 /**
  * One segment → { prompt, task, imageRefs: [{ token, name, imageUrl }], hasVideo,
  * audioRefs: [{ token, name, url }], hasAudio, mode }. `look` is a FILM_STYLES
  * entry; `total` the number of segments; `voices` the Voices stage's auditions
- * ([] for a Film without the pass — nothing about the prompt changes then).
+ * ([] for a Film without the pass).
+ *
+ * The prompt is written in H3's OWN brief — the six fields its prompt
+ * expansion writes (subject_definitions, summary, retention_analysis,
+ * detailed_description, overall_soundscape, non_diegetic_music), because the
+ * Film sends it with expansion off: nothing rewrites it into the shape the
+ * model was trained on, so it is written in that shape. Assets keep fal's
+ * tokens (Image 1, Video 1, Audio 1). Dialogue is the fragile part, so it is
+ * written the way H3 reads speech — and nothing else in the prompt looks like
+ * speech:
+ *   - each line bound to a speaker ID, `<Subject 1> (S1) … says <d>[English]
+ *     words.</d>`, the lips closing when it ends;
+ *   - a voice reference only for a character who SPEAKS in this segment, as a
+ *     timbre `reference` whose words are never carried (an unscripted segment
+ *     bound to an audition spoke the audition);
+ *   - no quotation marks, titles or stage names anywhere else (H3 read out
+ *     "Segment two of Concrete King" and a stage called "The Decision");
+ *   - who does not speak, and that nothing else is said, stated outright, and
+ *     a soundscape under every pause — H3 fills silence with mumbling.
  */
 export function compileSegment(segment, {
-  refs, look, direction, title, total, language = DEFAULT_FILM_LANGUAGE, mode = defaultMode(look), previous = null, voices = [],
+  refs, look, direction, total, language = DEFAULT_FILM_LANGUAGE, mode = defaultMode(look), previous = null, voices = [],
 }) {
   const people = mode === "full";
   const extension = segment.index > 0 && mode !== "no-video";
-  // The audio first: it and the video take their files off the images' room.
-  let audio = segmentVoices(segment, voices);
+  const names = segment.characters || [];
+  const lang = String(language || DEFAULT_FILM_LANGUAGE).trim() || DEFAULT_FILM_LANGUAGE;
+
+  // Who speaks, in the order they first do — that order is the speaker IDs.
+  const staged = segment.stages.map((st) => ({ ...st, spoken: stageLines(st, names), sound: stageSound(st) }));
+  const speakers = [];
+  for (const l of staged.flatMap((st) => st.spoken)) {
+    const name = names.find((n) => key(n) === key(l.speaker)) || str(l.speaker);
+    if (name && !speakers.some((s) => key(s) === key(name))) speakers.push(name);
+  }
+  const sid = (name) => {
+    const i = speakers.findIndex((s) => key(s) === key(name));
+    return i >= 0 ? `S${i + 1}` : null;
+  };
+
+  // A voice only for a character who speaks here. The audio first: it and the
+  // video take their files off the images' room.
+  let audio = segmentVoices({ characters: speakers }, voices);
   const maxImages = MAX_H3_REFERENCE_FILES - (extension ? 1 : 0) - audio.length;
   const registry = segmentRegistry(segment, refs, { people, maxImages });
   // H3: audio needs at least one image or video reference beside it.
   if (!registry.length && !extension) audio = [];
-  const words = people ? [] : characterWords(segment, refs);
-  const names = segment.characters || [];
-  const lines = [];
 
-  lines.push("[REFERENCE USE]");
-  const use = referenceUse(registry, { extension, audio });
-  lines.push(...(use.length ? use : ["No reference assets: every subject is defined in the locks below."]));
-  lines.push("");
+  // <Subject n>: each character, then the place.
+  const subjects = names.map((name, i) => ({ label: `<Subject ${i + 1}>`, name }));
+  const place = segment.location ? { label: `<Subject ${names.length + 1}>`, name: segment.location } : null;
+  const who = (name) => {
+    const s = subjects.find((x) => key(x.name) === key(name));
+    const id = sid(name);
+    return s ? `${s.label} ${name}${id ? ` (${id})` : ""}` : `${name}${id ? ` (${id})` : ""}`;
+  };
+  const tokens = (name, view) => registry.filter((r) => r.ref.kind === "character" && r.ref.view === view && key(r.ref.subject) === key(name)).map((r) => r.token);
+  const plate = registry.find((r) => r.ref.view === "plate");
 
-  lines.push("[IDENTITY / CONTINUITY LOCKS]");
-  lines.push(`Segment ${segment.index + 1} of ${total} of the short film "${title}".`);
-  for (const [i, name] of names.entries()) {
-    const inherit = refs.find((r) => r.kind === "character" && key(r.subject) === key(name))?.inherit;
-    lines.push(`Exactly one ${name} throughout${inherit ? `: ${sentence(inherit)}` : "."}${words[i] ? ` ${words[i]}` : ""}`);
+  const out = [];
+  out.push("subject_definitions:");
+  for (const s of subjects) {
+    const note = identity(refs, s.name);
+    const body = tokens(s.name, "body")[0];
+    const face = tokens(s.name, "face")[0];
+    const from = [
+      body && `${s.name}'s full body, build, clothing and colours follow ${body}, a turnaround sheet of ONE figure (ignore its grey background, its layout and any text)`,
+      face && `${s.name}'s face and hair follow ${face} (ignore its background)`,
+    ].filter(Boolean);
+    out.push(`${s.label} is ${s.name}, one character${note ? `: ${unquote(sentence(note))}` : "."}${from.length ? ` ${from.join("; ")}.` : " There is no reference image; keep them exactly as described."}`);
   }
-  lines.push(`Look: ${look.look} ${look.lock}`.trim());
-  if (extension) {
-    lines.push(
-      "The first frame is Video 1's last frame exactly: every character's pose and orientation, every prop's position and state, " +
-        "the background, the camera position and composition, the lighting and the direction of motion continue without a cut. " +
-        "Nothing is duplicated, split or swapped. Then the new action begins.",
-    );
-  } else if (segment.index > 0) {
-    // No Video 1 to inherit from: the seam is carried in words.
-    const end = previous?.stages?.at(-1)?.end;
-    lines.push(
-      `This continues directly from the previous shot of the same film${end ? `, which ended: ${sentence(end)}` : "."} ` +
-        "Open on that same moment — the same place, positions, clothing and light — then the new action begins.",
-    );
+  if (place) {
+    out.push(`${place.label} is the setting, ${place.name}${plate ? `: its layout, architecture, landmarks and light follow ${plate.token}; ignore any people or objects in it.` : "."}`);
   }
-  lines.push("");
+  if (extension) out.push(`<Video 1> is the last ${EXTENSION_TAIL_SECONDS} seconds of the previous shot of this same film, the starting point this video continues from.`);
+  for (const a of audio) {
+    const s = subjects.find((x) => key(x.name) === key(a.voice.name));
+    out.push(`<${a.token}> is the voice-timbre reference for ${s ? `${s.label} ` : ""}${a.voice.name} (${sid(a.voice.name)}): an isolated recording of that voice alone.`);
+  }
+  out.push("");
 
-  lines.push("[SCENE]");
-  lines.push(sentence(segment.goal) || `${segment.title}.`);
-  if (segment.location) lines.push(`Place: ${segment.location}.`);
-  if (direction?.environment) lines.push(`Environment: ${sentence(direction.environment)}`);
+  const kinds = ["reference generation", ...(extension ? ["video continuation"] : []), ...(audio.length ? ["audio reference"] : [])];
+  out.push("summary:");
+  out.push(
+    `[${kinds.join(" + ")}] The target video is one continuous ${segment.dur}-second part (${segment.index + 1} of ${total}) of a short film. ` +
+      `${unquote(sentence(segment.goal)) || ""}${place ? ` It takes place only in ${place.label}.` : ""}` +
+      `${extension ? " It continues directly from the last frame of <Video 1>." : ""}` +
+      `${audio.length ? ` ${audio.map((a) => `<${a.token}>`).join(" and ")} ${audio.length === 1 ? "gives" : "give"} only voice timbre.` : ""}`,
+  );
+  out.push("");
+
+  out.push("retention_analysis:");
+  for (const s of subjects) {
+    out.push(`${s.label} (appears throughout): fully_preserved - identity, face, hair, build, clothing and colours retained.`);
+  }
+  if (place) out.push(`${place.label} (the setting): partially_preserved - layout, architecture, landmarks and light retained; the action happens in it.`);
+  if (extension) out.push("<Video 1> (continuation starting point): fully_preserved - the target opens on its last frame: the same positions, props, camera and light.");
+  for (const a of audio) {
+    out.push(`<${a.token}> (voice of ${a.voice.name}): reference - only timbre, accent and cadence are referenced; none of its words are spoken in the target video.`);
+  }
+  out.push("");
+
+  out.push("detailed_description:");
+  out.push(`The target video is in this style: ${look.look} ${look.lock}`.trim());
+  if (direction?.environment) out.push(unquote(sentence(direction.environment)));
+  if (direction?.camera) out.push(`Camera language: ${unquote(sentence(direction.camera))}`);
+  let at = 0;
+  staged.forEach((st, i) => {
+    const from = at;
+    at += st.seconds;
+    const parts = [];
+    if (i === 0) {
+      if (extension) parts.push("The shot begins from the last frame of <Video 1> and continues it without a cut.");
+      else if (segment.index > 0 && previous?.stages?.at(-1)?.end) {
+        parts.push(`The shot opens on the moment the previous shot ended: ${unquote(sentence(previous.stages.at(-1).end))}`);
+      }
+      const present = names.map(who).reduce((a, w, k, all) => (k === 0 ? w : `${a}${k === all.length - 1 ? " and " : ", "}${w}`), "");
+      if (present || place) parts.push(`${present || "The scene"}${present ? (names.length === 1 ? " is" : " are") : " is"} in ${place ? `${place.label} ${place.name}` : "the setting"}.`);
+      if (st.initial) parts.push(unquote(sentence(st.initial)));
+    } else if (st.initial) {
+      parts.push(unquote(sentence(st.initial)));
+    }
+    if (st.camera) parts.push(unquote(sentence(st.camera)));
+    if (st.event) parts.push(unquote(sentence(st.event)));
+    for (const l of st.spoken) {
+      const name = names.find((n) => key(n) === key(l.speaker)) || str(l.speaker);
+      const delivery = unquote(l.delivery);
+      parts.push(
+        `${who(name)}, on-screen,${delivery ? ` ${delivery},` : ""} says <d>[${lang}] ${sentence(unquote(l.text))}</d> ` +
+          `As the line ends, ${name}'s lips close and ${name}'s mouth stops moving.`,
+      );
+    }
+    if (st.sound) parts.push(sentence(st.sound));
+    if (st.end) parts.push(`By ${stamp(at)} the shot has reached this end state: ${unquote(sentence(st.end))}`);
+    const head = i === 0 ? "[Shot 1]" : `[Shot ${i + 1}] At ${stamp(from)}, the shot changes to what follows.`;
+    out.push(`${head} ${parts.join(" ")}`);
+  });
+  const quiet = names.filter((n) => !sid(n));
+  out.push(
+    speakers.length
+      ? `Only the dialogue above is spoken, each line exactly once, in ${lang}; nobody says, whispers or murmurs anything else, and outside those lines every mouth stays closed.` +
+          `${quiet.length ? ` ${quiet.join(" and ")} ${quiet.length === 1 ? "does" : "do"} not speak at all.` : ""}`
+      : "Nobody speaks in this video: every mouth stays closed, with no talking, whispering, murmuring or mumbling.",
+  );
   // The scope lock. H3 renders every place a prompt names: a film-wide
   // Environment or Camera note that narrated the journey ("from the apartment
   // to the street to the skate spot") made segment 1 play the whole film in its
   // fifteen seconds and end where segment 4 should (2026-09-27, film-1fd51691).
-  lines.push(
-    `This segment is ${segment.stages.length === 1 ? "only the moment" : "only the moments"} in the shot list below${segment.location ? `, and it stays in ${segment.location} throughout` : ""}. ` +
-      "It shows nothing that happens before or after them and ends exactly on the shot list's last end state; any other place this prompt names belongs to other segments of the film.",
+  out.push(
+    `This video is only the moments above${place ? `, and it stays in ${place.label} throughout` : ""}. ` +
+      "It shows nothing that happens before or after them and ends exactly on the last end state; any other place this brief names belongs to other parts of the film.",
   );
-  lines.push("");
-
-  const spoken = dialogueLines(segment);
-  if (spoken.length || audio.length) {
-    lines.push("[DIALOGUE]");
-    lines.push(`All dialogue in ${language}, each line bound to the one speaker named before it, with accurate lip sync.`);
-    for (const a of audio) {
-      lines.push(`Every line ${a.voice.name} speaks is in the voice ${a.token} defines — never another voice.`);
-    }
-    lines.push(...spoken);
-    lines.push("");
-  }
-
-  lines.push("[SHOT LIST]");
-  let at = 0;
-  segment.stages.forEach((st, i) => {
-    const from = at;
-    at += st.seconds;
-    const parts = [];
-    if (st.camera) parts.push(st.camera);
-    if (i === 0 && st.initial) parts.push(`${extension ? "From Video 1's last frame" : "Opens on"}: ${st.initial}`);
-    else if (st.initial) parts.push(`Continues: ${st.initial}`);
-    if (st.event) parts.push(st.event);
-    if (st.end) parts.push(`Ends: ${st.end}`);
-    lines.push(`${clock(from)}–${clock(at)} — ${st.name}: ${parts.map(sentence).join(" ")}`);
-  });
-  lines.push("");
-
-  if (direction?.camera) {
-    lines.push("[CAMERA]");
-    lines.push(sentence(direction.camera));
-    lines.push("");
-  }
+  out.push(
+    "No subtitles, captions, on-screen text or watermarks. No extra copies of any character, no identity drift, no wardrobe swaps, no duplicate props, no position reversals. " +
+      "Nothing from the reference sheets' grey backgrounds, turnaround layouts or labels. The look never changes part way through.",
+  );
+  out.push("");
 
   // The Film's sound lock (film-sound.js): the language, and NO MUSIC — the
   // Score stage lays the music under the final cut, and a bed the model baked
-  // in cannot be ducked or cut out.
-  lines.push("[PRODUCTION SOUND]");
-  lines.push(
-    `${direction?.sound ? `${sentence(direction.sound)} ` : ""}Native stereo room tone, ambience and effects under clear dialogue${extension ? ", continuous with Video 1's sound" : ""}. ${filmSoundLock(language)}`,
-  );
-  lines.push("");
-
-  lines.push("[NEGATIVES]");
-  lines.push(
+  // in cannot be ducked or cut out. And a soundscape under every pause: H3
+  // fills a silence it was not given a sound for with mumbling.
+  out.push("overall_soundscape:");
+  out.push(
     [
-      "No extra people, no identity drift, no wardrobe or voice swaps, no duplicate subjects or props, no position reversals, no broken eyelines,",
-      "no unmotivated cuts, no subtitles, captions, on-screen text or watermarks. NO MUSIC of any kind — no score, no soundtrack, no singing, no humming.",
-      "Nothing from the reference sheets' grey backgrounds, turnaround layouts or labels. The look never changes part way through.",
-    ].join(" "),
+      direction?.sound ? unquote(sentence(direction.sound)) : "",
+      `The ambience of ${place ? place.name : "the setting"} runs under every moment, so no pause is empty${extension ? ", continuous with the sound of <Video 1>" : ""}.`,
+      "Any crowd is heard as footsteps, movement and traffic, never as words.",
+      filmSoundLock(lang),
+    ].filter(Boolean).join(" "),
   );
+  out.push("");
+  out.push("non_diegetic_music:");
+  out.push("N/A");
 
   return {
-    prompt: lines.join("\n").replace(/\n{3,}/g, "\n\n").trim(),
+    prompt: out.join("\n").replace(/\n{3,}/g, "\n\n").trim(),
     task: extension ? "extension" : "reference",
     hasVideo: extension,
     hasAudio: audio.length > 0,

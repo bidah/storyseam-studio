@@ -39,6 +39,7 @@
 import {
   AUDITION_LINES,
   AUDITION_SECONDS,
+  VOICE_REF_SECONDS,
   FILM_RATES_USD,
   H3_ASPECT_RATIO,
   H3_ENDPOINT,
@@ -310,7 +311,7 @@ export async function runVoicesStage({ job, results, env, attempt = 1 }, deps = 
   // This step's own state from the last call (a pending answer's result).
   const prev = (job.steps || []).find((s) => s.key === "voices")?.result;
   const had = new Map((prev?.voices || []).map((v) => [key(v.name), v]));
-  const voices = cast.map((c) => ({ ...c, status: "queued", seconds: AUDITION_SECONDS, ...(had.get(key(c.name)) || {}) }));
+  const voices = cast.map((c) => ({ ...c, status: "queued", seconds: VOICE_REF_SECONDS, ...(had.get(key(c.name)) || {}) }));
   let cut = prev?.cut || null;
   const tag = slug(job.id);
   const total = voices.length;
@@ -325,7 +326,7 @@ export async function runVoicesStage({ job, results, env, attempt = 1 }, deps = 
     const summary = now
       ? `${done} of ${total} voices auditioned${doing}`
       : `${total} voice${total === 1 ? "" : "s"} — ${voices.map((v) => v.name).join(", ")} (${engineLabel(mode, job.engine)})`;
-    return { summary, result: { mode, engine: job.engine, lines: AUDITION_LINES, seconds: AUDITION_SECONDS, cut, voices } };
+    return { summary, result: { mode, engine: job.engine, lines: AUDITION_LINES, seconds: VOICE_REF_SECONDS, cut, voices } };
   };
   const pending = () => ({ pending: true, ...view(), spend });
   const fail = (message) => {

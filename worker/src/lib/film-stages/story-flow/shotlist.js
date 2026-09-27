@@ -62,6 +62,34 @@ export const STORY_ENGINES = {
       "is handed the last seconds of the previous segment as Video 1 and opens on its final frame).",
     ],
     plan: (job) => planH3({ prompt: job.prompt, seconds: job.seconds ?? null }),
+    // H3 speaks what it can read as speech: a stage name, a quoted title, the
+    // words of a voice reference — and it fills unscripted time with mumbling or
+    // a repeat. So on H3 the lines are DATA, apart from the sound (`lines`), and
+    // the compiler (h3/prompts.js) writes them in H3's own dialogue syntax.
+    // Measured on film-1fd51691 (2026-09-27): "The decision." (a stage name),
+    // "Segment two of Concrete King" (the prompt's lock), "It's still down by
+    // the river" (the audition), and a line said twice.
+    lines: true,
+    dialogue: [
+      "- DIALOGUE on MiniMax H3 is the most fragile thing in the film. Spoken words go ONLY in a stage's",
+      "  `lines`: [{ \"speaker\", \"delivery\", \"text\" }] — `speaker` a World name EXACTLY, `delivery` a few",
+      "  plain words (volume, pace, emotion: \"quiet, steady\"), `text` the exact words and nothing else, no",
+      "  quotation marks, ending in . ? or !. A stage with no speech has `lines: []`.",
+      "- Every screenplay line is spoken VERBATIM, once, in the stage where it lands. Never paraphrase,",
+      "  never add a line the screenplay does not have, never repeat one.",
+      "- A line FITS its stage: at most 2.5 words per second of the stage, and never more than 18 words in",
+      "  one line. A longer screenplay line is split at a sentence break across consecutive stages — the",
+      "  words themselves unchanged. Leave at least one second of the stage without speech.",
+      "- At most two lines in a stage, and never two from the same speaker back to back: one speaker's turn,",
+      "  then the other's. A character with a line is on screen and facing the camera in that stage, in a",
+      "  medium shot or closer, so the mouth can be read.",
+      "- `audio` is SOUND ONLY — ambience and effects as plain prose, no speech, no quotation marks. No",
+      "  voices without words either: never chatter, calls, shouting, murmurs or overlapping voices (in",
+      "  `audio` or in the `sound` direction) — H3 turns a voice with no line into gibberish. A crowd is",
+      "  footsteps, movement and traffic.",
+      "- No quotation marks anywhere else: not in `name`, `goal`, `event`, `camera` or `end`. H3 reads a",
+      "  quoted phrase as a line to speak. Titles and stage names are labels, never spoken.",
+    ],
   },
 };
 /** The engine profile for a job (Seedance's when the job names none). */
@@ -86,7 +114,7 @@ export function storyFlowShotlistMessages({ idea, world, durations, screenplay =
       ? [
           "The SCREENPLAY below is the story — walk it IN ORDER, nobody will be asked anything: each scene",
           "heading is a place the segments move through, every line of dialogue is spoken VERBATIM in the stage",
-          "it lands on (`audio`, speaker and delivery before it), and the action is what the screenplay shows.",
+          `it lands on (${eng.lines ? "`lines`" : "`audio`, speaker and delivery before it"}), and the action is what the screenplay shows.`,
           `Do not add scenes, characters or lines the screenplay does not have. The film is ${formatLength(seconds)}.`,
           ...(scenes === durations.length
             ? [
@@ -123,10 +151,15 @@ export function storyFlowShotlistMessages({ idea, world, durations, screenplay =
     "- `location` is one of the World's place NAMES below, exactly; a segment happens in one place.",
     "- `characters` lists who appears in the segment, using the World's names EXACTLY. Name every character",
     "  by that name in every field (never \"he\" or \"the pilot\") — each is bound to a reference by name.",
-    `- \`audio\` is plain prose: named speaker + delivery before any line, the line itself in double quotes,`,
-    `  in ${language} only; then ambience and effects. NEVER music: no score, no soundtrack, no singing, no`,
-    "  humming — the music is laid under the finished film later, and music the model bakes in cannot be",
-    "  removed. No subtitles, no captions, no on-screen text. (The `sound` direction obeys the same rule.)",
+    ...(eng.lines
+      ? [...eng.dialogue, `- Every line is in ${language} only.`]
+      : [
+          `- \`audio\` is plain prose: named speaker + delivery before any line, the line itself in double quotes,`,
+          `  in ${language} only; then ambience and effects.`,
+        ]),
+    "- NEVER music in `audio`: no score, no soundtrack, no singing, no humming — the music is laid under the",
+    "  finished film later, and music the model bakes in cannot be removed. No subtitles, no captions, no",
+    "  on-screen text. (The `sound` direction obeys the same rule.)",
     "- `camera` is shot size, angle and movement, plainly. No decorative adjectives, no look/style words —",
     "  the look is added for you.",
     "- `goal` is one sentence: what this segment shows.",
@@ -146,7 +179,7 @@ export function storyFlowShotlistMessages({ idea, world, durations, screenplay =
     '{ "direction": { "environment": string, "camera": string, "sound": string },',
     '  "segments": [{ "title": string, "goal": string, "location": string, "characters": [string],',
     '    "stages": [{ "name": string, "seconds": number, "initial": string, "event": string, "camera": string,',
-    '      "audio": string, "end": string }] }],',
+    `      "audio": string,${eng.lines ? ' "lines": [{ "speaker": string, "delivery": string, "text": string }],' : ""} "end": string }] }],`,
     '  "music": [{ "startShot": number, "cue": string, "energy": number, "note": string }] }',
     "`direction` is the whole film's: environment and time of day, camera language, the sound bed (never music).",
     "It is pasted, word for word, into EVERY segment's prompt, so each field must be true at every second of every",
@@ -244,6 +277,9 @@ export function parseSegments(answer, world, durations) {
         event: str(st.event),
         camera: str(st.camera),
         audio: str(st.audio),
+        // H3's spoken lines, apart from the sound (STORY_ENGINES.h3.lines);
+        // absent for Seedance, whose lines stay inside `audio`.
+        ...(Array.isArray(st.lines) ? { lines: parseLines(st.lines, people) } : {}),
         end: str(st.end),
       })),
     };
@@ -253,6 +289,23 @@ export function parseSegments(answer, world, durations) {
     segments,
     direction: { environment: str(d.environment), camera: str(d.camera), sound: str(d.sound) },
   };
+}
+
+/**
+ * A stage's `lines` as the writer wrote them → [{ speaker, delivery, text }]:
+ * the speaker in the World's spelling (kept as written when it names nobody
+ * in the World), the words unwrapped from any quotation marks the writer put
+ * round them anyway, and a line with no words dropped.
+ */
+export function parseLines(raw, people = new Map()) {
+  return (raw || [])
+    .filter((l) => l && typeof l === "object")
+    .map((l) => ({
+      speaker: people.get(key(l.speaker)) || str(l.speaker),
+      delivery: str(l.delivery),
+      text: str(l.text).replace(/^["\u201c]+|["\u201d]+$/g, "").trim(),
+    }))
+    .filter((l) => l.text);
 }
 
 /** Segments → the project's shot list: one shot per stage. */
@@ -266,8 +319,12 @@ export function segmentShots(segments) {
       characters: seg.characters,
       camera: st.camera,
       action: [st.event, st.end && `Ends: ${st.end}`].filter(Boolean).join(" "),
-      dialogue: (st.audio.match(/"[^"]+"/g) || []).join(" "),
-      audioSync: st.audio,
+      dialogue: st.lines
+        ? st.lines.map((l) => `${l.speaker}: "${l.text}"`).join(" ")
+        : (st.audio.match(/"[^"]+"/g) || []).join(" "),
+      audioSync: st.lines?.length
+        ? [...st.lines.map((l) => `${l.speaker}${l.delivery ? `, ${l.delivery}` : ""}: "${l.text}"`), st.audio].filter(Boolean).join(" ")
+        : st.audio,
       prompt: [st.initial, st.event, st.end].filter(Boolean).join(" "),
     })),
   );

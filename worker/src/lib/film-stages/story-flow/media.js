@@ -22,7 +22,7 @@ import { startSandboxJob } from "../../jobs.js";
 import { filesUrl, mediaKey } from "../../media.js";
 import { uploadFnBash } from "../../upload-snippet.js";
 import { daytonaScorer } from "../../film-score.js";
-import { AUDITION_SECONDS, EXTENSION_TAIL_SECONDS } from "../../film-plan.ts";
+import { EXTENSION_TAIL_SECONDS, VOICE_REF_SECONDS } from "../../film-plan.ts";
 
 const shq = (s) => `'${String(s).replace(/'/g, "'\\''")}'`;
 export const storyKey = (pid, file) => mediaKey(pid, "director", file);
@@ -95,22 +95,22 @@ export function stitchScript(env, { clips, outKey, resolution }) {
 }
 
 /**
- * Cut every take's audio to a mono mp3 of exactly AUDITION_SECONDS (faded out
+ * Cut every take's audio to a mono mp3 of exactly VOICE_REF_SECONDS (faded out
  * over its last 0.3s) and file it. `items` = [{ sourceUrl, outKey }]. The
- * trim is the point: H3 takes at most 15s of audio across three files, so
- * three 5s voices fit and a 7s read would not; and a take with no audio track
+ * trim is the point: H3 takes at most 15s of audio across three files, and a
+ * reference past ~4s makes it mumble at the start of a take; and a take with no audio track
  * fails the job — a voice with no voice is not a reference.
  */
 export function extractScript(env, { items }) {
   const dir = `/tmp/sf-voices-${crypto.randomUUID()}`;
   const lines = [...preamble(env, dir)];
-  const fade = `afade=t=out:st=${Math.max(0, AUDITION_SECONDS - 0.3)}:d=0.3`;
+  const fade = `afade=t=out:st=${Math.max(0, VOICE_REF_SECONDS - 0.3)}:d=0.3`;
   (items || []).forEach((it, i) => {
     const src = `${dir}/in${i}`;
     const out = `${dir}/voice${i}.mp3`;
     lines.push(
       `curl -fsSL -o ${src} ${shq(it.sourceUrl)}`,
-      `ffmpeg -hide_banner -v error -y -i ${src} -vn -ac 1 -ar 44100 -b:a 128k -t ${AUDITION_SECONDS} -af ${shq(fade)} ${out}`,
+      `ffmpeg -hide_banner -v error -y -i ${src} -vn -ac 1 -ar 44100 -b:a 128k -t ${VOICE_REF_SECONDS} -af ${shq(fade)} ${out}`,
       `upload_r2 ${out} ${shq(it.outKey)}`,
     );
   });
