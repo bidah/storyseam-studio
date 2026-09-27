@@ -1222,6 +1222,9 @@ export function SimpleView({ flow = FLOWS.director, onFlow, onSubmit, submitting
               {options}
             </div>
           ) : null}
+          {/* Latest stories sits right under the box (and its options), the
+              box's own width — not floated off below the note. */}
+          {below}
         </form>
         <p className="min-h-5 text-sm text-[var(--br-secondary)]" aria-live="polite" data-note>
           {voiceNote || note}
@@ -1238,7 +1241,6 @@ export function SimpleView({ flow = FLOWS.director, onFlow, onSubmit, submitting
             A story is being made → view it
           </Link>
         ) : null}
-        {below}
       </main>
     </Page>
   );
@@ -1396,7 +1398,7 @@ export function LatestStories({ onPick }) {
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="-mt-10 flex items-center gap-1.5 self-center border border-[var(--br-secondary)]/40 bg-black/50 px-3 py-1.5 text-sm text-[var(--br-secondary)] backdrop-blur-sm transition-colors hover:border-[var(--br-primary)]/60 hover:text-[var(--br-primary)]"
+        className="mt-2 flex w-full items-center justify-center gap-1.5 border border-[var(--br-secondary)]/40 bg-black/50 px-3 py-1.5 text-sm text-[var(--br-secondary)] backdrop-blur-sm transition-colors hover:border-[var(--br-primary)]/60 hover:text-[var(--br-primary)]"
         aria-haspopup="dialog"
         data-latest-stories
       >
