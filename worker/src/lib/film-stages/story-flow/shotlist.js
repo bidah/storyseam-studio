@@ -28,6 +28,7 @@ import { SEEDANCE_SKILL } from "./seedance-skill.js";
 import { H3_SKILL } from "../h3/h3-skill.js";
 import { pinnedDraft, readStore } from "../../script-store.js";
 import { docToElements, formatScreenplay } from "../../script-elements.js";
+import { writerModel } from "../../writer.js";
 
 const str = (v) => (typeof v === "string" ? v : v == null ? "" : String(v)).trim();
 const key = (name) => str(name).toLowerCase().replace(/\s+/g, " ");
@@ -339,8 +340,18 @@ export function segmentShots(segments) {
   );
 }
 
-/** deps (optional): { readWorld, readStore, saveShotlist }. */
-export async function runStoryFlowShotlistStage({ job, results, env, model }, deps = {}) {
+/**
+ * deps (optional): { readWorld, readStore, saveShotlist, model }.
+ *
+ * Written by the Worker's DEFAULT writer (Kimi on Workers AI) whatever writer
+ * the Film chose. The Shot list is a structured cut of a screenplay that is
+ * already written — the choice of writer is for the story stages. On Claude it
+ * was one call of five minutes and more (Kimi: two seconds), and a single call
+ * that long is what a deploy kills: film-6767fc11 (2026-09-27) lost its Shot
+ * list twice that way and sat stuck.
+ */
+export async function runStoryFlowShotlistStage({ job, results, env }, deps = {}) {
+  const model = deps.model || writerModel(env);
   const pid = job.projectId;
   const world = await (deps.readWorld || readWorld)(env, pid);
   const plan = storyFlowPlanFor(job);

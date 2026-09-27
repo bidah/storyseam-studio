@@ -53,8 +53,30 @@ import { nameFilmProject } from "./lib/films.js";
 const KEY = JOB_KEY;
 const QUEUE = QUEUE_KEY;
 
+// A running job untouched for longer than one alarm may live (Cloudflare's
+// 15-minute wall clock) with no alarm set is ORPHANED: its stage was killed
+// and nothing will wake it. On 2026-09-27 a deploy cut film-6767fc11's Shot
+// list (one long Claude call) and the runtime's promised alarm retry never
+// came — the job sat "running" for good, and `retry` only takes a stopped job.
+export const ORPHAN_MS = 16 * 60 * 1000;
+
 export class FilmJobs extends DurableObject {
+  // Re-arm an orphaned job's alarm; the runner re-runs the stage it was on
+  // (a pending stage picks up its own durable state). Called on every read and
+  // by the cron sweep (index.js `scheduled`), so a stuck Film recovers whether
+  // or not anyone is looking at it. → true when it re-armed.
+  async heal() {
+    const job = await this.ctx.storage.get(KEY);
+    if (job?.status !== "running") return false;
+    if (Date.now() - Date.parse(job.updatedAt || job.createdAt || 0) < ORPHAN_MS) return false;
+    if ((await this.ctx.storage.getAlarm()) != null) return false;
+    console.warn("film-jobs: re-arming orphaned job", job.id, "stuck since", job.updatedAt);
+    await this.ctx.storage.setAlarm(Date.now());
+    return true;
+  }
+
   async current() {
+    await this.heal();
     return publicJob(await this.ctx.storage.get(KEY));
   }
 
@@ -63,6 +85,7 @@ export class FilmJobs extends DurableObject {
   }
 
   async film(id) {
+    await this.heal();
     return readFilm(this.ctx.storage, id);
   }
 

@@ -82,6 +82,7 @@ import { registerMcp } from "./routes/mcp.js";
 import { registerFilmAllowance } from "./routes/film-allowance.js";
 import { OAuthProvider } from "@cloudflare/workers-oauth-provider";
 import { ShotStudioMCP } from "./mcp-agent.js";
+import { filmJobsFor } from "./lib/films.js";
 
 // Durable Object for per-project SSE live-sync (script + timeline channels).
 export { ProjectEvents } from "./sse-do.js";
@@ -1039,9 +1040,31 @@ const oauth = new OAuthProvider({
   clientRegistrationEndpoint: "/oauth/register",
 });
 
+// The Film watchdog. A Film is driven by its project's FilmJobs alarm; a
+// stage the runtime kills (a deploy mid-call) can leave the job running with
+// no alarm, and then nothing wakes it. Every recent Film's DO is asked to
+// heal (film-job-do.js `heal`) — a no-op unless it is orphaned.
+const WATCH_FILMS_DAYS = 2;
+async function healFilms(env) {
+  const since = new Date(Date.now() - WATCH_FILMS_DAYS * 86400e3).toISOString();
+  const { results } = await env.DB.prepare(
+    "SELECT DISTINCT project_id FROM films WHERE created_at >= ?",
+  ).bind(since).all();
+  const healed = await Promise.all((results || []).map((r) =>
+    filmJobsFor(env, r.project_id).heal().catch((err) => {
+      console.error("film watchdog:", r.project_id, err?.message || err);
+      return false;
+    })));
+  const n = healed.filter(Boolean).length;
+  if (n) console.warn(`film watchdog: re-armed ${n} orphaned Film${n === 1 ? "" : "s"}`);
+}
+
 export default {
   fetch(request, env, ctx) {
     if (!env.OAUTH_KV) return app.fetch(request, env, ctx);
     return oauth.fetch(request, env, ctx);
+  },
+  scheduled(controller, env, ctx) {
+    ctx.waitUntil(healFilms(env));
   },
 };

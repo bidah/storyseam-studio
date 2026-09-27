@@ -7,6 +7,9 @@
   // orchestration moves onto the Worker (Stage 3).
   "compatibility_flags": ["nodejs_compat"],
   "observability": { "enabled": true },
+  // The Film watchdog (index.js `scheduled`): every 5 minutes, re-arm any
+  // recent Film whose stage was killed and left it running with no alarm.
+  "triggers": { "crons": ["*/5 * * * *"] },
   // The app's own domain. `custom_domain` makes wrangler create/keep the DNS
   // record and the cert for the zone on deploy, so this file is the source of
   // truth for where the app lives rather than a click in the dashboard.
