@@ -51,6 +51,7 @@ import { Input } from "@/components/ui/input";
 import {
   Dialog, DialogContent, DialogTitle, DialogDescription,
 } from "@/components/ui/dialog";
+import { AFTER_SIGN_IN } from "@/lib/home";
 
 // In pipeline order, which is also the order the marquee shows them in: an
 // author reading left to right sees the episode get made. `note` is the line on
@@ -309,7 +310,7 @@ export function SignInPage() {
     // brand-new user lands on an empty project. Same-origin ABSOLUTE PATH only
     // ("//host" rejected too), so there's nothing to open-redirect to.
     const next = new URLSearchParams(window.location.search).get("next") || "";
-    const callbackURL = /^\/(?!\/)/.test(next) ? next : "/world";
+    const callbackURL = /^\/(?!\/)/.test(next) ? next : AFTER_SIGN_IN;
     try {
       if (isDesktop) {
         // Desktop (TOO-21): ask Better Auth for the authorize URL without

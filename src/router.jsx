@@ -2,6 +2,7 @@ import { createBrowserRouter, redirect } from "react-router";
 import RootLayout from "@/components/RootLayout";
 import { RouteError } from "@/components/shared";
 import { RouteSkeleton } from "@/components/skeletons";
+import { HOME_PATH, STUDIO_HIDDEN } from "@/lib/home";
 
 // `HydrateFallback` covers the HARD-LOAD case: on a cold `createBrowserRouter`
 // start React Router runs the matched loader before the first render, so the
@@ -22,20 +23,25 @@ const fallback = (tab) => () => <RouteSkeleton tab={tab} />;
 // Biggest win: /editor's Remotion deps leave the main bundle. ErrorBoundary stays
 // statically set so it also catches lazy-load failures.
 export const router = createBrowserRouter([
-  // PUBLIC StorySeam homepage at `/` — the branded page with the mark, the
-  // feature marquee and the Google button, drawn now in the design.md system.
-  // A SIBLING of RootLayout, not its index route: it must render with no
-  // session and no project scope, and RootLayout's LoginGate is what sends
-  // people to the sign-in page, so nesting it would loop. It IS the sign-in
-  // page — `/` and `/login` are one module, and a visitor who already has a
-  // session is sent straight on to /world.
+  // `/` IS the product: text to story — a prompt in, a Film back — with the
+  // Gen mode (fal H3 Director / Seedance 2.5) on its input. A SIBLING of
+  // RootLayout, not its index route, so the studio shell (header, tab bar,
+  // agent panel) never wraps it. It opens signed OUT too (it is the pitch):
+  // submitting then asks for Google sign-in and resumes the premise on return.
+  // The URL is the state: a Film lives at /create/:filmId, so a reload mid-run
+  // lands back on it. Shared pieces: components/DirectorStory.jsx.
   {
     index: true,
-    lazy: () => import("@/routes/login"),
+    lazy: () => import("@/routes/director-story"),
     ErrorBoundary: RouteError,
   },
-  // The same page at its own url, which is where LoginGate points a signed-out
-  // visitor (`/login?next=<the route they asked for>`).
+  {
+    path: "/create/:filmId",
+    lazy: () => import("@/routes/director-story-film"),
+    ErrorBoundary: RouteError,
+  },
+  // The sign-in page, where LoginGate points a signed-out visitor
+  // (`/login?next=<the route they asked for>`).
   {
     path: "/login",
     lazy: () => import("@/routes/login"),
@@ -49,21 +55,30 @@ export const router = createBrowserRouter([
     lazy: () => import("@/routes/landing"),
     ErrorBoundary: RouteError,
   },
-  // Text to story: a prompt in, a Film back — and NOTHING else. Siblings of
-  // RootLayout so the studio shell (header, tab bar, agent panel) never wraps
-  // them. Not public: each redirects a signed-out visitor to /login?next=<its
-  // own url> and picks the project itself, since the shell's ProjectProvider
-  // isn't here to do it (components/DirectorStory.jsx). The URL is the state:
-  // /director-story is the prompt box; a Film lives at /create/:filmId, so a
-  // reload mid-run lands back on it.
+  // Old links from before text-to-story moved to `/`: the prompt box and a
+  // Film's page, on either pipeline. The query (`?resume=1` from a Google round
+  // trip that started there) rides along; /story-flow also chooses Seedance.
   {
     path: "/director-story",
-    lazy: () => import("@/routes/director-story"),
-    ErrorBoundary: RouteError,
+    loader: ({ request }) => redirect(`/${new URL(request.url).search}`),
   },
   {
     path: "/director-story/create/:filmId",
-    lazy: () => import("@/routes/director-story-film"),
+    loader: ({ params }) => redirect(`/create/${encodeURIComponent(params.filmId)}`),
+  },
+  {
+    path: "/story-flow",
+    loader: () => redirect("/?mode=seedance"),
+  },
+  {
+    path: "/story-flow/create/:filmId",
+    loader: ({ params }) => redirect(`/create/${encodeURIComponent(params.filmId)}`),
+  },
+  // PUBLIC: a shared Film — watch and download it with no account. A sibling
+  // for the same reason as the share view below: no login gate, no shell.
+  {
+    path: "/watch/:token",
+    lazy: () => import("@/routes/watch"),
     ErrorBoundary: RouteError,
   },
   // PUBLIC read-only share view behind a share link — the World and Script tabs.
@@ -102,6 +117,9 @@ export const router = createBrowserRouter([
     Component: RootLayout,
     ErrorBoundary: RouteError, // catch-all so chunk-load failures on any route auto-recover
     id: "root",
+    // The studio shell is hidden for now (lib/home.js): every route under it
+    // goes to the text-to-story page instead.
+    loader: () => (STUDIO_HIDDEN ? redirect(HOME_PATH) : null),
     children: [
       // /world is just the bible now: the sub-tab bar is gone and its three
       // sub-surfaces became top-level plugins of their own (see below).

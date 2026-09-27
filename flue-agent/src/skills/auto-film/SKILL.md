@@ -34,7 +34,20 @@ resets (`resetsAt`) and stop — do not start the Film to "see what happens".
 
 `make_film` with the author's idea as `prompt`, in their words. When they asked
 for a length, pass it as `seconds` (three minutes → 180) — it wins over the
-wording, like the length setting on the Auto input. A Film is 2:00–5:00 in 30s
+wording, like the length setting on the Auto input.
+
+Every Film is written from a **screenplay** now: the job's Script stage writes
+one right after the World (one screenwriter carrying the specialists' rules),
+saves it as the Film project's pinned draft, and the shot list is cut from it.
+That is `depth: "fast"`, the default. When the author asks for a **deeper /
+better / reviewed story**, or names specialists ("have the plot doctor read
+it"), pass `depth: "deep"` — the **writers' room** stage then runs after the
+Script: each chosen specialist (`specialists`, by id; omitted = the default
+room: the story architect, then the scene, motivation and dialogue doctors) reads the draft and hands
+back notes, and the script is rewritten on all of them as a second draft. Each
+pass is under a minute plus one rewrite; say so when quoting time. The same
+choice as the Writer button on the Auto input (Fast · Deep, with the room
+dialog). A Film is 2:00–5:00 in 30s
 steps; none stated means 2:00; a stated length rounds up; longer caps at 5:00 —
 the result says `capped`, and then tell them.
 

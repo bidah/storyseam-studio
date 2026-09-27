@@ -469,3 +469,182 @@ export function filmStyleFor({ style, prompt }: { style?: string | null; prompt?
   if (/\banime\b|\b(19)?80s\b|\bcel\b|macross|gundam/.test(text)) return FILM_STYLES.find((s) => s.id === 'anime-80s')!;
   return FILM_STYLES.find((s) => s.id === DEFAULT_FILM_STYLE)!;
 }
+
+// ── The STORY FLOW — the same one-prompt Film on Seedance 2.5 ────────────────
+//
+// /director-story makes a Film with the live Director: a cue sheet pinned with
+// a drawn frame every ~4s, played as one Sitting, scored afterwards.
+// /story-flow makes one from the same prompt on a different MODEL, and so with a
+// different recipe (the ROUTE is what selects it — `engine` on the job):
+//
+//   Look → Idea + World → character & location sheets → a shot list of
+//   SEGMENTS (one Seedance generation each, up to 15s, written as staged
+//   narrative — no pinned frame every few seconds) → the segment prompts (the
+//   reference map: which sheet is @Image1, @Image2 … for THIS segment) →
+//   the video run (segment 1 from the sheets alone; every later one a
+//   Seedance `extension` of a cut of the previous segment's last seconds,
+//   plus its sheets) → the final cut (the segments joined into one film).
+//
+// Everything is rendered at 480p: Seedance 2.5 bills per output pixel-second.
+// Seedance writes the sound itself (dialogue, ambience, effects), so there is no
+// separate score. And a story can be ONE MINUTE — the cheap way to test one.
+
+// ── The writer: which LLM writes a Film ─────────────────────────────────────
+//
+// Every writing step of a Film — the Idea and World, the sheet prompts, the
+// Shot list, the Cue sheet and the score's music cues — goes through ONE model,
+// and the author picks it with the prompt. `default` is the studio's own writer
+// (the Worker's AUTO_WRITER — fast and cheap); `claude` is Claude Fable 5.1
+// through AI Gateway's Unified Billing (no Anthropic key). The Look stage is a
+// classifier, not a writer, and is not affected.
+export type FilmWriter = 'default' | 'claude';
+export const FILM_WRITERS: readonly { id: FilmWriter; label: string; blurb: string }[] = [
+  { id: 'default', label: 'Studio', blurb: "the studio's default writer — quick and cheap" },
+  { id: 'claude', label: 'Claude Fable 5.1', blurb: 'slower, stronger writing' },
+];
+export const FILM_WRITER_IDS: readonly string[] = FILM_WRITERS.map((w) => w.id);
+export const DEFAULT_FILM_WRITER: FilmWriter = 'default';
+
+// ── The depth: how much STORY work a Film gets before anything is drawn ─────
+//
+// Every Film is written from a SCREENPLAY now (the Script stage, right after
+// the World): one screenwriter prompt carrying the core specialists' rules,
+// saved as the project's pinned draft, which the Shot list is then cut from.
+// That is `fast`. `deep` adds the WRITERS' ROOM stage after it: the chosen
+// specialists (src/lib/specialists.ts — the same fifteen the chat delegates to)
+// each read the draft and hand back findings, then one rewrite applies the
+// room's notes as a second draft. The room is unpaid (LLM only) but slow — one
+// pass per specialist — so the picker quotes its time from the selection.
+export type FilmDepth = 'fast' | 'deep';
+export const FILM_DEPTHS: readonly { id: FilmDepth; label: string; blurb: string }[] = [
+  { id: 'fast', label: 'Fast', blurb: 'one screenwriter writes the script, then it is shot' },
+  { id: 'deep', label: 'Deep', blurb: 'the specialists read the script and it is rewritten on their notes' },
+];
+export const FILM_DEPTH_IDS: readonly string[] = FILM_DEPTHS.map((d) => d.id);
+export const DEFAULT_FILM_DEPTH: FilmDepth = 'fast';
+/** The room a Deep Film opens with when nobody picks: the arc first, then the three passes that move a first draft most. */
+export const DEFAULT_DEEP_SPECIALISTS: readonly string[] = ['story_architect', 'scene_doctor', 'motivation_doctor', 'dialogue_doctor'];
+/** How long each part of the story work takes, in seconds. ESTIMATES against the default writer. */
+export const SCRIPT_WRITE_SECONDS = 75;
+export const ROOM_PASS_SECONDS = 45;
+export const ROOM_REWRITE_SECONDS = 90;
+
+/** What a room of `specialists` costs in wall-clock: its passes plus the one rewrite. */
+export function roomEstimate(specialists: readonly string[]): { passes: number; seconds: number; label: string } {
+  const passes = new Set(specialists.filter((s) => typeof s === 'string' && s)).size;
+  const seconds = passes ? passes * ROOM_PASS_SECONDS + ROOM_REWRITE_SECONDS : 0;
+  const minutes = Math.max(1, Math.round(seconds / 60));
+  return { passes, seconds, label: passes ? `≈ ${minutes} min` : '—' };
+}
+
+export type FilmEngine = 'director' | 'seedance';
+export const FILM_ENGINES: readonly FilmEngine[] = ['director', 'seedance'];
+export const DEFAULT_FILM_ENGINE: FilmEngine = 'director';
+
+/** fal's Seedance 2.5 endpoint every segment goes to (reference / extension). */
+export const SEEDANCE_ENDPOINT = 'bytedance/seedance-2.5/reference-to-video';
+export const SEEDANCE_RESOLUTION = '480p';
+export const SEEDANCE_ASPECT_RATIO = '16:9';
+/** A story-flow Film is 1:00, then the Film's usual 2:00–5:00 in 30s steps. */
+export const STORY_FLOW_MIN_SECONDS = 60;
+export const STORY_FLOW_DEFAULT_SECONDS = 60;
+export const STORY_FLOW_STEPS: readonly number[] = [STORY_FLOW_MIN_SECONDS, ...FILM_STEPS];
+/** One Seedance generation: fal takes 4–30s; past ~15s a take drifts, so a segment is at most 15. */
+export const SEGMENT_MIN_SECONDS = 4;
+export const SEGMENT_MAX_SECONDS = 15;
+/**
+ * How much of the previous segment an extension is handed (@Video1): its LAST
+ * seconds. fal takes 1.8s at least; three carry the motion and the framing,
+ * and every input second is billed, so no more.
+ */
+export const EXTENSION_TAIL_SECONDS = 3;
+/** Sheets a story-flow Film draws (style anchor included). fal takes 30 images a generation. */
+export const MAX_STORY_FLOW_SHEETS = 12;
+
+/**
+ * Seedance 2.5 on fal at 480p, per OUTPUT second (fal's model page, Sept 2026:
+ * tokens = h × w × (input + output seconds) × 24 / 1024 at $0.0214 per 1k).
+ * With a video reference the rate drops ×0.6 but the INPUT video's seconds are
+ * billed too — so an extension costs (tail + segment) × the video rate.
+ */
+export const STORY_FLOW_RATES_USD = {
+  referenceSheet: FILM_RATES_USD.referenceSheet,
+  seedanceSecond: 0.221,
+  seedanceVideoRefSecond: 0.132,
+  sandboxMinute: FILM_RATES_USD.sandboxMinute,
+} as const;
+
+export const filmStepsFor = (engine?: string | null): readonly number[] =>
+  engine === 'seedance' ? STORY_FLOW_STEPS : FILM_STEPS;
+export const filmDefaultSecondsFor = (engine?: string | null): number =>
+  engine === 'seedance' ? STORY_FLOW_DEFAULT_SECONDS : FILM_DEFAULT_SECONDS;
+
+/** A requested length → the story-flow length (next step up, capped at 5:00). */
+export function storyFlowLength(requested: number | null | undefined): { seconds: number; capped: boolean } {
+  if (requested == null || !Number.isFinite(requested) || requested <= 0) {
+    return { seconds: STORY_FLOW_DEFAULT_SECONDS, capped: false };
+  }
+  const step = STORY_FLOW_STEPS.find((s) => s >= requested);
+  return { seconds: step ?? FILM_MAX_SECONDS, capped: requested > FILM_MAX_SECONDS };
+}
+
+/**
+ * The Film cut into Seedance generations: as few as fit under 15s each, as
+ * even as whole seconds allow, longest first. 60 → [15, 15, 15, 15].
+ */
+export function segmentDurations(seconds: number): number[] {
+  const total = Math.max(SEGMENT_MIN_SECONDS, Math.round(Number(seconds) || 0));
+  const n = Math.ceil(total / SEGMENT_MAX_SECONDS);
+  const base = Math.floor(total / n);
+  const extra = total - base * n;
+  return Array.from({ length: n }, (_, i) => base + (i < extra ? 1 : 0));
+}
+
+export type StoryFlowPlan = {
+  engine: 'seedance';
+  seconds: number;
+  length: string;
+  requestedSeconds: number | null;
+  capped: boolean;
+  resolution: string;
+  segments: number;
+  durations: number[];
+  sheets: number;
+  estimate: {
+    currency: 'USD';
+    perStage: { referenceSheets: StageEstimate; video: StageEstimate; sandbox: StageEstimate };
+    total: number;
+  };
+};
+
+/** A prompt (and optionally an explicit length) → the story-flow Film it will make. */
+export function planStoryFlow(input: FilmPlanInput = {}): StoryFlowPlan {
+  const explicit =
+    typeof input.seconds === 'number' && Number.isFinite(input.seconds) && input.seconds > 0 ? input.seconds : null;
+  const requestedSeconds = explicit ?? parseLength(input.prompt);
+  const { seconds, capped } = storyFlowLength(requestedSeconds);
+  const durations = segmentDurations(seconds);
+  const sheets = Math.min(MAX_STORY_FLOW_SHEETS, Math.max(1, Math.round(input.referenceSheets ?? DEFAULT_REFERENCE_SHEETS)));
+  const R = STORY_FLOW_RATES_USD;
+  const videoUsd = durations.reduce(
+    (sum, d, i) => sum + (i === 0 ? d * R.seedanceSecond : (d + EXTENSION_TAIL_SECONDS) * R.seedanceVideoRefSecond),
+    0,
+  );
+  const video: StageEstimate = { units: seconds, unit: 'clip second', rate: R.seedanceSecond, usd: cents(videoUsd) };
+  // One box job per segment (fetch + cut) and one for the final cut.
+  const sandbox = stage(durations.length + 2, 'sandbox minute', R.sandboxMinute);
+  const referenceSheets = stage(sheets, 'sheet', R.referenceSheet);
+  const total = cents(video.usd + sandbox.usd + referenceSheets.usd);
+  return {
+    engine: 'seedance',
+    seconds,
+    length: formatLength(seconds),
+    requestedSeconds,
+    capped,
+    resolution: SEEDANCE_RESOLUTION,
+    segments: durations.length,
+    durations,
+    sheets,
+    estimate: { currency: 'USD', perStage: { referenceSheets, video, sandbox }, total },
+  };
+}

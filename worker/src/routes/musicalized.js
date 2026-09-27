@@ -214,10 +214,11 @@ async function scoreOnServer(c, pid) {
     .map((s) => ({ from: Number(s?.from), to: Number(s?.to), section: "" }))
     .filter((s) => Number.isFinite(s.from) && Number.isFinite(s.to) && s.to > s.from);
   if (silences.length) mix.spans = [...(Array.isArray(mix.spans) ? mix.spans : []), ...silenceSpans(silences)];
-  const name = scoredName(sittingId, measured.videoCodec);
+  const name = scoredName(sittingId);
   try {
     await mixScoredFilm(c.env, pid, {
       filmFile: kept.file, cueFile, outFile: name, durationMs: measured.durationMs, hasAudio: measured.hasAudio, mix,
+      videoCodec: measured.videoCodec,
     });
   } catch (err) {
     return c.json({ error: `the mix failed: ${String(err?.message || err).slice(0, 400)}` }, 502);

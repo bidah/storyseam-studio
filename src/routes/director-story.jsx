@@ -1,4 +1,9 @@
-// /director-story — the SIMPLE view: the hero and one input. Nothing else.
+// `/` — the SIMPLE view: the hero and one input. Nothing else.
+//
+// The input's Gen mode picks the pipeline (components/DirectorStory.jsx FLOWS):
+// fal's H3 Director, or Seedance 2.5 (the story flow). It is remembered per
+// browser; `?mode=seedance` (where /story-flow redirects) preselects it.
+// (The file keeps its old name; the page moved from /director-story to `/`.)
 //
 // Submitting starts a Film (POST /api/auto/films { prompt, seconds } — the
 // length from the input's settings gear) IN A NEW PROJECT OF ITS OWN, made by
@@ -21,14 +26,18 @@ import { useEffect, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router";
 import {
   ACTIVE,
+  FLOWS,
   LatestStories,
   RESUME_PARAM,
   SignInDialog,
   SimpleView,
   fetchLatest,
   filmPath,
+  flowById,
   getJSON,
+  readStoredFlow,
   savePendingStory,
+  storeFlow,
   takePendingStory,
   useDirectorProject,
 } from "@/components/DirectorStory";
@@ -36,6 +45,14 @@ import { useSession } from "@/lib/auth-client";
 import { setProjectId } from "@/lib/projectFetch";
 
 export function Component() {
+  return <StoryPage />;
+}
+
+/**
+ * The simple view. The chosen FLOW (components/DirectorStory.jsx FLOWS) decides
+ * the `engine` sent and the lengths offered.
+ */
+export function StoryPage() {
   const { data: session, isPending } = useSession();
   return <SimpleStory signedIn={!!session} sessionKnown={!isPending} />;
 }
@@ -43,6 +60,21 @@ export function Component() {
 function SimpleStory({ signedIn, sessionKnown }) {
   const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
+  const [flow, setFlow] = useState(() => flowById(params.get("mode")) || readStoredFlow());
+  const chooseFlow = (next) => {
+    setFlow(next);
+    storeFlow(next);
+  };
+  // `?mode=` is a one-shot: remember it, then drop it from the URL.
+  useEffect(() => {
+    if (!params.has("mode")) return;
+    const asked = flowById(params.get("mode"));
+    if (asked) storeFlow(asked);
+    const next = new URLSearchParams(params);
+    next.delete("mode");
+    setParams(next, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [signInOpen, setSignInOpen] = useState(false);
   const resumed = useRef(false);
   // Only the settings write below needs a project in scope; the Film makes its own.
@@ -63,11 +95,13 @@ function SimpleStory({ signedIn, sessionKnown }) {
     return () => { live = false; };
   }, [signedIn]);
 
-  const start = async (prompt, seconds, style) => {
+  // opts: { seconds?, style?, writer?, depth?, specialists? } — the input's settings.
+  const start = async (prompt, opts = {}, as = flow) => {
+    const { seconds, style, writer, depth, specialists } = opts;
     if (submitting) return false;
     if (!signedIn) {
       // Keep the premise across the Google round trip; it starts on return.
-      savePendingStory(prompt, seconds, style);
+      savePendingStory(as, prompt, opts);
       setSignInOpen(true);
       return false;
     }
@@ -90,7 +124,18 @@ function SimpleStory({ signedIn, sessionKnown }) {
         headers: { "Content-Type": "application/json" },
         // The gear's length: it wins over any length the prompt states.
         // The look, when one was picked; otherwise the Worker reads it off the prompt.
-        body: JSON.stringify({ prompt, ...(seconds ? { seconds } : {}), ...(style ? { style } : {}) }),
+        // The flow's pipeline: the route is the choice.
+        body: JSON.stringify({
+          prompt,
+          ...(seconds ? { seconds } : {}),
+          ...(style ? { style } : {}),
+          ...(as.engine ? { engine: as.engine } : {}),
+          // The gear's writing model; absent is the studio's default.
+          ...(writer ? { writer } : {}),
+          // The writer button: a Deep Film sends its room along.
+          ...(depth ? { depth } : {}),
+          ...(depth && specialists ? { specialists } : {}),
+        }),
       });
       if (!res.ok || !data.ok) {
         setNote(data.refusal?.message || data.error || `Couldn't start (${res.status}).`);
@@ -106,7 +151,7 @@ function SimpleStory({ signedIn, sessionKnown }) {
       // The Film's own project: its page looks it up again by id, but setting
       // it now saves the round trip before the first read.
       if (data.projectId) setProjectId(data.projectId);
-      navigate(filmPath(id));
+      navigate(filmPath(id), { state: { engine: as.engine } });
       return true;
     } catch (err) {
       setNote(String(err?.message || err));
@@ -126,26 +171,29 @@ function SimpleStory({ signedIn, sessionKnown }) {
     if (!signedIn) return;
     const pending = takePendingStory();
     if (!pending) return;
+    chooseFlow(pending.flow);
     setNote("Starting your story…");
-    start(pending.prompt, pending.seconds, pending.style);
+    start(pending.prompt, pending.opts, pending.flow);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionKnown, signedIn]);
 
   const openFilm = (film) => {
     if (film.projectId) setProjectId(film.projectId);
-    navigate(filmPath(film.filmId));
+    navigate(filmPath(film.filmId), { state: { engine: film.engine || null } });
   };
 
   return (
     <>
       <SimpleView
-        onSubmit={start}
+        flow={flow}
+        onFlow={chooseFlow}
+        onSubmit={(prompt, opts) => start(prompt, opts)}
         submitting={submitting}
         note={note}
         running={running}
         below={signedIn ? <LatestStories onPick={openFilm} /> : null}
       />
-      <SignInDialog open={signInOpen} onOpenChange={setSignInOpen} />
+      <SignInDialog flow={flow} open={signInOpen} onOpenChange={setSignInOpen} />
     </>
   );
 }

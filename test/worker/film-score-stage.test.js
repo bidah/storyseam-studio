@@ -518,8 +518,13 @@ describe("the server-side mix", () => {
     expect(webm[webm.indexOf("-c:v") + 1]).toBe("copy");
     expect(webm[webm.indexOf("-c:a") + 1]).toBe("libopus");
     expect(webm).not.toContain("-movflags");
-    expect(scoredName("s1", "vp8")).toMatch(/\.webm$/);
-    expect(scoredName("s1", "h264")).toMatch(/\.mp4$/);
+    // A scored film is always an mp4: a VP8/VP9 picture is re-encoded to H.264
+    // (Safari / iOS can't decode VP9 in an mp4); H.264 is still copied.
+    expect(scoredName("s1")).toMatch(/\.mp4$/);
+    const vp9 = mixArgs({ film: "f", cue: "c", out: "o.mp4", durationMs: 5000, hasAudio: true, mix: {}, videoCodec: "vp9" });
+    expect(vp9[vp9.indexOf("-c:v") + 1]).toBe("libx264");
+    const h264 = mixArgs({ film: "f", cue: "c", out: "o.mp4", durationMs: 5000, hasAudio: true, mix: {}, videoCodec: "h264" });
+    expect(h264[h264.indexOf("-c:v") + 1]).toBe("copy");
   });
 
   it("the detached mix downloads through /files and uploads through /ingest", () => {

@@ -447,7 +447,7 @@ export async function runScoreStage({ job, results, env, attempt = 1, model }, d
     mix = { ...mix, status: polled.status, error: polled.error || null };
   }
   if (redo(mix)) {
-    const file = scoredName(sittingId, state.measured.videoCodec);
+    const file = scoredName(sittingId);
     // The ducks AND the silences: each silence mutes the bed, faded out and back in.
     const settings = { ducks: state.measured.ducks, spans: silenceSpans(state.silences || []) };
     const where = byCues
@@ -467,6 +467,8 @@ export async function runScoreStage({ job, results, env, attempt = 1, model }, d
       outKey: directorKey(pid, file),
       durationMs,
       hasAudio: state.measured.hasAudio,
+      // Not H.264 (the Sitting records VP9) → the mix re-encodes the picture.
+      videoCodec: state.measured.videoCodec,
       mix: settings,
     });
     mix = { jobId, file, settings, attempt, status: "running", error: null };

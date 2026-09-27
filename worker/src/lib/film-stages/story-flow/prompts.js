@@ -1,0 +1,303 @@
+// The story flow's "Segment prompts" stage — its cue sheet (/story-flow, the
+// Seedance 2.5 Film).
+//
+// Pure code, no model: every segment the Shot list wrote is COMPILED into the
+// one Seedance 2.5 prompt and request it is rendered with, in the skill's
+// production order (./seedance-skill.js):
+//
+//   [Reference Map]      — only THIS segment's references: each character in
+//                          it as two images of one person (turnaround + face),
+//                          its place as an empty plate; every token bound to
+//                          one named job, with what NOT to take from it.
+//                          From segment 2 on, @Video1 is the cut of the
+//                          previous segment's last seconds.
+//   [Generation Goal]
+//   [Global Direction]   — the chosen look and its lock, the film's direction,
+//                          the language and sound locks.
+//   [Forward Extension]  — segment 2 on: the first frame inherits @Video1's
+//                          last frame; every subject stays one instance.
+//   [Stage n | name]     — the writer's stages, with their time budgets.
+//   [Maintain Consistency] / [Negative Constraints]
+//
+// So the @ tokens always point at an existing array slot, in the case-sensitive
+// fal dialect (@Image1, @Video1), and the arrays are built from the same
+// registry in the same order. Validated against fal's limits here, before a
+// second of video is paid for.
+import {
+  EXTENSION_TAIL_SECONDS,
+  SEEDANCE_ASPECT_RATIO,
+  SEEDANCE_RESOLUTION,
+  filmStyleFor,
+} from "../../film-plan.ts";
+import { DEFAULT_FILM_LANGUAGE } from "../../film-sound.js";
+
+const key = (name) => String(name || "").trim().toLowerCase().replace(/\s+/g, " ");
+/** fal: at most 30 images a generation, 50 files in all. */
+export const MAX_IMAGE_REFS = 30;
+const MAX_FILES = 50;
+
+const clock = (s) => `${s}s`;
+/** A note as a sentence: trimmed, ending on a full stop. */
+const sentence = (t) => {
+  const x = String(t || "").trim();
+  return !x || /[.!?]$/.test(x) ? x : `${x}.`;
+};
+
+// ── Reference modes: what a segment may hand Seedance ───────────────────────
+//
+// Seedance 2.5 refuses a request whose images or videos "may contain likenesses
+// of real people" — a safeguard, and a photoreal character sheet trips it
+// every time. So what a segment sends is a MODE, not a constant:
+//
+//   full       character sheets + place plates (+ @Video1 from segment 2).
+//   no-people  place plates only (they hold no people); each character is
+//              bound IN WORDS, by their identity note. @Video1 still carries
+//              the seam from segment 2.
+//   no-video   no-people, and no @Video1 either: a fresh generation whose
+//              first stage restates the previous segment's end state.
+//
+// Live action starts at `no-people` — its sheets are photographs of people.
+// Every other look starts `full`; a refusal steps the segment down one mode
+// (the Video run's `nextMode`), and only a refusal with nowhere left to step
+// stops the Film.
+export const REF_MODES = ["full", "no-people", "no-video"];
+
+/** The mode a segment starts in, for this look. */
+export const defaultMode = (look) => (look?.id === "live-action" ? "no-people" : "full");
+
+/** The next mode down after a likeness refusal, or null when there is none. */
+export function nextMode(mode, index) {
+  if (mode === "full") return "no-people";
+  if (mode === "no-people" && index > 0) return "no-video";
+  return null;
+}
+
+/** fal's refusal for a reference that looks like a real person. */
+export const isLikenessRefusal = (message) => /likeness|real (people|person)|private information/i.test(String(message || ""));
+
+/**
+ * The references one segment binds, in token order: its characters (turnaround
+ * then face), then its place's plate. With `people: false` only the plate.
+ * → [{ token, ref }]
+ */
+export function segmentRegistry(segment, refs, { people = true } = {}) {
+  const picked = [];
+  for (const name of people ? segment.characters || [] : []) {
+    for (const view of ["body", "face"]) {
+      const r = refs.find((x) => x.kind === "character" && x.view === view && key(x.subject) === key(name));
+      if (r) picked.push(r);
+    }
+  }
+  const plate = refs.find((x) => x.view === "plate" && key(x.subject) === key(segment.location));
+  if (plate) picked.push(plate);
+  return picked.slice(0, MAX_IMAGE_REFS).map((ref, i) => ({ token: `@Image${i + 1}`, ref }));
+}
+
+/** Characters bound in words only (no image): name + identity note. */
+function characterWords(segment, refs) {
+  return (segment.characters || []).map((name) => {
+    const note = refs.find((r) => r.kind === "character" && key(r.subject) === key(name))?.inherit;
+    return `${name} has no reference image: ${note ? sentence(note) : "keep them exactly as first shown."} Keep exactly one ${name} throughout.`;
+  });
+}
+
+function referenceMap(registry, { extension, words = [] }) {
+  const lines = ["[Reference Map]"];
+  if (words.length) lines.push("[Characters]", ...words);
+  const chars = new Map();
+  for (const r of registry.filter((x) => x.ref.kind === "character")) {
+    const list = chars.get(r.ref.subject) || [];
+    list.push(r);
+    chars.set(r.ref.subject, list);
+  }
+  if (chars.size) lines.push("[Characters]");
+  for (const [name, list] of chars) {
+    const body = list.find((x) => x.ref.view === "body");
+    const face = list.find((x) => x.ref.view === "face");
+    const tokens = list.map((x) => x.token).join(" and ");
+    lines.push(`${name} corresponds to ${tokens}.`);
+    if (body) lines.push(`${body.token} defines ${name}'s full body, build, clothing and colours, seen from the front, three-quarter, side and back — one figure, not four.`);
+    if (face) lines.push(`${face.token} defines ${name}'s face, hair and features.`);
+    if (list.length > 1) lines.push(`Both images are the same ${name}: keep exactly one ${name} throughout.`);
+    const inherit = list[0].ref.inherit;
+    if (inherit) lines.push(`Use only ${name}'s identity: ${sentence(inherit)}`);
+    lines.push("Do not use the reference's grey background, its turnaround layout, its framing or any text.");
+  }
+  const plates = registry.filter((x) => x.ref.view === "plate");
+  if (plates.length) lines.push("[Scenes]");
+  for (const p of plates) {
+    lines.push(
+      `${p.ref.subject} references ${p.token}. Use only its layout, architecture, landmarks and light${p.ref.inherit ? `: ${sentence(p.ref.inherit)}` : "."}` +
+        " Do not use any people, creatures or foreground objects from it.",
+    );
+  }
+  if (extension) {
+    lines.push("[Motion and Camera]");
+    lines.push(
+      `@Video1 is the last ${EXTENSION_TAIL_SECONDS} seconds of the previous shot of this same film — the source video to extend. ` +
+        "It defines where every character and object is, the camera position and framing, the light and the direction of motion at the seam.",
+    );
+  }
+  return lines;
+}
+
+/**
+ * One segment → { prompt, task, imageRefs: [{ token, name, imageUrl }], hasVideo }.
+ * `look` is a FILM_STYLES entry; `total` the number of segments.
+ */
+export function compileSegment(segment, {
+  refs, look, direction, title, total, language = DEFAULT_FILM_LANGUAGE, mode = defaultMode(look), previous = null,
+}) {
+  const people = mode === "full";
+  const extension = segment.index > 0 && mode !== "no-video";
+  const registry = segmentRegistry(segment, refs, { people });
+  const words = people ? [] : characterWords(segment, refs);
+  const names = segment.characters || [];
+  const lines = [...referenceMap(registry, { extension, words }), ""];
+
+  lines.push("[Generation Goal]");
+  lines.push(
+    extension
+      ? `Extend @Video1 forward: segment ${segment.index + 1} of ${total} of the short film "${title}". ${sentence(segment.goal)}`.trim()
+      : `Generate segment ${segment.index + 1} of ${total} of the short film "${title}". ${sentence(segment.goal)}`.trim(),
+  );
+  lines.push("");
+
+  lines.push("[Global Direction]");
+  lines.push(`Look: ${look.look}`);
+  lines.push(look.lock);
+  if (segment.location) lines.push(`Place: ${segment.location}.`);
+  if (direction?.environment) lines.push(`Environment: ${sentence(direction.environment)}`);
+  if (direction?.camera) lines.push(`Camera language: ${sentence(direction.camera)}`);
+  lines.push(
+    `Dialogue language: ${language} only.` +
+      `${direction?.sound ? ` Sound bed: ${sentence(direction.sound)}` : ""} Dialogue, ambience, foley and effects only — no music, no subtitles, no on-screen text.`,
+  );
+  lines.push("");
+
+  if (segment.index > 0 && !extension) {
+    // No @Video1 to inherit from: the seam is carried in words.
+    const end = previous?.stages?.at(-1)?.end;
+    lines.push("[Continuity]");
+    lines.push(
+      `This continues directly from the previous shot of the same film${end ? `, which ended: ${sentence(end)}` : "."} ` +
+        "Open on that same moment — the same place, positions, clothing and light — then the new action begins.",
+    );
+    lines.push("");
+  }
+
+  if (extension) {
+    lines.push("[Forward Extension]");
+    lines.push(
+      "The first generated frame inherits @Video1's last frame exactly: every character's pose and orientation, " +
+        "every prop's position and state, the background, the camera position and composition, the lighting and the direction of motion. " +
+        "Every subject stays the same single instance — nothing is duplicated, split or swapped. Then the new action begins.",
+    );
+    lines.push("");
+  }
+
+  let at = 0;
+  segment.stages.forEach((st, i) => {
+    const from = at;
+    at += st.seconds;
+    lines.push(`[Stage ${i + 1} | ${st.name}] (${clock(from)}–${clock(at)})`);
+    if (i === 0) {
+      if (st.initial) lines.push(`${extension ? "Continue from @Video1" : "Initial state"}: ${st.initial}`);
+    } else {
+      lines.push(`Continue from Stage ${i}${st.initial ? `: ${st.initial}` : "."}`);
+    }
+    if (st.event) lines.push(`Primary event: ${st.event}`);
+    if (st.camera) lines.push(`Camera: ${st.camera}`);
+    if (st.audio) lines.push(`Audio: ${st.audio}`);
+    if (st.end) lines.push(`End state: ${st.end}`);
+    lines.push("");
+  });
+
+  lines.push("[Maintain Consistency]");
+  lines.push(
+    [
+      names.length ? `Keep ${names.join(", ")} exactly as their references define them — face, hair, clothing, proportions — one instance each, and keep each voice the same.` : "",
+      segment.location ? `Keep ${segment.location}'s layout and light.` : "",
+      "Keep prop ownership, object counts, screen direction and the camera axis consistent from stage to stage.",
+      "The look never changes part way through.",
+    ].filter(Boolean).join(" "),
+  );
+  lines.push("");
+  lines.push("[Negative Constraints]");
+  lines.push("Do not use the reference sheets' grey backgrounds, turnaround layouts, labels or text. No subtitles, captions, watermarks or music.");
+
+  return {
+    prompt: lines.join("\n").replace(/\n{3,}/g, "\n\n").trim(),
+    task: extension ? "extension" : "reference",
+    hasVideo: extension,
+    mode,
+    imageRefs: registry.map(({ token, ref }) => ({ token, name: ref.name, imageUrl: ref.imageUrl })),
+  };
+}
+
+/** A compiled segment → what fal would refuse, as messages ([] when none). */
+export function segmentErrors(seg) {
+  const errors = [];
+  const images = seg.imageRefs.length;
+  if (images > MAX_IMAGE_REFS) errors.push(`segment ${seg.index + 1}: ${images} images (fal takes ${MAX_IMAGE_REFS})`);
+  if (images + (seg.hasVideo ? 1 : 0) > MAX_FILES) errors.push(`segment ${seg.index + 1}: more than ${MAX_FILES} files`);
+  for (const m of seg.prompt.matchAll(/@(Image|Video|Audio)(\d+)/g)) {
+    const n = Number(m[2]);
+    const ok = m[1] === "Image" ? n >= 1 && n <= images : m[1] === "Video" ? n === 1 && seg.hasVideo : false;
+    if (!ok) errors.push(`segment ${seg.index + 1}: ${m[0]} points at no reference`);
+  }
+  if (!Number.isInteger(seg.dur) || seg.dur < 4 || seg.dur > 30) errors.push(`segment ${seg.index + 1}: ${seg.dur}s (fal takes 4–30)`);
+  return [...new Set(errors)];
+}
+
+/**
+ * Every segment of the Film compiled from the Shot list's segments and the
+ * sheets' references → { seriesId, resolution, aspectRatio, segments:
+ * [{ index, dur, title, prompt, task, hasVideo, imageRefs }] }. Pure: the Video
+ * run compiles again rather than carrying twenty prompts in the job (the
+ * Durable Object keeps the whole job under one 128 KB key).
+ */
+export function compileSegments({ job, results }, modeOf = () => null) {
+  const shotlist = results?.shotlist;
+  const sheets = results?.sheets;
+  if (!shotlist?.segments?.length) throw new Error("The Film has no segments yet — the shot list step did not finish.");
+  if (!sheets?.refs) throw new Error("The Film has no sheets yet — the sheets step did not finish.");
+  const look = filmStyleFor({ style: results?.look?.style || job.style, prompt: job.prompt });
+  const title = results?.world?.title || "Untitled";
+  const total = shotlist.segments.length;
+  const segments = shotlist.segments.map((segment) => ({
+    index: segment.index,
+    dur: segment.dur,
+    title: segment.title,
+    ...compileSegment(segment, {
+      refs: sheets.refs,
+      look,
+      direction: shotlist.direction,
+      title,
+      total,
+      language: job.language || DEFAULT_FILM_LANGUAGE,
+      mode: modeOf(segment.index) || defaultMode(look),
+      previous: shotlist.segments[segment.index - 1] || null,
+    }),
+  }));
+  return { seriesId: sheets.seriesId, resolution: SEEDANCE_RESOLUTION, aspectRatio: SEEDANCE_ASPECT_RATIO, segments };
+}
+
+export async function runStoryFlowPromptsStage({ job, results }) {
+  const compiled = compileSegments({ job, results });
+  const errors = compiled.segments.flatMap(segmentErrors);
+  if (errors.length) throw new Error(`Seedance would refuse: ${errors.join("; ")}`);
+
+  const total = compiled.segments.length;
+  const refsUsed = new Set(compiled.segments.flatMap((s) => s.imageRefs.map((r) => r.name))).size;
+  return {
+    summary: `${total} prompt${total === 1 ? "" : "s"} · ${refsUsed} references bound · ${SEEDANCE_RESOLUTION} ${SEEDANCE_ASPECT_RATIO} · extension from segment 2${compiled.segments[0]?.mode === "no-people" ? " · characters in words (live action)" : ""}`,
+    // What each segment binds, not its prompt text (see compileSegments).
+    result: {
+      seriesId: compiled.seriesId,
+      resolution: compiled.resolution,
+      aspectRatio: compiled.aspectRatio,
+      segments: compiled.segments.map(({ prompt, ...s }) => ({ ...s, promptChars: prompt.length })),
+    },
+  };
+}

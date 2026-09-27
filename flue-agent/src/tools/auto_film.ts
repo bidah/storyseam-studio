@@ -20,14 +20,18 @@ import { defineTool } from "@flue/runtime";
 import * as v from "valibot";
 import { d } from "./_util.js";
 import type { Api, Json } from "../lib/api.js";
-import { FILM_STEPS, FILM_STYLES, filmLength, formatLength } from "../lib/film-plan.js";
+import {
+  DEFAULT_DEEP_SPECIALISTS, FILM_DEPTHS, FILM_STEPS, FILM_STYLES, FILM_WRITERS, ROOM_PASS_SECONDS, ROOM_REWRITE_SECONDS,
+  STORY_FLOW_STEPS, filmLength, formatLength, storyFlowLength,
+} from "../lib/film-plan.js";
+import { SPECIALIST_IDS } from "../lib/specialists.js";
 
 type Step = {
   key?: string; label?: string; status?: string; summary?: string | null;
   error?: string | null; pending?: boolean;
 };
 type Job = {
-  id?: string; prompt?: string; seconds?: number; status?: string; error?: string | null; auto?: boolean;
+  id?: string; prompt?: string; seconds?: number; engine?: string; status?: string; error?: string | null; auto?: boolean;
   steps?: Step[]; spend?: Record<string, number>; spent?: number;
   confirm?: { status?: string; after?: string; summary?: string; plan?: unknown };
   film?: Record<string, unknown>;
@@ -72,6 +76,7 @@ function viewJob(job: Job | null | undefined): Json {
     id: job.id ?? null,
     prompt: job.prompt ?? null,
     ...(typeof job.seconds === "number" ? { seconds: job.seconds } : {}),
+    engine: job.engine || "director",
     status: job.status ?? null,
     auto: job.auto !== false,
     steps: (job.steps || []).map((s) => ({
@@ -117,7 +122,7 @@ export const makeFilm = (api: Api) =>
       seconds: v.optional(
         d(
           v.number(),
-          `Optional length the author asked for, IN SECONDS (three minutes → 180, "3:10" → 190). A Film is 2:00–5:00 in 30s steps (${FILM_STEPS.join(", ")}): no length means 2:00, anything else rounds UP to the next step, longer is capped at 5:00 (the result says \`capped\` — tell the author). It wins over any length in the prompt — the same as the length setting on the Auto surface's input.`,
+          `Optional length the author asked for, IN SECONDS (three minutes → 180, "3:10" → 190). A Director Film is 2:00–5:00 in 30s steps (${FILM_STEPS.join(", ")}): no length means 2:00. A story-flow Film (engine "seedance") can also be ONE MINUTE (${STORY_FLOW_STEPS.join(", ")}): no length means 1:00. Anything else rounds UP to the next step, longer is capped at 5:00 (the result says \`capped\` — tell the author). It wins over any length in the prompt — the same as the length setting on the Auto surface's input.`,
         ),
       ),
       style: v.optional(
@@ -126,22 +131,56 @@ export const makeFilm = (api: Api) =>
           `Optional LOOK: ${FILM_STYLES.map((st) => `"${st.id}" (${st.label})`).join(", ")} — the same choice as the Look setting on the Auto surface's input. Pass it only when the author names a look; omitted, the Worker reads it off the prompt ("a pixar like story" → pixar), else 80s anime.`,
         ),
       ),
+      writer: v.optional(
+        d(
+          v.picklist(FILM_WRITERS.map((w) => w.id) as [string, ...string[]]),
+          `Optional WRITING MODEL — the LLM that writes every text step of the Film (Idea, World, sheet prompts, Shot list, cue sheet, music cues): ${FILM_WRITERS.map((w) => `"${w.id}" (${w.label} — ${w.blurb})`).join(", ")}. The same choice as the model picker on the Auto surface's input. Pass "claude" only when the author asks for Claude / Fable / a stronger writer; omitted is "default".`,
+        ),
+      ),
+      depth: v.optional(
+        d(
+          v.picklist(FILM_DEPTHS.map((x) => x.id) as [string, ...string[]]),
+          `Optional DEPTH of the story work — the Writer button on the Auto surface's input: ${FILM_DEPTHS.map((x) => `"${x.id}" (${x.label} — ${x.blurb})`).join(", ")}. Every Film is written from a screenplay (the Script stage, saved on the Film project's Script tab); "deep" adds the writers' room after it — the chosen specialists read the draft and it is rewritten on their notes, a few minutes more. Pass "deep" only when the author asks for a deeper / better / reviewed story or names the specialists; omitted is "fast".`,
+        ),
+      ),
+      specialists: v.optional(
+        d(
+          v.array(v.picklist(SPECIALIST_IDS as [string, ...string[]])),
+          `With depth "deep": which specialists read the script, by id (${SPECIALIST_IDS.join(", ")}). Omitted, the default room reads it: ${DEFAULT_DEEP_SPECIALISTS.join(", ")}. Each pass is about ${ROOM_PASS_SECONDS}s plus one rewrite (${ROOM_REWRITE_SECONDS}s) — quote roomEstimate-style time when the author asks.`,
+        ),
+      ),
+      engine: v.optional(
+        d(
+          v.picklist(["director", "seedance"]),
+          'Optional PIPELINE — the same choice as the Gen mode on the prompt box at /. "director" (default): the live Director — a cue sheet pinned with a drawn frame every ~4s, played as one sitting, then scored. "seedance": the STORY FLOW on Seedance 2.5 at 480p — character sheets (turnaround + face) and empty location plates, a shot list of ≤15s segments written as staged narrative, each segment rendered as an extension of a cut of the previous one, then one final cut; Seedance writes the sound, and a story can be one minute (the cheap way to test one). Pass "seedance" when the author asks for Seedance, the story flow, or a quick one-minute test.',
+        ),
+      ),
     }),
     async run({ data: input, signal }): Promise<{ output: Json }> {
       const prompt = String(input.prompt ?? "").trim();
+      const seedance = input.engine === "seedance";
+      // `d()` types the list as unknown; the picklist already refused anything but ids.
+      const room = Array.isArray(input.specialists) ? (input.specialists as string[]) : [];
       // The same `seconds` the surface's length gear sends: one of the steps,
       // so a spoken "three minutes and ten" is rounded here, not refused there.
       const asked = typeof input.seconds === "number" && Number.isFinite(input.seconds) && input.seconds > 0
         ? input.seconds
         : null;
-      const chosen = asked == null ? null : filmLength(asked);
+      const chosen = asked == null ? null : seedance ? storyFlowLength(asked) : filmLength(asked);
       const lengthNote = chosen
         ? { seconds: chosen.seconds, length: formatLength(chosen.seconds), ...(chosen.capped ? { capped: true } : {}) }
         : {};
       try {
         const res = (await api.post(
           "/api/auto/films",
-          { prompt, ...(chosen ? { seconds: chosen.seconds } : {}), ...(input.style ? { style: input.style } : {}) },
+          {
+            prompt,
+            ...(chosen ? { seconds: chosen.seconds } : {}),
+            ...(input.style ? { style: input.style } : {}),
+            ...(seedance ? { engine: "seedance" } : {}),
+            ...(input.writer && input.writer !== "default" ? { writer: input.writer } : {}),
+            ...(input.depth === "deep" ? { depth: "deep", ...(room.length ? { specialists: room } : {}) } : {}),
+          },
           signal,
         )) as { job?: Job; projectId?: string };
         const filmId = res.job?.id ?? null;
@@ -150,7 +189,7 @@ export const makeFilm = (api: Api) =>
             started: true,
             filmId,
             projectId: res.projectId ?? null,
-            ...(filmId ? { page: `/director-story/create/${encodeURIComponent(filmId)}` } : {}),
+            ...(filmId ? { page: `/create/${encodeURIComponent(filmId)}` } : {}),
             ...lengthNote,
             job: viewJob(res.job),
             next: 'Started, in a new project of its own. navigate to "auto", tell the author the Film is being made there (20–40 minutes) and that it has its own project, and end the turn.',
@@ -186,7 +225,7 @@ export const getFilm = (api: Api) =>
       filmId: v.optional(
         d(
           v.string(),
-          "Optional: read ONE Film by its id (make_film's `filmId`, or the id in a /director-story/create/<id> link) instead of the latest — any of the author's Films, running or finished/stopped, whichever project it is in. Omit for the latest Film.",
+          "Optional: read ONE Film by its id (make_film's `filmId`, or the id in a /create/<id> link, or an older /director-story/create/<id> or /story-flow/create/<id> one) instead of the latest — any of the author's Films, running or finished/stopped, whichever project it is in. Omit for the latest Film.",
         ),
       ),
     }),
@@ -306,6 +345,41 @@ export const retryFilm = (api: Api) =>
     },
   });
 
+// The public link to a finished Film (worker/src/lib/film-share.js) — the same
+// as the Share button under the Film on its story page.
+const PUBLIC_ORIGIN = "https://storyseam.app";
+
+export const shareFilm = (api: Api) =>
+  defineTool({
+    name: "share_film",
+    description:
+      "Get a PUBLIC link to a FINISHED Film — the same as the Share button under the video on its story page. Anyone with the link can watch AND download the Film at /watch/<token> without an account. Calling it again returns the SAME link (it is not re-minted). `stop: true` revokes the link: every copy of it stops working at once (404) — do that only when the author asks to stop sharing. Only for a Film get_film reports as `done` (otherwise `code: not-done`). Give the author the `url` as-is.",
+    input: v.object({
+      filmId: d(v.string(), "The Film's id — make_film's `filmId`, get_film's `job.id`, or list_films' `filmId`."),
+      stop: v.optional(d(v.boolean(), "true = revoke the share link instead of getting it.")),
+    }),
+    async run({ data: input, signal }): Promise<{ output: Json }> {
+      const path = `/api/auto/films/${encodeURIComponent(String(input.filmId))}/share`;
+      try {
+        const res = (input.stop ? await api.req(path, "DELETE", undefined, signal) : await api.post(path, {}, signal)) as {
+          shared?: boolean; path?: string | null;
+        };
+        return {
+          output: {
+            ok: true,
+            shared: !!res.shared,
+            url: res.path ? `${PUBLIC_ORIGIN}${res.path}` : null,
+            ...(input.stop ? { next: "The link is revoked. Tell the author it no longer works." } : {}),
+          },
+        };
+      } catch (err) {
+        const body = (err as { body?: { code?: string; error?: string } }).body;
+        if (body?.code) return { output: { ok: false, code: body.code, message: body.error ?? null } };
+        throw err;
+      }
+    },
+  });
+
 export const confirmFilm = (api: Api) => answerTool(api, "confirm");
 export const declineFilm = (api: Api) => answerTool(api, "decline");
 
@@ -350,7 +424,7 @@ export const listFilms = (api: Api) =>
   defineTool({
     name: "list_films",
     description:
-      "The author's Auto Films, newest first — the \"Latest stories\" list under the /director-story prompt box. Each row: filmId, projectId (every Film has a project of its own), title, prompt, status (running | awaiting-confirm | done | stopped | declined | refused | unknown), seconds, and the finished film's `url` when done. Use it when the author asks what stories they have made, or to find one by name before get_film / retry_film. Read-only.",
+      "The author's Auto Films, newest first — the \"Latest stories\" list under the prompt box at /. Each row: filmId, projectId (every Film has a project of its own), title, prompt, status (running | awaiting-confirm | done | stopped | declined | refused | unknown), seconds, and the finished film's `url` when done. Use it when the author asks what stories they have made, or to find one by name before get_film / retry_film. Read-only.",
     input: v.object({
       limit: v.optional(d(v.number(), "How many to list, newest first (default 30, at most 100).")),
     }),

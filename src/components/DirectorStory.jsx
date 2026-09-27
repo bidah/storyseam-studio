@@ -45,10 +45,17 @@
 // user's stored Auto setting is off we turn it on before starting.
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Link, Navigate, useLocation } from "react-router";
-import { ArrowUp, Check, ChevronDown, Circle, CircleAlert, Film, Loader2, Mic, Plus, RotateCw, Settings2, Square, X } from "lucide-react";
+import {
+  ArrowUp, Check, ChevronDown, Circle, Clapperboard, CircleAlert, Copy, Download, Film, Link2Off, Loader2, Mic, PenLine, Plus, RotateCw, Settings2,
+  Share2, Square, Users, X, icons as LUCIDE,
+} from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { FILM_DEFAULT_SECONDS, FILM_STEPS, FILM_STYLES, formatLength } from "@/lib/film-plan";
+import {
+  DEFAULT_DEEP_SPECIALISTS, FILM_DEFAULT_SECONDS, FILM_DEPTHS, FILM_STEPS, FILM_STYLES, FILM_WRITERS, STORY_FLOW_DEFAULT_SECONDS,
+  STORY_FLOW_STEPS, formatLength, roomEstimate,
+} from "@/lib/film-plan";
+import { SPECIALISTS, STAGE_ORDER, isSpecialistId } from "@/lib/specialists";
 import { useVoiceRecording, transcribeAudio, formatDuration } from "@/lib/useVoiceRecording";
 import { authClient, useSession } from "@/lib/auth-client";
 import { isDesktop } from "@/lib/desktop";
@@ -57,16 +64,13 @@ import { useProjectEvents } from "@/lib/useProjectEvents";
 import { HUD, DISPLAY, BODY, MONO } from "@/lib/hudTheme";
 import { cn } from "@/lib/utils";
 
-export const PATH = "/director-story";
-/** The story page of one Film — the URL that holds it across a reload. */
-export const filmPath = (id) => `${PATH}/create/${encodeURIComponent(id)}`;
-
 // Mirrors FILM_STAGES in worker/src/lib/film-job.js (keys are stable public
 // ids). The job only lists a step once it has STARTED, so the ones still ahead
 // come from here; a label on the job wins over this one.
 const STAGES = [
   { key: "look", label: "Look" },
   { key: "world", label: "Idea + World" },
+  { key: "script", label: "Script" },
   { key: "sheets", label: "Reference sheets" },
   { key: "shotlist", label: "Shot list" },
   { key: "cuesheet", label: "Cue sheet" },
@@ -75,6 +79,83 @@ const STAGES = [
   { key: "sitting", label: "Sitting" },
   { key: "score", label: "Score" },
 ];
+
+// Mirrors STORY_FLOW_STAGES (the Seedance 2.5 pipeline) the same way.
+const STORY_FLOW_STAGES = [
+  { key: "look", label: "Look" },
+  { key: "world", label: "Idea + World" },
+  { key: "script", label: "Script" },
+  { key: "sheets", label: "Character & location sheets" },
+  { key: "shotlist", label: "Shot list" },
+  { key: "prompts", label: "Segment prompts" },
+  { key: "run", label: "Video run" },
+  { key: "stitch", label: "Final cut" },
+];
+
+// ── Flows: one page, a pipeline per GEN MODE ────────────────────────────────
+//
+// `/` makes a Film either with the live Director (fal's H3
+// Director) or from the same prompt on Seedance 2.5 (film-plan.ts › The STORY
+// FLOW). The input's Gen mode picker is the choice: the chosen flow sends
+// `engine` with the prompt, offers its own lengths (the story flow adds 1:00,
+// for testing a story cheaply), and remembers its own length. Every Film's page
+// is /create/:filmId and follows the Film's engine, so a link lands on the
+// right steps. /director-story and /story-flow survive only as redirects.
+export const FLOWS = {
+  director: {
+    id: "director",
+    path: "/",
+    engine: null,
+    steps: FILM_STEPS,
+    defaultSeconds: FILM_DEFAULT_SECONDS,
+    stages: STAGES,
+    storage: "director-story",
+    label: "fal H3 Director",
+    blurb: "A drawn frame every ~4s, played live as one sitting, then scored.",
+  },
+  seedance: {
+    id: "seedance",
+    path: "/",
+    engine: "seedance",
+    steps: STORY_FLOW_STEPS,
+    defaultSeconds: STORY_FLOW_DEFAULT_SECONDS,
+    stages: STORY_FLOW_STAGES,
+    storage: "story-flow",
+    label: "Seedance 2.5",
+    blurb: "15s segments, each extending the last, at 480p. Seedance writes the sound; can be 1:00.",
+  },
+};
+export const GEN_MODES = [FLOWS.director, FLOWS.seedance];
+/** A flow by its id (a stored or URL value) → the flow | null. */
+export const flowById = (id) => (typeof id === "string" && Object.hasOwn(FLOWS, id) ? FLOWS[id] : null);
+/** The flow a Film was made on, from its job's `engine`. */
+export const flowOf = (engine) => (engine === "seedance" ? FLOWS.seedance : FLOWS.director);
+
+// The Gen mode is remembered per browser, like the look.
+const MODE_KEY = "director-story:mode";
+export function readStoredFlow() {
+  try {
+    return flowById(window.localStorage.getItem(MODE_KEY)) || FLOWS.director;
+  } catch {
+    return FLOWS.director;
+  }
+}
+export function storeFlow(flow) {
+  try { window.localStorage.setItem(MODE_KEY, flow.id); } catch { /* private mode: not remembered */ }
+}
+
+// A Deep Film runs the writers' room after the Script (worker stagesFor).
+const ROOM_STAGE = { key: "room", label: "Writers' room" };
+export function stagesOf(job) {
+  const base = flowOf(job?.engine).stages;
+  if (job?.depth !== "deep") return base;
+  const at = base.findIndex((s) => s.key === "script") + 1;
+  return [...base.slice(0, at), ROOM_STAGE, ...base.slice(at)];
+}
+
+export const PATH = FLOWS.director.path;
+/** The story page of one Film — the URL that holds it across a reload. */
+export const filmPath = (id) => `/create/${encodeURIComponent(id)}`;
 
 // Statuses of a Film still being made (or waiting to be): the story page
 // polls as a backstop while its Film is in one of these.
@@ -289,23 +370,23 @@ function DotsBackground() {
 // then nothing is sent, so "a four-minute short" in the prompt still counts. Remembered per browser — a
 // convenience only, so every storage access is allowed to fail.
 
-const LENGTH_KEY = "director-story:length";
+const lengthKey = (flow) => `${flow.storage}:length`;
 
-export function readStoredLength() {
+export function readStoredLength(flow = FLOWS.director) {
   try {
-    const n = Number(window.localStorage.getItem(LENGTH_KEY));
-    return FILM_STEPS.includes(n) ? n : FILM_DEFAULT_SECONDS;
+    const n = Number(window.localStorage.getItem(lengthKey(flow)));
+    return flow.steps.includes(n) ? n : flow.defaultSeconds;
   } catch {
-    return FILM_DEFAULT_SECONDS;
+    return flow.defaultSeconds;
   }
 }
 
-function hasStoredLength() {
-  try { return FILM_STEPS.includes(Number(window.localStorage.getItem(LENGTH_KEY))); } catch { return false; }
+function hasStoredLength(flow) {
+  try { return flow.steps.includes(Number(window.localStorage.getItem(lengthKey(flow)))); } catch { return false; }
 }
 
-function storeLength(seconds) {
-  try { window.localStorage.setItem(LENGTH_KEY, String(seconds)); } catch { /* private mode: not remembered */ }
+function storeLength(flow, seconds) {
+  try { window.localStorage.setItem(lengthKey(flow), String(seconds)); } catch { /* private mode: not remembered */ }
 }
 
 // The Film's look (film-plan.ts FILM_STYLES). "" = read it off the premise
@@ -359,7 +440,8 @@ function Choice({ on, onClick, children }) {
   );
 }
 
-function StorySettings({ seconds, onSeconds, style, onStyle, disabled }) {
+function StorySettings({ flow, seconds, onSeconds, style, onStyle, writer, onWriter, disabled }) {
+  const writers = useWriterChoices();
   return (
     <Popover>
       <PopoverTrigger asChild>
@@ -371,8 +453,11 @@ function StorySettings({ seconds, onSeconds, style, onStyle, disabled }) {
           data-story-settings
         >
           <Settings2 size={16} aria-hidden />
-          <span className="text-[0.72rem] tabular-nums" style={{ fontFamily: MONO, letterSpacing: "0.08em" }}>
-            {formatLength(seconds)}
+          {/* The look rides on the button too: it is remembered per browser, so
+              what will be sent must be visible before sending — an unseen
+              "Auto" once made a story the author meant as anime live action. */}
+          <span className="text-[0.72rem] uppercase tabular-nums" style={{ fontFamily: MONO, letterSpacing: "0.08em" }} data-story-settings-summary>
+            {formatLength(seconds)} · {FILM_STYLES.find((st) => st.id === style)?.label || "Auto look"}
           </span>
         </button>
       </PopoverTrigger>
@@ -387,12 +472,12 @@ function StorySettings({ seconds, onSeconds, style, onStyle, disabled }) {
       >
         <SettingsLabel
           id="story-length-label"
-          hint={seconds === FILM_DEFAULT_SECONDS ? "default" : `default ${formatLength(FILM_DEFAULT_SECONDS)}`}
+          hint={seconds === flow.defaultSeconds ? "default" : `default ${formatLength(flow.defaultSeconds)}`}
         >
           Length
         </SettingsLabel>
         <div role="radiogroup" aria-labelledby="story-length-label" className="flex">
-          {FILM_STEPS.map((step) => (
+          {flow.steps.map((step) => (
             <Choice key={step} on={step === seconds} onClick={() => onSeconds(step)}>
               {formatLength(step)}
             </Choice>
@@ -408,6 +493,314 @@ function StorySettings({ seconds, onSeconds, style, onStyle, disabled }) {
             ))}
           </div>
         </div>
+        <div className="mt-4">
+          <SettingsLabel id="story-model-label">Writing model</SettingsLabel>
+          <div role="radiogroup" aria-labelledby="story-model-label" className="flex" data-story-writer>
+            {writers.map((w) => (
+              <Choice key={w.id} on={w.id === writer} onClick={() => onWriter(w.id)}>
+                {w.label}
+              </Choice>
+            ))}
+          </div>
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+// The LLM that writes the Film — Idea, World, sheet prompts, Shot list, cues
+// (film-plan.ts FILM_WRITERS). "default" is the Worker's own writer, so nothing
+// is sent for it. Remembered per browser, and — like the look — always named
+// on the input, so what will be sent is visible before sending.
+const WRITER_KEY = "director-story:writer";
+function readStoredWriter() {
+  try {
+    const v = window.localStorage.getItem(WRITER_KEY) || "default";
+    return FILM_WRITERS.some((w) => w.id === v) ? v : "default";
+  } catch {
+    return "default";
+  }
+}
+function storeWriter(writer) {
+  try { window.localStorage.setItem(WRITER_KEY, writer); } catch { /* private mode: not remembered */ }
+}
+
+// The Worker names the default writer for what it is (GET /api/auto/status
+// `writers`); signed out, or before it answers, the shared labels stand in.
+function useWriterChoices() {
+  const [writers, setWriters] = useState(FILM_WRITERS);
+  useEffect(() => {
+    let live = true;
+    fetch("/api/auto/status")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (live && Array.isArray(d?.writers) && d.writers.length) setWriters(d.writers); })
+      .catch(() => {});
+    return () => { live = false; };
+  }, []);
+  return writers;
+}
+
+// ── The writer: how much STORY work a Film gets (film-plan.ts FILM_DEPTHS) ──
+//
+// Fast: one screenwriter writes the script and it is shot. Deep: the chosen
+// specialists (src/lib/specialists.ts — the same fifteen the chat delegates
+// to) read the draft and it is rewritten on their notes. The room is picked in
+// a dialog and quoted in time; both are remembered per browser and, like the
+// look, named on the button so what will be sent is visible before sending.
+const DEPTH_KEY = "director-story:depth";
+const ROOM_KEY = "director-story:room";
+function readStoredDepth() {
+  try {
+    const v = window.localStorage.getItem(DEPTH_KEY) || "fast";
+    return FILM_DEPTHS.some((d) => d.id === v) ? v : "fast";
+  } catch {
+    return "fast";
+  }
+}
+function storeDepth(depth) {
+  try { window.localStorage.setItem(DEPTH_KEY, depth); } catch { /* private mode: not remembered */ }
+}
+function readStoredRoom() {
+  try {
+    const saved = JSON.parse(window.localStorage.getItem(ROOM_KEY) || "null");
+    const ids = Array.isArray(saved) ? saved.filter(isSpecialistId) : [];
+    return ids.length ? ids : [...DEFAULT_DEEP_SPECIALISTS];
+  } catch {
+    return [...DEFAULT_DEEP_SPECIALISTS];
+  }
+}
+function storeRoom(room) {
+  try { window.localStorage.setItem(ROOM_KEY, JSON.stringify(room)); } catch { /* private mode: not remembered */ }
+}
+
+const STAGE_LABELS = { outline: "Outline", draft: "Draft", polish: "Polish", lock: "Lock" };
+const STAGE_HINTS = {
+  outline: "the shape, before scenes",
+  draft: "scenes that can be read end to end",
+  polish: "line- and beat-level",
+  lock: "ready for production",
+};
+
+/** The room dialog: the fifteen specialists by stage, toggled, with the time it costs. */
+function RoomDialog({ open, onOpenChange, room, onRoom }) {
+  const [draft, setDraft] = useState(room);
+  useEffect(() => { if (open) setDraft(room); }, [open, room]);
+  const toggle = (id) => setDraft((d) => (d.includes(id) ? d.filter((x) => x !== id) : [...d, id]));
+  const est = roomEstimate(draft);
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent
+        className="max-h-[90dvh] max-w-xl overflow-y-auto rounded-none border-[var(--br-secondary)]/40 bg-[var(--br-surface)] text-[var(--br-primary)]"
+        style={{ ...HUD, fontFamily: BODY }}
+        data-story-room
+      >
+        <DialogTitle style={{ fontFamily: DISPLAY, letterSpacing: "0.04em" }} className="text-2xl font-bold uppercase">
+          The writers' room
+        </DialogTitle>
+        <DialogDescription className="text-[var(--br-secondary)]">
+          Each specialist reads the first draft and hands back notes; the script is then rewritten on all of
+          them. More passes, a better script, a longer wait.
+        </DialogDescription>
+        <div className="flex flex-col gap-4">
+          {STAGE_ORDER.map((stage) => {
+            const members = SPECIALISTS.filter((sp) => sp.stage === stage);
+            if (!members.length) return null;
+            return (
+              <div key={stage}>
+                <SettingsLabel id={`room-${stage}`} hint={STAGE_HINTS[stage]}>{STAGE_LABELS[stage]}</SettingsLabel>
+                <div role="group" aria-labelledby={`room-${stage}`} className="flex flex-col">
+                  {members.map((sp) => {
+                    const on = draft.includes(sp.id);
+                    const Icon = LUCIDE[sp.icon] || Users;
+                    return (
+                      <button
+                        key={sp.id}
+                        type="button"
+                        role="checkbox"
+                        aria-checked={on}
+                        onClick={() => toggle(sp.id)}
+                        className={cn(
+                          "flex w-full items-start gap-3 border-t border-[var(--br-secondary)]/20 px-1 py-2 text-left transition-colors hover:bg-[var(--br-secondary)]/10",
+                          on ? "text-[var(--br-primary)]" : "text-[var(--br-primary)]/70",
+                        )}
+                        data-room-specialist={sp.id}
+                      >
+                        <span
+                          className={cn(
+                            "mt-0.5 flex size-4 shrink-0 items-center justify-center border",
+                            on ? "border-[var(--br-tertiary)] bg-[var(--br-tertiary)] text-[var(--br-on-primary)]" : "border-[var(--br-secondary)]/60",
+                          )}
+                        >
+                          {on ? <Check size={12} aria-hidden /> : null}
+                        </span>
+                        <Icon size={16} aria-hidden className="mt-0.5 shrink-0 text-[var(--br-secondary)]" />
+                        <span className="flex min-w-0 flex-col">
+                          <span className="text-sm">{sp.title}</span>
+                          <span className="text-xs text-[var(--br-secondary)]">{sp.label} — {sp.does}</span>
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+        <div className="flex items-center justify-between gap-4 border-t border-[var(--br-secondary)]/40 pt-3">
+          <span className="text-[0.72rem] uppercase tabular-nums text-[var(--br-secondary)]" style={{ fontFamily: MONO, letterSpacing: "0.08em" }} data-room-estimate>
+            {est.passes} {est.passes === 1 ? "pass" : "passes"} · {est.label}
+          </span>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setDraft([...DEFAULT_DEEP_SPECIALISTS])}
+              className="px-2 py-1.5 text-[0.72rem] uppercase text-[var(--br-secondary)] transition-colors hover:text-[var(--br-primary)]"
+              style={{ fontFamily: MONO, letterSpacing: "0.08em" }}
+            >
+              Core four
+            </button>
+            <button
+              type="button"
+              disabled={!est.passes}
+              onClick={() => { onRoom(draft); onOpenChange(false); }}
+              className="bg-[var(--br-tertiary)] px-3 py-1.5 text-[0.72rem] uppercase text-[var(--br-on-primary)] transition-opacity hover:opacity-90 disabled:opacity-40"
+              style={{ fontFamily: MONO, letterSpacing: "0.08em" }}
+            >
+              Use this room
+            </button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function DepthPicker({ depth, onDepth, room, onRoom, disabled }) {
+  const [open, setOpen] = useState(false);
+  const [roomOpen, setRoomOpen] = useState(false);
+  const est = roomEstimate(room);
+  const label = depth === "deep" ? `Deep · ${est.passes} ${est.passes === 1 ? "pass" : "passes"} · ${est.label}` : "Fast";
+  const pick = (id) => {
+    onDepth(id);
+    setOpen(false);
+    if (id === "deep") setRoomOpen(true);
+  };
+  return (
+    <>
+      <Popover open={open} onOpenChange={setOpen}>
+        <PopoverTrigger asChild>
+          <button
+            type="button"
+            aria-label={`Writer: ${label}`}
+            disabled={disabled}
+            className="flex h-10 shrink-0 items-center gap-1.5 px-2 text-[var(--br-secondary)] transition-colors hover:text-[var(--br-primary)] disabled:opacity-40 data-[state=open]:text-[var(--br-primary)]"
+            data-story-depth
+          >
+            <PenLine size={16} aria-hidden />
+            <span className="text-[0.72rem] uppercase tabular-nums" style={{ fontFamily: MONO, letterSpacing: "0.08em" }}>
+              {label}
+            </span>
+            <ChevronDown size={12} aria-hidden />
+          </button>
+        </PopoverTrigger>
+        <PopoverContent
+          side="top"
+          align="end"
+          sideOffset={8}
+          className="w-80 border-[var(--br-secondary)]/40 bg-[var(--br-surface)] p-1 text-[var(--br-primary)]"
+          style={{ ...HUD, fontFamily: BODY }}
+          data-story-depth-panel
+        >
+          <div className="px-2 pb-1 pt-2">
+            <SettingsLabel id="story-depth-label">Writer</SettingsLabel>
+          </div>
+          <div role="radiogroup" aria-labelledby="story-depth-label">
+            {FILM_DEPTHS.map((d) => (
+              <button
+                key={d.id}
+                type="button"
+                role="radio"
+                aria-checked={d.id === depth}
+                onClick={() => pick(d.id)}
+                className="flex w-full items-start gap-2 px-2 py-2 text-left transition-colors hover:bg-[var(--br-secondary)]/10"
+              >
+                <Check size={14} aria-hidden className={cn("mt-0.5 shrink-0", d.id === depth ? "opacity-100" : "opacity-0")} />
+                <span className="flex flex-col">
+                  <span className="text-sm">{d.label}</span>
+                  <span className="text-xs text-[var(--br-secondary)]">{d.blurb}</span>
+                </span>
+              </button>
+            ))}
+          </div>
+          {depth === "deep" ? (
+            <button
+              type="button"
+              onClick={() => { setOpen(false); setRoomOpen(true); }}
+              className="mt-1 flex w-full items-center gap-2 border-t border-[var(--br-secondary)]/20 px-2 py-2 text-left text-xs text-[var(--br-secondary)] transition-colors hover:text-[var(--br-primary)]"
+            >
+              <Users size={14} aria-hidden />
+              Choose the room — {est.passes} {est.passes === 1 ? "pass" : "passes"}, {est.label}
+            </button>
+          ) : null}
+        </PopoverContent>
+      </Popover>
+      <RoomDialog open={roomOpen} onOpenChange={setRoomOpen} room={room} onRoom={onRoom} />
+    </>
+  );
+}
+
+// ── Gen mode: which video model makes the Film ─────────────────────────────
+//
+// Named on its button, like the look and the writer: the two modes differ a lot
+// in cost and in what comes back, so what will be sent is visible before sending.
+function GenModePicker({ flow, onFlow, disabled }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          aria-label={`Gen mode: ${flow.label}`}
+          disabled={disabled}
+          className="flex h-10 shrink-0 items-center gap-1.5 px-2 text-[var(--br-secondary)] transition-colors hover:text-[var(--br-primary)] disabled:opacity-40 data-[state=open]:text-[var(--br-primary)]"
+          data-gen-mode={flow.id}
+        >
+          <Clapperboard size={16} aria-hidden />
+          <span className="text-[0.72rem] uppercase" style={{ fontFamily: MONO, letterSpacing: "0.08em" }}>
+            {flow.label}
+          </span>
+          <ChevronDown size={12} aria-hidden />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent
+        side="top"
+        align="end"
+        sideOffset={8}
+        className="w-80 border-[var(--br-secondary)]/40 bg-[var(--br-surface)] p-1 text-[var(--br-primary)]"
+        style={{ ...HUD, fontFamily: BODY }}
+        data-gen-mode-panel
+      >
+        <div className="px-2 pb-1 pt-2">
+          <SettingsLabel id="story-gen-mode-label">Gen mode</SettingsLabel>
+        </div>
+        <div role="radiogroup" aria-labelledby="story-gen-mode-label">
+          {GEN_MODES.map((m) => (
+            <button
+              key={m.id}
+              type="button"
+              role="radio"
+              aria-checked={m.id === flow.id}
+              onClick={() => { onFlow(m); setOpen(false); }}
+              className="flex w-full items-start gap-2 px-2 py-2 text-left transition-colors hover:bg-[var(--br-secondary)]/10"
+            >
+              <Check size={14} aria-hidden className={cn("mt-0.5 shrink-0", m.id === flow.id ? "opacity-100" : "opacity-0")} />
+              <span className="flex flex-col">
+                <span className="text-sm">{m.label}</span>
+                <span className="text-xs text-[var(--br-secondary)]">{m.blurb}</span>
+              </span>
+            </button>
+          ))}
+        </div>
       </PopoverContent>
     </Popover>
   );
@@ -415,11 +808,31 @@ function StorySettings({ seconds, onSeconds, style, onStyle, disabled }) {
 
 // ── Simple view: hero + input ──────────────────────────────────────────────
 
-export function SimpleView({ onSubmit, submitting, note, running, below = null }) {
+export function SimpleView({ flow = FLOWS.director, onFlow, onSubmit, submitting, note, running, below = null }) {
   const [prompt, setPrompt] = useState("");
-  const [seconds, setSeconds] = useState(readStoredLength);
-  const [chosen, setChosen] = useState(hasStoredLength);
+  const [seconds, setSeconds] = useState(() => readStoredLength(flow));
+  const [chosen, setChosen] = useState(() => hasStoredLength(flow));
+  // Each mode remembers its own length (only Seedance offers 1:00).
+  useEffect(() => {
+    setSeconds(readStoredLength(flow));
+    setChosen(hasStoredLength(flow));
+  }, [flow]);
   const [style, setStyle] = useState(readStoredStyle);
+  const [writer, setWriter] = useState(readStoredWriter);
+  const chooseWriter = (id) => {
+    setWriter(id);
+    storeWriter(id);
+  };
+  const [depth, setDepth] = useState(readStoredDepth);
+  const chooseDepth = (id) => {
+    setDepth(id);
+    storeDepth(id);
+  };
+  const [room, setRoom] = useState(readStoredRoom);
+  const chooseRoom = (ids) => {
+    setRoom(ids);
+    storeRoom(ids);
+  };
   const chooseStyle = (id) => {
     setStyle(id);
     storeStyle(id);
@@ -427,7 +840,7 @@ export function SimpleView({ onSubmit, submitting, note, running, below = null }
   const chooseSeconds = (s) => {
     setSeconds(s);
     setChosen(true);
-    storeLength(s);
+    storeLength(flow, s);
   };
   const ref = useRef(null);
   // Dictation: the same Whisper path the studio's composers use. The one
@@ -471,7 +884,14 @@ export function SimpleView({ onSubmit, submitting, note, running, below = null }
     e?.preventDefault();
     const text = prompt.trim();
     if (!text || submitting) return;
-    if (await onSubmit(text, chosen ? seconds : undefined, style || undefined)) setPrompt("");
+    const opts = {
+      seconds: chosen ? seconds : undefined,
+      style: style || undefined,
+      writer: writer !== "default" ? writer : undefined,
+      depth: depth === "deep" ? depth : undefined,
+      specialists: depth === "deep" ? room : undefined,
+    };
+    if (await onSubmit(text, opts)) setPrompt("");
   };
 
   return (
@@ -506,7 +926,14 @@ export function SimpleView({ onSubmit, submitting, note, running, below = null }
               disabled={submitting}
               className="min-h-34 flex-1 resize-none bg-transparent px-3 py-3 text-base leading-relaxed text-[var(--br-primary)] placeholder:text-[var(--br-secondary)] focus:outline-none disabled:opacity-60"
             />
-            {!listening && <StorySettings seconds={seconds} onSeconds={chooseSeconds} style={style} onStyle={chooseStyle} disabled={submitting} />}
+            {!listening && onFlow && <GenModePicker flow={flow} onFlow={onFlow} disabled={submitting} />}
+            {!listening && <DepthPicker depth={depth} onDepth={chooseDepth} room={room} onRoom={chooseRoom} disabled={submitting} />}
+            {!listening && (
+              <StorySettings
+                flow={flow} seconds={seconds} onSeconds={chooseSeconds} style={style} onStyle={chooseStyle}
+                writer={writer} onWriter={chooseWriter} disabled={submitting}
+              />
+            )}
             {listening ? (
               <div className="flex shrink-0 items-center gap-2">
                 <span className="flex items-center gap-1.5 text-xs tabular-nums text-[var(--br-secondary)]">
@@ -565,6 +992,7 @@ export function SimpleView({ onSubmit, submitting, note, running, below = null }
         {running?.id ? (
           <Link
             to={filmPath(running.id)}
+            state={{ engine: running.engine || null }}
             className="-mt-6 self-center text-sm text-[var(--br-secondary)] underline-offset-4 transition-colors hover:text-[var(--br-primary)] hover:underline"
             data-running-link
           >
@@ -585,31 +1013,46 @@ export function SimpleView({ onSubmit, submitting, note, running, below = null }
 // `/director-story?resume=1`, which starts that premise and moves to its Film's
 // own page — the visitor never types it twice. An hour old and it is dropped:
 // a premise from yesterday is not what someone signing in today meant.
+// One key for both modes: the saved premise carries the mode it was sent in.
 const PENDING_KEY = "director-story:pending";
 const PENDING_TTL_MS = 60 * 60 * 1000;
 export const RESUME_PARAM = "resume";
 
-export function savePendingStory(prompt, seconds, style) {
-  try { localStorage.setItem(PENDING_KEY, JSON.stringify({ prompt, seconds: seconds ?? null, style: style ?? null, at: Date.now() })); } catch { /* private mode */ }
+export function savePendingStory(flow, prompt, opts = {}) {
+  try {
+    localStorage.setItem(PENDING_KEY, JSON.stringify({
+      prompt, flow: flow.id,
+      seconds: opts.seconds ?? null, style: opts.style ?? null, writer: opts.writer ?? null,
+      depth: opts.depth ?? null, specialists: opts.specialists ?? null,
+      at: Date.now(),
+    }));
+  } catch { /* private mode */ }
 }
 
-/** The premise saved before sign-in, taken (read AND cleared) → { prompt, seconds } | null. */
+/** The premise saved before sign-in, taken (read AND cleared) → { prompt, opts, flow } | null. */
 export function takePendingStory() {
   try {
     const raw = localStorage.getItem(PENDING_KEY);
     localStorage.removeItem(PENDING_KEY);
     const saved = raw ? JSON.parse(raw) : null;
     if (!saved?.prompt || Date.now() - Number(saved.at) > PENDING_TTL_MS) return null;
-    return { prompt: String(saved.prompt), seconds: saved.seconds ?? undefined, style: saved.style ?? undefined };
+    return {
+      prompt: String(saved.prompt),
+      flow: flowById(saved.flow) || FLOWS.director,
+      opts: {
+        seconds: saved.seconds ?? undefined, style: saved.style ?? undefined, writer: saved.writer ?? undefined,
+        depth: saved.depth ?? undefined, specialists: Array.isArray(saved.specialists) ? saved.specialists : undefined,
+      },
+    };
   } catch {
     return null;
   }
 }
 
-export function SignInDialog({ open, onOpenChange }) {
+export function SignInDialog({ flow = FLOWS.director, open, onOpenChange }) {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState(null);
-  const callbackURL = `${PATH}?${RESUME_PARAM}=1`;
+  const callbackURL = `/?${RESUME_PARAM}=1`;
   const signIn = async () => {
     setBusy(true);
     setErr(null);
@@ -774,7 +1217,8 @@ export function LatestStories({ onPick }) {
 
 function stepsOf(job) {
   const byKey = new Map((job.steps || []).map((s) => [s.key, s]));
-  const stages = job.status === "done" && byKey.size ? STAGES.filter((st) => byKey.has(st.key)) : STAGES;
+  const all = stagesOf(job);
+  const stages = job.status === "done" && byKey.size ? all.filter((st) => byKey.has(st.key)) : all;
   const known = stages.map((st) => {
     const s = byKey.get(st.key);
     return {
@@ -786,7 +1230,7 @@ function stepsOf(job) {
   });
   // A stage the worker added later than this list: show it rather than drop it.
   for (const s of job.steps || []) {
-    if (!STAGES.some((st) => st.key === s.key)) {
+    if (!all.some((st) => st.key === s.key)) {
       known.push({ key: s.key, label: s.label, status: s.status, summary: s.summary || null });
     }
   }
@@ -823,6 +1267,135 @@ export function filmMediaUrl(url, projectId) {
   return `${url}${url.includes("?") ? "&" : "?"}projectId=${encodeURIComponent(projectId)}`;
 }
 
+// ── Share and download a finished Film ──────────────────────────────────────
+//
+// Share mints (or reads back) the Film's public link — /watch/<token>, which
+// anyone can open with no account (routes/watch.jsx) — and can revoke it.
+// Download saves the file itself. Both only for a Film with a video.
+
+/** A download name from the Film's title (same rule as the Worker's). */
+export function filmFileName(film) {
+  const base = String(film?.title || "story").replace(/[^\p{L}\p{N} _-]+/gu, "").trim().replace(/\s+/g, "-").slice(0, 80);
+  return `${base || "story"}.mp4`;
+}
+
+async function shareCall(filmId, method) {
+  const { res, data } = await getJSON(`/api/auto/films/${encodeURIComponent(filmId)}/share`, { method });
+  if (!res.ok) throw new Error(data.error || `Couldn't ${method === "DELETE" ? "stop sharing" : "share"} the story (${res.status}).`);
+  return data;
+}
+
+const ACTION =
+  "flex items-center gap-1.5 border border-[var(--br-secondary)]/40 px-3 py-1.5 text-[0.72rem] uppercase text-[var(--br-primary)] transition-colors hover:border-[var(--br-primary)] disabled:opacity-50";
+
+export function FilmActions({ job, projectId }) {
+  const [link, setLink] = useState(undefined); // undefined = not read; null = not shared
+  const [busy, setBusy] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const [err, setErr] = useState(null);
+  const url = link ? `${window.location.origin}${link}` : null;
+
+  const run = async (method) => {
+    setBusy(true);
+    setErr(null);
+    try {
+      const data = await shareCall(job.id, method);
+      setLink(data.path || null);
+      return data.path || null;
+    } catch (e) {
+      setErr(String(e?.message || e));
+      return null;
+    } finally {
+      setBusy(false);
+    }
+  };
+  // Opening the popover shares it: the author asked for a link, so there is one.
+  const onOpen = async (open) => {
+    if (!open || link) return;
+    setCopied(false);
+    await run("POST");
+  };
+  const copy = async () => {
+    if (!url) return;
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1600);
+    } catch {
+      setErr("Couldn't copy — select the link and copy it.");
+    }
+  };
+
+  return (
+    <div className="flex flex-wrap items-center justify-center gap-2" data-film-actions>
+      <Popover onOpenChange={onOpen}>
+        <PopoverTrigger asChild>
+          <button type="button" className={ACTION} style={{ fontFamily: MONO, letterSpacing: "0.08em" }} data-share>
+            <Share2 size={12} aria-hidden /> Share
+          </button>
+        </PopoverTrigger>
+        <PopoverContent
+          side="top"
+          align="center"
+          sideOffset={8}
+          className="w-[min(26rem,calc(100vw-2rem))] border-[var(--br-secondary)]/40 bg-[var(--br-surface)] p-3 text-[var(--br-primary)]"
+          style={{ ...HUD, fontFamily: BODY }}
+          data-share-panel
+        >
+          <p className="mb-2 text-sm">Anyone with this link can watch and download the story — no account needed.</p>
+          {busy && !url ? (
+            <p className="flex items-center gap-2 text-sm text-[var(--br-secondary)]">
+              <Loader2 size={14} className="animate-spin" /> Making the link…
+            </p>
+          ) : null}
+          {url ? (
+            <div className="flex items-stretch gap-2">
+              <input
+                readOnly
+                value={url}
+                onFocus={(e) => e.target.select()}
+                aria-label="Share link"
+                className="min-w-0 flex-1 border border-[var(--br-secondary)]/40 bg-transparent px-2 py-1.5 text-xs text-[var(--br-primary)]"
+                style={{ fontFamily: MONO }}
+                data-share-url
+              />
+              <button type="button" onClick={copy} className={ACTION} style={{ fontFamily: MONO, letterSpacing: "0.08em" }} aria-label="Copy link">
+                {copied ? <Check size={12} aria-hidden /> : <Copy size={12} aria-hidden />} {copied ? "Copied" : "Copy"}
+              </button>
+            </div>
+          ) : null}
+          {url ? (
+            <button
+              type="button"
+              onClick={() => run("DELETE")}
+              disabled={busy}
+              className="mt-3 flex items-center gap-1.5 text-xs text-[var(--br-secondary)] transition-colors hover:text-[var(--br-tertiary)] disabled:opacity-50"
+              data-unshare
+            >
+              <Link2Off size={12} aria-hidden /> Stop sharing — the link stops working
+            </button>
+          ) : null}
+          {link === null && !busy ? (
+            <button type="button" onClick={() => run("POST")} className={cn(ACTION, "mt-1")} style={{ fontFamily: MONO, letterSpacing: "0.08em" }}>
+              <Share2 size={12} aria-hidden /> Make a new link
+            </button>
+          ) : null}
+          {err ? <p className="mt-2 text-xs text-[var(--br-tertiary)]">{err}</p> : null}
+        </PopoverContent>
+      </Popover>
+      <a
+        href={filmMediaUrl(job.film.url, projectId || job.projectId)}
+        download={filmFileName(job.film)}
+        className={ACTION}
+        style={{ fontFamily: MONO, letterSpacing: "0.08em" }}
+        data-download
+      >
+        <Download size={12} aria-hidden /> Download
+      </a>
+    </div>
+  );
+}
+
 export function StoryView({ job, projectId = null, onNew, onRetry, retrying = false, retryError = null }) {
   const steps = stepsOf(job);
   const done = job.status === "done" && job.film?.url;
@@ -834,7 +1407,10 @@ export function StoryView({ job, projectId = null, onNew, onRetry, retrying = fa
   const waiting = job.status === "awaiting-confirm";
   const queued = job.status === "queued";
   // The chosen length; an older Film without one shows what its cue sheet planned.
-  const length = job.seconds || job.steps?.find((s) => s.key === "cuesheet")?.result?.seconds || null;
+  const length =
+    job.seconds ||
+    job.steps?.find((s) => s.key === "cuesheet" || (s.key === "shotlist" && job.engine === "seedance"))?.result?.seconds ||
+    null;
   // Ended without a Film worth showing: one line says why.
   const ended =
     job.status === "declined"
@@ -895,7 +1471,8 @@ export function StoryView({ job, projectId = null, onNew, onRetry, retrying = fa
                 data-film
               />
             </div>
-            <div className="flex min-h-0 flex-1 items-center overflow-y-auto px-4 py-3 sm:px-8">
+            <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 overflow-y-auto px-4 py-3 sm:px-8">
+              <FilmActions job={job} projectId={projectId} />
               <ol className="mx-auto flex flex-wrap justify-center gap-x-5 gap-y-2" aria-label="Steps" data-steps="compact">
                 {steps.map((s) => (
                   <li key={s.key} className="flex items-center gap-1.5 text-xs text-[var(--br-secondary)]" data-step={s.key} data-status={s.status}>

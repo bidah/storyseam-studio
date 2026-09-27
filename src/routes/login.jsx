@@ -3,8 +3,8 @@
 // wrapping it in the shell (whose LoginGate is what sends people here) would be
 // a redirect loop.
 //
-// `/` is the public marketing landing now and carries no account UI at all, so
-// this is the only page in the app with a sign-in button on it. The page body
+// `/` is the text-to-story prompt box (routes/director-story.jsx), which asks
+// for Google sign-in in its own modal when a signed-out visitor submits. The page body
 // lives in components/Login.jsx next to the gate that redirects here, and the
 // `?next=` param it reads is set by that gate.
 import { useEffect } from "react";
@@ -12,6 +12,7 @@ import { Navigate, useLocation } from "react-router";
 import { useSession } from "@/lib/auth-client";
 import { captureInviteFromLocation } from "@/lib/pendingInvite";
 import { SignInPage, Splash } from "@/components/Login";
+import { AFTER_SIGN_IN } from "@/lib/home";
 
 export function Component() {
   const { data: session, isPending } = useSession();
@@ -28,12 +29,12 @@ export function Component() {
   }, [next]);
   // Already signed in: there is nothing to do here. Honour `?next=` (an
   // already-authenticated user following a shared invite link lands on this
-  // route via the gate too), else the app root. Same-origin absolute path only.
+  // route via the gate too), else home (lib/home.js). Same-origin absolute path only.
   // Hold the splash while the session resolves rather than flashing a sign-in
   // button at someone who is already signed in.
   if (isPending) return <Splash />;
   if (session) {
-    return <Navigate to={/^\/(?!\/)/.test(next) ? next : "/world"} replace />;
+    return <Navigate to={/^\/(?!\/)/.test(next) ? next : AFTER_SIGN_IN} replace />;
   }
   return <SignInPage />;
 }

@@ -188,9 +188,20 @@ export function piecesBedGraph(cues, { durationMs, settings }) {
  * whole film long) or several `cues` (paths, with `pieces` giving each one's
  * offset, length and fades).
  */
-export function mixArgs({ film, cue, cues, pieces, out, durationMs, hasAudio, mix }) {
+/**
+ * Whether the picture can be COPIED into the scored mp4 as it is. Only H.264:
+ * the Sitting records VP9 (headless Chrome's MediaRecorder), and VP9 inside an
+ * mp4 plays in Chrome and Firefox but NOT in Safari, on iOS or in the mobile
+ * app's player (AVFoundation reports it undecodable) — a finished Film that
+ * spins forever there. Anything else is re-encoded to H.264 once, here.
+ * An unknown codec (older callers) is copied, as before.
+ */
+export const copiesPicture = (videoCodec) => !videoCodec || videoCodec === "h264";
+
+export function mixArgs({ film, cue, cues, pieces, out, durationMs, hasAudio, mix, videoCodec }) {
   const settings = mixSettings(mix);
   const webm = /\.webm$/i.test(String(out));
+  const copy = webm || copiesPicture(videoCodec);
   const dur = (durationMs / 1000).toFixed(3);
   const many = Array.isArray(cues) && cues.length > 0;
   const fade = settings.fadeInSec > 0 ? `,afade=t=in:st=0:d=${settings.fadeInSec}` : "";
@@ -206,7 +217,7 @@ export function mixArgs({ film, cue, cues, pieces, out, durationMs, hasAudio, mi
     "-i", film, ...inputs,
     "-filter_complex", graph,
     "-map", "0:v:0", "-map", "[a]",
-    "-c:v", "copy",
+    ...(copy ? ["-c:v", "copy"] : ["-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p"]),
     ...(webm ? ["-c:a", "libopus", "-b:a", "192k"] : ["-c:a", "aac", "-b:a", "192k"]), "-ar", "48000",
     "-t", dur,
     ...(webm ? [] : ["-movflags", "+faststart"]),
@@ -218,7 +229,7 @@ export function mixArgs({ film, cue, cues, pieces, out, durationMs, hasAudio, mi
  * Lay `cueFile` under `filmFile` INLINE and upload the result as `outFile` (all
  * three `director` media). The sitting itself is only READ.
  */
-export async function mixScoredFilm(env, pid, { filmFile, cueFile, outFile, durationMs, hasAudio, mix }, deps = {}) {
+export async function mixScoredFilm(env, pid, { filmFile, cueFile, outFile, durationMs, hasAudio, mix, videoCodec }, deps = {}) {
   const run = deps.runNative || runNative;
   await run(env, {
     binary: "ffmpeg",
@@ -227,7 +238,7 @@ export async function mixScoredFilm(env, pid, { filmFile, cueFile, outFile, dura
       { id: "cue", r2key: directorKey(pid, cueFile) },
     ],
     output: { id: "out", r2key: directorKey(pid, outFile) },
-    args: (r) => mixArgs({ film: r("film"), cue: r("cue"), out: r("out"), durationMs, hasAudio, mix }),
+    args: (r) => mixArgs({ film: r("film"), cue: r("cue"), out: r("out"), durationMs, hasAudio, mix, videoCodec }),
   });
   return { file: outFile, r2key: directorKey(pid, outFile) };
 }
@@ -257,7 +268,7 @@ export function measureJobScript(env, { filmKey, outPath }) {
  * `/ingest`. `cues` = [{ key, offsetMs, durationMs, fadeInSec, fadeOutSec }]
  * lays several pieces; `cueKey` alone lays one cue under the whole film.
  */
-export function mixJobScript(env, { filmKey, cueKey, cues, outKey, durationMs, hasAudio, mix }) {
+export function mixJobScript(env, { filmKey, cueKey, cues, outKey, durationMs, hasAudio, mix, videoCodec }) {
   const dir = `/tmp/score-x-${crypto.randomUUID()}`;
   const base = String(env.WORKER_PUBLIC_URL || "").replace(/\/+$/, "");
   const out = `${dir}/scored.${/\.webm$/i.test(outKey) ? "webm" : "mp4"}`;
@@ -266,8 +277,8 @@ export function mixJobScript(env, { filmKey, cueKey, cues, outKey, durationMs, h
     ? cues.map((c, i) => `curl -fsS -o ${dir}/cue${i}.mp3 ${shq(filesUrl(env, c.key))}`)
     : [`curl -fsS -o ${dir}/cue.mp3 ${shq(filesUrl(env, cueKey))}`];
   const args = many
-    ? mixArgs({ film: `${dir}/film`, cues: cues.map((_, i) => `${dir}/cue${i}.mp3`), pieces: cues, out, durationMs, hasAudio, mix })
-    : mixArgs({ film: `${dir}/film`, cue: `${dir}/cue.mp3`, out, durationMs, hasAudio, mix });
+    ? mixArgs({ film: `${dir}/film`, cues: cues.map((_, i) => `${dir}/cue${i}.mp3`), pieces: cues, out, durationMs, hasAudio, mix, videoCodec })
+    : mixArgs({ film: `${dir}/film`, cue: `${dir}/cue.mp3`, out, durationMs, hasAudio, mix, videoCodec });
   return [
     "set -eo pipefail",
     uploadFnBash(),
@@ -329,7 +340,7 @@ export const daytonaScorer = {
 };
 
 /** A fresh scored-film name beside its sitting (same naming as the browser's upload). */
-// A VP8 picture (a WebM recording) cannot be copied into an mp4, so it stays in
-// WebM (Opus audio); everything else is a faststart mp4.
-export const scoredName = (sittingId, videoCodec) =>
-  `scored_${sittingId || "film"}_${crypto.randomUUID().slice(0, 8)}.${videoCodec === "vp8" ? "webm" : "mp4"}`;
+// Always a faststart mp4: a picture that is not H.264 (VP8/VP9 recordings) is
+// re-encoded by the mix (`copiesPicture`) rather than kept in a container half
+// the players can't open.
+export const scoredName = (sittingId) => `scored_${sittingId || "film"}_${crypto.randomUUID().slice(0, 8)}.mp4`;

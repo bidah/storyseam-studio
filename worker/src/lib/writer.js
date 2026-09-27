@@ -7,6 +7,13 @@
 //   groq                 — `groq.js`; needs `GROQ_API_KEY` (+ `GROQ_GATEWAY_URL`).
 //   cerebras             — Qwen 3.8 27B; needs `CEREBRAS_API_KEY`, and
 //                          `CEREBRAS_GATEWAY_URL` to go through AI Gateway.
+//
+// That is the Film's `default` writer. The author can instead pick `claude` per
+// Film (film-plan.ts FILM_WRITERS, `job.writer`): Claude Fable 5.1 through the
+// `AI` binding and AI Gateway's Unified Billing — Cloudflare holds the Anthropic
+// credential and bills the account's gateway credits, so there is no key to set.
+// Unified Billing needs an AUTHENTICATED gateway, which `default` is not; the
+// Look stage's `auto-look` is, so Claude goes through that one.
 
 import { groqJSON, stripThinking } from "./groq.js";
 
@@ -19,7 +26,19 @@ export const CEREBRAS_WRITER_MODEL = "qwen-3.8-27b";
 export const CEREBRAS_DIRECT_BASE = "https://api.cerebras.ai/v1";
 const CEREBRAS_MAX_TOKENS = 32000;
 
+export const CLAUDE_WRITER_MODEL = "anthropic/claude-fable-5.1";
+export const CLAUDE_GATEWAY = "auto-look";
+const CLAUDE_MAX_TOKENS = 32000;
+
 export const WRITERS = ["workers-ai", "groq", "cerebras"];
+
+// What the author sees for the `default` writer — it is whatever AUTO_WRITER says.
+const PROVIDER_LABELS = {
+  "workers-ai": "Kimi K2.6",
+  groq: "Qwen 3.8 · Groq",
+  cerebras: "Qwen 3.8 · Cerebras",
+};
+export const defaultWriterLabel = (env) => PROVIDER_LABELS[writerProvider(env)];
 
 export function writerProvider(env) {
   const want = String(env?.AUTO_WRITER || "workers-ai").trim().toLowerCase();
@@ -115,8 +134,38 @@ async function cerebrasJSON(env, { messages, maxTokens, temperature, signal } = 
   return parseJSONAnswer(content);
 }
 
-// What the Film job is handed as `model`: { json(opts) → object }.
-export function writerModel(env) {
+async function claudeJSON(env, { messages, maxTokens, temperature } = {}) {
+  if (!env?.AI?.run) throw new WriterError("The Worker has no AI binding — Claude cannot write this Film");
+  // The Messages API takes the system prompt beside the turns, not among them.
+  const system = [
+    ...messages.filter((m) => m.role === "system").map((m) => m.content),
+    "Answer with ONE JSON object and nothing else — no prose, no code fence.",
+  ].join("\n\n");
+  const inputs = {
+    system,
+    messages: messages.filter((m) => m.role !== "system"),
+    max_tokens: Math.min(maxTokens || CLAUDE_MAX_TOKENS, CLAUDE_MAX_TOKENS),
+  };
+  if (temperature != null) inputs.temperature = temperature;
+  const out = await env.AI.run(env.CLAUDE_WRITER_MODEL || CLAUDE_WRITER_MODEL, inputs, {
+    gateway: { id: env.CLAUDE_GATEWAY_ID || env.LOOK_GATEWAY_ID || CLAUDE_GATEWAY },
+  });
+  if (out?.stop_reason === "max_tokens") {
+    throw new WriterError("The writing model's answer was cut off at the output limit");
+  }
+  const content = Array.isArray(out?.content)
+    ? out.content.filter((b) => b?.type === "text").map((b) => b.text).join("")
+    : out?.choices?.[0]?.message?.content ?? out?.response;
+  if (typeof content !== "string" || !content.trim()) {
+    throw new WriterError("Claude returned no answer", { body: JSON.stringify(out).slice(0, 2000) });
+  }
+  return parseJSONAnswer(content);
+}
+
+// What the Film job is handed as `model`: { json(opts) → object }. `writer` is
+// the Film's pick (`job.writer`); absent or `default` is the Worker's AUTO_WRITER.
+export function writerModel(env, writer = null) {
+  if (writer === "claude") return { json: (opts) => claudeJSON(env, opts) };
   const provider = writerProvider(env);
   if (provider === "groq") return { json: (opts) => groqJSON(env, opts) };
   if (provider === "cerebras") return { json: (opts) => cerebrasJSON(env, opts) };

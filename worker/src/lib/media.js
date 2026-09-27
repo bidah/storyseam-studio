@@ -176,6 +176,29 @@ function etagMatches(ifNoneMatch, etag) {
 // `waitUntil(cache.put(...))` before returning). Requests that arrive on the
 // workers.dev origin still get nothing from it, which is fine — that origin is
 // only a fallback now.
+// Media types by extension, for an object stored without a real one. The
+// sandboxes upload through /ingest with `curl -T`, which sends no content type,
+// so their outputs (scored films, story-flow segments, renders) landed as
+// `application/octet-stream` — which Chrome sniffs past and Safari does not.
+const TYPES_BY_EXT = {
+  mp4: "video/mp4", m4v: "video/mp4", mov: "video/quicktime", webm: "video/webm",
+  mp3: "audio/mpeg", m4a: "audio/mp4", wav: "audio/wav", ogg: "audio/ogg", aac: "audio/aac", flac: "audio/flac",
+  png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", webp: "image/webp", gif: "image/gif", svg: "image/svg+xml",
+  json: "application/json", txt: "text/plain", vtt: "text/vtt", srt: "text/plain",
+};
+
+/** A key's media type from its extension → type | null. */
+export function typeForKey(key) {
+  const m = /\.([a-z0-9]+)$/i.exec(String(key || ""));
+  return (m && TYPES_BY_EXT[m[1].toLowerCase()]) || null;
+}
+
+/** The type to store an upload with: the one sent, unless it says nothing useful. */
+export function uploadType(key, sent) {
+  const t = String(sent || "").trim();
+  return t && !/^application\/octet-stream\b/i.test(t) ? t : typeForKey(key) || "application/octet-stream";
+}
+
 export async function streamKey(env, key, rangeHeader, opts = {}) {
   const { ifNoneMatch, cacheControl, extraHeaders } = opts;
   const cc = cacheControl || defaultCacheControl(key);
@@ -199,6 +222,13 @@ export async function streamKey(env, key, rangeHeader, opts = {}) {
 
   const headers = new Headers();
   obj.writeHttpMetadata(headers);
+  // Stored without a real type (an /ingest upload before it inferred one):
+  // name it from the extension, or Safari won't play the video.
+  const stored = headers.get("content-type");
+  if (!stored || /^application\/octet-stream\b/i.test(stored)) {
+    const t = typeForKey(key);
+    if (t) headers.set("content-type", t);
+  }
   headers.set("etag", obj.httpEtag);
   headers.set("accept-ranges", "bytes");
   headers.set("access-control-allow-origin", "*");

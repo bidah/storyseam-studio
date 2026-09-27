@@ -36,7 +36,7 @@ import { getUpscale, listUpscales, upscaleVideo } from "./upscale.js";
 import { getShotSheet, previewShotSheet, renderShotSheet } from "./shot_sheet.js";
 import { getMusicalized, planScore, renderCue, scoreSitting } from "./musicalized.js";
 // Auto — prompt to Film, run server-side by the FilmJobs Durable Object.
-import { confirmFilm, declineFilm, getAutoStatus, getFilm, listFilms, makeFilm, retryFilm, setAuto } from "./auto_film.js";
+import { confirmFilm, declineFilm, getAutoStatus, getFilm, listFilms, makeFilm, retryFilm, setAuto, shareFilm } from "./auto_film.js";
 // Moodboard (the reference wall)
 import { getMoodboard } from "./get_moodboard.js";
 import { addMoodboardCard, removeMoodboardCard } from "./add_moodboard_card.js";
@@ -257,6 +257,7 @@ export function createTools(api: Api): ToolDefinition[] {
     confirmFilm(api),
     declineFilm(api),
     retryFilm(api),
+    shareFilm(api),
     setAuto(api),
     // Upscale
     listUpscales(api),

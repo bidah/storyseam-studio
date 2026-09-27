@@ -40,7 +40,7 @@
 
 import { DurableObject } from "cloudflare:workers";
 import {
-  advanceFilm, confirmFilm, declineFilm, event, groqModel, isActive, nextAlarmDelay, publicJob, repairFilmSeries, retryFilm,
+  advanceFilm, confirmFilm, declineFilm, event, filmWriterModel, isActive, nextAlarmDelay, publicJob, repairFilmSeries, retryFilm,
 } from "./lib/film-job.js";
 import { publicQueue, startNextQueued, submitFilm } from "./lib/film-queue.js";
 import { JOB_KEY, QUEUE_KEY, historyKey, readFilm, saveJob } from "./lib/film-history.js";
@@ -136,7 +136,7 @@ export class FilmJobs extends DurableObject {
     if (job?.status === "running") {
       job = await advanceFilm(job, {
         env: this.env,
-        model: groqModel(this.env),
+        model: filmWriterModel(this.env, job),
         saveWorld,
         commit: (j, ev) => this.commit(j, ev),
       });

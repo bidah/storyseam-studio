@@ -9,6 +9,12 @@ chat agent (`flue-agent/`, its own Cloudflare Worker `shot-studio-flue-v2`, prox
 at `/eve`) drives the pipeline via typed tools + render skills. See `README.md` for
 architecture and how to run it.
 
+**The studio shell is HIDDEN for now.** The root `/` is the product:
+the prompt box (a prompt in, a Film back), with a **Gen mode** of fal H3 Director
+or Seedance 2.5, and a Film's page at `/create/:filmId`. Every route under
+`RootLayout` — header, tabs, agent panel — redirects there. One switch brings it
+back: `STUDIO_HIDDEN` in `src/lib/home.js`. Nothing under it was removed.
+
 ## Storage — D1 for state, R2 for bytes
 
 **Per-project JSON state lives in D1, never as objects in R2.** Every doc store
@@ -188,6 +194,45 @@ sharing its header. The Shot list derives the cue sheet (`derive_cue_sheet`);
 the Bible, Images and Library supply model sheets; Sound Studio and Radio supply
 the target audio; a kept sitting is an ordinary project file the Editor and
 Cuts can use.
+
+### The story — a Script stage, and a Deep Film's writers' room
+
+Both Film pipelines share two STORY stages after the World (`film-job.js`
+`stagesFor`). **Script** (`film-stages/script.js`) is one screenwriter prompt
+carrying the core specialists' rules (`SCREENWRITER_CRAFT`), written to the
+Film's length and saved as the Film project's pinned draft; both Shot list stages
+cut the screenplay from there rather than inventing the story from the World. A
+Film whose `depth` is `deep` adds the **Writers' room** (`film-stages/room.js`):
+the chosen `specialists` (the same fifteen as the chat's, `src/lib/specialists.ts`,
+in roster order; default `DEFAULT_DEEP_SPECIALISTS` in `film-plan.ts`) each read
+the draft in one model call — a pending stage, one pass per alarm, state in the
+`film-room:<filmId>` doc, each pass recorded in the `script-reviews` ledger — then
+one rewrite applies the room's notes as a second pinned draft. What each pass
+reads for is `film-stages/room-notes.js`, distilled from `flue-agent/src/subagents/`;
+when a subagent profile changes, its note there is the copy to update. The input's
+Writer button (Fast · Deep, the room dialog with `roomEstimate`) and `make_film`'s
+`depth` / `specialists` are the two surfaces. An Auto-off Film now confirms after
+the last story stage (`confirmAfterFor`), so the script is on the table before
+anything is paid for.
+
+### The story flow — the same Film on Seedance 2.5
+
+`/` offers both pipelines on one page (`components/DirectorStory.jsx`
+`FLOWS`): the input's **Gen mode** picker (fal H3 Director / Seedance 2.5,
+remembered per browser) is the choice. Seedance sends `engine: "seedance"` with
+the prompt; every Film's page is `/create/:id` and follows the Film's engine.
+`/director-story`, `/story-flow` and their `/create/:id` only redirect there
+(`/story-flow` with Seedance chosen). A Seedance Film runs `STORY_FLOW_STAGES`
+instead of `FILM_STAGES` (`worker/src/lib/film-job.js` `stagesFor`). Look and World
+are shared; from there it is its own recipe (`worker/src/lib/film-stages/story-flow/`):
+character sheets as a turnaround + a face, empty location plates → a shot list of
+≤15s **segments** written as staged narrative (no pinned frame every few seconds;
+`film-plan.ts` `segmentDurations`) → the prompts compiled from the Seedance 2.5 skill
+(`seedance-skill.js`, vendored from promptsama) → the video run, one segment at a
+time, segment k an `extension` of the **last 3s of segment k−1** (cut on the box) plus
+its sheets → one final cut. Everything at **480p**. Seedance writes the sound, so there
+is no Score. It adds a **1:00** length for testing a story cheaply. The agent
+reaches it through `make_film`'s `engine`.
 
 ## Feature parity — GUI AND agent, always
 

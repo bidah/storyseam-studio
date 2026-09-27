@@ -1,15 +1,22 @@
 // Auto — prompt to Film (CONTEXT.md › Auto).
 //
 //   GET  /api/auto/status         can a new Auto Film start right now?
-//                                 { ok, reason, paused, keys: { FAL_KEY, … } }
+//                                 { ok, reason, paused, keys: { FAL_KEY, … },
+//                                   writers: [{ id, label, blurb }] }  (the model picker)
 //   POST /api/auto/films          start a Film IN A NEW PROJECT OF ITS OWN
 //                                 (lib/films.js — named "Story — <first words>",
 //                                 renamed to the World's title once it has one).
 //                                 USER-scoped: it never reads the request's
-//                                 project. Body { prompt, seconds?, style? }.
-//                                 `seconds` is a chosen length, one of the Film's
-//                                 30s steps (120 … 300); it wins over a length the
-//                                 prompt states. Any other value is a 400.
+//                                 project. Body { prompt, seconds?, style?, engine?, writer?, depth?, specialists? }.
+//                                 `writer` is the LLM that writes it: absent /
+//                                 "default" = AUTO_WRITER, "claude" = Claude Fable 5.1.
+//                                 `engine` picks the pipeline: absent = the
+//                                 Director (/director-story), "seedance" = the
+//                                 story flow on Seedance 2.5 (/story-flow).
+//                                 `seconds` is a chosen length, one of the
+//                                 engine's steps (Director 120 … 300 in 30s;
+//                                 story flow 60, then 120 … 300); it wins over a
+//                                 length the prompt states. Any other value is a 400.
 //                                 202 { ok, job, projectId }          started now
 //                                 4xx/503 { ok:false, refusal:{code,message}, job }
 //                                 — `busy` (409) while the user's previous Film is
@@ -55,11 +62,14 @@
 // closed. The job itself lives in the FilmJobs Durable Object (film-job-do.js)
 // — one per project — and runs server-side; see lib/film-job.js.
 import { autoAvailable } from "../lib/auto-availability.js";
-import { MAX_PROMPT_CHARS, checkFilmSeconds, checkFilmStyle } from "../lib/film-job.js";
+import { MAX_PROMPT_CHARS, checkFilmDepth, checkFilmEngine, checkFilmSeconds, checkFilmSpecialists, checkFilmStyle, checkFilmWriter } from "../lib/film-job.js";
+import { FILM_WRITERS } from "../lib/film-plan.ts";
+import { defaultWriterLabel } from "../lib/writer.js";
 import { readAutoSettings, writeAutoSettings } from "../lib/auto-settings.js";
 import { checkAllowance } from "../lib/film-allowance.js";
 import { activeFilm, filmJobsFor, filmProject, latestFilm, listFilms, recordFilm, storyProjectName } from "../lib/films.js";
 import { archiveProject, createProject } from "./projects.js";
+import { filmShareToken, shareFilm, unshareFilm } from "../lib/film-share.js";
 
 const REFUSAL_STATUS = { invalid: 400, busy: 409, allowance: 429, paused: 503, unavailable: 503 };
 
@@ -81,7 +91,9 @@ const refusal = (code, message) => ({ ok: false, refusal: { code, message }, job
 export function registerAuto(app) {
   app.get("/api/auto/status", async (c) => {
     const { ok, reason, paused, keys } = await autoAvailable(c.env);
-    return c.json({ ok, reason, paused, keys });
+    // The writers the prompt's model picker offers, `default` named for what it is.
+    const writers = FILM_WRITERS.map((w) => (w.id === "default" ? { ...w, label: defaultWriterLabel(c.env) || w.label } : w));
+    return c.json({ ok, reason, paused, keys, writers });
   });
 
   // Start a Film — in a project of its own. The checks that can refuse run
@@ -94,12 +106,29 @@ export function registerAuto(app) {
     let body;
     try { body = await c.req.json(); } catch { body = {}; }
     const prompt = typeof body?.prompt === "string" ? body.prompt.slice(0, MAX_PROMPT_CHARS + 1) : "";
+    // The pipeline: the route the author is on chose it (/story-flow sends
+    // "seedance"); absent is the Director (/director-story).
+    const engine = body?.engine || undefined;
+    const badEngine = checkFilmEngine(engine);
+    if (badEngine) return c.json(refusal("invalid", badEngine), 400);
     const seconds = body?.seconds ?? undefined;
-    const badLength = checkFilmSeconds(seconds);
+    const badLength = checkFilmSeconds(seconds, engine);
     if (badLength) return c.json(refusal("invalid", badLength), 400);
     const style = body?.style || undefined;
     const badStyle = checkFilmStyle(style);
     if (badStyle) return c.json(refusal("invalid", badStyle), 400);
+    // The LLM that writes it (film-plan.ts FILM_WRITERS); absent is the default.
+    const writer = body?.writer || undefined;
+    const badWriter = checkFilmWriter(writer);
+    if (badWriter) return c.json(refusal("invalid", badWriter), 400);
+    // How deep the story work goes (film-plan.ts FILM_DEPTHS) and, for a Deep
+    // Film, which specialists read the script; absent is fast / the default room.
+    const depth = body?.depth || undefined;
+    const badDepth = checkFilmDepth(depth);
+    if (badDepth) return c.json(refusal("invalid", badDepth), 400);
+    const specialists = depth === "deep" && Array.isArray(body?.specialists) ? body.specialists : undefined;
+    const badRoom = checkFilmSpecialists(specialists);
+    if (badRoom) return c.json(refusal("invalid", badRoom), 400);
     const text = prompt.trim();
     if (!text) return c.json(refusal("invalid", "Write a prompt first."), 400);
     if (text.length > MAX_PROMPT_CHARS) {
@@ -130,6 +159,10 @@ export function registerAuto(app) {
       prompt: text,
       ...(seconds !== undefined ? { seconds } : {}),
       ...(style ? { style } : {}),
+      ...(engine ? { engine } : {}),
+      ...(writer ? { writer } : {}),
+      ...(depth ? { depth } : {}),
+      ...(specialists ? { specialists } : {}),
       userId,
       projectId,
       episodeId: null,
@@ -175,6 +208,7 @@ export function registerAuto(app) {
           || (row.title ? row.title.replace(/^Story — /, "") : null),
         prompt: job?.prompt || null,
         status: job?.status || "unknown",
+        engine: job?.engine || "director",
         seconds: film?.seconds ?? job?.seconds ?? null,
         url: film?.url || null,
       };
@@ -233,6 +267,42 @@ export function registerAuto(app) {
     const res = await stub.retry(id);
     if (!res.ok) return c.json(res, RETRY_STATUS[res.code] || 400);
     return c.json(res, 202);
+  });
+
+  // A finished Film's public share link (lib/film-share.js): anyone with the
+  // link can watch and download it at /watch/<token>, no account needed.
+  // Owner-only — the Film is found through the user's own films lookup, so a
+  // Film id alone never shares someone else's Film.
+  //   GET    → { shared, token, path }     POST → mint (or the existing one)
+  //   DELETE → revoke; every copy of the link then 404s.
+  const shareOf = async (c) => {
+    const userId = c.get("userId");
+    if (!userId) return { res: c.json({ error: "Sign in required" }, 401) };
+    const id = c.req.param("id");
+    const pid = await filmProject(c.env, id, userId);
+    if (!pid) return { res: c.json({ ok: false, code: "not-found", error: "No such story." }, 404) };
+    return { id, pid };
+  };
+  const shared = (token) => ({ ok: true, shared: !!token, token: token || null, path: token ? `/watch/${token}` : null });
+  app.get("/api/auto/films/:id/share", async (c) => {
+    const f = await shareOf(c);
+    if (f.res) return f.res;
+    return c.json(shared(await filmShareToken(c.env, f.pid, f.id)));
+  });
+  app.post("/api/auto/films/:id/share", async (c) => {
+    const f = await shareOf(c);
+    if (f.res) return f.res;
+    const job = await filmJobsFor(c.env, f.pid).film(f.id).catch(() => null);
+    if (job?.status !== "done" || !job.film?.url) {
+      return c.json({ ok: false, code: "not-done", error: "Only a finished story can be shared." }, 409);
+    }
+    return c.json(shared(await shareFilm(c.env, f.pid, f.id)));
+  });
+  app.delete("/api/auto/films/:id/share", async (c) => {
+    const f = await shareOf(c);
+    if (f.res) return f.res;
+    await unshareFilm(c.env, f.pid, f.id);
+    return c.json(shared(null));
   });
 
   app.get("/api/auto/settings", async (c) => {

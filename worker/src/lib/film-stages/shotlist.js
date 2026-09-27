@@ -33,31 +33,46 @@ import { saveShotlist } from "../../routes/shotlist.js";
 import { DEFAULT_FILM_LANGUAGE } from "../film-sound.js";
 import { MUSIC_CUES, MUSIC_CUE_NAMES, musicCueRange, repairMusicCues } from "../music-cues.ts";
 import { readDoc } from "../docs.js";
+import { pinnedDraft, readStore } from "../script-store.js";
+import { docToElements, formatScreenplay } from "../script-elements.js";
 
 const str = (v) => (typeof v === "string" ? v : v == null ? "" : String(v)).trim();
 
 /** The Film's length: what the plan quoted for this prompt (or an explicit `job.seconds`). */
 export const filmPlanFor = (job) => planFilm({ prompt: job.prompt, seconds: job.seconds ?? null });
 
-export function shotlistMessages({ idea, world, seconds, language = DEFAULT_FILM_LANGUAGE }) {
+export function shotlistMessages({ idea, world, seconds, screenplay = [], language = DEFAULT_FILM_LANGUAGE }) {
   const cast = (world.characters || []).map((c) => `- ${c.name}${c.role ? ` — ${c.role}` : ""}`).join("\n");
   const places = (world.locations || [])
     .map((l) => `- ${l.slug || l.name} (${l.name})${l.description ? `: ${l.description}` : ""}`)
     .join("\n");
   const approx = Math.round(seconds / 4);
   const [lo, hi] = musicCueRange(seconds);
+  const scripted = screenplay.length > 0;
   const system = [
     "You are the writing room of StorySeam's Auto pipeline, cutting a short film into its SHOT LIST.",
-    "There is no screenplay and nobody to ask: the Idea and the World below ARE the story. Tell it",
-    `completely — a beginning, a turn, an ending — in exactly ${formatLength(seconds)} (${seconds} seconds) of`,
-    `film: the shots' \`dur\` must add up to ${seconds}. Aim for about ${approx} shots of 2–6 seconds each.`,
+    ...(scripted
+      ? [
+          "The SCREENPLAY below is the story — walk it IN ORDER and cut it into shots; nobody will be asked",
+          "anything. Every scene heading starts a new beat; every line of dialogue is spoken, VERBATIM, in the",
+          "shot it lands on (a long speech spans shots); the action is what the screenplay shows. Do not add",
+          `scenes, characters or lines the screenplay does not have. The film runs exactly ${formatLength(seconds)}`,
+          `(${seconds} seconds): the shots' \`dur\` must add up to ${seconds}. Aim for about ${approx} shots of 2–6 seconds each.`,
+        ]
+      : [
+          "There is no screenplay and nobody to ask: the Idea and the World below ARE the story. Tell it",
+          `completely — a beginning, a turn, an ending — in exactly ${formatLength(seconds)} (${seconds} seconds) of`,
+          `film: the shots' \`dur\` must add up to ${seconds}. Aim for about ${approx} shots of 2–6 seconds each.`,
+        ]),
     "",
     "How a shot is cut and what every field holds, as the studio's shot-list playbook states it:",
     "",
     SHOTLIST_FIELDS,
     "",
     "For this list:",
-    "- There is no script, so beats are the story's own movements (B1, B2, …) — one per place/scene.",
+    scripted
+      ? "- Beats are the screenplay's scenes (B1, B2, …) in order — one per scene heading."
+      : "- There is no script, so beats are the story's own movements (B1, B2, …) — one per place/scene.",
     "- `location` is one of the World's place SLUGS listed below.",
     "- `characters` uses the World's names EXACTLY.",
     "- `action` names every character in the shot by that exact name (never \"he\" or \"the pilot\"): the",
@@ -94,6 +109,7 @@ export function shotlistMessages({ idea, world, seconds, language = DEFAULT_FILM
     "",
     "Places (slug (name): description):",
     places || "(none)",
+    ...(scripted ? ["", "The screenplay:", formatScreenplay(screenplay)] : []),
   ].filter((l) => l !== "").join("\n");
   return [
     { role: "system", content: system },
@@ -143,9 +159,11 @@ export async function runShotlistStage({ job, results, env, model }, deps = {}) 
   const world = await (deps.readWorld || readWorld)(env, pid);
   const { seconds } = filmPlanFor(job);
   const idea = results?.world?.idea || "";
+  // The Script stage's draft (or the room's rewrite), as pinned now.
+  const screenplay = docToElements(pinnedDraft(await (deps.readStore || readStore)(env, pid))?.doc);
 
   const answer = await model.json({
-    messages: shotlistMessages({ idea, world, seconds, language: job.language || DEFAULT_FILM_LANGUAGE }),
+    messages: shotlistMessages({ idea, world, seconds, screenplay, language: job.language || DEFAULT_FILM_LANGUAGE }),
     maxTokens: 32000,
     temperature: 0.7,
   });

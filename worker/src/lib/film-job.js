@@ -10,7 +10,11 @@
 //
 // ── Shape (later slices EXTEND this, never reshape it) ─────────────────────
 //
-//   job  = { id, prompt, seconds?, status: 'running'|'awaiting-confirm'|'done'|'stopped'
+//   job  = { id, prompt, seconds?, style?, engine? ('seedance' — the story flow; absent = the Director),
+//            writer? ('claude' — the LLM that writes it; absent = the Worker's AUTO_WRITER),
+//            depth? ('deep' — the writers' room reads the script; absent = fast),
+//            specialists? (the room's passes, film-plan.ts DEFAULT_DEEP_SPECIALISTS when none),
+//            status: 'running'|'awaiting-confirm'|'done'|'stopped'
 //            |'refused'|'declined', error, projectId, episodeId, userId,
 //            auto, createdAt, updatedAt, steps: [step],
 //            spend: { [stageKey]: dollars }, stopped?: { stage, label, reason,
@@ -82,7 +86,8 @@
 //
 // `job.auto` is the owner's Auto toggle (lib/auto-settings.js), read when the
 // job STARTS. On, nothing asks. Off, the job pauses ONCE, right after the
-// `CONFIRM_AFTER` stage (the World) and before any paid stage runs: status
+// last story stage (`confirmAfterFor` — the Script, or a Deep Film's room) and
+// before any paid stage runs: status
 // `awaiting-confirm`, `job.confirm` holds the Film plan (planFilm — length,
 // reels, sheets, estimate per stage and total) the confirm card draws.
 //
@@ -116,6 +121,9 @@
 // (the Editor's media pool, the agent's list_media_pool) lists as
 // "Film — <title>". `film.done` carries it all.
 import { writerModel } from "./writer.js";
+import { runScriptStage } from "./film-stages/script.js";
+import { runRoomStage } from "./film-stages/room.js";
+import { SPECIALIST_BY_ID, isSpecialistId } from "./specialists.ts";
 import { autoAvailable } from "./auto-availability.js";
 import { checkAllowance, countFilm } from "./film-allowance.js";
 import { readIndex, readSeries, repairSeries, updateSittings } from "./director.js";
@@ -130,7 +138,15 @@ import { runStillsStage } from "./film-stages/stills.js";
 import { runSittingStage } from "./film-stages/sitting.js";
 import { runScoreStage } from "./film-stages/score.js";
 import { readAutoSettings } from "./auto-settings.js";
-import { planFilm, formatLength, FILM_STEPS, FILM_STYLES, FILM_STYLE_IDS, MAX_REFERENCE_SHEETS } from "./film-plan.ts";
+import { runStoryFlowSheetsStage } from "./film-stages/story-flow/sheets.js";
+import { runStoryFlowShotlistStage } from "./film-stages/story-flow/shotlist.js";
+import { runStoryFlowPromptsStage } from "./film-stages/story-flow/prompts.js";
+import { runStoryFlowRunStage } from "./film-stages/story-flow/run.js";
+import { runStoryFlowStitchStage } from "./film-stages/story-flow/stitch.js";
+import {
+  planFilm, planStoryFlow, formatLength, filmStepsFor, FILM_ENGINES, FILM_STYLES, FILM_STYLE_IDS, FILM_WRITERS, FILM_WRITER_IDS,
+  FILM_DEPTHS, FILM_DEPTH_IDS, DEFAULT_DEEP_SPECIALISTS, MAX_REFERENCE_SHEETS, MAX_STORY_FLOW_SHEETS,
+} from "./film-plan.ts";
 
 /**
  * A Film length someone CHOSE (the /director-story gear, make_film's `seconds`)
@@ -145,10 +161,52 @@ export function checkFilmStyle(style) {
   return `A Film's look is one of ${FILM_STYLES.map((s) => `${s.id} (${s.label})`).join(", ")}.`;
 }
 
-export function checkFilmSeconds(seconds) {
+export function checkFilmSeconds(seconds, engine = null) {
   if (seconds === undefined || seconds === null) return null;
-  if (typeof seconds === "number" && FILM_STEPS.includes(seconds)) return null;
-  return `A Film is ${FILM_STEPS.map(formatLength).join(", ")} long — choose one of those.`;
+  const steps = filmStepsFor(engine);
+  if (typeof seconds === "number" && steps.includes(seconds)) return null;
+  return `A Film is ${steps.map(formatLength).join(", ")} long — choose one of those.`;
+}
+
+/**
+ * Which pipeline makes the Film: the Director (`/director-story`, the default)
+ * or Seedance 2.5 (`/story-flow` — `seedance`). The ROUTE chooses it. → message | null
+ */
+/** The LLM that writes the Film (film-plan.ts FILM_WRITERS); none is the default. → message | null */
+export function checkFilmWriter(writer) {
+  if (writer === undefined || writer === null || writer === "") return null;
+  if (FILM_WRITER_IDS.includes(writer)) return null;
+  return `A Film is written by one of ${FILM_WRITERS.map((w) => `${w.id} (${w.label})`).join(", ")}.`;
+}
+
+/** How deep the story work goes (film-plan.ts FILM_DEPTHS); none is fast. → message | null */
+export function checkFilmDepth(depth) {
+  if (depth === undefined || depth === null || depth === "") return null;
+  if (FILM_DEPTH_IDS.includes(depth)) return null;
+  return `A Film's depth is one of ${FILM_DEPTHS.map((d) => `${d.id} (${d.label})`).join(", ")}.`;
+}
+
+/** The room's passes: every id one of the fifteen specialists; none is the default room. → message | null */
+export function checkFilmSpecialists(specialists) {
+  if (specialists === undefined || specialists === null) return null;
+  if (!Array.isArray(specialists)) return "A Film's specialists is a list of specialist ids.";
+  const bad = specialists.filter((id) => !isSpecialistId(id));
+  if (bad.length) return `Not a specialist: ${bad.map(String).join(", ")}.`;
+  return null;
+}
+
+/** The room a Deep Film runs: the chosen passes in ROSTER order (the stage order is craft), else the default room. */
+export function roomFor(job) {
+  const chosen = Array.isArray(job?.specialists) ? job.specialists.filter(isSpecialistId) : [];
+  const ids = chosen.length ? chosen : [...DEFAULT_DEEP_SPECIALISTS];
+  return [...new Set(ids)].sort((a, b) => SPECIALISTS_INDEX.get(a) - SPECIALISTS_INDEX.get(b));
+}
+const SPECIALISTS_INDEX = new Map([...SPECIALIST_BY_ID.keys()].map((id, i) => [id, i]));
+
+export function checkFilmEngine(engine) {
+  if (engine === undefined || engine === null || engine === "") return null;
+  if (FILM_ENGINES.includes(engine)) return null;
+  return `A Film is made by one of ${FILM_ENGINES.join(", ")}.`;
 }
 
 export const FILM_EVENT_RESOURCE = "auto";
@@ -163,10 +221,20 @@ export const FILM_EVENTS = Object.freeze([
 export const PENDING_POLL_MS = 15_000;
 
 /** When the DO should run the job's next attempt: later for a pending stage, else now. */
-export const nextAlarmDelay = (job) => (job?.steps?.at(-1)?.pending ? PENDING_POLL_MS : 0);
+export const nextAlarmDelay = (job) => {
+  const step = job?.steps?.at(-1);
+  if (!step?.pending) return 0;
+  // A stage with more of its own work to do right away (the room's next pass) says so.
+  return Number.isFinite(step.pollMs) ? Math.max(0, step.pollMs) : PENDING_POLL_MS;
+};
 
-/** The stage after which an Auto-off job pauses to ask. */
-export const CONFIRM_AFTER = "world";
+/** The stage after which an Auto-off job pauses to ask: the last unpaid story stage, so the script is on the table. */
+export const CONFIRM_AFTER = "script";
+/** The stage this job pauses after: the last story stage its list HAS (a list without one — tests — asks after the World). */
+export function confirmAfterFor(job, stages = stagesFor(job)) {
+  for (const key of ["room", CONFIRM_AFTER, "world"]) if (stages.some((s) => s.key === key)) return key;
+  return CONFIRM_AFTER;
+}
 
 /** A job that holds the project: a new prompt queues behind it. */
 export const isActive = (job) => job?.status === "running" || job?.status === "awaiting-confirm";
@@ -271,6 +339,39 @@ export const FILM_STAGES = Object.freeze([
   { key: "score", label: "Score", paid: true, run: (ctx) => runScoreStage(ctx) },
 ]);
 
+/**
+ * The STORY FLOW (/story-flow, `job.engine === "seedance"`): the same prompt to
+ * Film on Seedance 2.5 — see film-plan.ts › The STORY FLOW. Look and World are
+ * the Director flow's own; from the sheets on, every stage is the story flow's
+ * (./film-stages/story-flow/). Keys are stable public ids, like FILM_STAGES'.
+ */
+export const STORY_FLOW_STAGES = Object.freeze([
+  { key: "look", label: "Look", run: (ctx) => runLookStage(ctx) },
+  { key: "world", label: "Idea + World", run: runWorldStage },
+  { key: "sheets", label: "Character & location sheets", paid: true, run: (ctx) => runStoryFlowSheetsStage(ctx) },
+  { key: "shotlist", label: "Shot list", run: (ctx) => runStoryFlowShotlistStage(ctx) },
+  { key: "prompts", label: "Segment prompts", run: (ctx) => runStoryFlowPromptsStage(ctx) },
+  { key: "run", label: "Video run", paid: true, run: (ctx) => runStoryFlowRunStage(ctx) },
+  { key: "stitch", label: "Final cut", paid: true, run: (ctx) => runStoryFlowStitchStage(ctx) },
+]);
+
+/**
+ * The STORY stages every engine shares, right after the World: the Script
+ * (film-stages/script.js — the screenplay the Shot list is cut from), and for
+ * a Deep Film the writers' room (film-stages/room.js — the chosen specialists
+ * read the draft, then it is rewritten on their notes).
+ */
+export const SCRIPT_STAGE = Object.freeze({ key: "script", label: "Script", run: (ctx) => runScriptStage(ctx) });
+export const ROOM_STAGE = Object.freeze({ key: "room", label: "Writers' room", run: (ctx) => runRoomStage(ctx) });
+
+/** The stages a job runs: its engine's, with the story stages after the World. */
+export function stagesFor(job) {
+  const base = job?.engine === "seedance" ? STORY_FLOW_STAGES : FILM_STAGES;
+  const at = base.findIndex((s) => s.key === "world") + 1;
+  const story = job?.depth === "deep" ? [SCRIPT_STAGE, ROOM_STAGE] : [SCRIPT_STAGE];
+  return [...base.slice(0, at), ...story, ...base.slice(at)];
+}
+
 // ── Job lifecycle ───────────────────────────────────────────────────────────
 
 /** What the surface and the events carry — the job minus who started it. */
@@ -287,14 +388,22 @@ export function publicJob(job) {
  * → `{ ok: true, job }` | `{ ok: false, refusal: { code, message } }`, code
  *   'invalid' | 'busy' | 'paused' | 'unavailable' | 'allowance'.
  */
-export async function startFilm(existing, { prompt, seconds, style, userId, projectId, episodeId }, deps = {}) {
+export async function startFilm(existing, { prompt, seconds, style, engine, writer, depth, specialists, userId, projectId, episodeId }, deps = {}) {
   const env = deps.env;
   const text = str(prompt);
   if (!text) return refuse("invalid", "Write a prompt first.");
-  const badLength = checkFilmSeconds(seconds);
+  const badEngine = checkFilmEngine(engine);
+  if (badEngine) return refuse("invalid", badEngine);
+  const badLength = checkFilmSeconds(seconds, engine);
   if (badLength) return refuse("invalid", badLength);
   const badStyle = checkFilmStyle(style);
   if (badStyle) return refuse("invalid", badStyle);
+  const badWriter = checkFilmWriter(writer);
+  if (badWriter) return refuse("invalid", badWriter);
+  const badDepth = checkFilmDepth(depth);
+  if (badDepth) return refuse("invalid", badDepth);
+  const badRoom = checkFilmSpecialists(specialists);
+  if (badRoom) return refuse("invalid", badRoom);
   if (text.length > MAX_PROMPT_CHARS) {
     return refuse("invalid", `Keep the prompt under ${MAX_PROMPT_CHARS} characters.`);
   }
@@ -322,6 +431,12 @@ export async function startFilm(existing, { prompt, seconds, style, userId, proj
       // The look, when one was CHOSEN; otherwise the Look stage classifies the
       // premise (film-stages/look.js) and every later stage reads its pick.
       ...(style ? { style } : {}),
+      // The pipeline, when it is not the Director's (the route chose it).
+      ...(engine === "seedance" ? { engine } : {}),
+      // The writing model, when it is not the studio's default.
+      ...(writer && writer !== "default" ? { writer } : {}),
+      // The writers' room, when the author asked for one: its passes ride along.
+      ...(depth === "deep" ? { depth, specialists: roomFor({ specialists }) } : {}),
       status: "running",
       error: null,
       projectId: projectId ?? null,
@@ -387,7 +502,7 @@ export function allowanceKindOf(job) {
  */
 export async function advanceFilm(job, deps) {
   if (!job || job.status !== "running") return job;
-  const stages = deps.stages || FILM_STAGES;
+  const stages = deps.stages || stagesFor(job);
   const now = () => iso(deps.now?.());
   const commit = deps.commit || (async () => {});
 
@@ -426,7 +541,7 @@ export async function advanceFilm(job, deps) {
       // Not finished yet (see "Pending stages"): keep the step running, show
       // its progress, and come back on a later alarm. Not a failure.
       const changed = out.summary !== step.summary || JSON.stringify(out.result ?? null) !== JSON.stringify(step.result);
-      step = { ...step, status: "running", pending: true, summary: out.summary ?? step.summary, result: out.result ?? step.result };
+      step = { ...step, status: "running", pending: true, summary: out.summary ?? step.summary, result: out.result ?? step.result, ...(Number.isFinite(out.pollMs) ? { pollMs: out.pollMs } : {}) };
       job = replace(addSpend(job, stage.key, out.spend), step);
       if (changed || out.spend > 0) await commit(job, event("step.progress", job, step));
       return job;
@@ -461,9 +576,10 @@ export async function advanceFilm(job, deps) {
     return job;
   }
 
-  // Auto off: ask once, after the World, before anything is paid for.
-  if (stage.key === CONFIRM_AFTER && job.auto === false && !job.confirm) {
-    const confirm = { status: "awaiting", after: stage.key, ...confirmPlan(job, step.result), askedAt: now(), answeredAt: null };
+  // Auto off: ask once, after the story is written, before anything is paid for.
+  if (stage.key === confirmAfterFor(job, stages) && job.auto === false && !job.confirm) {
+    const world = stage.key === "world" ? step.result : results.world;
+    const confirm = { status: "awaiting", after: stage.key, ...confirmPlan(job, world), askedAt: now(), answeredAt: null };
     job = { ...job, status: "awaiting-confirm", confirm, updatedAt: now() };
     await commit(job, event("film.awaiting-confirm", job));
     return job;
@@ -609,14 +725,16 @@ export async function retryFilm({ job, queue = [], archived = null } = {}, filmI
  */
 export function filmOf(job) {
   const done = (key) => job?.steps?.find((s) => s.key === key && s.status === "done")?.result || null;
-  const score = done("score");
+  // The Director flow's film is the SCORED sitting; the story flow's is its
+  // final cut (film-stages/story-flow/stitch.js), which has the same fields.
+  const score = done("score") || done("stitch");
   if (!score?.url) return null;
   const sitting = done("sitting");
   const world = done("world");
   const measured = Number(score.measured?.durationMs);
   const seconds = Number.isFinite(measured) && measured > 0
     ? Math.round(measured / 100) / 10
-    : Number(sitting?.seconds) || null;
+    : Number(sitting?.seconds) || Number(score.seconds) || null;
   return {
     url: score.url,
     file: score.file || null,
@@ -695,6 +813,18 @@ const money = (n) => `$${(Number(n) || 0).toFixed(2)}`;
  * → { summary, plan: { seconds, length, capped, reels, pins, sheets, estimate } }
  */
 export function confirmPlan(job, worldResult) {
+  if (job?.engine === "seedance") {
+    // Style anchor + a turnaround and a face per character + a plate per place.
+    const drawn = 1 + 2 * (worldResult?.characters?.length || 0) + (worldResult?.places?.length || 0);
+    const sheets = Math.min(MAX_STORY_FLOW_SHEETS, drawn);
+    const p = planStoryFlow({ prompt: job.prompt, seconds: job.seconds ?? null, referenceSheets: sheets });
+    const plan = {
+      engine: p.engine, seconds: p.seconds, length: p.length, capped: p.capped, requestedSeconds: p.requestedSeconds,
+      segments: p.segments, durations: p.durations, resolution: p.resolution, sheets, estimate: p.estimate,
+    };
+    const n = (k, one) => `${k} ${one}${k === 1 ? "" : "s"}`;
+    return { summary: `${p.length} · ${n(p.segments, "segment")} at ${p.resolution} · ${n(sheets, "sheet")} · about ${money(p.estimate.total)}`, plan };
+  }
   const drawn = (worldResult?.characters?.length || 0) + (worldResult?.places?.length || 0);
   const sheets = Math.min(MAX_REFERENCE_SHEETS, Math.max(1, drawn));
   const p = planFilm({ prompt: job.prompt, seconds: job.seconds ?? null, referenceSheets: sheets });
@@ -747,11 +877,11 @@ function answerable(job, filmId) {
 
 /** Drive a job until it stops (tests; the DO advances one attempt per alarm). */
 export async function runFilm(job, deps) {
-  let guard = (deps.stages || FILM_STAGES).length * 2 + 2;
+  let guard = (deps.stages || stagesFor(job)).length * 2 + 2;
   while (job?.status === "running" && guard-- > 0) job = await advanceFilm(job, deps);
   return job;
 }
 
-/** The production model: Groq through AI Gateway (lib/groq.js). */
-// The writing model — Workers AI Kimi by default, Groq behind AUTO_WRITER=groq (lib/writer.js).
-export const groqModel = (env) => writerModel(env);
+// The writing model for ONE Film: the author's pick (`job.writer` — Claude), else
+// the Worker's AUTO_WRITER (lib/writer.js).
+export const filmWriterModel = (env, job) => writerModel(env, job?.writer);

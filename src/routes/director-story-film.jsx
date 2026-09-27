@@ -1,4 +1,4 @@
-// /director-story/create/:filmId — the STORY view of ONE Film.
+// /create/:filmId — the STORY view of ONE Film.
 //
 // The URL is the state. Every Film runs in a project of its own, so the page
 // first asks which one (GET /api/auto/films/:id/project — user-scoped), sets it
@@ -15,13 +15,13 @@
 // No loading screen: the steps render at once, all waiting, and fill in when
 // the job arrives. The shared pieces live in components/DirectorStory.jsx.
 import { useCallback, useEffect, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router";
+import { Link, useLocation, useNavigate, useParams } from "react-router";
 import { Plus } from "lucide-react";
 import {
   ACTIVE,
   AuthGate,
+  FLOWS,
   LiveSync,
-  PATH,
   POLL_MS,
   Page,
   StoryView,
@@ -35,12 +35,20 @@ import { MONO } from "@/lib/hudTheme";
 const POLLED = new Set([...ACTIVE, "queued", "loading"]);
 
 export function Component() {
-  return <AuthGate>{(signedIn) => <FilmStory signedIn={signedIn} />}</AuthGate>;
+  return <FilmPage flow={FLOWS.director} />;
 }
 
-function FilmStory({ signedIn }) {
+/** One Film's page. Its steps follow the Film's own engine once it is read. */
+export function FilmPage({ flow }) {
+  return <AuthGate>{(signedIn) => <FilmStory flow={flow} signedIn={signedIn} />}</AuthGate>;
+}
+
+function FilmStory({ flow, signedIn }) {
   const { filmId } = useParams();
   const navigate = useNavigate();
+  // The engine the Film was started with, handed over by whoever navigated
+  // here, so the waiting steps are the right pipeline's before the job arrives.
+  const engine = useLocation().state?.engine ?? flow.engine;
   // The Film's own project, looked up from its id (and set on the shim).
   const { projectId, error } = useFilmProject(signedIn, filmId);
   // `undefined` = not read yet; `null` = no such Film.
@@ -79,7 +87,7 @@ function FilmStory({ signedIn }) {
     return () => clearInterval(t);
   }, [polled, refresh]);
 
-  const onNew = () => navigate(PATH);
+  const onNew = () => navigate(flow.path);
 
   // Retry a stopped Film from its failed step: the answer is the running job,
   // so the failed step flips back to running at once; the live events and the
@@ -98,14 +106,14 @@ function FilmStory({ signedIn }) {
     }
   };
 
-  if (job === null) return <Stranded message="There's no story here." />;
-  if (error && job === undefined) return <Stranded message={error} />;
+  if (job === null) return <Stranded path={flow.path} message="There's no story here." />;
+  if (error && job === undefined) return <Stranded path={flow.path} message={error} />;
 
   return (
     <>
       {projectId ? <LiveSync key={projectId} onEvent={onEvent} onResync={refresh} /> : null}
       <StoryView
-        job={job || { id: filmId, prompt: "", status: "loading", steps: [] }}
+        job={job || { id: filmId, prompt: "", status: "loading", steps: [], ...(engine ? { engine } : {}) }}
         projectId={projectId}
         onNew={onNew}
         onRetry={onRetry}
@@ -116,13 +124,13 @@ function FilmStory({ signedIn }) {
   );
 }
 
-function Stranded({ message }) {
+function Stranded({ path, message }) {
   return (
     <Page className="items-center justify-center px-4">
       <main className="flex max-w-md flex-col items-center gap-5 text-center" data-not-found>
         <p className="text-base">{message}</p>
         <Link
-          to={PATH}
+          to={path}
           className="flex items-center gap-1.5 border border-[var(--br-secondary)]/40 px-3 py-1.5 text-[0.72rem] uppercase text-[var(--br-primary)] transition-colors hover:border-[var(--br-primary)]"
           style={{ fontFamily: MONO, letterSpacing: "0.08em" }}
         >

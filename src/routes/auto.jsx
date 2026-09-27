@@ -626,7 +626,7 @@ function AutoSurface() {
             </p>
             {shown.id && (
               <Link
-                to={`/director-story/create/${encodeURIComponent(shown.id)}`}
+                to={`/create/${encodeURIComponent(shown.id)}`}
                 className="flex shrink-0 items-center gap-1 text-xs text-muted-foreground underline-offset-4 hover:underline"
               >
                 <ExternalLink size={12} aria-hidden /> Its page

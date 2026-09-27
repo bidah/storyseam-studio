@@ -19,6 +19,8 @@ import {
   isScriptShared,
   isWorldShared,
 } from "../lib/share-token.js";
+import { filmDownloadName, resolveFilmShare } from "../lib/film-share.js";
+import { mediaKey, streamKey } from "../lib/media.js";
 
 // Doc holding a project's active share token, which surfaces are on, and which
 // script draft the link points at ({ token, draftId, script, world }). Written
@@ -38,7 +40,49 @@ async function resolveShare(env, token) {
   return { pid, cfg };
 }
 
+// `attachment` with an ASCII fallback name and the real (UTF-8) one — a header
+// value must be ASCII, and a title may not be.
+const attachment = (name) =>
+  `attachment; filename="${name.normalize("NFKD").replace(/[^\x20-\x7e]/g, "").replace(/"/g, "") || "story.mp4"}"; ` +
+  `filename*=UTF-8''${encodeURIComponent(name)}`;
+
 export function registerShare(app) {
+  // A shared FILM (lib/film-share.js) — the public /watch/:token page. The
+  // manifest names the Film and where its video is; the video streams through
+  // the token (range requests for seeking), and `?download=1` answers it as an
+  // attachment named after the Film. A revoked or fabricated token, or a Film
+  // with no finished video, is one indistinguishable 404.
+  app.get("/api/share/film/:token", async (c) => {
+    const r = await resolveFilmShare(c.env, c.req.param("token"));
+    if (!r) return c.json({ error: "This share link is no longer available" }, 404);
+    const base = `/api/share/film/${encodeURIComponent(c.req.param("token"))}/video`;
+    return c.json({
+      title: r.film.title || null,
+      idea: r.film.idea || null,
+      seconds: r.film.seconds || null,
+      engine: r.job.engine || "director",
+      completedAt: r.job.updatedAt || null,
+      videoUrl: base,
+      downloadUrl: `${base}?download=1`,
+      fileName: filmDownloadName(r.film),
+    });
+  });
+
+  app.get("/api/share/film/:token/video", async (c) => {
+    const r = await resolveFilmShare(c.env, c.req.param("token"));
+    if (!r) return c.text("This share link is no longer available", 404);
+    const download = c.req.query("download") === "1";
+    return streamKey(c.env, mediaKey(r.pid, "director", r.file), c.req.header("range"), {
+      ifNoneMatch: c.req.header("if-none-match"),
+      // Revocable: never let a shared copy outlive the link in a cache.
+      cacheControl: "private, max-age=300",
+      extraHeaders: {
+        "content-type": "video/mp4",
+        ...(download ? { "content-disposition": attachment(filmDownloadName(r.film)) } : {}),
+      },
+    });
+  });
+
   // Manifest: which surfaces this link exposes, so the unified /share/:token page
   // knows which tabs to draw before fetching either payload. 404 when the token
   // is bad OR every surface is off (a fully-revoked link is indistinguishable

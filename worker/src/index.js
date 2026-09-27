@@ -67,7 +67,7 @@ import { registerSuggestions } from "./routes/suggestions.js";
 import { createAuth } from "./auth.js";
 import { broadcast } from "./lib/broadcast.js";
 import { normalizeProjectId, DEFAULT_EPISODE } from "./lib/docs.js";
-import { kindForPrefix, mediaKey, proxyKey, streamKey } from "./lib/media.js";
+import { kindForPrefix, mediaKey, proxyKey, streamKey, uploadType } from "./lib/media.js";
 import { ensureProxy } from "./lib/proxy.js";
 import { ensureVariants, variantKey, IMAGE_TIERS, isDerivableImage } from "./lib/images.js";
 import {
@@ -461,7 +461,7 @@ app.put("/ingest/*", async (c) => {
   }
   const key = decodeURIComponent(new URL(c.req.url).pathname.slice("/ingest/".length));
   await c.env.BUCKET.put(key, c.req.raw.body, {
-    httpMetadata: { contentType: c.req.header("content-type") || "application/octet-stream" },
+    httpMetadata: { contentType: uploadType(key, c.req.header("content-type")) },
   });
   proxyOnIngest(c, key);
   return c.json({ ok: true, key });
@@ -486,7 +486,7 @@ function ingestAuthed(c) {
 app.post("/ingest-mpu/start", async (c) => {
   if (!ingestAuthed(c)) return c.text("Unauthorized", 401);
   const key = c.req.query("key");
-  const mpu = await c.env.BUCKET.createMultipartUpload(key);
+  const mpu = await c.env.BUCKET.createMultipartUpload(key, { httpMetadata: { contentType: uploadType(key) } });
   return c.json({ uploadId: mpu.uploadId });
 });
 app.put("/ingest-mpu/part", async (c) => {
