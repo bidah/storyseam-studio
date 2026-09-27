@@ -13,16 +13,21 @@
 // length. A Deep Film then sends that draft through the real room
 // (./room.js); a fast one shoots it.
 //
+// The screenplay is not one call. It is written in passes (./script-flow.js —
+// an outline, a draft from it, and a revision against the craft and the
+// budget measured in code), because one call on a fast writer came back in a
+// second with two scenes and twenty words of dialogue for a two-minute film.
+// This file holds what every pass shares: the budget, the craft, the format.
+//
 // The script is saved as the Film project's PINNED draft through the same
 // store the Script tab and the agent's get_script read (lib/script-store.js),
 // so the Film's project opens with its screenplay where a screenplay goes, and
 // both Shot list stages cut it from there instead of inventing the story.
 import { planFilm, planH3, planStoryFlow, formatLength } from "../film-plan.ts";
-import { authorLines, authorLinesBrief, missingLines } from "./author-lines.js";
+import { authorLinesBrief } from "./author-lines.js";
 import { DEFAULT_FILM_LANGUAGE } from "../film-sound.js";
-import { readWorld } from "../../routes/world.js";
 import { makeDraft, nowIso, updateStore } from "../script-store.js";
-import { cleanElements, elementsToDoc, screenplayStats, WORDS_PER_SECOND } from "../script-elements.js";
+import { cleanElements, elementsToDoc, WORDS_PER_SECOND } from "../script-elements.js";
 
 const str = (v) => (typeof v === "string" ? v : v == null ? "" : String(v)).trim();
 
@@ -128,7 +133,7 @@ export const SCREENPLAY_FORMAT = [
   '- "transition" — CUT TO: / FADE OUT. Only where a cut carries meaning.',
 ].join("\n");
 
-export function scriptMessages({ idea, world, budget, language = DEFAULT_FILM_LANGUAGE, locked = [] }) {
+export function scriptMessages({ idea, world, budget, language = DEFAULT_FILM_LANGUAGE, locked = [], outline = null }) {
   const cast = (world.characters || [])
     .map((c) => {
       const bits = [c.role, c.want && `wants ${c.want}`, c.need && `needs ${c.need}`, c.traits, c.arc && `arc: ${c.arc}`, c.voice && `voice: ${c.voice}`]
@@ -158,6 +163,11 @@ export function scriptMessages({ idea, world, budget, language = DEFAULT_FILM_LA
     '  "beats": [{ "name": string, "function": string, "what": string }],',
     '  "elements": [{ "type": string, "text": string }] }',
     "`beats` is the outline you wrote from (4–8, in order); `elements` is the whole screenplay.",
+    ...(outline
+      ? ["", "You already outlined this film (below, in the user turn): write it FROM that outline, scene by scene —",
+        "each scene in its place, driven by its driver, turning where the outline says it turns, and its dialogue",
+        "sized to the outline's words for it. Improve a beat only where writing it shows a better way."]
+      : []),
   ].join("\n");
   const user = [
     `The Idea: ${idea || "(none)"}`,
@@ -174,6 +184,7 @@ export function scriptMessages({ idea, world, budget, language = DEFAULT_FILM_LA
     "",
     "Places:",
     places || "(none)",
+    ...(outline ? ["", "YOUR OUTLINE:", outline] : []),
   ].filter((l) => l !== "").join("\n");
   return [
     { role: "system", content: system },
@@ -224,42 +235,4 @@ export async function saveScriptDraft(env, pid, { name, title, elements }) {
     }
   });
   return saved;
-}
-
-/** deps (optional): { readWorld, saveScriptDraft }. */
-export async function runScriptStage({ job, results, env, model }, deps = {}) {
-  const pid = job.projectId;
-  const world = await (deps.readWorld || readWorld)(env, pid);
-  const budget = filmBudgetFor(job);
-  const idea = results?.world?.idea || "";
-  // Lines the author quoted in the prompt: written verbatim (author-lines.js).
-  const locked = authorLines(job.prompt);
-
-  const answer = await model.json({
-    messages: scriptMessages({ idea, world, budget, language: job.language || DEFAULT_FILM_LANGUAGE, locked }),
-    maxTokens: 16000,
-    temperature: 0.8,
-  });
-  const script = parseScript(answer, world);
-  const saved = await (deps.saveScriptDraft || saveScriptDraft)(env, pid, { name: "First draft", title: script.title, elements: script.elements });
-  const stats = screenplayStats(script.elements);
-  const n = (k, one) => `${k} ${one}${k === 1 ? "" : "s"}`;
-  // Said on the card rather than swallowed: the room's rewrite is told the
-  // lines too, but a draft without one is the author's request not kept.
-  const dropped = missingLines(locked, script.elements);
-  if (dropped.length) console.warn("film script: the draft leaves out the author's line(s)", job.id, dropped);
-  return {
-    summary: `“${script.title}” — ${n(stats.scenes, "scene")} · ${n(stats.lines, "line")} · ${n(stats.dialogueWords, "word")} of dialogue${dropped.length ? ` · missing ${dropped.map((l) => `“${l}”`).join(", ")}` : ""}`,
-    result: {
-      ...(locked.length ? { authorLines: locked } : {}),
-      ...(dropped.length ? { missingAuthorLines: dropped } : {}),
-      title: script.title,
-      logline: script.logline,
-      arc: script.arc,
-      beats: script.beats,
-      ...stats,
-      budget,
-      ...saved,
-    },
-  };
 }

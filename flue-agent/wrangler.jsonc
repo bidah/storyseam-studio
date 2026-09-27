@@ -39,6 +39,13 @@
       "name": "shot-studio-writers-room",
       "binding": "WRITERS_ROOM",
       "class_name": "WritersRoomWorkflow"
+    },
+    {
+      // Every Film's Script stage (src/cloudflare.ts FilmScriptWorkflow):
+      // outline → draft → revise, started through POST /scripts/:id.
+      "name": "shot-studio-film-script",
+      "binding": "FILM_SCRIPT",
+      "class_name": "FilmScriptWorkflow"
     }
   ],
   // Capture console output (incl. the observe() error lines in app.ts) in

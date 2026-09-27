@@ -3,8 +3,9 @@
 //
 // The room is the chat's own specialists, run for real: each pass is a flue
 // agent instance carrying that specialist's full subagent profile and its read
-// tools (flue-agent/src/agents/writers-room.ts), on Claude Fable — whatever
-// writer the Film's FAST steps use. The sequence is a flue-side Cloudflare
+// tools (flue-agent/src/agents/writers-room.ts), on the writer the author
+// picked for the Film in the prompt box (`job.writer` — the default or Claude),
+// like every other writing step; the round's rewrite too. The sequence is a flue-side Cloudflare
 // Workflow (flue-agent/src/cloudflare.ts `WritersRoomWorkflow`), so every pass
 // and every rewrite is a checkpointed step that survives a deploy of either
 // worker, which an alarm-driven stage here never did.
@@ -39,14 +40,12 @@ import { pinnedDraft, readStore } from "../script-store.js";
 import { cleanElements, docToElements, formatScreenplay, screenplayStats } from "../script-elements.js";
 import { SCREENPLAY_FORMAT, SCREENWRITER_CRAFT, saveScriptDraft, filmBudgetFor, takesBrief } from "./script.js";
 import { authorLines, authorLinesBrief, restoreLines } from "./author-lines.js";
-import { writerModel } from "../writer.js";
-import { mintToken, proxySecret, PROXY_HEADER, PROXY_ISSUER } from "../proxy-token.js";
+import { agentWriterModel, writerModel } from "../writer.js";
+import { flueFetch } from "../flue-workflow.js";
 
 const str = (v) => (typeof v === "string" ? v : v == null ? "" : String(v)).trim();
 const ROSTER_INDEX = new Map(SPECIALISTS.map((s, i) => [s.id, i]));
 
-/** The room is always written by Claude Fable: Deep is the slow, strong path. */
-export const ROOM_WRITER = "claude";
 /** How long between two looks at the room's progress. */
 export const ROOM_POLL_MS = 20_000;
 /** A report longer than this is cut before it reaches the rewrite prompt. */
@@ -90,7 +89,7 @@ export function roomBrief(job) {
 
 // ── The rewrite (one per round) ──────────────────────────────────────────────
 
-function worldBrief(world) {
+export function worldBrief(world) {
   const cast = (world.characters || [])
     .map((c) => {
       const bits = [c.role, c.want && `wants ${c.want}`, c.traits, c.voice && `voice: ${c.voice}`].map(str).filter(Boolean);
@@ -217,7 +216,7 @@ export async function rewriteRound(env, job, round, deps = {}) {
   const world = await (deps.readWorld || readWorld)(env, pid);
   const locked = authorLines(job.prompt);
   const budget = filmBudgetFor(job);
-  const model = deps.model || writerModel(env, ROOM_WRITER);
+  const model = deps.model || writerModel(env, job.writer);
 
   const started = Date.now();
   const answer = await model.json({
@@ -266,27 +265,11 @@ export async function finishRoom(env, pid, filmId, { status, error }) {
 
 // ── Talking to the flue worker ───────────────────────────────────────────────
 
-async function flueFetch(env, path, { userId, method = "GET", body } = {}) {
-  const secret = proxySecret(env);
-  if (!secret) throw new Error("FLUE_PROXY_SECRET is not set — the writers' room cannot be started.");
-  const headers = new Headers({ [PROXY_HEADER]: await mintToken(userId, secret, PROXY_ISSUER) });
-  if (body) headers.set("content-type", "application/json");
-  const init = { method, headers, body: body ? JSON.stringify(body) : undefined };
-  const origin = env.FLUE_V2_ORIGIN || "https://shot-studio-flue-v2.rodrigofigueroa-name.workers.dev";
-  const res = env.FLUE_V2?.fetch
-    ? await env.FLUE_V2.fetch(new Request(`https://flue.internal${path}`, init))
-    : await fetch(`${origin}${path}`, init);
-  const text = await res.text();
-  let data = {};
-  try { data = text ? JSON.parse(text) : {}; } catch { data = { raw: text.slice(0, 500) }; }
-  if (!res.ok) throw new Error(`The writers' room (${res.status}): ${data.error || data.raw || res.statusText}`);
-  return data;
-}
-
 /** Start (or re-attach to) the room's workflow. → { instanceId, status } */
 export function startRoomWorkflow(env, job, { instanceId, rounds }) {
   return flueFetch(env, `/rooms/${encodeURIComponent(instanceId)}`, {
     userId: job.userId,
+    what: "The writers' room",
     method: "POST",
     body: {
       filmId: job.id,
@@ -295,13 +278,15 @@ export function startRoomWorkflow(env, job, { instanceId, rounds }) {
       episodeId: job.episodeId || null,
       rounds,
       brief: roomBrief(job),
+      // The passes read on the Film's own writer, as a flue specifier.
+      model: agentWriterModel(env, job.writer),
     },
   });
 }
 
 /** The workflow instance's status as Cloudflare reports it. → { status, error? } */
 export function roomWorkflowStatus(env, job, instanceId) {
-  return flueFetch(env, `/rooms/${encodeURIComponent(instanceId)}`, { userId: job.userId });
+  return flueFetch(env, `/rooms/${encodeURIComponent(instanceId)}`, { userId: job.userId, what: "The writers' room" });
 }
 
 // ── The stage ────────────────────────────────────────────────────────────────

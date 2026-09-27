@@ -164,6 +164,21 @@ async function claudeJSON(env, { messages, maxTokens, temperature } = {}) {
   return parseJSONAnswer(content);
 }
 
+// The same writer as a flue MODEL SPECIFIER, for the steps that run as flue
+// agents (a Deep Film's writers' room passes, flue-agent/src/agents/writers-room.ts):
+// the Film's pick, never another. Groq has no flue provider, so a Groq default
+// reads the room on Kimi. Keep in lockstep with ROOM_MODELS in
+// flue-agent/src/lib/models.ts, which refuses any other specifier.
+export const AGENT_WRITER_MODELS = {
+  claude: "cloudflare/anthropic/claude-fable-5.1",
+  "workers-ai": "cloudflare/@cf/moonshotai/kimi-k2.6",
+  cerebras: `cerebras/${CEREBRAS_WRITER_MODEL}`,
+};
+export function agentWriterModel(env, writer = null) {
+  if (writer === "claude") return AGENT_WRITER_MODELS.claude;
+  return AGENT_WRITER_MODELS[writerProvider(env)] || AGENT_WRITER_MODELS["workers-ai"];
+}
+
 // What the Film job is handed as `model`: { json(opts) → object }. `writer` is
 // the Film's pick (`job.writer`); absent or `default` is the Worker's AUTO_WRITER.
 export function writerModel(env, writer = null) {

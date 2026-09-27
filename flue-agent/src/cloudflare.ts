@@ -11,7 +11,7 @@
 //
 // For each ROUND (the roster's stages in order — outline, draft, polish, lock):
 //   1. every specialist of the round reads the pinned draft SIDE BY SIDE, each
-//      as its own WritersRoom agent instance on Claude Fable. A pass is two
+//      as its own WritersRoom agent instance on the Film's writer (`model`). A pass is two
 //      steps: `dispatch` (checkpoints the receipt the moment it exists) and
 //      `read` (awaits the settled reply and reports it to the worker). A
 //      restart between them re-attaches with the same receipt rather than
@@ -25,7 +25,7 @@ import { WorkflowEntrypoint, type WorkflowEvent, type WorkflowStep } from "cloud
 import { init } from "@flue/runtime";
 import { WritersRoom, type RoomPassData } from "./agents/writers-room.js";
 import { createApi, type Api } from "./lib/api.js";
-import { ROOM_MODEL } from "./lib/models.js";
+import { ROOM_MODEL, roomModel } from "./lib/models.js";
 
 export type RoomRound = { round: number; stage: string; specialists: string[] };
 export type RoomParams = {
@@ -36,6 +36,8 @@ export type RoomParams = {
   rounds: RoomRound[];
   /** The Film's constraints, written by the worker (length, budget, language, the author's lines). */
   brief: string;
+  /** The Film's writer as a flue specifier — the passes read on it (lib/models.ts roomModel). */
+  model?: string | null;
 };
 
 type RoomDoc = {
@@ -156,6 +158,7 @@ export class WritersRoomWorkflow extends WorkflowEntrypoint<Record<string, unkno
             const initialData: RoomPassData = {
               projectId: p.projectId, userId: p.userId, filmId: p.filmId,
               specialist, round: round.round, stage: round.stage, episodeId: p.episodeId ?? null,
+              model: roomModel(p.model),
             };
             let lastError: unknown = null;
             for (let attempt = 1; attempt <= PASS_ATTEMPTS; attempt++) {
@@ -181,7 +184,8 @@ export class WritersRoomWorkflow extends WorkflowEntrypoint<Record<string, unkno
                 );
               } catch (err) {
                 let why = describeRoomError(err);
-                if (!why.fatal) why = (await probeClaude(this.env as Record<string, unknown>)) ?? why;
+                // Only a Claude pass is worth probing Claude for.
+                if (!why.fatal && roomModel(p.model) === ROOM_MODEL) why = (await probeClaude(this.env as Record<string, unknown>)) ?? why;
                 lastError = new Error(`${specialist}: ${why.message}`);
                 console.warn("[room] pass failed", { filmId: p.filmId, specialist, attempt, error: why.message });
                 // Spent credits are not a hiccup: a second dispatch is refused the same way.
@@ -203,6 +207,62 @@ export class WritersRoomWorkflow extends WorkflowEntrypoint<Record<string, unkno
           },
         );
       }
+
+      await step.do("finish", () => api.post(`${base}/finish`, { status: "done" }).then(() => ({ ok: true })));
+      return { ok: true };
+    } catch (err) {
+      const error = describeRoomError(err).message.slice(0, 500);
+      await step.do("report the failure", () =>
+        api.post(`${base}/finish`, { status: "failed", error }).then(() => ({ ok: false })),
+      );
+      throw err;
+    }
+  }
+}
+
+// ── FilmScriptWorkflow — every Film's Script stage ───────────────────────────
+//
+// The screenplay in passes (worker/src/lib/film-stages/script-flow.js):
+// outline → draft → revise, and a second revision only when the first says a
+// measured problem survived it. Each pass is a worker route
+// (…/script/pass) — the model call runs THERE, on the Film's own writer, since
+// the budget, the World and the author's lines are worker code — and each is a
+// checkpointed step here, so a deploy of either worker mid-pass retries that
+// pass instead of stranding the Film. Passes already on file are skipped.
+export type ScriptParams = { filmId: string; projectId: string; userId: string; episodeId?: string | null };
+
+type ScriptDoc = { passes?: Record<string, { again?: boolean }> } | null;
+
+// A Claude draft of a five-minute film is minutes; the fast writer, seconds.
+const SCRIPT_PASS_TIMEOUT = "15 minutes" as const;
+
+export class FilmScriptWorkflow extends WorkflowEntrypoint<Record<string, unknown>, ScriptParams> {
+  async run(event: WorkflowEvent<ScriptParams>, step: WorkflowStep) {
+    const p = event.payload;
+    const api: Api = createApi(p.projectId, p.userId, `script-${p.filmId}`, p.episodeId ?? null);
+    const base = `/api/auto/films/${encodeURIComponent(p.filmId)}/script`;
+    const pass = (name: string) =>
+      step.do(
+        `pass ${name}`,
+        { retries: { limit: 2, delay: "20 seconds", backoff: "constant" }, timeout: SCRIPT_PASS_TIMEOUT },
+        async () => {
+          const { pass: entry } = (await api.post(`${base}/pass`, { pass: name })) as { pass?: { again?: boolean; draftName?: string } };
+          return { again: !!entry?.again, draftName: entry?.draftName ?? null };
+        },
+      );
+
+    try {
+      const before = await step.do("what the script already has", async () => {
+        const { script } = (await api.get(base)) as unknown as { script: ScriptDoc };
+        return { passes: Object.keys(script?.passes || {}), again: !!script?.passes?.["revise-1"]?.again };
+      });
+      let again = before.again;
+      for (const name of ["outline", "draft", "revise-1"]) {
+        if (before.passes.includes(name)) continue;
+        const out = await pass(name);
+        if (name === "revise-1") again = out.again;
+      }
+      if (again && !before.passes.includes("revise-2")) await pass("revise-2");
 
       await step.do("finish", () => api.post(`${base}/finish`, { status: "done" }).then(() => ({ ok: true })));
       return { ok: true };

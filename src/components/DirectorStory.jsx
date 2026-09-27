@@ -1991,6 +1991,26 @@ function StepResultBody({ step, projectId }) {
           </p>
           {r.draftId ? (<div><PreviewLabel>The script · {r.draftName || "draft"}</PreviewLabel><Screenplay draftId={r.draftId} /></div>) : null}
           {r.beats?.length ? (<div><PreviewLabel>Beats</PreviewLabel><NameList items={r.beats.map((b) => ({ name: b.name, detail: b.what }))} /></div>) : null}
+          {r.outline?.length ? (
+            <div>
+              <PreviewLabel>The outline</PreviewLabel>
+              <NameList items={r.outline.map((s) => ({ name: `${s.scene}. ${s.place || "—"}`, detail: [s.opens && s.closes && `${s.opens} → ${s.closes}`, s.turn].filter(Boolean).join(" — ") }))} />
+            </div>
+          ) : null}
+          {(r.revisions || []).map((rv) => (
+            <div key={rv.pass}>
+              <PreviewLabel>{rv.pass === "revise-2" ? "Second revision" : "Revision"}{rv.draftName ? ` · ${rv.draftName}` : ""}</PreviewLabel>
+              {rv.review?.length ? (
+                <ul className="list-disc space-y-1 pl-4 text-xs text-[var(--br-secondary)]">{rv.review.map((x, i) => <li key={i}>{x.where ? `${x.where} — ` : ""}{x.issue}</li>)}</ul>
+              ) : null}
+              {rv.changes?.length ? (
+                <ul className="mt-2 list-disc space-y-1 pl-4 text-xs text-[var(--br-primary)]/85">{rv.changes.map((x, i) => <li key={i}>{x}</li>)}</ul>
+              ) : null}
+            </div>
+          ))}
+          {r.issues?.length ? (
+            <div><PreviewLabel>Still measured</PreviewLabel><ul className="list-disc space-y-1 pl-4 text-xs text-[var(--br-secondary)]">{r.issues.map((x, i) => <li key={i}>{x}</li>)}</ul></div>
+          ) : null}
         </div>
       );
     case "room": {

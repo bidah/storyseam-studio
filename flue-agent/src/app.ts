@@ -242,11 +242,22 @@ if (process.env.ANTHROPIC_GATEWAY_URL) {
 // The catalog default baseUrl (https://api.cerebras.ai/v1) is used when unset, so
 // setting only CEREBRAS_API_KEY still works (direct, no gateway). The key is
 // required for any cerebras/* turn; without it that turn errors.
-if (process.env.CEREBRAS_GATEWAY_URL) {
-  gatewayOverride(
-    cerebrasProvider(),
-    process.env.CEREBRAS_GATEWAY_URL,
-    openAICompletionsApi(),
+//
+// Registered UNCONDITIONALLY (like openrouter below), because it also PINS a
+// model the catalog doesn't ship: `qwen-3.8-27b`, the studio's default Film
+// writer (worker AUTO_WRITER=cerebras), which a Deep Film's writers' room reads
+// on when the author left the writer on the default (lib/models.ts ROOM_MODELS).
+// It is cloned from the catalog's gemma-4-31b entry (same wire, same limits).
+{
+  const base = cerebrasProvider();
+  const baseUrl = process.env.CEREBRAS_GATEWAY_URL || "https://api.cerebras.ai/v1";
+  const models = base.getModels().map((model) => ({ ...model, baseUrl }));
+  const template = models.find((m) => m.id === "gemma-4-31b") ?? models[0];
+  if (template && !models.some((m) => m.id === "qwen-3.8-27b")) {
+    models.push({ ...template, id: "qwen-3.8-27b", name: "Qwen 3.8 27B" });
+  }
+  setProvider(
+    createProvider({ id: base.id, name: base.name, auth: base.auth, models, api: openAICompletionsApi() }),
   );
 }
 
@@ -472,6 +483,55 @@ app.post("/rooms/:id", async (c) => {
 app.get("/rooms/:id", async (c) => {
   const wf = roomBinding(c);
   if (!wf) return c.json({ error: "The writers' room workflow is not bound on this worker." }, 500);
+  try {
+    const instance = await wf.get(c.req.param("id"));
+    const status = (await instance.status()) as Record<string, unknown>;
+    return c.json({ instanceId: instance.id, ...status });
+  } catch (err) {
+    return c.json({ error: String((err as Error)?.message || err) }, 404);
+  }
+});
+
+// --- Every Film's Script flow -------------------------------------------------
+// Same shape and credential as the room: the Film's Script stage starts
+// FilmScriptWorkflow (cloudflare.ts) here and asks after it.
+const SCRIPT_BINDING = "FILM_SCRIPT";
+const SCRIPT_ID = /^script-[A-Za-z0-9_-]{1,90}$/;
+const scriptBinding = (c: { env: unknown }) =>
+  (c.env as Record<string, WorkflowBinding | undefined>)[SCRIPT_BINDING];
+
+app.use("/scripts/:id", async (c, next) => {
+  const secret = proxySecret();
+  if (!secret) return c.json({ error: "server misconfigured" }, 500);
+  const claims = await verifyProxyUser(c.req.header(PROXY_HEADER), secret);
+  if (!claims) return c.json({ error: "Unauthorized" }, 401);
+  if (!SCRIPT_ID.test(c.req.param("id") || "")) return c.json({ error: "Bad script id" }, 400);
+  c.set("roomUser" as never, claims.sub as never);
+  await next();
+});
+
+app.post("/scripts/:id", async (c) => {
+  const wf = scriptBinding(c);
+  if (!wf) return c.json({ error: "The script workflow is not bound on this worker." }, 500);
+  const body = (await c.req.json().catch(() => null)) as
+    | { filmId?: string; projectId?: string; userId?: string; episodeId?: string | null }
+    | null;
+  if (!body?.filmId || !body.projectId) return c.json({ error: "A script flow needs filmId and projectId." }, 400);
+  if (body.userId !== c.get("roomUser" as never)) return c.json({ error: "Forbidden" }, 403);
+  const id = c.req.param("id");
+  try {
+    const instance = await wf.create({ id, params: body });
+    return c.json({ instanceId: instance.id, status: await instance.status() }, 201);
+  } catch (err) {
+    const existing = await wf.get(id).catch(() => null);
+    if (existing) return c.json({ instanceId: existing.id, status: await existing.status(), existing: true });
+    return c.json({ error: String((err as Error)?.message || err) }, 500);
+  }
+});
+
+app.get("/scripts/:id", async (c) => {
+  const wf = scriptBinding(c);
+  if (!wf) return c.json({ error: "The script workflow is not bound on this worker." }, 500);
   try {
     const instance = await wf.get(c.req.param("id"));
     const status = (await instance.status()) as Record<string, unknown>;

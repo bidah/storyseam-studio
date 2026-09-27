@@ -5,9 +5,9 @@
 // this agent IS one of the fifteen subagents in subagents.ts — the same profile
 // (subagents/<id>.md), the same read tools (get_script, get_world, …), the
 // same nested experts (the story architect's arc experts, the table read's
-// actors) — run as a root agent so a workflow can address it, on Claude Fable.
-// The Film's FAST writer (Kimi / Qwen) never reaches the room: Deep is the
-// slow, strong path.
+// actors) — run as a root agent so a workflow can address it, on the writer
+// the author picked for the Film (`model` in its data — Claude or the studio's
+// default), like every other writing step of that Film.
 //
 // It is driven by WritersRoomWorkflow (../cloudflare.ts), one instance per
 // (Film, round, specialist): the workflow dispatches the pass, reads the
@@ -18,7 +18,7 @@
 import { useInitialData, useModel } from "@flue/runtime";
 import * as v from "valibot";
 import { createApi } from "../lib/api.js";
-import { ROOM_MODEL } from "../lib/models.js";
+import { roomModel } from "../lib/models.js";
 import { createSubagents } from "../subagents.js";
 
 export const RoomPassData = v.object({
@@ -29,6 +29,8 @@ export const RoomPassData = v.object({
   round: v.number(),
   stage: v.string(),
   episodeId: v.optional(v.nullable(v.string())),
+  /** The Film's writer as a flue specifier (lib/models.ts ROOM_MODELS); absent = Claude, as before. */
+  model: v.optional(v.nullable(v.string())),
 });
 export type RoomPassData = v.InferOutput<typeof RoomPassData>;
 
@@ -69,7 +71,7 @@ is a real answer when the draft passes your lane.`;
 
 export function WritersRoom(): string {
   const data = useInitialData<RoomPassData>();
-  useModel(ROOM_MODEL);
+  useModel(roomModel(data?.model));
   if (!data) return "Say that this writers' room pass was started without its Film, and stop.";
   const api = createApi(data.projectId, data.userId, `room-${data.filmId}`, data.episodeId ?? null);
   const specialist = createSubagents(api, [], { recordReviews: false }).find((s) => s.name === data.specialist);

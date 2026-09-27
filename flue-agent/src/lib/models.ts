@@ -17,12 +17,24 @@
 // Keep these in lockstep with src/lib/agentModel.js + mobile-app/src/lib/agent-model.ts.
 export const DEFAULT_MODEL = "cloudflare/@cf/moonshotai/kimi-k2.6";
 
-// The Deep Film's writers' room (agents/writers-room.ts) always runs on Claude
-// Fable, through the Workers AI binding and AI Gateway's Unified Billing
-// (lib/output-cap.ts routes `anthropic/…` to the authenticated gateway) — the
-// same model and billing the main worker's Claude writer uses. It is NOT a
-// chat-picker model, so it stays out of ALLOWED_MODELS.
+// The Deep Film's writers' room (agents/writers-room.ts) reads on the writer
+// the author picked for the Film in the prompt box — the worker hands the
+// workflow its flue specifier (worker/src/lib/writer.js agentWriterModel):
+// Claude Fable through the Workers AI binding and AI Gateway's Unified Billing
+// (lib/output-cap.ts routes `anthropic/…` to the authenticated gateway), or the
+// studio's default writer (Qwen on Cerebras, registered in app.ts; Kimi on
+// Workers AI). These are NOT chat-picker models, so they stay out of
+// ALLOWED_MODELS. ROOM_MODEL is only the fallback for a room started before the
+// worker sent a model — those passes were Claude.
 export const ROOM_MODEL = "cloudflare/anthropic/claude-fable-5.1";
+export const ROOM_MODELS = new Set<string>([
+  ROOM_MODEL,
+  "cerebras/qwen-3.8-27b",
+  "cloudflare/@cf/moonshotai/kimi-k2.6",
+]);
+/** The model a room pass reads on: the Film's writer when it is one of ROOM_MODELS, else the fallback. */
+export const roomModel = (model: unknown): string =>
+  typeof model === "string" && ROOM_MODELS.has(model) ? model : ROOM_MODEL;
 
 // The only model specifiers a client may select. Anything else is ignored and
 // the conversation falls back to DEFAULT_MODEL, so a client can never push an

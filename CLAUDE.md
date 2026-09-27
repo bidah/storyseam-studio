@@ -205,18 +205,29 @@ Cuts can use.
 ### The story — a Script stage, and a Deep Film's writers' room
 
 Both Film pipelines share two STORY stages after the World (`film-job.js`
-`stagesFor`). **Script** (`film-stages/script.js`) is one screenwriter prompt
-carrying the core specialists' rules (`SCREENWRITER_CRAFT`), written to the
-Film's length and saved as the Film project's pinned draft; both Shot list stages
+`stagesFor`). **Script** (`film-stages/script-flow.js`; shared prompts in
+`script.js`) is written in PASSES on the Film's own writer (`job.writer` — the
+default or Claude, never swapped for another): an outline (a plan per scene —
+place, driver, the value it turns on), a draft from it ("First draft"), and a
+revision against the specialists' rules (`SCREENWRITER_CRAFT`) and what code
+measures (`scriptIssues`: scene count, one scene per take, dialogue against the
+budget, World names, the author's lines) → "Revised draft", plus a second
+revision only when a measured problem survived. The sequence is the flue
+worker's `FilmScriptWorkflow` (each pass a checkpointed step calling back
+`/api/auto/films/:id/script/pass`, state in the `film-script:<filmId>` doc) —
+one call used to write it in a second, and thin. The last draft is pinned; both Shot list stages
 cut the screenplay from there rather than inventing the story from the World. A
 Film whose `depth` is `deep` adds the **Writers' room** (`film-stages/room.js`):
 the chosen `specialists` (the same fifteen as the chat's, `src/lib/specialists.ts`,
-in roster order; default `DEFAULT_DEEP_SPECIALISTS` in `film-plan.ts`) each read
-the draft in one model call — a pending stage, one pass per alarm, state in the
-`film-room:<filmId>` doc, each pass recorded in the `script-reviews` ledger — then
-one rewrite applies the room's notes as a second pinned draft. What each pass
-reads for is `film-stages/room-notes.js`, distilled from `flue-agent/src/subagents/`;
-when a subagent profile changes, its note there is the copy to update. The input's
+in roster order; default `DEFAULT_DEEP_SPECIALISTS` in `film-plan.ts`) read the
+draft in ROUNDS by roster stage, each pass a real subagent profile with its read
+tools (`flue-agent/src/agents/writers-room.ts`), sequenced by the flue worker's
+`WritersRoomWorkflow`; each round's rewrite is a worker route, pinned as a new
+draft; state in the `film-room:<filmId>` doc. **Every writing step of a Film —
+Script passes, room passes and rewrites included — runs on the writer picked in
+the prompt box (`job.writer`: the default or Claude). Never hardcode Claude for
+a step**: the room gets the writer as a flue specifier (`agentWriterModel` in
+`worker/src/lib/writer.js` ⇄ `ROOM_MODELS` in `flue-agent/src/lib/models.ts`). The input's
 Writer button (Fast · Deep, the room dialog with `roomEstimate`) and `make_film`'s
 `depth` / `specialists` are the two surfaces. An Auto-off Film now confirms after
 the last story stage (`confirmAfterFor`), so the script is on the table before

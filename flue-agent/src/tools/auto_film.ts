@@ -135,7 +135,7 @@ export const makeFilm = (api: Api) =>
       writer: v.optional(
         d(
           v.picklist(FILM_WRITERS.map((w) => w.id) as [string, ...string[]]),
-          `Optional WRITING MODEL — the LLM that writes every text step of the Film (Idea, World, sheet prompts, Shot list, cue sheet, music cues): ${FILM_WRITERS.map((w) => `"${w.id}" (${w.label} — ${w.blurb})`).join(", ")}. The same choice as the model picker on the Auto surface's input. Pass "claude" only when the author asks for Claude / Fable / a stronger writer; omitted is "default".`,
+          `Optional WRITING MODEL — the LLM that writes every text step of the Film (Idea, World, the Script's passes, a Deep Film's writers' room, sheet prompts, Shot list, cue sheet, music cues): ${FILM_WRITERS.map((w) => `"${w.id}" (${w.label} — ${w.blurb})`).join(", ")}. The same choice as the model picker on the Auto surface's input. Pass "claude" only when the author asks for Claude / Fable / a stronger writer; omitted is "default".`,
         ),
       ),
       depth: v.optional(
@@ -147,7 +147,7 @@ export const makeFilm = (api: Api) =>
       specialists: v.optional(
         d(
           v.array(v.picklist(SPECIALIST_IDS as [string, ...string[]])),
-          `With depth "deep": which specialists read the script, by id (${SPECIALIST_IDS.join(", ")}). Omitted, the default room reads it: ${DEFAULT_DEEP_SPECIALISTS.join(", ")}. The room runs on Claude Fable in rounds by roster stage (outline → draft → polish → lock): a round's passes read side by side (about ${ROOM_PASS_SECONDS}s), then one rewrite (about ${ROOM_REWRITE_SECONDS}s) — quote roomEstimate-style time when the author asks.`,
+          `With depth "deep": which specialists read the script, by id (${SPECIALIST_IDS.join(", ")}). Omitted, the default room reads it: ${DEFAULT_DEEP_SPECIALISTS.join(", ")}. The room runs on the Film's writer (the "writer" above) in rounds by roster stage (outline → draft → polish → lock): a round's passes read side by side (about ${ROOM_PASS_SECONDS}s), then one rewrite (about ${ROOM_REWRITE_SECONDS}s) — quote roomEstimate-style time when the author asks.`,
         ),
       ),
       resolution: v.optional(

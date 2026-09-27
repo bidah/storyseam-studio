@@ -80,6 +80,7 @@ import { archiveProject, createProject } from "./projects.js";
 import { filmShareToken, shareFilm, unshareFilm } from "../lib/film-share.js";
 import { readDoc } from "../lib/docs.js";
 import { finishRoom, recordRoomPass, rewriteRound, roomDocName } from "../lib/film-stages/room.js";
+import { finishScript, runScriptPass, scriptDocName } from "../lib/film-stages/script-flow.js";
 
 const REFUSAL_STATUS = { invalid: 400, busy: 409, allowance: 429, paused: 503, unavailable: 503 };
 
@@ -314,6 +315,43 @@ export function registerAuto(app) {
     if (res) return res;
     const body = await c.req.json().catch(() => ({}));
     return c.json(await finishRoom(c.env, job.projectId, job.id, body || {}));
+  });
+
+  // Every Film's Script flow, run by the flue worker's FilmScriptWorkflow
+  // (flue-agent/src/cloudflare.ts) — outline, draft, revision, each a pass on
+  // the Film's own writer (film-stages/script-flow.js). Like the room's, these
+  // are the workflow's surface: the Script stage started it and polls the
+  // `film-script:<id>` doc.
+  //   GET  /api/auto/films/:id/script          → the flow's doc
+  //   POST /api/auto/films/:id/script/pass     { pass } → the pass entry (idempotent)
+  //   POST /api/auto/films/:id/script/finish   { status: "done" | "failed", error? }
+  const scriptJob = async (c) => {
+    const id = c.req.param("id");
+    const { stub } = await filmHome(c, id);
+    const job = await stub.film(id);
+    if (!job) return { res: c.json({ ok: false, code: "not-found", error: "No such Film." }, 404) };
+    return { job };
+  };
+  app.get("/api/auto/films/:id/script", async (c) => {
+    const { job, res } = await scriptJob(c);
+    if (res) return res;
+    return c.json({ ok: true, script: await readDoc(c.env, job.projectId, scriptDocName(job.id), null) });
+  });
+  app.post("/api/auto/films/:id/script/pass", async (c) => {
+    const { job, res } = await scriptJob(c);
+    if (res) return res;
+    try {
+      const { pass } = await c.req.json();
+      return c.json({ ok: true, pass: await runScriptPass(c.env, job, pass) });
+    } catch (err) {
+      return roomError(c, err);
+    }
+  });
+  app.post("/api/auto/films/:id/script/finish", async (c) => {
+    const { job, res } = await scriptJob(c);
+    if (res) return res;
+    const body = await c.req.json().catch(() => ({}));
+    return c.json(await finishScript(c.env, job.projectId, job.id, body || {}));
   });
 
   const ANSWER_STATUS = { "not-found": 404, "not-awaiting": 409 };

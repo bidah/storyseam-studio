@@ -84,7 +84,7 @@ export function installWorkersAiOutputCap(): void {
   // project); wrangler.jsonc's `"ai": { "binding": "AI" }` is what supplies it.
   const binding = (env as unknown as { AI: CloudflareAIBinding }).AI;
   const base = cloudflareBindingProvider({ binding });
-  // `cloudflare/anthropic/…` (the Film's writers' room runs on Claude Fable)
+  // `cloudflare/anthropic/…` (a Film whose writer is Claude runs its writers' room on it)
   // goes through the binding too, but on AI Gateway's Unified Billing:
   // Cloudflare holds the Anthropic credential and bills the account's gateway
   // credits, which needs an AUTHENTICATED gateway — the `default` one is not.

@@ -126,7 +126,7 @@
 // (the Editor's media pool, the agent's list_media_pool) lists as
 // "Film — <title>". `film.done` carries it all.
 import { writerModel } from "./writer.js";
-import { runScriptStage } from "./film-stages/script.js";
+import { runScriptStage } from "./film-stages/script-flow.js";
 import { runRoomStage } from "./film-stages/room.js";
 import { SPECIALIST_BY_ID, isSpecialistId } from "./specialists.ts";
 import { autoAvailable } from "./auto-availability.js";

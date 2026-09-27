@@ -547,7 +547,8 @@ export function filmStyleFor({ style, prompt }: { style?: string | null; prompt?
 
 // ── The writer: which LLM writes a Film ─────────────────────────────────────
 //
-// Every writing step of a Film — the Idea and World, the sheet prompts, the
+// Every writing step of a Film — the Idea and World, the Script's passes, a
+// Deep Film's writers' room (its passes and rewrites), the sheet prompts, the
 // Shot list, the Cue sheet and the score's music cues — goes through ONE model,
 // and the author picks it with the prompt. `default` is the studio's own writer
 // (the Worker's AUTO_WRITER — fast and cheap); `claude` is Claude Fable 5.1
@@ -564,8 +565,9 @@ export const DEFAULT_FILM_WRITER: FilmWriter = 'default';
 // ── The depth: how much STORY work a Film gets before anything is drawn ─────
 //
 // Every Film is written from a SCREENPLAY now (the Script stage, right after
-// the World): one screenwriter prompt carrying the core specialists' rules,
-// saved as the project's pinned draft, which the Shot list is then cut from.
+// the World): an outline, a draft and a revision against the core
+// specialists' rules, saved as the project's pinned draft, which the Shot list
+// is then cut from.
 // That is `fast`. `deep` adds the WRITERS' ROOM stage after it: the chosen
 // specialists (src/lib/specialists.ts — the same fifteen the chat delegates to)
 // each read the draft and hand back findings, then one rewrite applies the
@@ -580,11 +582,11 @@ export const FILM_DEPTH_IDS: readonly string[] = FILM_DEPTHS.map((d) => d.id);
 export const DEFAULT_FILM_DEPTH: FilmDepth = 'fast';
 /** The room a Deep Film opens with when nobody picks: the arc first, then the three passes that move a first draft most. */
 export const DEFAULT_DEEP_SPECIALISTS: readonly string[] = ['story_architect', 'scene_doctor', 'motivation_doctor', 'dialogue_doctor'];
-/** How long each part of the story work takes, in seconds. The script is the Film's writer; the room is Claude Fable. */
+/** How long each part of the story work takes, in seconds — on Claude, the slow writer; the default writer is far quicker. */
 export const SCRIPT_WRITE_SECONDS = 75;
-/** One specialist's pass: a flue agent reading the draft with its tools, on Claude Fable. A round's passes run side by side. */
+/** One specialist's pass: a flue agent reading the draft with its tools, on the Film's writer. A round's passes run side by side. */
 export const ROOM_PASS_SECONDS = 150;
-/** One round's rewrite: Claude Fable applying that round's notes as a new pinned draft. */
+/** One round's rewrite: the Film's writer applying that round's notes as a new pinned draft. */
 export const ROOM_REWRITE_SECONDS = 120;
 
 /**
