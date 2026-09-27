@@ -117,22 +117,25 @@ export function segmentVoices(segment, voices) {
 export const SEAM_REF = Object.freeze({ kind: "seam", view: "frame", subject: "previous shot", name: "Previous shot — last frame", imageUrl: null });
 
 /**
- * The images one segment binds, in list order: its characters (turnaround
- * then face), then its place's plate, then (with `seam`) the previous
- * segment's last frame — at most MAX_H3_REFERENCE_IMAGES, and no more than fit
- * under the 12-file ceiling beside the video and the audio (`maxImages`); the
- * plate and the seam kept (a crowded segment loses its last faces before its
- * place or its seam). → [{ token, ref }] with token "Image n" (1-based, the
- * array slot).
+ * The images one segment binds, in list order: its characters' turnarounds,
+ * then its props (one object sheet each — the characters are drawn
+ * empty-handed), then the characters' faces, then its place's plate, then
+ * (with `seam`) the previous segment's last frame — at most
+ * MAX_H3_REFERENCE_IMAGES, and no more than fit under the 12-file ceiling
+ * beside the video and the audio (`maxImages`); the plate and the seam kept (a
+ * crowded segment loses its last faces before a prop, its place or its seam —
+ * a turnaround shows the face too). Props are bound in every mode: an object
+ * sheet holds no likeness. → [{ token, ref }] with token "Image n" (1-based,
+ * the array slot).
  */
 export function segmentRegistry(segment, refs, { people = true, maxImages = MAX_H3_REFERENCE_IMAGES, seam = false } = {}) {
-  const picked = [];
-  for (const name of people ? segment.characters || [] : []) {
-    for (const view of ["body", "face"]) {
-      const r = refs.find((x) => x.kind === "character" && x.view === view && key(x.subject) === key(name));
-      if (r) picked.push(r);
-    }
-  }
+  const view = (v) => (people ? segment.characters || [] : [])
+    .map((name) => refs.find((x) => x.kind === "character" && x.view === v && key(x.subject) === key(name)))
+    .filter(Boolean);
+  const props = (segment.props || [])
+    .map((name) => refs.find((x) => x.kind === "prop" && key(x.subject) === key(name)))
+    .filter(Boolean);
+  const picked = [...view("body"), ...props, ...view("face")];
   const plate = refs.find((x) => x.view === "plate" && key(x.subject) === key(segment.location));
   const fixed = [...(plate ? [plate] : []), ...(seam ? [SEAM_REF] : [])];
   const cap = Math.max(0, Math.min(MAX_H3_REFERENCE_IMAGES, maxImages));
@@ -206,9 +209,11 @@ export function compileSegment(segment, {
   if (!registry.length && !video) audio = [];
   const seamTok = registry.find((r) => r.ref.kind === "seam")?.token || null;
 
-  // <Subject n>: each character, then the place.
+  // <Subject n>: each character, then each prop bound here, then the place.
   const subjects = names.map((name, i) => ({ label: `<Subject ${i + 1}>`, name }));
-  const place = segment.location ? { label: `<Subject ${names.length + 1}>`, name: segment.location } : null;
+  const propRefs = registry.filter((r) => r.ref.kind === "prop");
+  const things = propRefs.map((r, i) => ({ label: `<Subject ${names.length + i + 1}>`, name: r.ref.subject, token: r.token, note: r.ref.inherit }));
+  const place = segment.location ? { label: `<Subject ${names.length + things.length + 1}>`, name: segment.location } : null;
   const who = (name) => {
     const s = subjects.find((x) => key(x.name) === key(name));
     const id = sid(name);
@@ -227,7 +232,13 @@ export function compileSegment(segment, {
       body && `${s.name}'s full body, build, clothing and colours follow ${body}, a turnaround sheet of ONE figure (ignore its grey background, its layout and any text)`,
       face && `${s.name}'s face and hair follow ${face} (ignore its background)`,
     ].filter(Boolean);
-    out.push(`${s.label} is ${s.name}, one character${note ? `: ${unquote(sentence(note))}` : "."}${from.length ? ` ${from.join("; ")}.` : " There is no reference image; keep them exactly as described."}`);
+    out.push(`${s.label} is ${s.name}, one character${note ? `: ${unquote(sentence(note))}` : "."}${from.length ? ` ${from.join("; ")}. The references show ${s.name} empty-handed: ${s.name} holds only what the shots below put in their hands.` : " There is no reference image; keep them exactly as described."}`);
+  }
+  for (const t of things) {
+    out.push(
+      `${t.label} is the ${t.name}, one object${t.note ? `: ${unquote(sentence(t.note))}` : "."} Its shape, size, material and colours follow ${t.token}, ` +
+        "a sheet of ONE object seen from several sides (ignore its grey background, its layout and any text). It is only where the shots below put it.",
+    );
   }
   if (place) {
     // A DESIGN reference, not a backdrop: told only "layout, architecture,
@@ -268,6 +279,7 @@ export function compileSegment(segment, {
   for (const s of subjects) {
     out.push(`${s.label} (appears throughout): fully_preserved - identity, face, hair, build, clothing and colours retained.`);
   }
+  for (const t of things) out.push(`${t.label} (the ${t.name}): fully_preserved - shape, size, material and colours retained; exactly one, held only by whoever the shots say holds it.`);
   if (place) out.push(`${place.label} (the setting): partially_preserved - architecture, materials, colours, landmarks and light retained; its reference image's framing, viewpoint and composition are not reused, each shot sees the place from its own camera.`);
   if (seamTok) out.push(`${seamTok} (opening frame): fully_preserved - the first frame of the target matches it: the same positions, props, camera, framing and light; then the action continues from there.`);
   if (video) out.push("<Video 1> (continuation starting point): fully_preserved - the target opens on its last frame: the same positions, props, camera and light.");

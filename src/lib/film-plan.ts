@@ -650,8 +650,12 @@ export const maxStagesFor = (dur: number): number =>
  * and every input second is billed, so no more.
  */
 export const EXTENSION_TAIL_SECONDS = 3;
-/** Sheets a story-flow Film draws (style anchor included). fal takes 30 images a generation. */
-export const MAX_STORY_FLOW_SHEETS = 12;
+/**
+ * Sheets a story-flow Film draws (style anchor included). fal takes 30 images a
+ * generation. 16 since props became their own sheets: 4 characters × 2 views +
+ * a few places + a few props + the style frame.
+ */
+export const MAX_STORY_FLOW_SHEETS = 16;
 
 /**
  * Seedance 2.5 on fal at 480p, per OUTPUT second (fal's model page, Sept 2026:

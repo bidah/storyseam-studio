@@ -3,7 +3,7 @@ import { useLoaderData, useRevalidator } from "react-router";
 import {
   Globe, Users, BookOpen, Sparkles, Wand2, UserPlus, Trash2, Loader2,
   ImagePlus, X, Maximize2, Mic, MapPin, MapPinPlus, Anchor, Library, Check,
-  PersonStanding,
+  PersonStanding, Package, PackagePlus,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { invalidateTabCache } from "@/lib/tabCache";
@@ -582,6 +582,107 @@ function LocationCard({ loc, onField, onRemove }) {
 }
 
 /* ---------------------------------------------------------------- *
+ * Prop card — an object the story turns on, drawn APART from the    *
+ * characters (their sheets are empty-handed) and bound into a shot  *
+ * as its own reference image.                                       *
+ * ---------------------------------------------------------------- */
+
+function PropCard({ prop, onField, onRemove }) {
+  const t = useT();
+  const { setModalImage } = useShell();
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const sheet = prop.sheetImage;
+  return (
+    <div className="rounded-lg border p-3">
+      <div className="mb-2 flex items-center gap-2">
+        <input
+          defaultValue={prop.name}
+          placeholder={t("Prop name")}
+          onBlur={(e) => e.target.value !== prop.name && onField("name", e.target.value)}
+          className="min-w-0 flex-1 rounded-md border border-transparent bg-transparent px-1.5 py-0.5 text-sm font-semibold hover:border-border focus:border-primary focus:bg-background focus:outline-none"
+        />
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          aria-label={t("Remove {name}", { name: prop.name || t("prop") })}
+          onClick={() => onRemove(prop)}
+          className="shrink-0 text-muted-foreground hover:text-destructive"
+        >
+          <Trash2 size={14} />
+        </Button>
+      </div>
+
+      <label className="mb-2 flex items-center gap-2">
+        <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">{t("Carried by")}</span>
+        <input
+          defaultValue={prop.owner}
+          placeholder={t("character name (optional)")}
+          onBlur={(e) => e.target.value !== prop.owner && onField("owner", e.target.value)}
+          className="min-w-0 flex-1 rounded-md border border-transparent bg-muted/50 px-1.5 py-0.5 text-xs hover:border-border focus:border-primary focus:bg-background focus:outline-none"
+        />
+      </label>
+
+      {sheet ? (
+        <div className="mb-2 flex items-center gap-3 rounded-lg border bg-muted/60 p-2">
+          <button
+            type="button"
+            onClick={() => setModalImage({ url: sheet.url, display: sheet.display || toZoomSrc(sheet.url), name: sheet.name || t("{name} sheet", { name: prop.name || t("prop") }), role: "asset" })}
+            title={t("View full image")}
+            className="shrink-0 overflow-hidden rounded-md border transition-colors hover:border-primary/60"
+          >
+            <img
+              src={sheet.thumb || sheet.url}
+              alt={sheet.name || t("{name} sheet", { name: prop.name || t("prop") })}
+              className="h-28 w-28 object-cover"
+            />
+          </button>
+          <div className="flex min-w-0 flex-col items-start gap-1.5">
+            <Button variant="outline" size="sm" onClick={() => setPickerOpen(true)}>
+              <ImagePlus size={13} /> {t("Change prop sheet")}
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => onField("sheetImage", null)}
+              className="text-muted-foreground hover:text-destructive"
+            >
+              <X size={14} /> {t("Unlink")}
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <div className="mb-2">
+          <Button variant="outline" size="sm" onClick={() => setPickerOpen(true)}>
+            <ImagePlus size={13} /> {t("Link prop sheet")}
+          </Button>
+        </div>
+      )}
+
+      <label className="space-y-0.5">
+        <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">{t("Description")}</span>
+        <WorldField
+          value={prop.description}
+          placeholder={t("What the object looks like on its own — shape, material, colours, wear.")}
+          rows={2}
+          onCommit={(val) => onField("description", val)}
+        />
+      </label>
+
+      <MediaPicker
+        open={pickerOpen}
+        onOpenChange={setPickerOpen}
+        title={t("Link prop sheet")}
+        sources={["library", "upload"]}
+        multiple={false}
+        onAdd={([im]) => {
+          if (im) onField("sheetImage", { rel: im.rel, url: im.url, thumb: im.thumb, name: im.name });
+        }}
+      />
+    </div>
+  );
+}
+
+/* ---------------------------------------------------------------- *
  * "Add previous character" — the series character library picker     *
  * ---------------------------------------------------------------- */
 
@@ -657,6 +758,7 @@ function World() {
   const [error, setError] = useState(null);
   const [confirm, setConfirm] = useState(null); // character pending removal
   const [confirmLoc, setConfirmLoc] = useState(null); // location pending removal
+  const [confirmProp, setConfirmProp] = useState(null); // prop pending removal
   const [libraryOpen, setLibraryOpen] = useState(false); // "add previous character" picker
 
   const revalidate = revalidator.revalidate;
@@ -707,11 +809,16 @@ function World() {
     mutate(`/api/world/location/${id}`, { method: "PUT", body: JSON.stringify({ [key]: val }) });
   const addLoc = () => mutate("/api/world/location", { method: "POST", body: JSON.stringify({}) });
   const removeLoc = (loc) => { setConfirmLoc(null); mutate(`/api/world/location/${loc.id}`, { method: "DELETE" }); };
+  const setProp = (id, key, val) =>
+    mutate(`/api/world/prop/${id}`, { method: "PUT", body: JSON.stringify({ [key]: val }) });
+  const addProp = () => mutate("/api/world/prop", { method: "POST", body: JSON.stringify({}) });
+  const removeProp = (prop) => { setConfirmProp(null); mutate(`/api/world/prop/${prop.id}`, { method: "DELETE" }); };
 
   const createWithAgent = () => agent.send({ message: createWorldMessage() }).catch(() => {});
 
   const characters = world.characters || [];
   const locations = world.locations || [];
+  const props = world.props || [];
   const mapFilled = MAP.filter((m) => (world.map?.[m.key] || "").trim()).length;
   const depthFilled = DEPTH.filter((d) => (world.depth?.[d.key] || "").trim()).length;
 
@@ -956,6 +1063,38 @@ function World() {
         )}
       </Panel>
 
+      {/* Props — objects the story turns on. A character's sheet is the person
+          only (empty-handed); each prop has its own sheet and is handed to a
+          shot as its own reference. */}
+      <Panel
+        id="props"
+        title={<span className="flex items-center gap-2"><Package size={15} className="text-primary" /> {t("Props")}</span>}
+        meta={
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" onClick={addProp}>
+              <PackagePlus size={13} /> {t("Add prop")}
+            </Button>
+          </div>
+        }
+      >
+        {props.length === 0 ? (
+          <div className="rounded-lg border border-dashed p-6 text-center">
+            <Empty>{t("no props yet — add the objects the story turns on, so each is drawn once and stays the same in every shot.")}</Empty>
+          </div>
+        ) : (
+          <div className="grid gap-3 md:grid-cols-2">
+            {props.map((prop) => (
+              <PropCard
+                key={prop.id}
+                prop={prop}
+                onField={(key, val) => setProp(prop.id, key, val)}
+                onRemove={setConfirmProp}
+              />
+            ))}
+          </div>
+        )}
+      </Panel>
+
       <ConfirmModal
         open={!!confirm}
         title={isSeries ? t("Remove from episode") : t("Remove character")}
@@ -979,6 +1118,14 @@ function World() {
         message={t("Remove “{name}” from the world? This can't be undone.", { name: confirmLoc?.name || t("this location") })}
         onConfirm={() => removeLoc(confirmLoc)}
         onCancel={() => setConfirmLoc(null)}
+      />
+
+      <ConfirmModal
+        open={!!confirmProp}
+        title={t("Remove prop")}
+        message={t("Remove “{name}” from the world? Its sheet image stays in the library.", { name: confirmProp?.name || t("this prop") })}
+        onConfirm={() => removeProp(confirmProp)}
+        onCancel={() => setConfirmProp(null)}
       />
     </div>
   );

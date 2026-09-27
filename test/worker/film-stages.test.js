@@ -168,7 +168,7 @@ describe("the Film stages after the World", () => {
     expect(keys).toHaveLength(7);
 
     // The card: names, and the thumbnails in the result.
-    expect(out.summary).toBe("7 reference sheets — House style, Night palette, Mote, Old Ada, Lamp room, Storm cliffs, The Fog Engine");
+    expect(out.summary).toBe("7 reference sheets — House style, Night palette, Mote, Old Ada, Lamp room, Storm cliffs, The Fog Engine · 4 linked in the Bible");
     expect(out.result.sheets.map((s) => s.imageUrl)).toEqual(sheets.map((s) => s.imageUrl));
   });
 

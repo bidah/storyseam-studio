@@ -31,6 +31,12 @@ const emptyBible = () => ({ depth: emptySection(DEPTH_FIELDS), characterIds: [] 
 // One location's fields. `slug` is the KEY that a shot's `location` string resolves
 // to, so the Animatic can auto-supply this location's sheet as an image reference.
 const LOC_FIELDS = ["name", "slug", "description"];
+// One PROP's fields: an object the story turns on, designed apart from anyone
+// who carries it. `owner` is the character who usually holds it (a name, or "").
+// A character's design is body, face, hair and clothing only — the props are
+// drawn as their own sheets and handed to a shot as their own references, so
+// a sword painted into a turnaround is never welded to the character.
+const PROP_FIELDS = ["name", "slug", "description", "owner"];
 
 const emptySection = (fields) => Object.fromEntries(fields.map((f) => [f, ""]));
 
@@ -60,6 +66,7 @@ function emptyWorld() {
     // auto-added to every new episode.
     characters: [],
     locations: [],
+    props: [],
   };
 }
 
@@ -157,6 +164,18 @@ function normalizeLocation(raw, i = 0) {
   return out;
 }
 
+// Coerce one prop into the canonical shape, minting an id if missing.
+function normalizeProp(raw, i = 0) {
+  const p = raw || {};
+  const out = { id: str(p.id) || `prop-${Date.now().toString(36)}-${i}` };
+  out.name = str(p.name);
+  out.slug = slugify(p.slug || p.name);
+  out.description = str(p.description);
+  out.owner = str(p.owner);
+  out.sheetImage = normalizeSheetImage(p.sheetImage);
+  return out;
+}
+
 // The agent's bulk save must never DESTROY what it didn't send. A partial
 // `save_world` (the model sending, say, just `{ title: "T" }`) used to overwrite
 // the whole document with blanks — that is how Whistlewood's world bible was
@@ -243,6 +262,7 @@ function normalizeWorld(raw) {
   for (const f of DEPTH_FIELDS) base.depth[f] = str(w.depth?.[f]);
   base.characters = Array.isArray(w.characters) ? w.characters.map(normalizeChar) : [];
   base.locations = Array.isArray(w.locations) ? w.locations.map(normalizeLocation) : [];
+  base.props = Array.isArray(w.props) ? w.props.map(normalizeProp) : [];
   return base;
 }
 
@@ -315,7 +335,7 @@ export async function buildWorldView(env, pid) {
     if (ch.sheetImage?.rel) ch.sheetImage.refUrl = assetRefUrl(env, pid, ch.sheetImage.rel);
     if (ch.miniatureImage?.rel) ch.miniatureImage.refUrl = assetRefUrl(env, pid, ch.miniatureImage.rel);
   }
-  for (const loc of world.locations) {
+  for (const loc of [...world.locations, ...world.props]) {
     if (loc.sheetImage?.rel) loc.sheetImage.refUrl = assetRefUrl(env, pid, loc.sheetImage.rel);
   }
   const episodeId = activeEpisodeId();
@@ -379,6 +399,10 @@ export async function buildSharedWorld(env, pid) {
     locations: world.locations.map((l) => ({
       id: l.id, name: l.name, slug: l.slug, description: l.description,
       sheetImage: publicImage(env, pid, l.sheetImage),
+    })),
+    props: world.props.map((p) => ({
+      id: p.id, name: p.name, slug: p.slug, description: p.description, owner: p.owner,
+      sheetImage: publicImage(env, pid, p.sheetImage),
     })),
   };
 }
@@ -444,6 +468,7 @@ export async function saveWorld(env, pid, body) {
       depth: prev.depth,
       characters: mergeRoster(CHAR_FIELDS, incoming?.characters, prev.characters, normalizeChar),
       locations: mergeRoster(LOC_FIELDS, incoming?.locations, prev.locations, normalizeLocation),
+      props: mergeRoster(PROP_FIELDS, incoming?.props, prev.props, normalizeProp),
     });
     merged.generatedAt = new Date().toISOString();
     merged.source = str(body?.source) || "agent";
@@ -465,6 +490,34 @@ export async function saveWorld(env, pid, body) {
     });
   }
   return { ok: true, world: await buildWorldView(env, pid) };
+}
+
+// Link drawn sheets onto the World's roster — the Auto Film's sheets stages,
+// whose pictures otherwise live only on the Film's Director Series, so the
+// Bible showed a cast with no faces. `links` = [{ kind: "character" |
+// "location" | "prop", name, field: "sheetImage" | "miniatureImage", image }],
+// matched by case-insensitive name. A slot the author filled by hand is left
+// alone: only an empty slot, or one an earlier Film run linked (`rel` under
+// FILM_SHEETS_DIR), is (re)written. → the number of slots linked.
+export const FILM_SHEETS_DIR = "film-sheets";
+export async function linkWorldSheets(env, pid, links) {
+  const list = (links || []).filter((l) => l?.image && str(l.name));
+  if (!list.length) return 0;
+  const res = await editWorld(env, pid, (world) => {
+    const roster = { character: world.characters, location: world.locations, prop: world.props };
+    let linked = 0;
+    for (const l of list) {
+      const entry = (roster[l.kind] || []).find((e) => str(e.name).trim().toLowerCase() === str(l.name).trim().toLowerCase());
+      const field = l.field === "miniatureImage" && l.kind === "character" ? "miniatureImage" : "sheetImage";
+      if (!entry) continue;
+      const have = entry[field];
+      if (have && !str(have.rel).startsWith(`${FILM_SHEETS_DIR}/`)) continue;
+      entry[field] = normalizeSheetImage(l.image);
+      linked += 1;
+    }
+    return linked ? { linked } : { abort: true, linked: 0 };
+  });
+  return res?.linked || 0;
 }
 
 export function registerWorld(app) {
@@ -692,6 +745,53 @@ export function registerWorld(app) {
       return { world };
     });
     if (res.missing) return c.json({ error: `no location ${id}` }, 404);
+    return c.json({ ok: true, world: res.world });
+  });
+  // ── Props — objects the story turns on, designed apart from the characters.
+  // Same three routes as a location: add, edit in place, remove.
+  app.post("/api/world/prop", async (c) => {
+    const pid = c.get("projectId");
+    let body;
+    try { body = await c.req.json(); } catch { body = {}; }
+    const bad = unshapedImage(body);
+    if (bad) return c.json({ error: imageError(bad) }, 400);
+    const { prop, world } = await editWorld(c.env, pid, (world) => {
+      const p = normalizeProp({ name: "New prop", ...body }, world.props.length);
+      world.props.push(p);
+      return { prop: p, world };
+    });
+    if (prop.sheetImage?.rel) prop.sheetImage.refUrl = assetRefUrl(c.env, pid, prop.sheetImage.rel);
+    return c.json({ ok: true, prop, world });
+  });
+
+  app.put("/api/world/prop/:id", async (c) => {
+    const pid = c.get("projectId");
+    const id = c.req.param("id");
+    let patch;
+    try { patch = await c.req.json(); } catch { patch = {}; }
+    const bad = unshapedImage(patch);
+    if (bad) return c.json({ error: imageError(bad) }, 400);
+    const res = await editWorld(c.env, pid, (world) => {
+      const idx = world.props.findIndex((x) => x.id === id);
+      if (idx < 0) return { abort: true, missing: true };
+      world.props[idx] = normalizeProp({ ...world.props[idx], ...patch, id }, idx);
+      return { prop: world.props[idx], world };
+    });
+    if (res.missing) return c.json({ error: `no prop ${id}` }, 404);
+    if (res.prop.sheetImage?.rel) res.prop.sheetImage.refUrl = assetRefUrl(c.env, pid, res.prop.sheetImage.rel);
+    return c.json({ ok: true, prop: res.prop, world: res.world });
+  });
+
+  app.delete("/api/world/prop/:id", async (c) => {
+    const pid = c.get("projectId");
+    const id = c.req.param("id");
+    const res = await editWorld(c.env, pid, (world) => {
+      const before = world.props.length;
+      world.props = world.props.filter((x) => x.id !== id);
+      if (world.props.length === before) return { abort: true, missing: true };
+      return { world };
+    });
+    if (res.missing) return c.json({ error: `no prop ${id}` }, 404);
     return c.json({ ok: true, world: res.world });
   });
 }

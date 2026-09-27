@@ -21,6 +21,7 @@ import { listEpisodes } from "./list_episodes.js";
 import { createEpisode } from "./create_episode.js";
 import { setFormat } from "./set_format.js";
 import { addWorldLocation } from "./add_world_location.js";
+import { editWorldProp } from "./edit_world_prop.js";
 import { getVisualWorld } from "./get_visual_world.js";
 import { attachVisualGeneration } from "./attach_visual_generation.js";
 import { saveGenerationToLibrary } from "./save_generation_to_library.js";
@@ -143,6 +144,7 @@ export function createTools(api: Api): ToolDefinition[] {
     restoreVersion(api),
     addWorldCharacter(api),
     addWorldLocation(api),
+    editWorldProp(api),
     // Series / episodes
     listEpisodes(api),
     createEpisode(api),

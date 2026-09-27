@@ -294,6 +294,13 @@ export function worldMessages(prompt) {
     WORLD_SHAPE,
     "",
     "Places are the World's `locations`: `{ name, description }`.",
+    "",
+    "PROPS are apart from the characters. A character's `appearance` is body, face, hair and clothing ONLY —",
+    "never an object they hold, carry or use (no weapon, bag, tool, phone, lantern, instrument, book, cup…).",
+    "Every object that matters to the story — one a character carries, uses, loses, finds or hands over — is a",
+    "PROP in `props`: `{ name, description, owner }`. `description` is a visual design note of the object",
+    "alone (shape, size, material, colours, wear); `owner` is the character who carries it, by name EXACTLY,",
+    "or empty. 0–4 props; each is drawn as its own sheet and bound into every shot it appears in.",
     "Ignore sheetImage and voiceRef — they are attached later by other steps.",
     "",
     "Answer with ONE JSON object and nothing else:",
@@ -301,8 +308,9 @@ export function worldMessages(prompt) {
     '  "map": { "world", "protagonist", "antagonist", "stakes", "theme" },',
     '  "depth": { "premise", "wantVsNeed", "conflict", "obstacles", "structure" },',
     '  "characters": [{ "name", "archetype", "role", "want", "need", "traits", "arc", "voice", "appearance" }],',
-    '  "locations": [{ "name", "description" }] } }',
-    "Every value is a string except the two arrays.",
+    '  "locations": [{ "name", "description" }],',
+    '  "props": [{ "name", "description", "owner" }] } }',
+    "Every value is a string except the three arrays.",
   ].join("\n");
   return [
     { role: "system", content: system },
@@ -326,6 +334,9 @@ export function parseIdeaWorld(answer) {
   const locations = (Array.isArray(w.locations) ? w.locations : [])
     .map((l) => pick(l, ["name", "description"]))
     .filter((l) => l.name);
+  const props = (Array.isArray(w.props) ? w.props : [])
+    .map((p) => pick(p, ["name", "description", "owner"]))
+    .filter((p) => p.name);
   if (!characters.length) throw new Error("The writing model returned a World with no characters.");
   return {
     idea,
@@ -336,6 +347,7 @@ export function parseIdeaWorld(answer) {
       depth: pick(w.depth, ["premise", "wantVsNeed", "conflict", "obstacles", "structure"]),
       characters,
       locations,
+      props,
     },
   };
 }
@@ -346,10 +358,11 @@ async function runWorldStage({ job, model, env, saveWorld }) {
   await saveWorld(env, job.projectId, { ...world, source: "auto" });
   const characters = world.characters.map((c) => ({ name: c.name, role: c.role || c.archetype || "" }));
   const places = world.locations.map((l) => ({ name: l.name, description: l.description || "" }));
+  const props = world.props.map((p) => ({ name: p.name, owner: p.owner || "" }));
   const n = (k, one) => `${k} ${one}${k === 1 ? "" : "s"}`;
   return {
-    summary: `${world.title || "World"} — ${n(characters.length, "character")}, ${n(places.length, "place")}`,
-    result: { idea, title: world.title, logline: world.logline, characters, places },
+    summary: `${world.title || "World"} — ${n(characters.length, "character")}, ${n(places.length, "place")}${props.length ? `, ${n(props.length, "prop")}` : ""}`,
+    result: { idea, title: world.title, logline: world.logline, characters, places, props },
   };
 }
 
@@ -378,7 +391,7 @@ export const FILM_STAGES = Object.freeze([
 export const STORY_FLOW_STAGES = Object.freeze([
   { key: "look", label: "Look", run: (ctx) => runLookStage(ctx) },
   { key: "world", label: "Idea + World", run: runWorldStage },
-  { key: "sheets", label: "Character & location sheets", paid: true, run: (ctx) => runStoryFlowSheetsStage(ctx) },
+  { key: "sheets", label: "Character, place & prop sheets", paid: true, run: (ctx) => runStoryFlowSheetsStage(ctx) },
   { key: "shotlist", label: "Shot list", run: (ctx) => runStoryFlowShotlistStage(ctx) },
   { key: "prompts", label: "Segment prompts", run: (ctx) => runStoryFlowPromptsStage(ctx) },
   { key: "run", label: "Video run", paid: true, run: (ctx) => runStoryFlowRunStage(ctx) },
@@ -394,7 +407,7 @@ export const STORY_FLOW_STAGES = Object.freeze([
 export const H3_STAGES = Object.freeze([
   { key: "look", label: "Look", run: (ctx) => runLookStage(ctx) },
   { key: "world", label: "Idea + World", run: runWorldStage },
-  { key: "sheets", label: "Character & location sheets", paid: true, run: (ctx) => runStoryFlowSheetsStage(ctx) },
+  { key: "sheets", label: "Character, place & prop sheets", paid: true, run: (ctx) => runStoryFlowSheetsStage(ctx) },
   { key: "shotlist", label: "Shot list", run: (ctx) => runStoryFlowShotlistStage(ctx) },
   { key: "prompts", label: "Segment prompts", run: (ctx) => runH3PromptsStage(ctx) },
   { key: "run", label: "Video run", paid: true, run: (ctx) => runH3RunStage(ctx) },
@@ -918,8 +931,8 @@ const money = (n) => `$${(Number(n) || 0).toFixed(2)}`;
 export function confirmPlan(job, worldResult) {
   const scored = filmScoreOf(job?.score);
   if (isStoryEngine(job?.engine)) {
-    // Style anchor + a turnaround and a face per character + a plate per place.
-    const drawn = 1 + 2 * (worldResult?.characters?.length || 0) + (worldResult?.places?.length || 0);
+    // Style anchor + a turnaround and a face per character + a plate per place + a sheet per prop.
+    const drawn = 1 + 2 * (worldResult?.characters?.length || 0) + (worldResult?.places?.length || 0) + (worldResult?.props?.length || 0);
     const sheets = Math.min(MAX_STORY_FLOW_SHEETS, drawn);
     // The Voices pass auditions every character the World made.
     const characters = worldResult?.characters?.length || 0;
@@ -937,7 +950,7 @@ export function confirmPlan(job, worldResult) {
     const voiced = p.voices ? ` · ${n(characters, "voice")}` : "";
     return { summary: `${p.length} · ${n(p.segments, "segment")} at ${at} · ${n(sheets, "sheet")}${voiced}${scored ? " · scored" : ""} · about ${money(p.estimate.total)}`, plan };
   }
-  const drawn = (worldResult?.characters?.length || 0) + (worldResult?.places?.length || 0);
+  const drawn = (worldResult?.characters?.length || 0) + (worldResult?.places?.length || 0) + (worldResult?.props?.length || 0);
   const sheets = Math.min(MAX_REFERENCE_SHEETS, Math.max(1, drawn));
   const p = planFilm({ prompt: job.prompt, seconds: job.seconds ?? null, resolution: job.resolution ?? null, referenceSheets: sheets, score: scored });
   const plan = {

@@ -7,7 +7,10 @@
 //
 //   [Reference Map]      — only THIS segment's references: each character in
 //                          it as two images of one person (turnaround + face),
-//                          its place as an empty plate; every token bound to
+//                          each PROP seen in it as its own object sheet (the
+//                          characters are drawn empty-handed, so who holds
+//                          what is the stages' to say), its place as an
+//                          empty plate; every token bound to
 //                          one named job, with what NOT to take from it.
 //                          From segment 2 on, @Video1 is the cut of the
 //                          previous segment's last seconds. Under [Audio],
@@ -85,8 +88,9 @@ export const isLikenessRefusal = (message) => /likeness|real (people|person)|pri
 
 /**
  * The references one segment binds, in token order: its characters (turnaround
- * then face), then its place's plate. With `people: false` only the plate.
- * → [{ token, ref }]
+ * then face), then its props (one object sheet each), then its place's plate.
+ * With `people: false` the props and the plate — an object sheet holds no
+ * likeness. → [{ token, ref }]
  */
 export function segmentRegistry(segment, refs, { people = true } = {}) {
   const picked = [];
@@ -95,6 +99,10 @@ export function segmentRegistry(segment, refs, { people = true } = {}) {
       const r = refs.find((x) => x.kind === "character" && x.view === view && key(x.subject) === key(name));
       if (r) picked.push(r);
     }
+  }
+  for (const name of segment.props || []) {
+    const r = refs.find((x) => x.kind === "prop" && key(x.subject) === key(name));
+    if (r) picked.push(r);
   }
   const plate = refs.find((x) => x.view === "plate" && key(x.subject) === key(segment.location));
   if (plate) picked.push(plate);
@@ -151,6 +159,16 @@ function referenceMap(registry, { extension, words = [], audio = [] }) {
     const inherit = list[0].ref.inherit;
     if (inherit) lines.push(`Use only ${name}'s identity: ${sentence(inherit)}`);
     lines.push("Do not use the reference's grey background, its turnaround layout, its framing or any text.");
+    lines.push(`${name}'s references show them empty-handed: ${name} holds only what the stages below put in their hands.`);
+  }
+  const props = registry.filter((x) => x.ref.kind === "prop");
+  if (props.length) lines.push("[Props]");
+  for (const p of props) {
+    lines.push(
+      `${p.ref.subject} corresponds to ${p.token}. Use only its shape, size, material, colours and wear${p.ref.inherit ? `: ${sentence(p.ref.inherit)}` : "."}` +
+        ` ${p.token} shows ONE object from several sides — keep exactly one ${p.ref.subject}; do not use its grey background, its layout or any text.` +
+        ` It is where the stages put it: in the hands of whoever the stages say holds it, and nowhere else.`,
+    );
   }
   const plates = registry.filter((x) => x.ref.view === "plate");
   if (plates.length) lines.push("[Scenes]");
@@ -206,6 +224,7 @@ export function compileSegment(segment, {
   const audio = registry.length || extension ? segmentVoices({ characters: speakers }, voices) : [];
   const words = people ? [] : characterWords(segment, refs);
   const names = segment.characters || [];
+  const propNames = registry.filter((x) => x.ref.kind === "prop").map((x) => x.ref.subject);
   const dir = segmentDirection(segment, direction, refs);
   const lines = [...referenceMap(registry, { extension, words, audio }), ""];
 
@@ -282,6 +301,7 @@ export function compileSegment(segment, {
         ? `Only the quoted lines in the stages are spoken, each exactly once by its named speaker; nobody says anything else${names.some((n) => !speakers.includes(n)) ? `, and ${names.filter((n) => !speakers.includes(n)).join(" and ")} ${names.filter((n) => !speakers.includes(n)).length === 1 ? "does" : "do"} not speak at all` : ""}.`
         : "Nobody speaks in this generation: no talking, whispering or murmuring.",
       segment.location ? `Keep ${segment.location}'s layout and light.` : "",
+      propNames.length ? `Keep ${propNames.join(", ")} exactly as ${propNames.length === 1 ? "its reference defines it" : "their references define them"}, one of each, in the hands the stages give ${propNames.length === 1 ? "it" : "them"}.` : "",
       "Keep prop ownership, object counts, screen direction and the camera axis consistent from stage to stage.",
       "The look never changes part way through.",
     ].filter(Boolean).join(" "),

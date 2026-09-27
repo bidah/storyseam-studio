@@ -115,7 +115,7 @@ describe("the H3 compiler — the seam is a still", () => {
     expect(c.hasFrame).toBe(true);
     expect(c.hasVideo).toBe(false);
     expect(c.imageRefs.map((r) => `${r.token}=${r.name}`)).toEqual([
-      "Image 1=Leo — turnaround", "Image 2=Leo — face", "Image 3=Sal — turnaround", "Image 4=Sal — face",
+      "Image 1=Leo — turnaround", "Image 2=Sal — turnaround", "Image 3=Leo — face", "Image 4=Sal — face",
       "Image 5=The Skate Spot — plate", "Image 6=Previous shot — last frame",
     ]);
     expect(c.imageRefs[5]).toMatchObject({ seam: true, imageUrl: null });
@@ -144,7 +144,23 @@ describe("the H3 compiler — the seam is a still", () => {
   it("keeps the plate and the seam when the cast would overflow the images", () => {
     const crowd = { ...SETBACK, characters: ["Leo", "Sal", "Leo", "Sal", "Leo"] };
     const reg = segmentRegistry(crowd, REFS, { people: true, maxImages: 4, seam: true });
-    expect(reg.map((r) => r.ref.view)).toEqual(["body", "face", "plate", "frame"]);
+    expect(reg.map((r) => r.ref.view)).toEqual(["body", "body", "plate", "frame"]);
+  });
+
+  it("binds a segment's props as their own objects, before faces, in every mode", () => {
+    const refs = [...REFS, { kind: "prop", view: "prop", subject: "Red Board", name: "Red Board — prop sheet", imageUrl: "/director-media/board.png", inherit: "a scuffed red deck" }];
+    const seg = { ...SETBACK, props: ["red board"] };
+    const reg = segmentRegistry(seg, refs, { people: true, maxImages: 5, seam: true });
+    expect(reg.map((r) => r.ref.view)).toEqual(["body", "body", "prop", "plate", "frame"]);
+    expect(segmentRegistry(seg, refs, { people: false }).map((r) => r.ref.view)).toEqual(["prop", "plate"]);
+    const c = h3(seg, { ...opts, refs });
+    expect(c.prompt).toContain("is the Red Board, one object: a scuffed red deck.");
+    expect(c.prompt).toContain("empty-handed");
+    expect(h3Errors({ ...c, index: 2, dur: 15 })).toEqual([]);
+    const s = seedance(seg, { ...opts, refs });
+    expect(s.prompt).toContain("[Props]");
+    expect(s.prompt).toMatch(/Red Board corresponds to @Image\d+/);
+    expect(seedanceErrors({ ...s, index: 2, dur: 15 })).toEqual([]);
   });
 
   it("drops a journey-narrating direction and binds a voice only for who speaks", () => {

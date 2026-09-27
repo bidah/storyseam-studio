@@ -26,6 +26,13 @@ import { MAX_REFERENCE_SHEETS } from "../film-plan.ts";
 import { falPoll, falSubmit } from "../fal.js";
 import { putMedia } from "../media.js";
 import { readWorld } from "../../routes/world.js";
+import { linkSheetsToWorld } from "./world-links.js";
+
+// A character is drawn EMPTY-HANDED; every object the story turns on is a
+// World prop with its own sheet (story-flow/sheets.js explains why).
+const EMPTY_HANDED =
+  "EMPTY-HANDED: the character holds, carries and wears no props — no weapon, bag, tool, phone, device, instrument " +
+  "or object of any kind, nothing in the hands, on the back or at the belt; hands open and visible.";
 
 export const MAX_STYLE_SHEETS = 2;
 // GPT Image 2.5 Flare on fal: text-to-image for a sheet drawn from its prompt
@@ -55,6 +62,9 @@ export function sheetMessages({ idea, world, look = null }) {
   const places = (world.locations || [])
     .map((l) => `- ${l.name}: ${l.description || "(no description given — design one)"}`)
     .join("\n");
+  const props = (world.props || [])
+    .map((p) => `- ${p.name}${p.owner ? ` (carried by ${p.owner})` : ""}: ${p.description || "(no description given — design one)"}`)
+    .join("\n");
   const system = [
     "You are the art department of StorySeam's Auto pipeline. A short film's World is written; you write",
     "the prompts for its REFERENCE SHEETS — the model sheets every later frame is drawn against. Nobody",
@@ -64,7 +74,11 @@ export function sheetMessages({ idea, world, look = null }) {
     `- 1 or 2 STYLE sheets (at most ${MAX_STYLE_SHEETS}): a style frame fixing the palette, film stock, grain,`,
     "  line and lighting of the whole film — no characters.",
     "- ONE sheet per character in the World (kind \"character\"), using the character's name EXACTLY.",
+    "  A character sheet is the person ONLY and EMPTY-HANDED — no prop, nothing held or carried, even when the",
+    "  World says they carry something.",
     "- ONE sheet per place in the World (kind \"location\"), using the place's name EXACTLY.",
+    "- ONE sheet per PROP in the World (kind \"character\"), using the prop's name EXACTLY: the object alone,",
+    "  front, side and three-quarter views on plain grey, no hands, no people, no text.",
     "- Optionally a sheet for a machine, vehicle or creature the story keeps returning to (kind",
     "  \"character\" — a figure held still across the piece, alive or not).",
     `At most ${MAX_REFERENCE_SHEETS} sheets in all, style included. Every character and place MUST have one.`,
@@ -100,6 +114,9 @@ export function sheetMessages({ idea, world, look = null }) {
     "",
     "Places:",
     places || "(none)",
+    "",
+    "Props:",
+    props || "(none)",
   ].filter((l) => l !== "").join("\n");
   return [
     { role: "system", content: system },
@@ -149,20 +166,30 @@ export function planSheets(answer, world, max = MAX_REFERENCE_SHEETS, { look = n
     written.delete(key(name));
     return hit ? { ...hit, kind, name } : { kind, name, prompt: withClause(fallback) };
   };
-  const characters = (world.characters || []).filter((c) => str(c?.name)).map((c) =>
-    take(c.name, "character",
+  const characters = (world.characters || []).filter((c) => str(c?.name)).map((c) => {
+    const sheet = take(c.name, "character",
       `A character model sheet of ${c.name}: ${c.appearance || c.traits || c.role || "a figure from this story"}. ` +
       "Four consistent full-body views in a row — front, 3/4, side profile, back — plus one head-and-shoulders detail " +
       "at the far right, on a plain neutral pale grey background. The same design and proportions in every view. " +
-      "No text, no watermark, no other characters."),
-  );
+      "No text, no watermark, no other characters.");
+    return { ...sheet, subject: "character", prompt: `${EMPTY_HANDED} ${sheet.prompt} ${EMPTY_HANDED}` };
+  });
   const locations = (world.locations || []).filter((l) => str(l?.name)).map((l) =>
     take(l.name, "location",
       `A location model sheet of ${l.name}: ${l.description || "a place from this story"}. Three views: a wide ` +
       "establishing view, a mid view from inside it, and a detail of one piece of architecture. Even light. " +
       "No characters, no text, no watermark."),
-  );
-  const subjects = [...characters, ...locations];
+  ).map((s) => ({ ...s, subject: "location" }));
+  // A prop is filed as a "character" sheet (a figure held still — the Series
+  // knows no prop kind); `subject` keeps what it is for the World link.
+  const OBJECT_ONLY = "The object ALONE: no hands, no people, no characters, nobody holding or wearing it.";
+  const props = (world.props || []).filter((p) => str(p?.name)).map((p) => {
+    const sheet = take(p.name, "character",
+      `A prop model sheet of ${p.name}: ${p.description || "an object from this story"}. The same object seen from the front, ` +
+      "the side and three-quarter in a row, on a plain neutral pale grey background, even light. No text, no watermark.");
+    return { ...sheet, subject: "prop", prompt: `${OBJECT_ONLY} ${sheet.prompt} ${OBJECT_ONLY}` };
+  });
+  const subjects = [...characters, ...locations, ...props];
   const extras = [...written.values()]; // machines etc. the model added beyond the World
 
   // Fit the cap: drop the second style, then extras, then the tail.
@@ -320,8 +347,12 @@ export async function runSheetsStage({ job, results, env, model }, deps = {}) {
   }
 
   const sheets = [...styles, ...subjects].map((s) => ({ kind: s.kind, name: s.name, imageUrl: s.imageUrl }));
+  // The Bible shows them: each character, place and prop's sheet on its slot.
+  const linked = await (deps.linkSheetsToWorld || linkSheetsToWorld)(env, pid, subjects
+    .filter((s) => s.subject)
+    .map((s) => ({ kind: s.subject, subject: s.name, name: s.name, imageUrl: s.imageUrl })));
   return {
-    summary: `${sheets.length} reference sheet${sheets.length === 1 ? "" : "s"} — ${sheets.map((s) => s.name).join(", ")}`,
+    summary: `${sheets.length} reference sheet${sheets.length === 1 ? "" : "s"} — ${sheets.map((s) => s.name).join(", ")}${linked ? ` · ${linked} linked in the Bible` : ""}`,
     result: { seriesId: series.id, sheets },
   };
 }
