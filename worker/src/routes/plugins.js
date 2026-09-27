@@ -110,6 +110,23 @@ export async function readEnabledPlugins(env, pid, usage) {
   return { enabled: seedEnabled({ usage: counts }), defaulted: true, updatedAt: null };
 }
 
+/**
+ * REPLACE the installed set — the whole document, not a delta. What a Film's
+ * job writes when it ends (lib/film-plugins.js): the surfaces its steps used,
+ * exactly, so its project's studio opens on the Film decomposed into its
+ * layers. Materialises the document like a PUT does. → the stored set.
+ */
+export async function setEnabledPlugins(env, pid, ids) {
+  const at = new Date().toISOString();
+  const { state } = await updateDoc(env, pid, "plugins", FALLBACK, (doc) => {
+    doc.enabled = normalizeEnabled(ids);
+    doc.source = "plugins";
+    doc.updatedAt = at;
+    return { state: { enabled: doc.enabled, defaulted: false, updatedAt: doc.updatedAt } };
+  });
+  return state;
+}
+
 export function registerPlugins(app) {
   // What's installed. `defaulted: true` means nobody has ever chosen — the set
   // came from what the project already uses, and the first PUT will freeze it.

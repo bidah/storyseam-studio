@@ -33,7 +33,7 @@ import { readWorld } from "../../routes/world.js";
 import { pinnedDraft, readStore } from "../script-store.js";
 import { cleanElements, docToElements, formatScreenplay, screenplayStats } from "../script-elements.js";
 import { roomNotesFor } from "./room-notes.js";
-import { SCREENPLAY_FORMAT, SCREENWRITER_CRAFT, saveScriptDraft, scriptBudget, filmSecondsFor } from "./script.js";
+import { SCREENPLAY_FORMAT, SCREENWRITER_CRAFT, saveScriptDraft, filmBudgetFor, takesBrief } from "./script.js";
 
 const str = (v) => (typeof v === "string" ? v : v == null ? "" : String(v)).trim();
 const ROSTER_INDEX = new Map(SPECIALISTS.map((s, i) => [s.id, i]));
@@ -117,6 +117,7 @@ export function rewriteMessages({ world, elements, passes, budget, language = DE
     "",
     `The film still runs EXACTLY ${budget.seconds} seconds: ${budget.scenes} scenes and at most ${budget.dialogueWords} words of`,
     `dialogue in total, in ${language} only. Every character and place keeps its EXACT World name.`,
+    ...(budget.takes ? ["", ...takesBrief(budget)] : []),
     "",
     SCREENWRITER_CRAFT,
     "",
@@ -209,7 +210,7 @@ export async function runRoomStage({ job, results, env, model }, deps = {}) {
 
   if (!state.rewrite) {
     const passes = room.map((id) => ({ id, ...state.passes[id] }));
-    const budget = scriptBudget(filmSecondsFor(job));
+    const budget = filmBudgetFor(job);
     const answer = await model.json({
       messages: rewriteMessages({ world, elements, passes, budget, language: job.language || DEFAULT_FILM_LANGUAGE }),
       maxTokens: 16000,

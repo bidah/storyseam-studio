@@ -7,12 +7,20 @@
 //                                 (lib/films.js — named "Story — <first words>",
 //                                 renamed to the World's title once it has one).
 //                                 USER-scoped: it never reads the request's
-//                                 project. Body { prompt, seconds?, style?, engine?, writer?, depth?, specialists? }.
+//                                 project. Body { prompt, seconds?, style?, engine?, writer?, resolution?, score?, depth?, specialists? }.
 //                                 `writer` is the LLM that writes it: absent /
 //                                 "default" = AUTO_WRITER, "claude" = Claude Fable 5.1.
 //                                 `engine` picks the pipeline: absent = the
-//                                 Director (/director-story), "seedance" = the
-//                                 story flow on Seedance 2.5 (/story-flow).
+//                                 Director, "seedance" = the story flow on
+//                                 Seedance 2.5, "h3" = the same on MiniMax H3.
+//                                 `score: false` skips the Score stage (every
+//                                 engine ends scored otherwise).
+//                                 `voices` ("video" | "seedaudio" | "elevenlabs")
+//                                 runs a story engine's Voices stage after its
+//                                 sheets — every character auditioned once, the
+//                                 take referenced by every segment (film-plan.ts
+//                                 › Voices). Absent = no stage; the Director
+//                                 ignores it.
 //                                 `seconds` is a chosen length, one of the
 //                                 engine's steps (Director 120 … 300 in 30s;
 //                                 story flow 60, then 120 … 300); it wins over a
@@ -62,7 +70,7 @@
 // closed. The job itself lives in the FilmJobs Durable Object (film-job-do.js)
 // — one per project — and runs server-side; see lib/film-job.js.
 import { autoAvailable } from "../lib/auto-availability.js";
-import { MAX_PROMPT_CHARS, checkFilmDepth, checkFilmEngine, checkFilmSeconds, checkFilmSpecialists, checkFilmStyle, checkFilmWriter } from "../lib/film-job.js";
+import { MAX_PROMPT_CHARS, checkFilmDepth, checkFilmEngine, checkFilmScore, checkFilmSeconds, checkFilmSpecialists, checkFilmStyle, checkFilmVoices, checkFilmWriter, checkFilmResolution } from "../lib/film-job.js";
 import { FILM_WRITERS } from "../lib/film-plan.ts";
 import { defaultWriterLabel } from "../lib/writer.js";
 import { readAutoSettings, writeAutoSettings } from "../lib/auto-settings.js";
@@ -121,6 +129,18 @@ export function registerAuto(app) {
     const writer = body?.writer || undefined;
     const badWriter = checkFilmWriter(writer);
     if (badWriter) return c.json(refusal("invalid", badWriter), 400);
+    // What the video renders at (film-plan.ts FILM_RESOLUTIONS); absent is 480p.
+    const resolution = body?.resolution || undefined;
+    const badResolution = checkFilmResolution(resolution);
+    if (badResolution) return c.json(refusal("invalid", badResolution), 400);
+    // The Score stage (film-plan.ts › The score); absent is on, `false` skips it.
+    const score = body?.score === undefined || body?.score === null ? undefined : body.score;
+    const badScore = checkFilmScore(score);
+    if (badScore) return c.json(refusal("invalid", badScore), 400);
+    // The Voices pass (film-plan.ts › Voices); absent is none.
+    const voices = body?.voices || undefined;
+    const badVoices = checkFilmVoices(voices);
+    if (badVoices) return c.json(refusal("invalid", badVoices), 400);
     // How deep the story work goes (film-plan.ts FILM_DEPTHS) and, for a Deep
     // Film, which specialists read the script; absent is fast / the default room.
     const depth = body?.depth || undefined;
@@ -161,6 +181,9 @@ export function registerAuto(app) {
       ...(style ? { style } : {}),
       ...(engine ? { engine } : {}),
       ...(writer ? { writer } : {}),
+      ...(resolution ? { resolution } : {}),
+      ...(score === false ? { score: false } : {}),
+      ...(voices ? { voices } : {}),
       ...(depth ? { depth } : {}),
       ...(specialists ? { specialists } : {}),
       userId,

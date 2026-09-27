@@ -16,6 +16,8 @@ import {
 import { Button } from "@/components/ui/button";
 import { useProviderReady } from "@/lib/providerReady";
 import { useT } from "@/lib/i18n";
+import { toStudio } from "@/lib/studioNav";
+import { getProjectId } from "@/lib/projectFetch";
 
 const GateContext = createContext(null);
 
@@ -66,7 +68,7 @@ export function ProviderGateProvider({ children }) {
             <Button variant="ghost" onClick={() => setOpen(false)}>{t("Not now")}</Button>
             <Button
               className="gap-2"
-              onClick={() => { setOpen(false); navigate("/settings"); }}
+              onClick={() => { setOpen(false); navigate(toStudio(getProjectId(), "/settings")); }}
             >
               <Settings size={15} /> {t("Open settings")} <ArrowRight size={15} />
             </Button>

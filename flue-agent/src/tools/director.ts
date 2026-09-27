@@ -105,7 +105,7 @@ export const createSeries = (api: Api) =>
         "The shape this Series is written for. Defaults to 16:9, which is what the Stage plays. This is not a crop setting: the reference image is the exact first frame, so the same Series at another shape is a different opening frame.",
       ),
       resolution: d(
-        v.optional(v.picklist(["480p", "768p", "1080p"])),
+        v.optional(v.picklist(["480p", "720p", "768p", "1080p"])),
         "What the film renders at. Defaults to 480p because a sitting bills per generated second and most of what an author does is LOOK at the thing while writing it.",
       ),
       imageUrl: d(
@@ -129,7 +129,7 @@ export const updateSeries = (api: Api) =>
       prompt: d(v.optional(v.string()), "Rewrite the opening prompt — the brief that governs every beat."),
       imageUrl: d(v.optional(v.string()), "The exact first frame."),
       aspectRatio: d(v.optional(v.picklist(["16:9", "9:16"])), "The shape. Changing it changes what the first frame means."),
-      resolution: d(v.optional(v.picklist(["480p", "768p", "1080p"])), "What the film renders at."),
+      resolution: d(v.optional(v.picklist(["480p", "720p", "768p", "1080p"])), "What the film renders at."),
       seed: d(v.optional(v.nullable(v.number())), "Fix the seed so two sittings start from the same place. The endpoint is still not deterministic — this narrows the drift, it does not remove it."),
       memory: d(v.optional(v.number()), "How many seconds of its own output the Director keeps in view. Higher holds a design longer and costs more."),
       status: d(v.optional(v.picklist(["draft", "published"])), "A Series is never deleted, it is unpublished."),

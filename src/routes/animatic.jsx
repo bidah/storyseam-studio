@@ -10,7 +10,8 @@
 // "Send to editor" is the old Build-Animatic (POST /api/animatic/to-editor),
 // moved here off the Radio tab.
 import { useCallback, useEffect, useState } from "react";
-import { useLoaderData, useNavigate, useRevalidator } from "react-router";
+import { useLoaderData, useRevalidator } from "react-router";
+import { useStudioNavigate } from "@/lib/studioNav";
 import {
   Clapperboard, Film, Send, Loader2, Image as ImageIcon, AudioLines,
   MapPin, CircleAlert, Sparkles, Users, ExternalLink, ImagePlus,
@@ -86,7 +87,7 @@ function AnimaticStudio() {
   const agent = useAgent();
   const agentBusy = agentIsBusy(agent);
   const data = useLoaderData();
-  const navigate = useNavigate();
+  const navigate = useStudioNavigate();
   const revalidator = useRevalidator();
   const { setModalImage, reloadKey } = useShell();
   useRevalidateOnMount("animatic");

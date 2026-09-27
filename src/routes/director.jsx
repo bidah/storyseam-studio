@@ -190,6 +190,7 @@ function SeriesForm({ view, onPatch, busy }) {
               onChange={(e) => edit({ resolution: e.target.value })}
             >
               <option value="480p">480p — cheapest to look at</option>
+              <option value="720p">720p</option>
               <option value="768p">768p</option>
               <option value="1080p">1080p</option>
             </select>

@@ -42,6 +42,7 @@ import { ProductionTypeBadge } from "@/components/ProductionType";
 import { ASPECTS } from "@/components/ImageStudio";
 import { useLocale, useT } from "@/lib/i18n";
 import { Languages } from "lucide-react";
+import { useStudioPath } from "@/lib/studioNav";
 
 // Radix Select forbids empty-string item values — sentinel maps back to ""
 // (empty model = the server default, Nano Banana Pro).
@@ -446,6 +447,7 @@ function SandboxPanel() {
 // optimistically, so the switch moves under the finger and the request settles
 // behind it.
 function PluginsPanel() {
+  const studio = useStudioPath();
   const t = useT();
   const { loading, error, isEnabled, install, remove } = usePlugins();
   const categories = [];
@@ -456,7 +458,7 @@ function PluginsPanel() {
       title={<span className="flex items-center gap-2"><Blocks size={15} className="text-primary" /> {t("Plugins")}</span>}
       meta={(
         <Button asChild size="sm" variant="outline" className="gap-1.5">
-          <Link to="/plugins">{t("Explore plugins")} <ArrowRight size={14} /></Link>
+          <Link to={studio("/plugins")}>{t("Explore plugins")} <ArrowRight size={14} /></Link>
         </Button>
       )}
     >

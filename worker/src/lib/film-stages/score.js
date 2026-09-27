@@ -235,7 +235,7 @@ export async function writeScorePlan({ model, brief, filmMs, moments, ducks, tur
 async function momentsFor({ job, results, env, measured }, deps) {
   try {
     const shots = await (deps.readShots || readShots)(env, job.projectId);
-    const plannedSec = Number(results?.cuesheet?.seconds) || filmPlanFor(job).seconds;
+    const plannedSec = Number(results?.cuesheet?.seconds) || Number(results?.shotlist?.seconds) || filmPlanFor(job).seconds;
     const cuts = measured.cuts || (measured.turns || []).map((at) => ({ at, score: 1 }));
     return momentsOnFilm(storyMoments(shots, plannedSec), { plannedSec, filmMs: measured.durationMs, cuts });
   } catch {

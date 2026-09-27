@@ -1,4 +1,6 @@
 import React, { useState } from "react";
+import { useNavigate } from "react-router";
+import { HOME_PATH } from "@/lib/home";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
   DropdownMenuSeparator, DropdownMenuTrigger,
@@ -14,14 +16,17 @@ import { useProjects } from "@/components/ProjectProvider";
 // Top-left header control: shows the current project and a dropdown to switch,
 // create, rename, or delete projects. Modeled on the Script tab's DraftControls.
 export default function ProjectSwitcher() {
-  const { projects, current, currentId, loading, switchTo, create, rename, remove } = useProjects();
+  const { projects, current, currentId, loading, switchTo, rename, remove } = useProjects();
+  const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const [dialog, setDialog] = useState(null); // { mode: "create" | "rename" }
   const [name, setName] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState(null);
 
-  const openCreate = () => { setName(""); setErr(null); setDialog({ mode: "create" }); };
+  // A new project is a new STORY: the prompt box at `/` makes the project
+  // around the Film, so "New project" is the way there, not a blank-project form.
+  const openCreate = () => { setOpen(false); navigate(HOME_PATH); };
   const openRename = () => { setName(current?.name || ""); setErr(null); setDialog({ mode: "rename" }); };
   const closeDialog = () => { if (!busy) setDialog(null); };
 
@@ -30,8 +35,7 @@ export default function ProjectSwitcher() {
     if (!trimmed) { setErr("Name is required"); return; }
     setBusy(true); setErr(null);
     try {
-      if (dialog.mode === "create") await create(trimmed);
-      else await rename(currentId, trimmed);
+      await rename(currentId, trimmed);
       setDialog(null);
     } catch (e) {
       setErr(String(e.message || e));
@@ -75,7 +79,7 @@ export default function ProjectSwitcher() {
           ))}
           <DropdownMenuSeparator />
           <DropdownMenuItem onClick={openCreate} className="gap-2">
-            <Plus size={14} /> New project
+            <Plus size={14} /> New story
           </DropdownMenuItem>
           <DropdownMenuItem onClick={openRename} disabled={!current} className="gap-2">
             <Pencil size={14} /> Rename current

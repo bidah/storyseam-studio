@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useLoaderData, useNavigate, useRevalidator } from "react-router";
+import { useLoaderData, useRevalidator } from "react-router";
+import { useStudioNavigate } from "@/lib/studioNav";
 import {
   Radio as RadioIcon, Mic, Loader2, Film, Send, X, AudioLines, CircleAlert,
   Clapperboard, Image as ImageIcon, Check, Plus, Bot, MoreVertical, RotateCcw,
@@ -34,7 +35,7 @@ function isVoiceTrack(t) {
 }
 
 function CastingDialog({ open, onOpenChange, onCast, onAgentCast, agentBusy, entry }) {
-  const navigate = useNavigate();
+  const navigate = useStudioNavigate();
   const t = useT();
   const [tracks, setTracks] = useState(null);
   const [error, setError] = useState(null);
@@ -286,7 +287,7 @@ function RadioStudio() {
   const t = useT();
   const agentBusy = agentIsBusy(agent);
   const data = useLoaderData();
-  const navigate = useNavigate();
+  const navigate = useStudioNavigate();
   const revalidator = useRevalidator();
   useRevalidateOnMount("radio");
   const [error, setError] = useState(null);

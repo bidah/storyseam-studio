@@ -2,7 +2,9 @@ import { createBrowserRouter, redirect } from "react-router";
 import RootLayout from "@/components/RootLayout";
 import { RouteError } from "@/components/shared";
 import { RouteSkeleton } from "@/components/skeletons";
-import { HOME_PATH, STUDIO_HIDDEN } from "@/lib/home";
+import { studioPath } from "@/lib/home";
+import { setProjectId } from "@/lib/projectFetch";
+import { StudioRedirect } from "@/components/StudioRedirect";
 
 // `HydrateFallback` covers the HARD-LOAD case: on a cold `createBrowserRouter`
 // start React Router runs the matched loader before the first render, so the
@@ -112,15 +114,40 @@ export const router = createBrowserRouter([
     lazy: () => import("@/routes/terms"),
     ErrorBoundary: RouteError,
   },
+  // THE STUDIO — header, tabs, plugins, agent panel — lives under ONE
+  // project's url: /p/:projectId/<view>. The project is the URL's, set on the
+  // fetch shim by the loader BEFORE the shell (and ProjectProvider) render, so
+  // a reload, a shared link or a "Continue working" jump from a Film lands on
+  // that project's studio whatever the browser last had open.
   {
-    path: "/",
+    path: "/p/:projectId",
     Component: RootLayout,
     ErrorBoundary: RouteError, // catch-all so chunk-load failures on any route auto-recover
     id: "root",
-    // The studio shell is hidden for now (lib/home.js): every route under it
-    // goes to the text-to-story page instead.
-    loader: () => (STUDIO_HIDDEN ? redirect(HOME_PATH) : null),
-    children: [
+    loader: ({ params }) => {
+      setProjectId(params.projectId);
+      return null;
+    },
+    children: studioRoutes(),
+  },
+  // Every BARE studio path (/world, /editor, /settings…) still exists — old
+  // links, bookmarks and the agent's `navigate` all use them. They are not a
+  // second studio: StudioRedirect sends them to the current project's /p/ url
+  // (hash and search kept), or home when no project is known (STUDIO_HIDDEN in
+  // lib/home.js: the bare shell never renders).
+  {
+    path: "*",
+    Component: StudioRedirect,
+    ErrorBoundary: RouteError,
+  },
+]);
+
+// The studio's tabs, relative to /p/:projectId. Redirect loaders build
+// ABSOLUTE project-prefixed targets from the param — a relative `redirect()`
+// would resolve against the route tree, not the URL, and drop the project.
+function studioRoutes() {
+  const to = (view) => ({ params }) => redirect(studioPath(params.projectId, view));
+  return [
       // /world is just the bible now: the sub-tab bar is gone and its three
       // sub-surfaces became top-level plugins of their own (see below).
       { path: "world", lazy: () => import("@/routes/world/written"), ErrorBoundary: RouteError, HydrateFallback: fallback("world") },
@@ -136,9 +163,9 @@ export const router = createBrowserRouter([
       // would be invisible to us — a `navigate` command the agent minted before
       // this refactor and replays from a stored plan. A 404-to-/script would
       // look like the feature vanished.
-      { path: "world/agents", loader: () => redirect("/agents") },
-      { path: "world/visual", loader: () => redirect("/images") },
-      { path: "world/nodes", loader: () => redirect("/nodes") },
+      { path: "world/agents", loader: to("agents") },
+      { path: "world/visual", loader: to("images") },
+      { path: "world/nodes", loader: to("nodes") },
       // Keeps React Flow + TipTap out of the main chunk, like /nodes.
       { path: "moodboard", lazy: () => import("@/routes/moodboard"), ErrorBoundary: RouteError, HydrateFallback: fallback("moodboard") },
       { path: "script", lazy: () => import("@/routes/script") },
@@ -172,8 +199,9 @@ export const router = createBrowserRouter([
       // invite needs an identity to attach the membership to).
       { path: "members", lazy: () => import("@/routes/members"), ErrorBoundary: RouteError },
       { path: "accept-invite/:id", lazy: () => import("@/routes/accept-invite"), ErrorBoundary: RouteError },
-      // Unknown paths fall back to the Script tab.
-      { path: "*", loader: () => redirect("/script") },
-    ],
-  },
-]);
+      // Unknown paths fall back to the Bible — the studio's landing tab.
+      { path: "*", loader: to("world") },
+      // The studio's index: /p/<id> alone opens the Bible.
+      { index: true, loader: to("world") },
+  ];
+}

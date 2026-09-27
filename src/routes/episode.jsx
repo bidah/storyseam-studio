@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useLoaderData, useNavigate, useRevalidator } from "react-router";
+import { useLoaderData, useRevalidator } from "react-router";
+import { useStudioNavigate } from "@/lib/studioNav";
 import { X, Check, Eye, Plus, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, RotateCcw, Maximize2, Volume2, VolumeX, Speech, Play, Pause, Copy, Pencil, Sparkles, PenLine, FileText, Film, Image as ImageIcon, Loader2, Wand2, Scissors, Boxes, CircleAlert, MapPin, User, Palette, Power, Trash2, Upload, PersonStanding, GitBranch } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useT } from "@/lib/i18n";
@@ -1802,7 +1803,7 @@ function EpisodeBundle({ b, flat, picked, onOpenPicker, onRemove, onView, audioM
 
 function AudioPickerModal({ bundle, audioRefs, picked, voiceNeeds, open, onToggle, onLinkNeed, onClose }) {
   const t = useT();
-  const navigate = useNavigate();
+  const navigate = useStudioNavigate();
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="flex max-h-[88vh] max-w-[min(94vw,640px)] flex-col gap-0 overflow-hidden p-0">

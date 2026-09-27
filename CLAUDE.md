@@ -9,11 +9,18 @@ chat agent (`flue-agent/`, its own Cloudflare Worker `shot-studio-flue-v2`, prox
 at `/eve`) drives the pipeline via typed tools + render skills. See `README.md` for
 architecture and how to run it.
 
-**The studio shell is HIDDEN for now.** The root `/` is the product:
-the prompt box (a prompt in, a Film back), with a **Gen mode** of fal H3 Director
-or Seedance 2.5, and a Film's page at `/create/:filmId`. Every route under
-`RootLayout` — header, tabs, agent panel — redirects there. One switch brings it
-back: `STUDIO_HIDDEN` in `src/lib/home.js`. Nothing under it was removed.
+**The root `/` is the product**: the prompt box (a prompt in, a Film back),
+with a **Gen mode** of fal H3 Director, Seedance 2.5 or MiniMax H3, and a Film's
+page at `/create/:filmId`. **The studio shell lives under a project's url** —
+`/p/:projectId/<view>` (`studioPath` in `src/lib/home.js`; RootLayout mounts
+there and its loader sets the project on the fetch shim, so the URL is the
+state). A finished Film's "Continue working on the video" opens its own
+project's studio at the Editor: the Film's project has its `plugins` doc
+materialised from the steps that ran (`worker/src/lib/film-plugins.js`) and the
+Film seeded onto the Editor timeline. Bare studio paths (`/world`, `/editor`…)
+redirect to the current project's `/p/...` url through `StudioRedirect` (hash
+kept), or home when no project is known. "New story" in the project switcher
+goes home — the prompt box is where projects are made.
 
 ## Storage — D1 for state, R2 for bytes
 
@@ -217,22 +224,81 @@ anything is paid for.
 
 ### The story flow — the same Film on Seedance 2.5
 
-`/` offers both pipelines on one page (`components/DirectorStory.jsx`
-`FLOWS`): the input's **Gen mode** picker (fal H3 Director / Seedance 2.5,
-remembered per browser) is the choice. Seedance sends `engine: "seedance"` with
+`/` offers every pipeline on one page (`components/DirectorStory.jsx`
+`FLOWS`): the input's **Gen mode** picker (fal H3 Director / Seedance 2.5 /
+MiniMax H3, remembered per browser) is the choice. Seedance sends `engine: "seedance"` with
 the prompt; every Film's page is `/create/:id` and follows the Film's engine.
 `/director-story`, `/story-flow` and their `/create/:id` only redirect there
 (`/story-flow` with Seedance chosen). A Seedance Film runs `STORY_FLOW_STAGES`
 instead of `FILM_STAGES` (`worker/src/lib/film-job.js` `stagesFor`). Look and World
 are shared; from there it is its own recipe (`worker/src/lib/film-stages/story-flow/`):
 character sheets as a turnaround + a face, empty location plates → a shot list of
-≤15s **segments** written as staged narrative (no pinned frame every few seconds;
-`film-plan.ts` `segmentDurations`) → the prompts compiled from the Seedance 2.5 skill
+**segments** of up to 30s written as staged narrative (no pinned frame every few
+seconds; `film-plan.ts` `segmentDurations` — the ceiling is the ENGINE's:
+Seedance 2.5 takes 30, H3 15, and the Script stage writes one scene per take so
+the shot list cuts the screenplay onto that grid) → the prompts compiled from the Seedance 2.5 skill
 (`seedance-skill.js`, vendored from promptsama) → the video run, one segment at a
 time, segment k an `extension` of the **last 3s of segment k−1** (cut on the box) plus
-its sheets → one final cut. Everything at **480p**. Seedance writes the sound, so there
-is no Score. It adds a **1:00** length for testing a story cheaply. The agent
-reaches it through `make_film`'s `engine`.
+its sheets → one final cut → the Score. Everything at **480p**. Seedance writes the
+dialogue and effects (never music — see the score below). It adds a **1:00** length
+for testing a story cheaply. The agent reaches it through `make_film`'s `engine`.
+
+### The H3 flow — the same story on MiniMax H3
+
+The third engine, `engine: "h3"` (Gen mode **MiniMax H3**), is the story flow
+on fal's `minimax/h3/reference-to-video`, which is not live either. It runs
+`H3_STAGES` (`film-job.js`): the story flow's Look, World, Script, sheets, Shot
+list and final cut, with its own prompts and video run in
+`worker/src/lib/film-stages/h3/`. Three things differ, all in `film-plan.ts`
+› The H3 FLOW: H3 has no `extension` task, so segment k is handed the last 3s
+of segment k−1 as `reference_video_urls` ("Video 1") and told to open on its
+last frame; H3 cites references by order ("Image 1, Image 2", not `@Image1`)
+and takes at most 9 images; and the prompt is compiled in the promptsama H3
+skill's production order (`h3/h3-skill.js`, vendored verbatim from
+https://www.promptsama.ai/minimax-h3.md — the Shot list writer reads it whole,
+the way the Seedance one reads `seedance-skill.js`; `STORY_ENGINES` in
+`story-flow/shotlist.js` is where an engine's skill and continuation wording
+are named). 480p/720p map onto H3's native 480P/768P.
+
+### The score — every engine's last stage
+
+Every Film ends with the Director's **Score** stage (`film-stages/score.js`):
+the finished film measured, one continuous cue written to it and laid under
+the picture. For the two story engines it is `STORY_SCORE_STAGE`, which hands
+the final cut's `stitch` result to the score under the name `sitting`. The
+story-flow Shot list now writes the same **music cues** the Director's does, so
+the score is paced from the story rather than from the picture alone. The
+prompt box's settings gear has a **Score** switch (on by default; only `score:
+false` is sent, and `stagesFor` drops the stage), and `make_film` takes
+`score`. Because the score is laid under afterwards, every video prompt
+carries the sound lock (`film-sound.js` `filmSoundLock`: **NO MUSIC, no
+subtitles**), on Seedance, H3 and the Director alike — music a model bakes in
+cannot be ducked or cut out.
+
+### Voices — one voice per character, auditioned once
+
+A story engine writes its own sound, so a character's voice is whatever the
+model gave them in THAT segment, and the next segment, prompted afresh, gives
+them another. Seedance 2.5 and MiniMax H3 both take **audio references** (a
+clip that "defines <Name>'s voice timbre, accent and delivery"), which is the
+only way one voice reaches every segment. So a story-engine Film runs a
+**Voices** stage right after its sheets (`film-stages/story-flow/voices.js`):
+every character in the World is **auditioned** — the same `AUDITION_LINES`
+for everyone, read in their own voice as the World's `voice` note describes
+it, as a voice-only recording (no ambient sound, no room tone, no music, no
+effects) — and the take is filed as an mp3 in R2 and on the World roster's
+`voiceRef`. Every segment a character speaks in then binds it: `@AudioN` on
+Seedance, `Audio N` on H3 (at most 3 audio files and 15s of audio per H3
+request, counted in its 12 files — `MAX_H3_REFERENCE_AUDIO`). Three ways to
+run the audition, all on fal, chosen by the prompt box's **Voices** setting
+and `make_film`'s `voices` (`film-plan.ts` `FILM_VOICES`): `video` — the
+Film's own video model generates a 5s audition to camera and the box cuts its
+audio track (the voice that model gives that face, so it persists best;
+default); `seedaudio` — ByteDance Seed Audio reads the lines from the voice
+note; `elevenlabs` — a voice designed from the note reads them. The Director
+cannot take a voice reference, so it ignores the setting and runs no stage;
+and a job without `voices` (one from before) runs none either — steps map
+onto stages by position, so a running job's list must never change under it.
 
 ## Feature parity — GUI AND agent, always
 

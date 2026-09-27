@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Link, Outlet, useLocation, useNavigate, useNavigation, useRevalidator } from "react-router";
+import { Link, Outlet, useLocation, useNavigate, useNavigation, useParams, useRevalidator } from "react-router";
 import { RefreshCw, ExternalLink, Clapperboard, LogOut, User, Users, Settings, Blocks, Plug } from "lucide-react";
 import { Glowing } from "glowing";
 import { cn } from "@/lib/utils";
@@ -34,6 +34,8 @@ import { PluginsProvider, usePlugins } from "@/components/PluginsProvider";
 import PluginGate from "@/components/PluginGate";
 import { UseMcpDialog } from "@/components/UseMcpModal";
 import { headerTabs, blockingPlugin } from "@/lib/plugins";
+import { parseStudioPath, studioPath } from "@/lib/home";
+import { toStudio, useStudioPath } from "@/lib/studioNav";
 
 /* ---------------------------------------------------------------- *
  * App shell                                                        *
@@ -158,6 +160,7 @@ function useSettled(on, ms = 150) {
 // dark-only now (see index.html), so the control had nothing to switch to.
 function UserMenu() {
   const t = useT();
+  const studio = useStudioPath();
   const signOut = async () => {
     try {
       await authSignOut();
@@ -189,12 +192,12 @@ function UserMenu() {
         <DropdownMenuLabel>{t("Higgsfield account")}</DropdownMenuLabel>
         <DropdownMenuSeparator />
         <DropdownMenuItem asChild>
-          <Link to="/settings">
+          <Link to={studio("/settings")}>
             <Settings size={14} /> {t("Settings")}
           </Link>
         </DropdownMenuItem>
         <DropdownMenuItem asChild>
-          <Link to="/members">
+          <Link to={studio("/members")}>
             <Users size={14} /> {t("Team & access")}
           </Link>
         </DropdownMenuItem>
@@ -220,7 +223,13 @@ export default function RootLayout() {
   const t = useT();
   const location = useLocation();
   const navigate = useNavigate();
-  const view = location.pathname.slice(1).split("/")[0] || "script";
+  // The studio is mounted at /p/:projectId (router.jsx); the tab is the first
+  // segment AFTER that. `barePath` is the view's path without the project —
+  // the shape the agent's `view_screen` and every bare link already speak.
+  const { projectId } = useParams();
+  const viewOf = (pathname) => (parseStudioPath(pathname)?.rest || "/").slice(1).split("/")[0];
+  const barePath = (parseStudioPath(location.pathname)?.rest || "/") + location.hash;
+  const view = viewOf(location.pathname) || "world";
   const onScript = view === "script";
 
   // Cold tab-to-tab navigation: `swr()` only paints instantly on a WARM cache;
@@ -237,9 +246,7 @@ export default function RootLayout() {
   //     a tab it's already on, hash-only changes) are excluded by the tab
   //     comparison below.
   const navigation = useNavigation();
-  const pendingTab = navigation.location
-    ? navigation.location.pathname.slice(1).split("/")[0]
-    : null;
+  const pendingTab = navigation.location ? viewOf(navigation.location.pathname) : null;
   const navPending = navigation.state === "loading" && !!pendingTab && pendingTab !== view;
   // The skeleton waits out the delay; the TAB HIGHLIGHT must not — it tracks the
   // click immediately so the header stays responsive on warm (instant) loads.
@@ -249,7 +256,7 @@ export default function RootLayout() {
   // Tell the backend which tab is open, so the chat agent's `view_screen` can
   // resolve "this shot" instead of asking. Pointer only — the id and the path;
   // the agent re-reads the live records itself (src/lib/appState.js).
-  useReportNavigation({ view, path: location.pathname + location.hash });
+  useReportNavigation({ view, path: barePath });
 
   const revalidator = useRevalidator();
   const [loading, setLoading] = useState(true);
@@ -288,12 +295,19 @@ export default function RootLayout() {
   // Switching projects (from the header ProjectSwitcher) changes the id in the
   // fetch shim; re-fetch every tab and remount the body so no stale project
   // data lingers.
-  useEffect(() => onProjectChange(() => {
+  //
+  // The URL carries the project (/p/:projectId), so it follows the switch too:
+  // a project picked in the switcher (or corrected by ProjectProvider when the
+  // URL named one the user can't open) rewrites the address, same tab.
+  const urlRef = useRef({ projectId, view });
+  urlRef.current = { projectId, view };
+  useEffect(() => onProjectChange((id) => {
     clearTabCache(); // per-tab caches hold the OLD project's payloads — drop them
     setReloadKey((k) => k + 1); // bust media even if the header refetch fails
     setProjectKey((k) => k + 1);
     revalidator.revalidate(); // re-run the active route's loader with the new project
     load(); // header shot count belongs to the new project too
+    if (id && id !== urlRef.current.projectId) navigate(studioPath(id, urlRef.current.view), { replace: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }), []);
 
@@ -324,7 +338,8 @@ export default function RootLayout() {
     const cmd = navEvents.last;
     if (!cmd?.path || cmd.token === lastNavToken.current) return;
     lastNavToken.current = cmd.token;
-    navigate(cmd.path);
+    // The agent speaks bare paths (`/radio`); land inside THIS project's studio.
+    navigate(toStudio(projectId, cmd.path));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [navEvents.last]);
 
@@ -460,7 +475,7 @@ export default function RootLayout() {
       <ShellContext.Provider value={shell}>
       {/* Highlight the PENDING tab, not the committed one — otherwise a click
           leaves the old tab lit for the whole load. */}
-      <Tabs value={activeTab} onValueChange={(v) => navigate("/" + v)}>
+      <Tabs value={activeTab} onValueChange={(v) => navigate(studioPath(projectId, v))}>
       <div className="flex h-dvh flex-col overflow-hidden">
         {/* One unified header, full width across both the GUI and the chat.
             Opaque rather than a blur over the page: the strip is a flat HUD
@@ -485,7 +500,7 @@ export default function RootLayout() {
             <Button
               variant={view === "plugins" ? "default" : "outline"}
               size="sm"
-              onClick={() => navigate("/plugins")}
+              onClick={() => navigate(studioPath(projectId, "plugins"))}
             >
               <Blocks size={13} /> {t("Explore plugins")}
             </Button>

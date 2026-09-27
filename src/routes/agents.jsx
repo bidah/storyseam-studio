@@ -15,6 +15,7 @@ import { Empty, Eyebrow, Panel, ErrorNote, Tip } from "@/components/shared";
 import { SPECIALISTS, STAGE_ORDER } from "@/lib/specialists";
 import { reviewMessage } from "@/lib/suggestions";
 import { useT, t as staticT } from "@/lib/i18n";
+import { useStudioPath } from "@/lib/studioNav";
 
 /* ---------------------------------------------------------------- *
  * The Script Agents board — the author's accountability view of the *
@@ -351,6 +352,7 @@ function FormatCheck({ lint }) {
  * ---------------------------------------------------------------- */
 
 function ScriptAgents() {
+  const studio = useStudioPath();
   const t = useT();
   const agent = useAgent();
   const agentBusy = agentIsBusy(agent);
@@ -430,7 +432,7 @@ function ScriptAgents() {
             </p>
           </div>
           <Button asChild variant="outline">
-            <Link to="/script"><PenLine size={14} /> {t("Open the script")}</Link>
+            <Link to={studio("/script")}><PenLine size={14} /> {t("Open the script")}</Link>
           </Button>
         </div>
 
@@ -468,7 +470,7 @@ function ScriptAgents() {
             </Empty>
             <div className="mt-3">
               <Button asChild size="sm">
-                <Link to="/script"><PenLine size={13} /> {t("Go to the Script tab")}</Link>
+                <Link to={studio("/script")}><PenLine size={13} /> {t("Go to the Script tab")}</Link>
               </Button>
             </div>
           </div>

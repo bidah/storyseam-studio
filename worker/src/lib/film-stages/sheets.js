@@ -19,7 +19,7 @@
 // Series — and a sheet already filed with a picture is not paid for twice.
 import { SHEET_FORM } from "../auto-prompts.generated.js";
 import { filmSoundLock } from "../film-sound.js";
-import { filmStyleFor } from "../film-plan.ts";
+import { filmResolutionOf, filmStyleFor } from "../film-plan.ts";
 import { absolutize, createSeries, directorUrl, readIndex, readSeries, upsertModelSheet } from "../director.js";
 import { artSettings } from "../series.ts";
 import { MAX_REFERENCE_SHEETS } from "../film-plan.ts";
@@ -183,9 +183,9 @@ export async function ensureFilmSeries(env, pid, job, { title, prompt }) {
   const res = await createSeries(
     env,
     pid,
-    // 480p on purpose: the Sitting streams at the Series' resolution, and an
-    // Auto Film is shot at 480p by default.
-    { title: str(title).slice(0, 200) || "Auto Film", prompt: str(prompt) || job.prompt, aspectRatio: "16:9", resolution: "480p" },
+    // The Sitting streams at the Series' resolution: the one the author chose
+    // (film-plan.ts FILM_RESOLUTIONS), 480p by default.
+    { title: str(title).slice(0, 200) || "Auto Film", prompt: str(prompt) || job.prompt, aspectRatio: "16:9", resolution: filmResolutionOf(job.resolution) },
     { filmId: job.id, source: "auto" },
   );
   if (!res.ok) throw new Error(`Could not create the Film's Series: ${Object.values(res.issues || {}).join("; ")}`);

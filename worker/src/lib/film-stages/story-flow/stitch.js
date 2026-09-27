@@ -14,7 +14,7 @@
 // result = { seriesId, sittingId, file, url, seconds, segments, jobId }
 //   — the shape film-job.js `filmOf` reads for the finished Film.
 import { directorUrl, readSeries, updateSittings } from "../../director.js";
-import { FILM_RATES_USD, formatLength } from "../../film-plan.ts";
+import { filmResolutionOf, FILM_RATES_USD, formatLength } from "../../film-plan.ts";
 import { daytonaStoryBox, storyKey } from "./media.js";
 
 const slug = (s) => String(s || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 40);
@@ -64,8 +64,11 @@ export async function runStoryFlowStitchStage({ job, results, env, attempt = 1 }
   if (!state.jobId || (state.attempt || 1) < attempt) {
     const file = `story-${slug(job.id)}-film-${crypto.randomUUID().slice(0, 6)}.mp4`;
     const jobId = await box.startStitch(env, {
-      clips: segs.map((s) => ({ key: storyKey(pid, s.file), dur: s.dur, extended: s.index > 0 })),
+      // A segment that continued the one before it (H3's run says so per
+      // segment; Seedance's every one after the first) may replay its source.
+      clips: segs.map((s) => ({ key: storyKey(pid, s.file), dur: s.dur, extended: s.extended ?? s.index > 0 })),
       outKey: storyKey(pid, file),
+      resolution: filmResolutionOf(job.resolution),
     });
     state = { jobId, attempt, file };
     return {

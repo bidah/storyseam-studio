@@ -7,7 +7,8 @@ import { useAgent, agentIsBusy, stitchCutMessage, scoreCutMessage } from "@/comp
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import { useNavigate, useLoaderData } from "react-router";
+import { useLoaderData } from "react-router";
+import { useStudioNavigate } from "@/lib/studioNav";
 import { Empty, Panel, ErrorNote, fmtTime } from "@/components/shared";
 import { toPreviewSrc } from "@/lib/previewSrc";
 
@@ -507,7 +508,7 @@ export { CompleteCuts };
 // (/episode#ep-<id>, /sounds#snd-<track>). RootLayout's anchor hook does the
 // scroll + flash once the target tab has loaded.
 export function Component() {
-  const navigate = useNavigate();
+  const navigate = useStudioNavigate();
   const navigateTo = useCallback(
     ({ view, anchor }) => navigate(`/${view}${anchor ? `#${anchor}` : ""}`),
     [navigate],

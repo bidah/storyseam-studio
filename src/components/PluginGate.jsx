@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Panel, Eyebrow, ErrorNote } from "@/components/shared";
 import { usePlugins } from "@/components/PluginsProvider";
 import { useT } from "@/lib/i18n";
+import { useStudioPath } from "@/lib/studioNav";
 
 // What you see when you open a plugin's tab and don't have the plugin.
 //
@@ -17,6 +18,7 @@ import { useT } from "@/lib/i18n";
 export function PluginGate({ plugin }) {
   const t = useT();
   const { install } = usePlugins();
+  const studio = useStudioPath();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
 
@@ -75,7 +77,7 @@ export function PluginGate({ plugin }) {
               {busy ? t("Installing…") : t("Install {name}", { name: t(plugin.name) })}
             </Button>
             <Button variant="link" size="sm" asChild>
-              <Link to="/plugins">{t("Browse all plugins")}</Link>
+              <Link to={studio("/plugins")}>{t("Browse all plugins")}</Link>
             </Button>
           </div>
         </div>

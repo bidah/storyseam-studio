@@ -21,8 +21,8 @@ import * as v from "valibot";
 import { d } from "./_util.js";
 import type { Api, Json } from "../lib/api.js";
 import {
-  DEFAULT_DEEP_SPECIALISTS, FILM_DEPTHS, FILM_STEPS, FILM_STYLES, FILM_WRITERS, ROOM_PASS_SECONDS, ROOM_REWRITE_SECONDS,
-  STORY_FLOW_STEPS, filmLength, formatLength, storyFlowLength,
+  AUDITION_SECONDS, DEFAULT_DEEP_SPECIALISTS, DEFAULT_FILM_RESOLUTION, DEFAULT_FILM_VOICES, FILM_DEPTHS, FILM_ENGINES, FILM_RESOLUTIONS, FILM_STEPS, FILM_STYLES, FILM_VOICES, FILM_WRITERS, ROOM_PASS_SECONDS, ROOM_REWRITE_SECONDS,
+  STORY_FLOW_STEPS, filmLength, formatLength, isStoryEngine, storyFlowLength,
 } from "../lib/film-plan.js";
 import { SPECIALIST_IDS } from "../lib/specialists.js";
 
@@ -31,7 +31,7 @@ type Step = {
   error?: string | null; pending?: boolean;
 };
 type Job = {
-  id?: string; prompt?: string; seconds?: number; engine?: string; status?: string; error?: string | null; auto?: boolean;
+  id?: string; prompt?: string; seconds?: number; engine?: string; voices?: string; status?: string; error?: string | null; auto?: boolean;
   steps?: Step[]; spend?: Record<string, number>; spent?: number;
   confirm?: { status?: string; after?: string; summary?: string; plan?: unknown };
   film?: Record<string, unknown>;
@@ -77,6 +77,7 @@ function viewJob(job: Job | null | undefined): Json {
     prompt: job.prompt ?? null,
     ...(typeof job.seconds === "number" ? { seconds: job.seconds } : {}),
     engine: job.engine || "director",
+    ...(job.voices ? { voices: job.voices } : {}),
     status: job.status ?? null,
     auto: job.auto !== false,
     steps: (job.steps || []).map((s) => ({
@@ -122,7 +123,7 @@ export const makeFilm = (api: Api) =>
       seconds: v.optional(
         d(
           v.number(),
-          `Optional length the author asked for, IN SECONDS (three minutes → 180, "3:10" → 190). A Director Film is 2:00–5:00 in 30s steps (${FILM_STEPS.join(", ")}): no length means 2:00. A story-flow Film (engine "seedance") can also be ONE MINUTE (${STORY_FLOW_STEPS.join(", ")}): no length means 1:00. Anything else rounds UP to the next step, longer is capped at 5:00 (the result says \`capped\` — tell the author). It wins over any length in the prompt — the same as the length setting on the Auto surface's input.`,
+          `Optional length the author asked for, IN SECONDS (three minutes → 180, "3:10" → 190). A Director Film is 2:00–5:00 in 30s steps (${FILM_STEPS.join(", ")}): no length means 2:00. A story-flow Film (engine "seedance" or "h3") can also be ONE MINUTE (${STORY_FLOW_STEPS.join(", ")}): no length means 1:00. Anything else rounds UP to the next step, longer is capped at 5:00 (the result says \`capped\` — tell the author). It wins over any length in the prompt — the same as the length setting on the Auto surface's input.`,
         ),
       ),
       style: v.optional(
@@ -149,16 +150,34 @@ export const makeFilm = (api: Api) =>
           `With depth "deep": which specialists read the script, by id (${SPECIALIST_IDS.join(", ")}). Omitted, the default room reads it: ${DEFAULT_DEEP_SPECIALISTS.join(", ")}. Each pass is about ${ROOM_PASS_SECONDS}s plus one rewrite (${ROOM_REWRITE_SECONDS}s) — quote roomEstimate-style time when the author asks.`,
         ),
       ),
+      resolution: v.optional(
+        d(
+          v.picklist(FILM_RESOLUTIONS as unknown as [string, ...string[]]),
+          `Optional: what the video renders at, ${FILM_RESOLUTIONS.join(" or ")} — the same choice as the Resolution setting on the prompt box. Both engines take it. Omit for ${DEFAULT_FILM_RESOLUTION} (the default, and the cheapest). Pass "720p" only when the author asks for 720p, HD or higher quality; on Seedance it costs about 2.25× as much per second.`,
+        ),
+      ),
       engine: v.optional(
         d(
-          v.picklist(["director", "seedance"]),
-          'Optional PIPELINE — the same choice as the Gen mode on the prompt box at /. "director" (default): the live Director — a cue sheet pinned with a drawn frame every ~4s, played as one sitting, then scored. "seedance": the STORY FLOW on Seedance 2.5 at 480p — character sheets (turnaround + face) and empty location plates, a shot list of ≤15s segments written as staged narrative, each segment rendered as an extension of a cut of the previous one, then one final cut; Seedance writes the sound, and a story can be one minute (the cheap way to test one). Pass "seedance" when the author asks for Seedance, the story flow, or a quick one-minute test.',
+          v.picklist(FILM_ENGINES as unknown as [string, ...string[]]),
+          'Optional PIPELINE — the same choice as the Gen mode on the prompt box at /. "director" (default): the live Director — a cue sheet pinned with a drawn frame every ~4s, played as one sitting, then scored. "seedance": the STORY FLOW on Seedance 2.5 — character sheets (turnaround + face) and empty location plates, a shot list of segments of up to 30s (one Seedance 2.5 take each; the screenplay is written one scene per take) as staged narrative, each segment rendered as an extension of a cut of the previous one, then one final cut and the score; Seedance writes the dialogue and effects, and a story can be one minute (the cheap way to test one). "h3": the same story flow on MiniMax H3 (fal\'s minimax/h3/reference-to-video) — segments of at most 15s (H3\'s own ceiling), the sheets go in as Image 1, Image 2 …, each segment after the first continues a cut of the previous one handed over as Video 1, then the final cut and the score. Pass "seedance" when the author asks for Seedance or the story flow, "h3" when they ask for MiniMax, Hailuo or H3; either for a quick one-minute test.',
+        ),
+      ),
+      voices: v.optional(
+        d(
+          v.picklist(FILM_VOICES.map((x) => x.id) as [string, ...string[]]),
+          `Optional VOICES pass — story engines ("seedance", "h3") ONLY; the Director cannot take a voice reference and ignores it. A story engine writes the sound itself and gives a character a different voice in every segment, so after the sheets the job AUDITIONS every character once — the same lines, read in their own voice as the World describes it, as a clean voice-only recording — files the take as an mp3, and every later segment they speak in binds it as their voice reference (Seedance @Audio1, H3 Audio 1). How the audition is made, all on fal: ${FILM_VOICES.map((x) => `"${x.id}" (${x.label} — ${x.blurb})`).join(", ")}. "video" is a ${AUDITION_SECONDS}s generation per character on the Film's own model — the voice that model gives that face, so it persists best, and it costs the most. The same choice as the Voices setting on the prompt box's gear. Omitted on a story engine, "${DEFAULT_FILM_VOICES}" is sent; pass "seedaudio" or "elevenlabs" when the author names them or asks for a cheaper voice pass.`,
+        ),
+      ),
+      score: v.optional(
+        d(
+          v.boolean(),
+          "Optional: whether the Film ends with the Score stage — one continuous music cue written to the finished film and laid under it. Every engine is scored by default (the video models are told NO MUSIC so the score never fights baked-in music); the same switch as Score on the prompt box's settings. Pass false only when the author asks for no music / no score.",
         ),
       ),
     }),
     async run({ data: input, signal }): Promise<{ output: Json }> {
       const prompt = String(input.prompt ?? "").trim();
-      const seedance = input.engine === "seedance";
+      const seedance = isStoryEngine(input.engine);
       // `d()` types the list as unknown; the picklist already refused anything but ids.
       const room = Array.isArray(input.specialists) ? (input.specialists as string[]) : [];
       // The same `seconds` the surface's length gear sends: one of the steps,
@@ -177,8 +196,12 @@ export const makeFilm = (api: Api) =>
             prompt,
             ...(chosen ? { seconds: chosen.seconds } : {}),
             ...(input.style ? { style: input.style } : {}),
-            ...(seedance ? { engine: "seedance" } : {}),
+            ...(input.engine && input.engine !== "director" ? { engine: input.engine } : {}),
             ...(input.writer && input.writer !== "default" ? { writer: input.writer } : {}),
+            ...(input.resolution && input.resolution !== DEFAULT_FILM_RESOLUTION ? { resolution: input.resolution } : {}),
+            ...(input.score === false ? { score: false } : {}),
+            // The Voices pass rides only with a story engine, defaulting as the GUI does.
+            ...(seedance ? { voices: input.voices || DEFAULT_FILM_VOICES } : {}),
             ...(input.depth === "deep" ? { depth: "deep", ...(room.length ? { specialists: room } : {}) } : {}),
           },
           signal,

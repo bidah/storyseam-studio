@@ -7,12 +7,42 @@ replace the Vite build/entry and break Worker asset serving, the Vercel `eve`
 build, and the dev proxy for no benefit (there's no SSR host). See
 `react-router-migration-plan.md` for the full rationale.
 
+## The studio is a project's url — `/p/:projectId/<view>`
+
+The shell (`RootLayout`: header, tabs, plugins, agent panel) is mounted ONCE, at
+`/p/:projectId`. The project is the URL's: the route's loader calls
+`setProjectId(params.projectId)` on the fetch shim BEFORE the shell and
+`ProjectProvider` render, so a reload, a shared link, or the Film page's
+"Continue working on the video" all land on that project's studio whatever the
+browser last had open. `lib/home.js` › `studioPath(projectId, view, suffix)`
+builds the url; `parseStudioPath` reads it back.
+
+- **Switching project** (the header switcher, or `ProjectProvider` correcting a
+  URL naming a project the user can't open) fires `onProjectChange`; RootLayout
+  rewrites the address to the new project, same tab (`navigate(..., { replace })`).
+- **Bare paths still work.** `/world`, `/editor`, `/settings#…` are matched by a
+  catch-all `StudioRedirect` (`components/StudioRedirect.jsx`) that sends them to
+  the CURRENT project's `/p/…` url with hash and search kept, or home when no
+  project is known. It is a component, not a loader, because a loader's request
+  url has no hash and the cross-tab jumps (`/episode#ep-<id>`) would lose theirs.
+  Old links, bookmarks and the agent's `navigate` (which speaks bare paths —
+  RootLayout prefixes them itself) all go through it.
+- **Inside the shell, prefer the project-aware helpers** in `lib/studioNav.js`:
+  `useStudioNavigate()` / `useStudioPath()` (a `Link to={studio("/script")}`)
+  — a bare path costs a redirect hop and a history entry. The routes' cross-tab
+  jumps already use them.
+- `useReportNavigation` keeps reporting the BARE view path, so the agent's
+  `view_screen` sees the same shape it always did.
+- "New project" in the switcher is now "New story": it goes to `/`, where the
+  prompt box makes the project around the Film.
+
 ## Route tree
 
-`src/router.jsx` — one `RootLayout` with a child route per surface:
+`src/router.jsx` — one `RootLayout` with a child route per surface, all under
+`/p/:projectId` (shown bare below):
 
 ```
-/                 → redirect to /world
+/p/<id>           → redirect to /p/<id>/world  (unknown tabs too)
 CORE   /world (Bible)  /script  /episode  /editor
 PLUGIN /images  /videos            (pre-installed on a new project)
        /agents  /moodboard  /shotlist  /nodes

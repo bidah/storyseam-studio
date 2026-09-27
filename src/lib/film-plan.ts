@@ -94,7 +94,7 @@ export const SANDBOX_OVERHEAD_MINUTES = 8;
 export type StageEstimate = {
   /** How many of `unit` this stage spends. */
   units: number;
-  unit: 'sheet' | 'clip second' | 'sitting second' | 'score minute' | 'sandbox minute';
+  unit: 'sheet' | 'voice' | 'clip second' | 'sitting second' | 'score minute' | 'sandbox minute';
   /** USD per unit, from `FILM_RATES_USD`. */
   rate: number;
   usd: number;
@@ -133,6 +133,8 @@ export type FilmPlan = {
   seams: number;
   /** One clip per reel. */
   clips: number;
+  /** What the Series is opened at — the sitting streams at it. */
+  resolution: FilmResolution;
   estimate: FilmEstimate;
 };
 
@@ -140,9 +142,27 @@ export type FilmPlanInput = {
   prompt?: string | null;
   /** An explicit length; wins over anything the prompt says. */
   seconds?: number | null;
+  /** What the video renders at (FILM_RESOLUTIONS); absent is 480p. */
+  resolution?: string | null;
   /** How many reference sheets the run will make (default 6, at most 9). */
   referenceSheets?: number | null;
+  /** Whether the Score stage runs (a continuous cue under the finished film); absent is on. */
+  score?: boolean | null;
+  /** The Voices pass (FILM_VOICES) a story engine runs; absent or unknown is none (a Film from before). */
+  voices?: string | null;
+  /** How many characters get a voice — the World's cast; used with `voices`. */
+  characters?: number | null;
 };
+
+// ── The score: every engine's last stage, unless switched off ───────────────
+//
+// Every Film ends with the Score stage (film-stages/score.js): the finished
+// film measured, one continuous cue written and rendered to it, laid under
+// the picture. The video models are told NO MUSIC and NO SUBTITLES in every
+// prompt so the score never fights music they baked in. The input's Score
+// switch turns it off (`score: false` on the job); absent is on.
+export const DEFAULT_FILM_SCORE = true;
+export const filmScoreOf = (score?: boolean | null): boolean => score !== false;
 
 // ── Length parsing ────────────────────────────────────────────────────────
 
@@ -304,12 +324,13 @@ export function estimateFilm(args: {
   seams: number;
   pinsPerReel: number[];
   referenceSheets: number;
+  score?: boolean | null;
 }): FilmEstimate {
   const R = FILM_RATES_USD;
   // Budget the worst case: every seam may push the film on by up to a chunk,
   // and the score is written to the kept film's measured length, not the plan.
   const sittingSeconds = Math.max(SITTING_MIN_BILLED_SECONDS, args.seconds + args.seams * SEAM_DRIFT_SECONDS);
-  const scoreMinutes = Math.ceil(sittingSeconds / 60);
+  const scoreMinutes = filmScoreOf(args.score) ? Math.ceil(sittingSeconds / 60) : 0;
   const sandboxMinutes = Math.ceil(sittingSeconds / 60) + SANDBOX_OVERHEAD_MINUTES;
   const clipTotal = args.pinsPerReel.reduce((sum, pins) => sum + clipSeconds(pins), 0);
 
@@ -352,7 +373,10 @@ export function planFilm(input: FilmPlanInput = {}): FilmPlan {
     reels: grid.reels,
     seams: grid.seams,
     clips: grid.reels,
-    estimate: estimateFilm({ seconds, seams: grid.seams, pinsPerReel: grid.pinsPerReel, referenceSheets }),
+    // The sitting's rate is quoted per second whatever the resolution: the
+    // Director's price at 720p is not published separately. ESTIMATE.
+    resolution: filmResolutionOf(input.resolution),
+    estimate: estimateFilm({ seconds, seams: grid.seams, pinsPerReel: grid.pinsPerReel, referenceSheets, score: input.score }),
   };
 }
 
@@ -478,7 +502,7 @@ export function filmStyleFor({ style, prompt }: { style?: string | null; prompt?
 // different recipe (the ROUTE is what selects it — `engine` on the job):
 //
 //   Look → Idea + World → character & location sheets → a shot list of
-//   SEGMENTS (one Seedance generation each, up to 15s, written as staged
+//   SEGMENTS (one Seedance generation each, up to 30s, written as staged
 //   narrative — no pinned frame every few seconds) → the segment prompts (the
 //   reference map: which sheet is @Image1, @Image2 … for THIS segment) →
 //   the video run (segment 1 from the sheets alone; every later one a
@@ -486,8 +510,37 @@ export function filmStyleFor({ style, prompt }: { style?: string | null; prompt?
 //   plus its sheets) → the final cut (the segments joined into one film).
 //
 // Everything is rendered at 480p: Seedance 2.5 bills per output pixel-second.
-// Seedance writes the sound itself (dialogue, ambience, effects), so there is no
-// separate score. And a story can be ONE MINUTE — the cheap way to test one.
+// Seedance writes the sound itself (dialogue, ambience, effects — never music,
+// which the prompt forbids), and the Score stage lays the music under the final
+// cut afterwards, as for every engine (film-plan.ts › The score). And a story
+// can be ONE MINUTE — the cheap way to test one.
+//
+// ── The H3 FLOW — the same story on MiniMax H3 (`engine: "h3"`) ─────────────
+//
+// The third engine, and the second that is not live: fal's
+// `minimax/h3/reference-to-video`, prompted the story flow's way (the sheets
+// go in as reference images, a shot list of ≤15s segments), with three
+// differences the recipe has to carry:
+//
+//   - H3 has no `task: extension`; it continues a video through its reference
+//     list instead. So segment k is handed the LAST SECONDS of segment k−1
+//     (EXTENSION_TAIL_SECONDS, cut on the box exactly as for Seedance) as
+//     `reference_video_urls` — "Video 1" — and the prompt says to open on its
+//     last frame and carry its motion.
+//   - H3 takes at most 9 reference images (12 files with the video) and cites
+//     them by ORDER — "Image 1, Image 2…", not Seedance's @Image1 — so a
+//     segment binds at most four characters (two images each) beside its plate.
+//   - Its prompt is written to a different skill (film-stages/h3/h3-skill.js,
+//     vendored from promptsama): the same staged content from the writer,
+//     compiled in H3's production order ([REFERENCE USE] → [IDENTITY /
+//     CONTINUITY LOCKS] → [SCENE] → [DIALOGUE] → [SHOT LIST] → … → [NEGATIVES]).
+//
+// Like Seedance, H3 writes the sound itself (dialogue, room tone, effects);
+// the Score stage lays the music under it afterwards, as for every engine
+// (film-plan.ts › The score). 480p and 720p map onto H3's 480P and 768P (its
+// native modes; 2K and 4K only upscale a 768P base). Prompt expansion is off:
+// the prompt is a timed shot list and a reference map, which a rewrite would
+// loosen.
 
 // ── The writer: which LLM writes a Film ─────────────────────────────────────
 //
@@ -517,8 +570,8 @@ export const DEFAULT_FILM_WRITER: FilmWriter = 'default';
 // pass per specialist — so the picker quotes its time from the selection.
 export type FilmDepth = 'fast' | 'deep';
 export const FILM_DEPTHS: readonly { id: FilmDepth; label: string; blurb: string }[] = [
-  { id: 'fast', label: 'Fast', blurb: 'one screenwriter writes the script, then it is shot' },
-  { id: 'deep', label: 'Deep', blurb: 'the specialists read the script and it is rewritten on their notes' },
+  { id: 'fast', label: 'Fast', blurb: 'A fast screen writing pass' },
+  { id: 'deep', label: 'Deep', blurb: 'A deep pass of script writing' },
 ];
 export const FILM_DEPTH_IDS: readonly string[] = FILM_DEPTHS.map((d) => d.id);
 export const DEFAULT_FILM_DEPTH: FilmDepth = 'fast';
@@ -537,21 +590,58 @@ export function roomEstimate(specialists: readonly string[]): { passes: number; 
   return { passes, seconds, label: passes ? `≈ ${minutes} min` : '—' };
 }
 
-export type FilmEngine = 'director' | 'seedance';
-export const FILM_ENGINES: readonly FilmEngine[] = ['director', 'seedance'];
+export type FilmEngine = 'director' | 'seedance' | 'h3';
+export const FILM_ENGINES: readonly FilmEngine[] = ['director', 'seedance', 'h3'];
 export const DEFAULT_FILM_ENGINE: FilmEngine = 'director';
+/**
+ * The engines that make a Film as a chain of SEGMENTS from a story (Seedance
+ * 2.5 and MiniMax H3), as against the live Director: they share the story
+ * flow's lengths (a 1:00 test), its sheets, its shot list and its final cut.
+ */
+export const isStoryEngine = (engine?: string | null): boolean => engine === 'seedance' || engine === 'h3';
+
+// ── Resolution: what a Film's video renders at ──────────────────────────────
+//
+// Both pipelines take it: the Director's Series is opened at it (the sitting
+// streams at it), and every Seedance segment is rendered at it. 480p is the
+// default because both bill by what they generate — Seedance per output
+// pixel-second, so 720p costs (720/480)² = 2.25× as much per second.
+export type FilmResolution = '480p' | '720p';
+export const FILM_RESOLUTIONS: readonly FilmResolution[] = ['480p', '720p'];
+export const DEFAULT_FILM_RESOLUTION: FilmResolution = '480p';
+/** A job's stored resolution → one of FILM_RESOLUTIONS (absent or unknown is the default). */
+export const filmResolutionOf = (resolution?: string | null): FilmResolution =>
+  FILM_RESOLUTIONS.includes(resolution as FilmResolution) ? (resolution as FilmResolution) : DEFAULT_FILM_RESOLUTION;
+/** How much more a second of Seedance costs at this resolution than at 480p (pixels ∝ cost). */
+export const seedanceRateScale = (resolution?: string | null): number =>
+  filmResolutionOf(resolution) === '720p' ? 2.25 : 1;
 
 /** fal's Seedance 2.5 endpoint every segment goes to (reference / extension). */
 export const SEEDANCE_ENDPOINT = 'bytedance/seedance-2.5/reference-to-video';
-export const SEEDANCE_RESOLUTION = '480p';
+/** The default resolution a segment renders at; a job's own is `filmResolutionOf(job.resolution)`. */
+export const SEEDANCE_RESOLUTION = DEFAULT_FILM_RESOLUTION;
 export const SEEDANCE_ASPECT_RATIO = '16:9';
 /** A story-flow Film is 1:00, then the Film's usual 2:00–5:00 in 30s steps. */
 export const STORY_FLOW_MIN_SECONDS = 60;
 export const STORY_FLOW_DEFAULT_SECONDS = 60;
 export const STORY_FLOW_STEPS: readonly number[] = [STORY_FLOW_MIN_SECONDS, ...FILM_STEPS];
-/** One Seedance generation: fal takes 4–30s; past ~15s a take drifts, so a segment is at most 15. */
+/**
+ * One Seedance generation: fal takes 4–30s, and Seedance 2.5 holds a staged
+ * narrative for the whole 30 (the 15s ceiling was Seedance 2.0's), so a Film
+ * is cut into as FEW segments as fit — every seam is a paid extension tail and
+ * a chance for the likeness to drift, and a 30s take is a whole scene.
+ */
 export const SEGMENT_MIN_SECONDS = 4;
-export const SEGMENT_MAX_SECONDS = 15;
+export const SEGMENT_MAX_SECONDS = 30;
+/**
+ * The stages a segment of `dur` seconds may hold: one visible change per ~5s,
+ * at least four (a 12s segment still gets a beginning, a turn and an end) and
+ * at most six (past that a 30s take is a shot list again, and the Seedance
+ * skill's stages are scenes, not shots).
+ */
+export const SEGMENT_STAGE_SECONDS = 5;
+export const maxStagesFor = (dur: number): number =>
+  Math.min(6, Math.max(4, Math.round((Number(dur) || 0) / SEGMENT_STAGE_SECONDS)));
 /**
  * How much of the previous segment an extension is handed (@Video1): its LAST
  * seconds. fal takes 1.8s at least; three carry the motion and the framing,
@@ -575,9 +665,46 @@ export const STORY_FLOW_RATES_USD = {
 } as const;
 
 export const filmStepsFor = (engine?: string | null): readonly number[] =>
-  engine === 'seedance' ? STORY_FLOW_STEPS : FILM_STEPS;
+  isStoryEngine(engine) ? STORY_FLOW_STEPS : FILM_STEPS;
 export const filmDefaultSecondsFor = (engine?: string | null): number =>
-  engine === 'seedance' ? STORY_FLOW_DEFAULT_SECONDS : FILM_DEFAULT_SECONDS;
+  isStoryEngine(engine) ? STORY_FLOW_DEFAULT_SECONDS : FILM_DEFAULT_SECONDS;
+
+// ── MiniMax H3 (film-plan.ts › The H3 FLOW) ─────────────────────────────────
+
+/** fal's MiniMax H3 endpoint every H3 segment goes to. */
+export const H3_ENDPOINT = 'minimax/h3/reference-to-video';
+export const H3_ASPECT_RATIO = '16:9';
+/** The Film's resolution → H3's `resolution` (its two NATIVE modes; 2K/4K are upscales of 768P). */
+export const H3_RESOLUTION: Record<FilmResolution, '480P' | '768P'> = { '480p': '480P', '720p': '768P' };
+export const h3ResolutionOf = (resolution?: string | null): '480P' | '768P' => H3_RESOLUTION[filmResolutionOf(resolution)];
+/** One H3 generation: fal takes 5–15s (H3's own ceiling — Seedance's 30 does not carry over). */
+export const H3_SEGMENT_MIN_SECONDS = 5;
+export const H3_SEGMENT_MAX_SECONDS = 15;
+/** `reference_image_urls`: at most 9 images; images, videos and audio together at most 12 files. */
+export const MAX_H3_REFERENCE_IMAGES = 9;
+export const MAX_H3_REFERENCE_FILES = 12;
+/** The first 5 reference images of a request are free; each one past that is billed. */
+export const H3_FREE_REFERENCE_IMAGES = 5;
+/** Pinned off — see The H3 FLOW. */
+export const H3_PROMPT_EXPANSION = 'disabled';
+
+/**
+ * MiniMax H3 on fal, per OUTPUT second (fal's model page, Sept 2026): $0.05 at
+ * 480P, $0.06 at 768P; reference images past the free five, $0.08 each.
+ */
+export const H3_RATES_USD = {
+  referenceSheet: FILM_RATES_USD.referenceSheet,
+  second: { '480P': 0.05, '768P': 0.06 } as const,
+  extraImage: 0.08,
+  sandboxMinute: FILM_RATES_USD.sandboxMinute,
+} as const;
+
+/** What one H3 segment of `dur` seconds with `images` references costs. */
+export function h3SegmentUsd(dur: number, images: number, resolution?: string | null): number {
+  const R = H3_RATES_USD;
+  const extra = Math.max(0, (Number(images) || 0) - H3_FREE_REFERENCE_IMAGES);
+  return (Number(dur) || 0) * R.second[h3ResolutionOf(resolution)] + extra * R.extraImage;
+}
 
 /** A requested length → the story-flow length (next step up, capped at 5:00). */
 export function storyFlowLength(requested: number | null | undefined): { seconds: number; capped: boolean } {
@@ -589,15 +716,111 @@ export function storyFlowLength(requested: number | null | undefined): { seconds
 }
 
 /**
- * The Film cut into Seedance generations: as few as fit under 15s each, as
- * even as whole seconds allow, longest first. 60 → [15, 15, 15, 15].
+ * The Film cut into generations: as few as fit under `maxSeconds` each (the
+ * engine's ceiling — Seedance's 30 by default, H3 passes its 15), as even as
+ * whole seconds allow, longest first. 60 → [30, 30]; 150 → [30, 30, 30, 30, 30];
+ * at 15: 60 → [15, 15, 15, 15].
  */
-export function segmentDurations(seconds: number): number[] {
+export function segmentDurations(seconds: number, maxSeconds: number = SEGMENT_MAX_SECONDS): number[] {
   const total = Math.max(SEGMENT_MIN_SECONDS, Math.round(Number(seconds) || 0));
-  const n = Math.ceil(total / SEGMENT_MAX_SECONDS);
+  const n = Math.ceil(total / Math.max(SEGMENT_MIN_SECONDS, maxSeconds));
   const base = Math.floor(total / n);
   const extra = total - base * n;
   return Array.from({ length: n }, (_, i) => base + (i < extra ? 1 : 0));
+}
+
+// ── Voices: one voice per character, auditioned once, referenced by every segment ──
+//
+// A story engine writes the sound itself, so a character's voice is whatever
+// the model happened to give them in THAT segment — and the next segment,
+// prompted afresh, gives them another. Seedance 2.5 and MiniMax H3 both take
+// AUDIO REFERENCES (`@Audio1` / "Audio 1": a clip that "defines <Name>'s voice
+// timbre, accent, cadence and delivery"), which is the only way the same voice
+// reaches every segment. So a story-engine Film runs a VOICES stage after its
+// sheets (film-stages/story-flow/voices.js): every character in the World is
+// AUDITIONED — the SAME lines (AUDITION_LINES), read in their own voice as the
+// World describes it, as a clean voice-only recording (no ambience, no room
+// tone, no music, no effects) — and the take is filed as an mp3 that every
+// later segment they appear in binds as their voice.
+//
+// Three ways to run the audition, all on fal, chosen on the input's Voices
+// setting (`job.voices`) and by make_film's `voices`:
+//   video       the Film's OWN video model (Seedance / H3) generates a 5s
+//               audition to camera against the character's sheets; the box
+//               cuts its audio track to an mp3. The voice is exactly what the
+//               engine gives that face, so it persists best — and it costs a
+//               5s generation per character.
+//   seedaudio   ByteDance Seed Audio on fal renders the lines from the voice
+//               note alone (text-to-speech with a voice description).
+//   elevenlabs  ElevenLabs on fal DESIGNS a voice from the note and reads the
+//               lines with it.
+// The Director cannot take a voice reference (its live stream has no audio
+// input), so the Director engine ignores the setting and runs no stage.
+// Absent on a job (one from before this stage existed) means no stage either:
+// steps map onto stages by POSITION, so a running job's list must not change
+// under it.
+export type FilmVoices = 'video' | 'seedaudio' | 'elevenlabs';
+export const FILM_VOICES: readonly { id: FilmVoices; label: string; blurb: string }[] = [
+  { id: 'video', label: 'Audition', blurb: "a 5s audition on the Film's own video model, its voice cut to an mp3" },
+  { id: 'seedaudio', label: 'Seed Audio', blurb: 'the same lines read by ByteDance Seed Audio from the voice note' },
+  { id: 'elevenlabs', label: 'ElevenLabs', blurb: 'a voice designed on ElevenLabs from the voice note, reading the lines' },
+];
+export const FILM_VOICE_IDS: readonly string[] = FILM_VOICES.map((x) => x.id);
+export const DEFAULT_FILM_VOICES: FilmVoices = 'video';
+/** A job's stored `voices` → the pass it runs, or null for none (absent, unknown, or not a story engine). */
+export const filmVoicesOf = (voices?: string | null, engine?: string | null): FilmVoices | null =>
+  isStoryEngine(engine) && FILM_VOICE_IDS.includes(voices as FilmVoices) ? (voices as FilmVoices) : null;
+/**
+ * One audition: what the video engines generate for it, and what every filed
+ * voice is TRIMMED to on the box — long enough to carry a voice, short enough
+ * that three fit H3's 15s audio budget exactly.
+ */
+export const AUDITION_SECONDS = 5;
+/**
+ * What every character reads — the SAME lines, so the auditions compare.
+ * Neutral, about six seconds spoken, and at least 100 characters because
+ * ElevenLabs' voice design refuses a shorter text; the filed mp3 is cut to
+ * AUDITION_SECONDS anyway (a voice reference carries timbre, not a sentence).
+ */
+export const AUDITION_LINES = "I came back for the lantern. Nobody remembers where we left it, but I do. It's still down by the river.";
+/** Seedance 2.5 `audio_urls`: up to 10 files, 1.8–30.2s each, 30.2s combined. */
+export const MAX_SEEDANCE_AUDIO_REFS = 10;
+export const SEEDANCE_AUDIO_MAX_SECONDS = 30.2;
+/** MiniMax H3 `reference_audio_urls`: up to 3 files, 2–15s each, 15s combined; audio counts toward the 12 files. */
+export const MAX_H3_REFERENCE_AUDIO = 3;
+export const H3_AUDIO_MAX_SECONDS = 15;
+
+/** What one audition costs, per mode, beside the engine's own second rate for `video`. ESTIMATES. */
+export const VOICE_RATES_USD = {
+  /** One Seed Audio render of the lines (fal: $0.1875 a minute of audio — a few seconds). ESTIMATE. */
+  seedaudio: 0.02,
+  /** One ElevenLabs voice design reading the lines (fal: $0.10 per 1,000 characters performed). ESTIMATE. */
+  elevenlabs: 0.02,
+  sandboxMinute: FILM_RATES_USD.sandboxMinute,
+} as const;
+
+/**
+ * The Voices stage's estimate for `characters` on `engine`: nothing when the
+ * pass is off; a 5s generation per character (plus one box job to cut the
+ * audio) for `video`; a flat rate per character otherwise.
+ */
+export function voicesEstimate(
+  voices: string | null | undefined,
+  engine: string | null | undefined,
+  characters: number | null | undefined,
+  resolution?: string | null,
+): StageEstimate {
+  const mode = filmVoicesOf(voices, engine);
+  const n = Math.max(0, Math.round(Number(characters) || 0));
+  if (!mode || !n) return stage(0, 'voice', 0);
+  if (mode === 'video') {
+    const perSecond = engine === 'h3'
+      ? H3_RATES_USD.second[h3ResolutionOf(resolution)]
+      : STORY_FLOW_RATES_USD.seedanceSecond * seedanceRateScale(resolution);
+    const usd = n * AUDITION_SECONDS * perSecond + VOICE_RATES_USD.sandboxMinute;
+    return { units: n, unit: 'voice', rate: cents(AUDITION_SECONDS * perSecond), usd: cents(usd) };
+  }
+  return stage(n, 'voice', VOICE_RATES_USD[mode]);
 }
 
 export type StoryFlowPlan = {
@@ -610,12 +833,20 @@ export type StoryFlowPlan = {
   segments: number;
   durations: number[];
   sheets: number;
+  /** The Voices pass this Film runs, or null. */
+  voices: FilmVoices | null;
   estimate: {
     currency: 'USD';
-    perStage: { referenceSheets: StageEstimate; video: StageEstimate; sandbox: StageEstimate };
+    perStage: { referenceSheets: StageEstimate; voices: StageEstimate; video: StageEstimate; score: StageEstimate; sandbox: StageEstimate };
     total: number;
   };
 };
+
+/** The score's estimate for a film of `seconds`: one cue per whole minute, or nothing when it is off. */
+const scoreEstimate = (seconds: number, score?: boolean | null): StageEstimate =>
+  stage(filmScoreOf(score) ? Math.ceil(seconds / 60) : 0, 'score minute', FILM_RATES_USD.scoreMinute);
+/** Box jobs the score adds when it is on: the measure and the mix. */
+const scoreSandboxJobs = (score?: boolean | null): number => (filmScoreOf(score) ? 2 : 0);
 
 /** A prompt (and optionally an explicit length) → the story-flow Film it will make. */
 export function planStoryFlow(input: FilmPlanInput = {}): StoryFlowPlan {
@@ -626,25 +857,94 @@ export function planStoryFlow(input: FilmPlanInput = {}): StoryFlowPlan {
   const durations = segmentDurations(seconds);
   const sheets = Math.min(MAX_STORY_FLOW_SHEETS, Math.max(1, Math.round(input.referenceSheets ?? DEFAULT_REFERENCE_SHEETS)));
   const R = STORY_FLOW_RATES_USD;
+  const resolution = filmResolutionOf(input.resolution);
+  const scale = seedanceRateScale(resolution);
   const videoUsd = durations.reduce(
-    (sum, d, i) => sum + (i === 0 ? d * R.seedanceSecond : (d + EXTENSION_TAIL_SECONDS) * R.seedanceVideoRefSecond),
+    (sum, d, i) => sum + (i === 0 ? d * R.seedanceSecond : (d + EXTENSION_TAIL_SECONDS) * R.seedanceVideoRefSecond) * scale,
     0,
   );
-  const video: StageEstimate = { units: seconds, unit: 'clip second', rate: R.seedanceSecond, usd: cents(videoUsd) };
-  // One box job per segment (fetch + cut) and one for the final cut.
-  const sandbox = stage(durations.length + 2, 'sandbox minute', R.sandboxMinute);
+  const video: StageEstimate = { units: seconds, unit: 'clip second', rate: R.seedanceSecond * scale, usd: cents(videoUsd) };
+  const score = scoreEstimate(seconds, input.score);
+  // One box job per segment (fetch + cut), one for the final cut, and the score's two.
+  const sandbox = stage(durations.length + 2 + scoreSandboxJobs(input.score), 'sandbox minute', R.sandboxMinute);
   const referenceSheets = stage(sheets, 'sheet', R.referenceSheet);
-  const total = cents(video.usd + sandbox.usd + referenceSheets.usd);
+  const voices = voicesEstimate(input.voices, 'seedance', input.characters, resolution);
+  const total = cents(video.usd + score.usd + sandbox.usd + referenceSheets.usd + voices.usd);
   return {
     engine: 'seedance',
     seconds,
     length: formatLength(seconds),
     requestedSeconds,
     capped,
-    resolution: SEEDANCE_RESOLUTION,
+    resolution,
     segments: durations.length,
     durations,
     sheets,
-    estimate: { currency: 'USD', perStage: { referenceSheets, video, sandbox }, total },
+    voices: filmVoicesOf(input.voices, 'seedance'),
+    estimate: { currency: 'USD', perStage: { referenceSheets, voices, video, score, sandbox }, total },
+  };
+}
+
+export type H3Plan = {
+  engine: 'h3';
+  seconds: number;
+  length: string;
+  requestedSeconds: number | null;
+  capped: boolean;
+  resolution: FilmResolution;
+  /** H3's own name for it: 480P or 768P. */
+  h3Resolution: '480P' | '768P';
+  segments: number;
+  durations: number[];
+  sheets: number;
+  /** The Voices pass this Film runs, or null. */
+  voices: FilmVoices | null;
+  estimate: {
+    currency: 'USD';
+    perStage: { referenceSheets: StageEstimate; voices: StageEstimate; video: StageEstimate; score: StageEstimate; sandbox: StageEstimate };
+    total: number;
+  };
+};
+
+/**
+ * A prompt (and optionally an explicit length) → the H3 Film it will make: the
+ * story flow's lengths, cut to H3's own segments (5–15s: its ceiling is half
+ * Seedance's, so a 1:00 story is four takes here and two there; every
+ * story-flow length cuts to ≥12s, so the floor never binds), priced at H3's
+ * per-second rate.
+ */
+export function planH3(input: FilmPlanInput = {}): H3Plan {
+  const explicit =
+    typeof input.seconds === 'number' && Number.isFinite(input.seconds) && input.seconds > 0 ? input.seconds : null;
+  const requestedSeconds = explicit ?? parseLength(input.prompt);
+  const { seconds, capped } = storyFlowLength(requestedSeconds);
+  const durations = segmentDurations(seconds, H3_SEGMENT_MAX_SECONDS);
+  const sheets = Math.min(MAX_STORY_FLOW_SHEETS, Math.max(1, Math.round(input.referenceSheets ?? DEFAULT_REFERENCE_SHEETS)));
+  const R = H3_RATES_USD;
+  const resolution = filmResolutionOf(input.resolution);
+  const h3Resolution = h3ResolutionOf(resolution);
+  // Each segment binds about the free five (two characters' views, a plate);
+  // a crowded segment pays for its extras when it renders.
+  const videoUsd = durations.reduce((sum, d) => sum + h3SegmentUsd(d, H3_FREE_REFERENCE_IMAGES, resolution), 0);
+  const video: StageEstimate = { units: seconds, unit: 'clip second', rate: R.second[h3Resolution], usd: cents(videoUsd) };
+  const score = scoreEstimate(seconds, input.score);
+  // One box job per segment (fetch + cut the tail), one for the final cut, and the score's two.
+  const sandbox = stage(durations.length + 2 + scoreSandboxJobs(input.score), 'sandbox minute', R.sandboxMinute);
+  const referenceSheets = stage(sheets, 'sheet', R.referenceSheet);
+  const voices = voicesEstimate(input.voices, 'h3', input.characters, resolution);
+  const total = cents(video.usd + score.usd + sandbox.usd + referenceSheets.usd + voices.usd);
+  return {
+    engine: 'h3',
+    seconds,
+    length: formatLength(seconds),
+    requestedSeconds,
+    capped,
+    resolution,
+    h3Resolution,
+    segments: durations.length,
+    durations,
+    sheets,
+    voices: filmVoicesOf(input.voices, 'h3'),
+    estimate: { currency: 'USD', perStage: { referenceSheets, voices, video, score, sandbox }, total },
   };
 }

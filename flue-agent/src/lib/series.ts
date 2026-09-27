@@ -33,7 +33,7 @@ import { z } from "zod";
 // 16:9 is not the same Series in a wider window — it is a different opening
 // frame, so it is a different Series.
 
-export const RESOLUTIONS = ['480p', '768p', '1080p'] as const;
+export const RESOLUTIONS = ['480p', '720p', '768p', '1080p'] as const;
 export type Resolution = (typeof RESOLUTIONS)[number];
 
 /**

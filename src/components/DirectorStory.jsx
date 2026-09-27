@@ -46,14 +46,15 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Link, Navigate, useLocation } from "react-router";
 import {
-  ArrowUp, Check, ChevronDown, Circle, Clapperboard, CircleAlert, Copy, Download, Film, Link2Off, Loader2, Mic, PenLine, Plus, RotateCw, Settings2,
-  Share2, Square, Users, X, icons as LUCIDE,
+  ArrowUp, AudioLines, Check, ChevronDown, Circle, Clapperboard, CircleAlert, Copy, Download, Film, Link2Off, Loader2, Mic, PenLine, Plus, RotateCw, Settings2,
+  Share2, SlidersHorizontal, Square, Users, X, icons as LUCIDE,
 } from "lucide-react";
+import { studioPath } from "@/lib/home";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
-  DEFAULT_DEEP_SPECIALISTS, FILM_DEFAULT_SECONDS, FILM_DEPTHS, FILM_STEPS, FILM_STYLES, FILM_WRITERS, STORY_FLOW_DEFAULT_SECONDS,
-  STORY_FLOW_STEPS, formatLength, roomEstimate,
+  DEFAULT_DEEP_SPECIALISTS, DEFAULT_FILM_RESOLUTION, DEFAULT_FILM_SCORE, DEFAULT_FILM_VOICES, FILM_DEFAULT_SECONDS, FILM_RESOLUTIONS, FILM_DEPTHS, FILM_STEPS, FILM_STYLES, FILM_VOICES, FILM_WRITERS, STORY_FLOW_DEFAULT_SECONDS,
+  STORY_FLOW_STEPS, filmVoicesOf, formatLength, isStoryEngine, roomEstimate,
 } from "@/lib/film-plan";
 import { SPECIALISTS, STAGE_ORDER, isSpecialistId } from "@/lib/specialists";
 import { useVoiceRecording, transcribeAudio, formatDuration } from "@/lib/useVoiceRecording";
@@ -80,7 +81,9 @@ const STAGES = [
   { key: "score", label: "Score" },
 ];
 
-// Mirrors STORY_FLOW_STAGES (the Seedance 2.5 pipeline) the same way.
+// Mirrors STORY_FLOW_STAGES (the Seedance 2.5 pipeline) the same way, with
+// the Score the worker's stagesFor adds after the final cut — and the Voices
+// stage it inserts after the sheets when the job carries `voices` (stagesOf).
 const STORY_FLOW_STAGES = [
   { key: "look", label: "Look" },
   { key: "world", label: "Idea + World" },
@@ -90,7 +93,10 @@ const STORY_FLOW_STAGES = [
   { key: "prompts", label: "Segment prompts" },
   { key: "run", label: "Video run" },
   { key: "stitch", label: "Final cut" },
+  { key: "score", label: "Score" },
 ];
+// Mirrors H3_STAGES (the MiniMax H3 pipeline): the story flow's, on H3.
+const H3_STAGES = STORY_FLOW_STAGES;
 
 // ── Flows: one page, a pipeline per GEN MODE ────────────────────────────────
 //
@@ -122,14 +128,25 @@ export const FLOWS = {
     stages: STORY_FLOW_STAGES,
     storage: "story-flow",
     label: "Seedance 2.5",
-    blurb: "15s segments, each extending the last, at 480p. Seedance writes the sound; can be 1:00.",
+    blurb: "Takes of up to 30s, each extending the last, at 480p. Seedance writes the dialogue and effects, then scored; can be 1:00.",
+  },
+  h3: {
+    id: "h3",
+    path: "/",
+    engine: "h3",
+    steps: STORY_FLOW_STEPS,
+    defaultSeconds: STORY_FLOW_DEFAULT_SECONDS,
+    stages: H3_STAGES,
+    storage: "h3-flow",
+    label: "MiniMax H3",
+    blurb: "The same story in 15s takes on MiniMax H3 (its own ceiling), each continuing the last (Video 1), at 480P. H3 writes the dialogue and effects, then scored; can be 1:00.",
   },
 };
-export const GEN_MODES = [FLOWS.director, FLOWS.seedance];
+export const GEN_MODES = [FLOWS.director, FLOWS.seedance, FLOWS.h3];
 /** A flow by its id (a stored or URL value) → the flow | null. */
 export const flowById = (id) => (typeof id === "string" && Object.hasOwn(FLOWS, id) ? FLOWS[id] : null);
 /** The flow a Film was made on, from its job's `engine`. */
-export const flowOf = (engine) => (engine === "seedance" ? FLOWS.seedance : FLOWS.director);
+export const flowOf = (engine) => flowById(engine) || FLOWS.director;
 
 // The Gen mode is remembered per browser, like the look.
 const MODE_KEY = "director-story:mode";
@@ -146,8 +163,16 @@ export function storeFlow(flow) {
 
 // A Deep Film runs the writers' room after the Script (worker stagesFor).
 const ROOM_STAGE = { key: "room", label: "Writers' room" };
+// A story-engine Film with a Voices pass auditions its cast after the sheets
+// (film-plan.ts › Voices); a job without `voices` — from before — runs none.
+const VOICES_STAGE = { key: "voices", label: "Voices" };
 export function stagesOf(job) {
-  const base = flowOf(job?.engine).stages;
+  // A Film whose score was switched off has no Score stage (worker stagesFor).
+  let base = flowOf(job?.engine).stages.filter((s) => job?.score !== false || s.key !== "score");
+  if (filmVoicesOf(job?.voices, job?.engine)) {
+    const at = base.findIndex((s) => s.key === "sheets") + 1;
+    base = [...base.slice(0, at), VOICES_STAGE, ...base.slice(at)];
+  }
   if (job?.depth !== "deep") return base;
   const at = base.findIndex((s) => s.key === "script") + 1;
   return [...base.slice(0, at), ROOM_STAGE, ...base.slice(at)];
@@ -403,6 +428,50 @@ function readStoredStyle() {
 function storeStyle(style) {
   try { window.localStorage.setItem(STYLE_KEY, style); } catch { /* private mode: not remembered */ }
 }
+// What the video renders at (film-plan.ts FILM_RESOLUTIONS): 480p unless the
+// author picks 720p, which both Gen modes take. Only a non-default is sent.
+const RESOLUTION_KEY = "director-story:resolution";
+function readStoredResolution() {
+  try {
+    const v = window.localStorage.getItem(RESOLUTION_KEY) || DEFAULT_FILM_RESOLUTION;
+    return FILM_RESOLUTIONS.includes(v) ? v : DEFAULT_FILM_RESOLUTION;
+  } catch {
+    return DEFAULT_FILM_RESOLUTION;
+  }
+}
+function storeResolution(resolution) {
+  try { window.localStorage.setItem(RESOLUTION_KEY, resolution); } catch { /* private mode: not remembered */ }
+}
+// Whether the Film ends with the Score stage (film-plan.ts › The score): on
+// unless the author switches it off. Only "off" is sent (`score: false`).
+const SCORE_KEY = "director-story:score";
+function readStoredScore() {
+  try {
+    return window.localStorage.getItem(SCORE_KEY) !== "off";
+  } catch {
+    return DEFAULT_FILM_SCORE;
+  }
+}
+function storeScore(on) {
+  try { window.localStorage.setItem(SCORE_KEY, on ? "on" : "off"); } catch { /* private mode: not remembered */ }
+}
+// The Voices pass a story-engine Film runs (film-plan.ts FILM_VOICES): every
+// character auditioned once, on the Film's own video model, Seed Audio or
+// ElevenLabs, and bound as a voice reference by every segment after. Sent only
+// with a story engine — the Director cannot take a voice reference.
+const VOICES_KEY = "director-story:voices";
+function readStoredVoices() {
+  try {
+    const v = window.localStorage.getItem(VOICES_KEY) || DEFAULT_FILM_VOICES;
+    return FILM_VOICES.some((x) => x.id === v) ? v : DEFAULT_FILM_VOICES;
+  } catch {
+    return DEFAULT_FILM_VOICES;
+  }
+}
+function storeVoices(voices) {
+  try { window.localStorage.setItem(VOICES_KEY, voices); } catch { /* private mode: not remembered */ }
+}
+
 const STYLE_CHOICES = [{ id: "", label: "Auto" }, ...FILM_STYLES.map((s) => ({ id: s.id, label: s.label }))];
 
 function SettingsLabel({ id, children, hint }) {
@@ -440,8 +509,11 @@ function Choice({ on, onClick, children }) {
   );
 }
 
-function StorySettings({ flow, seconds, onSeconds, style, onStyle, writer, onWriter, disabled }) {
+function StorySettings({ flow, seconds, onSeconds, resolution, onResolution, score, onScore, voices, onVoices, style, onStyle, writer, onWriter, disabled }) {
   const writers = useWriterChoices();
+  // Only a story engine auditions its cast; the Director has no audio input.
+  const storyFlow = isStoryEngine(flow.engine);
+  const voice = FILM_VOICES.find((x) => x.id === voices) || FILM_VOICES[0];
   return (
     <Popover>
       <PopoverTrigger asChild>
@@ -457,7 +529,7 @@ function StorySettings({ flow, seconds, onSeconds, style, onStyle, writer, onWri
               what will be sent must be visible before sending — an unseen
               "Auto" once made a story the author meant as anime live action. */}
           <span className="text-[0.72rem] uppercase tabular-nums" style={{ fontFamily: MONO, letterSpacing: "0.08em" }} data-story-settings-summary>
-            {formatLength(seconds)} · {FILM_STYLES.find((st) => st.id === style)?.label || "Auto look"}
+            {formatLength(seconds)} · {resolution} · {FILM_STYLES.find((st) => st.id === style)?.label || "Auto look"}{score ? "" : " · no score"}{storyFlow ? ` · ${voice.label}` : ""}
           </span>
         </button>
       </PopoverTrigger>
@@ -483,6 +555,44 @@ function StorySettings({ flow, seconds, onSeconds, style, onStyle, writer, onWri
             </Choice>
           ))}
         </div>
+        <div className="mt-4">
+          <SettingsLabel
+            id="story-resolution-label"
+            hint={resolution === DEFAULT_FILM_RESOLUTION ? "default" : `default ${DEFAULT_FILM_RESOLUTION}`}
+          >
+            Resolution
+          </SettingsLabel>
+          <div role="radiogroup" aria-labelledby="story-resolution-label" className="flex" data-story-resolution>
+            {FILM_RESOLUTIONS.map((r) => (
+              <Choice key={r} on={r === resolution} onClick={() => onResolution(r)}>
+                {r}
+              </Choice>
+            ))}
+          </div>
+        </div>
+        <div className="mt-4">
+          <SettingsLabel id="story-score-label" hint={score ? "one continuous cue under the finished film" : "no music laid under it"}>
+            Score
+          </SettingsLabel>
+          <div role="radiogroup" aria-labelledby="story-score-label" className="flex" data-story-score>
+            <Choice on={score} onClick={() => onScore(true)}>On</Choice>
+            <Choice on={!score} onClick={() => onScore(false)}>Off</Choice>
+          </div>
+        </div>
+        {storyFlow ? (
+          <div className="mt-4">
+            <SettingsLabel id="story-voices-label" hint={voice.blurb}>
+              Voices
+            </SettingsLabel>
+            <div role="radiogroup" aria-labelledby="story-voices-label" className="flex" data-story-voices>
+              {FILM_VOICES.map((x) => (
+                <Choice key={x.id} on={x.id === voices} onClick={() => onVoices(x.id)}>
+                  {x.label}
+                </Choice>
+              ))}
+            </div>
+          </div>
+        ) : null}
         <div className="mt-4">
           <SettingsLabel id="story-style-label">Look</SettingsLabel>
           <div role="radiogroup" aria-labelledby="story-style-label" className="flex" data-story-style>
@@ -648,7 +758,7 @@ function RoomDialog({ open, onOpenChange, room, onRoom }) {
         </div>
         <div className="flex items-center justify-between gap-4 border-t border-[var(--br-secondary)]/40 pt-3">
           <span className="text-[0.72rem] uppercase tabular-nums text-[var(--br-secondary)]" style={{ fontFamily: MONO, letterSpacing: "0.08em" }} data-room-estimate>
-            {est.passes} {est.passes === 1 ? "pass" : "passes"} · {est.label}
+            {est.passes} {est.passes === 1 ? "pass" : "passes"} · {est.label} wait
           </span>
           <div className="flex items-center gap-2">
             <button
@@ -679,7 +789,10 @@ function DepthPicker({ depth, onDepth, room, onRoom, disabled }) {
   const [open, setOpen] = useState(false);
   const [roomOpen, setRoomOpen] = useState(false);
   const est = roomEstimate(room);
-  const label = depth === "deep" ? `Deep · ${est.passes} ${est.passes === 1 ? "pass" : "passes"} · ${est.label}` : "Fast";
+  // The button names the room's size only. Its wait time (roomEstimate) is
+  // quoted in the popover and the dialog, where "wait" is spelled out — on the
+  // input, next to the Film's length, "≈ 4 min" read as the story's runtime.
+  const label = depth === "deep" ? `Deep · ${est.passes} ${est.passes === 1 ? "pass" : "passes"}` : "Fast";
   const pick = (id) => {
     onDepth(id);
     setOpen(false);
@@ -739,7 +852,7 @@ function DepthPicker({ depth, onDepth, room, onRoom, disabled }) {
               className="mt-1 flex w-full items-center gap-2 border-t border-[var(--br-secondary)]/20 px-2 py-2 text-left text-xs text-[var(--br-secondary)] transition-colors hover:text-[var(--br-primary)]"
             >
               <Users size={14} aria-hidden />
-              Choose the room — {est.passes} {est.passes === 1 ? "pass" : "passes"}, {est.label}
+              Choose the room — {est.passes} {est.passes === 1 ? "pass" : "passes"}, {est.label} wait
             </button>
           ) : null}
         </PopoverContent>
@@ -818,6 +931,21 @@ export function SimpleView({ flow = FLOWS.director, onFlow, onSubmit, submitting
     setChosen(hasStoredLength(flow));
   }, [flow]);
   const [style, setStyle] = useState(readStoredStyle);
+  const [resolution, setResolution] = useState(readStoredResolution);
+  const chooseResolution = (r) => {
+    setResolution(r);
+    storeResolution(r);
+  };
+  const [score, setScore] = useState(readStoredScore);
+  const chooseScore = (on) => {
+    setScore(on);
+    storeScore(on);
+  };
+  const [voices, setVoices] = useState(readStoredVoices);
+  const chooseVoices = (id) => {
+    setVoices(id);
+    storeVoices(id);
+  };
   const [writer, setWriter] = useState(readStoredWriter);
   const chooseWriter = (id) => {
     setWriter(id);
@@ -887,6 +1015,10 @@ export function SimpleView({ flow = FLOWS.director, onFlow, onSubmit, submitting
     const opts = {
       seconds: chosen ? seconds : undefined,
       style: style || undefined,
+      resolution: resolution !== DEFAULT_FILM_RESOLUTION ? resolution : undefined,
+      score: score ? undefined : false,
+      // The Voices pass, for a story engine only (the Director ignores it).
+      voices: isStoryEngine(flow.engine) ? voices : undefined,
       writer: writer !== "default" ? writer : undefined,
       depth: depth === "deep" ? depth : undefined,
       specialists: depth === "deep" ? room : undefined,
@@ -930,7 +1062,10 @@ export function SimpleView({ flow = FLOWS.director, onFlow, onSubmit, submitting
             {!listening && <DepthPicker depth={depth} onDepth={chooseDepth} room={room} onRoom={chooseRoom} disabled={submitting} />}
             {!listening && (
               <StorySettings
-                flow={flow} seconds={seconds} onSeconds={chooseSeconds} style={style} onStyle={chooseStyle}
+                flow={flow} seconds={seconds} onSeconds={chooseSeconds} resolution={resolution} onResolution={chooseResolution}
+                score={score} onScore={chooseScore}
+                voices={voices} onVoices={chooseVoices}
+                style={style} onStyle={chooseStyle}
                 writer={writer} onWriter={chooseWriter} disabled={submitting}
               />
             )}
@@ -1022,7 +1157,9 @@ export function savePendingStory(flow, prompt, opts = {}) {
   try {
     localStorage.setItem(PENDING_KEY, JSON.stringify({
       prompt, flow: flow.id,
-      seconds: opts.seconds ?? null, style: opts.style ?? null, writer: opts.writer ?? null,
+      seconds: opts.seconds ?? null, style: opts.style ?? null, writer: opts.writer ?? null, resolution: opts.resolution ?? null,
+      score: opts.score ?? null,
+      voices: opts.voices ?? null,
       depth: opts.depth ?? null, specialists: opts.specialists ?? null,
       at: Date.now(),
     }));
@@ -1041,6 +1178,9 @@ export function takePendingStory() {
       flow: flowById(saved.flow) || FLOWS.director,
       opts: {
         seconds: saved.seconds ?? undefined, style: saved.style ?? undefined, writer: saved.writer ?? undefined,
+        resolution: saved.resolution ?? undefined,
+        score: saved.score === false ? false : undefined,
+        voices: saved.voices ?? undefined,
         depth: saved.depth ?? undefined, specialists: Array.isArray(saved.specialists) ? saved.specialists : undefined,
       },
     };
@@ -1226,6 +1366,8 @@ function stepsOf(job) {
       label: s?.label || st.label,
       status: s ? s.status : "pending",
       summary: s?.status === "failed" ? s.error : s?.summary || null,
+      // The Voices step's auditions are played from the card (VoicesCard).
+      ...(st.key === "voices" && s?.status === "done" ? { result: s.result || null } : {}),
     };
   });
   // A stage the worker added later than this list: show it rather than drop it.
@@ -1396,6 +1538,35 @@ export function FilmActions({ job, projectId }) {
   );
 }
 
+// The Voices step's auditions, under its card: the lines every character
+// read, then one player per voice (film-plan.ts › Voices). Audio is addressed
+// to the Film's project like the Film itself (filmMediaUrl).
+function VoicesCard({ result, projectId }) {
+  const voices = (result?.voices || []).filter((v) => v?.url);
+  if (!voices.length) return null;
+  return (
+    <div className="mt-2 space-y-2" data-voices>
+      {result.lines ? (
+        <p className="text-xs italic text-[var(--br-secondary)]" data-voices-lines>
+          “{result.lines}”
+        </p>
+      ) : null}
+      <ul className="space-y-2">
+        {voices.map((v) => (
+          <li key={v.name} className="flex items-center gap-2" data-voice={v.name}>
+            <AudioLines size={14} className="shrink-0 text-[var(--br-secondary)]" aria-hidden />
+            <span className="min-w-0 flex-1">
+              <span className="block text-xs text-[var(--br-primary)]/90">{v.name}</span>
+              {v.note ? <span className="block truncate text-[0.7rem] text-[var(--br-secondary)]" title={v.note}>{v.note}</span> : null}
+            </span>
+            <audio controls preload="none" src={filmMediaUrl(v.url, projectId)} className="h-8 w-40 shrink-0" aria-label={`${v.name}'s audition`} />
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 export function StoryView({ job, projectId = null, onNew, onRetry, retrying = false, retryError = null }) {
   const steps = stepsOf(job);
   const done = job.status === "done" && job.film?.url;
@@ -1409,7 +1580,7 @@ export function StoryView({ job, projectId = null, onNew, onRetry, retrying = fa
   // The chosen length; an older Film without one shows what its cue sheet planned.
   const length =
     job.seconds ||
-    job.steps?.find((s) => s.key === "cuesheet" || (s.key === "shotlist" && job.engine === "seedance"))?.result?.seconds ||
+    job.steps?.find((s) => s.key === "cuesheet" || (s.key === "shotlist" && isStoryEngine(job.engine)))?.result?.seconds ||
     null;
   // Ended without a Film worth showing: one line says why.
   const ended =
@@ -1473,6 +1644,20 @@ export function StoryView({ job, projectId = null, onNew, onRetry, retrying = fa
             </div>
             <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 overflow-y-auto px-4 py-3 sm:px-8">
               <FilmActions job={job} projectId={projectId} />
+              {/* The way INTO the studio: the Film's own project, in the url,
+                  with the layers the pipeline made — world, script, shot list,
+                  the stills or the segments, the score — each on its own tab,
+                  the agent beside them, and the Film on the Editor's timeline. */}
+              {projectId || job.projectId ? (
+                <Link
+                  to={studioPath(projectId || job.projectId, "editor")}
+                  className={ACTION}
+                  style={{ fontFamily: MONO, letterSpacing: "0.08em" }}
+                  data-continue
+                >
+                  <SlidersHorizontal size={12} aria-hidden /> Continue working on the video
+                </Link>
+              ) : null}
               <ol className="mx-auto flex flex-wrap justify-center gap-x-5 gap-y-2" aria-label="Steps" data-steps="compact">
                 {steps.map((s) => (
                   <li key={s.key} className="flex items-center gap-1.5 text-xs text-[var(--br-secondary)]" data-step={s.key} data-status={s.status}>
@@ -1515,6 +1700,7 @@ export function StoryView({ job, projectId = null, onNew, onRetry, retrying = fa
                       {s.summary && s.status !== "pending" && (
                         <span className="block truncate text-xs text-[var(--br-secondary)]">{s.summary}</span>
                       )}
+                      {s.key === "voices" && s.result ? <VoicesCard result={s.result} projectId={projectId || job.projectId} /> : null}
                     </span>
                   </li>
                 ))}

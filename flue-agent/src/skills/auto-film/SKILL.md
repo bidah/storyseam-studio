@@ -51,6 +51,14 @@ dialog). A Film is 2:00–5:00 in 30s
 steps; none stated means 2:00; a stated length rounds up; longer caps at 5:00 —
 the result says `capped`, and then tell them.
 
+On a story engine (`engine: "seedance"` or `"h3"`) the job also runs a
+**Voices** pass after the sheets: every character is auditioned once (the same
+lines, voice only) and the take is bound as their voice reference in every
+segment they speak in, so one voice persists across the Film. `voices` picks
+how: `"video"` (default — the Film's own video model, a 5s generation per
+character), `"seedaudio"` (ByteDance Seed Audio) or `"elevenlabs"` (a designed
+voice). The Director takes no voice reference, so omit it there.
+
 The result is one of:
 
 - `started: true` — go on to step 3. The Film is being made in a NEW project

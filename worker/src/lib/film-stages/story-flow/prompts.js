@@ -10,7 +10,10 @@
 //                          its place as an empty plate; every token bound to
 //                          one named job, with what NOT to take from it.
 //                          From segment 2 on, @Video1 is the cut of the
-//                          previous segment's last seconds.
+//                          previous segment's last seconds. Under [Audio],
+//                          @Audio1… are the characters' AUDITIONS (the Voices
+//                          stage, ./voices.js): each defines one character's
+//                          voice, so the same voice reaches every segment.
 //   [Generation Goal]
 //   [Global Direction]   — the chosen look and its lock, the film's direction,
 //                          the language and sound locks.
@@ -24,12 +27,15 @@
 // registry in the same order. Validated against fal's limits here, before a
 // second of video is paid for.
 import {
+  AUDITION_SECONDS,
   EXTENSION_TAIL_SECONDS,
+  MAX_SEEDANCE_AUDIO_REFS,
   SEEDANCE_ASPECT_RATIO,
-  SEEDANCE_RESOLUTION,
+  SEEDANCE_AUDIO_MAX_SECONDS,
+  filmResolutionOf,
   filmStyleFor,
 } from "../../film-plan.ts";
-import { DEFAULT_FILM_LANGUAGE } from "../../film-sound.js";
+import { DEFAULT_FILM_LANGUAGE, filmSoundLock } from "../../film-sound.js";
 
 const key = (name) => String(name || "").trim().toLowerCase().replace(/\s+/g, " ");
 /** fal: at most 30 images a generation, 50 files in all. */
@@ -93,6 +99,27 @@ export function segmentRegistry(segment, refs, { people = true } = {}) {
   return picked.slice(0, MAX_IMAGE_REFS).map((ref, i) => ({ token: `@Image${i + 1}`, ref }));
 }
 
+/**
+ * The voices one segment binds, in character order: each character's audition
+ * (the Voices stage's `voices`, matched by name) as @Audio1… — at most
+ * MAX_SEEDANCE_AUDIO_REFS, and no more once their seconds together would pass
+ * SEEDANCE_AUDIO_MAX_SECONDS. → [{ token, voice }]
+ */
+export function segmentVoices(segment, voices) {
+  const picked = [];
+  let seconds = 0;
+  for (const name of segment.characters || []) {
+    const v = (voices || []).find((x) => x?.url && key(x.name) === key(name));
+    if (!v) continue;
+    const s = Number(v.seconds) || AUDITION_SECONDS;
+    if (picked.length >= MAX_SEEDANCE_AUDIO_REFS || seconds + s > SEEDANCE_AUDIO_MAX_SECONDS) break;
+    // The segment's spelling of the name is the one every other line uses.
+    picked.push({ ...v, name });
+    seconds += s;
+  }
+  return picked.map((voice, i) => ({ token: `@Audio${i + 1}`, voice }));
+}
+
 /** Characters bound in words only (no image): name + identity note. */
 function characterWords(segment, refs) {
   return (segment.characters || []).map((name) => {
@@ -101,7 +128,7 @@ function characterWords(segment, refs) {
   });
 }
 
-function referenceMap(registry, { extension, words = [] }) {
+function referenceMap(registry, { extension, words = [], audio = [] }) {
   const lines = ["[Reference Map]"];
   if (words.length) lines.push("[Characters]", ...words);
   const chars = new Map();
@@ -138,22 +165,35 @@ function referenceMap(registry, { extension, words = [] }) {
         "It defines where every character and object is, the camera position and framing, the light and the direction of motion at the seam.",
     );
   }
+  if (audio.length) {
+    lines.push("[Audio]");
+    for (const a of audio) {
+      lines.push(
+        `${a.token} defines ${a.voice.name}'s voice timbre, accent, cadence and delivery — every line ${a.voice.name} speaks is in this voice. ` +
+          "Do not use its words, its pacing or any sound from it.",
+      );
+    }
+  }
   return lines;
 }
 
 /**
- * One segment → { prompt, task, imageRefs: [{ token, name, imageUrl }], hasVideo }.
- * `look` is a FILM_STYLES entry; `total` the number of segments.
+ * One segment → { prompt, task, imageRefs: [{ token, name, imageUrl }], hasVideo,
+ * audioRefs: [{ token, name, url }], hasAudio }. `look` is a FILM_STYLES entry;
+ * `total` the number of segments; `voices` the Voices stage's auditions ([]
+ * for a Film without the pass — nothing about the prompt changes then).
  */
 export function compileSegment(segment, {
-  refs, look, direction, title, total, language = DEFAULT_FILM_LANGUAGE, mode = defaultMode(look), previous = null,
+  refs, look, direction, title, total, language = DEFAULT_FILM_LANGUAGE, mode = defaultMode(look), previous = null, voices = [],
 }) {
   const people = mode === "full";
   const extension = segment.index > 0 && mode !== "no-video";
   const registry = segmentRegistry(segment, refs, { people });
+  // fal: audio needs at least one image or video reference beside it.
+  const audio = registry.length || extension ? segmentVoices(segment, voices) : [];
   const words = people ? [] : characterWords(segment, refs);
   const names = segment.characters || [];
-  const lines = [...referenceMap(registry, { extension, words }), ""];
+  const lines = [...referenceMap(registry, { extension, words, audio }), ""];
 
   lines.push("[Generation Goal]");
   lines.push(
@@ -169,10 +209,10 @@ export function compileSegment(segment, {
   if (segment.location) lines.push(`Place: ${segment.location}.`);
   if (direction?.environment) lines.push(`Environment: ${sentence(direction.environment)}`);
   if (direction?.camera) lines.push(`Camera language: ${sentence(direction.camera)}`);
-  lines.push(
-    `Dialogue language: ${language} only.` +
-      `${direction?.sound ? ` Sound bed: ${sentence(direction.sound)}` : ""} Dialogue, ambience, foley and effects only — no music, no subtitles, no on-screen text.`,
-  );
+  // The Film's sound lock (film-sound.js): the language, and NO MUSIC — the
+  // Score stage lays the music under the final cut, and a bed the model baked
+  // in cannot be ducked or cut out.
+  lines.push(`${filmSoundLock(language)}${direction?.sound ? ` Sound bed: ${sentence(direction.sound)}` : ""}`);
   lines.push("");
 
   if (segment.index > 0 && !extension) {
@@ -217,6 +257,7 @@ export function compileSegment(segment, {
   lines.push(
     [
       names.length ? `Keep ${names.join(", ")} exactly as their references define them — face, hair, clothing, proportions — one instance each, and keep each voice the same.` : "",
+      audio.length ? `${audio.map((a) => `${a.voice.name} keeps the voice ${a.token} defines`).join("; ")} — never another voice.` : "",
       segment.location ? `Keep ${segment.location}'s layout and light.` : "",
       "Keep prop ownership, object counts, screen direction and the camera axis consistent from stage to stage.",
       "The look never changes part way through.",
@@ -224,14 +265,16 @@ export function compileSegment(segment, {
   );
   lines.push("");
   lines.push("[Negative Constraints]");
-  lines.push("Do not use the reference sheets' grey backgrounds, turnaround layouts, labels or text. No subtitles, captions, watermarks or music.");
+  lines.push("Do not use the reference sheets' grey backgrounds, turnaround layouts, labels or text. No subtitles, captions, watermarks or on-screen text. NO MUSIC of any kind — no score, no soundtrack, no singing, no humming.");
 
   return {
     prompt: lines.join("\n").replace(/\n{3,}/g, "\n\n").trim(),
     task: extension ? "extension" : "reference",
     hasVideo: extension,
+    hasAudio: audio.length > 0,
     mode,
     imageRefs: registry.map(({ token, ref }) => ({ token, name: ref.name, imageUrl: ref.imageUrl })),
+    audioRefs: audio.map(({ token, voice }) => ({ token, name: voice.name, url: voice.url, seconds: Number(voice.seconds) || AUDITION_SECONDS })),
   };
 }
 
@@ -239,11 +282,18 @@ export function compileSegment(segment, {
 export function segmentErrors(seg) {
   const errors = [];
   const images = seg.imageRefs.length;
+  const audios = seg.audioRefs || [];
   if (images > MAX_IMAGE_REFS) errors.push(`segment ${seg.index + 1}: ${images} images (fal takes ${MAX_IMAGE_REFS})`);
-  if (images + (seg.hasVideo ? 1 : 0) > MAX_FILES) errors.push(`segment ${seg.index + 1}: more than ${MAX_FILES} files`);
+  if (audios.length > MAX_SEEDANCE_AUDIO_REFS) errors.push(`segment ${seg.index + 1}: ${audios.length} audio files (fal takes ${MAX_SEEDANCE_AUDIO_REFS})`);
+  const audioSeconds = audios.reduce((a, r) => a + (Number(r.seconds) || AUDITION_SECONDS), 0);
+  if (audioSeconds > SEEDANCE_AUDIO_MAX_SECONDS) errors.push(`segment ${seg.index + 1}: ${audioSeconds}s of audio (fal takes ${SEEDANCE_AUDIO_MAX_SECONDS})`);
+  if (audios.length && !images && !seg.hasVideo) errors.push(`segment ${seg.index + 1}: audio with no image or video reference`);
+  if (images + (seg.hasVideo ? 1 : 0) + audios.length > MAX_FILES) errors.push(`segment ${seg.index + 1}: more than ${MAX_FILES} files`);
   for (const m of seg.prompt.matchAll(/@(Image|Video|Audio)(\d+)/g)) {
     const n = Number(m[2]);
-    const ok = m[1] === "Image" ? n >= 1 && n <= images : m[1] === "Video" ? n === 1 && seg.hasVideo : false;
+    const ok = m[1] === "Image" ? n >= 1 && n <= images
+      : m[1] === "Video" ? n === 1 && seg.hasVideo
+      : n >= 1 && n <= audios.length;
     if (!ok) errors.push(`segment ${seg.index + 1}: ${m[0]} points at no reference`);
   }
   if (!Number.isInteger(seg.dur) || seg.dur < 4 || seg.dur > 30) errors.push(`segment ${seg.index + 1}: ${seg.dur}s (fal takes 4–30)`);
@@ -265,6 +315,8 @@ export function compileSegments({ job, results }, modeOf = () => null) {
   const look = filmStyleFor({ style: results?.look?.style || job.style, prompt: job.prompt });
   const title = results?.world?.title || "Untitled";
   const total = shotlist.segments.length;
+  // The Voices stage's auditions (story-flow/voices.js), when the Film ran one.
+  const voices = Array.isArray(results?.voices?.voices) ? results.voices.voices : [];
   const segments = shotlist.segments.map((segment) => ({
     index: segment.index,
     dur: segment.dur,
@@ -278,9 +330,11 @@ export function compileSegments({ job, results }, modeOf = () => null) {
       language: job.language || DEFAULT_FILM_LANGUAGE,
       mode: modeOf(segment.index) || defaultMode(look),
       previous: shotlist.segments[segment.index - 1] || null,
+      voices,
     }),
   }));
-  return { seriesId: sheets.seriesId, resolution: SEEDANCE_RESOLUTION, aspectRatio: SEEDANCE_ASPECT_RATIO, segments };
+  // The resolution the author chose (film-plan.ts FILM_RESOLUTIONS); 480p when none.
+  return { seriesId: sheets.seriesId, resolution: filmResolutionOf(job?.resolution), aspectRatio: SEEDANCE_ASPECT_RATIO, segments };
 }
 
 export async function runStoryFlowPromptsStage({ job, results }) {
@@ -290,8 +344,9 @@ export async function runStoryFlowPromptsStage({ job, results }) {
 
   const total = compiled.segments.length;
   const refsUsed = new Set(compiled.segments.flatMap((s) => s.imageRefs.map((r) => r.name))).size;
+  const voicesUsed = new Set(compiled.segments.flatMap((s) => s.audioRefs.map((r) => r.name))).size;
   return {
-    summary: `${total} prompt${total === 1 ? "" : "s"} · ${refsUsed} references bound · ${SEEDANCE_RESOLUTION} ${SEEDANCE_ASPECT_RATIO} · extension from segment 2${compiled.segments[0]?.mode === "no-people" ? " · characters in words (live action)" : ""}`,
+    summary: `${total} prompt${total === 1 ? "" : "s"} · ${refsUsed} references bound${voicesUsed ? ` · ${voicesUsed} voice${voicesUsed === 1 ? "" : "s"} bound` : ""} · ${compiled.resolution} ${SEEDANCE_ASPECT_RATIO} · extension from segment 2${compiled.segments[0]?.mode === "no-people" ? " · characters in words (live action)" : ""}`,
     // What each segment binds, not its prompt text (see compileSegments).
     result: {
       seriesId: compiled.seriesId,

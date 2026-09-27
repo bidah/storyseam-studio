@@ -10,10 +10,15 @@
 //
 // ── Shape (later slices EXTEND this, never reshape it) ─────────────────────
 //
-//   job  = { id, prompt, seconds?, style?, engine? ('seedance' — the story flow; absent = the Director),
+//   job  = { id, prompt, seconds?, style?, engine? ('seedance' — the story flow on Seedance 2.5;
+//            'h3' — the same on MiniMax H3; absent = the Director),
 //            writer? ('claude' — the LLM that writes it; absent = the Worker's AUTO_WRITER),
+//            resolution? ('720p' — what the video renders at; absent = 480p),
+//            score? (false — no Score stage; absent = the film is scored),
 //            depth? ('deep' — the writers' room reads the script; absent = fast),
 //            specialists? (the room's passes, film-plan.ts DEFAULT_DEEP_SPECIALISTS when none),
+//            voices? ('video' | 'seedaudio' | 'elevenlabs' — a story engine's Voices
+//            stage after its sheets, film-plan.ts › Voices; absent = no stage),
 //            status: 'running'|'awaiting-confirm'|'done'|'stopped'
 //            |'refused'|'declined', error, projectId, episodeId, userId,
 //            auto, createdAt, updatedAt, steps: [step],
@@ -138,14 +143,20 @@ import { runStillsStage } from "./film-stages/stills.js";
 import { runSittingStage } from "./film-stages/sitting.js";
 import { runScoreStage } from "./film-stages/score.js";
 import { readAutoSettings } from "./auto-settings.js";
+import { settleFilmStudio } from "./film-plugins.js";
 import { runStoryFlowSheetsStage } from "./film-stages/story-flow/sheets.js";
 import { runStoryFlowShotlistStage } from "./film-stages/story-flow/shotlist.js";
 import { runStoryFlowPromptsStage } from "./film-stages/story-flow/prompts.js";
 import { runStoryFlowRunStage } from "./film-stages/story-flow/run.js";
 import { runStoryFlowStitchStage } from "./film-stages/story-flow/stitch.js";
+import { runVoicesStage } from "./film-stages/story-flow/voices.js";
+import { runH3PromptsStage } from "./film-stages/h3/prompts.js";
+import { runH3RunStage } from "./film-stages/h3/run.js";
+import { planH3, filmScoreOf, filmVoicesOf, isStoryEngine, FILM_VOICES, FILM_VOICE_IDS } from "./film-plan.ts";
 import {
   planFilm, planStoryFlow, formatLength, filmStepsFor, FILM_ENGINES, FILM_STYLES, FILM_STYLE_IDS, FILM_WRITERS, FILM_WRITER_IDS,
   FILM_DEPTHS, FILM_DEPTH_IDS, DEFAULT_DEEP_SPECIALISTS, MAX_REFERENCE_SHEETS, MAX_STORY_FLOW_SHEETS,
+  FILM_RESOLUTIONS, DEFAULT_FILM_RESOLUTION,
 } from "./film-plan.ts";
 
 /**
@@ -172,6 +183,13 @@ export function checkFilmSeconds(seconds, engine = null) {
  * Which pipeline makes the Film: the Director (`/director-story`, the default)
  * or Seedance 2.5 (`/story-flow` — `seedance`). The ROUTE chooses it. → message | null
  */
+/** What the video renders at (film-plan.ts FILM_RESOLUTIONS); none is 480p. → message | null */
+export function checkFilmResolution(resolution) {
+  if (resolution === undefined || resolution === null || resolution === "") return null;
+  if (FILM_RESOLUTIONS.includes(resolution)) return null;
+  return `A Film renders at one of ${FILM_RESOLUTIONS.join(", ")}.`;
+}
+
 /** The LLM that writes the Film (film-plan.ts FILM_WRITERS); none is the default. → message | null */
 export function checkFilmWriter(writer) {
   if (writer === undefined || writer === null || writer === "") return null;
@@ -207,6 +225,18 @@ export function checkFilmEngine(engine) {
   if (engine === undefined || engine === null || engine === "") return null;
   if (FILM_ENGINES.includes(engine)) return null;
   return `A Film is made by one of ${FILM_ENGINES.join(", ")}.`;
+}
+
+export function checkFilmScore(score) {
+  if (score === undefined || score === null || typeof score === "boolean") return null;
+  return "A Film's score is on (absent) or false.";
+}
+
+/** The Voices pass (film-plan.ts FILM_VOICES); none is fine (no stage). → message | null */
+export function checkFilmVoices(voices) {
+  if (voices === undefined || voices === null || voices === "") return null;
+  if (FILM_VOICE_IDS.includes(voices)) return null;
+  return `A Film's voices are made by one of ${FILM_VOICES.map((x) => `${x.id} (${x.label})`).join(", ")}.`;
 }
 
 export const FILM_EVENT_RESOURCE = "auto";
@@ -356,6 +386,35 @@ export const STORY_FLOW_STAGES = Object.freeze([
 ]);
 
 /**
+ * The H3 FLOW (`job.engine === "h3"`): the story flow on MiniMax H3 — see
+ * film-plan.ts › The H3 FLOW. The sheets, the Shot list and the final cut are
+ * the story flow's own (the Shot list reads the H3 skill instead of the
+ * Seedance one); the prompts and the video run are H3's (./film-stages/h3/).
+ */
+export const H3_STAGES = Object.freeze([
+  { key: "look", label: "Look", run: (ctx) => runLookStage(ctx) },
+  { key: "world", label: "Idea + World", run: runWorldStage },
+  { key: "sheets", label: "Character & location sheets", paid: true, run: (ctx) => runStoryFlowSheetsStage(ctx) },
+  { key: "shotlist", label: "Shot list", run: (ctx) => runStoryFlowShotlistStage(ctx) },
+  { key: "prompts", label: "Segment prompts", run: (ctx) => runH3PromptsStage(ctx) },
+  { key: "run", label: "Video run", paid: true, run: (ctx) => runH3RunStage(ctx) },
+  { key: "stitch", label: "Final cut", paid: true, run: (ctx) => runStoryFlowStitchStage(ctx) },
+]);
+
+/**
+ * The SCORE after a story engine's final cut: the Director's Score stage
+ * (film-stages/score.js) reads the kept film off `results.sitting`; a story
+ * flow's kept film is its `stitch` result, which has the same fields
+ * (story-flow/stitch.js), so it is handed over under that name.
+ */
+export const STORY_SCORE_STAGE = Object.freeze({
+  key: "score",
+  label: "Score",
+  paid: true,
+  run: (ctx) => runScoreStage({ ...ctx, results: { ...ctx.results, sitting: ctx.results?.stitch } }),
+});
+
+/**
  * The STORY stages every engine shares, right after the World: the Script
  * (film-stages/script.js — the screenplay the Shot list is cut from), and for
  * a Deep Film the writers' room (film-stages/room.js — the chosen specialists
@@ -364,12 +423,35 @@ export const STORY_FLOW_STAGES = Object.freeze([
 export const SCRIPT_STAGE = Object.freeze({ key: "script", label: "Script", run: (ctx) => runScriptStage(ctx) });
 export const ROOM_STAGE = Object.freeze({ key: "room", label: "Writers' room", run: (ctx) => runRoomStage(ctx) });
 
-/** The stages a job runs: its engine's, with the story stages after the World. */
+/**
+ * The VOICES stage a story engine runs right after its sheets when the job
+ * asked for one (`job.voices`, film-plan.ts › Voices): every character
+ * auditioned once, the take filed as the voice every segment references
+ * (film-stages/story-flow/voices.js). Only when the job carries the setting —
+ * steps map onto stages by position, so a job from before never gains a stage.
+ */
+export const VOICES_STAGE = Object.freeze({ key: "voices", label: "Voices", paid: true, run: (ctx) => runVoicesStage(ctx) });
+
+const ENGINE_STAGES = { seedance: STORY_FLOW_STAGES, h3: H3_STAGES };
+
+/**
+ * The stages a job runs: its engine's, with the story stages after the World,
+ * the Voices after the sheets when a story engine asked for them, and the
+ * Score last for every engine unless the job switched it off
+ * (film-plan.ts › The score).
+ */
 export function stagesFor(job) {
-  const base = job?.engine === "seedance" ? STORY_FLOW_STAGES : FILM_STAGES;
+  const base = ENGINE_STAGES[job?.engine] || FILM_STAGES;
   const at = base.findIndex((s) => s.key === "world") + 1;
   const story = job?.depth === "deep" ? [SCRIPT_STAGE, ROOM_STAGE] : [SCRIPT_STAGE];
-  return [...base.slice(0, at), ...story, ...base.slice(at)];
+  const scored = filmScoreOf(job?.score);
+  const tail = base.slice(at).filter((s) => scored || s.key !== "score");
+  if (filmVoicesOf(job?.voices, job?.engine)) {
+    const sheets = tail.findIndex((s) => s.key === "sheets");
+    if (sheets >= 0) tail.splice(sheets + 1, 0, VOICES_STAGE);
+  }
+  const score = scored && isStoryEngine(job?.engine) ? [STORY_SCORE_STAGE] : [];
+  return [...base.slice(0, at), ...story, ...tail, ...score];
 }
 
 // ── Job lifecycle ───────────────────────────────────────────────────────────
@@ -388,18 +470,24 @@ export function publicJob(job) {
  * → `{ ok: true, job }` | `{ ok: false, refusal: { code, message } }`, code
  *   'invalid' | 'busy' | 'paused' | 'unavailable' | 'allowance'.
  */
-export async function startFilm(existing, { prompt, seconds, style, engine, writer, depth, specialists, userId, projectId, episodeId }, deps = {}) {
+export async function startFilm(existing, { prompt, seconds, style, engine, writer, resolution, score, depth, specialists, voices, userId, projectId, episodeId }, deps = {}) {
   const env = deps.env;
   const text = str(prompt);
   if (!text) return refuse("invalid", "Write a prompt first.");
   const badEngine = checkFilmEngine(engine);
   if (badEngine) return refuse("invalid", badEngine);
+  const badScore = checkFilmScore(score);
+  if (badScore) return refuse("invalid", badScore);
+  const badVoices = checkFilmVoices(voices);
+  if (badVoices) return refuse("invalid", badVoices);
   const badLength = checkFilmSeconds(seconds, engine);
   if (badLength) return refuse("invalid", badLength);
   const badStyle = checkFilmStyle(style);
   if (badStyle) return refuse("invalid", badStyle);
   const badWriter = checkFilmWriter(writer);
   if (badWriter) return refuse("invalid", badWriter);
+  const badResolution = checkFilmResolution(resolution);
+  if (badResolution) return refuse("invalid", badResolution);
   const badDepth = checkFilmDepth(depth);
   if (badDepth) return refuse("invalid", badDepth);
   const badRoom = checkFilmSpecialists(specialists);
@@ -432,11 +520,18 @@ export async function startFilm(existing, { prompt, seconds, style, engine, writ
       // premise (film-stages/look.js) and every later stage reads its pick.
       ...(style ? { style } : {}),
       // The pipeline, when it is not the Director's (the route chose it).
-      ...(engine === "seedance" ? { engine } : {}),
+      ...(engine && engine !== "director" ? { engine } : {}),
       // The writing model, when it is not the studio's default.
       ...(writer && writer !== "default" ? { writer } : {}),
+      // The resolution, when it is not the default 480p.
+      ...(resolution && resolution !== DEFAULT_FILM_RESOLUTION ? { resolution } : {}),
+      // The score, only when the author switched it OFF.
+      ...(score === false ? { score: false } : {}),
       // The writers' room, when the author asked for one: its passes ride along.
       ...(depth === "deep" ? { depth, specialists: roomFor({ specialists }) } : {}),
+      // The Voices pass, only where it can run (a story engine): the Director
+      // takes no voice reference, so the setting is dropped rather than stored.
+      ...(filmVoicesOf(voices, engine) ? { voices } : {}),
       status: "running",
       error: null,
       projectId: projectId ?? null,
@@ -573,6 +668,9 @@ export async function advanceFilm(job, deps) {
     };
     await commit(job, event("step.failed", job, step));
     await commit(job, event("film.stopped", job));
+    // The studio for what DID get made: its project's tabs are the steps that
+    // finished (lib/film-plugins.js). Best-effort; never fails the stop.
+    await (deps.settleStudio || settleFilmStudio)(deps.env, job);
     return job;
   }
 
@@ -775,7 +873,7 @@ export async function fileFilm(env, projectId, job, film) {
  * allowance count (kind `new`, once per job id). Neither the filing nor the
  * count may lose a finished Film — a failure is recorded on the job instead.
  *
- * deps: { env, now?, countFilm?, fileFilm? } (tests pass fakes)
+ * deps: { env, now?, countFilm?, fileFilm?, settleStudio? } (tests pass fakes)
  */
 export async function completeFilm(job, deps = {}) {
   const env = deps.env;
@@ -791,6 +889,11 @@ export async function completeFilm(job, deps = {}) {
       next.film = { ...film, filed: false, fileError: String(err?.message || err) };
     }
   }
+
+  // The studio the Film opens into (Continue working on the video): its
+  // project's tabs are exactly the steps that ran, and an empty Editor gets
+  // the Film on its picture lane (lib/film-plugins.js). Best-effort.
+  next.studio = await (deps.settleStudio || settleFilmStudio)(env, next);
 
   const kind = allowanceKindOf(next);
   try {
@@ -813,21 +916,30 @@ const money = (n) => `$${(Number(n) || 0).toFixed(2)}`;
  * → { summary, plan: { seconds, length, capped, reels, pins, sheets, estimate } }
  */
 export function confirmPlan(job, worldResult) {
-  if (job?.engine === "seedance") {
+  const scored = filmScoreOf(job?.score);
+  if (isStoryEngine(job?.engine)) {
     // Style anchor + a turnaround and a face per character + a plate per place.
     const drawn = 1 + 2 * (worldResult?.characters?.length || 0) + (worldResult?.places?.length || 0);
     const sheets = Math.min(MAX_STORY_FLOW_SHEETS, drawn);
-    const p = planStoryFlow({ prompt: job.prompt, seconds: job.seconds ?? null, referenceSheets: sheets });
+    // The Voices pass auditions every character the World made.
+    const characters = worldResult?.characters?.length || 0;
+    const input = {
+      prompt: job.prompt, seconds: job.seconds ?? null, resolution: job.resolution ?? null, referenceSheets: sheets, score: scored,
+      voices: job.voices ?? null, characters,
+    };
+    const p = job.engine === "h3" ? planH3(input) : planStoryFlow(input);
     const plan = {
       engine: p.engine, seconds: p.seconds, length: p.length, capped: p.capped, requestedSeconds: p.requestedSeconds,
-      segments: p.segments, durations: p.durations, resolution: p.resolution, sheets, estimate: p.estimate,
+      segments: p.segments, durations: p.durations, resolution: p.resolution, sheets, voices: p.voices, score: scored, estimate: p.estimate,
     };
     const n = (k, one) => `${k} ${one}${k === 1 ? "" : "s"}`;
-    return { summary: `${p.length} · ${n(p.segments, "segment")} at ${p.resolution} · ${n(sheets, "sheet")} · about ${money(p.estimate.total)}`, plan };
+    const at = job.engine === "h3" ? `${p.h3Resolution} on MiniMax H3` : p.resolution;
+    const voiced = p.voices ? ` · ${n(characters, "voice")}` : "";
+    return { summary: `${p.length} · ${n(p.segments, "segment")} at ${at} · ${n(sheets, "sheet")}${voiced}${scored ? " · scored" : ""} · about ${money(p.estimate.total)}`, plan };
   }
   const drawn = (worldResult?.characters?.length || 0) + (worldResult?.places?.length || 0);
   const sheets = Math.min(MAX_REFERENCE_SHEETS, Math.max(1, drawn));
-  const p = planFilm({ prompt: job.prompt, seconds: job.seconds ?? null, referenceSheets: sheets });
+  const p = planFilm({ prompt: job.prompt, seconds: job.seconds ?? null, resolution: job.resolution ?? null, referenceSheets: sheets, score: scored });
   const plan = {
     seconds: p.seconds,
     length: p.length,
@@ -836,10 +948,11 @@ export function confirmPlan(job, worldResult) {
     reels: p.reels,
     pins: p.pins,
     sheets,
+    score: scored,
     estimate: p.estimate,
   };
   const n = (k, one) => `${k} ${one}${k === 1 ? "" : "s"}`;
-  const summary = `${p.length} · ${n(p.reels, "reel")} · ${n(sheets, "sheet")} · about ${money(p.estimate.total)}`;
+  const summary = `${p.length} · ${n(p.reels, "reel")} · ${n(sheets, "sheet")}${scored ? "" : " · no score"} · about ${money(p.estimate.total)}`;
   return { summary, plan };
 }
 

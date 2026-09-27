@@ -1,12 +1,14 @@
 // The story flow's "Video run" stage (/story-flow — the Seedance 2.5 Film).
 //
 // The compiled segments rendered on fal (bytedance/seedance-2.5/reference-to-
-// video, 480p, the PLATFORM key `env.FAL_KEY` — ADR 0003), ONE AT A TIME,
+// video, at the job's resolution — 480p unless 720p was chosen — the PLATFORM key `env.FAL_KEY` — ADR 0003), ONE AT A TIME,
 // because each one after the first continues the one before it:
 //
 //   segment 1   task "reference" — the sheets alone (@Image1…), 16:9.
 //   segment k   task "extension" — @Video1 = the LAST seconds of segment k−1
 //               (EXTENSION_TAIL_SECONDS, cut on the box), plus its own sheets.
+//   every one   @Audio1… = the auditions of the characters in it (the Voices
+//               stage), when the Film ran one — the same voice in every segment.
 //
 // Per segment:  submit → (fal renders) → cut (box: file the clip in R2, cut the
 // tail) → done, then the next one is submitted in the same call.
@@ -23,7 +25,7 @@
 // only the phase that failed, of the one segment in flight: a render that fal
 // failed is resubmitted; a cut that failed is cut again from the render it
 // already has. Finished segments are never paid for twice.
-import { FILM_RATES_USD, EXTENSION_TAIL_SECONDS, SEEDANCE_ENDPOINT, STORY_FLOW_RATES_USD } from "../../film-plan.ts";
+import { FILM_RATES_USD, EXTENSION_TAIL_SECONDS, SEEDANCE_ENDPOINT, STORY_FLOW_RATES_USD, seedanceRateScale } from "../../film-plan.ts";
 import { absolutize, directorUrl } from "../../director.js";
 import { falPoll, falSubmit } from "../../fal.js";
 import { filesUrl } from "../../media.js";
@@ -33,19 +35,26 @@ import { compileSegments, isLikenessRefusal, nextMode } from "./prompts.js";
 const str = (v) => (typeof v === "string" ? v : v == null ? "" : String(v)).trim();
 const round = (x) => Math.round(x * 1e6) / 1e6;
 
-/** What one segment's render is estimated to cost (fal's 480p rates). */
-export function segmentSpend(seg) {
+/** What one segment's render is estimated to cost (fal's 480p rates, scaled to the resolution). */
+export function segmentSpend(seg, resolution) {
   const R = STORY_FLOW_RATES_USD;
-  return round(!seg.hasVideo ? seg.dur * R.seedanceSecond : (seg.dur + EXTENSION_TAIL_SECONDS) * R.seedanceVideoRefSecond);
+  const at480 = !seg.hasVideo ? seg.dur * R.seedanceSecond : (seg.dur + EXTENSION_TAIL_SECONDS) * R.seedanceVideoRefSecond;
+  return round(at480 * seedanceRateScale(resolution));
 }
 
-/** The fal request for one compiled segment. `tailUrl` is the previous segment's cut. */
+/**
+ * The fal request for one compiled segment. `tailUrl` is the previous
+ * segment's cut; `audio_urls` are the characters' auditions (@Audio1…, the
+ * Voices stage), in the compiled order, when the segment binds any.
+ */
 export function segmentInput(env, pid, seg, { resolution, aspectRatio, tailUrl }) {
+  const audio = (seg.audioRefs || []).map((r) => absolutize(env, pid, r.url));
   return {
     prompt: seg.prompt,
     task: seg.task,
     image_urls: seg.imageRefs.map((r) => absolutize(env, pid, r.imageUrl)),
     ...(seg.task === "extension" ? { video_urls: [tailUrl] } : { aspect_ratio: aspectRatio }),
+    ...(audio.length ? { audio_urls: audio } : {}),
     resolution,
     duration: String(seg.dur),
     generate_audio: true,
@@ -144,7 +153,7 @@ export async function runStoryFlowRunStage({ job, results, env, attempt = 1 }, d
         throw fail(`${where}: ${polled.error || "fal returned no video"}`);
       }
       // Counted when fal delivers: a refused request is not billed.
-      spend += segmentSpend(c);
+      spend += segmentSpend(c, compiled.resolution);
       Object.assign(seg, { status: "rendered", sourceUrl: polled.url, seed: polled.output?.seed ?? null });
     }
 
