@@ -835,8 +835,10 @@ function World() {
           <div className="flex items-center gap-2">
             {/* Every save parks the previous version — this is the way back if
                 a bad write (usually the agent's) flattens the bible. */}
-            <DocHistory doc="world" onRestored={refetch} />
-            <ShareDialog />
+            {/* Same size as the primary action beside them; secondary, not
+                outline, so they read as filled buttons in both themes. */}
+            <DocHistory doc="world" onRestored={refetch} triggerVariant="secondary" triggerSize="default" />
+            <ShareDialog triggerVariant="secondary" triggerSize="default" triggerClassName="" />
             <Button onClick={createWithAgent} disabled={agentBusy}>
               {agentBusy
                 ? <><Loader2 size={14} className="animate-spin" /> {t("agent working…")}</>

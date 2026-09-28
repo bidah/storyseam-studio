@@ -48,7 +48,16 @@ function SourceBadge({ source }) {
   );
 }
 
-export default function DocHistory({ doc, label = "History", onRestored }) {
+// The trigger takes the same variant/size/className as <Button>, so a page can
+// set it to match the buttons beside it instead of keeping this default look.
+export default function DocHistory({
+  doc,
+  label = "History",
+  onRestored,
+  triggerVariant = "outline",
+  triggerSize = "sm",
+  triggerClassName,
+}) {
   const [open, setOpen] = useState(false);
   const [snapshots, setSnapshots] = useState(null);
   const [error, setError] = useState(null);
@@ -95,8 +104,8 @@ export default function DocHistory({ doc, label = "History", onRestored }) {
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button variant="outline" size="sm">
-          <History size={13} /> {label}
+        <Button variant={triggerVariant} size={triggerSize} className={triggerClassName}>
+          <History size={14} /> {label}
         </Button>
       </DialogTrigger>
       <DialogContent className="sm:max-w-2xl">

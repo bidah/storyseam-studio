@@ -843,6 +843,8 @@ export const es = {
   "Connect a": "Conectar",
   "Contact": "Contacto",
   "Create a key on": "Crea una clave en",
+  "Generate a key on": "Genera una clave en",
+  "Then paste it here:": "Luego pégala aquí:",
   "Films made with Auto run on StorySeam's own account — you never add a key, and StorySeam pays for them. In the studio you can also render with your own Higgsfield, fal.ai or Atlas Cloud account, and that generation bills to you. StorySeam is not affiliated with those services.":
     "Las películas hechas con Auto se generan en la cuenta propia de StorySeam: nunca añades una clave y StorySeam las paga. En el estudio también puedes renderizar con tu propia cuenta de Higgsfield, fal.ai o Atlas Cloud, y esa generación se te factura a ti. StorySeam no está afiliado a esos servicios.",
   "Google sign-in is only used to create your StorySeam account — it shares your name, email address and profile picture. StorySeam never posts on your behalf and reads nothing else from your Google account.":

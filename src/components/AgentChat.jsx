@@ -1214,20 +1214,23 @@ function LandingPoster({ suggestion: s, onClick }) {
 
 // The row the posters sit in. `scroll-padding-inline` is what lets the LAST
 // card snap to the same left margin as the first instead of stopping short.
-function PosterRow({ children }) {
+// `inset` is the gap before the first card: the row itself runs edge to edge
+// so a card past the fold slides off the panel's side rather than being cut
+// by the column the text sits in, and the inset lines card one up with it.
+function PosterRow({ children, inset = "0.25rem" }) {
   return (
     <div
-      className="-mx-1 flex snap-x snap-mandatory gap-2.5 overflow-x-auto px-1 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-      style={{ scrollPaddingInline: "0.25rem", gap: POSTER_GAP }}
+      className="flex snap-x snap-mandatory gap-2.5 overflow-x-auto pb-1 pr-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+      style={{ paddingLeft: inset, scrollPaddingLeft: inset, gap: POSTER_GAP }}
     >
       {children}
     </div>
   );
 }
 
-function PosterSkeleton() {
+function PosterSkeleton({ inset }) {
   return (
-    <PosterRow>
+    <PosterRow inset={inset}>
       {[0, 1, 2].map((i) => (
         <div
           key={i}
@@ -1326,6 +1329,8 @@ function recapWhen(ts) {
 // The block centers when it fits and scrolls when it doesn't (min-h-full + auto
 // margins), so a day-one project gets a calm centered pair of cards and a
 // mid-pipeline one just grows downward instead of being clipped.
+const DECK_INSET = "max(0px, calc((100% - 1rem - 26rem) / 2))";
+
 function ChatLanding({ conv, onSuggest, reloadKey }) {
   const t = useT();
   // undefined = still reading, null = we couldn't read it. Those are different
@@ -1438,20 +1443,26 @@ function ChatLanding({ conv, onSuggest, reloadKey }) {
             ))}
           </LandingSection>
         ) : null}
-
-        <section className="space-y-2">
-          <Eyebrow>{t("Continue building your story")}</Eyebrow>
-          {status === undefined ? (
-            <PosterSkeleton />
-          ) : (
-            <PosterRow>
-              {suggestions.map((s) => (
-                <LandingPoster key={s.id} suggestion={s} onClick={() => pickSuggestion(s)} />
-              ))}
-            </PosterRow>
-          )}
-        </section>
       </div>
+
+      {/* Outside the 26rem column and bled over the transcript's right
+          padding (-mr-4 ⇄ px-4 on the scroller), so the deck runs to the
+          panel's edge. DECK_INSET puts the eyebrow and the first card back on
+          the column's left edge: (section − the 1rem bleed − 26rem) / 2. */}
+      <section className="-mr-4 mt-5 space-y-2">
+        <div style={{ paddingLeft: DECK_INSET }}>
+          <Eyebrow>{t("Continue building your story")}</Eyebrow>
+        </div>
+        {status === undefined ? (
+          <PosterSkeleton inset={DECK_INSET} />
+        ) : (
+          <PosterRow inset={DECK_INSET}>
+            {suggestions.map((s) => (
+              <LandingPoster key={s.id} suggestion={s} onClick={() => pickSuggestion(s)} />
+            ))}
+          </PosterRow>
+        )}
+      </section>
     </div>
   );
 }

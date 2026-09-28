@@ -547,8 +547,21 @@ function ProviderKeyScreen({ userEmail }) {
           </div>
           ) : null}
 
+          {/* Most people arrive without a key — send them straight to the
+              provider's key page rather than making them hunt for it. */}
+          <Button asChild variant="outline" size="lg" className="mt-6 w-full gap-2 font-medium">
+            <a href={pick.keysUrl} target="_blank" rel="noreferrer">
+              <KeyRound size={16} />
+              {t("Generate a key on")} {pick.label}
+              <ExternalLink size={14} />
+            </a>
+          </Button>
+          <p className="mt-2 text-xs text-muted-foreground">
+            {t("Then paste it here:")}
+          </p>
+
           <form
-            className="mt-4 w-full space-y-3"
+            className="mt-2 w-full space-y-3"
             onSubmit={(e) => {
               e.preventDefault();
               if (!plausible) return;
@@ -582,15 +595,6 @@ function ProviderKeyScreen({ userEmail }) {
               <b className="text-foreground">{t("never stored on StorySeam's servers")}</b>.
             </span>
           </p>
-
-          <a
-            href={pick.keysUrl}
-            target="_blank"
-            rel="noreferrer"
-            className="mt-4 inline-flex items-center gap-1.5 text-xs text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
-          >
-            {t("Create a key on")} {pick.label} <ExternalLink size={12} />
-          </a>
 
           {/* This screen only shows when the selected BYOK provider has no key —
               offer the way over to Higgsfield (the gate asks to connect it if

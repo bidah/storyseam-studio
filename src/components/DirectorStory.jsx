@@ -144,19 +144,21 @@ export const FLOWS = {
     blurb: "The same story in 15s takes on MiniMax H3 (its own ceiling), each continuing the last (Video 1), at 480P. H3 writes the dialogue and effects, then scored; can be 1:00.",
   },
 };
-export const GEN_MODES = [FLOWS.director, FLOWS.seedance, FLOWS.h3];
+export const GEN_MODES = [FLOWS.h3, FLOWS.director, FLOWS.seedance];
 /** A flow by its id (a stored or URL value) → the flow | null. */
 export const flowById = (id) => (typeof id === "string" && Object.hasOwn(FLOWS, id) ? FLOWS[id] : null);
 /** The flow a Film was made on, from its job's `engine`. */
 export const flowOf = (engine) => flowById(engine) || FLOWS.director;
 
-// The Gen mode is remembered per browser, like the look.
+// The Gen mode is remembered per browser, like the look. A browser that never
+// picked one starts on MiniMax H3.
 const MODE_KEY = "director-story:mode";
+export const DEFAULT_FLOW = FLOWS.h3;
 export function readStoredFlow() {
   try {
-    return flowById(window.localStorage.getItem(MODE_KEY)) || FLOWS.director;
+    return flowById(window.localStorage.getItem(MODE_KEY)) || DEFAULT_FLOW;
   } catch {
-    return FLOWS.director;
+    return DEFAULT_FLOW;
   }
 }
 export function storeFlow(flow) {
@@ -1012,7 +1014,7 @@ function writeDraft(text) {
   } catch { /* private mode: not remembered */ }
 }
 
-export function SimpleView({ flow = FLOWS.director, onFlow, onSubmit, submitting, note, running, below = null }) {
+export function SimpleView({ flow = FLOWS.director, onFlow, onSubmit, submitting, note, running, below = null, onSignIn }) {
   const [prompt, setPrompt] = useState(readDraft);
   useEffect(() => { writeDraft(prompt); }, [prompt]);
   const [seconds, setSeconds] = useState(() => readStoredLength(flow));
@@ -1141,7 +1143,7 @@ export function SimpleView({ flow = FLOWS.director, onFlow, onSubmit, submitting
       {/* The same strip /login and /director-harness carry, so the three read
           as one site. Above the dots, and it bleeds into the gutters itself. */}
       <div className="relative z-20 mx-auto w-full max-w-7xl">
-        <HudHeader />
+        <HudHeader onSignIn={onSignIn} />
       </div>
       <div className="relative z-10 flex flex-1 items-center justify-center py-12">
       {/* The column is the width the headline takes in Teko (one line, 22x its
@@ -1312,10 +1314,12 @@ export function takePendingStory() {
   }
 }
 
-export function SignInDialog({ flow = FLOWS.director, open, onOpenChange }) {
+// `withPremise` is false when it opens from the header's sign-in icon: nothing
+// was typed, so there is nothing to promise to resume.
+export function SignInDialog({ flow = FLOWS.director, open, onOpenChange, withPremise = true }) {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState(null);
-  const callbackURL = `/?${RESUME_PARAM}=1`;
+  const callbackURL = withPremise ? `/?${RESUME_PARAM}=1` : "/";
   const signIn = async () => {
     setBusy(true);
     setErr(null);
@@ -1339,10 +1343,12 @@ export function SignInDialog({ flow = FLOWS.director, open, onOpenChange }) {
         style={{ ...HUD, fontFamily: BODY }}
       >
         <DialogTitle style={{ fontFamily: DISPLAY, letterSpacing: DISPLAY_TRACKING }} className="text-2xl font-bold uppercase">
-          Sign in to make your story
+          {withPremise ? "Sign in to make your story" : "Sign in to StorySeam"}
         </DialogTitle>
         <DialogDescription className="text-[var(--br-secondary)]">
-          Your premise is saved — it starts the moment you are back.
+          {withPremise
+            ? "Your premise is saved — it starts the moment you are back."
+            : "Pick up your stories where you left off, or start a new one."}
         </DialogDescription>
         <button
           type="button"

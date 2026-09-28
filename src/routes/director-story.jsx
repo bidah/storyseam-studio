@@ -77,6 +77,9 @@ function SimpleStory({ signedIn, sessionKnown }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   const [signInOpen, setSignInOpen] = useState(false);
+  // Which door opened the dialog: a sent prompt (its premise is saved and
+  // resumes) or the header's icon (nothing to resume).
+  const [signInFromPrompt, setSignInFromPrompt] = useState(true);
   const resumed = useRef(false);
   // Only the settings write below needs a project in scope; the Film makes its own.
   const { error, ready } = useDirectorProject(signedIn);
@@ -103,6 +106,7 @@ function SimpleStory({ signedIn, sessionKnown }) {
     if (!signedIn) {
       // Keep the premise across the Google round trip; it starts on return.
       savePendingStory(as, prompt, opts);
+      setSignInFromPrompt(true);
       setSignInOpen(true);
       return false;
     }
@@ -199,8 +203,9 @@ function SimpleStory({ signedIn, sessionKnown }) {
         note={note}
         running={running}
         below={signedIn ? <LatestStories onPick={openFilm} /> : null}
+        onSignIn={() => { setSignInFromPrompt(false); setSignInOpen(true); }}
       />
-      <SignInDialog flow={flow} open={signInOpen} onOpenChange={setSignInOpen} />
+      <SignInDialog flow={flow} open={signInOpen} onOpenChange={setSignInOpen} withPremise={signInFromPrompt} />
     </>
   );
 }
