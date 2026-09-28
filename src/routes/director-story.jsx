@@ -31,6 +31,7 @@ import {
   RESUME_PARAM,
   SignInDialog,
   SimpleView,
+  StudioAgentCard,
   fetchLatest,
   filmPath,
   flowById,
@@ -44,6 +45,8 @@ import {
 } from "@/components/DirectorStory";
 import { useSession } from "@/lib/auth-client";
 import { setProjectId } from "@/lib/projectFetch";
+import { studioPath } from "@/lib/home";
+import { MONO } from "@/lib/hudTheme";
 
 export function Component() {
   return <StoryPage />;
@@ -188,6 +191,19 @@ function SimpleStory({ signedIn, sessionKnown }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionKnown, signedIn]);
 
+  // The studio road: a blank project under the name given, opened at its
+  // studio root, where the author and the agent build it step by step.
+  const launchStudio = async (name) => {
+    const { res, data } = await getJSON("/api/projects", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name }),
+    });
+    if (!res.ok || !data.project?.id) throw new Error(data.error || `Couldn't create the project (${res.status}).`);
+    setProjectId(data.project.id);
+    navigate(studioPath(data.project.id, ""));
+  };
+
   const openFilm = (film) => {
     if (film.projectId) setProjectId(film.projectId);
     navigate(filmPath(film.filmId), { state: { engine: film.engine || null } });
@@ -202,7 +218,28 @@ function SimpleStory({ signedIn, sessionKnown }) {
         submitting={submitting}
         note={note}
         running={running}
-        below={signedIn ? <LatestStories onPick={openFilm} /> : null}
+        // Under the box: an "or" rule, then the studio road, then Latest
+        // stories. The rule and the page's gap-8 keep the card clearly apart
+        // from the prompt box — it is the other way in, not an option of it.
+        after={
+          <div className="flex w-full flex-col">
+            <div
+              className="mb-8 flex items-center gap-3 text-xs uppercase tracking-[0.2em] text-[var(--br-secondary)]"
+              style={{ fontFamily: MONO }}
+              aria-hidden
+            >
+              <span className="h-px flex-1 bg-[var(--br-secondary)]/30" />
+              or
+              <span className="h-px flex-1 bg-[var(--br-secondary)]/30" />
+            </div>
+            <StudioAgentCard
+              signedIn={signedIn}
+              onSignIn={() => { setSignInFromPrompt(false); setSignInOpen(true); }}
+              onCreate={launchStudio}
+            />
+            {signedIn ? <LatestStories onPick={openFilm} /> : null}
+          </div>
+        }
         onSignIn={() => { setSignInFromPrompt(false); setSignInOpen(true); }}
       />
       <SignInDialog flow={flow} open={signInOpen} onOpenChange={setSignInOpen} withPremise={signInFromPrompt} />

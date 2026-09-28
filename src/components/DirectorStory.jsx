@@ -1014,7 +1014,7 @@ function writeDraft(text) {
   } catch { /* private mode: not remembered */ }
 }
 
-export function SimpleView({ flow = FLOWS.director, onFlow, onSubmit, submitting, note, running, below = null, onSignIn }) {
+export function SimpleView({ flow = FLOWS.director, onFlow, onSubmit, submitting, note, running, below = null, after = null, onSignIn }) {
   const [prompt, setPrompt] = useState(readDraft);
   useEffect(() => { writeDraft(prompt); }, [prompt]);
   const [seconds, setSeconds] = useState(() => readStoredLength(flow));
@@ -1244,6 +1244,9 @@ export function SimpleView({ flow = FLOWS.director, onFlow, onSubmit, submitting
               box's own width — not floated off below the note. */}
           {below}
         </form>
+        {/* The slow road, under the box: a named blank project and the
+            studio's agent (StudioAgentCard). Its own form, so it sits outside. */}
+        {after}
         <p className="min-h-5 text-sm text-[var(--br-secondary)]" aria-live="polite" data-note>
           {voiceNote || note}
         </p>
@@ -1402,6 +1405,74 @@ function when(iso) {
   const t = Date.parse(iso);
   if (!Number.isFinite(t)) return "";
   return new Date(t).toLocaleDateString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+}
+
+// ── The other way in: a blank project and the studio's agent ─────────────────
+//
+// The box above makes a whole Film in one go. This card is the slow road: a
+// NEW, empty project (named here — the name is required, the same as the
+// studio's own create form) opened at its studio root (`/p/<id>/`), where the
+// UI and the agent build it step by step, World to Script and on. Signed out,
+// the button opens the sign-in modal instead (`onSignIn`).
+export function StudioAgentCard({ signedIn, onSignIn, onCreate }) {
+  const [name, setName] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState(null);
+  const submit = async (e) => {
+    e?.preventDefault();
+    if (!signedIn) { onSignIn?.(); return; }
+    const trimmed = name.trim();
+    if (!trimmed) { setErr("Name the project first."); return; }
+    setBusy(true);
+    setErr(null);
+    try {
+      await onCreate(trimmed);
+    } catch (e2) {
+      setErr(String(e2?.message || e2));
+      setBusy(false);
+    }
+  };
+  return (
+    <form
+      onSubmit={submit}
+      className="grid w-full grid-cols-1 items-center gap-4 border border-[var(--br-secondary)]/40 bg-[var(--br-surface)]/50 p-2 text-left backdrop-blur-sm sm:grid-cols-3"
+      data-studio-agent
+    >
+      {/* Two halves: what this road is on the left, the name and the launch
+          on the right, 2/3 to 1/3, sat at the bottom right. Stacked on a phone.
+          The prompt box's padding: p-2 on the card (so the button sits 8px
+          from the border, like the send button), px-3 py-3 on the text. */}
+      <div className="flex flex-col gap-1 px-3 py-3 sm:col-span-2">
+        <h2 className="text-base font-semibold text-[var(--br-primary)]">Create a story with the studio agent</h2>
+        <p className="text-sm text-[var(--br-secondary)]">
+          From the World and script to the characters and the final video generation, each step made carefully,
+          with time by you with an agent and also with UI options.
+        </p>
+      </div>
+      <div className="flex flex-col gap-1.5 sm:self-end">
+        <div className="flex justify-end gap-2">
+          <input
+            value={name}
+            onChange={(e) => { setName(e.target.value); if (err) setErr(null); }}
+            placeholder="New project name"
+            aria-label="New project name"
+            required={signedIn}
+            disabled={busy}
+            className="h-10 min-w-0 flex-1 border border-[var(--br-secondary)]/40 bg-[var(--br-surface)] px-3 text-sm text-[var(--br-primary)] placeholder:text-[var(--br-secondary)] focus:border-[var(--br-primary)] focus:outline-none disabled:opacity-60"
+          />
+          <button
+            type="submit"
+            disabled={busy || (signedIn && !name.trim())}
+            className="flex h-10 shrink-0 items-center justify-center gap-1.5 bg-[var(--br-tertiary)] px-4 text-sm font-semibold text-[var(--br-on-primary)] transition-opacity hover:opacity-90 disabled:opacity-40"
+          >
+            {busy ? <Loader2 size={14} className="animate-spin" /> : null}
+            Launch agent
+          </button>
+        </div>
+        {err ? <p className="text-xs text-[var(--br-tertiary)]" role="alert">{err}</p> : null}
+      </div>
+    </form>
+  );
 }
 
 export function LatestStories({ onPick }) {
@@ -2353,13 +2424,14 @@ export function StoryView({ job, projectId = null, onRetry, retrying = false, re
                   flush with its right edge. */}
               <div className={cn("flex w-full flex-wrap items-center justify-between gap-2", FILM_W)}>
                 {/* The way INTO the studio, on the left: the Film's own project,
-                    in the url, with the layers the pipeline made — world, script,
-                    shot list, the stills or the segments, the score — each on its
-                    own tab, the agent beside them, and the Film on the Editor's
-                    timeline. Share and Download on the right. */}
+                    at its ROOT url (/p/<id>/) — the studio's own landing, not a
+                    tab picked for the author — with the layers the pipeline made
+                    (world, script, shot list, the stills or the segments, the
+                    score) each on its own tab, the agent beside them, and the
+                    Film on the Editor's timeline. Share and Download on the right. */}
                 {projectId || job.projectId ? (
                   <Link
-                    to={studioPath(projectId || job.projectId, "editor")}
+                    to={studioPath(projectId || job.projectId, "")}
                     className={ROW_ACTION}
                     style={{ fontFamily: MONO, letterSpacing: "0.08em" }}
                     data-continue
