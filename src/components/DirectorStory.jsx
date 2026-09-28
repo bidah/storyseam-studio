@@ -63,6 +63,7 @@ import { isDesktop } from "@/lib/desktop";
 import { getProjectId, setProjectId } from "@/lib/projectFetch";
 import { useProjectEvents } from "@/lib/useProjectEvents";
 import { HUD, DISPLAY, BODY, MONO } from "@/lib/hudTheme";
+import { HudHeader } from "@/components/HudHeader";
 import { cn } from "@/lib/utils";
 
 // Mirrors FILM_STAGES in worker/src/lib/film-job.js (keys are stable public
@@ -1132,8 +1133,14 @@ export function SimpleView({ flow = FLOWS.director, onFlow, onSubmit, submitting
   );
 
   return (
-    <Page className="relative items-center justify-center px-4 animate-in fade-in duration-300">
+    <Page className="relative px-4 animate-in fade-in duration-300 sm:px-8">
       <DotsBackground />
+      {/* The same strip /login and /director-harness carry, so the three read
+          as one site. Above the dots, and it bleeds into the gutters itself. */}
+      <div className="relative z-20 mx-auto w-full max-w-7xl">
+        <HudHeader />
+      </div>
+      <div className="relative z-10 flex flex-1 items-center justify-center py-12">
       {/* The headline sets the column's width (one line, sized with the
           viewport so it never wraps) and the input fills exactly that width. */}
       <main className="relative z-10 flex w-fit max-w-full flex-col items-stretch gap-8 text-center">
@@ -1242,6 +1249,7 @@ export function SimpleView({ flow = FLOWS.director, onFlow, onSubmit, submitting
           </Link>
         ) : null}
       </main>
+      </div>
     </Page>
   );
 }
