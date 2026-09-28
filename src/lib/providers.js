@@ -20,19 +20,30 @@ import { useSyncExternalStore } from "react";
 
 const STORAGE_KEY = "shot-studio:providers";
 
-export const PROVIDERS = [
+const ALL_PROVIDERS = [
   { id: "higgsfield", label: "Higgsfield", byok: false },
   { id: "fal", label: "fal.ai", byok: true },
   { id: "atlas", label: "Atlas Cloud", byok: true },
 ];
+const ALL_IDS = ALL_PROVIDERS.map((p) => p.id);
+
+// THE FLAG: which render providers this build offers. StorySeam ships fal-only —
+// no Higgsfield connector, no Atlas key — so Settings, the post-login key
+// screen, the account menu and the library show fal and nothing else. Add an id
+// back here to bring its surfaces back; the code behind them is untouched.
+export const ENABLED_PROVIDERS = ["fal"];
+export const providerEnabled = (id) => ENABLED_PROVIDERS.includes(id);
+
+export const PROVIDERS = ALL_PROVIDERS.filter((p) => providerEnabled(p.id));
 const IDS = PROVIDERS.map((p) => p.id);
 
-// Higgsfield is the default selection (the sign-in itself is its credential).
+// The first enabled provider is the default selection. A stored selection the
+// flag has since turned off (a browser that picked Higgsfield) falls back to it.
 // Tolerates the earlier `{ active, enabled }` stored shape — only `active`
 // matters now.
 function normalize(raw) {
   const o = raw && typeof raw === "object" ? raw : {};
-  return { active: IDS.includes(o.active) ? o.active : "higgsfield" };
+  return { active: IDS.includes(o.active) ? o.active : IDS[0] };
 }
 
 let current = (() => {
@@ -66,9 +77,10 @@ export function useProviderPrefs() {
   return useSyncExternalStore(subscribe, getProviderPrefs);
 }
 
-// The two NON-selected ids for the x-disabled-providers header.
+// Every NON-selected id for the x-disabled-providers header — flagged-off
+// providers included, so the worker and the agent never offer them either.
 export function disabledProvidersCsv() {
-  return IDS.filter((id) => id !== current.active).join(",");
+  return ALL_IDS.filter((id) => id !== current.active).join(",");
 }
 
 // ── Onboarding skip ──────────────────────────────────────────────────────────

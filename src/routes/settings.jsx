@@ -15,7 +15,7 @@ import {
 } from "@/lib/higgsfieldAccount";
 import { useFalKey, setFalKey, clearFalKey } from "@/lib/falKey";
 import { useAtlasKey, setAtlasKey, clearAtlasKey } from "@/lib/atlasKey";
-import { PROVIDERS, useProviderPrefs, setActiveProvider } from "@/lib/providers";
+import { PROVIDERS, useProviderPrefs, setActiveProvider, providerEnabled } from "@/lib/providers";
 import {
   useExaKey, setExaKey, clearExaKey,
   useFirecrawlKey, setFirecrawlKey, clearFirecrawlKey,
@@ -156,7 +156,7 @@ function ChatProviderPanel() {
                 {p.id === "cloudflare" ? <Badge variant="muted">{t("Default")}</Badge> : null}
                 {gated && available ? <Badge variant="muted">{t("Ready")}</Badge> : null}
                 {gated && available === false ? <Badge variant="warning">{t("Needs a key")}</Badge> : null}
-                <div className="ml-auto">
+                <div className={PROVIDERS.length === 1 ? "hidden" : "ml-auto"}>
                   <Switch
                     checked={isActive}
                     disabled={!available}
@@ -285,6 +285,13 @@ function ProvidersPanel() {
 
   return (
     <Panel title={<span className="flex items-center gap-2"><KeyRound size={15} className="text-primary" /> {t("Render providers")}</span>}>
+      {PROVIDERS.length === 1 ? (
+      <p className="mb-3 text-sm text-muted-foreground">
+        {t("StorySeam covers sandboxing and the inference that writes and plans your story. Image, video, voice and soundtrack generations bill ")}
+        <b>{t("your {provider} credits", { provider: PROVIDERS[0].label })}</b>
+        {t(". Your key is stored only in this browser (localStorage) and sent per-request to the generators — never saved on StorySeam's servers.")}
+      </p>
+      ) : (
       <p className="mb-3 text-sm text-muted-foreground">
         {t("Renders bill ")}
         <b>{t("your")}</b>
@@ -292,6 +299,7 @@ function ProvidersPanel() {
         <b>{t("one provider is in use at a time")}</b>
         {t(" — switching one on switches the others off. Jobs already running on another provider still finish.")}
       </p>
+      )}
       <div className="space-y-3">
         {PROVIDERS.map((p) => {
           const row = rows[p.id];
@@ -953,7 +961,7 @@ function SettingsPage() {
 
       <ChatProviderPanel />
 
-      <ConnectorsPanel />
+      {providerEnabled("higgsfield") ? <ConnectorsPanel /> : null}
 
       <McpConnectorPanel />
 

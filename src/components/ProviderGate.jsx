@@ -23,10 +23,10 @@ const GateContext = createContext(null);
 
 // Copy tuned per generation kind; falls back to the generic line.
 const KIND_COPY = {
-  image: "Generating images renders with your own account. Connect a provider to start — link Higgsfield, or add a fal.ai / Atlas Cloud API key.",
-  audio: "Rendering audio runs on your own account. Connect a provider to start — link Higgsfield, or add a fal.ai / Atlas Cloud API key.",
-  video: "Rendering video runs on your own account. Connect a provider to start — link Higgsfield, or add a fal.ai / Atlas Cloud API key.",
-  default: "Generation renders with your own account. Connect a provider to start — link Higgsfield, or add a fal.ai / Atlas Cloud API key.",
+  image: "Generating images renders with your own account. Add your fal.ai API key in Settings to start — it stays in this browser and is never stored on StorySeam's servers.",
+  audio: "Rendering audio runs on your own account. Add your fal.ai API key in Settings to start — it stays in this browser and is never stored on StorySeam's servers.",
+  video: "Rendering video runs on your own account. Add your fal.ai API key in Settings to start — it stays in this browser and is never stored on StorySeam's servers.",
+  default: "Generation renders with your own account. Add your fal.ai API key in Settings to start — it stays in this browser and is never stored on StorySeam's servers.",
 };
 
 export function ProviderGateProvider({ children }) {
@@ -61,7 +61,7 @@ export function ProviderGateProvider({ children }) {
             <div className="mb-1 flex size-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
               <KeyRound size={20} />
             </div>
-            <DialogTitle>{t("Connect a render provider")}</DialogTitle>
+            <DialogTitle>{t("Add your fal.ai key")}</DialogTitle>
             <DialogDescription>{t(KIND_COPY[kind] || KIND_COPY.default)}</DialogDescription>
           </DialogHeader>
           <DialogFooter className="gap-2 sm:gap-2">

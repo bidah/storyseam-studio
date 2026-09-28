@@ -36,6 +36,7 @@ import { UseMcpDialog } from "@/components/UseMcpModal";
 import { headerTabs, blockingPlugin } from "@/lib/plugins";
 import { parseStudioPath, studioPath } from "@/lib/home";
 import { toStudio, useStudioPath } from "@/lib/studioNav";
+import { providerEnabled } from "@/lib/providers";
 
 /* ---------------------------------------------------------------- *
  * App shell                                                        *
@@ -189,7 +190,7 @@ function UserMenu() {
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="header-menu w-52">
-        <DropdownMenuLabel>{t("Higgsfield account")}</DropdownMenuLabel>
+        <DropdownMenuLabel>{t("Account")}</DropdownMenuLabel>
         <DropdownMenuSeparator />
         <DropdownMenuItem asChild>
           <Link to={studio("/settings")}>
@@ -201,11 +202,13 @@ function UserMenu() {
             <Users size={14} /> {t("Team & access")}
           </Link>
         </DropdownMenuItem>
-        <DropdownMenuItem asChild>
-          <a href="https://higgsfield.ai" target="_blank" rel="noopener noreferrer">
-            <ExternalLink size={14} /> {t("Visit higgsfield.ai")}
-          </a>
-        </DropdownMenuItem>
+        {providerEnabled("higgsfield") ? (
+          <DropdownMenuItem asChild>
+            <a href="https://higgsfield.ai" target="_blank" rel="noopener noreferrer">
+              <ExternalLink size={14} /> {t("Visit higgsfield.ai")}
+            </a>
+          </DropdownMenuItem>
+        ) : null}
         <DropdownMenuSeparator />
         <DropdownMenuItem variant="destructive" onClick={signOut}>
           <LogOut size={14} /> {t("Sign out")}
