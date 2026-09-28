@@ -1,19 +1,19 @@
-<!-- The header mark (src/components/RootLayout.jsx): a rounded `bg-primary`
+<!-- The header mark (src/components/RootLayout.jsx): a square `bg-primary`
      tile carrying the lucide `Clapperboard` glyph in `primary-foreground`.
 
-     Colours are the theme tokens from src/index.css resolved to hex —
-     --primary oklch(0.9 0.208 123) and --primary-foreground oklch(0.24 0.04 125).
+     Colours are the LIGHT theme's tokens from src/index.css (the default) —
+     --primary #681DE4 (fal's purple) and --primary-foreground #FAFAFA.
      A favicon is rendered outside the app, so it can't read the CSS variables;
-     if those tokens change, re-resolve them here.
+     if those tokens change, re-resolve them here and regenerate the PNGs.
 
-     The corner radius is `rounded-lg` (--radius, 0.65rem) on the header's 32px
-     tile. The glyph is drawn a little larger and heavier than the header's
-     (20/32 at stroke 2.25, vs 18/32 at stroke 2): at 16px a faithful copy
-     collapses into mush, and legibility is the whole job here. -->
+     Square, like the header tile (--radius is 0 in both themes). The glyph is
+     drawn a little larger and heavier than the header's (20/32 at stroke 2.25,
+     vs 18/32 at stroke 2): at 16px a faithful copy collapses into mush, and
+     legibility is the whole job here. -->
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">
-  <rect width="32" height="32" rx="10.4" fill="#c5f332"/>
+  <rect width="32" height="32" fill="#681DE4"/>
   <g transform="translate(6 6) scale(0.8333)"
-     fill="none" stroke="#1b230c" stroke-width="2.25"
+     fill="none" stroke="#FAFAFA" stroke-width="2.25"
      stroke-linecap="round" stroke-linejoin="round">
     <path d="m12.296 3.464 3.02 3.956"/>
     <path d="M20.2 6 3 11l-.9-2.4c-.3-1.1.3-2.2 1.3-2.5l13.5-4c1.1-.3 2.2.3 2.5 1.3z"/>

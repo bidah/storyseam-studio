@@ -4,7 +4,21 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>StorySeam</title>
-    <meta name="description" content="Write, storyboard, render and cut an episode in one place." />
+    <meta name="description" content="Text to long form video stories in seconds." />
+    <!-- Link previews. The card is drawn by the Worker (worker/src/routes/og.js);
+         a shared /watch/:token page has these swapped for its Film's own there.
+         Absolute URLs because a crawler resolves nothing. -->
+    <meta property="og:site_name" content="StorySeam" />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="StorySeam" />
+    <meta property="og:description" content="Text to long form video stories in seconds." />
+    <meta property="og:url" content="https://storyseam.app/" />
+    <meta property="og:image" content="https://storyseam.app/og/default.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="StorySeam" />
+    <meta name="twitter:image" content="https://storyseam.app/og/default.png" />
     <!-- The header mark, as the tab icon. The SVG is the real one (crisp at any
          size, and what every current browser picks); the 32px PNG is the
          fallback for Safari below 17, which ignores an SVG favicon. The

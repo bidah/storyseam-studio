@@ -15,7 +15,7 @@ page at `/create/:filmId`. **The studio shell lives under a project's url** —
 `/p/:projectId/<view>` (`studioPath` in `src/lib/home.js`; RootLayout mounts
 there and its loader sets the project on the fetch shim, so the URL is the
 state). A finished Film's "Continue working on the video" opens its own
-project's studio at the Editor: the Film's project has its `plugins` doc
+project's studio at the project's root url (`/p/:projectId/`): the Film's project has its `plugins` doc
 materialised from the steps that ran (`worker/src/lib/film-plugins.js`) and the
 Film seeded onto the Editor timeline. Bare studio paths (`/world`, `/editor`…)
 redirect to the current project's `/p/...` url through `StudioRedirect` (hash

@@ -487,9 +487,15 @@ export default function RootLayout() {
             scrolls under the tab row. */}
         <header className="shrink-0 border-b bg-card">
           <div className="flex flex-wrap items-center gap-x-3 gap-y-3 px-4 py-3 md:px-6">
-            <div className="flex size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-              <Clapperboard size={18} />
-            </div>
+            {/* The mark goes home — `/`, the prompt box, where stories are made. */}
+            <Link
+              to="/"
+              aria-label={t("StorySeam home")}
+              className="flex size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+              data-home-mark
+            >
+              <Clapperboard size={18} aria-hidden />
+            </Link>
 
             <ProjectSwitcher />
             <EpisodeSwitcher />

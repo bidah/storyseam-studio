@@ -127,6 +127,9 @@
       "/refs/*", "/multishot-media/*", "/stills/*", "/storyboard-media/*", "/visual-media/*", "/moodboard-media/*", "/director-media/*", "/proxy/*", "/asset/*", "/thumb/*", "/hf-thumb/*", "/img/*",
       "/ingest/*", "/ingest-mpu/*", "/eve/*", "/upload", "/healthz",
       "/desktop/updates/*",
+      // Link previews (routes/og.js): the cards themselves, and /watch/* so a
+      // crawler reads THAT Film's og tags — it never runs the SPA.
+      "/og/*", "/watch/*",
       // Remote MCP connector (docs/mcp.md): the OAuth-fronted per-user server.
       // These must beat the SPA asset layer or the OAuth handshake + the MCP
       // transport would hit index.html instead of the Worker. /.well-known/* is

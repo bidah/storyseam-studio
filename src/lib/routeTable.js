@@ -44,6 +44,9 @@ export const ROUTE_TABLE = [
   { prefix: "/moodboard-media", kind: "api" },
   { prefix: "/director-media", kind: "api" },
   { prefix: "/files", kind: "api" },
+  // Link-preview cards (worker/src/routes/og.js). /watch itself stays the SPA's
+  // here — the Worker only rewrites its og tags for crawlers in production.
+  { prefix: "/og/", kind: "api" },
   // The flue chat agent — token streams, so it forwards like SSE (unbuffered).
   // /eve/* is same-origin so useFlueAgent() needs no host/CORS config; the
   // Worker owns /eve/*, injecting the session user id into the instance id +
