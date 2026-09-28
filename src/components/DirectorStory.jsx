@@ -715,12 +715,16 @@ function useWriterChoices() {
 // look, named on the button so what will be sent is visible before sending.
 const DEPTH_KEY = "director-story:depth";
 const ROOM_KEY = "director-story:room";
+// The prompt box opens on Deep (the writers' room) until the author picks
+// otherwise; a pick is remembered. The Worker's own default (DEFAULT_FILM_DEPTH,
+// what make_film gets with no depth) stays Fast.
+const INPUT_DEFAULT_DEPTH = "deep";
 function readStoredDepth() {
   try {
-    const v = window.localStorage.getItem(DEPTH_KEY) || "fast";
-    return FILM_DEPTHS.some((d) => d.id === v) ? v : "fast";
+    const v = window.localStorage.getItem(DEPTH_KEY) || INPUT_DEFAULT_DEPTH;
+    return FILM_DEPTHS.some((d) => d.id === v) ? v : INPUT_DEFAULT_DEPTH;
   } catch {
-    return "fast";
+    return INPUT_DEFAULT_DEPTH;
   }
 }
 function storeDepth(depth) {
@@ -1164,7 +1168,7 @@ export function SimpleView({ flow = FLOWS.director, onFlow, onSubmit, submitting
             fontSize: `calc(min(2.8rem, calc((100vw - 2rem) / 22)) * ${DISPLAY_FIT})`,
           }}
         >
-          TEXT TO LONG FORM VIDEO STORIES IN SECONDS
+          Create a video story with a prompt
         </h1>
         <form onSubmit={submit} className="w-full">
           {/* The premise gets the box's full width; the controls sit in a row
@@ -1178,7 +1182,7 @@ export function SimpleView({ flow = FLOWS.director, onFlow, onSubmit, submitting
               onKeyDown={(e) => {
                 if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) submit(e);
               }}
-              placeholder="Tell what story premise you have"
+              placeholder="Tell what you have in mind. Express the story you want to bring to life"
               aria-label="Story premise"
               disabled={submitting}
               className="min-h-34 w-full resize-none bg-transparent px-3 py-3 text-base leading-relaxed text-[var(--br-primary)] placeholder:text-[var(--br-secondary)] focus:outline-none disabled:opacity-60"
