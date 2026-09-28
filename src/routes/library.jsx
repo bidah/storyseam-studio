@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useLoaderData, useRevalidator } from "react-router";
 import { X, Check, Plus, ChevronLeft, ImageDown, KeyRound, Loader2, Folder, FolderPlus, Pencil, Trash2 } from "lucide-react";
 import { connectHiggsfield } from "@/lib/higgsfieldAccount";
+import { providerEnabled } from "@/lib/providers";
 import { useT } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 import { invalidateTabCache } from "@/lib/tabCache";
@@ -576,6 +577,8 @@ export { Library };
 
 export function Component() {
   const { setModalImage } = useShell();
+  // The Higgsfield import tab rides the provider flag (lib/providers.js).
+  if (!providerEnabled("higgsfield")) return <Library onView={setModalImage} />;
   return (
     <Tabs defaultValue="library">
       <TabsList className="mb-4">

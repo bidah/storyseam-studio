@@ -34,14 +34,14 @@ import { Link, Navigate, useLocation } from "react-router";
 import {
   Bot, PenLine, Workflow, Film, ListVideo, AudioLines, Loader2, ArrowRight,
   KeyRound, ExternalLink, LogOut, Cable, LayoutGrid, ImagePlus, Video, Radio,
-  Images, Music, Scissors, Users,
+  Images, Music, Scissors, Users, Lock,
 } from "lucide-react";
 import { useSession, authClient, signOut } from "@/lib/auth-client";
 import { useHiggsfieldLinked, connectHiggsfield } from "@/lib/higgsfieldAccount";
 import { desktop, isDesktop } from "@/lib/desktop";
 import { useFalKey, setFalKey } from "@/lib/falKey";
 import { useAtlasKey, setAtlasKey } from "@/lib/atlasKey";
-import { useProviderPrefs, setActiveProvider, useSetupSkipped, setSetupSkipped } from "@/lib/providers";
+import { useProviderPrefs, setActiveProvider, useSetupSkipped, setSetupSkipped, providerEnabled } from "@/lib/providers";
 import { captureInviteFromLocation } from "@/lib/pendingInvite";
 import { useT } from "@/lib/i18n";
 import { HUD, DISPLAY, DISPLAY_FIT, DISPLAY_TRACKING, BODY, MONO } from "@/lib/hudTheme";
@@ -152,10 +152,10 @@ const FEATURES = [
   },
   {
     icon: Cable,
-    label: "Switch provider",
-    note: "Higgsfield, fal.ai or Atlas Cloud",
+    label: "Your own fal key",
+    note: "fal.ai",
     blurb:
-      "Bring your own rendering account and switch between them whenever you like. Generation there bills to your account, not to us.",
+      "Bring your own fal.ai key for images, video, voices and soundtracks. That generation bills to your fal account, not to us.",
   },
   {
     icon: Users,
@@ -437,7 +437,7 @@ export function SignInPage() {
           </div>
 
           <p className="mt-6 max-w-lg border-t border-[var(--br-secondary)]/25 pt-6 text-xs leading-relaxed text-[var(--br-secondary)]">
-            {t("Films made with Auto run on StorySeam's own account — you never add a key, and StorySeam pays for them. In the studio you can also render with your own Higgsfield, fal.ai or Atlas Cloud account, and that generation bills to you. StorySeam is not affiliated with those services.")}
+            {t("Films made with Auto run on StorySeam's own account — you never add a key, and StorySeam pays for them. In the studio you render images, video, voices and soundtracks with your own fal.ai key, and that generation bills to you. StorySeam is not affiliated with fal.ai.")}
           </p>
 
           {/* Reachable WITHOUT signing in — /privacy and /terms are routed as
@@ -486,14 +486,17 @@ export function Splash() {
   );
 }
 
-// Mandatory render-key step (after login, before the app shell). One key from
-// EITHER BYOK provider (fal.ai or Atlas Cloud) unlocks the app; generations
-// bill the USER'S account, and the key never leaves this browser except as a
-// per-request header to our workers.
+// Render-key step (after login, before the app shell). One key from a BYOK
+// provider the build offers (lib/providers.js ENABLED_PROVIDERS — fal only
+// today) unlocks the app. What StorySeam pays for and what bills the USER is
+// said here, before they paste anything: the sandboxes and the writing/planning
+// models are ours; image, video, voice and soundtrack generations are theirs.
+// The key never leaves this browser except as a per-request header to our
+// workers, and is never stored server-side.
 const KEY_PROVIDERS = [
   { id: "fal", label: "fal.ai", save: setFalKey, keysUrl: "https://fal.ai/dashboard/keys", placeholder: "key_id:key_secret" },
   { id: "atlas", label: "Atlas Cloud", save: setAtlasKey, keysUrl: "https://www.atlascloud.ai/console/api-keys", placeholder: "Atlas API key" },
-];
+].filter((p) => providerEnabled(p.id));
 
 function ProviderKeyScreen({ userEmail }) {
   const [pick, setPick] = useState(KEY_PROVIDERS[0]);
@@ -509,12 +512,24 @@ function ProviderKeyScreen({ userEmail }) {
             <KeyRound size={22} />
           </span>
           <h1 className="mt-6 text-balance text-2xl font-semibold tracking-tight">
-            {t("Connect a")} <span className="text-primary">{t("render key")}</span>
+            {t("Add your")} <span className="text-primary">{KEY_PROVIDERS.length === 1 ? `${pick.label} ${t("key")}` : t("render key")}</span>
           </h1>
           <p className="mt-2 text-sm text-muted-foreground">
-            {t("StorySeam renders images and video with your own account — paste a fal.ai or Atlas Cloud API key to continue. It is stored")} <b>{t("only in this browser")}</b>{t(", never on our servers, and you can add the other provider later in Settings.")}
+            {t("StorySeam needs your {provider} API key to continue.", { provider: KEY_PROVIDERS.map((p) => p.label).join(" or ") })}
           </p>
 
+          <ul className="mt-5 w-full space-y-2 border bg-card p-3 text-left text-sm" data-key-costs>
+            <li>
+              <span className="font-medium text-foreground">{t("On us:")}</span>{" "}
+              <span className="text-muted-foreground">{t("sandboxing, and the inference that writes and plans your story.")}</span>
+            </li>
+            <li>
+              <span className="font-medium text-foreground">{t("On your credits:")}</span>{" "}
+              <span className="text-muted-foreground">{t("image, video, voice and soundtrack generations — they bill your {provider} account.", { provider: pick.label })}</span>
+            </li>
+          </ul>
+
+          {KEY_PROVIDERS.length > 1 ? (
           <div className="mt-6 flex gap-1 border bg-card p-1" role="tablist" aria-label={t("Key provider")}>
             {KEY_PROVIDERS.map((p) => (
               <Button
@@ -530,6 +545,7 @@ function ProviderKeyScreen({ userEmail }) {
               </Button>
             ))}
           </div>
+          ) : null}
 
           <form
             className="mt-4 w-full space-y-3"
@@ -559,6 +575,14 @@ function ProviderKeyScreen({ userEmail }) {
             </Button>
           </form>
 
+          <p className="mt-3 flex items-start gap-2 text-left text-xs text-muted-foreground" data-key-storage>
+            <Lock size={13} className="mt-0.5 shrink-0" aria-hidden />
+            <span>
+              {t("Your key stays in this browser, in localStorage. It rides along only with your own generation requests and is")}{" "}
+              <b className="text-foreground">{t("never stored on StorySeam's servers")}</b>.
+            </span>
+          </p>
+
           <a
             href={pick.keysUrl}
             target="_blank"
@@ -571,13 +595,15 @@ function ProviderKeyScreen({ userEmail }) {
           {/* This screen only shows when the selected BYOK provider has no key —
               offer the way over to Higgsfield (the gate asks to connect it if
               the account isn't linked yet). */}
-          <button
-            type="button"
-            onClick={() => setActiveProvider("higgsfield")}
-            className="mt-3 text-xs text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
-          >
-            {t("Or render with a Higgsfield account instead")}
-          </button>
+          {providerEnabled("higgsfield") ? (
+            <button
+              type="button"
+              onClick={() => setActiveProvider("higgsfield")}
+              className="mt-3 text-xs text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
+            >
+              {t("Or render with a Higgsfield account instead")}
+            </button>
+          ) : null}
 
           <SkipForNow />
 
@@ -601,11 +627,11 @@ function SkipForNow() {
         className="gap-1.5 text-muted-foreground"
         onClick={() => setSetupSkipped(true)}
       >
-        {t("Skip for now — I'll connect a provider later")}
+        {t("Skip for now — I'll add my key later")}
         <ArrowRight size={14} />
       </Button>
       <p className="mt-1.5 text-[11px] text-muted-foreground">
-        {t("You can write the script and use the chat agent right away; connect a provider in Settings when you're ready to generate.")}
+        {t("You can write the script and use the chat agent right away; add your key in Settings when you're ready to generate.")}
       </p>
     </div>
   );
