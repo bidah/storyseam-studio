@@ -49,6 +49,9 @@ export type SettingsFormProps = {
   // Connectors: external accounts LINKED to the signed-in (Google) user — only
   // Higgsfield today. null while the linked-account list is loading, 'error'
   // when it couldn't be fetched (lib/higgsfield-account.ts).
+  // False when the provider flag (lib/providers.ts) has Higgsfield off — the
+  // Connectors section then isn't drawn at all.
+  showConnectors: boolean;
   higgsfieldLinked: boolean | null | 'error';
   connectorBusy: boolean;
   onConnectHiggsfield: () => void;

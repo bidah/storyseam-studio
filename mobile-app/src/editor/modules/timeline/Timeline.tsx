@@ -339,7 +339,7 @@ const styles = StyleSheet.create({
   playheadKnob: {
     width: 12,
     height: 12,
-    borderRadius: 6,
+    borderRadius: 0,
     backgroundColor: EditorTheme.playhead,
     marginTop: 2,
   },
@@ -355,14 +355,14 @@ const styles = StyleSheet.create({
   tickLabel: { color: EditorTheme.rulerText, fontSize: 9, marginTop: 1, marginLeft: 2 },
   lane: {
     marginTop: 4,
-    borderRadius: 4,
+    borderRadius: 0,
     overflow: "hidden",
   },
   gap: {
     position: "absolute",
     top: 4,
     bottom: 4,
-    borderRadius: 6,
+    borderRadius: 0,
     borderWidth: 1.5,
     borderStyle: "dashed",
     borderColor: "transparent",

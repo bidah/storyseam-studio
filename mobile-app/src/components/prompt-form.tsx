@@ -48,7 +48,7 @@ const styles = StyleSheet.create((theme) => ({
   field: { gap: 6 },
   label: { fontSize: 13, fontWeight: '500', color: theme.colors.foreground },
   input: {
-    borderRadius: 12,
+    borderRadius: 0,
     borderWidth: 1,
     borderColor: theme.colors.border,
     backgroundColor: theme.colors.card,

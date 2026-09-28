@@ -137,7 +137,7 @@ export function CutPlayer({ gen, autoPlay = false }: { gen: CutGen; autoPlay?: b
 
 const styles = StyleSheet.create((theme) => ({
   root: { gap: 12 },
-  videoWrap: { overflow: 'hidden', borderRadius: 12, backgroundColor: '#000' },
+  videoWrap: { overflow: 'hidden', borderRadius: 0, backgroundColor: '#000' },
   chip: {
     flexDirection: 'row',
     alignItems: 'center',

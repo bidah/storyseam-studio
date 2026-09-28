@@ -7,6 +7,10 @@ import { SegmentedNative } from '@/components/ui/segmented-native';
 import { ImportSection } from '@/components/assets/import-section';
 import { LibrarySection } from '@/components/assets/library-section';
 import { SoundsSection } from '@/components/assets/sounds-section';
+import { providerEnabled } from '@/lib/providers';
+
+// Import pulls from the author's Higgsfield account — gone with the provider flag.
+const SHOW_IMPORT = providerEnabled('higgsfield');
 
 type Seg = 'library' | 'import' | 'sounds';
 
@@ -37,7 +41,7 @@ export default function AssetsTab() {
                 size="large"
                 options={[
                   { value: 'library', label: 'Library' },
-                  { value: 'import', label: 'Import' },
+                  ...(SHOW_IMPORT ? [{ value: 'import' as const, label: 'Import' }] : []),
                   { value: 'sounds', label: 'Sounds' },
                 ]}
                 value={seg}
@@ -49,7 +53,7 @@ export default function AssetsTab() {
       />
       {seg === 'library' ? (
         <LibrarySection />
-      ) : seg === 'import' ? (
+      ) : seg === 'import' && SHOW_IMPORT ? (
         <ImportSection />
       ) : (
         <SoundsSection />

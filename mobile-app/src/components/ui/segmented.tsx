@@ -5,7 +5,7 @@ import * as Haptics from 'expo-haptics';
 const styles = StyleSheet.create((theme) => ({
   track: {
     flexDirection: 'row',
-    borderRadius: 12,
+    borderRadius: 0,
     backgroundColor: theme.colors.secondary,
     padding: 4,
   },
@@ -13,7 +13,7 @@ const styles = StyleSheet.create((theme) => ({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: 8,
+    borderRadius: 0,
     paddingVertical: 6,
   },
   segmentActive: {

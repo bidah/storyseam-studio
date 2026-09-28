@@ -102,7 +102,7 @@ const styles = StyleSheet.create((theme) => ({
   card: {
     width: '100%',
     maxWidth: 380,
-    borderRadius: 16,
+    borderRadius: 0,
     borderWidth: 1,
     borderColor: theme.colors.border,
     backgroundColor: theme.colors.card,

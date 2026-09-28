@@ -258,7 +258,7 @@ const styles = StyleSheet.create((theme) => ({
     gap: 4,
   },
   editable: {
-    borderRadius: 6,
+    borderRadius: 0,
   },
   editablePressed: {
     backgroundColor: `${theme.colors.secondary}80`,

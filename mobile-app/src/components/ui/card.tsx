@@ -3,7 +3,7 @@ import { StyleSheet } from 'react-native-unistyles';
 
 const styles = StyleSheet.create((theme) => ({
   card: {
-    borderRadius: 16,
+    borderRadius: 0, // square, like the web (design.md)
     borderWidth: 1,
     borderColor: theme.colors.border,
     backgroundColor: theme.colors.card,

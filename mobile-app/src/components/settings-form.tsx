@@ -134,6 +134,7 @@ export default function SettingsForm({
   chatProviders,
   onToggleChatProvider,
   providers,
+  showConnectors,
   higgsfieldLinked,
   connectorBusy,
   onConnectHiggsfield,
@@ -239,6 +240,8 @@ export default function SettingsForm({
         ))}
       </NoteCard>
 
+      {showConnectors ? (
+      <>
       <Eyebrow style={styles.mt2}>Connectors</Eyebrow>
       <NoteCard icon={<Cable size={18} color={colors.primary} />} note={CONNECTORS_FOOTNOTE}>
         <View style={styles.connectorBox}>
@@ -271,6 +274,8 @@ export default function SettingsForm({
           )}
         </View>
       </NoteCard>
+      </>
+      ) : null}
 
       <Eyebrow style={styles.mt2}>Render providers</Eyebrow>
       <NoteCard icon={<KeyRound size={18} color={colors.primary} />} note={PROVIDERS_FOOTNOTE}>
@@ -343,7 +348,7 @@ const styles = StyleSheet.create((theme) => ({
   noteCard: { gap: 12 },
   noteHeader: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   noteText: { flex: 1, fontSize: 12, lineHeight: 16, color: theme.colors.mutedForeground },
-  toggleRow: { gap: 8, borderRadius: 12, borderWidth: 1, padding: 12 },
+  toggleRow: { gap: 8, borderRadius: 0, borderWidth: 1, padding: 12 },
   toggleRowOn: { borderColor: `${theme.colors.primary}66` },
   toggleRowOff: { borderColor: theme.colors.border, opacity: 0.7 },
   rowGap2: { flexDirection: 'row', alignItems: 'center', gap: 8 },
@@ -357,7 +362,7 @@ const styles = StyleSheet.create((theme) => ({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    borderRadius: 12,
+    borderRadius: 0,
     borderWidth: 1,
     borderColor: theme.colors.border,
     padding: 12,
@@ -381,7 +386,7 @@ const styles = StyleSheet.create((theme) => ({
   text15: { fontSize: 15, color: theme.colors.foreground },
   connectorBox: {
     gap: 8,
-    borderRadius: 12,
+    borderRadius: 0,
     borderWidth: 1,
     borderColor: theme.colors.border,
     padding: 12,

@@ -18,7 +18,7 @@ import {
 } from '@/lib/higgsfield-account';
 import { useAtlasKeyStore } from '@/lib/atlas-key';
 import { fromModelTag, toModelTag, type GenSettings } from '@/lib/gen-defaults';
-import { PROVIDERS, useProvidersStore, type ProviderId } from '@/lib/providers';
+import { PROVIDERS, providerEnabled, useProvidersStore, type ProviderId } from '@/lib/providers';
 import { saveGenDefaults, SHEET_META, type PromptsDoc } from '@/lib/prompts';
 import { useInvalidate, useProjectResource } from '@/lib/queries';
 import { useProjectStore } from '@/lib/project';
@@ -224,6 +224,7 @@ export default function SettingsSheet() {
               ? `Key ••••${keyFor(p.id).slice(-4)}`
               : 'No key added',
       }))}
+      showConnectors={providerEnabled('higgsfield')}
       higgsfieldLinked={hfLinked}
       connectorBusy={connectorBusy}
       onConnectHiggsfield={() => void runConnector(connectHiggsfield)}

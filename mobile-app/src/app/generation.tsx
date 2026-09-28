@@ -135,7 +135,7 @@ export default function GenerationSheet() {
           <Image
             source={{ uri: mediaUrl(gen.display || gen.url) }}
             accessibilityLabel="View full image"
-            style={{ width: imgW, height: imgW * 0.75, borderRadius: 14, backgroundColor: colors.surface }}
+            style={{ width: imgW, height: imgW * 0.75, borderRadius: 0, backgroundColor: colors.surface }}
             contentFit="contain"
           />
         </Galeria.Image>
@@ -158,7 +158,7 @@ export default function GenerationSheet() {
                 // used to paint a 44pt square from the full-res original.
                 source={{ uri: imageUrl(r.thumb || r.url) }}
                 accessibilityLabel="reference"
-                style={{ width: 44, height: 44, borderRadius: 8, backgroundColor: colors.surface }}
+                style={{ width: 44, height: 44, borderRadius: 0, backgroundColor: colors.surface }}
                 contentFit="cover"
               />
             ))}
@@ -262,7 +262,7 @@ const styles = StyleSheet.create((theme) => ({
     paddingTop: 24,
   },
   card: {
-    borderRadius: 16,
+    borderRadius: 0,
     borderWidth: 1,
     borderColor: theme.colors.border,
     backgroundColor: theme.colors.card,

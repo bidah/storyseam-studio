@@ -49,7 +49,7 @@
           "image": "./assets/images/splash-icon-light.png",
           "imageWidth": 150,
           "dark": {
-            "backgroundColor": "#141608",
+            "backgroundColor": "#0B0C0F",
             "image": "./assets/images/splash-icon.png",
             "imageWidth": 150
           }

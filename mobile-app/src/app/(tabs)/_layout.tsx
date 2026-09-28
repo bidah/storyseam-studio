@@ -47,15 +47,17 @@ function AgentContext() {
 // still lists it, otherwise fall back to the server's active project.
 function ProjectGate({ children }: { children: React.ReactNode }) {
   const { projectId, hydrated, setProjectId } = useProjectStore();
-  const { data, isPending, isError } = useProjects();
+  const { data, isPending, isError, isFetching } = useProjects();
 
   useEffect(() => {
-    if (!hydrated || !data) return;
+    // Wait out a refetch: a project adopted a moment ago (a new Film's) may not
+    // be in the list we're holding yet, and "not listed" means fall back.
+    if (!hydrated || !data || isFetching) return;
     const ids = new Set((data.projects || []).map((p) => p.id));
     if (projectId && ids.has(projectId)) return;
     const next = data.activeId && ids.has(data.activeId) ? data.activeId : data.projects?.[0]?.id;
     if (next) setProjectId(next);
-  }, [hydrated, data, projectId, setProjectId]);
+  }, [hydrated, data, isFetching, projectId, setProjectId]);
 
   // Render as soon as we know WHICH project to use — a stored, hydrated id is
   // enough. `useProjects()` only VALIDATES that id (and picks a fallback when
@@ -85,7 +87,7 @@ export default function TabsLayout() {
   const { data: session, isPending } = useSession();
   const { key: falKey, hydrated: falHydrated } = useFalKeyStore();
   const { key: atlasKey, hydrated: atlasHydrated } = useAtlasKeyStore();
-  const { active, hydrated: providersHydrated } = useProvidersStore();
+  const { active, skipped, hydrated: providersHydrated } = useProvidersStore();
   const colors = useColors();
   // One message bar at the bottom of the screen is enough, so the accessory
   // stands down wherever a real <Composer> is docked and FOCUSED — a conversation
@@ -116,7 +118,8 @@ export default function TabsLayout() {
   // a time — Higgsfield's credential is the sign-in itself, so a key is only
   // demanded when the SELECTED provider is fal/Atlas and its key is missing.
   // Waits for SecureStore hydration so stored state never flashes this redirect.
-  const needKey = (active === 'fal' && !falKey) || (active === 'atlas' && !atlasKey);
+  // "Skip for now" lets the author in without one (Films run on StorySeam).
+  const needKey = !skipped && ((active === 'fal' && !falKey) || (active === 'atlas' && !atlasKey));
   if (needKey) return <Redirect href="/fal-key" />;
 
   return (
@@ -162,6 +165,13 @@ export default function TabsLayout() {
             </NativeTabs.BottomAccessory>
           ) : null}
 
+          {/* The front door: a prompt in, a Film back (the web root `/`). A
+              stack of its own — the prompt box and each Film's steps — and the
+              tab the app opens on (app/index.tsx). */}
+          <NativeTabs.Trigger name="create">
+            <NativeTabs.Trigger.Label>Create</NativeTabs.Trigger.Label>
+            <NativeTabs.Trigger.Icon sf="sparkles" />
+          </NativeTabs.Trigger>
           {/* Still the `chat` ROUTE (the stack of landing + conversations), but
               presented as Home: it's the recaps-and-suggestions hub, and the
               typing surface is the accessory pill riding the tab bar above. */}
@@ -173,13 +183,12 @@ export default function TabsLayout() {
             <NativeTabs.Trigger.Label>Story</NativeTabs.Trigger.Label>
             <NativeTabs.Trigger.Icon sf="book.pages" />
           </NativeTabs.Trigger>
-          <NativeTabs.Trigger name="episode">
-            <NativeTabs.Trigger.Label>Episode</NativeTabs.Trigger.Label>
+          {/* Episode, Cuts, Radio and the installed plugins (Director, Stage,
+              Shot sheet, Musicalized, Upscale) behind one hub — iOS folds a
+              sixth tab into "More", and Create took a slot. */}
+          <NativeTabs.Trigger name="studio">
+            <NativeTabs.Trigger.Label>Studio</NativeTabs.Trigger.Label>
             <NativeTabs.Trigger.Icon sf="film.stack" />
-          </NativeTabs.Trigger>
-          <NativeTabs.Trigger name="cuts">
-            <NativeTabs.Trigger.Label>Cuts</NativeTabs.Trigger.Label>
-            <NativeTabs.Trigger.Icon sf="scissors" />
           </NativeTabs.Trigger>
           <NativeTabs.Trigger name="assets">
             <NativeTabs.Trigger.Label>Assets</NativeTabs.Trigger.Label>

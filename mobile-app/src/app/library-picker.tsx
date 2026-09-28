@@ -64,7 +64,7 @@ export default function LibraryPickerSheet() {
               >
                 <Image
                   source={{ uri: mediaUrl(item.preview) }}
-                  style={{ width: 44, height: 44, borderRadius: 8 }}
+                  style={{ width: 44, height: 44, borderRadius: 0 }}
                   contentFit="cover"
                 />
                 <View style={styles.folderInfo}>
@@ -109,7 +109,7 @@ export default function LibraryPickerSheet() {
                 >
                   <Image
                     source={{ uri: mediaUrl(item.thumb || item.url) }}
-                    style={{ width: cell, height: cell, borderRadius: 10, opacity: multi && selected ? 0.7 : 1 }}
+                    style={{ width: cell, height: cell, borderRadius: 0, opacity: multi && selected ? 0.7 : 1 }}
                     contentFit="cover"
                   />
                   {multi && selected ? (
@@ -142,7 +142,7 @@ const styles = StyleSheet.create((theme) => ({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
-    borderRadius: 12,
+    borderRadius: 0,
     borderWidth: 1,
     borderColor: theme.colors.border,
     backgroundColor: theme.colors.card,

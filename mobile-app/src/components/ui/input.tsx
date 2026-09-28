@@ -6,7 +6,7 @@ import { useColors } from '@/lib/colors';
 const styles = StyleSheet.create((theme) => ({
   input: {
     minHeight: 44,
-    borderRadius: 12,
+    borderRadius: 0, // square, like the web (design.md)
     borderWidth: 1,
     borderColor: theme.colors.input,
     backgroundColor: theme.colors.card,

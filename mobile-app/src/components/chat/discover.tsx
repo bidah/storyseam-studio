@@ -140,7 +140,7 @@ const styles = StyleSheet.create((theme) => ({
   // card body clips to hold its corner radius and a clipping view drops its own
   // shadow on iOS.
   shadow: {
-    borderRadius: 24,
+    borderRadius: 0,
     shadowColor: '#000',
     shadowOpacity: 0.16,
     shadowRadius: 12,
@@ -150,7 +150,7 @@ const styles = StyleSheet.create((theme) => ({
     borderWidth: 1,
     borderColor: theme.colors.border,
     backgroundColor: theme.colors.card,
-    borderRadius: 24,
+    borderRadius: 0,
     overflow: 'hidden',
   },
   art: { width: '100%', aspectRatio: ART_RATIO, backgroundColor: '#0b0b0c' },

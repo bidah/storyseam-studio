@@ -260,7 +260,7 @@ const styles = StyleSheet.create({
     // Taller than it is wide-padded: the slab wants air above and below the copy
     // more than it wants it at the edges, or it reads as a toolbar.
     paddingVertical: 24,
-    borderRadius: 28,
+    borderRadius: 0,
     // Clips the gradient svg into the corners. The border rides on the same
     // view, so it traces the clip exactly.
     overflow: 'hidden',
@@ -274,7 +274,7 @@ const styles = StyleSheet.create({
   // its transform is free to carry the drift.
   // The ring the reference has around the button. On the wrapper, not the glass.
   pillRing: {
-    borderRadius: 18,
+    borderRadius: 0,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: 'rgba(255,255,255,0.65)',
     overflow: 'hidden',
@@ -297,14 +297,14 @@ const styles = StyleSheet.create({
     // disc that fills its side, the label is text with its own air, so matching
     // the numbers would leave the right side looking the loose one.
     paddingRight: 11,
-    borderRadius: 18,
+    borderRadius: 0,
   },
   // The white disc the arrow sits in — the one solid thing on the glass, which
   // is what gives the button a focal point at a glance.
   badge: {
     width: 21,
     height: 21,
-    borderRadius: 11,
+    borderRadius: 0,
     backgroundColor: '#fff',
     alignItems: 'center',
     justifyContent: 'center',

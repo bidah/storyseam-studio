@@ -1,4 +1,3 @@
-import { Appearance } from 'react-native';
 import { StyleSheet } from 'react-native-unistyles';
 
 // The app's single color source of truth, replacing the two parallel palettes
@@ -50,72 +49,83 @@ type ThemeColors = {
   higgsfieldForeground: string;
 };
 
+// The web's design system (design.md + src/index.css), one palette per scheme.
+// LIGHT is fal.ai's look and the web's default: white ground, zinc greys,
+// hairline borders, ONE purple accent. DARK is design.md's "Battle Royale" HUD:
+// near-black ground, one blood-orange accent. The web's borders are
+// translucent (rgb … / 12%); they're pre-composited onto the page colour here
+// because call sites append alpha suffixes to these hexes (`${border}99`), so
+// every value must stay a 6-digit hex.
+
 const darkColors: ThemeColors = {
-  // Surfaces
-  background: '#0a0a0b',
-  pageBg: '#0a0a0b',
-  groupedBg: '#0a0a0b',
-  card: '#111113',
-  surface: '#111113',
-  surfaceAlt: '#18181b',
-  secondary: '#27272a',
-  accent: '#27272a',
-  muted: '#27272a',
-  input: '#27272a',
-  border: '#27272a',
+  // Surfaces (--background #0B0C0F, --card #141619, --secondary #1C1F24)
+  background: '#0b0c0f',
+  pageBg: '#0b0c0f',
+  groupedBg: '#0b0c0f',
+  card: '#141619',
+  surface: '#141619',
+  surfaceAlt: '#1c1f24',
+  secondary: '#1c1f24',
+  accent: '#1c1f24',
+  muted: '#1c1f24',
+  input: '#373a3e', // --input rgb(122 126 133 / 40%) over the page
+  border: '#27282d', // --border rgb(122 126 133 / 25%) over the page
   // Text / icon neutrals, most → least prominent
-  foreground: '#fafafa',
-  cardForeground: '#fafafa',
-  secondaryForeground: '#fafafa',
-  accentForeground: '#fafafa',
-  destructiveForeground: '#fafafa',
-  mutedForeground: '#a1a1aa',
-  subtleForeground: '#71717a',
-  // Brand / semantic — constant across schemes (read on both backgrounds)
-  primary: '#10b981',
-  primaryForeground: '#ecfdf5',
-  ring: '#10b981',
-  destructive: '#ef4444',
-  success: '#34d399',
-  warning: '#f59e0b',
-  amber: '#f59e0b',
+  foreground: '#f2f2f0',
+  cardForeground: '#f2f2f0',
+  secondaryForeground: '#f2f2f0',
+  accentForeground: '#f2f2f0',
+  destructiveForeground: '#f2f2f0',
+  mutedForeground: '#7a7e85',
+  subtleForeground: '#5f636a',
+  // Brand / semantic — design.md's Tertiary is the sole interaction colour
+  primary: '#ff5a1f',
+  primaryForeground: '#0b0c0f',
+  ring: '#ff5a1f',
+  destructive: '#e5484d',
+  success: '#3dd68c',
+  warning: '#e8a33d',
+  amber: '#e8a33d',
   info: '#38bdf8',
-  higgsfield: '#CBF74E',
-  higgsfieldForeground: '#1a2e05',
+  // The send / mic / generate accent (named for its Higgsfield-lime past). It
+  // is the brand accent now, so it follows `primary` — one accent per theme.
+  higgsfield: '#ff5a1f',
+  higgsfieldForeground: '#0b0c0f',
 };
 
 const lightColors: ThemeColors = {
-  // Surfaces
+  // Surfaces (--background #FFFFFF, --secondary/--muted #F4F4F5)
   background: '#ffffff',
   pageBg: '#ffffff',
-  groupedBg: '#f2f2f7',
+  groupedBg: '#f4f4f5',
   card: '#ffffff',
   surface: '#f4f4f5',
   surfaceAlt: '#ffffff',
   secondary: '#f4f4f5',
   accent: '#f4f4f5',
   muted: '#f4f4f5',
-  input: '#e4e4e7',
-  border: '#e4e4e7',
+  input: '#d4d4d5', // --input rgb(18 18 22 / 18%) over white
+  border: '#e3e3e3', // --border rgb(18 18 22 / 12%) over white
   // Text / icon neutrals
-  foreground: '#18181b',
-  cardForeground: '#18181b',
-  secondaryForeground: '#18181b',
-  accentForeground: '#18181b',
+  foreground: '#19191a',
+  cardForeground: '#19191a',
+  secondaryForeground: '#19191a',
+  accentForeground: '#19191a',
   destructiveForeground: '#fafafa',
-  mutedForeground: '#52525b',
-  subtleForeground: '#71717a',
-  // Brand / semantic
-  primary: '#10b981',
-  primaryForeground: '#ecfdf5',
-  ring: '#10b981',
-  destructive: '#ef4444',
-  success: '#10b981',
-  warning: '#f59e0b',
-  amber: '#f59e0b',
-  info: '#38bdf8',
-  higgsfield: '#CBF74E',
-  higgsfieldForeground: '#1a2e05',
+  mutedForeground: '#5b5b64',
+  subtleForeground: '#787881',
+  // Brand / semantic — fal's purple
+  primary: '#681de4',
+  primaryForeground: '#fafafa',
+  ring: '#8553ff',
+  destructive: '#dc2626',
+  success: '#16a34a',
+  warning: '#d97706',
+  amber: '#d97706',
+  info: '#0284c7',
+  // See the dark palette: the old lime accent, now the brand purple.
+  higgsfield: '#681de4',
+  higgsfieldForeground: '#fafafa',
 };
 
 export const appThemes = {
@@ -156,11 +166,11 @@ declare module 'react-native-unistyles' {
 //
 // Instead RootLayout pushes the one resolved scheme (`useEffectiveScheme()`) to
 // `UnistylesRuntime.setTheme()`, so every surface reads from the same decision.
-// `initialTheme` covers the frames before that effect runs: the OS scheme, which
-// is what the default `'system'` preference resolves to anyway.
+// `initialTheme` covers the frames before that effect runs: light, which is what
+// the default preference is (the web's default too — dark is opted into).
 StyleSheet.configure({
   settings: {
-    initialTheme: () => (Appearance.getColorScheme() === 'light' ? 'light' : 'dark'),
+    initialTheme: () => 'light',
   },
   themes: appThemes,
   breakpoints,

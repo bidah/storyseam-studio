@@ -70,6 +70,7 @@ export default function SettingsForm({
   chatProviders,
   onToggleChatProvider,
   providers,
+  showConnectors,
   higgsfieldLinked,
   connectorBusy,
   onConnectHiggsfield,
@@ -179,6 +180,7 @@ export default function SettingsForm({
           ))}
         </Section>
 
+        {showConnectors ? (
         <Section title="Connectors" footer={<Text>{CONNECTORS_FOOTNOTE}</Text>}>
           <HStack spacing={6}>
             <Text>Higgsfield</Text>
@@ -208,6 +210,7 @@ export default function SettingsForm({
             />
           )}
         </Section>
+        ) : null}
 
         <Section title="Render providers" footer={<Text>{PROVIDERS_FOOTNOTE}</Text>}>
           {providers.map((p) => (

@@ -42,7 +42,7 @@ function BundleThumb({ still, takes }: { still: StillTake | null; takes: VideoTa
     return (
       <Image
         source={{ uri: mediaUrl(still.thumb || still.url) }}
-        style={{ width: 92, height: 60, borderRadius: 10 }}
+        style={{ width: 92, height: 60, borderRadius: 0 }}
         contentFit="cover"
       />
     );
@@ -88,7 +88,7 @@ export default function EpisodeIndex() {
       <BouncyPressable
         accessibilityLabel={`Open ${b.beatTitle || b.beat || b.id}`}
         style={styles.card}
-        onPress={() => router.push(`/episode/${b.id}`)}
+        onPress={() => router.push(`/studio/episode/${b.id}`)}
       >
         <BundleThumb still={stillFor(b.id)} takes={takes} />
         <View style={styles.cardBody}>
@@ -150,7 +150,7 @@ const styles = StyleSheet.create((theme) => ({
     width: 92,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: 10,
+    borderRadius: 0,
     backgroundColor: theme.colors.secondary,
   },
   card: {
@@ -158,7 +158,7 @@ const styles = StyleSheet.create((theme) => ({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
-    borderRadius: 16,
+    borderRadius: 0,
     borderWidth: 1,
     borderColor: theme.colors.border,
     backgroundColor: theme.colors.card,

@@ -168,7 +168,7 @@ export default function CutsScreen() {
           accessibilityRole="button"
           accessibilityLabel="Open the radio version and animatic"
           style={({ pressed }) => [styles.radioRow, pressed && styles.radioRowPressed]}
-          onPress={() => router.push('/cuts/radio')}
+          onPress={() => router.push('/studio/radio')}
         >
           <Radio size={16} color={colors.primary} />
           <View style={styles.flex1}>
@@ -364,7 +364,7 @@ const styles = StyleSheet.create((theme) => ({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
-    borderRadius: 16,
+    borderRadius: 0,
     borderWidth: 1,
     borderColor: theme.colors.border,
     backgroundColor: theme.colors.card,
@@ -375,7 +375,7 @@ const styles = StyleSheet.create((theme) => ({
   cutCard: { gap: 12, padding: 12 },
   headerActions: { marginLeft: 'auto', flexDirection: 'row', alignItems: 'center', gap: 4 },
   emptyWrap: {
-    borderRadius: 16,
+    borderRadius: 0,
     borderWidth: 1,
     borderStyle: 'dashed',
     borderColor: theme.colors.border,
@@ -385,7 +385,7 @@ const styles = StyleSheet.create((theme) => ({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    borderRadius: 12,
+    borderRadius: 0,
     borderWidth: 1,
     borderStyle: 'dashed',
     borderColor: theme.colors.border,
@@ -399,7 +399,7 @@ const styles = StyleSheet.create((theme) => ({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
-    borderRadius: 12,
+    borderRadius: 0,
     paddingHorizontal: 12,
     paddingVertical: 12,
   },

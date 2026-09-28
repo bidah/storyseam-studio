@@ -691,7 +691,7 @@ export function Conversation({
               style={{
                 width: 42,
                 height: 42,
-                borderRadius: 21,
+                borderRadius: 0,
                 alignItems: 'center',
                 justifyContent: 'center',
               }}
@@ -749,7 +749,7 @@ const styles = StyleSheet.create((theme) => ({
     lineHeight: 20,
     color: theme.colors.mutedForeground,
   },
-  skeletonBar: { borderRadius: 16 },
+  skeletonBar: { borderRadius: 0 },
   skeletonBarMine: {
     alignSelf: 'flex-end',
     backgroundColor: `${theme.colors.primary}33`,
@@ -766,7 +766,7 @@ const styles = StyleSheet.create((theme) => ({
     flexDirection: 'row',
     alignItems: 'flex-start',
     gap: 8,
-    borderRadius: 12,
+    borderRadius: 0,
     borderWidth: 1,
     borderColor: `${theme.colors.destructive}66`,
     backgroundColor: `${theme.colors.destructive}1A`,

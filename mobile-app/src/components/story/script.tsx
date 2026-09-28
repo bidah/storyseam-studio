@@ -541,7 +541,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   editInput: {
     minHeight: 128,
-    borderRadius: 12,
+    borderRadius: 0,
     borderWidth: 1,
     borderColor: theme.colors.primary,
     backgroundColor: theme.colors.card,
@@ -553,7 +553,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   askInput: {
     minHeight: 96,
-    borderRadius: 12,
+    borderRadius: 0,
     borderWidth: 1,
     borderColor: theme.colors.primary,
     backgroundColor: theme.colors.card,
@@ -565,7 +565,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   originalBox: {
     marginBottom: 12,
-    borderRadius: 12,
+    borderRadius: 0,
     borderWidth: 1,
     borderColor: theme.colors.border,
     backgroundColor: `${theme.colors.secondary}66`,
@@ -603,7 +603,7 @@ const styles = StyleSheet.create((theme) => ({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
-    borderRadius: 12,
+    borderRadius: 0,
     borderWidth: 1,
     borderColor: `${theme.colors.warning}66`,
     backgroundColor: `${theme.colors.warning}1A`,

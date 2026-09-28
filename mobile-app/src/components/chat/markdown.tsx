@@ -43,7 +43,7 @@ function makeBaseStyle(c: ChatColors): MarkdownStyle {
       fontSize: 13,
       backgroundColor: c.muted,
       borderColor: c.border,
-      borderRadius: 8,
+      borderRadius: 0,
       borderWidth: 1,
       padding: 10,
     },

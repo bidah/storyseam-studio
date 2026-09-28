@@ -35,7 +35,8 @@ type ThemeState = {
 };
 
 export const useThemeStore = create<ThemeState>((set) => ({
-  pref: 'system',
+  // Light by default, like the web (fal's look); Dark and System are opt-ins.
+  pref: 'light',
   setPref: (pref) => {
     if (!isPref(pref)) return;
     set({ pref });

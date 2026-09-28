@@ -465,7 +465,7 @@ const styles = StyleSheet.create((theme) => ({
   listContent: { paddingHorizontal: 16, paddingBottom: 32, paddingTop: 12 },
   versionRow: {
     gap: 8,
-    borderRadius: 12,
+    borderRadius: 0,
     borderWidth: 1,
     borderColor: theme.colors.border,
     backgroundColor: `${theme.colors.secondary}66`,

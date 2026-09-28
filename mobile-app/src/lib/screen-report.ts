@@ -58,14 +58,26 @@ export function navForRoute(
     // what `navigate` back to it resolves through (routeForView below).
     nav.view = 'world';
     nav.pane = 'visual';
-  } else if (p.startsWith('/episode')) {
+  } else if (p.startsWith('/studio/episode')) {
     nav.view = 'episode';
     const bundleId = str(params.bundleId);
     if (bundleId) nav.bundleId = bundleId;
-  } else if (p.startsWith('/cuts/radio')) {
+  } else if (p.startsWith('/studio/radio')) {
     nav.view = 'radio';
-  } else if (p.startsWith('/cuts')) {
+  } else if (p.startsWith('/studio/cuts')) {
     nav.view = 'cuts';
+  } else if (p.startsWith('/studio/plugins')) {
+    nav.view = 'plugins';
+  } else if (p.startsWith('/studio/')) {
+    // A plugin surface: its route segment IS the plugin id (director, stage,
+    // shotsheet, musicalized, upscale) — the same string the web reports.
+    nav.view = p.split('/')[2] || '';
+    const seriesId = str(params.seriesId);
+    if (seriesId) nav.seriesId = seriesId;
+  } else if (p.startsWith('/create')) {
+    // The prompt box / a Film's steps. Not a studio view.
+    const filmId = str(params.filmId);
+    if (filmId) nav.filmId = filmId;
   } else if (p.startsWith('/assets')) {
     // Assets folds Library and the Sound studio into one tab. Without the
     // sub-surface we'd hydrate the library while the author is looking at
@@ -125,12 +137,18 @@ const ROUTES: Record<string, string> = {
   script: '/(tabs)/story?segment=script',
   shotlist: '/(tabs)/story?segment=shots',
   shots: '/(tabs)/story?segment=shots',
-  multishot: '/(tabs)/episode',
-  episode: '/(tabs)/episode',
-  cuts: '/(tabs)/cuts',
-  radio: '/(tabs)/cuts/radio',
-  // No animatic surface on mobile yet; the Cuts tab is where its output lands.
-  animatic: '/(tabs)/cuts',
+  multishot: '/(tabs)/studio/episode',
+  episode: '/(tabs)/studio/episode',
+  cuts: '/(tabs)/studio/cuts',
+  radio: '/(tabs)/studio/radio',
+  // No animatic surface on mobile yet; Cuts is where its output lands.
+  animatic: '/(tabs)/studio/cuts',
+  director: '/(tabs)/studio/director',
+  stage: '/(tabs)/studio/stage',
+  shotsheet: '/(tabs)/studio/shotsheet',
+  musicalized: '/(tabs)/studio/musicalized',
+  upscale: '/(tabs)/studio/upscale',
+  plugins: '/(tabs)/studio/plugins',
   editor: '/editor',
   library: '/(tabs)/assets',
   sounds: '/(tabs)/assets',

@@ -627,7 +627,7 @@ const styles = StyleSheet.create((theme) => ({
   questionCard: {
     gap: 8,
     alignSelf: 'stretch',
-    borderRadius: 12,
+    borderRadius: 0,
     borderWidth: 1,
     padding: 12,
   },
@@ -642,7 +642,7 @@ const styles = StyleSheet.create((theme) => ({
     gap: 8,
   },
   optionBtn: {
-    borderRadius: 8,
+    borderRadius: 0,
     borderWidth: 1,
     paddingHorizontal: 12,
     paddingVertical: 8,
@@ -686,7 +686,7 @@ const styles = StyleSheet.create((theme) => ({
     alignItems: 'center',
     gap: 6,
     alignSelf: 'flex-start',
-    borderRadius: 6,
+    borderRadius: 0,
     borderWidth: 1,
     paddingHorizontal: 8,
     paddingVertical: 4,
@@ -714,7 +714,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   sourcesCard: {
     alignSelf: 'stretch',
-    borderRadius: 6,
+    borderRadius: 0,
     borderWidth: 1,
     borderColor: theme.colors.border,
     backgroundColor: `${theme.colors.muted}4D`,
@@ -749,7 +749,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   sourceItem: {
     gap: 2,
-    borderRadius: 6,
+    borderRadius: 0,
     borderWidth: 1,
     borderColor: theme.colors.border,
     backgroundColor: `${theme.colors.background}99`,
@@ -779,7 +779,7 @@ const styles = StyleSheet.create((theme) => ({
   reasoningRow: {
     marginVertical: 4,
     alignSelf: 'stretch',
-    borderRadius: 8,
+    borderRadius: 0,
     borderWidth: 1,
     borderColor: theme.colors.border,
     backgroundColor: `${theme.colors.muted}4D`,
@@ -806,19 +806,19 @@ const styles = StyleSheet.create((theme) => ({
   chatImageWrap: {
     overflow: 'hidden',
     alignSelf: 'stretch',
-    borderRadius: 12,
+    borderRadius: 0,
   },
   fileImageWrap: {
     overflow: 'hidden',
     alignSelf: 'flex-start',
-    borderRadius: 10,
+    borderRadius: 0,
   },
   fileChip: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
     alignSelf: 'flex-start',
-    borderRadius: 6,
+    borderRadius: 0,
     borderWidth: 1,
     borderColor: theme.colors.border,
     backgroundColor: `${theme.colors.muted}80`,
@@ -841,7 +841,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   attachmentThumb: {
     overflow: 'hidden',
-    borderRadius: 10,
+    borderRadius: 0,
   },
   userRow: {
     alignItems: 'flex-end',
@@ -849,7 +849,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   userBubble: {
     maxWidth: '88%',
-    borderRadius: 16,
+    borderRadius: 0,
     backgroundColor: theme.colors.secondary,
     paddingHorizontal: 14,
     paddingVertical: 10,

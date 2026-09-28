@@ -12,7 +12,7 @@ import { useProvidersStore } from '@/lib/providers';
 // here. router.back() pops to the settings form; router.dismissAll() (remove of
 // the in-use key) closes the whole sheet so the /fal-key tabs gate takes over.
 const CONFIG = {
-  fal: { label: 'fal.ai', placeholder: 'key_id:key_secret', plausible: isPlausibleFalKey },
+  fal: { label: 'Fal.ai', placeholder: 'Fal API key', plausible: isPlausibleFalKey },
   atlas: { label: 'Atlas Cloud', placeholder: 'Atlas API key', plausible: isPlausibleAtlasKey },
 } as const;
 

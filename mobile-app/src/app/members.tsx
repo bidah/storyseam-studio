@@ -385,7 +385,7 @@ const styles = StyleSheet.create((theme) => ({
   root: { flex: 1, backgroundColor: theme.colors.background },
   content: { paddingHorizontal: 16, paddingTop: 16, paddingBottom: 48, gap: 16 },
   card: {
-    borderRadius: 16,
+    borderRadius: 0,
     borderWidth: 1,
     borderColor: theme.colors.border,
     backgroundColor: theme.colors.card,
@@ -404,7 +404,7 @@ const styles = StyleSheet.create((theme) => ({
   toggleLabel: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   toggleText: { fontSize: 14, color: theme.colors.foreground },
   pickBox: {
-    borderRadius: 12,
+    borderRadius: 0,
     borderWidth: 1,
     borderColor: theme.colors.border,
     padding: 10,
@@ -421,7 +421,7 @@ const styles = StyleSheet.create((theme) => ({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    borderRadius: 8,
+    borderRadius: 0,
     paddingHorizontal: 8,
     paddingVertical: 10,
   },
@@ -443,7 +443,7 @@ const styles = StyleSheet.create((theme) => ({
   memberControls: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   grantsSection: { marginTop: 8, gap: 8, borderTopWidth: 1, borderTopColor: theme.colors.border, paddingTop: 12 },
   grantCard: {
-    borderRadius: 12,
+    borderRadius: 0,
     borderWidth: 1,
     borderColor: theme.colors.border,
     padding: 12,
@@ -454,7 +454,7 @@ const styles = StyleSheet.create((theme) => ({
   checkbox: {
     height: 20,
     width: 20,
-    borderRadius: 6,
+    borderRadius: 0,
     borderWidth: 1,
     borderColor: theme.colors.border,
     alignItems: 'center',

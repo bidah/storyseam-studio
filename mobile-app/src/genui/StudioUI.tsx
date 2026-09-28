@@ -158,7 +158,7 @@ const styles = StyleSheet.create((theme) => ({
   errorCard: {
     gap: 6,
     alignSelf: 'stretch',
-    borderRadius: 16,
+    borderRadius: 0,
     borderWidth: 1,
     padding: 12,
   },

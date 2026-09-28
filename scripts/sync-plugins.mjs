@@ -4,6 +4,7 @@
  *
  *   src/lib/plugins.ts  →  worker/src/lib/plugins.ts
  *                       →  flue-agent/src/lib/plugins.ts
+ *                       →  mobile-app/src/lib/plugins.ts
  *
  * Run after editing the canonical file:  npm run plugins:sync
  *
@@ -27,6 +28,7 @@ const SOURCE = path.join(ROOT, "src/lib/plugins.ts");
 const TARGETS = [
   path.join(ROOT, "worker/src/lib/plugins.ts"),
   path.join(ROOT, "flue-agent/src/lib/plugins.ts"),
+  path.join(ROOT, "mobile-app/src/lib/plugins.ts"),
 ];
 
 const BANNER =

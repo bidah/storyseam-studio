@@ -20,7 +20,7 @@ const styles = StyleSheet.create((theme) => ({
     alignItems: 'center',
     gap: 4,
     alignSelf: 'flex-start',
-    borderRadius: 999,
+    borderRadius: 0, // square, like the web (design.md)
     paddingHorizontal: 8,
     paddingVertical: 2,
     variants: {

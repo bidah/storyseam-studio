@@ -357,7 +357,7 @@ const styles = StyleSheet.create((theme) => ({
   charCountNormal: { color: theme.colors.mutedForeground },
   secondsInput: { width: 112 },
   composedBox: {
-    borderRadius: 12,
+    borderRadius: 0,
     borderWidth: 1,
     borderColor: theme.colors.border,
     backgroundColor: theme.colors.card,

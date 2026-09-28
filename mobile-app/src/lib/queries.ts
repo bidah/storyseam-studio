@@ -33,6 +33,13 @@ export const RESOURCES = {
   // pipeline. Feeds the Chat screen's suggestion cards (lib/suggestions.ts) —
   // which is why it's a digest and not seven full-section fetches.
   status: '/api/status',
+  // Which plugins the project has installed — the Studio tab lists their
+  // surfaces (src/lib/plugins.ts is the catalog, vendored from the web).
+  plugins: '/api/plugins',
+  director: '/api/director',
+  sittings: '/api/stage/sittings',
+  musicalized: '/api/musicalized',
+  upscale: '/api/upscale',
 } as const;
 
 export type ResourceKey = keyof typeof RESOURCES;

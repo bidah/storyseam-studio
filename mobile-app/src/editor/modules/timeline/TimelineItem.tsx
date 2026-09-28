@@ -284,7 +284,7 @@ const styles = StyleSheet.create({
   card: {
     position: "absolute",
     top: 4,
-    borderRadius: 8,
+    borderRadius: 0,
     borderWidth: 2,
     overflow: "hidden",
   },
@@ -303,7 +303,7 @@ const styles = StyleSheet.create({
   badge: {
     marginLeft: "auto",
     backgroundColor: "#fff",
-    borderRadius: 8,
+    borderRadius: 0,
     minWidth: 16,
     alignItems: "center",
     paddingHorizontal: 4,
@@ -319,7 +319,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     backgroundColor: "rgba(255,255,255,0.18)",
   },
-  handleBar: { width: 3, height: 20, borderRadius: 2, backgroundColor: "#fff" },
+  handleBar: { width: 3, height: 20, borderRadius: 0, backgroundColor: "#fff" },
   handleHidden: { opacity: 0 },
 });
 

@@ -52,7 +52,7 @@ export type SemiPillButtonProps = {
 export const SEMI_PILL = {
   height: 56,
   paddingHorizontal: 28,
-  borderRadius: 20,
+  borderRadius: 0,
 } as const;
 
 export const semiPillStyles = StyleSheet.create({

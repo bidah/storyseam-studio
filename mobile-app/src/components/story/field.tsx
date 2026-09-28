@@ -93,7 +93,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   input: {
     marginTop: 4,
-    borderRadius: 8,
+    borderRadius: 0,
     borderWidth: 1,
     borderColor: theme.colors.primary,
     backgroundColor: theme.colors.card,
@@ -111,7 +111,7 @@ const styles = StyleSheet.create((theme) => ({
     flexDirection: 'row',
     alignItems: 'flex-start',
     gap: 8,
-    borderRadius: 8,
+    borderRadius: 0,
     borderWidth: 1,
     borderColor: 'transparent',
     paddingHorizontal: 10,

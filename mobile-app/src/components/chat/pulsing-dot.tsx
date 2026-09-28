@@ -22,7 +22,7 @@ export function PulsingDot() {
   }, [opacity]);
   return (
     <Animated.View
-      style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: '#ef4444', opacity }}
+      style={{ width: 10, height: 10, borderRadius: 0, backgroundColor: '#ef4444', opacity }}
     />
   );
 }

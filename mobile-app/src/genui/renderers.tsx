@@ -403,7 +403,7 @@ export function Option({ props }: Render<OptionProps>) {
           source={{ uri }}
           contentFit="cover"
           transition={120}
-          style={{ width: 40, height: 40, borderRadius: 10, backgroundColor: colors.muted }}
+          style={{ width: 40, height: 40, borderRadius: 0, backgroundColor: colors.muted }}
         />
       ) : null}
       <View style={styles.flex1}>
@@ -1252,7 +1252,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   insetCard: {
     overflow: 'hidden',
-    borderRadius: 28,
+    borderRadius: 0,
     borderWidth: 1,
     borderColor: theme.colors.border,
     backgroundColor: theme.colors.card,
@@ -1266,7 +1266,7 @@ const styles = StyleSheet.create((theme) => ({
     width: 20,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: 6,
+    borderRadius: 0,
     borderWidth: 1,
   },
   radio: {
@@ -1288,7 +1288,7 @@ const styles = StyleSheet.create((theme) => ({
   textMuted: { fontSize: 13, lineHeight: 18, color: theme.colors.mutedForeground },
   textStrong: { fontSize: 15, fontWeight: '600', color: theme.colors.foreground },
   textTitle: { fontSize: 16, fontWeight: '600', color: theme.colors.foreground },
-  callout: { gap: 4, borderRadius: 16, borderWidth: 1, padding: 12 },
+  callout: { gap: 4, borderRadius: 0, borderWidth: 1, padding: 12 },
   calloutTitle: { fontSize: 15, fontWeight: '500', color: theme.colors.foreground },
   // Rows (Option / AudioItem share the shell)
   row: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingVertical: 16 },
@@ -1308,7 +1308,7 @@ const styles = StyleSheet.create((theme) => ({
   meta12: { fontSize: 12, color: theme.colors.mutedForeground },
   // Media
   mediaItem: { gap: 6 },
-  mediaFrame: { overflow: 'hidden', borderRadius: 16, borderWidth: 2 },
+  mediaFrame: { overflow: 'hidden', borderRadius: 0, borderWidth: 2 },
   mediaCheckPip: { position: 'absolute', left: 6, top: 6, borderRadius: 999, padding: 4 },
   mediaLabel: { paddingHorizontal: 4, fontSize: 13, fontWeight: '500', color: theme.colors.foreground },
   mediaCaption: {
@@ -1322,7 +1322,7 @@ const styles = StyleSheet.create((theme) => ({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 6,
-    borderRadius: 12,
+    borderRadius: 0,
     borderWidth: 1,
     paddingVertical: 8,
   },
@@ -1330,7 +1330,7 @@ const styles = StyleSheet.create((theme) => ({
   useBtnChecked: { borderColor: theme.colors.primary, backgroundColor: theme.colors.primary },
   useBtnSingle: {
     alignItems: 'center',
-    borderRadius: 12,
+    borderRadius: 0,
     borderWidth: 1,
     borderColor: theme.colors.border,
     backgroundColor: theme.colors.secondary,
@@ -1387,7 +1387,7 @@ const styles = StyleSheet.create((theme) => ({
     width: 40,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: 12,
+    borderRadius: 0,
     borderWidth: 1,
     backgroundColor: theme.colors.secondary,
   },
@@ -1403,7 +1403,7 @@ const styles = StyleSheet.create((theme) => ({
   columnCard: {
     flex: 1,
     gap: 6,
-    borderRadius: 16,
+    borderRadius: 0,
     borderWidth: 1,
     borderColor: theme.colors.border,
     backgroundColor: theme.colors.card,
@@ -1453,7 +1453,7 @@ const styles = StyleSheet.create((theme) => ({
     paddingVertical: 8,
   },
   chipText: { fontSize: 14, fontWeight: '500', color: theme.colors.foreground },
-  actionBtn: { borderRadius: 12, borderWidth: 1, paddingHorizontal: 16, paddingVertical: 10 },
+  actionBtn: { borderRadius: 0, borderWidth: 1, paddingHorizontal: 16, paddingVertical: 10 },
   actionText: { fontSize: 15, fontWeight: '500' },
   actions: { gap: 8 },
   actionsColumn: { flexDirection: 'column', alignItems: 'stretch' },

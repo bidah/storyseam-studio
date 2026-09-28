@@ -233,13 +233,13 @@ const styles = StyleSheet.create((theme) => ({
   headerRow: { marginBottom: 4, flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 16 },
   tileFrame: {
     overflow: 'hidden',
-    borderRadius: 12,
+    borderRadius: 0,
     borderWidth: 1,
     borderColor: theme.colors.border,
   },
   tileFrameLiked: {
     overflow: 'hidden',
-    borderRadius: 12,
+    borderRadius: 0,
     borderWidth: 2,
     borderColor: theme.colors.success,
   },

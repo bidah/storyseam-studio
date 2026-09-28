@@ -723,7 +723,7 @@ function Loaded({
             glassEffectStyle="regular"
             fallbackColor={c.card}
             style={{
-              borderRadius: 24,
+              borderRadius: 0,
               overflow: 'hidden',
               paddingHorizontal: 12,
               paddingTop: 10,
@@ -758,7 +758,7 @@ function Loaded({
                             style={{
                               width: 48,
                               height: 48,
-                              borderRadius: 8,
+                              borderRadius: 0,
                               backgroundColor: c.muted,
                             }}
                           />
@@ -929,7 +929,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   cellWrap: {
     overflow: 'hidden',
-    borderRadius: 10,
+    borderRadius: 0,
   },
   fullSize: {
     width: '100%',
@@ -938,7 +938,7 @@ const styles = StyleSheet.create((theme) => ({
   errorBox: {
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: 10,
+    borderRadius: 0,
     borderWidth: 1,
     borderColor: `${theme.colors.destructive}66`,
     backgroundColor: theme.colors.secondary,
@@ -954,7 +954,7 @@ const styles = StyleSheet.create((theme) => ({
   pendingBox: {
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: 10,
+    borderRadius: 0,
     backgroundColor: theme.colors.secondary,
   },
   pendingText: {

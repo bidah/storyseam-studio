@@ -289,7 +289,7 @@ const styles = StyleSheet.create((theme) => ({
   hunk: {
     marginHorizontal: 8,
     marginVertical: 6,
-    borderRadius: 12,
+    borderRadius: 0,
     borderWidth: 1,
     borderColor: `${theme.colors.primary}4D`,
     backgroundColor: `${theme.colors.primary}0D`,
@@ -299,7 +299,7 @@ const styles = StyleSheet.create((theme) => ({
   titleBox: {
     marginHorizontal: 8,
     marginVertical: 6,
-    borderRadius: 12,
+    borderRadius: 0,
     borderWidth: 1,
     borderColor: `${theme.colors.primary}4D`,
     backgroundColor: `${theme.colors.primary}0D`,

@@ -53,7 +53,7 @@ const styles = StyleSheet.create({
   pressed: { opacity: 0.7 },
   thumb: {
     aspectRatio: 1,
-    borderRadius: 12,
+    borderRadius: 0,
     alignItems: "center",
     justifyContent: "center",
     overflow: "hidden",
@@ -64,7 +64,7 @@ const styles = StyleSheet.create({
     bottom: 6,
     width: 22,
     height: 22,
-    borderRadius: 11,
+    borderRadius: 0,
     backgroundColor: "#fff",
     alignItems: "center",
     justifyContent: "center",

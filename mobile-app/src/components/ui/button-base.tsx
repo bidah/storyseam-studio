@@ -37,7 +37,7 @@ export const buttonStyles = StyleSheet.create((theme) => ({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
-    borderRadius: 12,
+    borderRadius: 0, // square, like the web (design.md)
     variants: {
       variant: {
         default: { backgroundColor: theme.colors.primary },
@@ -52,7 +52,7 @@ export const buttonStyles = StyleSheet.create((theme) => ({
       },
       size: {
         default: { height: 44, paddingHorizontal: 16 },
-        sm: { height: 32, paddingHorizontal: 12, borderRadius: 8 },
+        sm: { height: 32, paddingHorizontal: 12 },
         lg: { height: 52, paddingHorizontal: 24 },
         icon: { height: 40, width: 40 },
       },

@@ -117,7 +117,7 @@ export default function CharacterSheet() {
           <View style={styles.sheetRow}>
             <Image
               source={{ uri: mediaUrl(sheet.thumb || sheet.url) }}
-              style={{ width: 88, height: 88, borderRadius: 10 }}
+              style={{ width: 88, height: 88, borderRadius: 0 }}
               contentFit="cover"
             />
             <View style={styles.sheetActions}>
@@ -211,7 +211,7 @@ const styles = StyleSheet.create((theme) => ({
     gap: 12,
   },
   card: {
-    borderRadius: 12,
+    borderRadius: 0,
     borderWidth: 1,
     borderColor: theme.colors.border,
     backgroundColor: `${theme.colors.secondary}66`,

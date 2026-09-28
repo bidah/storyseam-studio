@@ -226,7 +226,7 @@ export function Composer({
           // edge inside the growing one.
           fallbackBorderColor={c.border}
           style={{
-            borderRadius: 24,
+            borderRadius: 0,
             paddingHorizontal: 12,
             paddingTop: 10,
             paddingBottom: 8,
@@ -261,7 +261,7 @@ export function Composer({
                       source={{ uri: a.uri }}
                       accessibilityLabel={a.name}
                       contentFit="cover"
-                      style={{ width: 56, height: 56, borderRadius: 8, backgroundColor: c.muted }}
+                      style={{ width: 56, height: 56, borderRadius: 0, backgroundColor: c.muted }}
                     />
                     <Pressable
                       accessibilityRole="button"

@@ -388,14 +388,14 @@ const styles = StyleSheet.create((theme) => ({
   sheetImage: {
     width: 52,
     height: 52,
-    borderRadius: 10,
+    borderRadius: 0,
   },
   sheetPlaceholder: {
     width: 52,
     height: 52,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: 10,
+    borderRadius: 0,
     backgroundColor: theme.colors.secondary,
   },
   charInfo: {

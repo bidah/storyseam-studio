@@ -306,7 +306,7 @@ const styles = StyleSheet.create((theme) => ({
     alignItems: 'center',
     gap: 4,
     alignSelf: 'flex-start',
-    borderRadius: 6,
+    borderRadius: 0,
     borderWidth: 1,
     borderStyle: 'dashed',
     borderColor: theme.colors.border,
@@ -341,7 +341,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   shotCard: {
     marginBottom: 8,
-    borderRadius: 12,
+    borderRadius: 0,
     borderWidth: 1,
     borderColor: theme.colors.border,
     backgroundColor: theme.colors.card,

@@ -1,3 +1,4 @@
+import { providerEnabled } from '@/lib/providers';
 import { FlatList, RefreshControl, Text, View } from 'react-native';
 import { StyleSheet } from 'react-native-unistyles';
 import { router } from 'expo-router';
@@ -53,7 +54,11 @@ export function LibrarySection() {
       ListEmptyComponent={
         <Empty
           title="Library is empty"
-          hint="Import your Higgsfield generations from the Import segment."
+          hint={
+            providerEnabled('higgsfield')
+              ? 'Import your Higgsfield generations from the Import segment.'
+              : 'Images you generate and save to the library appear here.'
+          }
         />
       }
       renderItem={({ item: f }) => {
@@ -94,13 +99,13 @@ const styles = StyleSheet.create((theme) => ({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
-    borderRadius: 12,
+    borderRadius: 0,
     borderWidth: 1,
     borderColor: theme.colors.border,
     backgroundColor: theme.colors.card,
     padding: 10,
   },
-  folderPreview: { width: 52, height: 52, borderRadius: 10 },
+  folderPreview: { width: 52, height: 52, borderRadius: 0 },
   folderName: { fontSize: 15, fontWeight: '500', color: theme.colors.foreground },
   folderCount: { fontSize: 12, color: theme.colors.mutedForeground },
 }));

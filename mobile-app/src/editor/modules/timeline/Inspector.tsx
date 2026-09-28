@@ -174,7 +174,7 @@ const styles = StyleSheet.create({
   close: {
     width: 30,
     height: 30,
-    borderRadius: 15,
+    borderRadius: 0,
     backgroundColor: EditorTheme.panelRaised,
     alignItems: "center",
     justifyContent: "center",

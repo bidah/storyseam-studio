@@ -723,7 +723,7 @@ const animatedSafe = {
   // The shadow lives on its own wrapper because the card body clips (overflow
   // hidden) to hold its corner radius, and a clipping view drops its own shadow.
   cardShadow: {
-    borderRadius: 22,
+    borderRadius: 0,
     shadowColor: '#000',
     shadowOpacity: 0.13,
     shadowRadius: 10,
@@ -755,7 +755,7 @@ const styles = StyleSheet.create((theme) => ({
   // The card body: the app's standard surface (border + bg-card come from the
   // stylesheet) with the landing screen's rounder corners and roomier padding.
   card: {
-    borderRadius: 22,
+    borderRadius: 0,
     // Clips the mesh header into the card's rounded top corners. Safe here: the
     // drop shadow lives on the wrapper above, so nothing of ours gets cut.
     overflow: 'hidden',
@@ -774,7 +774,7 @@ const styles = StyleSheet.create((theme) => ({
   // `left: 14` insets it a body-padding's worth from the card's edge (past the
   // 10pt band column it's anchored in) — the colour is the card's seeded one,
   // applied at the call site.
-  spine: { position: 'absolute', top: 14, bottom: 14, left: 14, width: 4, borderRadius: 2 },
+  spine: { position: 'absolute', top: 14, bottom: 14, left: 14, width: 4, borderRadius: 0 },
   // Text sits on the plain surface below the band, pinned to the bottom so
   // one-liners and four-liners both hang off the same edge.
   cardBody: { flex: 1, justifyContent: 'flex-end', padding: 14 },
@@ -874,7 +874,7 @@ const styles = StyleSheet.create((theme) => ({
   // The skeleton's placeholder bars — the real headline/paragraph shape in flat
   // muted rectangles, so nothing shifts when the deck lands (see
   // SuggestionSkeletons).
-  skeletonBar: { borderRadius: 4, backgroundColor: theme.colors.muted },
+  skeletonBar: { borderRadius: 0, backgroundColor: theme.colors.muted },
   skeletonBarHeadline1: { height: 20, width: 176 },
   skeletonBarHeadline2: { marginTop: 4, height: 20, width: 112 },
   skeletonBarBlurb1: { marginTop: 16, height: 14, width: 192 },

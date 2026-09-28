@@ -32,10 +32,12 @@ export { buttonStyles, type ButtonProps, type ButtonSize, type ButtonVariant } f
 
 const glassAvailable = isLiquidGlassAvailable();
 
-// Emerald primary and red destructive as fixed hex — the native glass tint
-// wants a concrete color, and both read on either scheme.
-const TINT = '#10b981';
-const RED = '#dc2626';
+// The glass tints are the THEME's primary / destructive (the native tint wants
+// a concrete colour, which useColors() gives): fal purple on light, the HUD
+// orange on dark — see src/unistyles.ts. The sentinels below are swapped for
+// them at render.
+const TINT = 'primary';
+const RED = 'destructive';
 
 // Which variants get glass, and how. `null` = no glass (falls back to base).
 const GLASS: Record<string, { style: GlassStyle; tint?: string; border?: boolean } | null> = {
@@ -47,12 +49,13 @@ const GLASS: Record<string, { style: GlassStyle; tint?: string; border?: boolean
 };
 
 // Size geometry, mirroring buttonStyles in button-base (44/32/52 heights,
-// 16/12/24 horizontal padding, radius 12/8; icon = 40×40 square).
+// 16/12/24 horizontal padding; icon = 40×40). Square corners, like the web's
+// design system (design.md: `rounded` is 0 at every step).
 const SIZES: Record<string, ViewStyle> = {
-  default: { height: 44, paddingHorizontal: 16, borderRadius: 12 },
-  sm: { height: 32, paddingHorizontal: 12, borderRadius: 8 },
-  lg: { height: 52, paddingHorizontal: 24, borderRadius: 12 },
-  icon: { height: 40, width: 40, borderRadius: 12 },
+  default: { height: 44, paddingHorizontal: 16, borderRadius: 0 },
+  sm: { height: 32, paddingHorizontal: 12, borderRadius: 0 },
+  lg: { height: 52, paddingHorizontal: 24, borderRadius: 0 },
+  icon: { height: 40, width: 40, borderRadius: 0 },
 };
 
 const styles = StyleSheet.create((theme) => ({
@@ -129,7 +132,7 @@ export function Button(props: ButtonProps) {
     >
       <GlassView
         glassEffectStyle={g.style}
-        tintColor={g.tint}
+        tintColor={g.tint === TINT ? colors.primary : g.tint === RED ? colors.destructive : g.tint}
         isInteractive
         style={[
           styles.content,
@@ -139,9 +142,14 @@ export function Button(props: ButtonProps) {
           g.border ? { borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border } : null,
         ]}
       >
-        {/* On a tinted (emerald/red) glass the spinner stays white; on an
+        {/* On a tinted (primary/red) glass the spinner stays white; on an
             untinted glass it takes the foreground so it shows in light mode. */}
-        {loading ? <ActivityIndicator size="small" color={g.tint ? 'white' : colors.foreground} /> : null}
+        {loading ? (
+          <ActivityIndicator
+            size="small"
+            color={g.tint === TINT ? colors.primaryForeground : g.tint ? 'white' : colors.foreground}
+          />
+        ) : null}
         {children}
         {title ? <Text style={[styles.label, textStyle]}>{title}</Text> : null}
       </GlassView>

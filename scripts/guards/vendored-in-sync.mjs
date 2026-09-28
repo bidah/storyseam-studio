@@ -50,6 +50,7 @@ const PAIRS = [
   // copy is an agent offering to install something that doesn't exist.
   ["src/lib/plugins.ts", "worker/src/lib/plugins.ts", "npm run plugins:sync"],
   ["src/lib/plugins.ts", "flue-agent/src/lib/plugins.ts", "npm run plugins:sync"],
+  ["src/lib/plugins.ts", "mobile-app/src/lib/plugins.ts", "npm run plugins:sync"],
   // The Series model. Every number in it is a ceiling the Director endpoint
   // enforces by refusing the whole session at `configure` — so the form, the
   // Worker and the agent all check the same list. A drifted copy is a form that

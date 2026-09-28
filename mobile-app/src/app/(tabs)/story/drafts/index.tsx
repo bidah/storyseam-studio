@@ -203,7 +203,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   draftCard: {
     marginBottom: 8,
-    borderRadius: 12,
+    borderRadius: 0,
     borderWidth: 1,
     padding: 12,
   },
@@ -234,7 +234,7 @@ const styles = StyleSheet.create((theme) => ({
     flex: 1,
   },
   renameInput: {
-    borderRadius: 8,
+    borderRadius: 0,
     borderWidth: 1,
     borderColor: theme.colors.primary,
     backgroundColor: theme.colors.card,

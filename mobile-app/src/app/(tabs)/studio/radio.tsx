@@ -772,7 +772,7 @@ const styles = StyleSheet.create((theme) => ({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    borderRadius: 12,
+    borderRadius: 0,
     borderWidth: 1,
     borderColor: theme.colors.border,
     padding: 10,
@@ -786,7 +786,7 @@ const styles = StyleSheet.create((theme) => ({
   sectionList: { flex: 1, paddingHorizontal: 16 },
   emptyWrap: {
     marginTop: 16,
-    borderRadius: 16,
+    borderRadius: 0,
     borderWidth: 1,
     borderStyle: 'dashed',
     borderColor: theme.colors.border,
@@ -804,7 +804,7 @@ const styles = StyleSheet.create((theme) => ({
   // casting row
   castingRow: {
     gap: 8,
-    borderRadius: 12,
+    borderRadius: 0,
     borderWidth: 1,
     borderColor: theme.colors.border,
     padding: 10,
@@ -831,7 +831,7 @@ const styles = StyleSheet.create((theme) => ({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    borderRadius: 6,
+    borderRadius: 0,
     borderWidth: 1,
     paddingHorizontal: 8,
     paddingVertical: 2,
@@ -849,7 +849,7 @@ const styles = StyleSheet.create((theme) => ({
   lineCard: {
     marginBottom: 8,
     gap: 6,
-    borderRadius: 12,
+    borderRadius: 0,
     borderWidth: 1,
     borderColor: theme.colors.border,
     padding: 10,

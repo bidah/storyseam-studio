@@ -658,7 +658,7 @@ export default function StoryShowcaseScreen() {
 // is, and a margin changed on one side only would aim it a few points off.
 // Halved along with GAP: the distance the eye reads between two posters is
 // marginBottom + GAP + marginTop, and it moves as one number or not at all.
-const CARD_BOX = { flex: 1, marginTop: 5, marginBottom: 1, borderRadius: 28 } as const;
+const CARD_BOX = { flex: 1, marginTop: 5, marginBottom: 1, borderRadius: 0 } as const;
 
 const styles = StyleSheet.create((theme) => ({
   screen: { flex: 1, backgroundColor: theme.colors.background },
@@ -675,7 +675,7 @@ const styles = StyleSheet.create((theme) => ({
   zoomSlot: CARD_BOX,
   card: {
     flex: 1,
-    borderRadius: 28,
+    borderRadius: 0,
     overflow: 'hidden',
     borderWidth: 1,
     borderColor: theme.colors.border,

@@ -1097,14 +1097,14 @@ const styles = StyleSheet.create((theme) => ({
   // TakeCard
   takeCard: {
     width: 280,
-    borderRadius: 12,
+    borderRadius: 0,
     borderWidth: 1,
     backgroundColor: theme.colors.card,
     padding: 8,
   },
   takeCardOn: { borderColor: theme.colors.primary },
   takeCardOff: { borderColor: theme.colors.border },
-  takeVideoWrap: { overflow: 'hidden', borderRadius: 8, backgroundColor: '#000' },
+  takeVideoWrap: { overflow: 'hidden', borderRadius: 0, backgroundColor: '#000' },
   takePlayOverlay: {
     position: 'absolute',
     top: 0,
@@ -1133,7 +1133,7 @@ const styles = StyleSheet.create((theme) => ({
   takeName: { flex: 1, fontSize: 12, color: theme.colors.mutedForeground },
 
   // StillThumb
-  stillThumb: { overflow: 'hidden', borderRadius: 8, borderWidth: 1 },
+  stillThumb: { overflow: 'hidden', borderRadius: 0, borderWidth: 1 },
   stillThumbOn: { borderColor: theme.colors.primary },
   stillThumbOff: { borderColor: theme.colors.border },
   stillAngleBar: {
@@ -1154,7 +1154,7 @@ const styles = StyleSheet.create((theme) => ({
 
   // Stills mode
   shotCard: {
-    borderRadius: 16,
+    borderRadius: 0,
     borderWidth: 1,
     borderColor: theme.colors.border,
     backgroundColor: theme.colors.card,
@@ -1177,7 +1177,7 @@ const styles = StyleSheet.create((theme) => ({
   // Video mode
   trimPanel: {
     marginTop: 12,
-    borderRadius: 12,
+    borderRadius: 0,
     borderWidth: 1,
     borderColor: theme.colors.border,
     backgroundColor: theme.colors.card,
@@ -1191,7 +1191,7 @@ const styles = StyleSheet.create((theme) => ({
   trimActionsRow: { marginTop: 8, flexDirection: 'row', justifyContent: 'flex-end', gap: 8 },
 
   shotCardSm: {
-    borderRadius: 12,
+    borderRadius: 0,
     borderWidth: 1,
     borderColor: theme.colors.border,
     backgroundColor: theme.colors.card,
@@ -1213,7 +1213,7 @@ const styles = StyleSheet.create((theme) => ({
   refThumbsWrap: { marginBottom: 8, flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   refThumb: {
     overflow: 'hidden',
-    borderRadius: 8,
+    borderRadius: 0,
     borderWidth: 1,
     borderColor: theme.colors.primary,
   },
@@ -1236,7 +1236,7 @@ const styles = StyleSheet.create((theme) => ({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
-    borderRadius: 12,
+    borderRadius: 0,
     borderWidth: 1,
     padding: 12,
   },
@@ -1262,7 +1262,7 @@ const styles = StyleSheet.create((theme) => ({
   restrictionsRow: { marginBottom: 6, flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   restrictionLineBox: {
     marginBottom: 12,
-    borderRadius: 8,
+    borderRadius: 0,
     backgroundColor: theme.colors.secondary,
     paddingHorizontal: 12,
     paddingVertical: 8,
@@ -1277,7 +1277,7 @@ const styles = StyleSheet.create((theme) => ({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
-    borderRadius: 12,
+    borderRadius: 0,
     borderWidth: 1,
     padding: 12,
   },

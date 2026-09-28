@@ -81,7 +81,7 @@ const styles = StyleSheet.create({
   close: {
     width: 30,
     height: 30,
-    borderRadius: 15,
+    borderRadius: 0,
     backgroundColor: EditorTheme.panelRaised,
     alignItems: "center",
     justifyContent: "center",
@@ -102,7 +102,7 @@ const styles = StyleSheet.create({
     gap: 10,
     paddingVertical: 14,
     paddingHorizontal: 16,
-    borderRadius: 12,
+    borderRadius: 0,
     backgroundColor: EditorTheme.panelRaised,
     marginTop: 8,
   },

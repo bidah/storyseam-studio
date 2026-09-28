@@ -106,12 +106,8 @@ export default function RootLayout() {
                     made — `index` is a pure redirect (it exists to choose between
                     them), so animating either one plays a screen transition on
                     top of the splash lift: a blank frame that slides. They're a
-                    swap of what the app opens on, so they cut.
-
-                    `sign-up` deliberately keeps its animation: it's reached by a
-                    tap on sign-in, which IS a push. */}
+                    swap of what the app opens on, so they cut. */}
                 <Stack.Screen name="(auth)/sign-in" options={{ animation: 'none' }} />
-                <Stack.Screen name="(auth)/sign-up" />
                 <Stack.Screen name="(tabs)" options={{ animation: 'none' }} />
                 {/* The chat modal — the studio agent over whatever tab you were
                     on, opened by the tab bar's accessory pill from everywhere but
