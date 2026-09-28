@@ -21,16 +21,18 @@ export const DEFAULT_MODEL = "cloudflare/@cf/moonshotai/kimi-k2.6";
 // the author picked for the Film in the prompt box — the worker hands the
 // workflow its flue specifier (worker/src/lib/writer.js agentWriterModel):
 // Claude Fable through the Workers AI binding and AI Gateway's Unified Billing
-// (lib/output-cap.ts routes `anthropic/…` to the authenticated gateway), or the
-// studio's default writer (Qwen on Cerebras, registered in app.ts; Kimi on
-// Workers AI). These are NOT chat-picker models, so they stay out of
+// (lib/output-cap.ts routes `anthropic/…` to the authenticated gateway), Qwen
+// 3.8 on Workers AI (the default writer), Kimi K2.6 on Workers AI, or — a Film
+// from before the writer was explicit — the Worker's legacy AUTO_WRITER (Qwen on
+// Cerebras, registered in app.ts). These are NOT chat-picker models, so they stay out of
 // ALLOWED_MODELS. ROOM_MODEL is only the fallback for a room started before the
 // worker sent a model — those passes were Claude.
 export const ROOM_MODEL = "cloudflare/anthropic/claude-fable-5.1";
 export const ROOM_MODELS = new Set<string>([
   ROOM_MODEL,
-  "cerebras/qwen-3.8-27b",
+  "cloudflare/@cf/qwen/qwen3.8-27b",
   "cloudflare/@cf/moonshotai/kimi-k2.6",
+  "cerebras/qwen-3.8-27b",
 ]);
 /** The model a room pass reads on: the Film's writer when it is one of ROOM_MODELS, else the fallback. */
 export const roomModel = (model: unknown): string =>

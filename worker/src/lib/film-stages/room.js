@@ -4,7 +4,7 @@
 // The room is the chat's own specialists, run for real: each pass is a flue
 // agent instance carrying that specialist's full subagent profile and its read
 // tools (flue-agent/src/agents/writers-room.ts), on the writer the author
-// picked for the Film in the prompt box (`job.writer` — the default or Claude),
+// picked for the Film in the prompt box (`job.writer` — Qwen, Kimi or Claude),
 // like every other writing step; the round's rewrite too. The sequence is a flue-side Cloudflare
 // Workflow (flue-agent/src/cloudflare.ts `WritersRoomWorkflow`), so every pass
 // and every rewrite is a checkpointed step that survives a deploy of either

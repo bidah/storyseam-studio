@@ -12,7 +12,7 @@
 //
 //   job  = { id, prompt, seconds?, style?, engine? ('seedance' — the story flow on Seedance 2.5;
 //            'h3' — the same on MiniMax H3; absent = the Director),
-//            writer? ('claude' — the LLM that writes it; absent = the Worker's AUTO_WRITER),
+//            writer? ('qwen' | 'kimi' | 'claude' — the LLM that writes it; absent = the Worker's legacy AUTO_WRITER),
 //            resolution? ('720p' — what the video renders at; absent = 480p),
 //            score? (false — no Score stage; absent = the film is scored),
 //            depth? ('deep' — the writers' room reads the script; absent = fast),
@@ -154,7 +154,7 @@ import { runH3PromptsStage } from "./film-stages/h3/prompts.js";
 import { runH3RunStage } from "./film-stages/h3/run.js";
 import { planH3, filmScoreOf, filmVoicesOf, isStoryEngine, FILM_VOICES, FILM_VOICE_IDS } from "./film-plan.ts";
 import {
-  planFilm, planStoryFlow, formatLength, filmStepsFor, FILM_ENGINES, FILM_STYLES, FILM_STYLE_IDS, FILM_WRITERS, FILM_WRITER_IDS,
+  planFilm, planStoryFlow, formatLength, filmStepsFor, FILM_ENGINES, FILM_STYLES, FILM_STYLE_IDS, FILM_WRITERS, FILM_WRITER_IDS, DEFAULT_FILM_WRITER,
   FILM_DEPTHS, FILM_DEPTH_IDS, DEFAULT_DEEP_SPECIALISTS, MAX_REFERENCE_SHEETS, MAX_STORY_FLOW_SHEETS,
   FILM_RESOLUTIONS, DEFAULT_FILM_RESOLUTION,
 } from "./film-plan.ts";
@@ -535,7 +535,9 @@ export async function startFilm(existing, { prompt, seconds, style, engine, writ
       // The pipeline, when it is not the Director's (the route chose it).
       ...(engine && engine !== "director" ? { engine } : {}),
       // The writing model, when it is not the studio's default.
-      ...(writer && writer !== "default" ? { writer } : {}),
+      // Every new Film names its writer; only an explicit `default` still
+      // stores none, which is the Worker's legacy AUTO_WRITER (lib/writer.js).
+      ...(writer === "default" ? {} : { writer: writer || DEFAULT_FILM_WRITER }),
       // The resolution, when it is not the default 480p.
       ...(resolution && resolution !== DEFAULT_FILM_RESOLUTION ? { resolution } : {}),
       // The score, only when the author switched it OFF.
@@ -1008,6 +1010,6 @@ export async function runFilm(job, deps) {
   return job;
 }
 
-// The writing model for ONE Film: the author's pick (`job.writer` — Claude), else
-// the Worker's AUTO_WRITER (lib/writer.js).
+// The writing model for ONE Film: the author's pick (`job.writer`), else — a job
+// from before the writer was explicit — the Worker's AUTO_WRITER (lib/writer.js).
 export const filmWriterModel = (env, job) => writerModel(env, job?.writer);

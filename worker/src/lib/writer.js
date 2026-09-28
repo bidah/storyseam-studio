@@ -8,8 +8,11 @@
 //   cerebras             — Qwen 3.8 27B; needs `CEREBRAS_API_KEY`, and
 //                          `CEREBRAS_GATEWAY_URL` to go through AI Gateway.
 //
-// That is the Film's `default` writer. The author can instead pick `claude` per
-// Film (film-plan.ts FILM_WRITERS, `job.writer`): Claude Fable 5.1 through the
+// That is the LEGACY `default` writer: a Film started before the writer was
+// explicit stored none and keeps running on it. Every new Film names its writer
+// (film-plan.ts FILM_WRITERS, `job.writer`): `qwen` — Qwen 3.8 27B on Workers AI
+// (the default; plain Cloudflare, no Cerebras), `kimi` — Kimi K2.6 on Workers
+// AI, or `claude` — Claude Fable 5.1 through the
 // `AI` binding and AI Gateway's Unified Billing — Cloudflare holds the Anthropic
 // credential and bills the account's gateway credits, so there is no key to set.
 // Unified Billing needs an AUTHENTICATED gateway, which `default` is not; the
@@ -18,6 +21,7 @@
 import { groqJSON, stripThinking } from "./groq.js";
 
 export const WORKERS_AI_WRITER_MODEL = "@cf/moonshotai/kimi-k2.6";
+export const WORKERS_AI_QWEN_MODEL = "@cf/qwen/qwen3.8-27b";
 // Workers AI clips an answer at a small default unless asked for more, and a
 // whole Shot list comes back in one answer.
 const WORKERS_AI_MAX_TOKENS = 32000;
@@ -32,22 +36,9 @@ const CLAUDE_MAX_TOKENS = 32000;
 
 export const WRITERS = ["workers-ai", "groq", "cerebras"];
 
-// What the author sees for the `default` writer — it is whatever AUTO_WRITER says.
-const PROVIDER_LABELS = {
-  "workers-ai": "Kimi K2.6",
-  groq: "Qwen 3.8 · Groq",
-  cerebras: "Qwen 3.8 · Cerebras",
-};
-export const defaultWriterLabel = (env) => PROVIDER_LABELS[writerProvider(env)];
-
 export function writerProvider(env) {
   const want = String(env?.AUTO_WRITER || "workers-ai").trim().toLowerCase();
   return WRITERS.includes(want) ? want : "workers-ai";
-}
-
-// The Worker secret each provider needs, if any (the availability check reads it).
-export function writerKey(env) {
-  return { groq: "GROQ_API_KEY", cerebras: "CEREBRAS_API_KEY" }[writerProvider(env)] || null;
 }
 
 export class WriterError extends Error {
@@ -71,7 +62,7 @@ export function parseJSONAnswer(text) {
   throw new WriterError("The writing model's answer did not parse as JSON", { body: String(text).slice(0, 2000) });
 }
 
-async function workersAIJSON(env, { messages, maxTokens, temperature } = {}) {
+async function workersAIJSON(env, { messages, maxTokens, temperature } = {}, model = WORKERS_AI_WRITER_MODEL) {
   if (!env?.AI?.run) throw new WriterError("The Worker has no AI binding — Auto's writing steps cannot run");
   const inputs = {
     messages: [
@@ -81,8 +72,15 @@ async function workersAIJSON(env, { messages, maxTokens, temperature } = {}) {
     max_tokens: Math.min(maxTokens || WORKERS_AI_MAX_TOKENS, WORKERS_AI_MAX_TOKENS),
   };
   if (temperature != null) inputs.temperature = temperature;
+  if (model === WORKERS_AI_QWEN_MODEL) {
+    // Qwen 3.8 reasons at `xhigh` by default, and the reasoning spends the same
+    // completion budget (see cerebrasJSON). Off, with the JSON mode on, it
+    // answers the object straight (verified 2026-09-28).
+    inputs.chat_template_kwargs = { enable_thinking: false };
+    inputs.response_format = { type: "json_object" };
+  }
   const gateway = { id: env.AI_GATEWAY_ID || "default" };
-  const out = await env.AI.run(WORKERS_AI_WRITER_MODEL, inputs, { gateway });
+  const out = await env.AI.run(model, inputs, { gateway });
 
   // Newer Workers AI models answer in the OpenAI shape; older ones as { response }.
   const choice = out?.choices?.[0];
@@ -171,11 +169,15 @@ async function claudeJSON(env, { messages, maxTokens, temperature } = {}) {
 // flue-agent/src/lib/models.ts, which refuses any other specifier.
 export const AGENT_WRITER_MODELS = {
   claude: "cloudflare/anthropic/claude-fable-5.1",
-  "workers-ai": "cloudflare/@cf/moonshotai/kimi-k2.6",
+  qwen: `cloudflare/${WORKERS_AI_QWEN_MODEL}`,
+  kimi: `cloudflare/${WORKERS_AI_WRITER_MODEL}`,
+  "workers-ai": `cloudflare/${WORKERS_AI_WRITER_MODEL}`,
   cerebras: `cerebras/${CEREBRAS_WRITER_MODEL}`,
 };
+// The Film writers a job names outright; anything else is the legacy AUTO_WRITER.
+const EXPLICIT_WRITERS = ["claude", "qwen", "kimi"];
 export function agentWriterModel(env, writer = null) {
-  if (writer === "claude") return AGENT_WRITER_MODELS.claude;
+  if (EXPLICIT_WRITERS.includes(writer)) return AGENT_WRITER_MODELS[writer];
   return AGENT_WRITER_MODELS[writerProvider(env)] || AGENT_WRITER_MODELS["workers-ai"];
 }
 
@@ -183,6 +185,8 @@ export function agentWriterModel(env, writer = null) {
 // the Film's pick (`job.writer`); absent or `default` is the Worker's AUTO_WRITER.
 export function writerModel(env, writer = null) {
   if (writer === "claude") return { json: (opts) => claudeJSON(env, opts) };
+  if (writer === "qwen") return { json: (opts) => workersAIJSON(env, opts, WORKERS_AI_QWEN_MODEL) };
+  if (writer === "kimi") return { json: (opts) => workersAIJSON(env, opts, WORKERS_AI_WRITER_MODEL) };
   const provider = writerProvider(env);
   if (provider === "groq") return { json: (opts) => groqJSON(env, opts) };
   if (provider === "cerebras") return { json: (opts) => cerebrasJSON(env, opts) };

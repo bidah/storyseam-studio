@@ -19,7 +19,7 @@
 // The segments are also saved as the project's ordinary shot list (one shot per
 // stage, through the same `saveShotlist` every writer uses) so the Film's
 // project opens with its story in the Shot list tab like any other.
-import { H3_SEGMENT_MAX_SECONDS, SEGMENT_MAX_SECONDS, formatLength, maxStagesFor, planH3, planStoryFlow } from "../../film-plan.ts";
+import { DEFAULT_FILM_WRITER, H3_SEGMENT_MAX_SECONDS, SEGMENT_MAX_SECONDS, formatLength, maxStagesFor, planH3, planStoryFlow } from "../../film-plan.ts";
 import { DEFAULT_FILM_LANGUAGE } from "../../film-sound.js";
 import { MUSIC_CUES, MUSIC_CUE_NAMES, musicCueRange, repairMusicCues } from "../../music-cues.ts";
 import { readWorld } from "../../../routes/world.js";
@@ -365,7 +365,7 @@ export function segmentShots(segments) {
 /**
  * deps (optional): { readWorld, readStore, saveShotlist, model }.
  *
- * Written by the Worker's DEFAULT writer (Kimi on Workers AI) whatever writer
+ * Written by the studio's DEFAULT writer (Qwen 3.8 on Workers AI) whatever writer
  * the Film chose. The Shot list is a structured cut of a screenplay that is
  * already written — the choice of writer is for the story stages. On Claude it
  * was one call of five minutes and more (Kimi: two seconds), and a single call
@@ -373,7 +373,7 @@ export function segmentShots(segments) {
  * list twice that way and sat stuck.
  */
 export async function runStoryFlowShotlistStage({ job, results, env }, deps = {}) {
-  const model = deps.model || writerModel(env);
+  const model = deps.model || writerModel(env, DEFAULT_FILM_WRITER);
   const pid = job.projectId;
   const world = await (deps.readWorld || readWorld)(env, pid);
   const plan = storyFlowPlanFor(job);

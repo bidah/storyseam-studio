@@ -9,7 +9,9 @@
 //                                 USER-scoped: it never reads the request's
 //                                 project. Body { prompt, seconds?, style?, engine?, writer?, resolution?, score?, depth?, specialists? }.
 //                                 `writer` is the LLM that writes it: absent /
-//                                 "default" = AUTO_WRITER, "claude" = Claude Fable 5.1.
+//                                 "qwen" = Qwen 3.8 on Workers AI, "kimi" = Kimi
+//                                 K2.6 on Workers AI, "claude" = Claude Fable 5.1
+//                                 ("default" = the legacy AUTO_WRITER).
 //                                 `engine` picks the pipeline: absent = the
 //                                 Director, "seedance" = the story flow on
 //                                 Seedance 2.5, "h3" = the same on MiniMax H3.
@@ -72,7 +74,6 @@
 import { autoAvailable } from "../lib/auto-availability.js";
 import { MAX_PROMPT_CHARS, checkFilmDepth, checkFilmEngine, checkFilmScore, checkFilmSeconds, checkFilmSpecialists, checkFilmStyle, checkFilmVoices, checkFilmWriter, checkFilmResolution } from "../lib/film-job.js";
 import { FILM_WRITERS } from "../lib/film-plan.ts";
-import { defaultWriterLabel } from "../lib/writer.js";
 import { readAutoSettings, writeAutoSettings } from "../lib/auto-settings.js";
 import { checkAllowance } from "../lib/film-allowance.js";
 import { activeFilm, filmJobsFor, filmProject, latestFilm, listFilms, recordFilm, storyProjectName } from "../lib/films.js";
@@ -102,9 +103,8 @@ const refusal = (code, message) => ({ ok: false, refusal: { code, message }, job
 export function registerAuto(app) {
   app.get("/api/auto/status", async (c) => {
     const { ok, reason, paused, keys } = await autoAvailable(c.env);
-    // The writers the prompt's model picker offers, `default` named for what it is.
-    const writers = FILM_WRITERS.map((w) => (w.id === "default" ? { ...w, label: defaultWriterLabel(c.env) || w.label } : w));
-    return c.json({ ok, reason, paused, keys, writers });
+    // The writers the prompt's model picker offers (film-plan.ts FILM_WRITERS).
+    return c.json({ ok, reason, paused, keys, writers: FILM_WRITERS });
   });
 
   // Start a Film — in a project of its own. The checks that can refuse run
@@ -128,7 +128,7 @@ export function registerAuto(app) {
     const style = body?.style || undefined;
     const badStyle = checkFilmStyle(style);
     if (badStyle) return c.json(refusal("invalid", badStyle), 400);
-    // The LLM that writes it (film-plan.ts FILM_WRITERS); absent is the default.
+    // The LLM that writes it (film-plan.ts FILM_WRITERS); absent is Qwen on Workers AI.
     const writer = body?.writer || undefined;
     const badWriter = checkFilmWriter(writer);
     if (badWriter) return c.json(refusal("invalid", badWriter), 400);

@@ -53,7 +53,7 @@ import { studioPath } from "@/lib/home";
 import { Dialog, DialogContent, DialogDescription, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
-  DEFAULT_DEEP_SPECIALISTS, DEFAULT_FILM_RESOLUTION, DEFAULT_FILM_SCORE, DEFAULT_FILM_VOICES, FILM_DEFAULT_SECONDS, FILM_RESOLUTIONS, FILM_DEPTHS, FILM_STEPS, FILM_STYLES, FILM_VOICES, FILM_WRITERS, STORY_FLOW_DEFAULT_SECONDS,
+  DEFAULT_DEEP_SPECIALISTS, DEFAULT_FILM_RESOLUTION, DEFAULT_FILM_SCORE, DEFAULT_FILM_VOICES, FILM_DEFAULT_SECONDS, FILM_RESOLUTIONS, FILM_DEPTHS, FILM_STEPS, FILM_STYLES, FILM_VOICES, FILM_WRITERS, DEFAULT_FILM_WRITER, STORY_FLOW_DEFAULT_SECONDS,
   STORY_FLOW_STEPS, filmVoicesOf, formatLength, isStoryEngine, roomEstimate,
 } from "@/lib/film-plan";
 import { SPECIALISTS, STAGE_ORDER, isSpecialistId } from "@/lib/specialists";
@@ -516,7 +516,7 @@ function Choice({ on, onClick, children }) {
 }
 
 function StorySettings({ flow, seconds, onSeconds, resolution, onResolution, score, onScore, voices, onVoices, style, onStyle, writer, onWriter, disabled }) {
-  const writers = useWriterChoices();
+  const writers = FILM_WRITERS;
   // Only a story engine auditions its cast; the Director has no audio input.
   const storyFlow = isStoryEngine(flow.engine);
   const voice = FILM_VOICES.find((x) => x.id === voices) || FILM_VOICES[0];
@@ -675,35 +675,22 @@ function useNarrow() {
 }
 
 // The LLM that writes the Film — Idea, World, sheet prompts, Shot list, cues
-// (film-plan.ts FILM_WRITERS). "default" is the Worker's own writer, so nothing
-// is sent for it. Remembered per browser, and — like the look — always named
-// on the input, so what will be sent is visible before sending.
+// (film-plan.ts FILM_WRITERS): Qwen 3.8 on Workers AI by default, Kimi K2.6,
+// or Claude Fable 5.1. Always sent, so the Film names its writer. Remembered
+// per browser (a remembered "default", from before the writer was explicit,
+// reads as the new default), and — like the look — always named on the input,
+// so what will be sent is visible before sending.
 const WRITER_KEY = "director-story:writer";
 function readStoredWriter() {
   try {
-    const v = window.localStorage.getItem(WRITER_KEY) || "default";
-    return FILM_WRITERS.some((w) => w.id === v) ? v : "default";
+    const v = window.localStorage.getItem(WRITER_KEY) || DEFAULT_FILM_WRITER;
+    return FILM_WRITERS.some((w) => w.id === v) ? v : DEFAULT_FILM_WRITER;
   } catch {
-    return "default";
+    return DEFAULT_FILM_WRITER;
   }
 }
 function storeWriter(writer) {
   try { window.localStorage.setItem(WRITER_KEY, writer); } catch { /* private mode: not remembered */ }
-}
-
-// The Worker names the default writer for what it is (GET /api/auto/status
-// `writers`); signed out, or before it answers, the shared labels stand in.
-function useWriterChoices() {
-  const [writers, setWriters] = useState(FILM_WRITERS);
-  useEffect(() => {
-    let live = true;
-    fetch("/api/auto/status")
-      .then((r) => (r.ok ? r.json() : null))
-      .then((d) => { if (live && Array.isArray(d?.writers) && d.writers.length) setWriters(d.writers); })
-      .catch(() => {});
-    return () => { live = false; };
-  }, []);
-  return writers;
 }
 
 // ── The writer: how much STORY work a Film gets (film-plan.ts FILM_DEPTHS) ──
@@ -1117,7 +1104,7 @@ export function SimpleView({ flow = FLOWS.director, onFlow, onSubmit, submitting
       score: score ? undefined : false,
       // The Voices pass, for a story engine only (the Director ignores it).
       voices: isStoryEngine(flow.engine) ? voices : undefined,
-      writer: writer !== "default" ? writer : undefined,
+      writer,
       depth: depth === "deep" ? depth : undefined,
       specialists: depth === "deep" ? room : undefined,
     };
@@ -2270,13 +2257,14 @@ function tookFor(job) {
 }
 
 export function FilmDetails({ job }) {
-  const writers = useWriterChoices();
+  const writers = FILM_WRITERS;
   const story = isStoryEngine(job.engine);
   const flow = FLOWS[job.engine] || FLOWS.director;
   const seconds = job.film?.seconds || job.seconds || null;
   const lookId = job.steps?.find((s) => s.key === "look")?.result?.style || job.style;
   const look = FILM_STYLES.find((s) => s.id === lookId);
-  const writer = writers.find((w) => w.id === (job.writer || "default"));
+  // A job from before the writer was explicit stored none: the legacy default.
+  const writer = writers.find((w) => w.id === job.writer) || (job.writer ? null : { label: "Studio default" });
   const deep = job.depth === "deep";
   const room = deep ? (job.specialists?.length ? job.specialists : DEFAULT_DEEP_SPECIALISTS) : [];
   const voices = story ? FILM_VOICES.find((v) => v.id === filmVoicesOf(job.voices, job.engine)) : null;

@@ -206,8 +206,8 @@ Cuts can use.
 
 Both Film pipelines share two STORY stages after the World (`film-job.js`
 `stagesFor`). **Script** (`film-stages/script-flow.js`; shared prompts in
-`script.js`) is written in PASSES on the Film's own writer (`job.writer` — the
-default or Claude, never swapped for another): an outline (a plan per scene —
+`script.js`) is written in PASSES on the Film's own writer (`job.writer` — Qwen
+3.8 on Workers AI (the default), Kimi K2.6, or Claude; never swapped for another): an outline (a plan per scene —
 place, driver, the value it turns on), a draft from it ("First draft"), and a
 revision against the specialists' rules (`SCREENWRITER_CRAFT`) and what code
 measures (`scriptIssues`: scene count, one scene per take, dialogue against the
@@ -225,7 +225,8 @@ tools (`flue-agent/src/agents/writers-room.ts`), sequenced by the flue worker's
 `WritersRoomWorkflow`; each round's rewrite is a worker route, pinned as a new
 draft; state in the `film-room:<filmId>` doc. **Every writing step of a Film —
 Script passes, room passes and rewrites included — runs on the writer picked in
-the prompt box (`job.writer`: the default or Claude). Never hardcode Claude for
+the prompt box (`job.writer`: `qwen` — Qwen 3.8 on plain Workers AI, the default —
+`kimi` — Kimi K2.6 on Workers AI — or `claude`). Never hardcode a model for
 a step**: the room gets the writer as a flue specifier (`agentWriterModel` in
 `worker/src/lib/writer.js` ⇄ `ROOM_MODELS` in `flue-agent/src/lib/models.ts`). The input's
 Writer button (Fast · Deep, the room dialog with `roomEstimate`) and `make_film`'s

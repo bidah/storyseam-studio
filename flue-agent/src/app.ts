@@ -245,8 +245,8 @@ if (process.env.ANTHROPIC_GATEWAY_URL) {
 //
 // Registered UNCONDITIONALLY (like openrouter below), because it also PINS a
 // model the catalog doesn't ship: `qwen-3.8-27b`, the studio's default Film
-// writer (worker AUTO_WRITER=cerebras), which a Deep Film's writers' room reads
-// on when the author left the writer on the default (lib/models.ts ROOM_MODELS).
+// writer before the writer was explicit (worker AUTO_WRITER=cerebras), which a
+// Deep Film started then still reads its room on (lib/models.ts ROOM_MODELS).
 // It is cloned from the catalog's gemma-4-31b entry (same wire, same limits).
 {
   const base = cerebrasProvider();

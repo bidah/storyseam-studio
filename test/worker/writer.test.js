@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { parseJSONAnswer, writerModel, writerProvider, WORKERS_AI_WRITER_MODEL } from "../../worker/src/lib/writer.js";
+import { agentWriterModel, parseJSONAnswer, writerModel, writerProvider, WORKERS_AI_QWEN_MODEL, WORKERS_AI_WRITER_MODEL } from "../../worker/src/lib/writer.js";
 
 describe("writer", () => {
   it("defaults to Workers AI Kimi and switches to Groq by setting", () => {
@@ -20,6 +20,25 @@ describe("writer", () => {
   it("accepts the older { response } shape, and fails loudly when cut off", async () => {
     await expect(writerModel({ AI: { run: async () => ({ response: { a: 1 } }) } }).json({ messages: [{ role: "user", content: "x" }] })).resolves.toEqual({ a: 1 });
     await expect(writerModel({ AI: { run: async () => ({ choices: [{ message: { content: "{" }, finish_reason: "length" }] }) } }).json({ messages: [{ role: "user", content: "x" }] })).rejects.toThrow(/cut off/);
+  });
+
+  it("runs an explicit `qwen` writer on Workers AI with reasoning off and JSON mode on, whatever AUTO_WRITER says", async () => {
+    const run = vi.fn(async () => ({ choices: [{ message: { content: '{"idea":"q"}' }, finish_reason: "stop" }] }));
+    const env = { AI: { run }, AUTO_WRITER: "cerebras" };
+    expect(await writerModel(env, "qwen").json({ messages: [{ role: "user", content: "go" }] })).toEqual({ idea: "q" });
+    const [model, inputs] = run.mock.calls[0];
+    expect(model).toBe(WORKERS_AI_QWEN_MODEL);
+    expect(inputs).toMatchObject({ chat_template_kwargs: { enable_thinking: false }, response_format: { type: "json_object" } });
+    expect(agentWriterModel(env, "qwen")).toBe(`cloudflare/${WORKERS_AI_QWEN_MODEL}`);
+  });
+
+  it("runs an explicit `kimi` writer on Workers AI Kimi, whatever AUTO_WRITER says", async () => {
+    const run = vi.fn(async () => ({ choices: [{ message: { content: '{"idea":"k"}' }, finish_reason: "stop" }] }));
+    const env = { AI: { run }, AUTO_WRITER: "cerebras" };
+    expect(await writerModel(env, "kimi").json({ messages: [{ role: "user", content: "go" }] })).toEqual({ idea: "k" });
+    expect(run.mock.calls[0][0]).toBe(WORKERS_AI_WRITER_MODEL);
+    expect(run.mock.calls[0][1].chat_template_kwargs).toBeUndefined();
+    expect(agentWriterModel(env, "kimi")).toBe(`cloudflare/${WORKERS_AI_WRITER_MODEL}`);
   });
 
   it("pulls the object out of prose around it", () => {

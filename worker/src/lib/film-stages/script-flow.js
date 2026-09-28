@@ -6,8 +6,8 @@
 // twenty words of dialogue, and nothing checked it against the budget before
 // the Shot list cut it (or before a Deep Film's room spent its first round
 // rebuilding it). Now every Film writes its script in passes, each on the
-// writer the author picked for the Film (`job.writer` — the studio's default
-// or Claude; lib/writer.js), never a different one:
+// writer the author picked for the Film (`job.writer` — Qwen or Kimi on
+// Workers AI, or Claude; lib/writer.js), never a different one:
 //
 //   1. outline — the arc, the beats, and a plan per scene: its place, who
 //      drives it, the value it opens and closes on, the turn, the plants and

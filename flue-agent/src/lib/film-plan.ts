@@ -554,17 +554,23 @@ export function filmStyleFor({ style, prompt }: { style?: string | null; prompt?
 // Every writing step of a Film — the Idea and World, the Script's passes, a
 // Deep Film's writers' room (its passes and rewrites), the sheet prompts, the
 // Shot list, the Cue sheet and the score's music cues — goes through ONE model,
-// and the author picks it with the prompt. `default` is the studio's own writer
-// (the Worker's AUTO_WRITER — fast and cheap); `claude` is Claude Fable 5.1
-// through AI Gateway's Unified Billing (no Anthropic key). The Look stage is a
-// classifier, not a writer, and is not affected.
-export type FilmWriter = 'default' | 'claude';
+// and the author picks it with the prompt. Two run on Cloudflare Workers AI
+// through the Worker's `AI` binding (no key): `qwen` — Qwen 3.8 27B, the
+// default, fast and cheap — and `kimi` — Kimi K2.6. `claude` is Claude Fable
+// 5.1 through AI Gateway's Unified Billing (no Anthropic key). The Look stage
+// is a classifier, not a writer, and is not affected.
+//
+// `default` is not offered any more but still accepted: it is the Worker's
+// AUTO_WRITER (Groq / Cerebras / Kimi), what a Film started before the writer
+// was explicit runs on — a job that stored no writer keeps it.
+export type FilmWriter = 'qwen' | 'kimi' | 'claude' | 'default';
 export const FILM_WRITERS: readonly { id: FilmWriter; label: string; blurb: string }[] = [
-  { id: 'default', label: 'Studio', blurb: "the studio's default writer — quick and cheap" },
+  { id: 'qwen', label: 'Qwen 3.8', blurb: 'on Cloudflare — quick and cheap' },
+  { id: 'kimi', label: 'Kimi K2.6', blurb: 'on Cloudflare — a bigger model, a little slower' },
   { id: 'claude', label: 'Claude Fable 5.1', blurb: 'slower, stronger writing' },
 ];
-export const FILM_WRITER_IDS: readonly string[] = FILM_WRITERS.map((w) => w.id);
-export const DEFAULT_FILM_WRITER: FilmWriter = 'default';
+export const FILM_WRITER_IDS: readonly string[] = [...FILM_WRITERS.map((w) => w.id), 'default'];
+export const DEFAULT_FILM_WRITER: FilmWriter = 'qwen';
 
 // ── The depth: how much STORY work a Film gets before anything is drawn ─────
 //

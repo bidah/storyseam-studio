@@ -73,12 +73,9 @@ describe("autoAvailable", () => {
     expect(r.keys).toEqual({ FAL_KEY: true, DAYTONA_API_KEY: true });
   });
 
-  it("requires the Groq key only when Groq writes (AUTO_WRITER=groq)", async () => {
+  it("needs no writer key even when the legacy AUTO_WRITER is Groq (new Films name a Workers AI / Claude writer)", async () => {
     const r = await autoAvailable({ FAL_KEY: "f", DAYTONA_API_KEY: "d", AUTO_WRITER: "groq", AUTH_KV: kv() });
-    expect(r.ok).toBe(false);
-    expect(r.missing).toEqual(["GROQ_API_KEY"]);
-    const ok = await autoAvailable({ ...KEYS, AUTO_WRITER: "groq", AUTH_KV: kv() });
-    expect(ok.ok).toBe(true);
+    expect(r).toMatchObject({ ok: true, missing: [] });
   });
 
   it("reports missing keys by name", async () => {
