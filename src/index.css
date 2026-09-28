@@ -7,83 +7,87 @@
 @custom-variant dark (&:is(.dark *));
 
 /* ------------------------------------------------------------------ *
- * shot-studio — the `design.md` (Battle Royale) system               *
- * Near-black ground, one orange accent, flat and square. Dark only.  *
- * ------------------------------------------------------------------ */
-
-/* ------------------------------------------------------------------ *
- * The palette is `design.md` (Battle Royale) — near-black ground, one  *
- * orange accent, flat, square. It is defined ONCE here as the shadcn   *
- * token set, so every primitive, route and modal in the app inherits   *
- * it: a component that says `bg-card` or `border` is already in the    *
- * system and needs no edit. The public pages (`/`, /director-harness)  *
- * read the same values through `lib/hudTheme.js`.                      *
+ * shot-studio — two palettes, one square system                      *
+ * ------------------------------------------------------------------ *
+ * LIGHT is the default (`:root`): fal.ai's look — white ground, zinc   *
+ * greys, hairline borders, ONE purple accent. DARK (`.dark`, opted     *
+ * into with the headers' Sun/Moon button, lib/theme.js) is `design.md` *
+ * (Battle Royale) as it always was — near-black ground, one orange     *
+ * accent. Both are flat and square (--radius 0).                       *
  *                                                                      *
- * Both blocks carry the SAME values. The app is dark-only (`class=     *
- * "dark"` on <html>, the light theme is gone), and mirroring them means *
- * anything that renders outside the `.dark` subtree — a portal, a       *
- * detached preview — still lands in the system rather than on white.    *
+ * Each is defined ONCE as the shadcn token set, so every primitive,    *
+ * route and modal inherits it: a component that says `bg-card` or      *
+ * `border` is already in the system and needs no edit. The public      *
+ * pages (`/`, /login, /director-harness) read the same tokens through  *
+ * `lib/hudTheme.js`, so they flip with the app.                        *
+ *                                                                      *
+ * The light values are fal's own (its --primary-700, --content-*,      *
+ * --stroke-base), converted to hex.                                    *
  * ------------------------------------------------------------------ */
 
 :root {
-  /* design.md rounds NOTHING. 0 at every step, which is what turns every
+  /* Nothing rounds. 0 at every step, which is what turns every
      `rounded-lg` / `rounded-md` / `rounded-sm` in the app square at once. */
   --radius: 0rem;
 
-  --background: #0B0C0F; /* neutral */
-  --foreground: #F2F2F0; /* primary */
+  --background: #FFFFFF;
+  --foreground: #19191A;
 
-  --card: #141619; /* surface */
-  --card-foreground: #F2F2F0;
+  --card: #FFFFFF;
+  --card-foreground: #19191A;
 
-  --popover: #141619;
-  --popover-foreground: #F2F2F0;
+  --popover: #FFFFFF;
+  --popover-foreground: #19191A;
 
-  /* Tertiary is the system's SOLE interaction driver, and shadcn's `primary`
-     is what buttons, rings and active states read — so they are the same
-     thing. design.md reserves it for one action per screen; the app is denser
-     than a landing page, but the rule still says: if everything is orange,
-     nothing is. */
-  --primary: #FF5A1F;
-  --primary-foreground: #0B0C0F; /* on-primary */
+  /* fal's purple — its Run button. Still the ONE interaction colour. */
+  --primary: #681DE4;
+  --primary-foreground: #FAFAFA;
 
-  /* One step up from the surface, for the quiet fills (secondary buttons,
-     hover rows, muted chips). Derived from Surface rather than invented: the
-     system names four grounds, and this is the gap between two of them. */
-  --secondary: #1C1F24;
-  --secondary-foreground: #F2F2F0;
+  --secondary: #F4F4F5;
+  --secondary-foreground: #19191A;
 
-  --muted: #141619;
-  --muted-foreground: #7A7E85; /* secondary — borders, captions, metadata */
+  --muted: #F4F4F5;
+  --muted-foreground: #5B5B64;
 
-  --accent: #1C1F24;
-  --accent-foreground: #F2F2F0;
+  --accent: #F4F4F5;
+  --accent-foreground: #19191A;
 
-  /* Not in design.md, and deliberately NOT the accent: "delete" and "the one
-     action on this screen" must not be the same colour. Red stays red, amber
-     stays amber, and both are pushed away from the orange so a destructive
-     confirm can't be mistaken for a primary button. */
-  --destructive: #E5484D;
-  --destructive-foreground: #F2F2F0;
+  --destructive: #DC2626;
+  --destructive-foreground: #FAFAFA;
 
-  --warning: #E8A33D;
-  --warning-foreground: #0B0C0F;
+  --warning: #D97706;
+  --warning-foreground: #FFFFFF;
 
-  /* Everything non-text is Secondary at low alpha — the same border the
-     public pages draw. */
-  --border: rgb(122 126 133 / 25%);
-  --input: rgb(122 126 133 / 40%);
-  --ring: #FF5A1F;
+  --border: rgb(18 18 22 / 12%);
+  --input: rgb(18 18 22 / 18%);
+  --ring: #8553FF;
 
-  --chart-1: #FF5A1F;
-  --chart-2: #7A7E85;
-  --chart-3: #E8A33D;
-  --chart-4: #F2F2F0;
-  --chart-5: #4B5058;
+  --chart-1: #681DE4;
+  --chart-2: #787881;
+  --chart-3: #D97706;
+  --chart-4: #19191A;
+  --chart-5: #A6A6AE;
+
+  /* The heading face. fal sets headings in a tight grotesk (focal, not freely
+     licensed); Inter Tight is the closest free cut. It sets far WIDER than
+     Teko, so a one-line display headline sized for Teko multiplies its size by
+     --display-fit, and tracks tight rather than open. */
+  --font-heading: "Inter Tight", "Inter", ui-sans-serif, system-ui, sans-serif;
+  --display-fit: 0.6;
+  --display-tracking: -0.02em;
 }
 
+/* design.md (Battle Royale), unchanged from when it was the only theme.
+   Tertiary is the system's SOLE interaction driver, and shadcn's `primary` is
+   what buttons, rings and active states read — so they are the same thing.
+   Destructive red and warning amber are pushed away from the orange so a
+   destructive confirm can't be mistaken for a primary button. */
 .dark {
   --radius: 0rem;
+
+  --font-heading: "Teko", "Oswald", "Haettenschweiler", sans-serif;
+  --display-fit: 1;
+  --display-tracking: 0.02em;
 
   --background: #0B0C0F;
   --foreground: #F2F2F0;
@@ -156,15 +160,16 @@
   --color-chart-4: var(--chart-4);
   --color-chart-5: var(--chart-5);
 
-  /* design.md's type ramp: Inter for body, JetBrains Mono for labels, Teko
-     for display. The system stack stays as the fallback so a blocked Google
+  /* The type ramp: Inter for body, JetBrains Mono for labels, and the
+     theme's heading face for display (--font-heading: Inter Tight on light,
+     Teko on dark). The system stack stays as the fallback so a blocked Google
      Fonts request degrades to what the app used to look like rather than to
      Times. The faces are loaded in index.html. */
   --font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
     "Helvetica Neue", Arial, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, "SF Mono", Menlo,
     Consolas, monospace;
-  --font-display: "Teko", "Oswald", "Haettenschweiler", sans-serif;
+  --font-display: var(--font-heading);
 }
 /* Header dropdown menus (ProjectSwitcher, UserMenu). Radix portais menu
    content into <body>, so these are scoped to the portaled content via the
@@ -212,15 +217,14 @@
   }
 
   /* The display role, applied where the markup already says "heading" rather
-     than through a class every surface has to remember. Teko is condensed and
-     sets SHORT, so a heading in it occupies less width than the stack it
-     replaces — nothing reflows outward. Weight and tracking come from
-     design.md; an explicit `font-*` class on a heading still wins. */
+     than through a class every surface has to remember. The face and its
+     tracking follow the theme (Inter Tight, tight, on light; Teko, open, on
+     dark); an explicit `font-*` class on a heading still wins. */
   h1,
   h2,
   h3 {
     font-family: var(--font-display);
-    letter-spacing: 0.02em;
+    letter-spacing: var(--display-tracking);
   }
 
   /* Native media controls tuned for dark UI */

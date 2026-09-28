@@ -12,7 +12,7 @@ import { Link, useParams } from "react-router";
 import { ArrowRight, ChevronDown, Download, Loader2 } from "lucide-react";
 import { Page } from "@/components/DirectorStory";
 import { formatLength } from "@/lib/film-plan";
-import { DISPLAY, MONO } from "@/lib/hudTheme";
+import { DISPLAY, DISPLAY_TRACKING, MONO } from "@/lib/hudTheme";
 import { cn } from "@/lib/utils";
 
 const ACTION =
@@ -64,7 +64,7 @@ export function Component() {
         <header className="flex shrink-0 items-center gap-3 border-b border-[var(--br-secondary)]/25 px-4 py-3 sm:px-8">
           <h1
             className="min-w-0 flex-1 truncate text-lg font-bold uppercase"
-            style={{ fontFamily: DISPLAY, letterSpacing: "0.04em" }}
+            style={{ fontFamily: DISPLAY, letterSpacing: DISPLAY_TRACKING }}
             title={film.title || undefined}
           >
             {film.title || "A StorySeam story"}

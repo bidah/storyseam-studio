@@ -62,8 +62,9 @@ import { authClient, useSession } from "@/lib/auth-client";
 import { isDesktop } from "@/lib/desktop";
 import { getProjectId, setProjectId } from "@/lib/projectFetch";
 import { useProjectEvents } from "@/lib/useProjectEvents";
-import { HUD, DISPLAY, BODY, MONO } from "@/lib/hudTheme";
+import { HUD, DISPLAY, DISPLAY_FIT, DISPLAY_TRACKING, BODY, MONO } from "@/lib/hudTheme";
 import { HudHeader } from "@/components/HudHeader";
+import { useTheme } from "@/lib/theme";
 import { cn } from "@/lib/utils";
 
 // Mirrors FILM_STAGES in worker/src/lib/film-job.js (keys are stable public
@@ -343,6 +344,8 @@ function cssColor(name, fallback) {
 
 function DotsBackground() {
   const ref = useRef(null);
+  // Re-drawn when the theme flips: the dots and their ground are read once, at init.
+  const theme = useTheme();
   useEffect(() => {
     let effect = null;
     let host = null;
@@ -359,7 +362,7 @@ function DotsBackground() {
       host = document.createElement("div");
       host.style.cssText = "position:absolute;inset:0";
       ref.current.appendChild(host);
-      const dot = cssColor("--br-tertiary", "#e8622c");
+      const dot = cssColor("--primary", "#e8622c");
       effect = DOTS({
         el: host,
         THREE,
@@ -372,7 +375,7 @@ function DotsBackground() {
         scaleMobile: 1,
         color: dot,
         color2: dot,
-        backgroundColor: cssColor("--br-neutral", "#0b0c0e"),
+        backgroundColor: cssColor("--background", "#0b0c0e"),
         size: 3,
         spacing: 35,
         showLines: false,
@@ -383,7 +386,7 @@ function DotsBackground() {
       try { effect?.destroy(); } catch { /* already torn down */ }
       host?.remove();
     };
-  }, []);
+  }, [theme]);
   return <div ref={ref} aria-hidden className="pointer-events-none fixed inset-0 z-0" />;
 }
 
@@ -621,7 +624,7 @@ function StorySettings({ flow, seconds, onSeconds, resolution, onResolution, sco
           style={{ ...HUD, fontFamily: BODY }}
           data-story-settings-panel
         >
-          <DialogTitle style={{ fontFamily: DISPLAY, letterSpacing: "0.04em" }} className="mb-5 pr-8 text-xl font-bold uppercase">
+          <DialogTitle style={{ fontFamily: DISPLAY, letterSpacing: DISPLAY_TRACKING }} className="mb-5 pr-8 text-xl font-bold uppercase">
             Story settings
           </DialogTitle>
           <DialogDescription className="sr-only">Length, resolution, score, voices, look and writing model for the next story.</DialogDescription>
@@ -755,7 +758,7 @@ function RoomDialog({ open, onOpenChange, room, onRoom }) {
         style={{ ...HUD, fontFamily: BODY }}
         data-story-room
       >
-        <DialogTitle style={{ fontFamily: DISPLAY, letterSpacing: "0.04em" }} className="text-2xl font-bold uppercase">
+        <DialogTitle style={{ fontFamily: DISPLAY, letterSpacing: DISPLAY_TRACKING }} className="text-2xl font-bold uppercase">
           The writers' room
         </DialogTitle>
         <DialogDescription className="text-[var(--br-secondary)]">
@@ -1141,16 +1144,22 @@ export function SimpleView({ flow = FLOWS.director, onFlow, onSubmit, submitting
         <HudHeader />
       </div>
       <div className="relative z-10 flex flex-1 items-center justify-center py-12">
-      {/* The headline sets the column's width (one line, sized with the
-          viewport so it never wraps) and the input fills exactly that width. */}
-      <main className="relative z-10 flex w-fit max-w-full flex-col items-stretch gap-8 text-center">
+      {/* The column is the width the headline takes in Teko (one line, 22x its
+          size, sized with the viewport so it never wraps) and the input fills
+          it. Pinned rather than read off the headline, because the light
+          theme's wider face sets the same line smaller (DISPLAY_FIT) and the
+          box must not shrink with it. */}
+      <main
+        className="relative z-10 flex max-w-full flex-col items-stretch gap-8 text-center"
+        style={{ width: "min(61.6rem, calc(100vw - 2rem))" }}
+      >
         <h1
           className="whitespace-nowrap leading-none"
           style={{
             fontFamily: DISPLAY,
             fontWeight: 700,
-            letterSpacing: "0.02em",
-            fontSize: "min(2.8rem, calc((100vw - 2rem) / 22))",
+            letterSpacing: DISPLAY_TRACKING,
+            fontSize: `calc(min(2.8rem, calc((100vw - 2rem) / 22)) * ${DISPLAY_FIT})`,
           }}
         >
           TEXT TO LONG FORM VIDEO STORIES IN SECONDS
@@ -1329,7 +1338,7 @@ export function SignInDialog({ flow = FLOWS.director, open, onOpenChange }) {
         className="max-w-sm rounded-none border-[var(--br-secondary)]/40 bg-[var(--br-surface)] text-[var(--br-primary)]"
         style={{ ...HUD, fontFamily: BODY }}
       >
-        <DialogTitle style={{ fontFamily: DISPLAY, letterSpacing: "0.04em" }} className="text-2xl font-bold uppercase">
+        <DialogTitle style={{ fontFamily: DISPLAY, letterSpacing: DISPLAY_TRACKING }} className="text-2xl font-bold uppercase">
           Sign in to make your story
         </DialogTitle>
         <DialogDescription className="text-[var(--br-secondary)]">
@@ -1406,7 +1415,7 @@ export function LatestStories({ onPick }) {
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="mt-2 flex w-full items-center justify-center gap-1.5 border border-[var(--br-secondary)]/40 bg-black/50 px-3 py-1.5 text-sm text-[var(--br-secondary)] backdrop-blur-sm transition-colors hover:border-[var(--br-primary)]/60 hover:text-[var(--br-primary)]"
+        className="mt-2 flex w-full items-center justify-center gap-1.5 border border-[var(--br-secondary)]/40 bg-[var(--br-surface)]/50 px-3 py-1.5 text-sm text-[var(--br-secondary)] backdrop-blur-sm transition-colors hover:border-[var(--br-primary)]/60 hover:text-[var(--br-primary)]"
         aria-haspopup="dialog"
         data-latest-stories
       >
@@ -1414,12 +1423,12 @@ export function LatestStories({ onPick }) {
       </button>
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent
-          className="flex max-h-[80dvh] max-w-lg flex-col gap-3 rounded-none border border-[var(--br-secondary)]/40 bg-black/70 p-0 text-[var(--br-primary)] backdrop-blur-md max-sm:top-0 max-sm:left-0 max-sm:h-dvh max-sm:max-h-dvh max-sm:max-w-none max-sm:translate-x-0 max-sm:translate-y-0 max-sm:border-0 max-sm:bg-[var(--br-surface)] max-sm:pb-[env(safe-area-inset-bottom)] max-sm:data-[state=closed]:zoom-out-100 max-sm:data-[state=open]:zoom-in-100"
+          className="flex max-h-[80dvh] max-w-lg flex-col gap-3 rounded-none border border-[var(--br-secondary)]/40 bg-[var(--br-surface)]/70 p-0 text-[var(--br-primary)] backdrop-blur-md max-sm:top-0 max-sm:left-0 max-sm:h-dvh max-sm:max-h-dvh max-sm:max-w-none max-sm:translate-x-0 max-sm:translate-y-0 max-sm:border-0 max-sm:bg-[var(--br-surface)] max-sm:pb-[env(safe-area-inset-bottom)] max-sm:data-[state=closed]:zoom-out-100 max-sm:data-[state=open]:zoom-in-100"
           style={{ ...HUD, fontFamily: BODY }}
         >
           {/* A phone gets the whole screen: the list is the point of it. */}
           <div className="px-5 pt-5 pr-12 max-sm:pt-[max(1.25rem,env(safe-area-inset-top))]">
-            <DialogTitle style={{ fontFamily: DISPLAY, letterSpacing: "0.04em" }} className="text-2xl font-bold uppercase">
+            <DialogTitle style={{ fontFamily: DISPLAY, letterSpacing: DISPLAY_TRACKING }} className="text-2xl font-bold uppercase">
               Latest stories
             </DialogTitle>
             <DialogDescription className="text-[var(--br-secondary)]">
@@ -1722,7 +1731,7 @@ function Screenplay({ draftId }) {
   if (state.error) return <p className="text-xs text-[var(--br-tertiary)]">{state.error}</p>;
   const els = state.draft?.elements || [];
   return (
-    <div className="space-y-2 border border-[var(--br-secondary)]/25 bg-black/30 px-4 py-4 text-[0.82rem] leading-relaxed" style={{ fontFamily: MONO }} data-screenplay>
+    <div className="space-y-2 border border-[var(--br-secondary)]/25 bg-[var(--br-surface)]/30 px-4 py-4 text-[0.82rem] leading-relaxed" style={{ fontFamily: MONO }} data-screenplay>
       {els.map((el, i) => {
         switch (el.type) {
           case "scene_heading":
@@ -1763,7 +1772,7 @@ function Fields({ rows }) {
 function EntryCard({ image, name, sub, rows, projectId }) {
   const src = image ? filmMediaUrl(image, projectId) : null;
   return (
-    <li className="flex gap-3 border border-[var(--br-secondary)]/25 bg-black/20 p-3">
+    <li className="flex gap-3 border border-[var(--br-secondary)]/25 bg-[var(--br-surface)]/20 p-3">
       {src ? (
         <a href={src} target="_blank" rel="noreferrer" className="shrink-0">
           <img src={src} alt={name} loading="lazy" className="size-16 border border-[var(--br-secondary)]/30 object-cover" />
@@ -2137,7 +2146,7 @@ function StepBody({ step, onOpen, children }) {
       type="button"
       onClick={onOpen}
       aria-label={`Show what ${step.label} came back with`}
-      className="-mx-2 -my-1 min-w-0 flex-1 rounded-none px-2 py-1 text-left transition-colors hover:bg-white/5 focus-visible:bg-white/5 focus-visible:outline-none"
+      className="-mx-2 -my-1 min-w-0 flex-1 rounded-none px-2 py-1 text-left transition-colors hover:bg-[var(--br-primary)]/5 focus-visible:bg-[var(--br-primary)]/5 focus-visible:outline-none"
       data-step-open={step.key}
     >
       {children}
@@ -2153,7 +2162,7 @@ function StepResultDialog({ step, projectId, onClose }) {
         style={{ ...HUD, fontFamily: BODY }}
         data-step-result={step?.key}
       >
-        <DialogTitle style={{ fontFamily: DISPLAY, letterSpacing: "0.04em" }} className="text-xl font-bold uppercase">
+        <DialogTitle style={{ fontFamily: DISPLAY, letterSpacing: DISPLAY_TRACKING }} className="text-xl font-bold uppercase">
           {step?.label}
         </DialogTitle>
         <DialogDescription className="text-xs text-[var(--br-secondary)]">{step?.summary}</DialogDescription>
@@ -2268,7 +2277,7 @@ export function StoryView({ job, projectId = null, onRetry, retrying = false, re
           <Link
             to="/"
             className="text-[1.35rem] leading-none"
-            style={{ fontFamily: DISPLAY, fontWeight: 600, letterSpacing: "0.02em" }}
+            style={{ fontFamily: DISPLAY, fontWeight: 600, letterSpacing: DISPLAY_TRACKING }}
             data-wordmark
           >
             STORYSEAM

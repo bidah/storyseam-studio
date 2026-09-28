@@ -44,7 +44,7 @@ import { useAtlasKey, setAtlasKey } from "@/lib/atlasKey";
 import { useProviderPrefs, setActiveProvider, useSetupSkipped, setSetupSkipped } from "@/lib/providers";
 import { captureInviteFromLocation } from "@/lib/pendingInvite";
 import { useT } from "@/lib/i18n";
-import { HUD, DISPLAY, BODY, MONO } from "@/lib/hudTheme";
+import { HUD, DISPLAY, DISPLAY_FIT, DISPLAY_TRACKING, BODY, MONO } from "@/lib/hudTheme";
 import { HudHeader } from "@/components/HudHeader";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -396,14 +396,15 @@ export function SignInPage() {
             style={{
               fontFamily: DISPLAY,
               fontWeight: 700,
-              letterSpacing: "0.02em",
+              letterSpacing: DISPLAY_TRACKING,
               // ONE line at every width, so the size is driven by the width
               // rather than by a breakpoint: the display role's 5rem is the
               // ceiling, and below that the headline is as large as the column
               // allows. The divisor is the line's own aspect — its width at a
-              // given size divided by that size — measured with the LONGEST
-              // translation (Spanish) so a locale switch can't overflow it.
-              fontSize: "min(5rem, calc((100vw - 5rem) / 17))",
+              // given size divided by that size — measured in Teko with the
+              // LONGEST translation (Spanish) so a locale switch can't overflow
+              // it; DISPLAY_FIT scales it down for the theme's wider face.
+              fontSize: `calc(min(5rem, calc((100vw - 5rem) / 17)) * ${DISPLAY_FIT})`,
             }}
           >
             {t("The first story harness agent").toUpperCase()}

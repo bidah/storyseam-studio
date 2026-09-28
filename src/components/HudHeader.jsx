@@ -18,7 +18,8 @@ import { Link } from "react-router";
 // the dep prebundle. The two Fal marks are self-contained SVG components.
 import FalColor from "@lobehub/icons/es/Fal/components/Color";
 import FalText from "@lobehub/icons/es/Fal/components/Text";
-import { DISPLAY, MONO } from "@/lib/hudTheme";
+import { DISPLAY, DISPLAY_TRACKING, MONO } from "@/lib/hudTheme";
+import { ThemeToggle } from "@/components/ThemeToggle";
 
 /** A HUD label: mono, small, wide-tracked, secondary. The system's `label` role. */
 export function Label({ children, className = "" }) {
@@ -46,7 +47,7 @@ export function HudHeader({ model }) {
       <Link
         to="/"
         className="text-[1.35rem] leading-none"
-        style={{ fontFamily: DISPLAY, fontWeight: 600, letterSpacing: "0.02em" }}
+        style={{ fontFamily: DISPLAY, fontWeight: 600, letterSpacing: DISPLAY_TRACKING }}
       >
         STORYSEAM
       </Link>
@@ -65,6 +66,7 @@ export function HudHeader({ model }) {
         </span>
         {model ? <Label>{model}</Label> : null}
       </span>
+      <ThemeToggle />
     </header>
   );
 }

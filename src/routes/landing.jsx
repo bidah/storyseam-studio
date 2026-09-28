@@ -41,7 +41,7 @@ import {
   AudioLines, Music, Mic, Sparkles, Radio, Film, Play, Cpu, Waves,
 } from "lucide-react";
 import { HudHeader, Label } from "@/components/HudHeader";
-import { HUD, DISPLAY, BODY } from "@/lib/hudTheme";
+import { HUD, DISPLAY, DISPLAY_FIT, DISPLAY_TRACKING, BODY } from "@/lib/hudTheme";
 
 // The palette and type ramp now live in `lib/hudTheme.js`, because the
 // StorySeam homepage at `/` is drawn from the same system — one copy of the
@@ -177,7 +177,7 @@ export function Component() {
               reaching the measure where a display line stops being readable. */}
           <h1
             className="max-w-[80%] text-balance text-[2.8rem] leading-[0.95] sm:text-[4rem] lg:text-[5rem]"
-            style={{ fontFamily: DISPLAY, fontWeight: 700, letterSpacing: "0.02em" }}
+            style={{ fontFamily: DISPLAY, fontWeight: 700, letterSpacing: DISPLAY_TRACKING }}
           >
             {/* Upper case is the HUD's own voice. */}
             {"The first AI video harness that creates long form stories in realtime".toUpperCase()}

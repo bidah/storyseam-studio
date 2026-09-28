@@ -9,6 +9,7 @@ import LoginGate from "@/components/Login";
 import ProjectProvider from "@/components/ProjectProvider";
 import { ProviderGateProvider } from "@/components/ProviderGate";
 import ProjectSwitcher from "@/components/ProjectSwitcher";
+import { ThemeToggle } from "@/components/ThemeToggle";
 import PendingInviteModal from "@/components/PendingInviteModal";
 import EpisodeProvider from "@/components/EpisodeProvider";
 import EpisodeSwitcher from "@/components/EpisodeSwitcher";
@@ -515,6 +516,7 @@ export default function RootLayout() {
               <Button variant="outline" size="sm" onClick={refresh} disabled={loading}>
                 <RefreshCw size={13} className={cn(loading && "animate-spin")} /> {t("Refresh")}
               </Button>
+              <ThemeToggle />
               <UserMenu />
             </div>
           </div>
