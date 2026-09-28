@@ -79,6 +79,8 @@
     "build:dev": "eas build --profile development --platform ios",
     "build:dev:sim": "eas build --profile simulator --platform ios",
     "build:preview": "eas build --profile preview --platform ios",
+    "build:prod": "eas build --profile production --platform ios",
+    "build:testflight": "eas build --profile production --platform ios --auto-submit",
     "ios:release": "expo run:ios --configuration Release --device",
     "web": "expo start --web",
     "lint": "expo lint",
