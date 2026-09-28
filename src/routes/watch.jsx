@@ -7,12 +7,13 @@
 // the video through it (GET /api/share/film/:token/video, `?download=1` for the
 // file). A revoked link, a fabricated one and a Film with no video all read as
 // the same "no longer available".
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router";
-import { Download, Loader2 } from "lucide-react";
+import { ArrowRight, ChevronDown, Download, Loader2 } from "lucide-react";
 import { Page } from "@/components/DirectorStory";
 import { formatLength } from "@/lib/film-plan";
 import { DISPLAY, MONO } from "@/lib/hudTheme";
+import { cn } from "@/lib/utils";
 
 const ACTION =
   "flex items-center gap-1.5 border border-[var(--br-secondary)]/40 px-3 py-1.5 text-[0.72rem] uppercase text-[var(--br-primary)] transition-colors hover:border-[var(--br-primary)]";
@@ -80,13 +81,58 @@ export function Component() {
         <div className="flex min-h-0 flex-1 items-center justify-center bg-black px-2 py-3 sm:px-8">
           <video src={film.videoUrl} controls playsInline preload="metadata" className="h-full w-full object-contain" data-film />
         </div>
-        <footer className="flex shrink-0 flex-col items-center gap-1 px-4 py-3 text-center sm:px-8">
-          {film.idea ? <p className="line-clamp-2 max-w-3xl text-sm text-[var(--br-secondary)]">{film.idea}</p> : null}
-          <Link to="/" className="text-xs text-[var(--br-secondary)] underline-offset-4 hover:text-[var(--br-primary)] hover:underline">
-            Made with StorySeam — make your own
+        <footer className="flex shrink-0 flex-col items-center gap-3 px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:px-8">
+          {film.idea ? <PromptCard text={film.idea} /> : null}
+          <Link to="/" className={ACTION} style={{ fontFamily: MONO, letterSpacing: "0.08em" }} data-make-your-own>
+            Made with StorySeam — make your own <ArrowRight size={12} aria-hidden />
           </Link>
         </footer>
       </div>
     </Page>
+  );
+}
+
+// The premise, in a card like the Film page's prompt: two lines, and a chevron
+// on the right that opens the whole of it in place. The chevron only shows when
+// there is more to read — one that opens nothing is a broken button.
+function PromptCard({ text }) {
+  const ref = useRef(null);
+  const [open, setOpen] = useState(false);
+  const [clipped, setClipped] = useState(false);
+
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el || open) return;
+    const measure = () => setClipped(el.scrollHeight > el.clientHeight + 1);
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [text, open]);
+
+  return (
+    <div className="flex w-full max-w-3xl items-start gap-3 border border-[var(--br-secondary)]/40 bg-[var(--br-surface)] px-4 py-3" data-prompt>
+      <p
+        ref={ref}
+        className={cn(
+          "min-w-0 flex-1 whitespace-pre-wrap break-words text-sm leading-relaxed text-[var(--br-secondary)]",
+          open ? "max-h-[30dvh] overflow-y-auto" : "line-clamp-2",
+        )}
+      >
+        {text}
+      </p>
+      {clipped || open ? (
+        <button
+          type="button"
+          onClick={() => setOpen((o) => !o)}
+          aria-expanded={open}
+          aria-label={open ? "Show less of the prompt" : "Show the whole prompt"}
+          className="-mr-1 shrink-0 p-1 text-[var(--br-secondary)] transition-colors hover:text-[var(--br-primary)]"
+          data-prompt-toggle
+        >
+          <ChevronDown size={16} aria-hidden className={cn("transition-transform duration-200", open && "rotate-180")} />
+        </button>
+      ) : null}
+    </div>
   );
 }
