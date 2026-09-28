@@ -1444,7 +1444,7 @@ export function StudioAgentCard({ signedIn, onSignIn, onCreate }) {
           from the border, like the send button), px-3 py-3 on the text. */}
       <div className="flex flex-col gap-1 px-3 py-3 sm:col-span-2">
         <h2 className="text-base font-semibold text-[var(--br-primary)]">Create a story with the studio agent</h2>
-        <p className="text-sm text-[var(--br-secondary)]">
+        <p className="text-base leading-relaxed text-[var(--br-secondary)]">
           From the World and script to the characters and the final video generation, each step made carefully,
           with time by you with an agent and also with UI options.
         </p>
