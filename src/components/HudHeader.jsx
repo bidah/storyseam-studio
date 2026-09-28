@@ -49,7 +49,7 @@ export function HudHeader({ model }) {
         className="text-[1.35rem] leading-none"
         style={{ fontFamily: DISPLAY, fontWeight: 600, letterSpacing: DISPLAY_TRACKING }}
       >
-        STORYSEAM
+        STORY<span style={{ fontWeight: 800 }}>SEAM</span>
       </Link>
       {/* The one mark on these pages that isn't ours: the inference partner,
           set at the right end of the strip as HUD metadata. */}

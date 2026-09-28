@@ -1415,7 +1415,7 @@ export function LatestStories({ onPick }) {
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="mt-2 flex w-full items-center justify-center gap-1.5 border border-[var(--br-secondary)]/40 bg-[var(--br-surface)]/50 px-3 py-1.5 text-sm text-[var(--br-secondary)] backdrop-blur-sm transition-colors hover:border-[var(--br-primary)]/60 hover:text-[var(--br-primary)]"
+        className="mt-2 flex w-full items-center justify-center gap-1.5 border border-[var(--br-secondary)]/40 bg-[var(--br-surface)]/50 px-3 py-[11px] text-sm text-[var(--br-secondary)] backdrop-blur-sm transition-colors hover:border-[var(--br-primary)]/60 hover:text-[var(--br-primary)]"
         aria-haspopup="dialog"
         data-latest-stories
       >
