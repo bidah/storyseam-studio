@@ -1168,7 +1168,7 @@ export function SimpleView({ flow = FLOWS.director, onFlow, onSubmit, submitting
             fontSize: `calc(min(2.8rem, calc((100vw - 2rem) / 22)) * ${DISPLAY_FIT})`,
           }}
         >
-          Create a video story with a prompt
+          Create a film with just a prompt
         </h1>
         <form onSubmit={submit} className="w-full">
           {/* The premise gets the box's full width; the controls sit in a row
@@ -1182,7 +1182,7 @@ export function SimpleView({ flow = FLOWS.director, onFlow, onSubmit, submitting
               onKeyDown={(e) => {
                 if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) submit(e);
               }}
-              placeholder="Tell what you have in mind. Express the story you want to bring to life"
+              placeholder="Tell the story you want to bring to life"
               aria-label="Story premise"
               disabled={submitting}
               className="min-h-34 w-full resize-none bg-transparent px-3 py-3 text-base leading-relaxed text-[var(--br-primary)] placeholder:text-[var(--br-secondary)] focus:outline-none disabled:opacity-60"
