@@ -208,7 +208,7 @@ test.describe("director story", () => {
     await input.press("Enter");
     await expect(page).toHaveURL(/\/director-story\/create\/film_1$/);
     expect(posted).toEqual({ prompt: "A two minute lighthouse story", seconds: 180 });
-    await expect(page.locator("[data-length]")).toHaveText("3:00");
+    await expect(page.locator("[data-option=length]")).toContainText("3:00");
   });
 
   test("a second story while one is being made is refused, with the link to the running one", async ({ page }) => {

@@ -258,9 +258,17 @@ export function compileSegment(segment, {
     );
   }
   if (video) out.push(`<Video 1> is the last ${EXTENSION_TAIL_SECONDS} seconds of the previous shot of this same film, the starting point this video continues from.`);
+  // MiniMax's full-reference format: the audio's JOB (voice timbre), bound to
+  // one speaker ID, with a stable description of the voice — the character's
+  // voice note, the same one the audition was read from. An audio file with
+  // no declared job and no speaker is one H3 doesn't know whose voice it is.
   for (const a of audio) {
     const s = subjects.find((x) => key(x.name) === key(a.voice.name));
-    out.push(`<${a.token}> is the voice-timbre reference for ${s ? `${s.label} ` : ""}${a.voice.name} (${sid(a.voice.name)}): an isolated recording of that voice alone.`);
+    const note = unquote(sentence(a.voice.note || ""));
+    out.push(
+      `<${a.token}> is the voice-timbre reference for ${s ? `${s.label} ` : ""}${a.voice.name} (${sid(a.voice.name)})` +
+        `${note ? `: ${note.replace(/\.$/, "")} —` : ":"} an isolated recording of that voice alone. Every line ${a.voice.name} speaks is in this voice.`,
+    );
   }
   out.push("");
 
@@ -284,7 +292,10 @@ export function compileSegment(segment, {
   if (seamTok) out.push(`${seamTok} (opening frame): fully_preserved - the first frame of the target matches it: the same positions, props, camera, framing and light; then the action continues from there.`);
   if (video) out.push("<Video 1> (continuation starting point): fully_preserved - the target opens on its last frame: the same positions, props, camera and light.");
   for (const a of audio) {
-    out.push(`<${a.token}> (voice of ${a.voice.name}): reference - only timbre, accent and cadence are referenced; none of its words are spoken in the target video.`);
+    out.push(
+      `<${a.token}> (voice of ${a.voice.name}): reference - ${a.voice.name} (${sid(a.voice.name)}) follows <${a.token}>'s timbre, accent and pacing ` +
+        "without copying the original signal or its words; none of its words are spoken in the target video.",
+    );
   }
   out.push("");
 
@@ -314,8 +325,11 @@ export function compileSegment(segment, {
     for (const l of st.spoken) {
       const name = names.find((n) => key(n) === key(l.speaker)) || str(l.speaker);
       const delivery = unquote(l.delivery);
+      // Every line restates its voice binding — the speaker ID alone let a
+      // shouted line drift to another character's timbre (film-ab875030 seg 3).
+      const voiced = audio.find((a) => key(a.voice.name) === key(name));
       parts.push(
-        `${who(name)}, on-screen,${delivery ? ` ${delivery},` : ""} says <d>[${lang}] ${sentence(unquote(l.text))}</d> ` +
+        `${who(name)}, on-screen,${delivery ? ` ${delivery},` : ""}${voiced ? ` in the voice timbre referenced from <${voiced.token}>,` : ""} says <d>[${lang}] ${sentence(unquote(l.text))}</d> ` +
           `As the line ends, ${name}'s lips close and ${name}'s mouth stops moving.`,
       );
     }

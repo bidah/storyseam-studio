@@ -62,13 +62,23 @@ export function parseJSONAnswer(text) {
   throw new WriterError("The writing model's answer did not parse as JSON", { body: String(text).slice(0, 2000) });
 }
 
+const JSON_INSTRUCTION = "Answer with ONE JSON object and nothing else — no prose, no code fence.";
+
+// The JSON instruction goes INTO the leading system message. Appended as a
+// second system message at the end, Qwen 3.8's chat template refuses the
+// whole request: "System message must be at the beginning" (8007).
+export function withJSONInstruction(messages = []) {
+  const [first, ...rest] = messages;
+  if (first?.role === "system") {
+    return [{ ...first, content: `${first.content}\n\n${JSON_INSTRUCTION}` }, ...rest];
+  }
+  return [{ role: "system", content: JSON_INSTRUCTION }, ...messages];
+}
+
 async function workersAIJSON(env, { messages, maxTokens, temperature } = {}, model = WORKERS_AI_WRITER_MODEL) {
   if (!env?.AI?.run) throw new WriterError("The Worker has no AI binding — Auto's writing steps cannot run");
   const inputs = {
-    messages: [
-      ...messages,
-      { role: "system", content: "Answer with ONE JSON object and nothing else — no prose, no code fence." },
-    ],
+    messages: withJSONInstruction(messages),
     max_tokens: Math.min(maxTokens || WORKERS_AI_MAX_TOKENS, WORKERS_AI_MAX_TOKENS),
   };
   if (temperature != null) inputs.temperature = temperature;

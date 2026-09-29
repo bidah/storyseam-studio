@@ -2047,7 +2047,7 @@ function Thumbs({ items, projectId }) {
         {shown.map((x, i) => (
           <li key={`${x.name}-${i}`} className="min-w-0">
             <button type="button" onClick={() => setAt(i)} className="block w-full" aria-label={`Open ${x.caption || x.name || "image"}`}>
-              <img src={media(x.imageUrl)} alt={x.name || ""} loading="lazy" className="aspect-square w-full border border-[var(--br-secondary)]/30 bg-black/40 object-cover transition-opacity hover:opacity-80" />
+              <img src={media(x.imageUrl)} alt={x.name || ""} loading="lazy" className="aspect-square w-full border border-[var(--br-secondary)]/30 bg-[var(--br-secondary)]/10 object-cover transition-opacity hover:opacity-80" />
             </button>
             <span className="mt-1 block truncate text-[0.7rem] text-[var(--br-secondary)]">{x.caption || x.name}</span>
           </li>
@@ -2078,11 +2078,11 @@ function Lightbox({ items, at, onAt, projectId }) {
     return () => window.removeEventListener("keydown", onKey);
   }, [open, n]); // eslint-disable-line react-hooks/exhaustive-deps
   const item = open ? items[at] : null;
-  const arrow = "absolute top-1/2 z-10 hidden size-10 -translate-y-1/2 items-center justify-center border border-[var(--br-secondary)]/70 bg-black/60 text-[var(--br-primary)] transition-colors hover:border-[var(--br-primary)] sm:flex";
+  const arrow = "absolute top-1/2 z-10 hidden size-10 -translate-y-1/2 items-center justify-center border border-[var(--br-secondary)]/70 bg-[var(--br-surface)] text-[var(--br-primary)] transition-colors hover:border-[var(--br-primary)] sm:flex";
   return (
     <Dialog open={open} onOpenChange={(o) => { if (!o) onAt(null); }}>
       <DialogContent
-        className={cn(PAGE_DIALOG, "flex flex-col gap-3 bg-black sm:max-w-4xl")}
+        className={cn(PAGE_DIALOG, "flex flex-col gap-3 sm:max-w-4xl")}
         style={{ ...HUD, fontFamily: BODY }}
         data-lightbox
         onTouchStart={(e) => { touch.current = e.touches[0]?.clientX ?? null; }}
@@ -2292,17 +2292,33 @@ function StepResultBody({ step, projectId }) {
 }
 
 /** A step row's text: a button when there is a result to open, plain otherwise. */
-function StepBody({ step, onOpen, children }) {
-  if (!onOpen) return <span className="min-w-0 flex-1">{children}</span>;
+function StepBody({ step, onOpen, icon, children }) {
+  if (!onOpen) {
+    return (
+      <>
+        {icon}
+        <span className="min-w-0 flex-1">{children}</span>
+      </>
+    );
+  }
   return (
     <button
       type="button"
       onClick={onOpen}
       aria-label={`Show what ${step.label} came back with`}
-      className="-mx-2 -my-1 min-w-0 flex-1 rounded-none px-2 py-1 text-left transition-colors hover:bg-[var(--br-primary)]/5 focus-visible:bg-[var(--br-primary)]/5 focus-visible:outline-none"
+      className="group -mx-2 -my-1 flex min-w-0 flex-1 items-start gap-3 rounded-none px-2 py-1 text-left transition-colors hover:bg-[var(--br-primary)]/5 focus-visible:bg-[var(--br-primary)]/5 focus-visible:outline-none"
       data-step-open={step.key}
     >
-      {children}
+      {icon}
+      <span className="min-w-0 flex-1">{children}</span>
+      {/* The check and the magnifier sit INSIDE the row's button so the hover wash covers the whole row. */}
+      <span
+        className="mt-0.5 flex size-7 shrink-0 items-center justify-center border border-[var(--br-secondary)]/40 text-[var(--br-secondary)] transition-colors group-hover:border-[var(--br-primary)]/60 group-hover:text-[var(--br-primary)] group-focus-visible:border-[var(--br-primary)]/60 group-focus-visible:text-[var(--br-primary)]"
+        data-step-details={step.key}
+        aria-hidden
+      >
+        <Search size={13} />
+      </span>
     </button>
   );
 }
@@ -2334,45 +2350,42 @@ function StepList({ steps, onOpen, variant = "full" }) {
         <li
           key={s.key}
           className={cn(
-            "flex items-start gap-3 transition-opacity duration-300",
+            // Every row carries a transparent frame so the active one's border
+            // costs no reflow sideways; only the active row shows it.
+            "-mx-2 flex items-start gap-3 border border-transparent px-2 transition-[opacity,border-color,padding] duration-300",
             s.status === "pending" && "opacity-50",
+            (s.status === "running" || s.status === "retrying") && "border-[var(--br-primary)]/50 py-2.5",
           )}
           data-step={s.key}
           data-status={s.status}
         >
-          <span className="mt-0.5 flex size-5 shrink-0 items-center justify-center">
-            <StepIcon status={s.status} />
-          </span>
           <StepBody
             step={s}
             onOpen={s.status === "done" && s.result ? () => onOpen(s) : null}
+            icon={
+              <span className="mt-0.5 flex size-5 shrink-0 items-center justify-center">
+                <StepIcon status={s.status} />
+              </span>
+            }
           >
             <span className="flex items-baseline justify-between gap-3">
               <span className={cn(s.status === "running" || s.status === "retrying" ? "text-[var(--br-primary)]" : "text-[var(--br-primary)]/80")}>
                 {s.label}
               </span>
-              <span
-                className="shrink-0 text-[0.72rem] uppercase text-[var(--br-secondary)]"
-                style={{ fontFamily: MONO, letterSpacing: "0.08em" }}
-              >
-                {STATUS_WORD[s.status] || s.status}
-              </span>
+              {/* A done step says so with its check; the word only labels the others. */}
+              {s.status !== "done" && (
+                <span
+                  className="shrink-0 text-[0.72rem] uppercase text-[var(--br-secondary)]"
+                  style={{ fontFamily: MONO, letterSpacing: "0.08em" }}
+                >
+                  {STATUS_WORD[s.status] || s.status}
+                </span>
+              )}
             </span>
             {s.summary && s.status !== "pending" && (
               <span className="block truncate text-xs text-[var(--br-secondary)]">{s.summary}</span>
             )}
           </StepBody>
-          {s.status === "done" && s.result ? (
-            <button
-              type="button"
-              onClick={() => onOpen(s)}
-              aria-label={`See what ${s.label} came back with`}
-              className="mt-0.5 flex size-7 shrink-0 items-center justify-center border border-[var(--br-secondary)]/40 text-[var(--br-secondary)] transition-colors hover:border-[var(--br-primary)]/60 hover:text-[var(--br-primary)] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--br-primary)]/60"
-              data-step-details={s.key}
-            >
-              <Search size={13} aria-hidden />
-            </button>
-          ) : null}
         </li>
       ))}
     </ol>
@@ -2436,36 +2449,135 @@ const specialistName = (id) => {
   const bare = String(label).replace(/^the /i, "");
   return bare.charAt(0).toUpperCase() + bare.slice(1);
 };
+// The time the steps actually ran, summed — not createdAt → updatedAt, which
+// also counts the hours a Film sat stopped before a retry, or waited on the
+// author's confirm (a 12-minute Film read "46 h 52 min"). A job whose steps
+// carry no times falls back to the wall clock.
+function workedMs(job) {
+  let ms = 0;
+  for (const s of job.steps || []) {
+    const d = Date.parse(s.endedAt) - Date.parse(s.startedAt);
+    if (Number.isFinite(d) && d > 0) ms += d;
+  }
+  return ms || Date.parse(job.updatedAt) - Date.parse(job.createdAt);
+}
 function tookFor(job) {
-  const ms = Date.parse(job.updatedAt) - Date.parse(job.createdAt);
+  const ms = workedMs(job);
   if (!Number.isFinite(ms) || ms <= 0) return null;
   const min = Math.round(ms / 60000);
   return min < 60 ? `${Math.max(1, min)} min` : `${Math.floor(min / 60)} h ${min % 60} min`;
 }
 
-export function FilmDetails({ job }) {
-  const writers = FILM_WRITERS;
+// What the author picked in the prompt box, as [label, value] pairs — the
+// chips under the prompt and the head of the finished Film's details.
+function chosenOptions(job, seconds) {
   const story = isStoryEngine(job.engine);
   const flow = FLOWS[job.engine] || FLOWS.director;
-  const seconds = job.film?.seconds || job.seconds || null;
   const lookId = job.steps?.find((s) => s.key === "look")?.result?.style || job.style;
   const look = FILM_STYLES.find((s) => s.id === lookId);
   // A job from before the writer was explicit stored none: the legacy default.
-  const writer = writers.find((w) => w.id === job.writer) || (job.writer ? null : { label: "Studio default" });
+  const writer = FILM_WRITERS.find((w) => w.id === job.writer) || (job.writer ? null : { label: "Studio default" });
   const deep = job.depth === "deep";
   const room = deep ? (job.specialists?.length ? job.specialists : DEFAULT_DEEP_SPECIALISTS) : [];
   const voices = story ? FILM_VOICES.find((v) => v.id === filmVoicesOf(job.voices, job.engine)) : null;
-  const segments = story ? job.steps?.find((s) => s.key === "shotlist")?.result?.durations : null;
-  const rows = [
+  return [
     ["Model", flow.label],
     ["Length", seconds ? formatLength(Math.round(seconds)) : null],
     ["Resolution", job.resolution || DEFAULT_FILM_RESOLUTION],
-    ["Segments", segments?.length ? `${segments.length} × ${[...new Set(segments)].map((d) => `${d}s`).join(" / ")}` : null],
     ["Look", look?.label || null],
     ["Writer", writer?.label || null],
     ["Story", deep ? `Deep · ${room.length} ${room.length === 1 ? "pass" : "passes"}` : "Fast"],
     ["Voices", story ? voices?.label || "None" : null],
-    ["Score", job.score === false ? "Off" : "On"],
+    ["Score", job.score === false ? "Off" : FILM_MUSIC.find((m) => m.id === job.music)?.label || "ElevenLabs Music"],
+  ];
+}
+
+/** The chosen options as a row of bordered chips under the prompt. */
+function OptionChips({ job, seconds }) {
+  const chips = chosenOptions(job, seconds).filter(([, v]) => v);
+  if (!chips.length) return null;
+  return (
+    // One row that scrolls sideways on a phone (the steps stay above the fold);
+    // it wraps from `sm` up.
+    <ul className="flex w-full gap-2 overflow-x-auto pb-0.5 sm:flex-wrap sm:overflow-visible" aria-label="Chosen options" data-options>
+      {chips.map(([k, v]) => (
+        <li
+          key={k}
+          className="flex shrink-0 items-baseline gap-1.5 border border-[var(--br-secondary)]/40 bg-[var(--br-surface)] px-2 py-1"
+          data-option={k.toLowerCase()}
+        >
+          <span className="text-[0.62rem] uppercase text-[var(--br-secondary)]" style={{ fontFamily: MONO, letterSpacing: "0.08em" }}>
+            {k}
+          </span>
+          <span className="whitespace-nowrap text-xs text-[var(--br-primary)]">{v}</span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+// A stage's spend: cents, or a tenth of a cent when it is smaller than one.
+const stageDollars = (n) => (n > 0 && n < 0.01 ? `$${n.toFixed(3)}` : dollars(n));
+
+/**
+ * The Cost detail opened: what each step spent (`job.spend`, keyed like the
+ * steps), in pipeline order, and the total. A step that spent nothing says so
+ * rather than vanishing, so the list reads as the whole pipeline.
+ */
+function CostDialog({ job, open, onOpenChange }) {
+  const spend = job.spend || {};
+  const steps = stepsOf(job).filter((s) => s.status !== "pending" || spend[s.key] > 0);
+  const known = new Set(steps.map((s) => s.key));
+  // A stage that billed but isn't in this client's list: shown by its key.
+  const extra = Object.keys(spend).filter((k) => !known.has(k)).map((key) => ({ key, label: key }));
+  const rows = [...steps, ...extra].map((s) => ({ key: s.key, label: s.label, amount: Number(spend[s.key]) || 0 }));
+  const total = job.spent ?? rows.reduce((a, r) => a + r.amount, 0);
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className={PAGE_DIALOG} style={{ ...HUD, fontFamily: BODY }} data-cost-dialog>
+        <DialogTitle style={{ fontFamily: DISPLAY, letterSpacing: DISPLAY_TRACKING }} className="text-xl font-bold uppercase">
+          Cost
+        </DialogTitle>
+        <DialogDescription className="text-xs text-[var(--br-secondary)]">What each step spent, in US dollars.</DialogDescription>
+        <table className="w-full text-sm">
+          <tbody>
+            {rows.map((r) => (
+              <tr key={r.key} className="border-b border-[var(--br-secondary)]/20" data-cost-row={r.key}>
+                <td className="py-2 pr-3 text-[var(--br-primary)]/80">{r.label}</td>
+                <td className="py-2 text-right tabular-nums text-[var(--br-secondary)]" style={{ fontFamily: MONO }}>
+                  {r.amount > 0 ? stageDollars(r.amount) : "—"}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+          <tfoot>
+            <tr data-cost-total>
+              <td className="pt-3 pr-3 text-xs uppercase text-[var(--br-secondary)]" style={{ fontFamily: MONO, letterSpacing: "0.08em" }}>
+                Total
+              </td>
+              <td className="pt-3 text-right tabular-nums text-[var(--br-primary)]" style={{ fontFamily: MONO }}>
+                {dollars(total) || "$0.00"}
+              </td>
+            </tr>
+          </tfoot>
+        </table>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+export function FilmDetails({ job }) {
+  const [costOpen, setCostOpen] = useState(false);
+  const story = isStoryEngine(job.engine);
+  const seconds = job.film?.seconds || job.seconds || null;
+  const deep = job.depth === "deep";
+  const room = deep ? (job.specialists?.length ? job.specialists : DEFAULT_DEEP_SPECIALISTS) : [];
+  const segments = story ? job.steps?.find((s) => s.key === "shotlist")?.result?.durations : null;
+  const chosen = chosenOptions(job, seconds);
+  const rows = [
+    ...chosen.slice(0, 3),
+    ["Segments", segments?.length ? `${segments.length} × ${[...new Set(segments)].map((d) => `${d}s`).join(" / ")}` : null],
+    ...chosen.slice(3),
     ["Cost", dollars(job.spent)],
     ["Made in", tookFor(job)],
   ].filter(([, v]) => v);
@@ -2482,10 +2594,26 @@ export function FilmDetails({ job }) {
             <dt className="text-[0.65rem] uppercase text-[var(--br-secondary)]" style={{ fontFamily: MONO, letterSpacing: "0.08em" }}>
               {k}
             </dt>
-            <dd className="truncate text-sm text-[var(--br-primary)]" title={v}>{v}</dd>
+            {k === "Cost" ? (
+              <dd className="flex min-w-0 items-center gap-1.5 text-sm text-[var(--br-primary)]">
+                <span className="truncate" title={v}>{v}</span>
+                <button
+                  type="button"
+                  onClick={() => setCostOpen(true)}
+                  aria-label="See what each step cost"
+                  className="flex size-6 shrink-0 items-center justify-center border border-[var(--br-secondary)]/40 text-[var(--br-secondary)] transition-colors hover:border-[var(--br-primary)]/60 hover:text-[var(--br-primary)] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--br-primary)]/60"
+                  data-cost-open
+                >
+                  <Search size={12} aria-hidden />
+                </button>
+              </dd>
+            ) : (
+              <dd className="truncate text-sm text-[var(--br-primary)]" title={v}>{v}</dd>
+            )}
           </div>
         ))}
       </dl>
+      <CostDialog job={job} open={costOpen} onOpenChange={setCostOpen} />
       {deep && room.length ? (
         <p className="mt-2 border-t border-[var(--br-secondary)]/20 pt-2 text-xs text-[var(--br-secondary)]" data-detail="room">
           Writers' room: {room.map(specialistName).join(" · ")}
@@ -2562,7 +2690,7 @@ export function StoryView({ job, projectId = null, onRetry, retrying = false, re
             up it is in full, wrapping, never truncated. On a phone a long
             premise would push the steps off the screen, so it is two lines
             with an ellipsis, and a tap opens the whole of it in a dialog.
-            The length sits in its corner. */}
+            The chosen options (length among them) are the chips below. */}
         <div className={cn("flex shrink-0 justify-center px-4 pt-3 sm:px-8", loading && "hidden")}>
           <div className={cn("flex w-full items-start gap-3 border border-[var(--br-secondary)]/40 bg-[var(--br-surface)] px-4 py-3", FILM_W)}>
             <button
@@ -2577,16 +2705,12 @@ export function StoryView({ job, projectId = null, onRetry, retrying = false, re
             <p className="hidden min-w-0 flex-1 whitespace-pre-wrap break-words text-sm leading-relaxed text-[var(--br-secondary)] sm:block" data-prompt>
               {job.prompt}
             </p>
-            {length ? (
-              <span
-                className="shrink-0 text-[0.72rem] tabular-nums text-[var(--br-secondary)]"
-                style={{ fontFamily: MONO, letterSpacing: "0.08em" }}
-                title="Length"
-                data-length
-              >
-                {formatLength(length)}
-              </span>
-            ) : null}
+          </div>
+        </div>
+        {/* What was picked in the prompt box, as chips under the prompt. */}
+        <div className={cn("flex shrink-0 justify-center px-4 pt-2 sm:px-8", loading && "hidden")}>
+          <div className={cn("w-full", FILM_W)}>
+            <OptionChips job={job} seconds={length} />
           </div>
         </div>
         <Dialog open={promptOpen} onOpenChange={setPromptOpen}>
