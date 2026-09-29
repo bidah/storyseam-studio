@@ -1295,14 +1295,15 @@ export function SimpleView({ flow = FLOWS.director, onFlow, onSubmit, submitting
         {/* On a phone the column's gap-8 left the headline floating; it sits
             12px over the box there. */}
         <h1
-          className="-mb-5 whitespace-nowrap leading-none sm:mb-0"
-          style={{
+          className={narrow
+            ? "-mb-5 whitespace-nowrap text-base font-semibold leading-none text-[var(--br-primary)]"
+            : "whitespace-nowrap leading-none"}
+          // A phone sets it exactly like the agent card's heading below it.
+          style={narrow ? undefined : {
             fontFamily: DISPLAY,
             fontWeight: 700,
             letterSpacing: DISPLAY_TRACKING,
-            // Never under the agent card's heading (1rem): on a phone the
-            // viewport-scaled size fell to ~11px.
-            fontSize: `max(1rem, calc(min(2.8rem, calc((100vw - 2rem) / 22)) * ${DISPLAY_FIT}))`,
+            fontSize: `calc(min(2.8rem, calc((100vw - 2rem) / 22)) * ${DISPLAY_FIT})`,
           }}
         >
           Create a film with just a prompt
