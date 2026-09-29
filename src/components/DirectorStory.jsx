@@ -1986,7 +1986,10 @@ function VoicesCard({ result, projectId }) {
 // A Film-page dialog: the whole screen on a phone (a card there is a strip of
 // text between two bands of page), a centered card from `sm` up.
 const PAGE_DIALOG =
-  "h-[100dvh] max-h-[100dvh] max-w-full content-start overflow-y-auto rounded-none border-0 bg-[var(--br-surface)] text-[var(--br-primary)] " +
+  // One column pinned to the dialog's width (minmax(0,1fr)): a grid column
+  // otherwise grows to its widest unbreakable line, so a truncated step
+  // summary pushed the Process steps dialog past a phone's edge.
+  "h-[100dvh] max-h-[100dvh] max-w-full grid-cols-[minmax(0,1fr)] content-start overflow-y-auto rounded-none border-0 bg-[var(--br-surface)] text-[var(--br-primary)] " +
   "sm:h-auto sm:max-h-[85dvh] sm:max-w-xl sm:border sm:border-[var(--br-secondary)]/40 " +
   // The close button, as a square with a visible gray border rather than a
   // faint bare X (dialog.jsx's default, which the rest of the app keeps).
