@@ -26,8 +26,9 @@ function esc(s) {
 // Build the shared jacket around the human-facing body: a plain-text version
 // and an HTML version with a big CTA button. Keeps the two in lockstep so one
 // never drifts.
-function enclosure({ orgName, actionUrl, actionLabel, textBody, htmlBody }) {
+function enclosure({ orgName, actionUrl, actionLabel, textBody, htmlBody, footerHtml }) {
   const safeOrg = esc(orgName || "your team on Storyseam");
+  const footer = footerHtml ?? `You're invited to the <strong style="color:#71717a;">${safeOrg}</strong> workspace on Storyseam. If you didn't expect this invitation, you can ignore this email — nothing will change until you accept.`;
   const text = `${textBody}
 
 ${actionLabel}: ${actionUrl}
@@ -53,7 +54,7 @@ If you weren't expecting this, you can safely ignore it.`;
                     </td>
                   </tr>
                 </table>
-                <p style="font-size:12px;color:#52525b;line-height:1.6;margin-top:24px;">You're invited to the <strong style="color:#71717a;">${safeOrg}</strong> workspace on Storyseam. If you didn't expect this invitation, you can ignore this email — nothing will change until you accept.</p>
+                <p style="font-size:12px;color:#52525b;line-height:1.6;margin-top:24px;">${footer}</p>
               </td>
             </tr>
           </table>
@@ -89,6 +90,34 @@ export async function sendInviteEmail(env, { email, orgName, inviteUrl }) {
   } catch (err) {
     // eslint-disable-next-line no-console
     console.error("sendInviteEmail failed:", err?.code || err?.message || err);
+    return { sent: false, reason: err?.code || "send_failed" };
+  }
+}
+// The waitlist's "you're in" mail: a spot opened for `email`. There is no token
+// in the link — access is keyed by the address itself (lib/waitlist.js), so the
+// one thing the mail must say is to sign in with Google AS this address.
+export async function sendWaitlistInviteEmail(env, { email, appUrl }) {
+  if (!env?.EMAIL) return { sent: false, reason: "EMAIL binding not configured" };
+  const to = String(email).trim();
+  const { text, html } = enclosure({
+    actionUrl: appUrl,
+    actionLabel: "Open StorySeam",
+    textBody: `Your spot on StorySeam is ready. Sign in with Google using this address (${to}) and you can start making stories right away.`,
+    htmlBody: `<p style="font-size:15px;line-height:1.7;color:#d4d4d8;margin:0 0 4px;">Your spot on <strong style="color:#fff;">StorySeam</strong> is ready.</p><p style="font-size:14px;line-height:1.7;color:#a1a1aa;margin:0 0 8px;">Sign in with Google using <strong style="color:#fff;">${esc(to)}</strong> and you can start making stories right away.</p>`,
+    footerHtml: "You're getting this because you joined the StorySeam waitlist. If that wasn't you, you can ignore this email.",
+  });
+  try {
+    const res = await env.EMAIL.send({
+      to,
+      from: FROM,
+      subject: "You're in — your StorySeam spot is ready",
+      text,
+      html,
+    });
+    return { sent: true, messageId: res?.id || res?.messageId || null };
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error("sendWaitlistInviteEmail failed:", err?.code || err?.message || err);
     return { sent: false, reason: err?.code || "send_failed" };
   }
 }

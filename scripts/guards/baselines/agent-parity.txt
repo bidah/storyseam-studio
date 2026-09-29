@@ -148,3 +148,9 @@
 /api/musical/song                 # multipart audio upload from a file input; the agent works from
                                   # the uploaded stem/mix via the split, never raw file bytes
 /api/musical/reset                # the author's "start the shot bible over" button — a UI clear
+
+# --- [gui-only] early access: the waitlist -----------------------------------
+# Who may use the app at all. The agent only runs for someone already let in,
+# so there is nothing for it to join or check (worker/src/lib/waitlist.js).
+/api/waitlist                     # the signed-out "join the waitlist" form
+/api/waitlist/me                  # the post-sign-in "am I invited?" check behind the /waitlist redirect

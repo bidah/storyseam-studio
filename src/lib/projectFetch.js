@@ -18,6 +18,7 @@ import { getRenderReady } from "@/lib/providerReady";
 import { getExaKey, getFirecrawlKey } from "@/lib/searchKeys";
 import { getSearchProvider } from "@/lib/searchProviders";
 import { getSandboxMode } from "@/lib/sandboxMode";
+import { goToWaitlist } from "@/lib/waitlist";
 
 const STORAGE_KEY = "shot-studio:projectId";
 // The active episode is scoped PER PROJECT: switching project restores whatever
@@ -154,6 +155,14 @@ export function installProjectScope() {
       // Send the Better Auth session cookie with every same-origin API call —
       // the `/eve/*` flue proxy relies on it to mint the per-user identity.
       init = { credentials: "include", ...(init || {}), headers };
+      // The Worker's waitlist gate answers 403 + x-waitlist to a signed-in user
+      // who hasn't been invited (worker/src/lib/waitlist.js). Whatever asked,
+      // the answer is the same page — a hard redirect, so no half-loaded studio
+      // is left behind it.
+      return origFetch(input, init).then((res) => {
+        if (res.status === 403 && res.headers.get("x-waitlist")) goToWaitlist();
+        return res;
+      });
     }
     return origFetch(input, init);
   };

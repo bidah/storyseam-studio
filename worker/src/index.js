@@ -53,6 +53,8 @@ import { canAccessProject } from "./lib/orgs.js";
 import { registerRender } from "./routes/render.js";
 import { registerExport } from "./routes/export.js";
 import { registerAdmin } from "./routes/admin.js";
+import { registerWaitlist } from "./routes/waitlist.js";
+import { hasAccess, sendPendingInvites, waitlistEnforced } from "./lib/waitlist.js";
 import { registerHiggsfield } from "./routes/higgsfield.js";
 import { registerStoryboard } from "./routes/storyboard.js";
 import { registerVisualWorld } from "./routes/visual-world.js";
@@ -217,6 +219,35 @@ app.use("*", async (c, next) => {
   );
 });
 
+// The waitlist gate (lib/waitlist.js). While early access is enforced
+// (WAITLIST_ENFORCED = "1"), a signed-in user whose email isn't invited gets a
+// 403 carrying `waitlist: true` from everything that does work — the JSON API,
+// the chat agent proxy, uploads — and the client sends them to /waitlist on it.
+// The client redirect alone is only a courtesy: anyone can sign in with Google,
+// so this is where "not invited" actually stops. It keys on the resolved user,
+// so the agent's signed assertion is held to the same rule as the cookie.
+// Left open: auth itself, the waitlist routes (joining, and asking "am I in?"),
+// and the surfaces that carry their own non-user credential.
+const WAITLIST_OPEN = ["/api/auth/", "/api/waitlist", "/api/share/", "/api/sitting-runner/"];
+app.use("*", async (c, next) => {
+  const userId = c.get("userId");
+  if (!userId || !waitlistEnforced(c.env)) return next();
+  const p = new URL(c.req.url).pathname;
+  const gated =
+    (p.startsWith("/api/") && !WAITLIST_OPEN.some((pre) => p.startsWith(pre))) ||
+    p.startsWith("/eve/") ||
+    p === "/upload";
+  if (gated && !(await hasAccess(c.env, userId))) {
+    // `x-waitlist` lets the client's fetch shim spot this without reading the body.
+    return c.json(
+      { error: "You're on the waitlist — we'll email you when your spot opens.", waitlist: true },
+      403,
+      { "x-waitlist": "1" },
+    );
+  }
+  return next();
+});
+
 // The Auto Film routes that name no project (routes/auto.js): start a Film (it
 // makes its own project), the user's latest Film, and a Film's project lookup.
 // Exact shapes only — every other /api/auto route stays project-scoped.
@@ -281,6 +312,9 @@ app.use("*", async (c, next) => {
   //                  (routes/sitting-runner.js). No cookie; every route
   //                  verifies its short-lived job token (lib/sitting-token.js),
   //                  which names its own project, episode, Series and Film.
+  //   /api/waitlist the early-access list (routes/waitlist.js): the public
+  //                  join form, the caller's own standing, and the admin batch
+  //                  routes behind their own bearer. No project state.
   //   four Auto Film routes (isUserScopedAuto) — USER-scoped, not project-
   //                  scoped: starting a Film MAKES its own project, and the
   //                  Film→project lookup and "latest Film" are asked before any
@@ -298,6 +332,7 @@ app.use("*", async (c, next) => {
     !p.startsWith("/api/agent/") &&
     !p.startsWith("/api/mcp") &&
     !p.startsWith("/api/share/") &&
+    !p.startsWith("/api/waitlist") &&
     !p.startsWith("/api/sitting-runner/");
   // A WRITE we can't scope must never reach storage: `normalizeProjectId(null)`
   // resolves to `p_default`, and `p_default` is a REAL project (Whistlewood), so
@@ -748,6 +783,7 @@ registerOrgs(app);
 registerRender(app);
 registerExport(app);
 registerAdmin(app);
+registerWaitlist(app);
 registerHiggsfield(app);
 registerStoryboard(app);
 registerVisualWorld(app);
@@ -1068,5 +1104,11 @@ export default {
   },
   scheduled(controller, env, ctx) {
     ctx.waitUntil(healFilms(env));
+    // The waitlist's "you're in" emails: anything invited but not yet mailed —
+    // a batch whose inline send failed, or rows flipped by hand in SQL.
+    ctx.waitUntil(
+      sendPendingInvites(env, { limit: 50 }).catch((err) =>
+        console.error("waitlist sweep:", err?.message || err)),
+    );
   },
 };

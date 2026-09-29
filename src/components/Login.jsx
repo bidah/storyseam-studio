@@ -46,6 +46,8 @@ import { captureInviteFromLocation } from "@/lib/pendingInvite";
 import { useT } from "@/lib/i18n";
 import { HUD, DISPLAY, DISPLAY_FIT, DISPLAY_TRACKING, BODY, MONO } from "@/lib/hudTheme";
 import { HudHeader } from "@/components/HudHeader";
+import { WaitlistPanel } from "@/components/WaitlistPanel";
+import { useWaitlistAccess } from "@/lib/waitlist";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -416,24 +418,16 @@ export function SignInPage() {
           <FeatureMarquee />
 
           <div className="mt-9 flex w-full flex-col items-center gap-3">
-            <button
-              type="button"
-              disabled={busy}
-              onClick={signIn}
-              className="flex w-full max-w-xs items-center justify-center gap-2 bg-[var(--br-tertiary)] px-5 py-3 text-[0.72rem] uppercase text-[var(--br-on-primary)] transition-opacity hover:opacity-90 disabled:opacity-60"
-              style={{ fontFamily: MONO, letterSpacing: "0.08em" }}
-            >
-              {busy ? <Loader2 size={14} className="animate-spin" /> : null}
-              {t("Sign in with Google")}
-              {!busy ? <ArrowRight size={14} /> : null}
-            </button>
+            {/* Early access: the waitlist leads, sign-in is for people already
+                let in (components/WaitlistPanel.jsx). Someone who signs in
+                without an invite is sent on to /waitlist (lib/waitlist.js). */}
+            <WaitlistPanel onSignIn={signIn} signingIn={busy} signInError={err} />
             {/* State the scope plainly. These are exactly the scopes the
                 authorize URL asks for (email + profile + openid) — if that ever
                 changes, change this sentence with it. */}
             <p className="max-w-sm text-xs text-[var(--br-secondary)]">
               {t("Google sign-in is only used to create your StorySeam account — it shares your name, email address and profile picture. StorySeam never posts on your behalf and reads nothing else from your Google account.")}
             </p>
-            {err ? <p className="max-w-sm text-center text-xs text-[var(--br-tertiary)]">{err}</p> : null}
           </div>
 
           <p className="mt-6 max-w-lg border-t border-[var(--br-secondary)]/25 pt-6 text-xs leading-relaxed text-[var(--br-secondary)]">
@@ -734,7 +728,12 @@ export default function LoginGate({ children }) {
   const prefs = useProviderPrefs();
   const hfLinked = useHiggsfieldLinked();
   const skipped = useSetupSkipped();
+  // Early access: null while the check runs; false has already started the
+  // hard redirect to /waitlist (lib/waitlist.js), so hold the splash either way
+  // rather than paint a studio the Worker is about to refuse.
+  const access = useWaitlistAccess();
   if (isPending) return <Splash />;
+  if (session && access !== true) return <Splash />;
   // Signed out: send them to the sign-in PAGE, carrying the route they asked
   // for so OAuth can return them to it. `replace` so Back goes where they came
   // from rather than bouncing through the gate again.

@@ -90,7 +90,12 @@
     // The cutover switch, and the only one: "1" makes the clients mint v2-prefixed
     // ids for NEW chats. Existing conversations are unaffected either way, so
     // flipping this back is a complete rollback with nothing to migrate.
-    "FLUE_V2_NEW_CHATS": "1"
+    "FLUE_V2_NEW_CHATS": "1",
+    // Early access (lib/waitlist.js): "1" = only invited emails may use the app;
+    // everyone else is sent to /waitlist. Anything else = open to every signed-in
+    // user (the list still fills). Admin batch routes need the
+    // WAITLIST_ADMIN_TOKEN secret (`wrangler secret put WAITLIST_ADMIN_TOKEN`).
+    "WAITLIST_ENFORCED": "1"
   },
   // Service bindings to the flue chat agent Workers. The /eve/* proxy dispatches
   // through these (c.env.FLUE.fetch / c.env.FLUE_V2.fetch) instead of a

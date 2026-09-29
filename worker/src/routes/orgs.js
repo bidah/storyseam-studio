@@ -11,6 +11,7 @@
 // as a fallback. The token is the credential.
 
 import { sendInviteEmail } from "../lib/email.js";
+import { grantAccess } from "../lib/waitlist.js";
 import {
   listUserOrgs,
   listOrgMembers,
@@ -100,6 +101,10 @@ export function registerOrgs(app) {
       orgId, email, role, scopeMode, projectIds, projectRole, invitedBy: userId,
     });
     const url = inviteUrl(c, inv.id, inv.token);
+    // A teammate invited by someone already inside skips the waitlist: the org
+    // invite email below IS their invitation, so none is queued for them.
+    await grantAccess(c.env, email, "org-invite").catch((e) =>
+      console.error("waitlist grant for org invite failed:", e?.message || e));
     // Send the email inline — if it fails the invite still exists in D1 and the
     // inviteUrl is returned as a fallback, but the creator gets to know.
     let emailResult = null;

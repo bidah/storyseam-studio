@@ -290,3 +290,24 @@ CREATE TABLE IF NOT EXISTS films (
   created_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_films_user ON films (user_id, created_at DESC);
+
+-- The waitlist (early access). The app is open only to people whose email has
+-- `invited = 1`; everyone else who signs in is added here and sent to /waitlist.
+-- `invitation_sent` is separate from `invited` on purpose: opening a batch flips
+-- `invited`, and the email is a second step — the cron in index.js sends it for
+-- any row invited but not yet sent, so a row flipped by hand in SQL is mailed
+-- too. Read and written ONLY through worker/src/lib/waitlist.js.
+-- Prod gets it from migrations/006-waitlist.sql (which also grandfathers every
+-- existing account).
+CREATE TABLE IF NOT EXISTS waitlist (
+  email              TEXT PRIMARY KEY,
+  user_id            TEXT,
+  source             TEXT NOT NULL DEFAULT 'form',
+  invited            INTEGER NOT NULL DEFAULT 0,
+  invited_at         TEXT,
+  invitation_sent    INTEGER NOT NULL DEFAULT 0,
+  invitation_sent_at TEXT,
+  created_at         TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_waitlist_queue ON waitlist (invited, created_at);
+CREATE INDEX IF NOT EXISTS idx_waitlist_unsent ON waitlist (invited, invitation_sent);

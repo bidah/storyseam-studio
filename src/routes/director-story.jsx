@@ -44,6 +44,7 @@ import {
   useDirectorProject,
 } from "@/components/DirectorStory";
 import { useSession } from "@/lib/auth-client";
+import { useWaitlistAccess } from "@/lib/waitlist";
 import { setProjectId } from "@/lib/projectFetch";
 import { studioPath } from "@/lib/home";
 import { MONO } from "@/lib/hudTheme";
@@ -58,7 +59,14 @@ export function Component() {
  */
 export function StoryPage() {
   const { data: session, isPending } = useSession();
-  return <SimpleStory signedIn={!!session} sessionKnown={!isPending} />;
+  // Early access: a signed-in user counts as signed in here only once they're
+  // known to be invited — one who isn't is hard-redirected to /waitlist by the
+  // hook, and must not get a half-second of the project fetch and the resumed
+  // premise first.
+  const access = useWaitlistAccess();
+  const signedIn = !!session && access === true;
+  const sessionKnown = !isPending && (!session || access !== null);
+  return <SimpleStory signedIn={signedIn} sessionKnown={sessionKnown} />;
 }
 
 function SimpleStory({ signedIn, sessionKnown }) {

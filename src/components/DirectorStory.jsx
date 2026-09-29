@@ -59,6 +59,8 @@ import {
 import { SPECIALISTS, STAGE_ORDER, isSpecialistId } from "@/lib/specialists";
 import { useVoiceRecording, transcribeAudio, formatDuration } from "@/lib/useVoiceRecording";
 import { authClient, useSession } from "@/lib/auth-client";
+import { WaitlistPanel } from "@/components/WaitlistPanel";
+import { useWaitlistAccess } from "@/lib/waitlist";
 import { isDesktop } from "@/lib/desktop";
 import { getProjectId, setProjectId } from "@/lib/projectFetch";
 import { useProjectEvents } from "@/lib/useProjectEvents";
@@ -259,6 +261,8 @@ export async function fetchFilm(id) {
 export function AuthGate({ children }) {
   const { data: session, isPending } = useSession();
   const location = useLocation();
+  // A user who isn't invited yet is hard-redirected to /waitlist by the hook.
+  useWaitlistAccess();
   if (!isPending && !session) {
     const next = `${location.pathname}${location.search}`;
     return <Navigate to={`/login?next=${encodeURIComponent(next)}`} replace />;
@@ -1309,10 +1313,16 @@ export function takePendingStory() {
 }
 
 // `withPremise` is false when it opens from the header's sign-in icon: nothing
-// was typed, so there is nothing to promise to resume.
+// was typed, so there is nothing to promise to resume. While StorySeam is in
+// early access this leads with the waitlist and offers sign-in second
+// (components/WaitlistPanel.jsx); a user who signs in without an invite is sent
+// on to /waitlist (lib/waitlist.js).
 export function SignInDialog({ flow = FLOWS.director, open, onOpenChange, withPremise = true }) {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState(null);
+  // The email just added to the waitlist — the dialog then says thank you
+  // instead of asking again.
+  const [joined, setJoined] = useState(null);
   const callbackURL = withPremise ? `/?${RESUME_PARAM}=1` : "/";
   const signIn = async () => {
     setBusy(true);
@@ -1333,28 +1343,27 @@ export function SignInDialog({ flow = FLOWS.director, open, onOpenChange, withPr
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className="max-w-sm rounded-none border-[var(--br-secondary)]/40 bg-[var(--br-surface)] text-[var(--br-primary)]"
+        className="max-w-sm rounded-none border-[var(--br-secondary)]/40 bg-[var(--br-surface)] text-[var(--br-primary)] sm:max-w-[484px]"
         style={{ ...HUD, fontFamily: BODY }}
       >
-        <DialogTitle style={{ fontFamily: DISPLAY, letterSpacing: DISPLAY_TRACKING }} className="text-2xl font-bold uppercase">
-          {withPremise ? "Sign in to make your story" : "Sign in to StorySeam"}
+        <DialogTitle style={{ fontFamily: DISPLAY, letterSpacing: DISPLAY_TRACKING }} className="mt-4 pr-6 text-2xl font-bold uppercase">
+          {joined ? "Thank you" : "Join the waitlist"}
         </DialogTitle>
-        <DialogDescription className="text-[var(--br-secondary)]">
-          {withPremise
-            ? "Your premise is saved — it starts the moment you are back."
-            : "Pick up your stories where you left off, or start a new one."}
-        </DialogDescription>
-        <button
-          type="button"
-          onClick={signIn}
-          disabled={busy}
-          className="mt-2 flex h-11 items-center justify-center gap-2 bg-[var(--br-tertiary)] font-semibold text-[var(--br-on-primary)] transition-opacity hover:opacity-90 disabled:opacity-60"
-          data-google-signin
-        >
-          {busy ? <Loader2 size={16} className="animate-spin" /> : null}
-          Continue with Google
-        </button>
-        {err ? <p className="text-sm text-[var(--br-tertiary)]">{err}</p> : null}
+        {joined ? (
+          <DialogDescription className="text-[var(--br-secondary)]">
+            You're on the waitlist. We're adding spots every day — we'll email{" "}
+            <b className="text-[var(--br-primary)]">{joined}</b> as soon as yours is ready.
+          </DialogDescription>
+        ) : (
+          <>
+            <DialogDescription className="text-[var(--br-secondary)]">
+              {withPremise
+                ? "We're opening spots a few at a time. Leave your email and we'll let you know — or sign in if you already have access, and your premise starts the moment you're back."
+                : "We're opening spots a few at a time. Leave your email and we'll let you know when yours opens."}
+            </DialogDescription>
+            <WaitlistPanel className="max-w-none" onSignIn={signIn} signingIn={busy} signInError={err} onJoined={setJoined} />
+          </>
+        )}
       </DialogContent>
     </Dialog>
   );

@@ -49,6 +49,13 @@ export const router = createBrowserRouter([
     lazy: () => import("@/routes/login"),
     ErrorBoundary: RouteError,
   },
+  // Early access: where a signed-in user who isn't invited yet is sent
+  // (lib/waitlist.js). A sibling like /login — the shell is what they can't open.
+  {
+    path: "/waitlist",
+    lazy: () => import("@/routes/waitlist"),
+    ErrorBoundary: RouteError,
+  },
   // PUBLIC model page: the realtime director harness, in the HUD design. Its
   // own url rather than the site root — it is a product claim about one model,
   // not the front door to the studio.
