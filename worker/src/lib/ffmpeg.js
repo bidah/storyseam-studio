@@ -46,7 +46,7 @@ export async function getSandbox(env) {
     : {
         image: Image.base("debian:bookworm-slim").runCommands(
           "apt-get update",
-          "apt-get install -y --no-install-recommends ffmpeg curl ca-certificates jq",
+          "apt-get install -y --no-install-recommends ffmpeg curl ca-certificates jq python3",
           "rm -rf /var/lib/apt/lists/*",
         ),
         resources: { cpu: 2, memory: 4, disk: 10 },

@@ -6,7 +6,9 @@
 //           next segment extends (@Video1). The tail is re-encoded, not copied,
 //           so it starts on the exact second rather than the previous keyframe.
 //   stitch  every segment, joined into the one film. Each is normalised to one
-//           size, frame rate and audio layout first so the concat can copy.
+//           size, frame rate and audio layout, then the seam pass
+//           (./seam-edit.js) cuts each joint on the frames that match and
+//           crossfades the sound across it.
 //   extract every audition take (a 5s video on the Film's engine, or an audio
 //           model's render, whatever its container) → one mono mp3 each, filed
 //           as the character's voice reference (story-flow/voices.js). One job
@@ -16,13 +18,14 @@
 // stated by fal. So the stitch measures each extended segment: one that runs
 // past its requested length by (nearly) the tail's length opens with the tail
 // replayed, and that opening is trimmed — the film never shows a seam twice.
-import { createJob } from "../../jobs.js";
+import { createJob, getJob } from "../../jobs.js";
 import { getSandbox } from "../../ffmpeg.js";
 import { startSandboxJob } from "../../jobs.js";
 import { filesUrl, mediaKey } from "../../media.js";
 import { uploadFnBash } from "../../upload-snippet.js";
 import { daytonaScorer } from "../../film-score.js";
 import { EXTENSION_TAIL_SECONDS, VOICE_REF_SECONDS } from "../../film-plan.ts";
+import { SEAM_EDIT_PY } from "./seam-edit.js";
 
 const shq = (s) => `'${String(s).replace(/'/g, "'\\''")}'`;
 export const storyKey = (pid, file) => mediaKey(pid, "director", file);
@@ -35,6 +38,9 @@ const vfFor = (resolution) => {
   return `scale=${W}:${H}:force_original_aspect_ratio=decrease,pad=${W}:${H}:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=${FPS}`;
 };
 const ENC = "-c:v libx264 -preset veryfast -crf 20 -pix_fmt yuv420p -c:a aac -b:a 160k -ar 48000 -ac 2";
+// The normalised clip the seam pass reads: near-lossless picture and PCM sound,
+// so cutting on a frame and re-encoding once costs no visible generation.
+const MEZZ = "-c:v libx264 -preset veryfast -crf 14 -pix_fmt yuv420p -c:a pcm_s16le -ar 48000 -ac 2";
 
 function preamble(env, dir) {
   const base = String(env.WORKER_PUBLIC_URL || "").replace(/\/+$/, "");
@@ -74,16 +80,25 @@ export function cutScript(env, { sourceUrl, clipKey, tailKey, frameKey }) {
 /**
  * Join the segments into one film. `clips` = [{ key, dur, extended }] in order.
  * An extended clip longer than dur + tail − 1 s is trimmed of its first `tail`
- * seconds (the replayed source); a clip with no audio gets silence so the
- * concat keeps one audio stream.
+ * seconds (the replayed source); a clip with no audio gets silence so every
+ * clip carries one audio stream.
+ *
+ * Each clip is normalised to a near-lossless intermediate, then the SEAM PASS
+ * (./seam-edit.js — cut-doctor + mix-doctor) cuts every joint on the frame pair
+ * that actually matches, levels and crossfades the sound across it, encodes
+ * the film once, and leaves its numbers at `reportPath` (scratch, read back by
+ * the stage). If that pass fails for any reason the clips are joined as they
+ * are — a polish step never costs the author the film.
  */
-export function stitchScript(env, { clips, outKey, resolution }) {
+export function stitchScript(env, { clips, outKey, resolution, reportPath }) {
   const VF = vfFor(resolution);
+  const [W, H] = FRAME[resolution] || FRAME["480p"];
   const dir = `/tmp/sf-stitch-${crypto.randomUUID()}`;
+  const report = reportPath || `${dir}/seams.json`;
   const lines = [...preamble(env, dir), `: > ${dir}/list.txt`];
   clips.forEach((c, i) => {
     const src = `${dir}/in${i}.mp4`;
-    const out = `${dir}/n${i}.mp4`;
+    const out = `${dir}/n${i}.mkv`;
     lines.push(
       `curl -fsS -o ${src} ${shq(filesUrl(env, c.key))}`,
       `SS=0`,
@@ -94,13 +109,24 @@ export function stitchScript(env, { clips, outKey, resolution }) {
           ]
         : []),
       `A=$(ffprobe -v error -select_streams a -show_entries stream=index -of csv=p=0 ${src} | head -1)`,
-      `if [ -n "$A" ]; then ffmpeg -hide_banner -v error -y -ss $SS -i ${src} -vf ${shq(VF)} ${ENC} ${out};` +
-        ` else ffmpeg -hide_banner -v error -y -ss $SS -i ${src} -f lavfi -i anullsrc=r=48000:cl=stereo -map 0:v -map 1:a -shortest -vf ${shq(VF)} ${ENC} ${out}; fi`,
+      `if [ -n "$A" ]; then ffmpeg -hide_banner -v error -y -ss $SS -i ${src} -vf ${shq(VF)} ${MEZZ} ${out};` +
+        ` else ffmpeg -hide_banner -v error -y -ss $SS -i ${src} -f lavfi -i anullsrc=r=48000:cl=stereo -map 0:v -map 1:a -shortest -vf ${shq(VF)} ${MEZZ} ${out}; fi`,
       `echo "file '${out}'" >> ${dir}/list.txt`,
     );
   });
+  const outs = clips.map((_, i) => `${dir}/n${i}.mkv`).join(" ");
   lines.push(
-    `ffmpeg -hide_banner -v error -y -f concat -safe 0 -i ${dir}/list.txt -c copy -movflags +faststart ${dir}/film.mp4`,
+    // The box image predates the seam pass; install python once per sandbox.
+    `if ! command -v python3 >/dev/null 2>&1; then (apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends python3) >/dev/null 2>&1 || true; fi`,
+    `rm -f ${shq(report)}`,
+    `cat > ${dir}/seam_edit.py <<'SEAM_EDIT_PY'`,
+    SEAM_EDIT_PY.replace(/^\n/, ""),
+    `SEAM_EDIT_PY`,
+    `if ! python3 ${dir}/seam_edit.py --out ${dir}/film.mp4 --report ${shq(report)} --fps ${FPS} --width ${W} --height ${H} ${outs}; then`,
+    `  echo "seam pass failed — joining the segments as they are" >&2`,
+    `  rm -f ${shq(report)}`,
+    `  ffmpeg -hide_banner -v error -y -f concat -safe 0 -i ${dir}/list.txt ${ENC} -movflags +faststart ${dir}/film.mp4`,
+    `fi`,
     `upload_r2 ${dir}/film.mp4 ${shq(outKey)}`,
     `rm -rf ${dir}`,
   );
@@ -144,10 +170,26 @@ async function start(env, kind, script) {
  *   startCut(env, spec) → jobId    startStitch(env, spec) → jobId
  *   startExtract(env, spec) → jobId
  *   poll(env, jobId) → { status: 'running'|'done'|'error', error }
+ *   readReport(env, jobId, path) → the seam pass's report (JSON), or null
  */
 export const daytonaStoryBox = {
   startCut: (env, spec) => start(env, "story-flow-cut", cutScript(env, spec)),
   startStitch: (env, spec) => start(env, "story-flow-stitch", stitchScript(env, spec)),
   startExtract: (env, spec) => start(env, "story-flow-voices", extractScript(env, spec)),
   poll: (env, jobId) => daytonaScorer.poll(env, jobId),
+  // The report is scratch in the sandbox's /tmp: gone if the sandbox stopped
+  // since, and then the film simply carries no seam numbers.
+  async readReport(env, jobId, path) {
+    try {
+      const row = await getJob(env, jobId);
+      if (!row?.sandbox_id || !path) return null;
+      const { Daytona } = await import("@daytona/sdk");
+      const sandbox = await new Daytona({ apiKey: env.DAYTONA_API_KEY }).get(row.sandbox_id);
+      const bytes = await sandbox.fs.downloadFile(path);
+      try { await sandbox.fs.deleteFile(path); } catch { /* scratch */ }
+      return JSON.parse(new TextDecoder().decode(bytes));
+    } catch {
+      return null;
+    }
+  },
 };

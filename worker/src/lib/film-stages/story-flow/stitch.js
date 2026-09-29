@@ -1,7 +1,9 @@
 // The story flow's "Final cut" stage — the last one (/story-flow, the Seedance
 // 2.5 Film). Every rendered segment joined, in order, into the ONE film the
 // author gets back (media.js stitchScript: each normalised, an extension's
-// replayed source trimmed, then concatenated), on the box, across alarms.
+// replayed source trimmed, then every joint cut on the frames that match with
+// the sound crossfaded across it — ./seam-edit.js), on the box, across alarms.
+// The seam pass's numbers per joint land on the result as `seams`.
 //
 // The film is filed the way a Director Film is: as a kept row in the project's
 // `director-sittings` ledger, with the joined file as its `scoredFile` (there is
@@ -11,7 +13,7 @@
 // "Film — <title>". The row is found again by `filmId` on a re-run, never
 // filed twice.
 //
-// result = { seriesId, sittingId, file, url, seconds, segments, jobId }
+// result = { seriesId, sittingId, file, url, seconds, segments, jobId, seams }
 //   — the shape film-job.js `filmOf` reads for the finished Film.
 import { directorUrl, readSeries, updateSittings } from "../../director.js";
 import { filmResolutionOf, FILM_RATES_USD, formatLength } from "../../film-plan.ts";
@@ -63,14 +65,16 @@ export async function runStoryFlowStitchStage({ job, results, env, attempt = 1 }
   // A fresh attempt (or the first call) starts the join.
   if (!state.jobId || (state.attempt || 1) < attempt) {
     const file = `story-${slug(job.id)}-film-${crypto.randomUUID().slice(0, 6)}.mp4`;
+    const reportPath = `/tmp/sf-seams-${crypto.randomUUID()}.json`;
     const jobId = await box.startStitch(env, {
       // A segment that continued the one before it (H3's run says so per
       // segment; Seedance's every one after the first) may replay its source.
       clips: segs.map((s) => ({ key: storyKey(pid, s.file), dur: s.dur, extended: s.extended ?? s.index > 0 })),
       outKey: storyKey(pid, file),
       resolution: filmResolutionOf(job.resolution),
+      reportPath,
     });
-    state = { jobId, attempt, file };
+    state = { jobId, attempt, file, reportPath };
     return {
       pending: true,
       summary: `Joining ${segs.length} segments into ${formatLength(seconds)}`,
@@ -85,20 +89,27 @@ export async function runStoryFlowStitchStage({ job, results, env, attempt = 1 }
   }
   if (polled.status === "error") throw new Error(`The final cut failed — ${polled.error || "the sandbox failed"}`);
 
+  // Null when the seam pass fell back to a plain join, or its scratch is gone.
+  const report = box.readReport ? await box.readReport(env, state.jobId, state.reportPath) : null;
+  const seams = Array.isArray(report?.joints) ? report.joints : null;
+  const cutSeconds = Number(report?.seconds) > 0 ? Math.round(report.seconds * 10) / 10 : seconds;
+
   const seriesId = run.seriesId || results?.prompts?.seriesId || null;
   const series = seriesId ? await readSeries(env, pid, seriesId) : null;
   const title = results?.world?.title || series?.title || "Story";
-  const sittingId = await fileStoryFilm(env, pid, { job, seriesId, title, file: state.file, seconds });
+  const sittingId = await fileStoryFilm(env, pid, { job, seriesId, title, file: state.file, seconds: cutSeconds });
+  const matched = seams ? ` · ${seams.length} seam${seams.length === 1 ? "" : "s"} matched` : "";
   return {
-    summary: `${formatLength(seconds)} film · ${segs.length} segment${segs.length === 1 ? "" : "s"} joined`,
+    summary: `${formatLength(cutSeconds)} film · ${segs.length} segment${segs.length === 1 ? "" : "s"} joined${matched}`,
     result: {
       seriesId,
       sittingId,
       file: state.file,
       url: directorUrl(state.file),
-      seconds,
+      seconds: cutSeconds,
       segments: segs.length,
       jobId: state.jobId,
+      seams,
     },
   };
 }
