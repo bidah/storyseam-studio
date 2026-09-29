@@ -13,7 +13,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router";
 import { ArrowRight, ChevronDown, Download, Loader2, LogIn } from "lucide-react";
-import { Page, ProcessSteps, shareMediaSource, withFirstFrame } from "@/components/DirectorStory";
+import { FILL_ACTION, Page, ProcessSteps, shareMediaSource, withFirstFrame } from "@/components/DirectorStory";
 import { formatLength } from "@/lib/film-plan";
 import { DISPLAY, DISPLAY_TRACKING, MONO } from "@/lib/hudTheme";
 import { cn } from "@/lib/utils";
@@ -153,7 +153,7 @@ function WatchFilm({ film, token }) {
       <footer className="flex shrink-0 flex-col items-center gap-3 px-2 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:px-8">
         {film.job ? (
           <div style={pictureWidth ? { width: pictureWidth } : undefined} className="flex w-full max-w-full justify-end" data-process-steps>
-            <ProcessSteps job={film.job} source={shareMediaSource(token)} />
+            <ProcessSteps job={film.job} source={shareMediaSource(token)} className={FILL_ACTION} />
           </div>
         ) : null}
         {film.idea ? <PromptCard text={film.idea} width={pictureWidth} /> : null}

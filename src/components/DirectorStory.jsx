@@ -1812,7 +1812,7 @@ const ACTION =
 // A finished Film's actions: a compact row in the header, right of the prompt.
 const ROW_ACTION = cn(ACTION, "shrink-0");
 // …which on a phone fills its row instead: full width, label centred.
-const FILL_ACTION = cn(ROW_ACTION, "w-full justify-center sm:w-auto sm:justify-start");
+export const FILL_ACTION = cn(ROW_ACTION, "w-full justify-center sm:w-auto sm:justify-start");
 // The Film's width on the page: a 16:9 box no taller than 70% of the viewport.
 // The prompt card above it is capped to the same width so the two line up.
 // Never wider than its container either: cn() merges this over a `max-w-full`
