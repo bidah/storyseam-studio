@@ -53,7 +53,7 @@ import { studioPath } from "@/lib/home";
 import { Dialog, DialogContent, DialogDescription, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
-  DEFAULT_DEEP_SPECIALISTS, DEFAULT_FILM_RESOLUTION, DEFAULT_FILM_SCORE, DEFAULT_FILM_VOICES, FILM_DEFAULT_SECONDS, FILM_RESOLUTIONS, FILM_DEPTHS, FILM_STEPS, FILM_STYLES, FILM_VOICES, FILM_WRITERS, DEFAULT_FILM_WRITER, STORY_FLOW_DEFAULT_SECONDS,
+  DEFAULT_DEEP_SPECIALISTS, DEFAULT_FILM_RESOLUTION, DEFAULT_FILM_MUSIC, DEFAULT_FILM_SCORE, DEFAULT_FILM_VOICES, FILM_MUSIC, FILM_DEFAULT_SECONDS, FILM_RESOLUTIONS, FILM_DEPTHS, FILM_STEPS, FILM_STYLES, FILM_VOICES, FILM_WRITERS, DEFAULT_FILM_WRITER, STORY_FLOW_DEFAULT_SECONDS,
   STORY_FLOW_STEPS, filmVoicesOf, formatLength, isStoryEngine, roomEstimate,
 } from "@/lib/film-plan";
 import { SPECIALISTS, STAGE_ORDER, isSpecialistId } from "@/lib/specialists";
@@ -465,6 +465,20 @@ function readStoredScore() {
 function storeScore(on) {
   try { window.localStorage.setItem(SCORE_KEY, on ? "on" : "off"); } catch { /* private mode: not remembered */ }
 }
+// The model the score renders on (film-plan.ts FILM_MUSIC): MiniMax Music 3
+// (per second, the default) or ElevenLabs Music (per started minute).
+const MUSIC_KEY = "director-story:music";
+function readStoredMusic() {
+  try {
+    const m = window.localStorage.getItem(MUSIC_KEY) || DEFAULT_FILM_MUSIC;
+    return FILM_MUSIC.some((x) => x.id === m) ? m : DEFAULT_FILM_MUSIC;
+  } catch {
+    return DEFAULT_FILM_MUSIC;
+  }
+}
+function storeMusic(music) {
+  try { window.localStorage.setItem(MUSIC_KEY, music); } catch { /* private mode: not remembered */ }
+}
 // The Voices pass a story-engine Film runs (film-plan.ts FILM_VOICES): every
 // character auditioned once, on the Film's own video model, Seed Audio or
 // ElevenLabs, and bound as a voice reference by every segment after. Sent only
@@ -519,11 +533,12 @@ function Choice({ on, onClick, children }) {
   );
 }
 
-function StorySettings({ flow, seconds, onSeconds, resolution, onResolution, score, onScore, voices, onVoices, style, onStyle, writer, onWriter, disabled }) {
+function StorySettings({ flow, seconds, onSeconds, resolution, onResolution, score, onScore, music, onMusic, voices, onVoices, style, onStyle, writer, onWriter, disabled }) {
   const writers = FILM_WRITERS;
   // Only a story engine auditions its cast; the Director has no audio input.
   const storyFlow = isStoryEngine(flow.engine);
   const voice = FILM_VOICES.find((x) => x.id === voices) || FILM_VOICES[0];
+  const scoreModel = FILM_MUSIC.find((x) => x.id === music) || FILM_MUSIC[0];
   // A phone gets the whole screen: the popover grew wider than the viewport and
   // ran off its edge. Desktop keeps the popover beside the button.
   const narrow = useNarrow();
@@ -585,6 +600,20 @@ function StorySettings({ flow, seconds, onSeconds, resolution, onResolution, sco
           <Choice on={!score} onClick={() => onScore(false)}>Off</Choice>
         </div>
       </div>
+      {score ? (
+        <div className="mt-4">
+          <SettingsLabel id="story-music-label" hint={scoreModel.blurb}>
+            Score model
+          </SettingsLabel>
+          <div role="radiogroup" aria-labelledby="story-music-label" className="flex flex-wrap gap-y-1.5" data-story-music>
+            {FILM_MUSIC.map((x) => (
+              <Choice key={x.id} on={x.id === music} onClick={() => onMusic(x.id)}>
+                {x.label}
+              </Choice>
+            ))}
+          </div>
+        </div>
+      ) : null}
       {storyFlow ? (
         <div className="mt-4">
           <SettingsLabel id="story-voices-label" hint={voice.blurb}>
@@ -1030,6 +1059,11 @@ export function SimpleView({ flow = FLOWS.director, onFlow, onSubmit, submitting
     setScore(on);
     storeScore(on);
   };
+  const [music, setMusic] = useState(readStoredMusic);
+  const chooseMusic = (id) => {
+    setMusic(id);
+    storeMusic(id);
+  };
   const [voices, setVoices] = useState(readStoredVoices);
   const chooseVoices = (id) => {
     setVoices(id);
@@ -1106,6 +1140,7 @@ export function SimpleView({ flow = FLOWS.director, onFlow, onSubmit, submitting
       style: style || undefined,
       resolution: resolution !== DEFAULT_FILM_RESOLUTION ? resolution : undefined,
       score: score ? undefined : false,
+      music: score ? music : undefined,
       // The Voices pass, for a story engine only (the Director ignores it).
       voices: isStoryEngine(flow.engine) ? voices : undefined,
       writer,
@@ -1125,6 +1160,7 @@ export function SimpleView({ flow = FLOWS.director, onFlow, onSubmit, submitting
       <StorySettings
         flow={flow} seconds={seconds} onSeconds={chooseSeconds} resolution={resolution} onResolution={chooseResolution}
         score={score} onScore={chooseScore}
+        music={music} onMusic={chooseMusic}
         voices={voices} onVoices={chooseVoices}
         style={style} onStyle={chooseStyle}
         writer={writer} onWriter={chooseWriter} disabled={submitting}
@@ -1282,6 +1318,7 @@ export function savePendingStory(flow, prompt, opts = {}) {
       prompt, flow: flow.id,
       seconds: opts.seconds ?? null, style: opts.style ?? null, writer: opts.writer ?? null, resolution: opts.resolution ?? null,
       score: opts.score ?? null,
+      music: opts.music ?? null,
       voices: opts.voices ?? null,
       depth: opts.depth ?? null, specialists: opts.specialists ?? null,
       at: Date.now(),
@@ -1303,6 +1340,7 @@ export function takePendingStory() {
         seconds: saved.seconds ?? undefined, style: saved.style ?? undefined, writer: saved.writer ?? undefined,
         resolution: saved.resolution ?? undefined,
         score: saved.score === false ? false : undefined,
+        music: saved.music ?? undefined,
         voices: saved.voices ?? undefined,
         depth: saved.depth ?? undefined, specialists: Array.isArray(saved.specialists) ? saved.specialists : undefined,
       },

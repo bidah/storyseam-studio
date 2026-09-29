@@ -4,7 +4,7 @@ import {
   MIN_END_IMAGE_GAP_SECONDS,
   MIN_OPENING_END_IMAGE_SECONDS,
 } from './series';
-import { USD_PER_MINUTE as SCORE_USD_PER_MINUTE } from './music-plan';
+import { USD_PER_MINUTE as SCORE_USD_PER_MINUTE, MINIMAX_USD_PER_SECOND, type MusicModel } from './music-plan';
 import { SPECIALIST_BY_ID } from './specialists';
 
 // THE FILM PLAN — what a prompt amounts to before anything is paid for: how
@@ -95,7 +95,7 @@ export const SANDBOX_OVERHEAD_MINUTES = 8;
 export type StageEstimate = {
   /** How many of `unit` this stage spends. */
   units: number;
-  unit: 'sheet' | 'voice' | 'clip second' | 'sitting second' | 'score minute' | 'sandbox minute';
+  unit: 'sheet' | 'voice' | 'clip second' | 'sitting second' | 'score minute' | 'score second' | 'sandbox minute';
   /** USD per unit, from `FILM_RATES_USD`. */
   rate: number;
   usd: number;
@@ -149,6 +149,8 @@ export type FilmPlanInput = {
   referenceSheets?: number | null;
   /** Whether the Score stage runs (a continuous cue under the finished film); absent is on. */
   score?: boolean | null;
+  /** The model the score renders on (FILM_MUSIC); absent is the default, MiniMax Music 3. */
+  music?: string | null;
   /** The Voices pass (FILM_VOICES) a story engine runs; absent or unknown is none (a Film from before). */
   voices?: string | null;
   /** How many characters get a voice — the World's cast; used with `voices`. */
@@ -164,6 +166,24 @@ export type FilmPlanInput = {
 // switch turns it off (`score: false` on the job); absent is on.
 export const DEFAULT_FILM_SCORE = true;
 export const filmScoreOf = (score?: boolean | null): boolean => score !== false;
+
+// The model the score is rendered on. MiniMax Music 3 is billed per second of
+// music; ElevenLabs Music per STARTED minute of every piece, so a score cut
+// into three short pieces paid for three minutes. A NEW Film names its model
+// (MiniMax unless the author picks ElevenLabs); a job stored before the choice
+// existed has none and keeps ElevenLabs, which is what it was scored on.
+export const FILM_MUSIC: readonly { id: MusicModel; label: string; blurb: string }[] = [
+  { id: 'minimax', label: 'MiniMax Music 3', blurb: 'billed per second of music — about $0.12 a minute' },
+  { id: 'elevenlabs', label: 'ElevenLabs Music', blurb: 'billed per started minute of every piece — $0.60 each' },
+];
+export const FILM_MUSIC_IDS: readonly string[] = FILM_MUSIC.map((x) => x.id);
+export const DEFAULT_FILM_MUSIC: MusicModel = 'minimax';
+/** A job's stored `music` → the model its score renders on (absent: a job from before, ElevenLabs). */
+export const filmMusicOf = (music?: string | null): MusicModel =>
+  FILM_MUSIC_IDS.includes(music as MusicModel) ? (music as MusicModel) : 'elevenlabs';
+/** The model a NEW Film's score renders on: the one asked for, or the default. */
+export const newFilmMusic = (music?: string | null): MusicModel =>
+  FILM_MUSIC_IDS.includes(music as MusicModel) ? (music as MusicModel) : DEFAULT_FILM_MUSIC;
 
 // ── Length parsing ────────────────────────────────────────────────────────
 
@@ -326,12 +346,12 @@ export function estimateFilm(args: {
   pinsPerReel: number[];
   referenceSheets: number;
   score?: boolean | null;
+  music?: string | null;
 }): FilmEstimate {
   const R = FILM_RATES_USD;
   // Budget the worst case: every seam may push the film on by up to a chunk,
   // and the score is written to the kept film's measured length, not the plan.
   const sittingSeconds = Math.max(SITTING_MIN_BILLED_SECONDS, args.seconds + args.seams * SEAM_DRIFT_SECONDS);
-  const scoreMinutes = filmScoreOf(args.score) ? Math.ceil(sittingSeconds / 60) : 0;
   const sandboxMinutes = Math.ceil(sittingSeconds / 60) + SANDBOX_OVERHEAD_MINUTES;
   const clipTotal = args.pinsPerReel.reduce((sum, pins) => sum + clipSeconds(pins), 0);
 
@@ -339,7 +359,7 @@ export function estimateFilm(args: {
     referenceSheets: stage(args.referenceSheets, 'sheet', R.referenceSheet),
     clips: stage(clipTotal, 'clip second', R.clipSecond),
     sitting: stage(sittingSeconds, 'sitting second', R.sittingSecond),
-    score: stage(scoreMinutes, 'score minute', R.scoreMinute),
+    score: scoreEstimate(sittingSeconds, args.score, args.music),
     sandbox: stage(sandboxMinutes, 'sandbox minute', R.sandboxMinute),
   };
   const total = cents(Object.values(perStage).reduce((sum, s) => sum + s.usd, 0));
@@ -377,7 +397,7 @@ export function planFilm(input: FilmPlanInput = {}): FilmPlan {
     // The sitting's rate is quoted per second whatever the resolution: the
     // Director's price at 720p is not published separately. ESTIMATE.
     resolution: filmResolutionOf(input.resolution),
-    estimate: estimateFilm({ seconds, seams: grid.seams, pinsPerReel: grid.pinsPerReel, referenceSheets, score: input.score }),
+    estimate: estimateFilm({ seconds, seams: grid.seams, pinsPerReel: grid.pinsPerReel, referenceSheets, score: input.score, music: input.music }),
   };
 }
 
@@ -872,9 +892,16 @@ export type StoryFlowPlan = {
   };
 };
 
-/** The score's estimate for a film of `seconds`: one cue per whole minute, or nothing when it is off. */
-const scoreEstimate = (seconds: number, score?: boolean | null): StageEstimate =>
-  stage(filmScoreOf(score) ? Math.ceil(seconds / 60) : 0, 'score minute', FILM_RATES_USD.scoreMinute);
+/**
+ * The score's estimate for a film of `seconds`, or nothing when it is off:
+ * MiniMax per second of music, ElevenLabs one cue per started minute.
+ */
+const scoreEstimate = (seconds: number, score?: boolean | null, music?: string | null): StageEstimate => {
+  if (!filmScoreOf(score)) return stage(0, 'score minute', FILM_RATES_USD.scoreMinute);
+  return newFilmMusic(music) === 'minimax'
+    ? stage(Math.ceil(seconds), 'score second', MINIMAX_USD_PER_SECOND)
+    : stage(Math.ceil(seconds / 60), 'score minute', FILM_RATES_USD.scoreMinute);
+};
 /** Box jobs the score adds when it is on: the measure and the mix. */
 const scoreSandboxJobs = (score?: boolean | null): number => (filmScoreOf(score) ? 2 : 0);
 
@@ -894,7 +921,7 @@ export function planStoryFlow(input: FilmPlanInput = {}): StoryFlowPlan {
     0,
   );
   const video: StageEstimate = { units: seconds, unit: 'clip second', rate: R.seedanceSecond * scale, usd: cents(videoUsd) };
-  const score = scoreEstimate(seconds, input.score);
+  const score = scoreEstimate(seconds, input.score, input.music);
   // One box job per segment (fetch + cut), one for the final cut, and the score's two.
   const sandbox = stage(durations.length + 2 + scoreSandboxJobs(input.score), 'sandbox minute', R.sandboxMinute);
   const referenceSheets = stage(sheets, 'sheet', R.referenceSheet);
@@ -957,7 +984,7 @@ export function planH3(input: FilmPlanInput = {}): H3Plan {
   // a crowded segment pays for its extras when it renders.
   const videoUsd = durations.reduce((sum, d) => sum + h3SegmentUsd(d, H3_FREE_REFERENCE_IMAGES, resolution), 0);
   const video: StageEstimate = { units: seconds, unit: 'clip second', rate: R.second[h3Resolution], usd: cents(videoUsd) };
-  const score = scoreEstimate(seconds, input.score);
+  const score = scoreEstimate(seconds, input.score, input.music);
   // One box job per segment (fetch + cut the tail), one for the final cut, and the score's two.
   const sandbox = stage(durations.length + 2 + scoreSandboxJobs(input.score), 'sandbox minute', R.sandboxMinute);
   const referenceSheets = stage(sheets, 'sheet', R.referenceSheet);

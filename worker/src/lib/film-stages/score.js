@@ -76,7 +76,7 @@
 import { readSeries, readSittings, directorUrl } from "../director.js";
 import { readDoc } from "../docs.js";
 import { normalizeShot } from "../shots.js";
-import { FILM_RATES_USD } from "../film-plan.ts";
+import { FILM_RATES_USD, filmMusicOf } from "../film-plan.ts";
 import { CHUNK_MAX_MS, CHUNK_MIN_MS, MAX_CHUNKS, planTotalMs, renderCostUsd, styleTags } from "../music-plan.ts";
 import {
   DEFAULT_MIX,
@@ -281,6 +281,9 @@ export async function runScoreStage({ job, results, env, attempt = 1, model }, d
   const scorer = deps.scorer || daytonaScorer;
   const fetchFn = deps.fetch || fetch;
   const pid = job.projectId;
+  // The model the score renders on (film-plan.ts FILM_MUSIC); a job from
+  // before the choice keeps ElevenLabs.
+  const music = filmMusicOf(job.music);
 
   // ── What to score ──────────────────────────────────────────────────────────
   const sitting = results?.sitting;
@@ -407,7 +410,8 @@ export async function runScoreStage({ job, results, env, attempt = 1, model }, d
     const piece = pieces[i];
     let r = piece.render;
     if (r?.status === "running") {
-      const polled = await pollCue(env, pid, r.requestId, { seriesId, key }, fetchFn);
+      // Polled on the model it was SENT to (a render from before `model` was kept is ElevenLabs).
+      const polled = await pollCue(env, pid, r.requestId, { seriesId, key, model: r.model || "elevenlabs" }, fetchFn);
       if (polled.status === "done") {
         r = { ...r, status: "done", file: polled.file, url: polled.url, seconds: polled.seconds ?? piece.lengthMs / 1000, pieceId: polled.pieceId };
       } else if (polled.status === "error") {
@@ -421,20 +425,21 @@ export async function runScoreStage({ job, results, env, attempt = 1, model }, d
       // for this piece — pick it up rather than pay for a second one.
       const parked = !r ? await pendingCueFor(env, pid, job.id, i) : null;
       if (parked) {
-        r = { requestId: parked.requestId, attempt, status: "running", chunks: piece.plan.chunks.length };
+        r = { requestId: parked.requestId, model: parked.model || "elevenlabs", attempt, status: "running", chunks: piece.plan.chunks.length };
       } else {
         const sent = await submitCue(env, pid, {
           seriesId,
           plan: piece.plan,
           filmMs: piece.lengthMs,
           key,
+          model: music,
           extra: { filmId: job.id, piece: i },
         }, fetchFn);
         if (!sent.ok) {
           throw fail(`fal refused ${pieces.length > 1 ? `piece ${i + 1} of the score` : "the cue"}: ${sent.error}${sent.errors ? ` — ${sent.errors.map((e) => e.message).join("; ")}` : ""}`);
         }
-        spend += renderCostUsd(planTotalMs(piece.plan));
-        r = { requestId: sent.requestId, attempt, status: "running", chunks: piece.plan.chunks.length };
+        spend += renderCostUsd(planTotalMs(piece.plan), sent.model);
+        r = { requestId: sent.requestId, model: sent.model, attempt, status: "running", chunks: piece.plan.chunks.length };
       }
     }
     pieces[i] = { ...piece, render: r };

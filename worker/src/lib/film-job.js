@@ -152,7 +152,7 @@ import { runStoryFlowStitchStage } from "./film-stages/story-flow/stitch.js";
 import { runVoicesStage } from "./film-stages/story-flow/voices.js";
 import { runH3PromptsStage } from "./film-stages/h3/prompts.js";
 import { runH3RunStage } from "./film-stages/h3/run.js";
-import { planH3, filmScoreOf, filmVoicesOf, isStoryEngine, FILM_VOICES, FILM_VOICE_IDS } from "./film-plan.ts";
+import { planH3, filmScoreOf, filmVoicesOf, isStoryEngine, newFilmMusic, FILM_MUSIC, FILM_MUSIC_IDS, FILM_VOICES, FILM_VOICE_IDS } from "./film-plan.ts";
 import {
   planFilm, planStoryFlow, formatLength, filmStepsFor, FILM_ENGINES, FILM_STYLES, FILM_STYLE_IDS, FILM_WRITERS, FILM_WRITER_IDS, DEFAULT_FILM_WRITER,
   FILM_DEPTHS, FILM_DEPTH_IDS, DEFAULT_DEEP_SPECIALISTS, MAX_REFERENCE_SHEETS, MAX_STORY_FLOW_SHEETS,
@@ -230,6 +230,13 @@ export function checkFilmEngine(engine) {
 export function checkFilmScore(score) {
   if (score === undefined || score === null || typeof score === "boolean") return null;
   return "A Film's score is on (absent) or false.";
+}
+
+/** The score's model (film-plan.ts FILM_MUSIC); absent is the default. → message | null */
+export function checkFilmMusic(music) {
+  if (music === undefined || music === null || music === "") return null;
+  if (FILM_MUSIC_IDS.includes(music)) return null;
+  return `A Film's score is rendered on one of ${FILM_MUSIC.map((x) => `${x.id} (${x.label})`).join(", ")}.`;
 }
 
 /** The Voices pass (film-plan.ts FILM_VOICES); none is fine (no stage). → message | null */
@@ -483,7 +490,7 @@ export function publicJob(job) {
  * → `{ ok: true, job }` | `{ ok: false, refusal: { code, message } }`, code
  *   'invalid' | 'busy' | 'paused' | 'unavailable' | 'allowance'.
  */
-export async function startFilm(existing, { prompt, seconds, style, engine, writer, resolution, score, depth, specialists, voices, userId, projectId, episodeId }, deps = {}) {
+export async function startFilm(existing, { prompt, seconds, style, engine, writer, resolution, score, music, depth, specialists, voices, userId, projectId, episodeId }, deps = {}) {
   const env = deps.env;
   const text = str(prompt);
   if (!text) return refuse("invalid", "Write a prompt first.");
@@ -493,6 +500,8 @@ export async function startFilm(existing, { prompt, seconds, style, engine, writ
   if (badScore) return refuse("invalid", badScore);
   const badVoices = checkFilmVoices(voices);
   if (badVoices) return refuse("invalid", badVoices);
+  const badMusic = checkFilmMusic(music);
+  if (badMusic) return refuse("invalid", badMusic);
   const badLength = checkFilmSeconds(seconds, engine);
   if (badLength) return refuse("invalid", badLength);
   const badStyle = checkFilmStyle(style);
@@ -542,6 +551,9 @@ export async function startFilm(existing, { prompt, seconds, style, engine, writ
       ...(resolution && resolution !== DEFAULT_FILM_RESOLUTION ? { resolution } : {}),
       // The score, only when the author switched it OFF.
       ...(score === false ? { score: false } : {}),
+      // The score's model — always named on a new Film, so a job stored
+      // without one is known to be from before (and keeps ElevenLabs).
+      ...(score === false ? {} : { music: newFilmMusic(music) }),
       // The writers' room, when the author asked for one: its passes ride along.
       ...(depth === "deep" ? { depth, specialists: roomFor({ specialists }) } : {}),
       // The Voices pass, only where it can run (a story engine): the Director
@@ -940,7 +952,7 @@ export function confirmPlan(job, worldResult) {
     const characters = worldResult?.characters?.length || 0;
     const input = {
       prompt: job.prompt, seconds: job.seconds ?? null, resolution: job.resolution ?? null, referenceSheets: sheets, score: scored,
-      voices: job.voices ?? null, characters,
+      voices: job.voices ?? null, characters, music: job.music ?? "elevenlabs",
     };
     const p = job.engine === "h3" ? planH3(input) : planStoryFlow(input);
     const plan = {
@@ -954,7 +966,7 @@ export function confirmPlan(job, worldResult) {
   }
   const drawn = (worldResult?.characters?.length || 0) + (worldResult?.places?.length || 0) + (worldResult?.props?.length || 0);
   const sheets = Math.min(MAX_REFERENCE_SHEETS, Math.max(1, drawn));
-  const p = planFilm({ prompt: job.prompt, seconds: job.seconds ?? null, resolution: job.resolution ?? null, referenceSheets: sheets, score: scored });
+  const p = planFilm({ prompt: job.prompt, seconds: job.seconds ?? null, resolution: job.resolution ?? null, referenceSheets: sheets, score: scored, music: job.music ?? "elevenlabs" });
   const plan = {
     seconds: p.seconds,
     length: p.length,

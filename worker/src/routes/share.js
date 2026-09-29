@@ -71,7 +71,7 @@ export function registerShare(app) {
       // and screenplays resolve through the token (the two routes below).
       ...(r.steps ? {
         job: {
-          status: r.job.status, engine: r.job.engine || null, score: r.job.score,
+          status: r.job.status, engine: r.job.engine || null, score: r.job.score, music: r.job.music,
           voices: r.job.voices, depth: r.job.depth, steps: r.job.steps || [],
         },
       } : {}),

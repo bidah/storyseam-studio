@@ -294,7 +294,12 @@ story-flow Shot list now writes the same **music cues** the Director's does, so
 the score is paced from the story rather than from the picture alone. The
 prompt box's settings gear has a **Score** switch (on by default; only `score:
 false` is sent, and `stagesFor` drops the stage), and `make_film` takes
-`score`. Because the score is laid under afterwards, every video prompt
+`score`. The score renders on **MiniMax Music 3** by default (`music:
+"minimax"`, billed per second) or ElevenLabs Music (`"elevenlabs"`, billed per
+STARTED minute of every piece — a three-piece score paid for three minutes):
+the gear's **Score model** and `make_film`'s `music` (`film-plan.ts`
+`FILM_MUSIC`). A job stored without `music` predates the choice and keeps
+ElevenLabs; each render records its `model` so it is polled on its own queue. Because the score is laid under afterwards, every video prompt
 carries the sound lock (`film-sound.js` `filmSoundLock`: **NO MUSIC, no
 subtitles**), on Seedance, H3 and the Director alike — music a model bakes in
 cannot be ducked or cut out.

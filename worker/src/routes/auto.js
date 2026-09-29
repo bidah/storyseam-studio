@@ -7,7 +7,7 @@
 //                                 (lib/films.js — named "Story — <first words>",
 //                                 renamed to the World's title once it has one).
 //                                 USER-scoped: it never reads the request's
-//                                 project. Body { prompt, seconds?, style?, engine?, writer?, resolution?, score?, depth?, specialists? }.
+//                                 project. Body { prompt, seconds?, style?, engine?, writer?, resolution?, score?, music?, depth?, specialists? }.
 //                                 `writer` is the LLM that writes it: absent /
 //                                 "qwen" = Qwen 3.8 on Workers AI, "kimi" = Kimi
 //                                 K2.6 on Workers AI, "claude" = Claude Fable 5.1
@@ -17,6 +17,8 @@
 //                                 Seedance 2.5, "h3" = the same on MiniMax H3.
 //                                 `score: false` skips the Score stage (every
 //                                 engine ends scored otherwise).
+//                                 `music` ("minimax" | "elevenlabs") is the
+//                                 score's model; absent is MiniMax Music 3.
 //                                 `voices` ("video" | "seedaudio" | "elevenlabs")
 //                                 runs a story engine's Voices stage after its
 //                                 sheets — every character auditioned once, the
@@ -72,7 +74,7 @@
 // closed. The job itself lives in the FilmJobs Durable Object (film-job-do.js)
 // — one per project — and runs server-side; see lib/film-job.js.
 import { autoAvailable } from "../lib/auto-availability.js";
-import { MAX_PROMPT_CHARS, checkFilmDepth, checkFilmEngine, checkFilmScore, checkFilmSeconds, checkFilmSpecialists, checkFilmStyle, checkFilmVoices, checkFilmWriter, checkFilmResolution } from "../lib/film-job.js";
+import { MAX_PROMPT_CHARS, checkFilmDepth, checkFilmEngine, checkFilmMusic, checkFilmScore, checkFilmSeconds, checkFilmSpecialists, checkFilmStyle, checkFilmVoices, checkFilmWriter, checkFilmResolution } from "../lib/film-job.js";
 import { FILM_WRITERS } from "../lib/film-plan.ts";
 import { readAutoSettings, writeAutoSettings } from "../lib/auto-settings.js";
 import { checkAllowance } from "../lib/film-allowance.js";
@@ -140,6 +142,10 @@ export function registerAuto(app) {
     const score = body?.score === undefined || body?.score === null ? undefined : body.score;
     const badScore = checkFilmScore(score);
     if (badScore) return c.json(refusal("invalid", badScore), 400);
+    // The score's model (film-plan.ts FILM_MUSIC); absent is MiniMax Music 3.
+    const music = body?.music || undefined;
+    const badMusic = checkFilmMusic(music);
+    if (badMusic) return c.json(refusal("invalid", badMusic), 400);
     // The Voices pass (film-plan.ts › Voices); absent is none.
     const voices = body?.voices || undefined;
     const badVoices = checkFilmVoices(voices);
@@ -186,6 +192,7 @@ export function registerAuto(app) {
       ...(writer ? { writer } : {}),
       ...(resolution ? { resolution } : {}),
       ...(score === false ? { score: false } : {}),
+      ...(music ? { music } : {}),
       ...(voices ? { voices } : {}),
       ...(depth ? { depth } : {}),
       ...(specialists ? { specialists } : {}),

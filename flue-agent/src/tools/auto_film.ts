@@ -21,7 +21,7 @@ import * as v from "valibot";
 import { d } from "./_util.js";
 import type { Api, Json } from "../lib/api.js";
 import {
-  AUDITION_SECONDS, DEFAULT_DEEP_SPECIALISTS, DEFAULT_FILM_RESOLUTION, DEFAULT_FILM_VOICES, DEFAULT_FILM_WRITER, FILM_DEPTHS, FILM_ENGINES, FILM_RESOLUTIONS, FILM_STEPS, FILM_STYLES, FILM_VOICES, FILM_WRITERS, ROOM_PASS_SECONDS, ROOM_REWRITE_SECONDS,
+  AUDITION_SECONDS, DEFAULT_DEEP_SPECIALISTS, DEFAULT_FILM_MUSIC, DEFAULT_FILM_RESOLUTION, FILM_MUSIC, DEFAULT_FILM_VOICES, DEFAULT_FILM_WRITER, FILM_DEPTHS, FILM_ENGINES, FILM_RESOLUTIONS, FILM_STEPS, FILM_STYLES, FILM_VOICES, FILM_WRITERS, ROOM_PASS_SECONDS, ROOM_REWRITE_SECONDS,
   STORY_FLOW_STEPS, filmLength, formatLength, isStoryEngine, storyFlowLength,
 } from "../lib/film-plan.js";
 import { SPECIALIST_IDS } from "../lib/specialists.js";
@@ -31,7 +31,7 @@ type Step = {
   error?: string | null; pending?: boolean;
 };
 type Job = {
-  id?: string; prompt?: string; seconds?: number; engine?: string; voices?: string; status?: string; error?: string | null; auto?: boolean;
+  id?: string; prompt?: string; seconds?: number; engine?: string; voices?: string; music?: string; status?: string; error?: string | null; auto?: boolean;
   steps?: Step[]; spend?: Record<string, number>; spent?: number;
   confirm?: { status?: string; after?: string; summary?: string; plan?: unknown };
   film?: Record<string, unknown>;
@@ -78,6 +78,7 @@ function viewJob(job: Job | null | undefined): Json {
     ...(typeof job.seconds === "number" ? { seconds: job.seconds } : {}),
     engine: job.engine || "director",
     ...(job.voices ? { voices: job.voices } : {}),
+    ...(job.music ? { music: job.music } : {}),
     status: job.status ?? null,
     auto: job.auto !== false,
     steps: (job.steps || []).map((s) => ({
@@ -174,6 +175,12 @@ export const makeFilm = (api: Api) =>
           "Optional: whether the Film ends with the Score stage — one continuous music cue written to the finished film and laid under it. Every engine is scored by default (the video models are told NO MUSIC so the score never fights baked-in music); the same switch as Score on the prompt box's settings. Pass false only when the author asks for no music / no score.",
         ),
       ),
+      music: v.optional(
+        d(
+          v.picklist(FILM_MUSIC.map((x) => x.id) as [string, ...string[]]),
+          `Optional: the model the score renders on — ${FILM_MUSIC.map((x) => `"${x.id}" (${x.label} — ${x.blurb})`).join(", ")}. The same choice as Score model on the prompt box's gear. Omit for "${DEFAULT_FILM_MUSIC}" (the default, and the cheaper); pass "elevenlabs" only when the author asks for ElevenLabs. Ignored when score is false.`,
+        ),
+      ),
     }),
     async run({ data: input, signal }): Promise<{ output: Json }> {
       const prompt = String(input.prompt ?? "").trim();
@@ -199,7 +206,7 @@ export const makeFilm = (api: Api) =>
             ...(input.engine && input.engine !== "director" ? { engine: input.engine } : {}),
             writer: input.writer || DEFAULT_FILM_WRITER,
             ...(input.resolution && input.resolution !== DEFAULT_FILM_RESOLUTION ? { resolution: input.resolution } : {}),
-            ...(input.score === false ? { score: false } : {}),
+            ...(input.score === false ? { score: false } : { music: input.music || DEFAULT_FILM_MUSIC }),
             // The Voices pass rides only with a story engine, defaulting as the GUI does.
             ...(seedance ? { voices: input.voices || DEFAULT_FILM_VOICES } : {}),
             ...(input.depth === "deep" ? { depth: "deep", ...(room.length ? { specialists: room } : {}) } : {}),

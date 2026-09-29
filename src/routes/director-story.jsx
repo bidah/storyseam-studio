@@ -110,9 +110,9 @@ function SimpleStory({ signedIn, sessionKnown }) {
     return () => { live = false; };
   }, [signedIn]);
 
-  // opts: { seconds?, style?, resolution?, score?, voices?, writer?, depth?, specialists? } — the input's settings.
+  // opts: { seconds?, style?, resolution?, score?, music?, voices?, writer?, depth?, specialists? } — the input's settings.
   const start = async (prompt, opts = {}, as = flow) => {
-    const { seconds, style, resolution, score, voices, writer, depth, specialists } = opts;
+    const { seconds, style, resolution, score, music, voices, writer, depth, specialists } = opts;
     if (submitting) return false;
     if (!signedIn) {
       // Keep the premise across the Google round trip; it starts on return.
@@ -150,6 +150,8 @@ function SimpleStory({ signedIn, sessionKnown }) {
           ...(resolution ? { resolution } : {}),
           // The gear's Score switch; only "off" is sent (absent is scored).
           ...(score === false ? { score: false } : {}),
+          // The gear's score model; absent is MiniMax Music 3.
+          ...(score !== false && music ? { music } : {}),
           // The gear's Voices pass (story engines only); absent runs none.
           ...(voices ? { voices } : {}),
           // The gear's writing model; absent is the studio's default.

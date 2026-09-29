@@ -20,6 +20,24 @@ export const LENGTH_TOLERANCE_MS = 50;
 /** fal's price for this model: per output minute, rounded UP. */
 export const USD_PER_MINUTE = 0.6;
 
+// ── The other score model: MiniMax Music 3 on fal ──────────────────────────
+//
+// `minimax/music-3` is a song model: a text `prompt` (style, mood,
+// arrangement), `lyrics` made of structure tags, and a `duration` that is an
+// UPPER bound. It takes no composition plan, so the same plan is written out
+// as a section-by-section arrangement (`minimaxBody`) and the lyrics are
+// section tags alone — no words to sing. It is priced per second of output,
+// not per started minute, so a 10s piece costs 10s: ElevenLabs bills that
+// piece a whole minute. It answers a WAV.
+export const MINIMAX_MUSIC_ENDPOINT = 'minimax/music-3';
+/** fal's price for MiniMax Music 3, per second (fal's model page). */
+export const MINIMAX_USD_PER_SECOND = 0.002;
+/** The longest `duration` MiniMax Music 3 takes, in seconds. */
+export const MINIMAX_MAX_SECONDS = 300;
+
+/** The models a score can be rendered on. */
+export type MusicModel = 'minimax' | 'elevenlabs';
+
 export const ADHERENCE = ['low', 'medium', 'high'] as const;
 export type Adherence = (typeof ADHERENCE)[number];
 
@@ -85,8 +103,12 @@ export function planTotalMs(plan: Plan): number {
   return plan.chunks.reduce((sum, chunk) => sum + (Number.isFinite(chunk.duration_ms) ? chunk.duration_ms : 0), 0);
 }
 
-/** What one render costs, in USD: per minute, rounded up, as fal bills it. */
-export function renderCostUsd(totalMs: number): number {
+/**
+ * What one render costs, in USD, as fal bills it: ElevenLabs per minute,
+ * rounded up; MiniMax per second of output.
+ */
+export function renderCostUsd(totalMs: number, model: MusicModel = 'elevenlabs'): number {
+  if (model === 'minimax') return Math.ceil(totalMs / 1000) * MINIMAX_USD_PER_SECOND;
   return Math.ceil(totalMs / 60_000) * USD_PER_MINUTE;
 }
 
@@ -239,4 +261,41 @@ function cleanChunk(chunk: Chunk): Chunk {
   if (negatives.length) out.negative_styles = negatives;
   if (chunk.context_adherence) out.context_adherence = chunk.context_adherence;
   return out;
+}
+
+const mmss = (ms: number): string => {
+  const s = Math.max(0, Math.round(ms / 1000));
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+};
+
+/**
+ * The same plan as MiniMax Music 3's body: the chunks become a timed
+ * arrangement in the prompt, the lyrics are section tags only (an
+ * instrumental: nothing to sing), and the duration is the plan's length.
+ */
+export function minimaxBody(plan: Plan): Record<string, unknown> {
+  const chunks = plan.chunks.map(cleanChunk);
+  const totalMs = chunks.reduce((sum, c) => sum + c.duration_ms, 0);
+  const seconds = Math.min(MINIMAX_MAX_SECONDS, Math.max(1, Math.ceil(totalMs / 1000)));
+  const genre = chunks[0]?.positive_styles.join(', ') || 'cinematic underscore';
+  const avoid = [...new Set(chunks.flatMap((c) => c.negative_styles ?? []))];
+  let at = 0;
+  const sections = chunks.map((c) => {
+    const line = `${mmss(at)}–${mmss(at + c.duration_ms)} ${c.text}: ${c.positive_styles.join(', ')}`;
+    at += c.duration_ms;
+    return line;
+  });
+  const prompt = [
+    'Instrumental film underscore. No vocals, no singing, no lyrics, no voice.',
+    `Genre and instrumentation: ${genre}.`,
+    `Length: ${seconds} seconds, one continuous piece that ends cleanly.`,
+    `Arrangement: ${sections.join('; ')}.`,
+    avoid.length ? `Avoid: ${avoid.join(', ')}.` : '',
+  ].filter(Boolean).join(' ');
+  const tags = chunks.length === 1
+    ? ['[instrumental]']
+    : chunks.map((_, i) => (i === 0 ? '[intro]' : i === chunks.length - 1 ? '[outro]' : '[instrumental]'));
+  const body: Record<string, unknown> = { prompt, lyrics: tags.join('\n'), duration: seconds };
+  if (Number.isInteger(plan.seed)) body.seed = plan.seed;
+  return body;
 }
