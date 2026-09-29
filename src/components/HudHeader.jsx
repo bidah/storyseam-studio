@@ -70,7 +70,9 @@ export function HudHeader({ model, onSignIn }) {
       {/* The one mark on these pages that isn't ours: the inference partner,
           set at the right end of the strip as HUD metadata. */}
       <span className="ml-auto flex items-center gap-2">
-        <Label>Powered by:</Label>
+        {/* A phone keeps the fal lockup and drops the words: they pushed the
+            sign-in button onto a second row. */}
+        <Label className="hidden sm:inline">Powered by:</Label>
         {/* The official lockup's own proportions, from the package's
             `style.js`: the wordmark sets at 1.1x the mark and the gap is 0.2x
             it, which is what `Fal.Combine` would have drawn if it were
