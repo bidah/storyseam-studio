@@ -1813,6 +1813,14 @@ const FILL_ACTION = cn(ROW_ACTION, "w-full justify-center sm:w-auto sm:justify-s
 // Never wider than its container either: cn() merges this over a `max-w-full`
 // (the last max-w wins), and 70dvh×16/9 alone is ~1000px on a phone, which let
 // the Film's <video> play at its natural 854px and break the page.
+/**
+ * A video url that shows its first frame before play. iOS Safari paints
+ * nothing for `preload="metadata"` — just a play button on a blank box — until
+ * the url names a moment to seek to; `#t=0.001` makes it load and draw that
+ * frame, and playback still starts at the top. Exported for /watch.
+ */
+export const withFirstFrame = (url) => (url && !String(url).includes("#") ? `${url}#t=0.001` : url);
+
 const FILM_W = "max-w-[min(100%,calc(70dvh*16/9))]";
 
 export function FilmActions({ job, projectId, children = null }) {
@@ -2420,7 +2428,7 @@ function StepResultBody({ step, projectId }) {
           <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             {r.segments.filter((g) => g.url).map((g) => (
               <li key={g.index} className="min-w-0">
-                <video controls preload="metadata" playsInline src={media(g.url)} className="aspect-video w-full bg-black" />
+                <video controls preload="metadata" playsInline src={withFirstFrame(media(g.url))} className="aspect-video w-full bg-black" />
                 <span className="mt-1 block truncate text-[0.7rem] text-[var(--br-secondary)]">{g.index + 1}. {g.title}</span>
               </li>
             ))}
@@ -2432,7 +2440,7 @@ function StepResultBody({ step, projectId }) {
     case "score":
     case "sitting": {
       const url = r.url || r.scored?.url || r.film?.url || r.unscored?.url;
-      return url ? <video controls preload="metadata" playsInline src={media(url)} className="aspect-video w-full bg-black" /> : null;
+      return url ? <video controls preload="metadata" playsInline src={withFirstFrame(media(url))} className="aspect-video w-full bg-black" /> : null;
     }
     default:
       return null;
@@ -2913,7 +2921,7 @@ export function StoryView({ job, projectId = null, onRetry, retrying = false, re
                   capped to the same height and width as the cards around it —
                   no fixed box, so no letterbox bars inside the player. */}
               <video
-                src={filmMediaUrl(job.film.url, projectId || job.projectId)}
+                src={withFirstFrame(filmMediaUrl(job.film.url, projectId || job.projectId))}
                 controls
                 playsInline
                 preload="metadata"

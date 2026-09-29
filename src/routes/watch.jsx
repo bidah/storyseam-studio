@@ -13,7 +13,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router";
 import { ArrowRight, ChevronDown, Download, Loader2, LogIn } from "lucide-react";
-import { Page, ProcessSteps, shareMediaSource } from "@/components/DirectorStory";
+import { Page, ProcessSteps, shareMediaSource, withFirstFrame } from "@/components/DirectorStory";
 import { formatLength } from "@/lib/film-plan";
 import { DISPLAY, DISPLAY_TRACKING, MONO } from "@/lib/hudTheme";
 import { cn } from "@/lib/utils";
@@ -137,7 +137,7 @@ function WatchFilm({ film, token }) {
         </div>
         <div ref={setStage} className="flex min-h-0 flex-1 items-center justify-center">
           <video
-            src={film.videoUrl}
+            src={withFirstFrame(film.videoUrl)}
             controls
             playsInline
             preload="metadata"
