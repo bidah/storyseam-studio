@@ -12,8 +12,13 @@ import {
   formatLength,
   parseLength,
   planFilm,
+  planH3,
+  QUOTE_CHARACTERS,
+  QUOTE_STORY_SHEETS,
+  quoteFilm,
   reelsOnGrid,
 } from "@/lib/film-plan";
+import { MINIMAX_USD_PER_SECOND } from "@/lib/music-plan";
 import { MAX_DIRECTIONS, MAX_END_IMAGES } from "@/lib/series";
 
 describe("parseLength", () => {
@@ -197,7 +202,8 @@ describe("estimate", () => {
     expect(perStage.referenceSheets.rate).toBe(FILM_RATES_USD.referenceSheet);
     expect(perStage.clips.rate).toBe(FILM_RATES_USD.clipSecond);
     expect(perStage.sitting.rate).toBe(FILM_RATES_USD.sittingSecond);
-    expect(perStage.score.rate).toBe(FILM_RATES_USD.scoreMinute);
+    expect(perStage.score.rate).toBe(MINIMAX_USD_PER_SECOND);
+    expect(planFilm({ music: "elevenlabs" }).estimate.perStage.score.rate).toBe(FILM_RATES_USD.scoreMinute);
     expect(perStage.sandbox.rate).toBe(FILM_RATES_USD.sandboxMinute);
   });
 
@@ -221,5 +227,29 @@ describe("estimate", () => {
   it("a longer Film never costs less", () => {
     const totals = FILM_STEPS.map((seconds) => planFilm({ seconds }).estimate.total);
     for (let i = 1; i < totals.length; i++) expect(totals[i]).toBeGreaterThanOrEqual(totals[i - 1]);
+  });
+});
+
+describe("quoteFilm — the prompt box's price", () => {
+  const total = (q) => quoteFilm(q).total;
+  it("sums its lines and follows the engine's own plan", () => {
+    const q = quoteFilm({ engine: "h3", seconds: 60, voices: "video" });
+    expect(q.total).toBeCloseTo(q.lines.reduce((a, l) => a + l.usd, 0), 2);
+    expect(q.total).toBe(planH3({ seconds: 60, voices: "video", characters: QUOTE_CHARACTERS, referenceSheets: QUOTE_STORY_SHEETS }).estimate.total);
+  });
+  it("moves with every setting", () => {
+    const base = { engine: "h3", seconds: 60, voices: "video" };
+    expect(total({ ...base, seconds: 120 })).toBeGreaterThan(total(base));
+    expect(total({ ...base, resolution: "720p" })).toBeGreaterThan(total(base));
+    expect(total({ ...base, engine: "seedance" })).toBeGreaterThan(total(base));
+    expect(total({ ...base, music: "elevenlabs" })).toBeGreaterThan(total(base));
+    expect(total({ ...base, score: false })).toBeLessThan(total(base));
+    expect(total({ ...base, voices: "seedaudio" })).toBeLessThan(total(base));
+  });
+  it("reads a length stated in the prompt when none is chosen", () => {
+    expect(quoteFilm({ engine: "h3", prompt: "a 3 minute film about a fox" }).length).toBe("3:00");
+  });
+  it("an unknown engine quotes the Director", () => {
+    expect(quoteFilm({ engine: null }).engine).toBe("director");
   });
 });

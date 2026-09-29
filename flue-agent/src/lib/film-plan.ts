@@ -81,12 +81,20 @@ export const DEFAULT_REFERENCE_SHEETS = 6;
  * file names a price.
  */
 export const FILM_RATES_USD = {
-  /** One reference / model sheet in an image model. ESTIMATE. */
+  /**
+   * One reference / model sheet (fal, GPT Image 2.5 Flare at high quality:
+   * $0.04 a 1920×1080 text-to-image; an /edit against other sheets also bills
+   * its input images, so this budgets the dearer one). ESTIMATE.
+   */
   referenceSheet: 0.08,
-  /** One second of shot sheet clip (h3-max, reference-to-video). ESTIMATE. */
+  /** One second of shot sheet clip (fal, minimax/h3-max/reference-to-video: $0.05/s at 480p). */
   clipSecond: 0.05,
-  /** One billed second of a Director Sitting. ESTIMATE. */
-  sittingSecond: 0.02,
+  /**
+   * One billed second of a Director Sitting (fal, minimax/h3-max/director: $0.08
+   * a second of video at list price — the $0.02 launch promo ended Sep 14 2026;
+   * 1080p is 2×, which a Film never opens at).
+   */
+  sittingSecond: 0.08,
   /** One minute of score, rounded up per render (fal's price). */
   scoreMinute: SCORE_USD_PER_MINUTE,
   /** One minute of Daytona sandbox (cut stills, the Sitting runner, the mix). ESTIMATE. */
@@ -1008,4 +1016,63 @@ export function planH3(input: FilmPlanInput = {}): H3Plan {
     voices: filmVoicesOf(input.voices, 'h3'),
     estimate: { currency: 'USD', perStage: { referenceSheets, voices, video, score, sandbox }, total },
   };
+}
+
+// ── The quote: what the prompt box shows before anything is paid for ──────────
+//
+// One entry point over the three plans, so the input's price follows every
+// setting that moves it — engine, length (chosen, or stated in the prompt),
+// resolution, the Voices pass, the Score and its model. What is not known yet
+// (how many characters the World will cast, how many sheets it takes) is
+// assumed at a typical Film's size and said so. Writing (the LLM passes) is
+// not in it: it is not a fal model and costs cents next to the video.
+
+/** Characters a quote assumes before the World exists (each is a voice and two sheets). */
+export const QUOTE_CHARACTERS = 3;
+/** Sheets a story-engine quote assumes: a style frame, two views per character, a few places. */
+export const QUOTE_STORY_SHEETS = 1 + 2 * QUOTE_CHARACTERS + 3;
+
+export type FilmQuoteLine = { key: string; label: string; detail: string; usd: number };
+export type FilmQuote = { engine: FilmEngine; seconds: number; length: string; total: number; lines: FilmQuoteLine[] };
+
+const money = (usd: number) => `$${usd.toFixed(2)}`;
+
+export function quoteFilm(input: FilmPlanInput & { engine?: string | null } = {}): FilmQuote {
+  const engine: FilmEngine = FILM_ENGINES.includes(input.engine as FilmEngine) ? (input.engine as FilmEngine) : DEFAULT_FILM_ENGINE;
+  const music = newFilmMusic(input.music);
+  const musicLabel = FILM_MUSIC.find((m) => m.id === music)?.label ?? music;
+  const scoreLine = (s: StageEstimate): FilmQuoteLine => ({
+    key: 'score',
+    label: 'Score',
+    detail: s.usd > 0 ? `${musicLabel} · ${s.units}${s.unit === 'score second' ? 's' : ' min'}` : 'off',
+    usd: s.usd,
+  });
+  if (engine === 'director') {
+    const plan = planFilm(input);
+    const e = plan.estimate.perStage;
+    const lines: FilmQuoteLine[] = [
+      { key: 'sheets', label: 'Reference sheets', detail: `${e.referenceSheets.units} × ${money(e.referenceSheets.rate)}`, usd: e.referenceSheets.usd },
+      { key: 'clips', label: 'Shot sheet clips', detail: `${e.clips.units}s · H3 Max`, usd: e.clips.usd },
+      { key: 'sitting', label: 'Director sitting', detail: `${e.sitting.units}s × ${money(e.sitting.rate)}`, usd: e.sitting.usd },
+      scoreLine(e.score),
+      { key: 'sandbox', label: 'Cutting + mixing', detail: `${e.sandbox.units} box min`, usd: e.sandbox.usd },
+    ];
+    return { engine, seconds: plan.seconds, length: plan.length, total: plan.estimate.total, lines };
+  }
+  const characters = input.characters ?? QUOTE_CHARACTERS;
+  const referenceSheets = input.referenceSheets ?? QUOTE_STORY_SHEETS;
+  const plan = engine === 'h3'
+    ? planH3({ ...input, characters, referenceSheets })
+    : planStoryFlow({ ...input, characters, referenceSheets });
+  const e = plan.estimate.perStage;
+  const model = engine === 'h3' ? 'MiniMax H3' : 'Seedance 2.5';
+  const voiceMode = FILM_VOICES.find((v) => v.id === plan.voices)?.label;
+  const lines: FilmQuoteLine[] = [
+    { key: 'sheets', label: 'Reference sheets', detail: `${e.referenceSheets.units} × ${money(e.referenceSheets.rate)}`, usd: e.referenceSheets.usd },
+    { key: 'voices', label: 'Voices', detail: voiceMode ? `${voiceMode} · ${e.voices.units} characters` : 'off', usd: e.voices.usd },
+    { key: 'video', label: 'Video', detail: `${model} · ${plan.segments} × ${plan.durations[0]}s · ${plan.resolution}`, usd: e.video.usd },
+    scoreLine(e.score),
+    { key: 'sandbox', label: 'Cutting + mixing', detail: `${e.sandbox.units} box min`, usd: e.sandbox.usd },
+  ];
+  return { engine, seconds: plan.seconds, length: plan.length, total: plan.estimate.total, lines };
 }

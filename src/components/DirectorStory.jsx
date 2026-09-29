@@ -46,7 +46,7 @@
 import { createContext, useContext, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Link, Navigate, useLocation } from "react-router";
 import {
-  ArrowUp, AudioLines, Check, ChevronDown, ChevronLeft, ChevronRight, Circle, Clapperboard, CircleAlert, Copy, Download, Film, Link2Off, ListChecks, Loader2, Mic, PenLine, Plus, RotateCw, Search, Settings2,
+  ArrowUp, AudioLines, Check, ChevronDown, ChevronLeft, ChevronRight, Circle, Clapperboard, CircleAlert, Copy, Download, Film, Link2Off, ListChecks, Loader2, Mic, PenLine, Plus, Receipt, RotateCw, Search, Settings2,
   Share2, SlidersHorizontal, Square, Users, X, icons as LUCIDE,
 } from "lucide-react";
 import { studioPath } from "@/lib/home";
@@ -54,7 +54,7 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle, DialogTrigger } 
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   DEFAULT_DEEP_SPECIALISTS, DEFAULT_FILM_RESOLUTION, DEFAULT_FILM_MUSIC, DEFAULT_FILM_SCORE, DEFAULT_FILM_VOICES, FILM_MUSIC, FILM_DEFAULT_SECONDS, FILM_RESOLUTIONS, FILM_DEPTHS, FILM_STEPS, FILM_STYLES, FILM_VOICES, FILM_WRITERS, DEFAULT_FILM_WRITER, STORY_FLOW_DEFAULT_SECONDS,
-  STORY_FLOW_STEPS, filmVoicesOf, formatLength, isStoryEngine, roomEstimate,
+  STORY_FLOW_STEPS, filmVoicesOf, formatLength, isStoryEngine, quoteFilm, roomEstimate,
 } from "@/lib/film-plan";
 import { SPECIALISTS, STAGE_ORDER, isSpecialistId } from "@/lib/specialists";
 import { useVoiceRecording, transcribeAudio, formatDuration } from "@/lib/useVoiceRecording";
@@ -958,6 +958,69 @@ function DepthPicker({ depth, onDepth, room, onRoom, disabled }) {
   );
 }
 
+// ── The price: what the Film will cost, before anything is paid for ─────────
+//
+// Bottom-left of the box, recomputed from every setting that moves it (engine,
+// length — chosen, or stated in the prompt — resolution, voices, score and its
+// model) by `quoteFilm`, the same plan the Worker runs. Tapping it opens the
+// breakdown, so a jump in the total can be traced to the setting that made it.
+function PriceQuote({ quote, disabled }) {
+  const [open, setOpen] = useState(false);
+  const total = `$${quote.total.toFixed(2)}`;
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          aria-label={`Estimated cost: about ${total}`}
+          disabled={disabled}
+          className="mr-auto flex h-10 shrink-0 items-center gap-1.5 px-2 text-[var(--br-secondary)] transition-colors hover:text-[var(--br-primary)] disabled:opacity-40 data-[state=open]:text-[var(--br-primary)]"
+          data-story-price
+        >
+          <Receipt size={16} aria-hidden />
+          <span className="text-[0.72rem] uppercase tabular-nums" style={{ fontFamily: MONO, letterSpacing: "0.08em" }}>
+            ≈ {total}
+          </span>
+        </button>
+      </PopoverTrigger>
+      <PopoverContent
+        side="top"
+        align="start"
+        sideOffset={8}
+        className="w-80 border-[var(--br-secondary)]/40 bg-[var(--br-surface)] p-3 text-[var(--br-primary)]"
+        style={{ ...HUD, fontFamily: BODY }}
+        data-story-price-panel
+      >
+        <SettingsLabel id="story-price-label">Estimated cost · {quote.length}</SettingsLabel>
+        <table className="mt-2 w-full text-sm" aria-labelledby="story-price-label">
+          <tbody>
+            {quote.lines.map((l) => (
+              <tr key={l.key} className="border-b border-[var(--br-secondary)]/20" data-price-row={l.key}>
+                <td className="py-1.5 pr-2">
+                  <span className="block">{l.label}</span>
+                  <span className="block text-xs text-[var(--br-secondary)]">{l.detail}</span>
+                </td>
+                <td className="py-1.5 text-right align-top tabular-nums text-[var(--br-secondary)]" style={{ fontFamily: MONO }}>
+                  {l.usd > 0 ? `$${l.usd.toFixed(2)}` : "—"}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+          <tfoot>
+            <tr>
+              <td className="pt-2 pr-2 text-xs uppercase text-[var(--br-secondary)]" style={{ fontFamily: MONO, letterSpacing: "0.08em" }}>Total</td>
+              <td className="pt-2 text-right tabular-nums" style={{ fontFamily: MONO }}>{total}</td>
+            </tr>
+          </tfoot>
+        </table>
+        <p className="mt-2 text-xs text-[var(--br-secondary)]">
+          fal's prices in US dollars. The cast is assumed at a typical Film's size until the World is written; the finished Film shows what it really spent.
+        </p>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 // ── Gen mode: which video model makes the Film ─────────────────────────────
 //
 // Named on its button, like the look and the writer: the two modes differ a lot
@@ -1153,6 +1216,15 @@ export function SimpleView({ flow = FLOWS.director, onFlow, onSubmit, submitting
   // On a phone the pickers leave the box for a card of their own under it, so
   // the box is the premise and its send button and nothing else.
   const narrow = useNarrow();
+  const quote = quoteFilm({
+    engine: flow.engine,
+    prompt,
+    seconds: chosen ? seconds : undefined,
+    resolution,
+    score,
+    music,
+    voices: isStoryEngine(flow.engine) ? voices : undefined,
+  });
   const options = listening ? null : (
     <>
       {onFlow && <GenModePicker flow={flow} onFlow={onFlow} disabled={submitting} />}
@@ -1215,6 +1287,7 @@ export function SimpleView({ flow = FLOWS.director, onFlow, onSubmit, submitting
               className="min-h-34 w-full resize-none bg-transparent px-3 py-3 text-base leading-relaxed text-[var(--br-primary)] placeholder:text-[var(--br-secondary)] focus:outline-none disabled:opacity-60"
             />
             <div className="flex flex-wrap items-center justify-end gap-x-2 gap-y-1">
+            <PriceQuote quote={quote} disabled={submitting} />
             {!narrow && options}
             {listening ? (
               <div className="flex shrink-0 items-center gap-2">
