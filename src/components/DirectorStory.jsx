@@ -1810,7 +1810,10 @@ const ROW_ACTION = cn(ACTION, "shrink-0");
 const FILL_ACTION = cn(ROW_ACTION, "w-full justify-center sm:w-auto sm:justify-start");
 // The Film's width on the page: a 16:9 box no taller than 70% of the viewport.
 // The prompt card above it is capped to the same width so the two line up.
-const FILM_W = "max-w-[calc(70dvh*16/9)]";
+// Never wider than its container either: cn() merges this over a `max-w-full`
+// (the last max-w wins), and 70dvh×16/9 alone is ~1000px on a phone, which let
+// the Film's <video> play at its natural 854px and break the page.
+const FILM_W = "max-w-[min(100%,calc(70dvh*16/9))]";
 
 export function FilmActions({ job, projectId, children = null }) {
   const [link, setLink] = useState(undefined); // undefined = not read; null = not shared
