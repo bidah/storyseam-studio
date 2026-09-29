@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { parseStudioPath } from "@/lib/home";
 import { useLocation } from "react-router";
 import { useAgent, useConversations } from "@/components/AgentProvider";
 import {
@@ -1525,8 +1526,11 @@ function ModelPicker({ disabled }) {
 // that wants its columns, and nobody arrives there mid-conversation.
 const RAILED_BY_DEFAULT = new Set(["moodboard", "nodes", "plugins"]);
 
-// "/moodboard" → "moodboard"; "/accept-invite/abc" → "accept-invite".
-const tabOf = (pathname) => pathname.split("/")[1] || "";
+// "/p/<id>/moodboard" → "moodboard"; "/accept-invite/abc" → "accept-invite".
+// Studio views live under the project's url, so read past that prefix — the
+// bare first segment there is "p", which matched nothing and never railed.
+const tabOf = (pathname) =>
+  ((parseStudioPath(pathname)?.rest ?? pathname).split("/")[1]) || "";
 
 export default function AgentChat() {
   const t = useT();
