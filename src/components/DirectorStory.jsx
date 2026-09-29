@@ -545,17 +545,17 @@ function StorySettings({ flow, seconds, onSeconds, resolution, onResolution, sco
       type="button"
       aria-label="Story settings"
       disabled={disabled}
-      className="flex min-h-10 min-w-0 max-w-full items-center gap-1.5 px-2 text-left text-[var(--br-secondary)] transition-colors hover:text-[var(--br-primary)] disabled:opacity-40 data-[state=open]:text-[var(--br-primary)]"
+      className="flex min-h-10 min-w-0 max-w-full items-center gap-1.5 px-2 text-left text-[var(--br-secondary)] max-sm:relative max-sm:w-full max-sm:justify-center max-sm:px-8 max-sm:text-center transition-colors hover:text-[var(--br-primary)] disabled:opacity-40 data-[state=open]:text-[var(--br-primary)]"
       data-story-settings
     >
       <Settings2 size={16} className="shrink-0" aria-hidden />
       {/* The look rides on the button too: it is remembered per browser, so
           what will be sent must be visible before sending — an unseen
           "Auto" once made a story the author meant as anime live action. */}
-      <span className="text-[0.72rem] uppercase tabular-nums" style={{ fontFamily: MONO, letterSpacing: "0.08em" }} data-story-settings-summary>
+      <span className="text-[0.72rem] uppercase tabular-nums max-sm:min-w-0 max-sm:truncate" style={{ fontFamily: MONO, letterSpacing: "0.08em" }} data-story-settings-summary>
         {formatLength(seconds)} · {resolution} · {FILM_STYLES.find((st) => st.id === style)?.label || "Auto look"}{score ? "" : " · no score"}{storyFlow ? ` · ${voice.label}` : ""}
       </span>
-      <ChevronDown size={12} className="shrink-0" aria-hidden />
+      <ChevronDown size={12} className="shrink-0 max-sm:absolute max-sm:right-2" aria-hidden />
     </button>
   );
   const panel = (
@@ -902,14 +902,14 @@ function DepthPicker({ depth, onDepth, room, onRoom, disabled }) {
             type="button"
             aria-label={`Writer: ${label}`}
             disabled={disabled}
-            className="flex h-10 shrink-0 items-center gap-1.5 px-2 text-[var(--br-secondary)] transition-colors hover:text-[var(--br-primary)] disabled:opacity-40 data-[state=open]:text-[var(--br-primary)]"
+            className="flex h-10 shrink-0 items-center gap-1.5 px-2 text-[var(--br-secondary)] transition-colors hover:text-[var(--br-primary)] disabled:opacity-40 data-[state=open]:text-[var(--br-primary)] max-sm:relative max-sm:w-full max-sm:justify-center max-sm:px-8"
             data-story-depth
           >
             <PenLine size={16} aria-hidden />
             <span className="text-[0.72rem] uppercase tabular-nums" style={{ fontFamily: MONO, letterSpacing: "0.08em" }}>
               {label}
             </span>
-            <ChevronDown size={12} aria-hidden />
+            <ChevronDown size={12} className="max-sm:absolute max-sm:right-2" aria-hidden />
           </button>
         }
         title="Writer"
@@ -1054,14 +1054,14 @@ function GenModePicker({ flow, onFlow, disabled }) {
       type="button"
       aria-label={`Gen mode: ${flow.label}`}
       disabled={disabled}
-      className="flex h-10 shrink-0 items-center gap-1.5 px-2 text-[var(--br-secondary)] transition-colors hover:text-[var(--br-primary)] disabled:opacity-40 data-[state=open]:text-[var(--br-primary)]"
+      className="flex h-10 shrink-0 items-center gap-1.5 px-2 text-[var(--br-secondary)] transition-colors hover:text-[var(--br-primary)] disabled:opacity-40 data-[state=open]:text-[var(--br-primary)] max-sm:relative max-sm:w-full max-sm:justify-center max-sm:px-8"
       data-gen-mode={flow.id}
     >
       <Clapperboard size={16} aria-hidden />
       <span className="text-[0.72rem] uppercase" style={{ fontFamily: MONO, letterSpacing: "0.08em" }}>
         {flow.label}
       </span>
-      <ChevronDown size={12} aria-hidden />
+      <ChevronDown size={12} className="max-sm:absolute max-sm:right-2" aria-hidden />
     </button>
   );
   return (
@@ -1368,7 +1368,7 @@ export function SimpleView({ flow = FLOWS.director, onFlow, onSubmit, submitting
             </div>
           </div>
           {narrow && options ? (
-            <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 border border-[var(--br-secondary)]/40 bg-[var(--br-surface)] p-2" data-story-options>
+            <div className="mt-2 flex flex-col items-stretch gap-1 border border-[var(--br-secondary)]/40 bg-[var(--br-surface)] p-2" data-story-options>
               {options}
             </div>
           ) : null}
