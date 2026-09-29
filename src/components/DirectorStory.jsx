@@ -1806,6 +1806,8 @@ const ACTION =
   "flex items-center gap-1.5 border border-[var(--br-secondary)]/40 px-3 py-1.5 text-[0.72rem] uppercase text-[var(--br-primary)] transition-colors hover:border-[var(--br-primary)] disabled:opacity-50";
 // A finished Film's actions: a compact row in the header, right of the prompt.
 const ROW_ACTION = cn(ACTION, "shrink-0");
+// …which on a phone fills its row instead: full width, label centred.
+const FILL_ACTION = cn(ROW_ACTION, "w-full justify-center sm:w-auto sm:justify-start");
 // The Film's width on the page: a 16:9 box no taller than 70% of the viewport.
 // The prompt card above it is capped to the same width so the two line up.
 const FILM_W = "max-w-[calc(70dvh*16/9)]";
@@ -1852,10 +1854,11 @@ export function FilmActions({ job, projectId, children = null }) {
   };
 
   return (
-    <div className="flex flex-wrap items-center justify-end gap-2" data-film-actions>
+    // Share and Download split a phone's row in half.
+    <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto sm:flex-wrap sm:items-center sm:justify-end" data-film-actions>
       <Popover onOpenChange={onOpen}>
         <PopoverTrigger asChild>
-          <button type="button" className={ROW_ACTION} style={{ fontFamily: MONO, letterSpacing: "0.08em" }} data-share>
+          <button type="button" className={FILL_ACTION} style={{ fontFamily: MONO, letterSpacing: "0.08em" }} data-share>
             <Share2 size={12} aria-hidden /> Share
           </button>
         </PopoverTrigger>
@@ -1939,7 +1942,7 @@ export function FilmActions({ job, projectId, children = null }) {
       <a
         href={filmMediaUrl(job.film.url, projectId || job.projectId)}
         download={filmFileName(job.film)}
-        className={ROW_ACTION}
+        className={FILL_ACTION}
         style={{ fontFamily: MONO, letterSpacing: "0.08em" }}
         data-download
       >
@@ -2883,18 +2886,18 @@ export function StoryView({ job, projectId = null, onRetry, retrying = false, re
                     Film on the Editor's timeline. Share and Download on the right. */}
                 {/* Beside it, how the Film was made — the stepper it showed
                     while it ran, in a full-screen dialog. */}
-                <div className="flex flex-wrap items-center gap-2">
+                <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap sm:items-center">
                   {projectId || job.projectId ? (
                     <Link
                       to={studioPath(projectId || job.projectId, "")}
-                      className={ROW_ACTION}
+                      className={FILL_ACTION}
                       style={{ fontFamily: MONO, letterSpacing: "0.08em" }}
                       data-continue
                     >
                       <SlidersHorizontal size={12} aria-hidden /> Continue working on the video
                     </Link>
                   ) : null}
-                  <ProcessSteps job={job} projectId={projectId || job.projectId} />
+                  <ProcessSteps job={job} projectId={projectId || job.projectId} className={FILL_ACTION} />
                 </div>
                 <FilmActions job={job} projectId={projectId} />
               </div>
