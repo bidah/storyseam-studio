@@ -1323,6 +1323,10 @@ export function SignInDialog({ flow = FLOWS.director, open, onOpenChange, withPr
   // The email just added to the waitlist — the dialog then says thank you
   // instead of asking again.
   const [joined, setJoined] = useState(null);
+  // Every opening starts from the form again: by the next time, this person may
+  // have been let in and need the sign-in button. Reset on OPEN rather than on
+  // close, so the thank-you doesn't flip back to the form mid close animation.
+  useEffect(() => { if (open) setJoined(null); }, [open]);
   const callbackURL = withPremise ? `/?${RESUME_PARAM}=1` : "/";
   const signIn = async () => {
     setBusy(true);
