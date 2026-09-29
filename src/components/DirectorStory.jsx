@@ -965,24 +965,81 @@ function DepthPicker({ depth, onDepth, room, onRoom, disabled }) {
 // model) by `quoteFilm`, the same plan the Worker runs. Tapping it opens the
 // breakdown, so a jump in the total can be traced to the setting that made it.
 function PriceQuote({ quote, disabled }) {
+  // A phone gets the whole screen, like Story settings; desktop a popover.
+  const narrow = useNarrow();
   const [open, setOpen] = useState(false);
   const total = `$${quote.total.toFixed(2)}`;
+  const trigger = (
+    <button
+      type="button"
+      aria-label={`Estimated cost: about ${total}`}
+      disabled={disabled}
+      className="mr-auto flex h-10 shrink-0 items-center gap-1.5 px-2 text-[var(--br-secondary)] transition-colors hover:text-[var(--br-primary)] disabled:opacity-40 data-[state=open]:text-[var(--br-primary)]"
+      data-story-price
+    >
+      <Receipt size={16} aria-hidden />
+      <span className="text-[0.72rem] uppercase tabular-nums" style={{ fontFamily: MONO, letterSpacing: "0.08em" }}>
+        ≈ {total}
+      </span>
+    </button>
+  );
+  const breakdown = (
+    <>
+      <table className="w-full text-sm" aria-label={`Estimated cost of a ${quote.length} film`}>
+        <tbody>
+          {quote.lines.map((l) => (
+            <tr key={l.key} className="border-b border-[var(--br-secondary)]/20" data-price-row={l.key}>
+              <td className="py-1.5 pr-2">
+                <span className="block">{l.label}</span>
+                <span className="block text-xs text-[var(--br-secondary)]">{l.detail}</span>
+              </td>
+              <td className="py-1.5 text-right align-top tabular-nums text-[var(--br-secondary)]" style={{ fontFamily: MONO }}>
+                {l.usd > 0 ? `$${l.usd.toFixed(2)}` : "—"}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+        <tfoot>
+          <tr>
+            <td className="pt-2 pr-2 text-xs uppercase text-[var(--br-secondary)]" style={{ fontFamily: MONO, letterSpacing: "0.08em" }}>Total</td>
+            <td className="pt-2 text-right tabular-nums" style={{ fontFamily: MONO }}>{total}</td>
+          </tr>
+        </tfoot>
+      </table>
+      <p className="mt-2 text-xs text-[var(--br-secondary)]">
+        fal's prices in US dollars. The cast is assumed at a typical Film's size until the World is written; the finished Film shows what it really spent.
+      </p>
+    </>
+  );
+  if (narrow) {
+    return (
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogTrigger asChild>{trigger}</DialogTrigger>
+        <DialogContent
+          className="inset-0 top-0 left-0 flex h-dvh max-h-dvh w-full max-w-none translate-x-0 translate-y-0 flex-col gap-0 overflow-y-auto border-0 bg-[var(--br-surface)] p-4 pt-[max(1rem,env(safe-area-inset-top))] pb-[max(1rem,env(safe-area-inset-bottom))] text-[var(--br-primary)] data-[state=closed]:zoom-out-100 data-[state=open]:zoom-in-100 sm:max-w-none"
+          style={{ ...HUD, fontFamily: BODY }}
+          data-story-price-panel
+        >
+          <DialogTitle style={{ fontFamily: DISPLAY, letterSpacing: DISPLAY_TRACKING }} className="mb-5 pr-8 text-xl font-bold uppercase">
+            Estimated cost · {quote.length}
+          </DialogTitle>
+          <DialogDescription className="sr-only">What each step of the next Film is expected to cost, from fal's prices.</DialogDescription>
+          {breakdown}
+          <button
+            type="button"
+            onClick={() => setOpen(false)}
+            className="mt-auto w-full bg-[var(--br-tertiary)] px-3 py-3 text-[0.8rem] uppercase text-[var(--br-on-primary)] transition-opacity hover:opacity-90"
+            style={{ fontFamily: MONO, letterSpacing: "0.08em" }}
+          >
+            Done
+          </button>
+        </DialogContent>
+      </Dialog>
+    );
+  }
   return (
     <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
-        <button
-          type="button"
-          aria-label={`Estimated cost: about ${total}`}
-          disabled={disabled}
-          className="mr-auto flex h-10 shrink-0 items-center gap-1.5 px-2 text-[var(--br-secondary)] transition-colors hover:text-[var(--br-primary)] disabled:opacity-40 data-[state=open]:text-[var(--br-primary)]"
-          data-story-price
-        >
-          <Receipt size={16} aria-hidden />
-          <span className="text-[0.72rem] uppercase tabular-nums" style={{ fontFamily: MONO, letterSpacing: "0.08em" }}>
-            ≈ {total}
-          </span>
-        </button>
-      </PopoverTrigger>
+      <PopoverTrigger asChild>{trigger}</PopoverTrigger>
       <PopoverContent
         side="top"
         align="start"
@@ -991,31 +1048,8 @@ function PriceQuote({ quote, disabled }) {
         style={{ ...HUD, fontFamily: BODY }}
         data-story-price-panel
       >
-        <SettingsLabel id="story-price-label">Estimated cost · {quote.length}</SettingsLabel>
-        <table className="mt-2 w-full text-sm" aria-labelledby="story-price-label">
-          <tbody>
-            {quote.lines.map((l) => (
-              <tr key={l.key} className="border-b border-[var(--br-secondary)]/20" data-price-row={l.key}>
-                <td className="py-1.5 pr-2">
-                  <span className="block">{l.label}</span>
-                  <span className="block text-xs text-[var(--br-secondary)]">{l.detail}</span>
-                </td>
-                <td className="py-1.5 text-right align-top tabular-nums text-[var(--br-secondary)]" style={{ fontFamily: MONO }}>
-                  {l.usd > 0 ? `$${l.usd.toFixed(2)}` : "—"}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-          <tfoot>
-            <tr>
-              <td className="pt-2 pr-2 text-xs uppercase text-[var(--br-secondary)]" style={{ fontFamily: MONO, letterSpacing: "0.08em" }}>Total</td>
-              <td className="pt-2 text-right tabular-nums" style={{ fontFamily: MONO }}>{total}</td>
-            </tr>
-          </tfoot>
-        </table>
-        <p className="mt-2 text-xs text-[var(--br-secondary)]">
-          fal's prices in US dollars. The cast is assumed at a typical Film's size until the World is written; the finished Film shows what it really spent.
-        </p>
+        <SettingsLabel>Estimated cost · {quote.length}</SettingsLabel>
+        {breakdown}
       </PopoverContent>
     </Popover>
   );
