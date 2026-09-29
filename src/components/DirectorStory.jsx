@@ -1817,9 +1817,16 @@ const FILL_ACTION = cn(ROW_ACTION, "w-full justify-center sm:w-auto sm:justify-s
  * A video url that shows its first frame before play. iOS Safari paints
  * nothing for `preload="metadata"` — just a play button on a blank box — until
  * the url names a moment to seek to; `#t=0.001` makes it load and draw that
- * frame, and playback still starts at the top. Exported for /watch.
+ * frame, and playback still starts at the top — provided the file's picture
+ * starts at 0 (film-score.js PICTURE_AT_ZERO). Exported for /watch.
  */
-export const withFirstFrame = (url) => (url && !String(url).includes("#") ? `${url}#t=0.001` : url);
+// `pf=1` is a new url for the same file: the story-engine Films were re-saved
+// in place (picture moved to start at 0) and are served immutable, so a
+// browser holding pieces of the old bytes must not mix them with the new.
+export const withFirstFrame = (url) => {
+  if (!url || String(url).includes("#")) return url;
+  return `${url}${String(url).includes("?") ? "&" : "?"}pf=1#t=0.001`;
+};
 
 const FILM_W = "max-w-[min(100%,calc(70dvh*16/9))]";
 
