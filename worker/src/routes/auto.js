@@ -387,7 +387,9 @@ export function registerAuto(app) {
   // link can watch and download it at /watch/<token>, no account needed.
   // Owner-only — the Film is found through the user's own films lookup, so a
   // Film id alone never shares someone else's Film.
-  //   GET    → { shared, token, path }     POST → mint (or the existing one)
+  //   GET    → { shared, token, path, steps }
+  //   POST   → mint (or the existing one); body `{ steps: boolean }` switches
+  //            "include step details" on the link (absent = leave it as is)
   //   DELETE → revoke; every copy of the link then 404s.
   const shareOf = async (c) => {
     const userId = c.get("userId");
@@ -397,7 +399,9 @@ export function registerAuto(app) {
     if (!pid) return { res: c.json({ ok: false, code: "not-found", error: "No such story." }, 404) };
     return { id, pid };
   };
-  const shared = (token) => ({ ok: true, shared: !!token, token: token || null, path: token ? `/watch/${token}` : null });
+  const shared = ({ token, steps } = {}) => ({
+    ok: true, shared: !!token, token: token || null, path: token ? `/watch/${token}` : null, steps: !!token && !!steps,
+  });
   app.get("/api/auto/films/:id/share", async (c) => {
     const f = await shareOf(c);
     if (f.res) return f.res;
@@ -410,13 +414,15 @@ export function registerAuto(app) {
     if (job?.status !== "done" || !job.film?.url) {
       return c.json({ ok: false, code: "not-done", error: "Only a finished story can be shared." }, 409);
     }
-    return c.json(shared(await shareFilm(c.env, f.pid, f.id)));
+    const body = await c.req.json().catch(() => ({}));
+    const steps = typeof body?.steps === "boolean" ? body.steps : undefined;
+    return c.json(shared(await shareFilm(c.env, f.pid, f.id, { steps })));
   });
   app.delete("/api/auto/films/:id/share", async (c) => {
     const f = await shareOf(c);
     if (f.res) return f.res;
     await unshareFilm(c.env, f.pid, f.id);
-    return c.json(shared(null));
+    return c.json(shared());
   });
 
   app.get("/api/auto/settings", async (c) => {

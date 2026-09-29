@@ -6,11 +6,14 @@
 // resolves it to the Film's project and file (lib/film-share.js) and streams
 // the video through it (GET /api/share/film/:token/video, `?download=1` for the
 // file). A revoked link, a fabricated one and a Film with no video all read as
-// the same "no longer available".
+// the same "no longer available". When the author turned on "include step
+// details", the manifest carries the Film's steps and a "View process steps"
+// button sits under the picture; their media and screenplays read through the
+// token too (shareMediaSource).
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router";
 import { ArrowRight, ChevronDown, Download, Loader2, LogIn } from "lucide-react";
-import { Page } from "@/components/DirectorStory";
+import { Page, ProcessSteps, shareMediaSource } from "@/components/DirectorStory";
 import { formatLength } from "@/lib/film-plan";
 import { DISPLAY, DISPLAY_TRACKING, MONO } from "@/lib/hudTheme";
 import { cn } from "@/lib/utils";
@@ -60,7 +63,7 @@ export function Component() {
 
   return (
     <Page className="h-dvh min-h-0 overflow-hidden animate-in fade-in duration-500">
-      <WatchFilm film={film} />
+      <WatchFilm film={film} token={token} />
     </Page>
   );
 }
@@ -71,7 +74,7 @@ export function Component() {
 // below takes the same width). The picture is
 // `object-contain` in a box of whatever shape the window is, so its left edge
 // moves with the window and the film's aspect — measured, not guessed.
-function WatchFilm({ film }) {
+function WatchFilm({ film, token }) {
   const [stage, setStage] = useState(null);
   const [aspect, setAspect] = useState(16 / 9);
   const [pictureWidth, setPictureWidth] = useState(null);
@@ -148,6 +151,11 @@ function WatchFilm({ film }) {
         </div>
       </div>
       <footer className="flex shrink-0 flex-col items-center gap-3 px-2 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:px-8">
+        {film.job ? (
+          <div style={pictureWidth ? { width: pictureWidth } : undefined} className="flex w-full max-w-full justify-end" data-process-steps>
+            <ProcessSteps job={film.job} source={shareMediaSource(token)} />
+          </div>
+        ) : null}
         {film.idea ? <PromptCard text={film.idea} width={pictureWidth} /> : null}
       </footer>
     </div>

@@ -20,7 +20,8 @@ import {
   isWorldShared,
 } from "../lib/share-token.js";
 import { filmDownloadName, resolveFilmShare } from "../lib/film-share.js";
-import { mediaKey, streamKey } from "../lib/media.js";
+import { kindForPrefix, mediaKey, streamKey } from "../lib/media.js";
+import { elementsFromDoc } from "../lib/script-lint.js";
 
 // Doc holding a project's active share token, which surfaces are on, and which
 // script draft the link points at ({ token, draftId, script, world }). Written
@@ -65,7 +66,56 @@ export function registerShare(app) {
       videoUrl: base,
       downloadUrl: `${base}?download=1`,
       fileName: filmDownloadName(r.film),
+      // "Include step details" (the author's switch on the share popover): the
+      // pipeline's steps, as the Film page's stepper reads them. Their media
+      // and screenplays resolve through the token (the two routes below).
+      ...(r.steps ? {
+        job: {
+          status: r.job.status, engine: r.job.engine || null, score: r.job.score,
+          voices: r.job.voices, depth: r.job.depth, steps: r.job.steps || [],
+        },
+      } : {}),
     });
+  });
+
+  // A shared Film's step media — sheets, auditions, segments, stills — read
+  // through the token while "include step details" is on. The path is the
+  // step result's own url (`/director-media/…`, `/asset/…`, `/thumb/…`),
+  // resolved inside the Film's project and nowhere else.
+  app.get("/api/share/film/:token/media/*", async (c) => {
+    const gone = () => c.text("This share link is no longer available", 404);
+    const r = await resolveFilmShare(c.env, c.req.param("token"));
+    if (!r?.steps) return gone();
+    const marker = "/media/";
+    const path = new URL(c.req.url).pathname;
+    const rest = decodeURIComponent(path.slice(path.indexOf(marker) + marker.length));
+    const slash = rest.indexOf("/");
+    const prefix = rest.slice(0, slash);
+    const file = rest.slice(slash + 1).replace(/\.\.(\/|\\|$)/g, "");
+    if (slash < 1 || !file) return gone();
+    let key;
+    if (prefix === "asset" || prefix === "thumb") key = `media/${r.pid}/asset/${file}`;
+    else {
+      const kind = kindForPrefix(prefix);
+      if (!kind) return gone();
+      key = mediaKey(r.pid, kind, file);
+    }
+    return streamKey(c.env, key, c.req.header("range"), {
+      ifNoneMatch: c.req.header("if-none-match"),
+      cacheControl: "private, max-age=300",
+    });
+  });
+
+  // A shared Film's screenplay drafts (the Script step's and the writers'
+  // room's), by id, while "include step details" is on.
+  app.get("/api/share/film/:token/drafts/:id", async (c) => {
+    const gone = () => c.json({ error: "This share link is no longer available" }, 404);
+    const r = await resolveFilmShare(c.env, c.req.param("token"));
+    if (!r?.steps) return gone();
+    const store = await readStore(c.env, r.pid);
+    const d = store.drafts.find((x) => x.id === c.req.param("id"));
+    if (!d) return gone();
+    return c.json({ id: d.id, name: d.name, title: d.title || "", elements: elementsFromDoc(d.doc) });
   });
 
   app.get("/api/share/film/:token/video", async (c) => {

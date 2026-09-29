@@ -43,10 +43,10 @@
 //
 // Auto is always on here: there is no toggle and no confirm card. If the
 // user's stored Auto setting is off we turn it on before starting.
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { createContext, useContext, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Link, Navigate, useLocation } from "react-router";
 import {
-  ArrowUp, AudioLines, Check, ChevronDown, ChevronLeft, ChevronRight, Circle, Clapperboard, CircleAlert, Copy, Download, Film, Link2Off, Loader2, Mic, PenLine, Plus, RotateCw, Search, Settings2,
+  ArrowUp, AudioLines, Check, ChevronDown, ChevronLeft, ChevronRight, Circle, Clapperboard, CircleAlert, Copy, Download, Film, Link2Off, ListChecks, Loader2, Mic, PenLine, Plus, RotateCw, Search, Settings2,
   Share2, SlidersHorizontal, Square, Users, X, icons as LUCIDE,
 } from "lucide-react";
 import { studioPath } from "@/lib/home";
@@ -1597,8 +1597,36 @@ export async function retryFilm(id) {
 // project in the url the Worker resolves the user's ACTIVE project, where a
 // Film's file (in a project of its own) is a 404 — and the player just spins.
 export function filmMediaUrl(url, projectId) {
+  url = mediaHref(url);
   if (!url || !projectId || /[?&]projectId=/.test(url)) return url;
   return `${url}${url.includes("?") ? "&" : "?"}projectId=${encodeURIComponent(projectId)}`;
+}
+
+// A media reference as a url string: the World's image slots are library
+// entries (`{ rel, url, thumb, name }`), every other step's are plain urls.
+function mediaHref(u) {
+  if (typeof u === "string") return u;
+  return u && typeof u === "object" && typeof u.url === "string" ? u.url : null;
+}
+
+// Where a step's media and screenplays are read from. On the Film's own page
+// that is the project (filmMediaUrl, /api/script/drafts); on a shared link
+// with step details on (/watch/:token) it is the token, through
+// /api/share/film/:token/{media,drafts} — the viewer has no project.
+const FilmMediaContext = createContext(null);
+export function shareMediaSource(token) {
+  const base = `/api/share/film/${encodeURIComponent(token)}`;
+  return {
+    media: (u) => (typeof u === "string" && u.startsWith("/") && !u.startsWith("/files/") ? `${base}/media${u.replace(/[?#].*$/, "")}` : u),
+    draft: (id) => `${base}/drafts/${encodeURIComponent(id)}`,
+  };
+}
+function useMediaUrl(projectId) {
+  const src = useContext(FilmMediaContext);
+  return (u) => {
+    const href = mediaHref(u);
+    return href && src ? src.media(href) : filmMediaUrl(href, projectId);
+  };
 }
 
 // ── Share and download a finished Film ──────────────────────────────────────
@@ -1613,8 +1641,11 @@ export function filmFileName(film) {
   return `${base || "story"}.mp4`;
 }
 
-async function shareCall(filmId, method) {
-  const { res, data } = await getJSON(`/api/auto/films/${encodeURIComponent(filmId)}/share`, { method });
+async function shareCall(filmId, method, body) {
+  const { res, data } = await getJSON(`/api/auto/films/${encodeURIComponent(filmId)}/share`, {
+    method,
+    ...(body ? { headers: { "content-type": "application/json" }, body: JSON.stringify(body) } : {}),
+  });
   if (!res.ok) throw new Error(data.error || `Couldn't ${method === "DELETE" ? "stop sharing" : "share"} the story (${res.status}).`);
   return data;
 }
@@ -1629,17 +1660,20 @@ const FILM_W = "max-w-[calc(70dvh*16/9)]";
 
 export function FilmActions({ job, projectId, children = null }) {
   const [link, setLink] = useState(undefined); // undefined = not read; null = not shared
+  // "Include step details" on the link — off unless the author turns it on.
+  const [steps, setSteps] = useState(false);
   const [busy, setBusy] = useState(false);
   const [copied, setCopied] = useState(false);
   const [err, setErr] = useState(null);
   const url = link ? `${window.location.origin}${link}` : null;
 
-  const run = async (method) => {
+  const run = async (method, body) => {
     setBusy(true);
     setErr(null);
     try {
-      const data = await shareCall(job.id, method);
+      const data = await shareCall(job.id, method, body);
       setLink(data.path || null);
+      setSteps(!!data.steps);
       return data.path || null;
     } catch (e) {
       setErr(String(e?.message || e));
@@ -1704,6 +1738,34 @@ export function FilmActions({ job, projectId, children = null }) {
             </div>
           ) : null}
           {url ? (
+            <label className="mt-3 flex cursor-pointer items-center justify-between gap-3 text-sm" data-share-steps>
+              <span>
+                Include step details
+                <span className="block text-xs text-[var(--br-secondary)]">Viewers can open how the story was made.</span>
+              </span>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={steps}
+                disabled={busy}
+                onClick={() => run("POST", { steps: !steps })}
+                className={cn(
+                  "relative h-5 w-9 shrink-0 border transition-colors disabled:opacity-50",
+                  steps ? "border-[var(--br-primary)] bg-[var(--br-primary)]/25" : "border-[var(--br-secondary)]/50 bg-transparent",
+                )}
+                data-share-steps-toggle
+              >
+                <span
+                  aria-hidden
+                  className={cn(
+                    "absolute top-0.5 size-3.5 transition-all",
+                    steps ? "left-[calc(100%-1rem)] bg-[var(--br-primary)]" : "left-0.5 bg-[var(--br-secondary)]",
+                  )}
+                />
+              </button>
+            </label>
+          ) : null}
+          {url ? (
             <button
               type="button"
               onClick={() => run("DELETE")}
@@ -1740,6 +1802,7 @@ export function FilmActions({ job, projectId, children = null }) {
 // read, then one player per voice (film-plan.ts › Voices). Audio is addressed
 // to the Film's project like the Film itself (filmMediaUrl).
 function VoicesCard({ result, projectId }) {
+  const media = useMediaUrl(projectId);
   const voices = (result?.voices || []).filter((v) => v?.url);
   if (!voices.length) return null;
   return (
@@ -1757,7 +1820,7 @@ function VoicesCard({ result, projectId }) {
               <span className="block text-xs text-[var(--br-primary)]/90">{v.name}</span>
               {v.note ? <span className="block truncate text-[0.7rem] text-[var(--br-secondary)]" title={v.note}>{v.note}</span> : null}
             </span>
-            <audio controls preload="none" src={filmMediaUrl(v.url, projectId)} className="h-8 w-40 shrink-0" aria-label={`${v.name}'s audition`} />
+            <audio controls preload="none" src={media(v.url)} className="h-8 w-40 shrink-0" aria-label={`${v.name}'s audition`} />
           </li>
         ))}
       </ul>
@@ -1779,12 +1842,13 @@ const PAGE_DIALOG =
 
 /** A saved draft's screenplay, read on demand (GET /api/script/drafts/:id). */
 function Screenplay({ draftId }) {
+  const src = useContext(FilmMediaContext);
   const [state, setState] = useState({ loading: true, draft: null, error: null });
   useEffect(() => {
     if (!draftId) return;
     let live = true;
     setState({ loading: true, draft: null, error: null });
-    fetch(`/api/script/drafts/${encodeURIComponent(draftId)}`)
+    fetch(src ? src.draft(draftId) : `/api/script/drafts/${encodeURIComponent(draftId)}`)
       .then(async (res) => {
         const data = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(data.error || `Couldn't load the script (${res.status}).`);
@@ -1793,7 +1857,7 @@ function Screenplay({ draftId }) {
       .then((draft) => { if (live) setState({ loading: false, draft, error: null }); })
       .catch((e) => { if (live) setState({ loading: false, draft: null, error: String(e?.message || e) }); });
     return () => { live = false; };
-  }, [draftId]);
+  }, [draftId, src]);
   if (!draftId) return null;
   if (state.loading) return <p className="flex items-center gap-2 text-xs text-[var(--br-secondary)]"><Loader2 size={12} className="animate-spin" aria-hidden /> Loading the script…</p>;
   if (state.error) return <p className="text-xs text-[var(--br-tertiary)]">{state.error}</p>;
@@ -1838,13 +1902,19 @@ function Fields({ rows }) {
 
 /** One character, place or prop: its sheet (when linked), name, and every field it has. */
 function EntryCard({ image, name, sub, rows, projectId }) {
-  const src = image ? filmMediaUrl(image, projectId) : null;
+  const media = useMediaUrl(projectId);
+  const src = image ? media(image) : null;
+  // The thumbnail opens the image in the Lightbox, over the step's dialog.
+  const [at, setAt] = useState(null);
   return (
     <li className="flex gap-3 border border-[var(--br-secondary)]/25 bg-[var(--br-surface)]/20 p-3">
       {src ? (
-        <a href={src} target="_blank" rel="noreferrer" className="shrink-0">
-          <img src={src} alt={name} loading="lazy" className="size-16 border border-[var(--br-secondary)]/30 object-cover" />
-        </a>
+        <>
+          <button type="button" onClick={() => setAt(0)} className="shrink-0" aria-label={`Open ${name || "image"}`} data-entry-image>
+            <img src={src} alt={name} loading="lazy" className="size-16 border border-[var(--br-secondary)]/30 object-cover transition-opacity hover:opacity-80" />
+          </button>
+          <Lightbox items={[{ name, imageUrl: mediaHref(image) }]} at={at} onAt={setAt} projectId={projectId} />
+        </>
       ) : null}
       <div className="min-w-0 flex-1 space-y-1.5">
         <p className="text-base text-[var(--br-primary)]">
@@ -1954,6 +2024,7 @@ const PreviewLabel = ({ children }) => (
 );
 
 function Thumbs({ items, projectId }) {
+  const media = useMediaUrl(projectId);
   const shown = items.filter((x) => x?.imageUrl);
   const [at, setAt] = useState(null);
   if (!shown.length) return null;
@@ -1963,7 +2034,7 @@ function Thumbs({ items, projectId }) {
         {shown.map((x, i) => (
           <li key={`${x.name}-${i}`} className="min-w-0">
             <button type="button" onClick={() => setAt(i)} className="block w-full" aria-label={`Open ${x.caption || x.name || "image"}`}>
-              <img src={filmMediaUrl(x.imageUrl, projectId)} alt={x.name || ""} loading="lazy" className="aspect-square w-full border border-[var(--br-secondary)]/30 bg-black/40 object-cover transition-opacity hover:opacity-80" />
+              <img src={media(x.imageUrl)} alt={x.name || ""} loading="lazy" className="aspect-square w-full border border-[var(--br-secondary)]/30 bg-black/40 object-cover transition-opacity hover:opacity-80" />
             </button>
             <span className="mt-1 block truncate text-[0.7rem] text-[var(--br-secondary)]">{x.caption || x.name}</span>
           </li>
@@ -1979,6 +2050,7 @@ function Thumbs({ items, projectId }) {
  * chevrons or the arrow keys on a desktop. `at` null is closed.
  */
 function Lightbox({ items, at, onAt, projectId }) {
+  const media = useMediaUrl(projectId);
   const open = at != null && !!items[at];
   const n = items.length;
   const go = (d) => onAt((i) => (i == null ? i : (i + d + n) % n));
@@ -2023,7 +2095,7 @@ function Lightbox({ items, at, onAt, projectId }) {
           {item ? (
             <img
               key={item.imageUrl}
-              src={filmMediaUrl(item.imageUrl, projectId)}
+              src={media(item.imageUrl)}
               alt={item.name || ""}
               className="max-h-[80dvh] max-w-full select-none object-contain"
               draggable={false}
@@ -2058,7 +2130,7 @@ const sheetCaption = (x) => String(x.subject || x.name || "").replace(/\s+—\s+
 
 function StepResultBody({ step, projectId }) {
   const r = step.result || {};
-  const media = (u) => filmMediaUrl(u, projectId);
+  const media = useMediaUrl(projectId);
   switch (step.key) {
     case "look": {
       const style = FILM_STYLES.find((x) => x.id === r.style);
@@ -2240,6 +2312,108 @@ function StepResultDialog({ step, projectId, onClose }) {
   );
 }
 
+/** The pipeline's steps as a stepper: live while the Film runs, and again in
+ *  the finished Film's Steps dialog. A done step with a result opens it. */
+function StepList({ steps, onOpen, variant = "full" }) {
+  return (
+    <ol className="space-y-3" aria-label="Steps" aria-live="polite" data-steps={variant}>
+      {steps.map((s) => (
+        <li
+          key={s.key}
+          className={cn(
+            "flex items-start gap-3 transition-opacity duration-300",
+            s.status === "pending" && "opacity-50",
+          )}
+          data-step={s.key}
+          data-status={s.status}
+        >
+          <span className="mt-0.5 flex size-5 shrink-0 items-center justify-center">
+            <StepIcon status={s.status} />
+          </span>
+          <StepBody
+            step={s}
+            onOpen={s.status === "done" && s.result ? () => onOpen(s) : null}
+          >
+            <span className="flex items-baseline justify-between gap-3">
+              <span className={cn(s.status === "running" || s.status === "retrying" ? "text-[var(--br-primary)]" : "text-[var(--br-primary)]/80")}>
+                {s.label}
+              </span>
+              <span
+                className="shrink-0 text-[0.72rem] uppercase text-[var(--br-secondary)]"
+                style={{ fontFamily: MONO, letterSpacing: "0.08em" }}
+              >
+                {STATUS_WORD[s.status] || s.status}
+              </span>
+            </span>
+            {s.summary && s.status !== "pending" && (
+              <span className="block truncate text-xs text-[var(--br-secondary)]">{s.summary}</span>
+            )}
+          </StepBody>
+          {s.status === "done" && s.result ? (
+            <button
+              type="button"
+              onClick={() => onOpen(s)}
+              aria-label={`See what ${s.label} came back with`}
+              className="mt-0.5 flex size-7 shrink-0 items-center justify-center border border-[var(--br-secondary)]/40 text-[var(--br-secondary)] transition-colors hover:border-[var(--br-primary)]/60 hover:text-[var(--br-primary)] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--br-primary)]/60"
+              data-step-details={s.key}
+            >
+              <Search size={13} aria-hidden />
+            </button>
+          ) : null}
+        </li>
+      ))}
+    </ol>
+  );
+}
+
+// A dialog that takes the whole screen at every size — the finished Film's
+// Steps, which is a page of its own rather than a card over one.
+const FULL_DIALOG =
+  PAGE_DIALOG.replace("sm:h-auto sm:max-h-[85dvh] sm:max-w-xl sm:border sm:border-[var(--br-secondary)]/40 ", "") +
+  " w-full max-w-none sm:max-w-none p-0";
+
+/**
+ * "View process steps": a finished Film's pipeline, the stepper it showed
+ * while it ran, in a full-screen dialog; a step with a result opens it on top.
+ * On the Film's page its media reads through the project; on a shared link
+ * (routes/watch.jsx) `source` is shareMediaSource(token).
+ */
+export function ProcessSteps({ job, projectId = null, source = null, className, style }) {
+  const steps = stepsOf(job);
+  const [open, setOpen] = useState(false);
+  const [openStep, setOpenStep] = useState(null);
+  if (!steps.length) return null;
+  return (
+    <FilmMediaContext.Provider value={source}>
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className={className || ROW_ACTION}
+        style={{ fontFamily: MONO, letterSpacing: "0.08em", ...style }}
+        data-steps-open
+      >
+        <ListChecks size={12} aria-hidden /> View process steps
+      </button>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className={FULL_DIALOG} style={{ ...HUD, fontFamily: BODY }} data-steps-dialog>
+          <div className="mx-auto w-full max-w-md space-y-6 px-4 py-14">
+            <div className="space-y-1">
+              <DialogTitle style={{ fontFamily: DISPLAY, letterSpacing: DISPLAY_TRACKING }} className="text-xl font-bold uppercase">
+                Process steps
+              </DialogTitle>
+              <DialogDescription className="text-xs text-[var(--br-secondary)]">
+                How this story was made. Tap a step to see what it came back with.
+              </DialogDescription>
+            </div>
+            <StepList steps={steps} onOpen={setOpenStep} variant="dialog" />
+          </div>
+        </DialogContent>
+      </Dialog>
+      <StepResultDialog step={openStep} projectId={projectId} onClose={() => setOpenStep(null)} />
+    </FilmMediaContext.Provider>
+  );
+}
+
 // What a finished Film was made WITH — the settings its job carries, read
 // back as the input names them (Gen mode, Writer, Fast · Deep, the gear's
 // length / resolution / look / voices / score), plus what it came to.
@@ -2318,6 +2492,8 @@ export function StoryView({ job, projectId = null, onRetry, retrying = false, re
     : null;
   const waiting = job.status === "awaiting-confirm";
   const queued = job.status === "queued";
+  // The Film isn't read yet: no prompt, no steps — just a spinner.
+  const loading = job.status === "loading";
   // On a phone the prompt is two lines; tapping it opens the whole of it.
   const [promptOpen, setPromptOpen] = useState(false);
   // The done step whose result is open in its dialog.
@@ -2342,18 +2518,20 @@ export function StoryView({ job, projectId = null, onRetry, retrying = false, re
       <div className={cn("flex flex-col", done ? "min-h-dvh" : "h-dvh")} data-story-view data-status={job.status}>
         {/* The header strip: the wordmark on the left, "New story" on the
             right, nothing else — both go home, where stories are made. */}
-        <div className="flex shrink-0 items-center justify-between gap-3 border-b border-[var(--br-secondary)]/25 px-4 py-3 sm:px-8">
+        {/* The home page's strip (HudHeader): the same wordmark, the same
+            height — py-4 around a 32px row. */}
+        <div className="flex shrink-0 items-center justify-between gap-3 border-b border-[var(--br-secondary)]/25 px-4 py-4 sm:px-8">
           <Link
             to="/"
             className="text-[1.35rem] leading-none"
             style={{ fontFamily: DISPLAY, fontWeight: 600, letterSpacing: DISPLAY_TRACKING }}
             data-wordmark
           >
-            STORYSEAM
+            STORY<span style={{ fontWeight: 800 }}>SEAM</span>
           </Link>
           <Link
             to="/"
-            className={ROW_ACTION}
+            className={cn(ROW_ACTION, "h-8")}
             style={{ fontFamily: MONO, letterSpacing: "0.08em" }}
             data-new
           >
@@ -2361,12 +2539,18 @@ export function StoryView({ job, projectId = null, onRetry, retrying = false, re
           </Link>
         </div>
 
+        {loading ? (
+          <div className="flex min-h-0 flex-1 items-center justify-center" data-loading>
+            <Loader2 size={28} className="animate-spin text-[var(--br-secondary)]" aria-label="Loading the story" />
+          </div>
+        ) : null}
+
         {/* The prompt on its own row, in a card the video's width. From `sm`
             up it is in full, wrapping, never truncated. On a phone a long
             premise would push the steps off the screen, so it is two lines
             with an ellipsis, and a tap opens the whole of it in a dialog.
             The length sits in its corner. */}
-        <div className="flex shrink-0 justify-center px-4 pt-3 sm:px-8">
+        <div className={cn("flex shrink-0 justify-center px-4 pt-3 sm:px-8", loading && "hidden")}>
           <div className={cn("flex w-full items-start gap-3 border border-[var(--br-secondary)]/40 bg-[var(--br-surface)] px-4 py-3", FILM_W)}>
             <button
               type="button"
@@ -2407,7 +2591,7 @@ export function StoryView({ job, projectId = null, onRetry, retrying = false, re
           </DialogContent>
         </Dialog>
 
-        {done ? (
+        {loading ? null : done ? (
           <div className="flex flex-1 flex-col animate-in fade-in duration-700">
             {/* The Film in its own 16:9 box, centered — never the screen's full
                 width; capped so the details below start above the fold. */}
@@ -2421,16 +2605,21 @@ export function StoryView({ job, projectId = null, onRetry, retrying = false, re
                     (world, script, shot list, the stills or the segments, the
                     score) each on its own tab, the agent beside them, and the
                     Film on the Editor's timeline. Share and Download on the right. */}
-                {projectId || job.projectId ? (
-                  <Link
-                    to={studioPath(projectId || job.projectId, "")}
-                    className={ROW_ACTION}
-                    style={{ fontFamily: MONO, letterSpacing: "0.08em" }}
-                    data-continue
-                  >
-                    <SlidersHorizontal size={12} aria-hidden /> Continue working on the video
-                  </Link>
-                ) : <span aria-hidden />}
+                {/* Beside it, how the Film was made — the stepper it showed
+                    while it ran, in a full-screen dialog. */}
+                <div className="flex flex-wrap items-center gap-2">
+                  {projectId || job.projectId ? (
+                    <Link
+                      to={studioPath(projectId || job.projectId, "")}
+                      className={ROW_ACTION}
+                      style={{ fontFamily: MONO, letterSpacing: "0.08em" }}
+                      data-continue
+                    >
+                      <SlidersHorizontal size={12} aria-hidden /> Continue working on the video
+                    </Link>
+                  ) : null}
+                  <ProcessSteps job={job} projectId={projectId || job.projectId} />
+                </div>
                 <FilmActions job={job} projectId={projectId} />
               </div>
               {/* The video at its OWN ratio (a 480p film is not exactly 16:9),
@@ -2452,53 +2641,7 @@ export function StoryView({ job, projectId = null, onRetry, retrying = false, re
         ) : (
           <div className="flex min-h-0 flex-1 items-center justify-center overflow-y-auto px-4 py-6">
             <div className="w-full max-w-md space-y-6">
-              <ol className="space-y-3" aria-label="Steps" aria-live="polite" data-steps="full">
-                {steps.map((s) => (
-                  <li
-                    key={s.key}
-                    className={cn(
-                      "flex items-start gap-3 transition-opacity duration-300",
-                      s.status === "pending" && "opacity-50",
-                    )}
-                    data-step={s.key}
-                    data-status={s.status}
-                  >
-                    <span className="mt-0.5 flex size-5 shrink-0 items-center justify-center">
-                      <StepIcon status={s.status} />
-                    </span>
-                    <StepBody
-                      step={s}
-                      onOpen={s.status === "done" && s.result ? () => setOpenStep(s) : null}
-                    >
-                      <span className="flex items-baseline justify-between gap-3">
-                        <span className={cn(s.status === "running" || s.status === "retrying" ? "text-[var(--br-primary)]" : "text-[var(--br-primary)]/80")}>
-                          {s.label}
-                        </span>
-                        <span
-                          className="shrink-0 text-[0.72rem] uppercase text-[var(--br-secondary)]"
-                          style={{ fontFamily: MONO, letterSpacing: "0.08em" }}
-                        >
-                          {STATUS_WORD[s.status] || s.status}
-                        </span>
-                      </span>
-                      {s.summary && s.status !== "pending" && (
-                        <span className="block truncate text-xs text-[var(--br-secondary)]">{s.summary}</span>
-                      )}
-                    </StepBody>
-                    {s.status === "done" && s.result ? (
-                      <button
-                        type="button"
-                        onClick={() => setOpenStep(s)}
-                        aria-label={`See what ${s.label} came back with`}
-                        className="mt-0.5 flex size-7 shrink-0 items-center justify-center border border-[var(--br-secondary)]/40 text-[var(--br-secondary)] transition-colors hover:border-[var(--br-primary)]/60 hover:text-[var(--br-primary)] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--br-primary)]/60"
-                        data-step-details={s.key}
-                      >
-                        <Search size={13} aria-hidden />
-                      </button>
-                    ) : null}
-                  </li>
-                ))}
-              </ol>
+              <StepList steps={steps} onOpen={setOpenStep} />
               <StepResultDialog step={openStep} projectId={projectId || job.projectId} onClose={() => setOpenStep(null)} />
               {stopped && (
                 <div className="space-y-3">

@@ -12,8 +12,8 @@
 // An id that isn't one of the user's Films (unknown, someone else's, aged out)
 // gets a clean not-found and the way to a new story — it never crashes.
 //
-// No loading screen: the steps render at once, all waiting, and fill in when
-// the job arrives. The shared pieces live in components/DirectorStory.jsx.
+// Until the job arrives the page is the header and a centered spinner — no
+// empty prompt card, no column of waiting steps. The shared pieces live in components/DirectorStory.jsx.
 import { useCallback, useEffect, useState } from "react";
 import { Link, useLocation, useParams } from "react-router";
 import { Plus } from "lucide-react";

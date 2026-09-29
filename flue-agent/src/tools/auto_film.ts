@@ -376,22 +376,26 @@ export const shareFilm = (api: Api) =>
   defineTool({
     name: "share_film",
     description:
-      "Get a PUBLIC link to a FINISHED Film — the same as the Share button under the video on its story page. Anyone with the link can watch AND download the Film at /watch/<token> without an account. Calling it again returns the SAME link (it is not re-minted). `stop: true` revokes the link: every copy of it stops working at once (404) — do that only when the author asks to stop sharing. Only for a Film get_film reports as `done` (otherwise `code: not-done`). Give the author the `url` as-is.",
+      "Get a PUBLIC link to a FINISHED Film — the same as the Share button under the video on its story page. Anyone with the link can watch AND download the Film at /watch/<token> without an account. Calling it again returns the SAME link (it is not re-minted). `stop: true` revokes the link: every copy of it stops working at once (404) — do that only when the author asks to stop sharing. `steps: true` makes the link also show the process — every step of how the Film was made and what each came back with (world, script, sheets, voices, segments) — behind a “View process steps” button; off by default, `steps: false` turns it back off; omit it to leave it as is. Only for a Film get_film reports as `done` (otherwise `code: not-done`). Give the author the `url` as-is.",
     input: v.object({
       filmId: d(v.string(), "The Film's id — make_film's `filmId`, get_film's `job.id`, or list_films' `filmId`."),
       stop: v.optional(d(v.boolean(), "true = revoke the share link instead of getting it.")),
+      steps: v.optional(d(v.boolean(), "Include step details on the link: true shows the process steps to viewers, false hides them. Omit to leave as is.")),
     }),
     async run({ data: input, signal }): Promise<{ output: Json }> {
       const path = `/api/auto/films/${encodeURIComponent(String(input.filmId))}/share`;
       try {
-        const res = (input.stop ? await api.req(path, "DELETE", undefined, signal) : await api.post(path, {}, signal)) as {
-          shared?: boolean; path?: string | null;
+        const res = (input.stop
+          ? await api.req(path, "DELETE", undefined, signal)
+          : await api.post(path, typeof input.steps === "boolean" ? { steps: input.steps } : {}, signal)) as {
+          shared?: boolean; path?: string | null; steps?: boolean;
         };
         return {
           output: {
             ok: true,
             shared: !!res.shared,
             url: res.path ? `${PUBLIC_ORIGIN}${res.path}` : null,
+            steps: !!res.steps,
             ...(input.stop ? { next: "The link is revoked. Tell the author it no longer works." } : {}),
           },
         };
