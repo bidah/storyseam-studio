@@ -329,7 +329,24 @@ export async function runScoreStage({ job, results, env, attempt = 1, model }, d
     if (m.status === "error") throw fail(`Measuring the film failed — ${String(m.error || "the sandbox failed").slice(0, 400)}`);
     if (m.status === "running") return pending("Measuring the kept film — its length and where the picture turns");
 
-    const measured = withDucks(parseMeasurement(await scorer.readMeasure(env, m.jobId, m.outPath)));
+    // The report is scratch in the sandbox's /tmp, which does not survive the
+    // sandbox stopping — a job that finished long before this read (a Film
+    // stopped, then retried) comes back "file not found". Measuring again is
+    // cheap: redo it once the attempt has moved on, rather than failing forever.
+    let report;
+    try {
+      report = await scorer.readMeasure(env, m.jobId, m.outPath);
+    } catch (err) {
+      const why = String(err?.message || err || "the report is gone").slice(0, 300);
+      if ((m.attempt || 1) < attempt) {
+        const started = await scorer.startMeasure(env, { filmKey: directorKey(pid, filmFile) });
+        state.measure = { ...started, attempt, status: "running", error: null };
+        spend += FILM_RATES_USD.sandboxMinute;
+        return pending("Measuring the kept film again — the last measurement was lost");
+      }
+      throw fail(`Reading the film's measurement failed — ${why}`);
+    }
+    const measured = withDucks(parseMeasurement(report));
     state.measured = {
       durationMs: measured.durationMs,
       hasAudio: measured.hasAudio,
