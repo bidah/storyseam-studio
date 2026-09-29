@@ -1292,8 +1292,10 @@ export function SimpleView({ flow = FLOWS.director, onFlow, onSubmit, submitting
         className="relative z-10 flex max-w-full flex-col items-stretch gap-8 text-center"
         style={{ width: "min(61.6rem, calc(100vw - 2rem))" }}
       >
+        {/* On a phone the column's gap-8 left the headline floating; it sits
+            12px over the box there. */}
         <h1
-          className="whitespace-nowrap leading-none"
+          className="-mb-5 whitespace-nowrap leading-none sm:mb-0"
           style={{
             fontFamily: DISPLAY,
             fontWeight: 700,
