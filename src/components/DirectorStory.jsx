@@ -2877,7 +2877,9 @@ export function StoryView({ job, projectId = null, onRetry, retrying = false, re
           <div className="flex flex-1 flex-col animate-in fade-in duration-700">
             {/* The Film in its own 16:9 box, centered — never the screen's full
                 width; capped so the details below start above the fold. */}
-            <div className="flex shrink-0 flex-col items-center gap-3 px-4 py-3 sm:px-8">
+            {/* pt-1.5 on a phone: with the chips' own 2px scroll padding that
+                is the same 8px as every other gap between the page's controls. */}
+            <div className="flex shrink-0 flex-col items-center gap-3 px-4 pb-3 pt-1.5 sm:px-8 sm:pt-3">
               {/* The Film's actions on their own row right above the picture,
                   flush with its right edge. */}
               <div className={cn("flex w-full flex-wrap items-center justify-between gap-2", FILM_W)}>
