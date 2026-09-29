@@ -71,6 +71,34 @@ function withOutputCap<T extends AnyStreamFn>(stream: T): T {
   }) as T;
 }
 
+// Qwen 3.8 27B (the studio's default Film writer, and so the model a Deep
+// Film's writers' room reads on) is not in pi-ai's Workers AI catalog. flue
+// resolves an unknown `@cf/…` id with ZERO metadata, and zero metadata means
+// `reasoning: false` — so no `reasoning_effort` ever reaches the wire and Qwen
+// thinks at its own default, which is xhigh (worker/src/lib/writer.js). A room
+// pass measured 139 s and 289 s of thinking PER TURN that way, and
+// story_architect's pass took 50 minutes (film-a45e1cb9, 2026-09-29). Declared
+// here as reasoning-capable, a `thinkingLevel` reaches it as `reasoning_effort`.
+// Workers AI takes "low" and "medium" for this model and REFUSES "high"
+// (measured), so the map has no high rung — keep callers at low/medium.
+export const WORKERS_AI_QWEN_ID = "@cf/qwen/qwen3.8-27b";
+const QWEN_MODEL = {
+  id: WORKERS_AI_QWEN_ID,
+  name: "Qwen 3.8 27B",
+  reasoning: true,
+  input: ["text"],
+  cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+  contextWindow: 131072,
+  maxTokens: 32000,
+  thinkingLevelMap: { off: null, minimal: "low", low: "low", medium: "medium", high: null, xhigh: null, max: null },
+};
+
+// flue fails a model stream as a RETRYABLE interruption after this long with
+// no bytes (its default is 300 s). Workers AI streams reasoning deltas, so a
+// thinking model is never silent for long; two minutes of nothing is a stalled
+// stream, and each stall used to cost five minutes before the retry.
+export const STREAM_IDLE_TIMEOUT_MS = 120_000;
+
 let installed = false;
 
 export function installWorkersAiOutputCap(): void {
@@ -83,7 +111,7 @@ export function installWorkersAiOutputCap(): void {
   // `env` is untyped here (no generated worker-configuration.d.ts in this
   // project); wrangler.jsonc's `"ai": { "binding": "AI" }` is what supplies it.
   const binding = (env as unknown as { AI: CloudflareAIBinding }).AI;
-  const base = cloudflareBindingProvider({ binding });
+  const base = cloudflareBindingProvider({ binding, streamIdleTimeoutMs: STREAM_IDLE_TIMEOUT_MS });
   // `cloudflare/anthropic/…` (a Film whose writer is Claude runs its writers' room on it)
   // goes through the binding too, but on AI Gateway's Unified Billing:
   // Cloudflare holds the Anthropic credential and bills the account's gateway
@@ -93,12 +121,20 @@ export function installWorkersAiOutputCap(): void {
   // family gets its own and every other model keeps the default route.
   const claudeGateway =
     (process.env.CLAUDE_GATEWAY_ID as string | undefined) || "auto-look";
-  const claude = cloudflareBindingProvider({ binding, gateway: { id: claudeGateway } });
+  const claude = cloudflareBindingProvider({ binding, gateway: { id: claudeGateway }, streamIdleTimeoutMs: STREAM_IDLE_TIMEOUT_MS });
+  // Qwen 3.8 joins the catalog as a binding model (same `api` marker the
+  // binding gives every catalog entry), so it resolves WITH its metadata.
+  const template = base.getModels().find((m) => m.id === "@cf/moonshotai/kimi-k2.6") ?? base.getModels()[0];
+  const baseModels = base.getModels();
+  const models = baseModels.some((m) => m.id === WORKERS_AI_QWEN_ID)
+    ? baseModels
+    : [...baseModels, { ...template, ...QWEN_MODEL } as typeof template];
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const byFamily = <K extends "stream" | "streamSimple">(key: K) => ((model: any, context: any, options: any) =>
     (String(model?.id ?? "").startsWith("anthropic/") ? claude[key] : base[key])(model, context, options)) as typeof base[K];
   setProvider({
     ...base,
+    getModels: () => models,
     stream: withOutputCap(byFamily("stream")),
     streamSimple: withOutputCap(byFamily("streamSimple")),
   });

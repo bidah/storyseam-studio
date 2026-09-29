@@ -71,7 +71,14 @@ is a real answer when the draft passes your lane.`;
 
 export function WritersRoom(): string {
   const data = useInitialData<RoomPassData>();
-  useModel(roomModel(data?.model));
+  // A pass on a Workers AI writer (Qwen, Kimi) reasons at "low". Left at
+  // flue's "medium", or at Qwen's own xhigh when no effort was sent at all, a
+  // single turn thought for up to five minutes, and story_architect's pass —
+  // its own turns plus the arc expert it delegates to, which inherits this
+  // level — took 50. The notes are in the answer, not the thinking. Claude
+  // keeps the default.
+  const model = roomModel(data?.model);
+  useModel(model, model.startsWith("cloudflare/@cf/") ? { thinkingLevel: "low" } : undefined);
   if (!data) return "Say that this writers' room pass was started without its Film, and stop.";
   const api = createApi(data.projectId, data.userId, `room-${data.filmId}`, data.episodeId ?? null);
   const specialist = createSubagents(api, [], { recordReviews: false }).find((s) => s.name === data.specialist);
@@ -84,3 +91,14 @@ export function WritersRoom(): string {
 }
 WritersRoom.agentName = "writers-room";
 WritersRoom.initialData = RoomPassData;
+// flue owns a pass's retries — the ONLY retry budget a pass has
+// (WritersRoomWorkflow no longer re-dispatches). Three attempts, where an
+// attempt is a run cut off by an eviction, a deploy or a stalled model stream
+// (lib/output-cap.ts STREAM_IDLE_TIMEOUT_MS); a transient provider error is
+// retried inside the attempt. Past the deadline the submission settles failed
+// and the workflow's read() rejects, so a pass can never hold the Film for
+// longer than this. flue's defaults (10 attempts, 1 hour) are what let one
+// silent pass stand for most of an hour.
+export const ROOM_PASS_ATTEMPTS = 3;
+export const ROOM_PASS_TIMEOUT_MS = 15 * 60_000;
+WritersRoom.durability = { maxAttempts: ROOM_PASS_ATTEMPTS, timeoutMs: ROOM_PASS_TIMEOUT_MS };

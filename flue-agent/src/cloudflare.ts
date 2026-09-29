@@ -45,10 +45,16 @@ type RoomDoc = {
   rewrites?: Record<string, unknown>;
 } | null;
 
-// A pass is reading a draft with tools on Claude: minutes, not seconds.
-const READ_TIMEOUT = "25 minutes" as const;
+// A pass has ONE retry budget, and it is flue's: WritersRoom.durability
+// (3 attempts, a 15-minute deadline — agents/writers-room.ts). The workflow
+// dispatches a pass once and waits for it to settle; it used to add its own
+// layers on top (a 25-minute read × 3 tries × 2 dispatches, over flue's
+// default 10 attempts / 1 hour), which let one silent pass hold a Film for
+// hours. READ_TIMEOUT is the deadline plus flue's grace for settling a hung
+// attempt; the read's own retry only RE-ATTACHES to the same submission after
+// the workflow itself was interrupted (a deploy) — it never re-runs the pass.
+const READ_TIMEOUT = "18 minutes" as const;
 const REWRITE_TIMEOUT = "15 minutes" as const;
-const PASS_ATTEMPTS = 2;
 
 /** The pass's final message → its full notes, plus the JSON block filed beneath them. */
 export function parsePassReply(text: string): { report: string; summary: string; findings: unknown[] } {
@@ -152,49 +158,60 @@ export class WritersRoomWorkflow extends WorkflowEntrypoint<Record<string, unkno
         if (before.rewrites.includes(String(round.round))) continue;
         const todo = round.specialists.filter((id) => !before.passes.includes(`${round.round}:${id}`));
 
-        await Promise.all(
-          todo.map(async (specialist) => {
-            const agentId = `room-${p.filmId}-r${round.round}-${specialist}`;
+        const results = await Promise.all(
+          todo.map(async (specialist): Promise<{ specialist: string; ok: boolean }> => {
+            // A fresh agent id per room instance: a new instance (a Film
+            // retried after a failure) must not queue behind a submission an
+            // earlier instance left running on the same conversation.
+            // (A room's first instance keeps the bare id it always had, so a
+            // room running across the deploy that introduced this re-attaches.)
+            const n = Number(event.instanceId.split("-").pop()) || 1;
+            const agentId = `room-${p.filmId}-r${round.round}-${specialist}${n > 1 ? `-${n}` : ""}`;
             const initialData: RoomPassData = {
               projectId: p.projectId, userId: p.userId, filmId: p.filmId,
               specialist, round: round.round, stage: round.stage, episodeId: p.episodeId ?? null,
               model: roomModel(p.model),
             };
-            let lastError: unknown = null;
-            for (let attempt = 1; attempt <= PASS_ATTEMPTS; attempt++) {
-              const suffix = attempt > 1 ? ` #${attempt}` : "";
-              const receipt = await step.do(`dispatch r${round.round} ${specialist}${suffix}`, async () => {
-                const r = await init(WritersRoom, { id: agentId }).dispatch({
-                  message: passMessage(p, round, specialist),
-                  initialData,
-                });
-                return { submissionId: r.submissionId, acceptedAt: r.acceptedAt, uid: r.uid };
+            const receipt = await step.do(`dispatch r${round.round} ${specialist}`, async () => {
+              const r = await init(WritersRoom, { id: agentId }).dispatch({
+                message: passMessage(p, round, specialist),
+                initialData,
               });
-              try {
-                return await step.do(
-                  `read r${round.round} ${specialist}${suffix}`,
-                  { retries: { limit: 2, delay: "20 seconds", backoff: "constant" }, timeout: READ_TIMEOUT },
-                  async () => {
-                    const reply = await init(WritersRoom, { id: agentId }).read(receipt);
-                    const pass = parsePassReply(reply.text);
-                    if (!pass.report) throw new Error(`${specialist} came back with nothing`);
-                    await api.post(`${base}/pass`, { round: round.round, specialist, ...pass });
-                    return { specialist, summary: pass.summary, findings: pass.findings.length };
-                  },
-                );
-              } catch (err) {
-                let why = describeRoomError(err);
-                // Only a Claude pass is worth probing Claude for.
-                if (!why.fatal && roomModel(p.model) === ROOM_MODEL) why = (await probeClaude(this.env as Record<string, unknown>)) ?? why;
-                lastError = new Error(`${specialist}: ${why.message}`);
-                console.warn("[room] pass failed", { filmId: p.filmId, specialist, attempt, error: why.message });
-                // Spent credits are not a hiccup: a second dispatch is refused the same way.
-                if (why.fatal) break;
-              }
+              return { submissionId: r.submissionId, acceptedAt: r.acceptedAt, uid: r.uid };
+            });
+            try {
+              await step.do(
+                `read r${round.round} ${specialist}`,
+                { retries: { limit: 1, delay: "10 seconds", backoff: "constant" }, timeout: READ_TIMEOUT },
+                async () => {
+                  const reply = await init(WritersRoom, { id: agentId }).read(receipt);
+                  const pass = parsePassReply(reply.text);
+                  if (!pass.report) throw new Error(`${specialist} came back with nothing`);
+                  await api.post(`${base}/pass`, { round: round.round, specialist, ...pass });
+                  return { specialist, summary: pass.summary, findings: pass.findings.length };
+                },
+              );
+              return { specialist, ok: true };
+            } catch (err) {
+              let why = describeRoomError(err);
+              // Only a Claude pass is worth probing Claude for.
+              if (!why.fatal && roomModel(p.model) === ROOM_MODEL) why = (await probeClaude(this.env as Record<string, unknown>)) ?? why;
+              console.warn("[room] pass failed", { filmId: p.filmId, specialist, error: why.message });
+              // Spent credits stop the room: every other pass is refused the same way.
+              if (why.fatal) throw new Error(`${specialist}: ${why.message}`);
+              // Anything else skips this one specialist and the room goes on.
+              await step.do(`skip r${round.round} ${specialist}`, () =>
+                api.post(`${base}/pass`, { round: round.round, specialist, skipped: true, error: why.message }).then(() => ({ ok: true })),
+              );
+              return { specialist, ok: false };
             }
-            throw lastError instanceof Error ? lastError : new Error(`${specialist}'s pass failed`);
           }),
         );
+
+        // A round nobody finished has no notes to apply: its draft stands, and
+        // the next round reads it. (Passes already on file count as finished.)
+        const reported = round.specialists.length - todo.length + results.filter((r) => r.ok).length;
+        if (!reported) continue;
 
         await step.do(
           `rewrite r${round.round}`,

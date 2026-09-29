@@ -32,6 +32,13 @@
   // al.), billed to this account, auto-routed through Cloudflare AI Gateway. No
   // external model API key needed.
   "ai": { "binding": "AI" },
+  // A writers' room waits on its passes with flue's init().read(), which
+  // long-polls the agent about once a second — and a round's passes wait side
+  // by side in ONE workflow invocation. At the default 1,000 subrequests per
+  // invocation, four readers exhausted it in minutes ("Too many API requests
+  // by single Worker invocation") and killed the room (film-a45e1cb9,
+  // 2026-09-29). Paid plans allow up to 10M.
+  "limits": { "subrequests": 100000 },
   // The Deep Film's writers' room (src/cloudflare.ts WritersRoomWorkflow):
   // started by the main worker's Film job through POST /rooms/:id (app.ts).
   "workflows": [

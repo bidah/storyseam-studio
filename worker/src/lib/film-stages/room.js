@@ -171,8 +171,22 @@ export function parseRewrite(answer, fallbackTitle) {
 }
 
 /** One specialist's report, from the workflow → the room doc and the Script Agents ledger. */
-export async function recordRoomPass(env, pid, filmId, { round, specialist, summary, findings, report }, deps = {}) {
+export async function recordRoomPass(env, pid, filmId, { round, specialist, summary, findings, report, skipped, error }, deps = {}) {
   if (!SPECIALIST_BY_ID.has(specialist)) throw Object.assign(new Error(`Unknown specialist: ${specialist}`), { status: 400 });
+  // A pass that used up its attempts (flue's retry budget, WritersRoom
+  // durability) is filed as SKIPPED and the room goes on without it: one
+  // specialist that could not read the draft is no reason to stop a Film. It
+  // has no report, so the rewrite never sees it, and a Film retried later
+  // reads it again (the workflow only skips passes that have a report).
+  if (skipped) {
+    const why = str(error).slice(0, 300) || "The pass did not finish.";
+    const pass = { at: new Date().toISOString(), round: Number(round) || 1, skipped: true, error: why, summary: `Skipped — ${why}`, notes: [] };
+    await updateDoc(env, pid, roomDocName(filmId), { ...EMPTY }, (d) => {
+      d.passes = d.passes || {};
+      if (typeof d.passes[specialist]?.report !== "string") d.passes[specialist] = pass;
+    });
+    return pass;
+  }
   const notes = cleanNotes(findings);
   const text = str(report).slice(0, REPORT_CAP * 2);
   const sum = str(summary).slice(0, 400) || (notes.length ? `${notes.length} note${notes.length === 1 ? "" : "s"}` : "Nothing to fix");
@@ -206,7 +220,7 @@ export async function rewriteRound(env, job, round, deps = {}) {
   const rounds = roomRounds(roomOf(job));
   const spec = rounds.find((r) => r.round === Number(round));
   if (!spec) throw Object.assign(new Error(`The room has no round ${round}.`), { status: 400 });
-  const passes = spec.specialists.filter((id) => state.passes?.[id]).map((id) => ({ id, ...state.passes[id] }));
+  const passes = spec.specialists.filter((id) => typeof state.passes?.[id]?.report === "string").map((id) => ({ id, ...state.passes[id] }));
   if (!passes.length) throw Object.assign(new Error(`Nobody in round ${round} has reported yet.`), { status: 409 });
 
   const store = await (deps.readStore || readStore)(env, pid);
@@ -299,6 +313,7 @@ const view = (state, room, rounds) => ({
     return {
       id, chip: s?.chip || id, label: s?.label || id, round: r?.round || null,
       ...(p?.report !== undefined ? { summary: p.summary, findings: p.notes.length } : {}),
+      ...(p?.skipped ? { summary: p.summary, skipped: true } : {}),
     };
   }),
   rounds: rounds.map((r) => ({ ...r, ...(state.rewrites?.[String(r.round)] ? { rewrite: state.rewrites[String(r.round)] } : {}) })),
@@ -307,16 +322,29 @@ const view = (state, room, rounds) => ({
 
 const plural = (k, one) => `${k} ${one}${k === 1 ? "" : one.endsWith("s") ? "es" : "s"}`;
 
-function progress(state, room, rounds) {
+/**
+ * The Film card's line while the room works. It says how long the current
+ * step has been going (since the room's last event: its start, a pass, a
+ * rewrite), because "story_architect reading" for fifty minutes with no clock
+ * reads as a Film that is stuck on its first draft.
+ */
+export function progress(state, room, rounds, now = Date.now()) {
   const done = room.filter((id) => state.passes?.[id]?.report !== undefined);
-  const current = rounds.find((r) => !state.rewrites?.[String(r.round)]);
-  if (!current) return `${plural(room.length, "pass")} read · final rewrite saving`;
-  const waiting = current.specialists.filter((id) => !done.includes(id));
+  const skipped = room.filter((id) => state.passes?.[id]?.skipped);
+  const settled = [...done, ...skipped];
+  const current = rounds.find((r) => !state.rewrites?.[String(r.round)] && !r.specialists.every((id) => skipped.includes(id)));
+  const events = [state.startedAt, ...Object.values(state.passes || {}).map((p) => p?.at), ...Object.values(state.rewrites || {}).map((w) => w?.at)]
+    .map((t) => Date.parse(t || "")).filter(Number.isFinite);
+  const mins = events.length ? Math.floor((now - Math.max(...events)) / 60_000) : 0;
+  const clock = mins >= 1 ? ` · ${mins} min` : "";
+  const tail = skipped.length ? ` · ${plural(skipped.length, "pass")} skipped` : "";
+  if (!current) return `${plural(done.length, "pass")} read${tail} · final rewrite saving${clock}`;
+  const waiting = current.specialists.filter((id) => !settled.includes(id));
   const who = (ids) => ids.map((id) => SPECIALIST_BY_ID.get(id)?.label || id).join(", ");
   const head = `Round ${current.round} of ${rounds.length} (${current.stage})`;
   return waiting.length
-    ? `${head} · ${who(waiting)} reading · ${done.length} of ${room.length} passes in`
-    : `${head} · the screenwriter is applying ${who(current.specialists)}'s notes`;
+    ? `${head} · ${who(waiting)} reading${clock} · ${done.length} of ${room.length} passes in${tail}`
+    : `${head} · the screenwriter is applying ${who(current.specialists.filter((id) => done.includes(id)))}'s notes${clock}${tail}`;
 }
 
 /** deps (optional): { startRoom, roomStatus, now } — tests pass fakes. */
@@ -337,10 +365,13 @@ export async function runRoomStage({ job, env, attempt = 1 }, deps = {}) {
   if (state.status === "done") {
     const notes = room.reduce((a, id) => a + (state.passes?.[id]?.notes?.length || 0), 0);
     const last = state.rewrite;
+    const read = room.filter((id) => typeof state.passes?.[id]?.report === "string").length;
+    const skipped = room.length - read;
+    const passes = `${plural(read, "pass")}${skipped ? ` (${skipped} skipped)` : ""}`;
     return {
       summary: last?.kept
-        ? `${plural(room.length, "pass")} in ${plural(rounds.length, "round")} · ${plural(notes, "note")} · kept “${last.draftName}” — a rewrite changed the author's own lines`
-        : `${plural(room.length, "pass")} in ${plural(rounds.length, "round")} · ${plural(notes, "note")} · rewritten as “${last?.draftName || "the room's draft"}”`,
+        ? `${passes} in ${plural(rounds.length, "round")} · ${plural(notes, "note")} · kept “${last.draftName}” — a rewrite changed the author's own lines`
+        : `${passes} in ${plural(rounds.length, "round")} · ${plural(notes, "note")} · rewritten as “${last?.draftName || "the room's draft"}”`,
       result: view(state, room, rounds),
     };
   }
