@@ -539,9 +539,6 @@ function StorySettings({ flow, seconds, onSeconds, resolution, onResolution, sco
   const storyFlow = isStoryEngine(flow.engine);
   const voice = FILM_VOICES.find((x) => x.id === voices) || FILM_VOICES[0];
   const scoreModel = FILM_MUSIC.find((x) => x.id === music) || FILM_MUSIC[0];
-  // A phone gets the whole screen: the popover grew wider than the viewport and
-  // ran off its edge. Desktop keeps the popover beside the button.
-  const narrow = useNarrow();
   const [open, setOpen] = useState(false);
   const trigger = (
     <button
@@ -650,23 +647,39 @@ function StorySettings({ flow, seconds, onSeconds, resolution, onResolution, sco
       </div>
     </>
   );
+  return (
+    <PickerShell
+      open={open}
+      onOpenChange={setOpen}
+      trigger={trigger}
+      title="Story settings"
+      description="Length, resolution, score, voices, look and writing model for the next story."
+      panelProps={{ "data-story-settings-panel": true }}
+      popoverClassName="w-auto max-w-[calc(100vw-2rem)] p-3"
+    >
+      {panel}
+    </PickerShell>
+  );
+}
+
+// The input's pickers open as a popover beside their button on desktop and
+// take the whole screen on a phone (a popover there ran off the viewport's
+// edge), titled, with a Done button at the foot.
+function PickerShell({ open, onOpenChange, trigger, title, description, panelProps, popoverClassName, align = "end", children }) {
+  const narrow = useNarrow();
   if (narrow) {
     return (
-      <Dialog open={open} onOpenChange={setOpen}>
+      <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogTrigger asChild>{trigger}</DialogTrigger>
-        <DialogContent
-          className="inset-0 top-0 left-0 flex h-dvh max-h-dvh w-full max-w-none translate-x-0 translate-y-0 flex-col gap-0 overflow-y-auto border-0 bg-[var(--br-surface)] p-4 pt-[max(1rem,env(safe-area-inset-top))] pb-[max(1rem,env(safe-area-inset-bottom))] text-[var(--br-primary)] data-[state=closed]:zoom-out-100 data-[state=open]:zoom-in-100 sm:max-w-none"
-          style={{ ...HUD, fontFamily: BODY }}
-          data-story-settings-panel
-        >
+        <DialogContent className="inset-0 top-0 left-0 flex h-dvh max-h-dvh w-full max-w-none translate-x-0 translate-y-0 flex-col gap-0 overflow-y-auto border-0 bg-[var(--br-surface)] p-4 pt-[max(1rem,env(safe-area-inset-top))] pb-[max(1rem,env(safe-area-inset-bottom))] text-[var(--br-primary)] data-[state=closed]:zoom-out-100 data-[state=open]:zoom-in-100 sm:max-w-none" style={{ ...HUD, fontFamily: BODY }} {...panelProps}>
           <DialogTitle style={{ fontFamily: DISPLAY, letterSpacing: DISPLAY_TRACKING }} className="mb-5 pr-8 text-xl font-bold uppercase">
-            Story settings
+            {title}
           </DialogTitle>
-          <DialogDescription className="sr-only">Length, resolution, score, voices, look and writing model for the next story.</DialogDescription>
-          {panel}
+          <DialogDescription className="sr-only">{description}</DialogDescription>
+          {children}
           <button
             type="button"
-            onClick={() => setOpen(false)}
+            onClick={() => onOpenChange(false)}
             className="mt-auto w-full bg-[var(--br-tertiary)] px-3 py-3 text-[0.8rem] uppercase text-[var(--br-on-primary)] transition-opacity hover:opacity-90"
             style={{ fontFamily: MONO, letterSpacing: "0.08em" }}
           >
@@ -677,18 +690,18 @@ function StorySettings({ flow, seconds, onSeconds, resolution, onResolution, sco
     );
   }
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover open={open} onOpenChange={onOpenChange}>
       <PopoverTrigger asChild>{trigger}</PopoverTrigger>
       {/* Portaled out of the page, so it carries the page's tokens itself. */}
       <PopoverContent
         side="top"
-        align="end"
+        align={align}
         sideOffset={8}
-        className="w-auto max-w-[calc(100vw-2rem)] border-[var(--br-secondary)]/40 bg-[var(--br-surface)] p-3 text-[var(--br-primary)]"
+        className={cn("border-[var(--br-secondary)]/40 bg-[var(--br-surface)] text-[var(--br-primary)]", popoverClassName)}
         style={{ ...HUD, fontFamily: BODY }}
-        data-story-settings-panel
+        {...panelProps}
       >
-        {panel}
+        {children}
       </PopoverContent>
     </Popover>
   );
@@ -866,6 +879,7 @@ function RoomDialog({ open, onOpenChange, room, onRoom }) {
 }
 
 function DepthPicker({ depth, onDepth, room, onRoom, disabled }) {
+  const narrow = useNarrow();
   const [open, setOpen] = useState(false);
   const [roomOpen, setRoomOpen] = useState(false);
   const est = roomEstimate(room);
@@ -880,8 +894,10 @@ function DepthPicker({ depth, onDepth, room, onRoom, disabled }) {
   };
   return (
     <>
-      <Popover open={open} onOpenChange={setOpen}>
-        <PopoverTrigger asChild>
+      <PickerShell
+        open={open}
+        onOpenChange={setOpen}
+        trigger={
           <button
             type="button"
             aria-label={`Writer: ${label}`}
@@ -895,64 +911,62 @@ function DepthPicker({ depth, onDepth, room, onRoom, disabled }) {
             </span>
             <ChevronDown size={12} aria-hidden />
           </button>
-        </PopoverTrigger>
-        <PopoverContent
-          side="top"
-          align="end"
-          sideOffset={8}
-          className="w-80 border-[var(--br-secondary)]/40 bg-[var(--br-surface)] p-1 text-[var(--br-primary)]"
-          style={{ ...HUD, fontFamily: BODY }}
-          data-story-depth-panel
-        >
+        }
+        title="Writer"
+        description="How much story work the next Film gets, and who is in the writers' room."
+        panelProps={{ "data-story-depth-panel": true }}
+        popoverClassName="w-80 p-1"
+      >
+        {narrow ? null : (
           <div className="px-2 pb-1 pt-2">
             <SettingsLabel id="story-depth-label">Writer</SettingsLabel>
           </div>
-          <div role="radiogroup" aria-labelledby="story-depth-label">
-            {FILM_DEPTHS.map((d) => (
-              <div key={d.id} className="flex items-stretch transition-colors hover:bg-[var(--br-secondary)]/10">
+        )}
+        <div role="radiogroup" aria-label="Writer" className={narrow ? "-mx-2" : undefined}>
+          {FILM_DEPTHS.map((d) => (
+            <div key={d.id} className="flex items-stretch transition-colors hover:bg-[var(--br-secondary)]/10">
+              <button
+                type="button"
+                role="radio"
+                aria-checked={d.id === depth}
+                onClick={() => pick(d.id)}
+                className="flex min-w-0 flex-1 items-start gap-2 px-2 py-2 text-left"
+              >
+                <Check size={14} aria-hidden className={cn("mt-0.5 shrink-0", d.id === depth ? "opacity-100" : "opacity-0")} />
+                <span className="flex flex-col">
+                  <span className="text-sm">{d.label}</span>
+                  <span className="text-xs text-[var(--br-secondary)]">{d.blurb}</span>
+                </span>
+              </button>
+              {/* The room, browsable from the row itself: the same dialog as
+                  "Choose the room" below, with each specialist's detail. The
+                  room only runs on Deep, so opening it picks Deep. */}
+              {d.id === "deep" ? (
                 <button
                   type="button"
-                  role="radio"
-                  aria-checked={d.id === depth}
-                  onClick={() => pick(d.id)}
-                  className="flex min-w-0 flex-1 items-start gap-2 px-2 py-2 text-left"
+                  aria-label="Browse the writers' room"
+                  title="Browse the writers' room"
+                  onClick={() => pick("deep")}
+                  className="flex shrink-0 items-center px-2 text-[var(--br-secondary)] transition-colors hover:text-[var(--br-primary)]"
+                  data-story-room-browse
                 >
-                  <Check size={14} aria-hidden className={cn("mt-0.5 shrink-0", d.id === depth ? "opacity-100" : "opacity-0")} />
-                  <span className="flex flex-col">
-                    <span className="text-sm">{d.label}</span>
-                    <span className="text-xs text-[var(--br-secondary)]">{d.blurb}</span>
-                  </span>
+                  <Search size={14} aria-hidden />
                 </button>
-                {/* The room, browsable from the row itself: the same dialog as
-                    "Choose the room" below, with each specialist's detail. The
-                    room only runs on Deep, so opening it picks Deep. */}
-                {d.id === "deep" ? (
-                  <button
-                    type="button"
-                    aria-label="Browse the writers' room"
-                    title="Browse the writers' room"
-                    onClick={() => pick("deep")}
-                    className="flex shrink-0 items-center px-2 text-[var(--br-secondary)] transition-colors hover:text-[var(--br-primary)]"
-                    data-story-room-browse
-                  >
-                    <Search size={14} aria-hidden />
-                  </button>
-                ) : null}
-              </div>
-            ))}
-          </div>
-          {depth === "deep" ? (
-            <button
-              type="button"
-              onClick={() => { setOpen(false); setRoomOpen(true); }}
-              className="mt-1 flex w-full items-center gap-2 border-t border-[var(--br-secondary)]/20 px-2 py-2 text-left text-xs text-[var(--br-secondary)] transition-colors hover:text-[var(--br-primary)]"
-            >
-              <Users size={14} aria-hidden />
-              Choose the room — {est.passes} {est.passes === 1 ? "pass" : "passes"}, {est.label} wait
-            </button>
-          ) : null}
-        </PopoverContent>
-      </Popover>
+              ) : null}
+            </div>
+          ))}
+        </div>
+        {depth === "deep" ? (
+          <button
+            type="button"
+            onClick={() => { setOpen(false); setRoomOpen(true); }}
+            className="mt-1 flex w-full items-center gap-2 border-t border-[var(--br-secondary)]/20 px-2 py-2 text-left text-xs text-[var(--br-secondary)] transition-colors hover:text-[var(--br-primary)]"
+          >
+            <Users size={14} aria-hidden />
+            Choose the room — {est.passes} {est.passes === 1 ? "pass" : "passes"}, {est.label} wait
+          </button>
+        ) : null}
+      </PickerShell>
       <RoomDialog open={roomOpen} onOpenChange={setRoomOpen} room={room} onRoom={onRoom} />
     </>
   );
@@ -1011,47 +1025,20 @@ function PriceQuote({ quote, disabled }) {
       </p>
     </>
   );
-  if (narrow) {
-    return (
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogTrigger asChild>{trigger}</DialogTrigger>
-        <DialogContent
-          className="inset-0 top-0 left-0 flex h-dvh max-h-dvh w-full max-w-none translate-x-0 translate-y-0 flex-col gap-0 overflow-y-auto border-0 bg-[var(--br-surface)] p-4 pt-[max(1rem,env(safe-area-inset-top))] pb-[max(1rem,env(safe-area-inset-bottom))] text-[var(--br-primary)] data-[state=closed]:zoom-out-100 data-[state=open]:zoom-in-100 sm:max-w-none"
-          style={{ ...HUD, fontFamily: BODY }}
-          data-story-price-panel
-        >
-          <DialogTitle style={{ fontFamily: DISPLAY, letterSpacing: DISPLAY_TRACKING }} className="mb-5 pr-8 text-xl font-bold uppercase">
-            Estimated cost · {quote.length}
-          </DialogTitle>
-          <DialogDescription className="sr-only">What each step of the next Film is expected to cost, from fal's prices.</DialogDescription>
-          {breakdown}
-          <button
-            type="button"
-            onClick={() => setOpen(false)}
-            className="mt-auto w-full bg-[var(--br-tertiary)] px-3 py-3 text-[0.8rem] uppercase text-[var(--br-on-primary)] transition-opacity hover:opacity-90"
-            style={{ fontFamily: MONO, letterSpacing: "0.08em" }}
-          >
-            Done
-          </button>
-        </DialogContent>
-      </Dialog>
-    );
-  }
   return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>{trigger}</PopoverTrigger>
-      <PopoverContent
-        side="top"
-        align="start"
-        sideOffset={8}
-        className="w-80 border-[var(--br-secondary)]/40 bg-[var(--br-surface)] p-3 text-[var(--br-primary)]"
-        style={{ ...HUD, fontFamily: BODY }}
-        data-story-price-panel
-      >
-        <SettingsLabel>Estimated cost · {quote.length}</SettingsLabel>
-        {breakdown}
-      </PopoverContent>
-    </Popover>
+    <PickerShell
+      open={open}
+      onOpenChange={setOpen}
+      trigger={trigger}
+      title={`Estimated cost · ${quote.length}`}
+      description="What each step of the next Film is expected to cost, from fal's prices."
+      panelProps={{ "data-story-price-panel": true }}
+      popoverClassName="w-80 p-3"
+      align="start"
+    >
+      {narrow ? null : <SettingsLabel>Estimated cost · {quote.length}</SettingsLabel>}
+      {breakdown}
+    </PickerShell>
   );
 }
 
@@ -1060,55 +1047,57 @@ function PriceQuote({ quote, disabled }) {
 // Named on its button, like the look and the writer: the two modes differ a lot
 // in cost and in what comes back, so what will be sent is visible before sending.
 function GenModePicker({ flow, onFlow, disabled }) {
+  const narrow = useNarrow();
   const [open, setOpen] = useState(false);
+  const trigger = (
+    <button
+      type="button"
+      aria-label={`Gen mode: ${flow.label}`}
+      disabled={disabled}
+      className="flex h-10 shrink-0 items-center gap-1.5 px-2 text-[var(--br-secondary)] transition-colors hover:text-[var(--br-primary)] disabled:opacity-40 data-[state=open]:text-[var(--br-primary)]"
+      data-gen-mode={flow.id}
+    >
+      <Clapperboard size={16} aria-hidden />
+      <span className="text-[0.72rem] uppercase" style={{ fontFamily: MONO, letterSpacing: "0.08em" }}>
+        {flow.label}
+      </span>
+      <ChevronDown size={12} aria-hidden />
+    </button>
+  );
   return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
-        <button
-          type="button"
-          aria-label={`Gen mode: ${flow.label}`}
-          disabled={disabled}
-          className="flex h-10 shrink-0 items-center gap-1.5 px-2 text-[var(--br-secondary)] transition-colors hover:text-[var(--br-primary)] disabled:opacity-40 data-[state=open]:text-[var(--br-primary)]"
-          data-gen-mode={flow.id}
-        >
-          <Clapperboard size={16} aria-hidden />
-          <span className="text-[0.72rem] uppercase" style={{ fontFamily: MONO, letterSpacing: "0.08em" }}>
-            {flow.label}
-          </span>
-          <ChevronDown size={12} aria-hidden />
-        </button>
-      </PopoverTrigger>
-      <PopoverContent
-        side="top"
-        align="end"
-        sideOffset={8}
-        className="w-80 border-[var(--br-secondary)]/40 bg-[var(--br-surface)] p-1 text-[var(--br-primary)]"
-        style={{ ...HUD, fontFamily: BODY }}
-        data-gen-mode-panel
-      >
+    <PickerShell
+      open={open}
+      onOpenChange={setOpen}
+      trigger={trigger}
+      title="Gen mode"
+      description="The video model that makes the next story."
+      panelProps={{ "data-gen-mode-panel": true }}
+      popoverClassName="w-80 p-1"
+    >
+      {narrow ? null : (
         <div className="px-2 pb-1 pt-2">
           <SettingsLabel id="story-gen-mode-label">Gen mode</SettingsLabel>
         </div>
-        <div role="radiogroup" aria-labelledby="story-gen-mode-label">
-          {GEN_MODES.map((m) => (
-            <button
-              key={m.id}
-              type="button"
-              role="radio"
-              aria-checked={m.id === flow.id}
-              onClick={() => { onFlow(m); setOpen(false); }}
-              className="flex w-full items-start gap-2 px-2 py-2 text-left transition-colors hover:bg-[var(--br-secondary)]/10"
-            >
-              <Check size={14} aria-hidden className={cn("mt-0.5 shrink-0", m.id === flow.id ? "opacity-100" : "opacity-0")} />
-              <span className="flex flex-col">
-                <span className="text-sm">{m.label}</span>
-                <span className="text-xs text-[var(--br-secondary)]">{m.blurb}</span>
-              </span>
-            </button>
-          ))}
-        </div>
-      </PopoverContent>
-    </Popover>
+      )}
+      <div role="radiogroup" aria-label="Gen mode" className={narrow ? "-mx-2" : undefined}>
+        {GEN_MODES.map((m) => (
+          <button
+            key={m.id}
+            type="button"
+            role="radio"
+            aria-checked={m.id === flow.id}
+            onClick={() => { onFlow(m); setOpen(false); }}
+            className="flex w-full items-start gap-2 px-2 py-2 text-left transition-colors hover:bg-[var(--br-secondary)]/10"
+          >
+            <Check size={14} aria-hidden className={cn("mt-0.5 shrink-0", m.id === flow.id ? "opacity-100" : "opacity-0")} />
+            <span className="flex flex-col">
+              <span className="text-sm">{m.label}</span>
+              <span className="text-xs text-[var(--br-secondary)]">{m.blurb}</span>
+            </span>
+          </button>
+        ))}
+      </div>
+    </PickerShell>
   );
 }
 
