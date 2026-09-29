@@ -677,14 +677,19 @@ function PickerShell({ open, onOpenChange, trigger, title, description, panelPro
           </DialogTitle>
           <DialogDescription className="sr-only">{description}</DialogDescription>
           {children}
-          <button
-            type="button"
-            onClick={() => onOpenChange(false)}
-            className="mt-auto w-full bg-[var(--br-tertiary)] px-3 py-3 text-[0.8rem] uppercase text-[var(--br-on-primary)] transition-opacity hover:opacity-90"
-            style={{ fontFamily: MONO, letterSpacing: "0.08em" }}
-          >
-            Done
-          </button>
+          {/* mt-auto pins Done to the foot while the panel is short, and
+              collapses to nothing once the options overflow — the pt keeps a
+              gap under the last option either way. */}
+          <div className="mt-auto shrink-0 pt-6">
+            <button
+              type="button"
+              onClick={() => onOpenChange(false)}
+              className="w-full bg-[var(--br-tertiary)] px-3 py-3 text-[0.8rem] uppercase text-[var(--br-on-primary)] transition-opacity hover:opacity-90"
+              style={{ fontFamily: MONO, letterSpacing: "0.08em" }}
+            >
+              Done
+            </button>
+          </div>
         </DialogContent>
       </Dialog>
     );
@@ -793,7 +798,7 @@ function RoomDialog({ open, onOpenChange, room, onRoom }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className="max-h-[90dvh] max-w-xl overflow-y-auto rounded-none border-[var(--br-secondary)]/40 bg-[var(--br-surface)] text-[var(--br-primary)]"
+        className="max-h-[90dvh] max-w-xl overflow-y-auto rounded-none border-[var(--br-secondary)]/40 bg-[var(--br-surface)] text-[var(--br-primary)] max-sm:top-0 max-sm:left-0 max-sm:flex max-sm:h-dvh max-sm:max-h-dvh max-sm:w-full max-sm:max-w-none max-sm:translate-x-0 max-sm:translate-y-0 max-sm:flex-col max-sm:border-0 max-sm:pt-[max(1.5rem,env(safe-area-inset-top))] max-sm:pb-[max(1rem,env(safe-area-inset-bottom))] max-sm:data-[state=closed]:zoom-out-100 max-sm:data-[state=open]:zoom-in-100"
         style={{ ...HUD, fontFamily: BODY }}
         data-story-room
       >
@@ -849,7 +854,7 @@ function RoomDialog({ open, onOpenChange, room, onRoom }) {
             );
           })}
         </div>
-        <div className="flex items-center justify-between gap-4 border-t border-[var(--br-secondary)]/40 pt-3">
+        <div className="flex shrink-0 items-center justify-between gap-4 border-t border-[var(--br-secondary)]/40 pt-3 max-sm:mt-auto">
           <span className="text-[0.72rem] uppercase tabular-nums text-[var(--br-secondary)]" style={{ fontFamily: MONO, letterSpacing: "0.08em" }} data-room-estimate>
             {est.passes} {est.passes === 1 ? "pass" : "passes"} · {est.label} wait
           </span>
