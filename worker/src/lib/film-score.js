@@ -198,6 +198,9 @@ export function piecesBedGraph(cues, { durationMs, settings }) {
  */
 export const copiesPicture = (videoCodec) => !videoCodec || videoCodec === "h264";
 
+/** Shift the picture so its first frame is at 0 (see mixArgs); a no-op when it already is. */
+export const PICTURE_AT_ZERO = ["-bsf:v", "setts=pts=PTS-STARTPTS:dts=DTS-STARTPTS"];
+
 export function mixArgs({ film, cue, cues, pieces, out, durationMs, hasAudio, mix, videoCodec }) {
   const settings = mixSettings(mix);
   const webm = /\.webm$/i.test(String(out));
@@ -220,7 +223,11 @@ export function mixArgs({ film, cue, cues, pieces, out, durationMs, hasAudio, mi
     ...(copy ? ["-c:v", "copy"] : ["-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p"]),
     ...(webm ? ["-c:a", "libopus", "-b:a", "192k"] : ["-c:a", "aac", "-b:a", "192k"]), "-ar", "48000",
     "-t", dur,
-    ...(webm ? [] : ["-movflags", "+faststart"]),
+    // The picture starts at 0. The box's ffmpeg delays it by the AAC
+    // encoder's priming (1024 samples, ~0.02s) when it joins a Film, and
+    // iOS will not draw a still from an mp4 whose first frame is not at 0 —
+    // the Film showed as a blank box with a play button until it played.
+    ...(webm ? [] : [...PICTURE_AT_ZERO, "-movflags", "+faststart"]),
     out,
   ];
 }

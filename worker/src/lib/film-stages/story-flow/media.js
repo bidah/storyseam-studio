@@ -125,7 +125,7 @@ export function stitchScript(env, { clips, outKey, resolution, reportPath }) {
     `if ! python3 ${dir}/seam_edit.py --out ${dir}/film.mp4 --report ${shq(report)} --fps ${FPS} --width ${W} --height ${H} ${outs}; then`,
     `  echo "seam pass failed — joining the segments as they are" >&2`,
     `  rm -f ${shq(report)}`,
-    `  ffmpeg -hide_banner -v error -y -f concat -safe 0 -i ${dir}/list.txt ${ENC} -movflags +faststart ${dir}/film.mp4`,
+    `  ffmpeg -hide_banner -v error -y -f concat -safe 0 -i ${dir}/list.txt ${ENC} -bsf:v setts=pts=PTS-STARTPTS:dts=DTS-STARTPTS -movflags +faststart ${dir}/film.mp4`,
     `fi`,
     `upload_r2 ${dir}/film.mp4 ${shq(outKey)}`,
     `rm -rf ${dir}`,

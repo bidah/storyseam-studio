@@ -265,7 +265,7 @@ def main():
         '-f','rawvideo','-pix_fmt','yuv420p','-s','%dx%d' % (a.width, a.height),'-framerate',str(a.fps),'-i','-',
         '-f','f32le','-ar',str(SR),'-ac',str(CH),'-i',mix_path,
         '-map','0:v','-map','1:a','-c:v','libx264','-preset','veryfast','-crf','20','-pix_fmt','yuv420p',
-        '-c:a','aac','-b:a','160k','-movflags','+faststart', a.out], stdin=subprocess.PIPE)
+        '-c:a','aac','-b:a','160k','-bsf:v','setts=pts=PTS-STARTPTS:dts=DTS-STARTPTS','-movflags','+faststart', a.out], stdin=subprocess.PIPE)
     written = 0
     try:
         for c in clips:
