@@ -1298,7 +1298,9 @@ export function SimpleView({ flow = FLOWS.director, onFlow, onSubmit, submitting
             fontFamily: DISPLAY,
             fontWeight: 700,
             letterSpacing: DISPLAY_TRACKING,
-            fontSize: `calc(min(2.8rem, calc((100vw - 2rem) / 22)) * ${DISPLAY_FIT})`,
+            // Never under the agent card's heading (1rem): on a phone the
+            // viewport-scaled size fell to ~11px.
+            fontSize: `max(1rem, calc(min(2.8rem, calc((100vw - 2rem) / 22)) * ${DISPLAY_FIT}))`,
           }}
         >
           Create a film with just a prompt
