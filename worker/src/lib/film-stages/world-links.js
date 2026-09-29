@@ -44,9 +44,13 @@ export async function copySheetToLibrary(env, pid, imageUrl, name) {
 export async function linkSheetsToWorld(env, pid, sheets) {
   try {
     const links = [];
+    // One image can fill two fields (an H3 Film's turnaround is both the
+    // miniature and the sheet): copy it into the library once.
+    const copies = new Map();
     for (const s of sheets || []) {
       if (!s?.imageUrl || !["character", "location", "prop"].includes(s.kind)) continue;
-      const image = await copySheetToLibrary(env, pid, s.imageUrl, s.name || s.subject);
+      if (!copies.has(s.imageUrl)) copies.set(s.imageUrl, await copySheetToLibrary(env, pid, s.imageUrl, s.name || s.subject));
+      const image = copies.get(s.imageUrl);
       if (image) links.push({ kind: s.kind, name: s.subject, field: s.field || "sheetImage", image });
     }
     return await linkWorldSheets(env, pid, links);

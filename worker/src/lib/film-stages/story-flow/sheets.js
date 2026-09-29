@@ -14,7 +14,9 @@
 //     read as a reference leaks its own composition); the look reaches the
 //     video as words.
 //   - Per CHARACTER, two images of the same person: a full-body turnaround
-//     (front, 3/4, side, back) and a large face portrait.
+//     (front, 3/4, side, back) and a large face portrait drawn FROM that
+//     turnaround. An H3 Film gets the turnaround only — H3 cuts to a face
+//     portrait as if it were a shot (see runStoryFlowSheetsStage).
 //   - Per PLACE, one empty establishing plate: the layout, architecture and
 //     light, with no people in it.
 //   - Per PROP, one object sheet: the object alone, from several sides, no
@@ -136,7 +138,7 @@ export function storyFlowSheetMessages({ idea, world, look }) {
  * → [{ kind: 'style'|'character'|'location'|'prop', view: 'style'|'body'|'face'|'plate'|'prop',
  *      subject, name, prompt, inherit }]
  */
-export function planStoryFlowSheets(answer, world, look, max = MAX_STORY_FLOW_SHEETS) {
+export function planStoryFlowSheets(answer, world, look, max = MAX_STORY_FLOW_SHEETS, { faces: withFaces = true } = {}) {
   const clause = [`In the film's look: ${look.look}`, str(answer?.renderClause)].filter(Boolean).join(" ");
   const withClause = (p) => [str(p), clause].filter(Boolean).join("\n\n");
   const byName = (list) => new Map((Array.isArray(list) ? list : []).filter((x) => str(x?.name)).map((x) => [key(x.name), x]));
@@ -165,7 +167,7 @@ export function planStoryFlowSheets(answer, world, look, max = MAX_STORY_FLOW_SH
         `A full-body character turnaround of ${c.name}: ${note}. Front, three-quarter, side profile and back views ` +
         "of the same figure in a row, identical outfit and proportions, plain light-grey background, even light. No text, nobody else.", EMPTY_HANDED].join(" ")),
     });
-    faces.push({
+    if (withFaces) faces.push({
       kind: "character", view: "face", subject: c.name, name: `${c.name} — ${VIEW_LABEL.face}`, inherit: identity,
       prompt: withClause([str(w.face) ||
         `A head-and-shoulders portrait of ${c.name}: ${note}. Front-facing, neutral expression, plain light-grey background, even light. No text.`,
@@ -217,7 +219,13 @@ export async function runStoryFlowSheetsStage({ job, results, env, model }, deps
   const look = filmStyleFor({ style: results?.look?.style || job.style, prompt: job.prompt });
 
   const answer = await model.json({ messages: storyFlowSheetMessages({ idea, world, look }), maxTokens: 8000, temperature: 0.7 });
-  const plan = planStoryFlowSheets(answer, world, look);
+  // No face portraits for MiniMax H3. A head-and-shoulders portrait on a plain
+  // backdrop, at the film's own 16:9, reads to H3 as a SHOT, and H3 cuts to it:
+  // film-a45e1cb9 held the Thug's face sheet on screen for four seconds, ended
+  // segment 1 on the Ronin's (which the next segment's seam then opened on),
+  // and dressed the Ronin in the turnaround's gi under the face's robot head.
+  // The turnaround already shows the face. (h3/prompts.js binds none either.)
+  const plan = planStoryFlowSheets(answer, world, look, undefined, { faces: job.engine !== "h3" });
 
   const series = await ensureFilmSeries(env, pid, job, {
     title: world.title || results?.world?.title,
@@ -268,7 +276,17 @@ export async function runStoryFlowSheetsStage({ job, results, env, model }, deps
   };
 
   const [style] = await drawGroup(plan.filter((s) => s.view === "style"), []);
-  const subjects = await drawGroup(plan.filter((s) => s.view !== "style"), style ? [style] : []);
+  const styleRefs = style ? [style] : [];
+  const drawn = await drawGroup(plan.filter((s) => s.view !== "style" && s.view !== "face"), styleRefs);
+  // A face is drawn FROM its character's turnaround, after it. Drawn beside
+  // it from the style frame alone, the two came out as two different people
+  // (film-a45e1cb9: a human Ronin in a gi, and a robot's face), and a video
+  // model handed both blends them.
+  const faceSheets = await Promise.all(plan.filter((s) => s.view === "face").map((face) => {
+    const body = drawn.find((s) => s.view === "body" && key(s.subject) === key(face.subject));
+    return drawGroup([face], [...styleRefs, ...(body ? [body] : [])]);
+  }));
+  const subjects = [...drawn, ...faceSheets.flat()];
   if (failures.length) {
     throw new Error(`${failures.length} of ${plan.length} sheets failed — ${failures.join("; ")}`);
   }
@@ -283,12 +301,17 @@ export async function runStoryFlowSheetsStage({ job, results, env, model }, deps
   // miniature (the full figure for wide shots), plate → the place's sheet,
   // prop sheet → the prop's.
   const FIELD = { face: "sheetImage", body: "miniatureImage", plate: "sheetImage", prop: "sheetImage" };
-  const linked = await (deps.linkSheetsToWorld || linkSheetsToWorld)(env, pid, subjects.map((s) => ({
-    kind: s.kind, subject: s.subject, name: s.name, imageUrl: s.imageUrl, field: FIELD[s.view],
-  })));
+  const hasFace = (s) => subjects.some((x) => x.view === "face" && key(x.subject) === key(s.subject));
+  const links = subjects.flatMap((s) => {
+    const link = { kind: s.kind, subject: s.subject, name: s.name, imageUrl: s.imageUrl, field: FIELD[s.view] };
+    // No face portrait (an H3 Film): the turnaround is the character's sheet too.
+    return s.view === "body" && !hasFace(s) ? [link, { ...link, field: "sheetImage" }] : [link];
+  });
+  const linked = await (deps.linkSheetsToWorld || linkSheetsToWorld)(env, pid, links);
   const n = (k, one) => `${k} ${one}${k === 1 ? "" : "s"}`;
+  const faced = refs.some((r) => r.view === "face");
   return {
-    summary: `${n(refs.length + (style ? 1 : 0), "sheet")} — ${n(people, "character")} (turnaround + face), ${n(placesN, "place")}` +
+    summary: `${n(refs.length + (style ? 1 : 0), "sheet")} — ${n(people, "character")} (${faced ? "turnaround + face" : "turnaround"}), ${n(placesN, "place")}` +
       `${propsN ? `, ${n(propsN, "prop")}` : ""}${linked ? ` · ${linked} linked in the Bible` : ""}`,
     result: { seriesId: series.id, style: style ? { name: style.name, imageUrl: style.imageUrl } : null, refs },
   };

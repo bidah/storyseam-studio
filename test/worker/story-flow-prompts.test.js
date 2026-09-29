@@ -115,12 +115,12 @@ describe("the H3 compiler — the seam is a still", () => {
     expect(c.hasFrame).toBe(true);
     expect(c.hasVideo).toBe(false);
     expect(c.imageRefs.map((r) => `${r.token}=${r.name}`)).toEqual([
-      "Image 1=Leo — turnaround", "Image 2=Sal — turnaround", "Image 3=Leo — face", "Image 4=Sal — face",
-      "Image 5=The Skate Spot — plate", "Image 6=Previous shot — last frame",
+      "Image 1=Leo — turnaround", "Image 2=Sal — turnaround",
+      "Image 3=The Skate Spot — plate", "Image 4=Previous shot — last frame",
     ]);
-    expect(c.imageRefs[5]).toMatchObject({ seam: true, imageUrl: null });
-    expect(c.prompt).toContain("Image 6 is the exact last frame of the previous shot");
-    expect(c.prompt).toContain("The shot begins on Image 6 exactly");
+    expect(c.imageRefs[3]).toMatchObject({ seam: true, imageUrl: null });
+    expect(c.prompt).toContain("Image 4 is the exact last frame of the previous shot");
+    expect(c.prompt).toContain("The shot begins on Image 4 exactly");
     expect(c.prompt).not.toContain("Video 1");
     expect(c.prompt).not.toContain("video continuation");
     expect(h3Errors({ ...c, index: 2, dur: 15 })).toEqual([]);
@@ -147,7 +147,15 @@ describe("the H3 compiler — the seam is a still", () => {
     expect(reg.map((r) => r.ref.view)).toEqual(["body", "body", "plate", "frame"]);
   });
 
-  it("binds a segment's props as their own objects, before faces, in every mode", () => {
+  it("never binds a face portrait: H3 cuts to one as if it were a shot", () => {
+    const reg = segmentRegistry(SETBACK, REFS, { people: true, seam: true });
+    expect(reg.some((r) => r.ref.view === "face")).toBe(false);
+    const c = h3(SETBACK, opts);
+    expect(c.prompt).not.toContain("— face");
+    expect(c.prompt).toContain("Leo's face, hair, full body");
+  });
+
+  it("binds a segment's props as their own objects, in every mode", () => {
     const refs = [...REFS, { kind: "prop", view: "prop", subject: "Red Board", name: "Red Board — prop sheet", imageUrl: "/director-media/board.png", inherit: "a scuffed red deck" }];
     const seg = { ...SETBACK, props: ["red board"] };
     const reg = segmentRegistry(seg, refs, { people: true, maxImages: 5, seam: true });
@@ -177,7 +185,7 @@ describe("the H3 compiler — the seam is a still", () => {
     const env = { WORKER_PUBLIC_URL: "https://x.test" };
     const input = segmentInput(env, "p1", c, { h3Resolution: "480P", aspectRatio: "16:9", frameUrl: "https://x.test/files/frame.jpg", tailUrl: "https://x.test/files/tail.mp4" });
     expect(input.reference_image_urls.at(-1)).toBe("https://x.test/files/frame.jpg");
-    expect(input.reference_image_urls).toHaveLength(6);
+    expect(input.reference_image_urls).toHaveLength(4);
     expect(input.reference_video_urls).toBeUndefined();
     expect(input.reference_audio_urls).toHaveLength(1);
     const video = h3(SETBACK, { ...opts, seam: "video" });

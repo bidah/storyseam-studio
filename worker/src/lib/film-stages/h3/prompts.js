@@ -8,8 +8,9 @@
 // fields its prompt expansion writes, because the Film sends it with expansion
 // off (film-plan.ts › The H3 FLOW), so nothing else puts it in that shape:
 //
-//   subject_definitions  — <Subject n>: each character (its turnaround and
-//                          face, cited as fal's tokens Image 1, Image 2 …) and
+//   subject_definitions  — <Subject n>: each character (its turnaround — no
+//                          face portrait, see segmentRegistry — cited as fal's
+//                          tokens Image 1, Image 2 …) and
 //                          the place (its plate); from segment 2 on, the LAST
 //                          FRAME of the previous segment as one more image —
 //                          the frame this one opens on (H3 treats a reference
@@ -119,14 +120,18 @@ export const SEAM_REF = Object.freeze({ kind: "seam", view: "frame", subject: "p
 /**
  * The images one segment binds, in list order: its characters' turnarounds,
  * then its props (one object sheet each — the characters are drawn
- * empty-handed), then the characters' faces, then its place's plate, then
- * (with `seam`) the previous segment's last frame — at most
- * MAX_H3_REFERENCE_IMAGES, and no more than fit under the 12-file ceiling
- * beside the video and the audio (`maxImages`); the plate and the seam kept (a
- * crowded segment loses its last faces before a prop, its place or its seam —
- * a turnaround shows the face too). Props are bound in every mode: an object
- * sheet holds no likeness. → [{ token, ref }] with token "Image n" (1-based,
- * the array slot).
+ * empty-handed), then its place's plate, then (with `seam`) the previous
+ * segment's last frame — at most MAX_H3_REFERENCE_IMAGES, and no more than fit
+ * under the 12-file ceiling beside the video and the audio (`maxImages`); the
+ * plate and the seam kept. Props are bound in every mode: an object sheet holds
+ * no likeness.
+ *
+ * NEVER a face portrait, even one a Film filed before H3 stopped drawing them.
+ * H3 takes a head-and-shoulders portrait on a plain backdrop, at the film's
+ * own 16:9, for a SHOT and cuts to it (film-a45e1cb9: the Thug's face sheet on
+ * screen for four seconds; segment 1 ending on the Ronin's, which segment 2's
+ * seam then opened on). The turnaround shows the face.
+ * → [{ token, ref }] with token "Image n" (1-based, the array slot).
  */
 export function segmentRegistry(segment, refs, { people = true, maxImages = MAX_H3_REFERENCE_IMAGES, seam = false } = {}) {
   const view = (v) => (people ? segment.characters || [] : [])
@@ -135,7 +140,7 @@ export function segmentRegistry(segment, refs, { people = true, maxImages = MAX_
   const props = (segment.props || [])
     .map((name) => refs.find((x) => x.kind === "prop" && key(x.subject) === key(name)))
     .filter(Boolean);
-  const picked = [...view("body"), ...props, ...view("face")];
+  const picked = [...view("body"), ...props];
   const plate = refs.find((x) => x.view === "plate" && key(x.subject) === key(segment.location));
   const fixed = [...(plate ? [plate] : []), ...(seam ? [SEAM_REF] : [])];
   const cap = Math.max(0, Math.min(MAX_H3_REFERENCE_IMAGES, maxImages));
@@ -229,7 +234,7 @@ export function compileSegment(segment, {
     const body = tokens(s.name, "body")[0];
     const face = tokens(s.name, "face")[0];
     const from = [
-      body && `${s.name}'s full body, build, clothing and colours follow ${body}, a turnaround sheet of ONE figure (ignore its grey background, its layout and any text)`,
+      body && `${s.name}'s face, hair, full body, build, clothing and colours follow ${body}, a turnaround sheet of ONE figure — a design reference, never a shot to show (ignore its grey background, its layout and any text)`,
       face && `${s.name}'s face and hair follow ${face} (ignore its background)`,
     ].filter(Boolean);
     out.push(`${s.label} is ${s.name}, one character${note ? `: ${unquote(sentence(note))}` : "."}${from.length ? ` ${from.join("; ")}. The references show ${s.name} empty-handed: ${s.name} holds only what the shots below put in their hands.` : " There is no reference image; keep them exactly as described."}`);
