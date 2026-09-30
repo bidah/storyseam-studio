@@ -16,10 +16,9 @@ export const HUD = {
   "--br-on-primary": "var(--primary-foreground)",
 };
 
-// The type ramp, also theme-following. DISPLAY is the theme's heading face
-// (Inter Tight on light, Teko on dark); Teko is condensed and sets far tighter
-// than Inter Tight, so a one-line headline sized for it multiplies its size by
-// DISPLAY_FIT and tracks with DISPLAY_TRACKING.
+// The type ramp, the same in both themes. DISPLAY is the heading face (Inter
+// Tight); headlines were sized for the condensed Teko, so a one-line headline
+// multiplies its size by DISPLAY_FIT and tracks with DISPLAY_TRACKING.
 export const DISPLAY = "var(--font-display)";
 export const DISPLAY_FIT = "var(--display-fit)";
 export const DISPLAY_TRACKING = "var(--display-tracking)";
