@@ -65,7 +65,7 @@ import { isDesktop } from "@/lib/desktop";
 import { getProjectId, setProjectId } from "@/lib/projectFetch";
 import { useProjectEvents } from "@/lib/useProjectEvents";
 import { HUD, DISPLAY, DISPLAY_FIT, DISPLAY_TRACKING, BODY, MONO } from "@/lib/hudTheme";
-import { HudHeader } from "@/components/HudHeader";
+import { HudHeader, PoweredByFal } from "@/components/HudHeader";
 import { useTheme } from "@/lib/theme";
 import { cn } from "@/lib/utils";
 
@@ -3125,6 +3125,7 @@ export function StoryView({ job, projectId = null, onRetry, retrying = false, re
           >
             STORY<span style={{ fontWeight: 800 }}>SEAM</span>
           </Link>
+          <PoweredByFal className="ml-auto" />
           <Link
             to="/"
             className={cn(ROW_ACTION, "h-8")}

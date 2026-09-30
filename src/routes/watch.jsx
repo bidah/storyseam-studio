@@ -15,6 +15,7 @@ import { Link, useParams } from "react-router";
 import { ArrowRight, ChevronDown, Download, Loader2, LogIn } from "lucide-react";
 import { FILL_ACTION, Page, ProcessSteps, shareMediaSource, withFirstFrame } from "@/components/DirectorStory";
 import { formatLength } from "@/lib/film-plan";
+import { PoweredByFal } from "@/components/HudHeader";
 import { DISPLAY, DISPLAY_TRACKING, MONO } from "@/lib/hudTheme";
 import { cn } from "@/lib/utils";
 
@@ -101,7 +102,8 @@ function WatchFilm({ film, token }) {
         >
           STORY<span style={{ fontWeight: 800 }}>SEAM</span>
         </Link>
-        <Link to="/" className={cn(ACTION, "ml-auto hidden sm:flex")} style={{ fontFamily: MONO, letterSpacing: "0.08em" }} data-make-your-own>
+        <PoweredByFal className="ml-auto" />
+        <Link to="/" className={cn(ACTION, "hidden sm:flex")} style={{ fontFamily: MONO, letterSpacing: "0.08em" }} data-make-your-own>
           Made with StorySeam — make your own <ArrowRight size={12} aria-hidden />
         </Link>
         <Link to="/login" className={cn(ACTION, "max-sm:ml-auto")} style={{ fontFamily: MONO, letterSpacing: "0.08em" }} data-login>

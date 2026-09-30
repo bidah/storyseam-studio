@@ -40,6 +40,30 @@ export function Label({ children, className = "" }) {
   );
 }
 
+/** The fal mark + wordmark, in the lockup's own proportions (see HudHeader). */
+function FalLockup() {
+  return (
+    <span className="flex -translate-y-[2px] items-center gap-1">
+      <FalColor size={20} />
+      <FalText size={22} />
+    </span>
+  );
+}
+
+/**
+ * "Powered by: fal" for the headers that aren't HudHeader (a Film's page,
+ * /watch). Desktop only: on a phone those strips have no room beside their
+ * buttons, and the credit is not worth a second row.
+ */
+export function PoweredByFal({ className = "" }) {
+  return (
+    <span className={cn("hidden items-center gap-2 sm:flex", className)} data-powered-by>
+      <Label>Powered by:</Label>
+      <FalLockup />
+    </span>
+  );
+}
+
 /**
  * @param {object} props
  * @param {string} [props.model] The model named after the partner mark. The
@@ -78,10 +102,7 @@ export function HudHeader({ model, onSignIn }) {
             it, which is what `Fal.Combine` would have drawn if it were
             importable. Nudged up 2px — the mark is round and the wordmark is
             lowercase, so both read as sunk when centred on the mono caps. */}
-        <span className="flex -translate-y-[2px] items-center gap-1">
-          <FalColor size={20} />
-          <FalText size={22} />
-        </span>
+        <FalLockup />
         {model ? <Label>{model}</Label> : null}
       </span>
       <ThemeToggle />
