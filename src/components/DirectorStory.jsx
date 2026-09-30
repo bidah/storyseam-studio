@@ -2114,6 +2114,40 @@ function EntryCard({ image, name, sub, rows, projectId }) {
  * fields, the places and props in full, and the story's map. While it loads,
  * or if it can't, the step's own summary stands in.
  */
+/**
+ * How the Film read its prompt (the World step's `brief`, worker
+ * film-stages/brief.js): a SEED the writers invent from, or the author's own
+ * STORY — its beats in order, its lines, its places — which every writing
+ * step then keeps.
+ */
+function PromptBrief({ brief, lengthNote }) {
+  if (!brief && !lengthNote) return null;
+  const story = brief?.kind === "story";
+  return (
+    <div className="space-y-2" data-prompt-brief={brief?.kind}>
+      <PreviewLabel>How the prompt was read</PreviewLabel>
+      {brief ? (
+        <p className="text-sm text-[var(--br-primary)]">
+          {story ? "The author's own story — the writers stage it beat for beat." : "A seed — the writers invent the story from it."}
+          {[brief.format, brief.tone].filter(Boolean).length ? <span className="text-[var(--br-secondary)]"> · {[brief.format, brief.tone].filter(Boolean).join(" · ")}</span> : null}
+        </p>
+      ) : null}
+      {lengthNote ? <p className="text-xs text-[var(--br-tertiary)]">{lengthNote}</p> : null}
+      {story && brief.beats?.length ? (
+        <ol className="list-decimal space-y-1 pl-5 text-xs text-[var(--br-primary)]/85">{brief.beats.map((b, i) => <li key={i}>{b}</li>)}</ol>
+      ) : null}
+      {brief?.lines?.length ? (
+        <ul className="space-y-1 text-xs">
+          {brief.lines.map((l, i) => (
+            <li key={i}><span className="uppercase text-[var(--br-secondary)]" style={{ fontFamily: MONO }}>{l.speaker || "—"}</span>: {l.text}{l.verbatim ? <span className="text-[var(--br-secondary)]"> (word for word)</span> : null}</li>
+          ))}
+        </ul>
+      ) : null}
+      {brief?.places?.length ? <p className="text-xs text-[var(--br-secondary)]">Places: {brief.places.join(" · ")}</p> : null}
+    </div>
+  );
+}
+
 function WorldDetails({ result, projectId }) {
   const [world, setWorld] = useState(null);
   const [error, setError] = useState(null);
@@ -2145,6 +2179,9 @@ function WorldDetails({ result, projectId }) {
         {(w.title || result.title) ? <p className="text-base text-[var(--br-primary)]">{w.title || result.title}</p> : null}
         {(w.logline || result.logline) ? <p className="text-sm italic text-[var(--br-secondary)]">{w.logline || result.logline}</p> : null}
         {result.idea ? <Fields rows={[["Idea", result.idea]]} /> : null}
+      </div>
+      <PromptBrief brief={result.brief} lengthNote={result.lengthNote} />
+      <div className="space-y-2">
       </div>
       <Fields rows={[["World", map.world], ["Protagonist", map.protagonist], ["Antagonist", map.antagonist], ["Stakes", map.stakes], ["Theme", map.theme]]} />
       <Fields rows={[["Premise", depth.premise], ["Want vs need", depth.wantVsNeed], ["Conflict", depth.conflict], ["Obstacles", depth.obstacles], ["Structure", depth.structure]]} />
@@ -2309,6 +2346,73 @@ function NameList({ items, clamp = false }) {
 
 const sheetCaption = (x) => String(x.subject || x.name || "").replace(/\s+—\s+.*$/, "");
 
+/**
+ * What ONE segment was handed as references — the Segment prompts step's
+ * `imageRefs` / `audioRefs`, in their order, labelled with the token the
+ * prompt cites them by ("Image 3 · Tokyo Lights Alley — plate"). The seam (the
+ * previous segment's last frame, the only image meant as a starting frame) is
+ * filled in at render time, so its picture comes from the Video run.
+ */
+function SegmentRefs({ seg, steps, projectId }) {
+  const media = useMediaUrl(projectId);
+  if (!seg) return null;
+  const run = steps?.find((s) => s.key === "run")?.result?.segments || [];
+  const prevFrame = run.find((g) => g.index === seg.index - 1)?.frameFile;
+  const images = (seg.imageRefs || []).map((x) => ({
+    name: x.name,
+    imageUrl: x.seam ? (prevFrame ? `/director-media/${prevFrame}` : null) : x.imageUrl,
+    caption: `${x.token} · ${x.seam ? "opening frame (previous segment's last)" : x.name}`,
+  }));
+  const missing = images.filter((x) => !x.imageUrl);
+  return (
+    <div className="space-y-2" data-segment-refs={seg.index + 1}>
+      <PreviewLabel>References handed to the model{seg.mode && seg.mode !== "full" ? ` · ${seg.mode === "no-people" ? "characters in words only" : "no references"}` : ""}</PreviewLabel>
+      <Thumbs items={images} projectId={projectId} />
+      {missing.length ? <p className="text-xs text-[var(--br-secondary)]">{missing.map((x) => x.caption).join(" · ")}</p> : null}
+      {(seg.audioRefs || []).length ? (
+        <ul className="space-y-1.5">
+          {seg.audioRefs.map((a) => (
+            <li key={a.token} className="flex items-center gap-2 text-xs">
+              <span className="min-w-0 flex-1 truncate text-[var(--br-secondary)]">{a.token} · {a.name}'s voice</span>
+              {a.url ? <audio controls preload="none" src={media(a.url)} className="h-8 w-40 shrink-0" aria-label={`${a.name}'s voice reference`} /> : null}
+            </li>
+          ))}
+        </ul>
+      ) : <p className="text-xs text-[var(--br-secondary)]">No voice reference (nobody speaks in this segment).</p>}
+    </div>
+  );
+}
+
+/** A story Film's Segment prompts: per segment, how it was asked for and every reference it was given. */
+function SegmentPrompts({ result: r, steps, projectId }) {
+  const shotlist = steps?.find((s) => s.key === "shotlist")?.result;
+  const TASK = { reference: "first segment — references only", extension: "continues the previous segment" };
+  return (
+    <div className="space-y-6" data-segment-prompts>
+      <p className="text-xs text-[var(--br-secondary)]" style={{ fontFamily: MONO }}>
+        {[r.h3Resolution || r.resolution, r.aspectRatio].filter(Boolean).join(" · ")}
+      </p>
+      <ol className="space-y-6">
+        {r.segments.map((g) => {
+          const plan = shotlist?.segments?.find((x) => x.index === g.index);
+          return (
+            <li key={g.index} className="space-y-2 border-t border-[var(--br-secondary)]/25 pt-4">
+              <div className="flex flex-wrap items-baseline gap-x-2">
+                <span className="text-sm text-[var(--br-primary)]">{g.index + 1}. {g.title}</span>
+                <span className="text-xs text-[var(--br-secondary)]" style={{ fontFamily: MONO }}>
+                  {[`${g.dur}s`, plan?.stages?.length ? `${plan.stages.length} shot${plan.stages.length === 1 ? "" : "s"}` : null, TASK[g.task] || g.task, g.promptChars ? `${g.promptChars} chars` : null].filter(Boolean).join(" · ")}
+                </span>
+              </div>
+              {plan?.location ? <p className="text-xs text-[var(--br-secondary)]">{[plan.location, plan.characters?.join(", ")].filter(Boolean).join(" · ")}</p> : null}
+              <SegmentRefs seg={g} steps={steps} projectId={projectId} />
+            </li>
+          );
+        })}
+      </ol>
+    </div>
+  );
+}
+
 /** Seconds → a film clock, M:SS. */
 const filmClock = (sec) => `${Math.floor(sec / 60)}:${String(Math.round(sec) % 60).padStart(2, "0")}`;
 
@@ -2323,7 +2427,10 @@ const filmClock = (sec) => `${Math.floor(sec / 60)}:${String(Math.round(sec) % 6
 function SegmentShots({ result: r, steps, projectId }) {
   const media = useMediaUrl(projectId);
   const clips = new Map((steps?.find((s) => s.key === "run")?.result?.segments || []).filter((g) => g?.url).map((g) => [g.index, g.url]));
-  const checks = new Map((r.checks || []).map((c) => [c.segment - 1, c]));
+  // Checks are per scene (a Film cut scene → shots → takes) or, before that, per segment.
+  const checks = new Map((r.checks || []).map((c) => [c.scene ? `s${c.scene}` : c.segment - 1, c]));
+  const scenes = new Set((r.segments || []).map((g) => g.scene).filter(Boolean)).size;
+  const prompts = new Map((steps?.find((s) => s.key === "prompts")?.result?.segments || []).map((g) => [g.index, g]));
   const dir = r.direction || {};
   const segStart = [];
   (r.segments || []).reduce((at, g) => { segStart.push(at); return at + (Number(g.dur) || 0); }, 0);
@@ -2339,7 +2446,7 @@ function SegmentShots({ result: r, steps, projectId }) {
   return (
     <div className="space-y-6" data-segment-shots>
       <p className="text-xs text-[var(--br-secondary)]" style={{ fontFamily: MONO }}>
-        {[`${r.segments.length} segment${r.segments.length === 1 ? "" : "s"}`, `${total} shot${total === 1 ? "" : "s"}`, r.seconds ? formatLength(r.seconds) : null, r.draftName ? `cut from “${r.draftName}”` : null].filter(Boolean).join(" · ")}
+        {[scenes ? `${scenes} scene${scenes === 1 ? "" : "s"}` : null, `${r.segments.length} ${scenes ? "take" : "segment"}${r.segments.length === 1 ? "" : "s"}`, `${total} shot${total === 1 ? "" : "s"}`, r.pacedFrom ? `scene lengths from the ${r.pacedFrom === "outline" ? "outline" : "script's content"}` : null, r.seconds ? formatLength(r.seconds) : null, r.draftName ? `cut from “${r.draftName}”` : null].filter(Boolean).join(" · ")}
       </p>
       {dir.environment || dir.camera || dir.sound ? (
         <div>
@@ -2353,14 +2460,15 @@ function SegmentShots({ result: r, steps, projectId }) {
       ) : null}
       <ol className="space-y-6">
         {r.segments.map((g, i) => {
-          const check = checks.get(i);
+          const firstOfScene = g.scene && (i === 0 || r.segments[i - 1]?.scene !== g.scene);
+          const check = g.scene ? (firstOfScene ? checks.get(`s${g.scene}`) : null) : checks.get(i);
           const clip = clips.get(g.index);
           return (
             <li key={g.index} className="space-y-2 border-t border-[var(--br-secondary)]/25 pt-4" data-segment={g.index + 1}>
               <div className="flex flex-wrap items-baseline gap-x-2">
                 <span className="text-sm text-[var(--br-primary)]">{g.index + 1}. {g.title}</span>
                 <span className="text-xs text-[var(--br-secondary)]" style={{ fontFamily: MONO }}>
-                  {filmClock(segStart[i])}–{filmClock(segStart[i] + (Number(g.dur) || 0))} · {g.dur}s · {(g.stages || []).length} shot{(g.stages || []).length === 1 ? "" : "s"}
+                  {g.scene ? `take ${g.index + 1} · scene ${g.scene} · ` : ""}{filmClock(segStart[i])}–{filmClock(segStart[i] + (Number(g.dur) || 0))} · {g.dur}s · {(g.stages || []).length} shot{(g.stages || []).length === 1 ? "" : "s"}
                 </span>
               </div>
               {g.location ? (
@@ -2398,12 +2506,13 @@ function SegmentShots({ result: r, steps, projectId }) {
               </ol>
               {check?.issues?.length ? (
                 <div>
-                  <PreviewLabel>Still off after the check</PreviewLabel>
+                  <PreviewLabel>{g.scene ? `Scene ${g.scene}: still off after the check` : "Still off after the check"}</PreviewLabel>
                   <ul className="list-disc space-y-1 pl-4 text-xs text-[var(--br-secondary)]">{check.issues.map((x, y) => <li key={y}>{x}</li>)}</ul>
                 </div>
               ) : check?.fixed?.length ? (
                 <p className="text-xs text-[var(--br-secondary)]">Rewritten once after the check: {check.fixed.join(" ")}</p>
               ) : null}
+              <SegmentRefs seg={prompts.get(g.index)} steps={steps} projectId={projectId} />
               {clip ? (
                 <div>
                   <PreviewLabel>The take rendered from these shots</PreviewLabel>
@@ -2528,6 +2637,7 @@ function StepResultBody({ step, steps, projectId }) {
       if (Array.isArray(r.segments) && r.segments.length) return <SegmentShots result={r} steps={steps} projectId={projectId} />;
       // fallthrough — a Director Film's shot list is counted, not segmented.
     case "prompts":
+      if (Array.isArray(r.segments) && r.segments.some((g) => Array.isArray(g.imageRefs))) return <SegmentPrompts result={r} steps={steps} projectId={projectId} />;
       if (Array.isArray(r.segments) && r.segments.length) {
         return (
           <ol className="space-y-3">

@@ -19,7 +19,7 @@
 // The segments are also saved as the project's ordinary shot list (one shot per
 // stage, through the same `saveShotlist` every writer uses) so the Film's
 // project opens with its story in the Shot list tab like any other.
-import { DEFAULT_FILM_WRITER, H3_SEGMENT_MAX_SECONDS, SEGMENT_MAX_SECONDS, formatLength, maxStagesFor, planH3, planStoryFlow } from "../../film-plan.ts";
+import { DEFAULT_FILM_WRITER, H3_SEGMENT_MAX_SECONDS, H3_SEGMENT_MIN_SECONDS, SEGMENT_MAX_SECONDS, SEGMENT_MIN_SECONDS, formatLength, maxStagesFor, planH3, planStoryFlow } from "../../film-plan.ts";
 import { DEFAULT_FILM_LANGUAGE } from "../../film-sound.js";
 import { MUSIC_CUES, MUSIC_CUE_NAMES, musicCueRange, repairMusicCues } from "../../music-cues.ts";
 import { readWorld } from "../../../routes/world.js";
@@ -29,9 +29,9 @@ import { H3_SKILL } from "../h3/h3-skill.js";
 import { pinnedDraft, readStore } from "../../script-store.js";
 import { docToElements, formatScreenplay } from "../../script-elements.js";
 import { writerModel } from "../../writer.js";
-import { partLines, repairMessages, screenplayParts, segmentIssues, segmentShotMessages, shotRangeFor } from "./scene-shots.js";
+import { packSceneShots, partLines, repairMessages, sceneSecondsFor, screenplayScenes, segmentIssues, segmentShotMessages, shotRangeFor } from "./scene-shots.js";
 
-/** The model that cuts every story Film's shots (see runStoryFlowShotlistStage). */
+/** The writer for a story Film that names none (see runStoryFlowShotlistStage). */
 export const SHOTLIST_WRITER = DEFAULT_FILM_WRITER;
 
 const str = (v) => (typeof v === "string" ? v : v == null ? "" : String(v)).trim();
@@ -367,6 +367,38 @@ export function segmentShots(segments) {
 }
 
 /**
+ * The scenes' shots → the takes the video model renders: each scene's shots
+ * packed into ≤`max`s takes (./scene-shots.js packSceneShots), in order, never
+ * across a scene. A take keeps its scene's place, goal and sound, and binds
+ * only the characters and props its own shots name (a character bound into a
+ * take they are not in gets drawn into it). → segments, as the compilers read them
+ */
+export function takesFromScenes(scenes, { max = 15, min = 5 } = {}) {
+  const out = [];
+  scenes.forEach((scene, si) => {
+    const takes = packSceneShots(scene.stages || [], { max, min });
+    takes.forEach((stages, ti) => {
+      const text = stages.flatMap((st) => [st.initial, st.event, st.end, st.camera, ...(st.lines || []).map((l) => l.speaker)]).join(" ").toLowerCase();
+      const seen = (n) => text.includes(String(n).toLowerCase());
+      const characters = (scene.characters || []).filter(seen);
+      const props = (scene.props || []).filter(seen);
+      out.push({
+        ...scene,
+        index: out.length,
+        scene: si + 1,
+        part: takes.length > 1 ? `${ti + 1}/${takes.length}` : null,
+        title: takes.length > 1 ? `${scene.title} (${ti + 1}/${takes.length})` : scene.title,
+        dur: stages.reduce((a, st) => a + st.seconds, 0),
+        characters: characters.length ? characters : scene.characters || [],
+        props,
+        stages,
+      });
+    });
+  });
+  return out;
+}
+
+/**
  * The draft the story stages ENDED on — the room's last rewrite, else the
  * Script stage's — rather than whatever is pinned now. A writers' room
  * workflow instance that outlived its stage pinned a "polish" draft two
@@ -478,7 +510,9 @@ export async function writeSegmentShots({ model, messages, world, dur, index, li
  * same calls took 2–3.5 minutes EACH and ran out of output on three.
  */
 export async function runStoryFlowShotlistStage({ job, results, env }, deps = {}) {
-  const model = deps.model || writerModel(env, SHOTLIST_WRITER);
+  // The Film's own writer, like every other writing step (a job from before
+  // `writer` existed keeps the default).
+  const model = deps.model || writerModel(env, job.writer || SHOTLIST_WRITER);
   const pid = job.projectId;
   const engine = job.engine === "h3" ? "h3" : "seedance";
   const eng = storyEngineOf(job.engine);
@@ -488,27 +522,35 @@ export async function runStoryFlowShotlistStage({ job, results, env }, deps = {}
   const language = job.language || DEFAULT_FILM_LANGUAGE;
   const draft = storyDraft(await (deps.readStore || readStore)(env, pid), results);
   const screenplay = docToElements(draft?.doc);
-  const durations = plan.durations;
 
   let segments;
   let direction;
   let rawMusic;
   const checks = [];
+  let durations = plan.durations;
+  let pacedFrom = null;
   if (screenplay.length) {
-    const parts = screenplayParts(screenplay, durations.length);
+    // The studio's recipe: each SCENE is cut into shots at the length its
+    // content needs, then consecutive shots are packed into takes of at most
+    // one generation (`eng.maxSeconds`) — so the takes' lengths come from the
+    // story, not from a fixed grid of equal segments.
+    const scenes = screenplayScenes(screenplay);
+    const min = engine === "h3" ? H3_SEGMENT_MIN_SECONDS : SEGMENT_MIN_SECONDS;
+    const paced = sceneSecondsFor(scenes, results?.script?.outline, plan.seconds, min);
+    pacedFrom = paced.from;
+    const sceneSecs = paced.seconds;
     const names = (world.characters || []).map((c) => c.name);
-    const written = await Promise.all(durations.map((dur, i) => {
-      const lines = partLines(parts[i]?.elements, names);
-      return writeSegmentShots({
-        model, world, dur, index: i, lines, engine,
-        messages: segmentShotMessages({
-          eng, engineId: engine, world, idea, screenplay, part: parts[i], prev: parts[i - 1] || null, next: parts[i + 1] || null,
-          index: i, durations, language,
-        }),
-      });
-    }));
-    segments = written.map((w) => w.segment);
-    written.forEach((w, i) => checks.push({ segment: i + 1, tries: w.tries, ...(w.fixed?.length ? { fixed: w.fixed } : {}), ...(w.issues.length ? { issues: w.issues } : {}) }));
+    const written = await Promise.all(scenes.map((scene, i) => writeSegmentShots({
+      model, world, dur: sceneSecs[i], index: i, lines: partLines(scene, names), engine,
+      messages: segmentShotMessages({
+        eng, engineId: engine, world, idea, screenplay,
+        part: { elements: scene }, prev: scenes[i - 1] ? { elements: scenes[i - 1] } : null, next: scenes[i + 1] ? { elements: scenes[i + 1] } : null,
+        index: i, durations: sceneSecs, language, takeMax: eng.maxSeconds,
+      }),
+    })));
+    written.forEach((w, i) => checks.push({ scene: i + 1, seconds: sceneSecs[i], tries: w.tries, ...(w.fixed?.length ? { fixed: w.fixed } : {}), ...(w.issues.length ? { issues: w.issues } : {}) }));
+    segments = takesFromScenes(written.map((w) => w.segment), { max: eng.maxSeconds, min });
+    durations = segments.map((g) => g.dur);
     try {
       const dm = await model.json({ messages: directionMusicMessages({ world, idea, segments, seconds: plan.seconds }), maxTokens: 4000, temperature: 0.5 });
       const d = dm?.direction && typeof dm.direction === "object" ? dm.direction : {};
@@ -541,10 +583,11 @@ export async function runStoryFlowShotlistStage({ job, results, env }, deps = {}
   const count = segments.reduce((a, s) => a + s.stages.length, 0);
   const open = checks.filter((c) => c.issues?.length).length;
   return {
-    summary: `${segments.length} segment${segments.length === 1 ? "" : "s"} (${durations.join("s, ")}s) · ${count} shots · ${plan.length}${cues}${open ? ` · ${open} segment${open === 1 ? "" : "s"} with notes` : ""}`,
+    summary: `${checks.length && checks[0].scene ? `${checks.length} scene${checks.length === 1 ? "" : "s"} → ` : ""}${segments.length} take${segments.length === 1 ? "" : "s"} (${durations.join("s, ")}s) · ${count} shots · ${formatLength(durations.reduce((x, y) => x + y, 0))}${cues}${open ? ` · ${open} scene${open === 1 ? "" : "s"} with notes` : ""}`,
     result: {
-      seconds: plan.seconds,
+      seconds: durations.reduce((x, y) => x + y, 0),
       durations,
+      ...(pacedFrom ? { pacedFrom } : {}),
       direction,
       segments,
       ...(draft?.id ? { draftId: draft.id, draftName: draft.name || null } : {}),

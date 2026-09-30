@@ -35,6 +35,7 @@ import { docToElements, formatScreenplay, screenplayStats, WORDS_PER_SECOND } fr
 import { writerModel } from "../writer.js";
 import { flueFetch } from "../flue-workflow.js";
 import { formatLength } from "../film-plan.ts";
+import { unsaidBriefLines } from "./brief.js";
 import {
   SCREENPLAY_FORMAT, SCREENWRITER_CRAFT, filmBudgetFor, parseScript, saveScriptDraft, scriptMessages, takesBrief,
 } from "./script.js";
@@ -119,6 +120,11 @@ export function scriptIssues(elements, { budget, world, locked = [] }) {
       issues.push({ hard: false, issue: `Scene headings that name no World place: ${unplaced.map((h) => `“${h}”`).join(", ")}. Use the place names exactly: ${(world.locations || []).map((l) => l.name).join(", ")}.` });
     }
   }
+  // The author's story (./brief.js): the lines they gave or paraphrased.
+  const unsaid = unsaidBriefLines(budget.author?.brief, elements).filter((l) => !l.verbatim);
+  if (unsaid.length) {
+    issues.push({ hard: true, issue: `The author's lines are not in the film: ${unsaid.map((l) => `${l.speaker ? `${l.speaker}: ` : ""}“${l.text}”`).join(", ")}. Each is spoken, in the author's words, at the beat the prompt gives it.` });
+  }
   const dropped = missingLines(locked, elements);
   if (dropped.length) issues.push({ hard: true, issue: `The author's own line(s) are missing: ${dropped.map((l) => `“${l}”`).join(", ")}. They are said word for word.` });
   return issues;
@@ -133,7 +139,7 @@ export function outlineMessages({ idea, world, budget, language = DEFAULT_FILM_L
     "prompt; the Idea and the World in the user turn were derived from it, and nobody will be asked anything.",
     `The film runs EXACTLY ${formatLength(budget.seconds)}: ${budget.scenes} scenes, at most ${budget.dialogueWords} words of dialogue in total`,
     `(in ${language}). Plan the whole story now, so the draft only has to write it.`,
-    ...(budget.takes ? ["", ...takesBrief(budget)] : []),
+    ...(takesBrief(budget).length ? ["", ...takesBrief(budget)] : []),
     ...(locked.length ? ["", ...authorLinesBrief(locked), "Place each of them in the scene where it lands hardest."] : []),
     "",
     SCREENWRITER_CRAFT,
@@ -218,7 +224,7 @@ export function reviseMessages({ world, outline, elements, issues, budget, langu
     "",
     `The film runs EXACTLY ${formatLength(budget.seconds)}: ${budget.scenes} scenes and at most ${budget.dialogueWords} words of dialogue`,
     `in total, in ${language} only. Every character and place keeps its EXACT World name.`,
-    ...(budget.takes ? ["", ...takesBrief(budget)] : []),
+    ...(takesBrief(budget).length ? ["", ...takesBrief(budget)] : []),
     ...(locked.length ? ["", ...authorLinesBrief(locked), "They stay exactly as written, wherever the revision moves them."] : []),
     "",
     SCREENWRITER_CRAFT,

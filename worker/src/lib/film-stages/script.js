@@ -23,7 +23,8 @@
 // store the Script tab and the agent's get_script read (lib/script-store.js),
 // so the Film's project opens with its screenplay where a screenplay goes, and
 // both Shot list stages cut it from there instead of inventing the story.
-import { planFilm, planH3, planStoryFlow, formatLength } from "../film-plan.ts";
+import { H3_SEGMENT_MAX_SECONDS, SEGMENT_MAX_SECONDS, planFilm, planH3, planStoryFlow, formatLength } from "../film-plan.ts";
+import { briefLines, briefOf } from "./brief.js";
 import { authorLinesBrief } from "./author-lines.js";
 import { DEFAULT_FILM_LANGUAGE } from "../film-sound.js";
 import { makeDraft, nowIso, updateStore } from "../script-store.js";
@@ -43,51 +44,60 @@ const filmPlanFor = (job) =>
 export const filmSecondsFor = (job) => filmPlanFor(job).seconds;
 
 /**
- * The TAKES a story engine will shoot the Film in — its segment lengths in
- * seconds, in order (film-plan.ts segmentDurations: Seedance up to 30s each,
- * H3 up to 15) — or null for the Director, whose cue sheet is not cut that way.
+ * The longest ONE generation of a story engine runs (H3 15s, Seedance 30s), or
+ * null for the Director, whose cue sheet is not cut into takes.
  */
-export const filmTakesFor = (job) => {
-  const plan = filmPlanFor(job);
-  return Array.isArray(plan.durations) && plan.durations.length ? plan.durations : null;
-};
+export const filmTakeMaxFor = (job) => (job?.engine === "h3" ? H3_SEGMENT_MAX_SECONDS : job?.engine === "seedance" ? SEGMENT_MAX_SECONDS : null);
 
 /**
  * What a film of `seconds` can hold. Dialogue is about two thirds of the
  * runtime and plays at WORDS_PER_SECOND; the rest is action the camera shows.
- * Scenes: one per ~35s, a minute gets two, five minutes gets eight — unless
- * the film is shot in TAKES (a story engine's segments), in which case a
- * scene IS a take: one per segment, written to that segment's seconds, so the
- * Shot list can cut the screenplay onto the grid without splitting a scene
- * across a seam or squeezing two into one generation.
+ * Scenes: one per ~35s, a minute gets two, five minutes gets eight. A story
+ * engine's film is cut into short scenes instead — about one per 12s — each
+ * as long as its content needs (the outline gives it its seconds).
+ *
+ * `takes` (a fixed grid of equal takes, one scene each) is gone: the Shot list
+ * now cuts each scene into shots and PACKS them into takes the way the studio
+ * packs a shot list into ≤15s bundles, so a quick beat is not stretched to
+ * fifteen seconds and a long one is not squeezed into them (film-a45e1cb9).
+ * It stays on the budget as null for the passes that still read it.
  */
-export function scriptBudget(seconds, takes = null) {
+export function scriptBudget(seconds, takeMax = null) {
   const dialogueWords = Math.round(seconds * (2 / 3) * WORDS_PER_SECOND);
-  if (Array.isArray(takes) && takes.length) {
-    return { seconds, dialogueWords, scenes: takes.length, takes };
+  if (takeMax) {
+    return { seconds, dialogueWords, scenes: Math.min(12, Math.max(3, Math.round(seconds / 12))), takes: null, takeMax };
   }
   const scenes = Math.min(8, Math.max(2, Math.round(seconds / 35)));
-  return { seconds, dialogueWords, scenes, takes: null };
+  return { seconds, dialogueWords, scenes, takes: null, takeMax: null };
 }
 
-/** The Script and Writers' room stages' budget for this job: its length, and its takes when it has them. */
-export const filmBudgetFor = (job) => scriptBudget(filmSecondsFor(job), filmTakesFor(job));
+/**
+ * The Script and Writers' room stages' budget for this job: its length, its
+ * pacing, and the author — the prompt and its brief (./brief.js), which every
+ * writing pass is handed (they used to see only the World distilled from it).
+ */
+export const filmBudgetFor = (job) => ({
+  ...scriptBudget(filmSecondsFor(job), filmTakeMaxFor(job)),
+  author: { prompt: job?.prompt || "", brief: briefOf(job) },
+});
 
 /**
- * The lines that tell the writer about the takes — what each scene must fit
- * — or nothing when the film is not shot in takes.
+ * The lines every writing pass carries about the author and the pacing:
+ * the author's prompt and brief, then — for a story engine — how scenes are
+ * timed. [] when there is neither.
  */
 export function takesBrief(budget) {
-  const takes = budget?.takes;
-  if (!Array.isArray(takes) || !takes.length) return [];
-  const words = (d) => Math.round(d * (2 / 3) * WORDS_PER_SECOND);
-  return [
-    `THE TAKES: the film is generated as ${takes.length} continuous take${takes.length === 1 ? "" : "s"}, in order, and a scene IS a take —`,
-    "one scene per take, in this order, each in one place, its action and dialogue sized to its seconds:",
-    ...takes.map((d, i) => `  scene ${i + 1}: ${d}s (about ${words(d)} words of dialogue at most)`),
-    "A take cannot be cut inside: a scene never changes place or jumps in time mid-take, and a scene that",
-    "runs long spills into the next take and is cut short. Write each scene to its take's length exactly.",
-  ];
+  const out = [...briefLines(budget?.author?.prompt, budget?.author?.brief)];
+  if (budget?.takeMax) {
+    out.push(
+      ...(out.length ? [""] : []),
+      "PACING: every scene is as long as what happens in it needs on screen — a quick action beat 4–8s, a line",
+      "and its reaction 6–10s, an exchange or a build-up 12–25s. Never pad a scene to fill time, never cram one.",
+      `Give each scene in the outline its \`seconds\`; together they add up to EXACTLY ${budget.seconds}. A scene longer than`,
+      `${budget.takeMax}s is fine: it is shot as several consecutive takes in the same place.`,
+    );
+  }
+  return out;
 }
 
 // What the room would say, folded into the writer before it writes — one rule
@@ -151,7 +161,7 @@ export function scriptMessages({ idea, world, budget, language = DEFAULT_FILM_LA
     `${budget.dialogueWords} words of dialogue in total — dialogue plays at about ${WORDS_PER_SECOND} words a second and`,
     "is two thirds of the runtime; the rest is what the camera shows. Over the budget, the film is cut short.",
     `Dialogue is in ${language}, and only ${language}.`,
-    ...(budget.takes ? ["", ...takesBrief(budget)] : []),
+    ...(takesBrief(budget).length ? ["", ...takesBrief(budget)] : []),
     ...(locked.length ? ["", ...authorLinesBrief(locked)] : []),
     "",
     SCREENWRITER_CRAFT,

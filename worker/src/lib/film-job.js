@@ -137,6 +137,8 @@ import { WORLD_SHAPE } from "./auto-prompts.generated.js";
 import { runLookStage } from "./film-stages/look.js";
 import { runSheetsStage } from "./film-stages/sheets.js";
 import { runShotlistStage } from "./film-stages/shotlist.js";
+import { briefMessages, parseBrief } from "./film-stages/brief.js";
+import { filmSecondsFor } from "./film-stages/script.js";
 import { runCueSheetStage } from "./film-stages/cuesheet.js";
 import { runRunStage } from "./film-stages/run.js";
 import { runStillsStage } from "./film-stages/stills.js";
@@ -286,7 +288,7 @@ const str = (v) => (typeof v === "string" ? v : v == null ? "" : String(v)).trim
 // world-creation playbook (WORLD_SHAPE, vendored by `npm run auto:sync`) so the
 // chat agent and this job write the same World; what differs is the job: here
 // the prompt IS the brief and nothing asks, so the model decides.
-export function worldMessages(prompt) {
+export function worldMessages(prompt, brief = null) {
   const system = [
     "You are the writing room of StorySeam's Auto pipeline. An author typed one prompt; you turn it into",
     "the IDEA (what the prompt amounts to, stated as the thing to build — two or three sentences) and the",
@@ -319,8 +321,22 @@ export function worldMessages(prompt) {
     '  "props": [{ "name", "description", "owner" }] } }',
     "Every value is a string except the three arrays.",
   ].join("\n");
+  // The brief (./film-stages/brief.js): a story prompt's places and people
+  // are the author's, and the World must hold every one of them — Star Ronin's
+  // "city at night" and "empty corner" became one alley, so its opening had
+  // nowhere to happen.
+  const story = brief?.kind === "story";
+  const need = [
+    ...(story && brief.places?.length
+      ? ["", `The author's story moves through these places: every one is a World location (name it plainly; up to 6 places): ${brief.places.join(" · ")}.`]
+      : []),
+    ...(brief?.characters?.length
+      ? ["", `The author's characters, each one in the cast as they describe them: ${brief.characters.map((c) => `${c.name}${c.note ? ` (${c.note})` : ""}`).join("; ")}.`]
+      : []),
+    ...(story ? ["The author TOLD the story (below): the Idea restates THEIR story, it does not invent another."] : []),
+  ];
   return [
-    { role: "system", content: system },
+    { role: "system", content: need.length ? `${system}\n${need.join("\n")}` : system },
     { role: "user", content: `The author's prompt:\n\n${prompt}` },
   ];
 }
@@ -360,16 +376,30 @@ export function parseIdeaWorld(answer) {
 }
 
 async function runWorldStage({ job, model, env, saveWorld }) {
-  const answer = await model.json({ messages: worldMessages(job.prompt), maxTokens: 8000, temperature: 0.8 });
+  // The prompt read first: what kind it is, and a story's beats, lines and places.
+  let brief = null;
+  try {
+    brief = parseBrief(await model.json({ messages: briefMessages(job.prompt), maxTokens: 4000, temperature: 0.2 }), job.prompt);
+  } catch (err) {
+    console.warn("film world: the brief failed; the prompt is read as a seed", job.id, String(err?.message || err));
+  }
+  const answer = await model.json({ messages: worldMessages(job.prompt, brief), maxTokens: 8000, temperature: 0.8 });
   const { idea, world } = parseIdeaWorld(answer);
   await saveWorld(env, job.projectId, { ...world, source: "auto" });
   const characters = world.characters.map((c) => ({ name: c.name, role: c.role || c.archetype || "" }));
   const places = world.locations.map((l) => ({ name: l.name, description: l.description || "" }));
   const props = world.props.map((p) => ({ name: p.name, owner: p.owner || "" }));
   const n = (k, one) => `${k} ${one}${k === 1 ? "" : "s"}`;
+  // The prompt names a length the Film's setting does not have ("a one-minute
+  // trailer" made at 2:00): said, not silently resolved — the quote and the
+  // steps were fixed when the Film was made.
+  const planned = filmSecondsFor(job);
+  const lengthNote = brief?.seconds && Math.abs(brief.seconds - planned) >= 15
+    ? `The prompt asks for ${formatLength(brief.seconds)}; this Film is set to ${formatLength(planned)}.`
+    : null;
   return {
-    summary: `${world.title || "World"} — ${n(characters.length, "character")}, ${n(places.length, "place")}${props.length ? `, ${n(props.length, "prop")}` : ""}`,
-    result: { idea, title: world.title, logline: world.logline, characters, places, props },
+    summary: `${world.title || "World"} — ${n(characters.length, "character")}, ${n(places.length, "place")}${props.length ? `, ${n(props.length, "prop")}` : ""}${brief ? ` · ${brief.kind === "story" ? `the author's story, ${n(brief.beats.length, "beat")}` : "a seed prompt"}` : ""}${lengthNote ? ` · ${lengthNote}` : ""}`,
+    result: { idea, title: world.title, logline: world.logline, characters, places, props, ...(brief ? { brief } : {}), ...(lengthNote ? { lengthNote } : {}) },
   };
 }
 

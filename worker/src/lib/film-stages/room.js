@@ -82,7 +82,8 @@ export function roomBrief(job) {
   const locked = authorLines(job.prompt);
   return [
     `The film runs EXACTLY ${budget.seconds} seconds: ${budget.scenes} scenes and at most ${budget.dialogueWords} words of dialogue in total, in ${job.language || DEFAULT_FILM_LANGUAGE}.`,
-    ...(budget.takes ? takesBrief(budget) : []),
+    ...takesBrief(budget),
+    ...(budget.author?.brief?.kind === "story" ? ["Write NO note that drops, replaces or reorders one of the author's beats or lines — note how they play, not whether."] : []),
     ...(locked.length ? ["", ...authorLinesBrief(locked), "Write NO note that changes, cuts or replaces one of them — note around them instead."] : []),
   ].join("\n");
 }
@@ -132,7 +133,7 @@ export function rewriteMessages({ world, elements, passes, budget, stage, langua
     "",
     `The film still runs EXACTLY ${budget.seconds} seconds: ${budget.scenes} scenes and at most ${budget.dialogueWords} words of`,
     `dialogue in total, in ${language} only. Every character and place keeps its EXACT World name.`,
-    ...(budget.takes ? ["", ...takesBrief(budget)] : []),
+    ...(takesBrief(budget).length ? ["", ...takesBrief(budget)] : []),
     ...(locked.length
       ? ["", ...authorLinesBrief(locked), "A note that asks to change one of them is overruled: the line stays exactly as it is."]
       : []),
