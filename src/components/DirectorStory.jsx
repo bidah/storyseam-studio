@@ -250,7 +250,36 @@ export async function fetchFilm(id) {
   const { res, data } = await getJSON(`/api/auto/films/${encodeURIComponent(id)}`);
   if (res.status === 404) return null;
   if (!res.ok) throw new Error(data.error || `Couldn't read the story (${res.status}).`);
-  return data.job || null;
+  const job = data.job || null;
+  if (job) filmCache.set(id, { job, at: Date.now() });
+  return job;
+}
+
+// The last read of each Film, so its page paints the job at once — from a
+// prefetch (a row hovered in Latest stories) or an earlier visit — and then
+// reads it fresh. Process-global like tabCache; a Film is user-scoped, so the
+// active project doesn't key it.
+const filmCache = new Map();
+const filmInflight = new Map();
+const PREFETCH_FRESH_MS = 10_000;
+
+/** Remember a job already in hand (a fresh submit's answer). */
+export function rememberFilm(job) {
+  if (job?.id) filmCache.set(job.id, { job, at: Date.now() });
+}
+
+/** The cached job for a Film, or undefined. */
+export function cachedFilm(id) {
+  return filmCache.get(id)?.job;
+}
+
+/** Warm the cache for a Film's page. Deduped, and a no-op on a fresh entry. */
+export function prefetchFilm(id) {
+  if (!id || filmInflight.has(id)) return;
+  const hit = filmCache.get(id);
+  if (hit && Date.now() - hit.at < PREFETCH_FRESH_MS) return;
+  const p = fetchFilm(id).catch(() => null).finally(() => filmInflight.delete(id));
+  filmInflight.set(id, p);
 }
 
 // ── Auth gate ──────────────────────────────────────────────────────────────
@@ -289,14 +318,21 @@ export function useDirectorProject(signedIn) {
 // scoped to the Film's own project. A Film the lookup doesn't know (started
 // before every Film had its own project) falls back to the studio's project,
 // the only place it can be. → { projectId, error }
-export function useFilmProject(signedIn, filmId) {
-  const [projectId, setPid] = useState(null);
+export function useFilmProject(signedIn, filmId, knownProjectId = null) {
+  const [projectId, setPid] = useState(knownProjectId);
   const [error, setError] = useState(null);
   useEffect(() => {
     if (!signedIn || !filmId) return;
+    setError(null);
+    // Handed over by whoever navigated here (the Latest stories row, a fresh
+    // submit): no lookup to wait on. The Worker still checks ownership.
+    if (knownProjectId) {
+      setProjectId(knownProjectId);
+      setPid(knownProjectId);
+      return;
+    }
     let live = true;
     setPid(null);
-    setError(null);
     fetchFilmProject(filmId)
       .then((pid) => {
         if (!pid) return resolveProject();
@@ -306,7 +342,7 @@ export function useFilmProject(signedIn, filmId) {
       .then((pid) => { if (live) setPid(pid); })
       .catch((e) => { if (live) setError(String(e?.message || e)); });
     return () => { live = false; };
-  }, [signedIn, filmId]);
+  }, [signedIn, filmId, knownProjectId]);
   return { projectId, error };
 }
 
@@ -1623,16 +1659,32 @@ export function StudioAgentCard({ signedIn, onSignIn, onCreate }) {
   );
 }
 
+// The list survives the modal (and the page): a reopen paints the last one at
+// once and refreshes it underneath.
+let myFilmsCache = null;
+function loadMyFilms() {
+  return fetchMyFilms().then((f) => { myFilmsCache = f; return f; });
+}
+
 export function LatestStories({ onPick }) {
-  const [films, setFilms] = useState(null);
+  const [films, setFilms] = useState(myFilmsCache);
   const [open, setOpen] = useState(false);
   const [error, setError] = useState(null);
-  // Read on open, so a story finished since the page loaded is listed.
+  // Warm it with the page, so the first open has nothing to wait for.
+  useEffect(() => {
+    let live = true;
+    loadMyFilms().then((f) => live && setFilms(f)).catch(() => {});
+    return () => { live = false; };
+  }, []);
+  // Read again on open, so a story finished since the page loaded is listed.
+  // A failure over a list already shown keeps the list.
   useEffect(() => {
     if (!open) return;
     let live = true;
     setError(null);
-    fetchMyFilms().then((f) => live && setFilms(f)).catch((e) => live && setError(String(e?.message || e)));
+    loadMyFilms()
+      .then((f) => live && setFilms(f))
+      .catch((e) => live && !myFilmsCache && setError(String(e?.message || e)));
     return () => { live = false; };
   }, [open]);
   return (
@@ -1674,6 +1726,9 @@ export function LatestStories({ onPick }) {
               <li key={f.filmId}>
                 <button
                   type="button"
+                  onPointerEnter={() => prefetchFilm(f.filmId)}
+                  onPointerDown={() => prefetchFilm(f.filmId)}
+                  onFocus={() => prefetchFilm(f.filmId)}
                   onClick={() => { setOpen(false); onPick(f); }}
                   className="flex w-full items-start gap-3 px-3 py-3 text-left transition-colors hover:bg-[var(--br-neutral)]"
                 >

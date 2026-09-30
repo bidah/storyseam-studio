@@ -14,7 +14,7 @@
 //
 // Until the job arrives the page is the header and a centered spinner — no
 // empty prompt card, no column of waiting steps. The shared pieces live in components/DirectorStory.jsx.
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useLocation, useParams } from "react-router";
 import { Plus } from "lucide-react";
 import {
@@ -25,6 +25,7 @@ import {
   POLL_MS,
   Page,
   StoryView,
+  cachedFilm,
   fetchFilm,
   retryFilm,
   useFilmProject,
@@ -47,27 +48,42 @@ function FilmStory({ flow, signedIn }) {
   const { filmId } = useParams();
   // The engine the Film was started with, handed over by whoever navigated
   // here, so the waiting steps are the right pipeline's before the job arrives.
-  const engine = useLocation().state?.engine ?? flow.engine;
-  // The Film's own project, looked up from its id (and set on the shim).
-  const { projectId, error } = useFilmProject(signedIn, filmId);
-  // `undefined` = not read yet; `null` = no such Film.
-  const [job, setJob] = useState(undefined);
+  const handed = useLocation().state;
+  const engine = handed?.engine ?? flow.engine;
+  // The Film's own project: handed over, or looked up from its id (and set
+  // on the shim).
+  const { projectId, error } = useFilmProject(signedIn, filmId, handed?.projectId || null);
+  // `undefined` = not read yet; `null` = no such Film. A cached read (a
+  // prefetch, an earlier visit) paints at once and is refreshed below.
+  const [job, setJob] = useState(() => cachedFilm(filmId));
   const [retrying, setRetrying] = useState(false);
   const [retryError, setRetryError] = useState(null);
 
+  // Until the project is known, a "no such Film" may only mean a Film older
+  // than the lookup, which lives in the project the shim doesn't have yet —
+  // so it isn't believed until then.
+  const projectKnown = useRef(false);
+  projectKnown.current = !!projectId;
   const refresh = useCallback(async () => {
     try {
       const next = await fetchFilm(filmId);
-      setJob(next);
+      if (next !== null || projectKnown.current) setJob(next);
     } catch { /* the next event or poll tries again */ }
   }, [filmId]);
 
   // A new id in the URL (a submit from here, or history navigation) starts over.
-  useEffect(() => { setJob(undefined); setRetryError(null); }, [filmId]);
+  useEffect(() => { setJob(cachedFilm(filmId)); setRetryError(null); }, [filmId]);
 
+  // Read the Film straight away: the Worker finds its project itself, so this
+  // doesn't wait on the lookup. Read again once the project is known, for a
+  // Film older than the lookup (it lives in the shim's project).
   useEffect(() => {
-    if (projectId) refresh();
-  }, [projectId, refresh]);
+    if (signedIn) refresh();
+  }, [signedIn, refresh]);
+  const lookedUp = !handed?.projectId;
+  useEffect(() => {
+    if (lookedUp && projectId && !cachedFilm(filmId)) refresh();
+  }, [lookedUp, projectId, filmId, refresh]);
 
   // Live updates: every step transition carries the whole public job. A frame
   // about THIS Film that carries another job (it was queued behind that one)
@@ -111,7 +127,7 @@ function FilmStory({ flow, signedIn }) {
     <>
       {projectId ? <LiveSync key={projectId} onEvent={onEvent} onResync={refresh} /> : null}
       <StoryView
-        job={job || { id: filmId, prompt: "", status: "loading", steps: [], ...(engine ? { engine } : {}) }}
+        job={job || { id: filmId, prompt: handed?.prompt || "", status: "loading", steps: [], ...(engine ? { engine } : {}) }}
         projectId={projectId}
         onRetry={onRetry}
         retrying={retrying}

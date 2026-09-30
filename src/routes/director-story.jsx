@@ -28,6 +28,7 @@ import {
   ACTIVE,
   FLOWS,
   LatestStories,
+  rememberFilm,
   RESUME_PARAM,
   SignInDialog,
   SimpleView,
@@ -175,7 +176,8 @@ function SimpleStory({ signedIn, sessionKnown }) {
       // The Film's own project: its page looks it up again by id, but setting
       // it now saves the round trip before the first read.
       if (data.projectId) setProjectId(data.projectId);
-      navigate(filmPath(id), { state: { engine: as.engine } });
+      rememberFilm(data.job);
+      navigate(filmPath(id), { state: { engine: as.engine, projectId: data.projectId || null } });
       return true;
     } catch (err) {
       setNote(String(err?.message || err));
@@ -216,7 +218,7 @@ function SimpleStory({ signedIn, sessionKnown }) {
 
   const openFilm = (film) => {
     if (film.projectId) setProjectId(film.projectId);
-    navigate(filmPath(film.filmId), { state: { engine: film.engine || null } });
+    navigate(filmPath(film.filmId), { state: { engine: film.engine || null, projectId: film.projectId || null, prompt: film.prompt || "" } });
   };
 
   return (
