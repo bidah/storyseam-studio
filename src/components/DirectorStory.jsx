@@ -46,7 +46,7 @@
 import { createContext, useContext, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Link, Navigate, useLocation } from "react-router";
 import {
-  ArrowUp, AudioLines, Check, ChevronDown, ChevronLeft, ChevronRight, Circle, Clapperboard, CircleAlert, Copy, Download, Film, Link2Off, ListChecks, Loader2, Mic, PenLine, Plus, Receipt, RotateCw, Search, Settings2,
+  ArrowUp, AudioLines, Check, ChevronDown, ChevronLeft, ChevronRight, Circle, Clapperboard, CircleAlert, Copy, Download, Link2Off, ListChecks, Loader2, Mic, PenLine, Plus, Receipt, RotateCw, Search, Settings2,
   Share2, SlidersHorizontal, Square, Users, X, icons as LUCIDE,
 } from "lucide-react";
 import { studioPath } from "@/lib/home";
@@ -1730,9 +1730,8 @@ export function LatestStories({ onPick }) {
                   onPointerDown={() => prefetchFilm(f.filmId)}
                   onFocus={() => prefetchFilm(f.filmId)}
                   onClick={() => { setOpen(false); onPick(f); }}
-                  className="flex w-full items-start gap-3 px-3 py-3 text-left transition-colors hover:bg-[var(--br-neutral)]"
+                  className="flex w-full items-start px-3 py-3 text-left transition-colors hover:bg-[var(--br-neutral)]"
                 >
-                  <Film size={16} className="mt-0.5 shrink-0 text-[var(--br-secondary)]" aria-hidden />
                   <span className="min-w-0 flex-1">
                     <span className="block truncate font-semibold">{f.title || f.prompt || "Untitled story"}</span>
                     {f.prompt && f.title ? (
