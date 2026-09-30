@@ -116,7 +116,7 @@ describe("the Shot sheet run stage", () => {
     expect(FILM_STAGES.map((s) => s.key).indexOf("run")).toBe(FILM_STAGES.map((s) => s.key).indexOf("cuesheet") + 1);
   });
 
-  // A Film is at least 2:00, which at a pin every 4s is two reels by the Film
+  // A Film is 2:00 by default, which at a pin every 4s is two reels by the Film
   // plan's own count — so the one-reel run is a cue sheet cut to its first 48s.
   it("one reel → one clip on the platform key, pending until fal finishes", async () => {
     const { env, job, results } = await filmAt("a cat saves a lighthouse");

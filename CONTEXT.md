@@ -51,7 +51,7 @@ _Avoid_: result, output, video
 
 Every Film is made in a project of its OWN, created when it starts ("Story — <first words>", renamed to the World's title) — never in the author's current project, whose World and shot list would otherwise bleed into it. A user makes one Film at a time.
 
-A Film is 2:00–5:00 long in 30s steps (default 2:00; a length chosen in the input's settings gear wins; otherwise a stated length rounds up; longer is capped at 5:00), pinned about every 4s — every 5s from 4:30, where 4s would pass the Series' 64-beat ceiling. 5:00 is the ceiling because at 5s it is 60 beats, 56 pins in 4 reels (3 seams), inside the 64-beat and 5-reel limits.
+A Film is 0:30–5:00 long in 30s steps (default 2:00 — 0:30, 1:00 and 1:30 are there for shorter stories; a length chosen in the input's settings gear wins; otherwise a stated length rounds up; longer is capped at 5:00), pinned about every 4s — every 5s from 4:30, where 4s would pass the Series' 64-beat ceiling. 5:00 is the ceiling because at 5s it is 60 beats, 56 pins in 4 reels (3 seams), inside the 64-beat and 5-reel limits.
 
 **Silence**:
 A stretch of a Film's score where the music stops — a heavy exchange of dialogue, a held moment before a big action, a reveal. Written as a `silence` music cue with the shot list — a gap between pieces that is never rendered — or, in a Film scored the old way, as its own section of the plan asking for near silence; either way ALSO muted in the mix, faded out and back in over a second and a half. A 2–5 minute Film typically has 2–4, each 4–15s, never in the first 3s or the last 6s. The music after a silence comes back changed.

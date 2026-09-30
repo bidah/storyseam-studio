@@ -11,9 +11,10 @@ import { SPECIALIST_BY_ID } from './specialists';
 // long the Film is, how many beats and pins that is, how many reels it takes,
 // and roughly what it will cost.
 //
-// A Film is 2:00–5:00 in 30s steps (CONTEXT.md, "Film"). No length stated means
-// 2:00; a stated length rounds UP to the next step, so "3:10" is 3:30 and
-// "90 seconds" is 2:00; anything past 5:00 is capped there, and the cap is
+// A Film is 0:30–5:00 in 30s steps (CONTEXT.md, "Film"). No length stated means
+// 2:00 — the shorter steps are for shorter stories, not the default; a stated
+// length rounds UP to the next step, so "3:10" is 3:30 and "45 seconds" is
+// 1:00; anything past 5:00 is capped there, and the cap is
 // REPORTED — an author who asked for ten minutes should be told they are
 // getting five, not find out by watching.
 //
@@ -28,11 +29,11 @@ import { SPECIALIST_BY_ID } from './specialists';
 // author is quoted before there is one.
 
 /** The Film's length steps (CONTEXT.md). */
-export const FILM_MIN_SECONDS = 120;
+export const FILM_MIN_SECONDS = 30;
 export const FILM_MAX_SECONDS = 300;
 export const FILM_STEP_SECONDS = 30;
-export const FILM_DEFAULT_SECONDS = FILM_MIN_SECONDS;
-/** Every length a Film can be: 120, 150, … 300. */
+export const FILM_DEFAULT_SECONDS = 120;
+/** Every length a Film can be: 30, 60, 90, 120, … 300. */
 export const FILM_STEPS: readonly number[] = Array.from(
   { length: (FILM_MAX_SECONDS - FILM_MIN_SECONDS) / FILM_STEP_SECONDS + 1 },
   (_, i) => FILM_MIN_SECONDS + i * FILM_STEP_SECONDS,
@@ -643,7 +644,7 @@ export const DEFAULT_FILM_ENGINE: FilmEngine = 'director';
 /**
  * The engines that make a Film as a chain of SEGMENTS from a story (Seedance
  * 2.5 and MiniMax H3), as against the live Director: they share the story
- * flow's lengths (a 1:00 test), its sheets, its shot list and its final cut.
+ * flow's sheets, its shot list and its final cut.
  */
 export const isStoryEngine = (engine?: string | null): boolean => engine === 'seedance' || engine === 'h3';
 
@@ -668,10 +669,10 @@ export const SEEDANCE_ENDPOINT = 'bytedance/seedance-2.5/reference-to-video';
 /** The default resolution a segment renders at; a job's own is `filmResolutionOf(job.resolution)`. */
 export const SEEDANCE_RESOLUTION = DEFAULT_FILM_RESOLUTION;
 export const SEEDANCE_ASPECT_RATIO = '16:9';
-/** A story-flow Film is 1:00, then the Film's usual 2:00–5:00 in 30s steps. */
-export const STORY_FLOW_MIN_SECONDS = 60;
-export const STORY_FLOW_DEFAULT_SECONDS = 60;
-export const STORY_FLOW_STEPS: readonly number[] = [STORY_FLOW_MIN_SECONDS, ...FILM_STEPS];
+/** A story-flow Film takes the same lengths as every Film: 0:30–5:00, 2:00 by default. */
+export const STORY_FLOW_MIN_SECONDS = FILM_MIN_SECONDS;
+export const STORY_FLOW_DEFAULT_SECONDS = FILM_DEFAULT_SECONDS;
+export const STORY_FLOW_STEPS: readonly number[] = FILM_STEPS;
 /**
  * One Seedance generation: fal takes 4–30s, and Seedance 2.5 holds a staged
  * narrative for the whole 30 (the 15s ceiling was Seedance 2.0's), so a Film

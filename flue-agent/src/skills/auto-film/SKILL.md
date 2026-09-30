@@ -47,8 +47,8 @@ room: the story architect, then the scene, motivation and dialogue doctors) read
 back notes, and the script is rewritten on all of them as a second draft. Each
 pass is under a minute plus one rewrite; say so when quoting time. The same
 choice as the Writer button on the Auto input (Fast · Deep, with the room
-dialog). A Film is 2:00–5:00 in 30s
-steps; none stated means 2:00; a stated length rounds up; longer caps at 5:00 —
+dialog). A Film is 0:30–5:00 in 30s
+steps (0:30, 1:00, 1:30 for a shorter story); none stated means 2:00; a stated length rounds up; longer caps at 5:00 —
 the result says `capped`, and then tell them.
 
 On a story engine (`engine: "seedance"` or `"h3"`) the job also runs a

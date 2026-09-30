@@ -22,7 +22,7 @@ import { d } from "./_util.js";
 import type { Api, Json } from "../lib/api.js";
 import {
   AUDITION_SECONDS, DEFAULT_DEEP_SPECIALISTS, DEFAULT_FILM_MUSIC, DEFAULT_FILM_RESOLUTION, FILM_MUSIC, DEFAULT_FILM_VOICES, DEFAULT_FILM_WRITER, FILM_DEPTHS, FILM_ENGINES, FILM_RESOLUTIONS, FILM_STEPS, FILM_STYLES, FILM_VOICES, FILM_WRITERS, ROOM_PASS_SECONDS, ROOM_REWRITE_SECONDS,
-  STORY_FLOW_STEPS, filmLength, formatLength, isStoryEngine, storyFlowLength,
+  filmLength, formatLength, isStoryEngine, storyFlowLength,
 } from "../lib/film-plan.js";
 import { SPECIALIST_IDS } from "../lib/specialists.js";
 
@@ -124,7 +124,7 @@ export const makeFilm = (api: Api) =>
       seconds: v.optional(
         d(
           v.number(),
-          `Optional length the author asked for, IN SECONDS (three minutes → 180, "3:10" → 190). A Director Film is 2:00–5:00 in 30s steps (${FILM_STEPS.join(", ")}): no length means 2:00. A story-flow Film (engine "seedance" or "h3") can also be ONE MINUTE (${STORY_FLOW_STEPS.join(", ")}): no length means 1:00. Anything else rounds UP to the next step, longer is capped at 5:00 (the result says \`capped\` — tell the author). It wins over any length in the prompt — the same as the length setting on the Auto surface's input.`,
+          `Optional length the author asked for, IN SECONDS (three minutes → 180, "3:10" → 190). A Film on any engine is 0:30–5:00 in 30s steps (${FILM_STEPS.join(", ")}): no length means 2:00 — the default; 30, 60 and 90 are for shorter stories when the author asks for one. Anything else rounds UP to the next step, longer is capped at 5:00 (the result says \`capped\` — tell the author). It wins over any length in the prompt — the same as the length setting on the Auto surface's input.`,
         ),
       ),
       style: v.optional(
@@ -160,7 +160,7 @@ export const makeFilm = (api: Api) =>
       engine: v.optional(
         d(
           v.picklist(FILM_ENGINES as unknown as [string, ...string[]]),
-          'Optional PIPELINE — the same choice as the Gen mode on the prompt box at /. "director" (default): the live Director — a cue sheet pinned with a drawn frame every ~4s, played as one sitting, then scored. "seedance": the STORY FLOW on Seedance 2.5 — character sheets (turnaround + face) and empty location plates, a shot list of segments of up to 30s (one Seedance 2.5 take each; the screenplay is written one scene per take) as staged narrative, each segment rendered as an extension of a cut of the previous one, then one final cut and the score; Seedance writes the dialogue and effects, and a story can be one minute (the cheap way to test one). "h3": the same story flow on MiniMax H3 (fal\'s minimax/h3/reference-to-video) — segments of at most 15s (H3\'s own ceiling), the sheets go in as Image 1, Image 2 …, each segment after the first continues a cut of the previous one handed over as Video 1, then the final cut and the score. Pass "seedance" when the author asks for Seedance or the story flow, "h3" when they ask for MiniMax, Hailuo or H3; either for a quick one-minute test.',
+          'Optional PIPELINE — the same choice as the Gen mode on the prompt box at /. "director" (default): the live Director — a cue sheet pinned with a drawn frame every ~4s, played as one sitting, then scored. "seedance": the STORY FLOW on Seedance 2.5 — character sheets (turnaround + face) and empty location plates, a shot list of segments of up to 30s (one Seedance 2.5 take each; the screenplay is written one scene per take) as staged narrative, each segment rendered as an extension of a cut of the previous one, then one final cut and the score; Seedance writes the dialogue and effects, and a story can be as short as 30 seconds. "h3": the same story flow on MiniMax H3 (fal\'s minimax/h3/reference-to-video) — segments of at most 15s (H3\'s own ceiling), the sheets go in as Image 1, Image 2 …, each segment after the first continues a cut of the previous one handed over as Video 1, then the final cut and the score. Pass "seedance" when the author asks for Seedance or the story flow, "h3" when they ask for MiniMax, Hailuo or H3.',
         ),
       ),
       voices: v.optional(

@@ -12,8 +12,9 @@ import { SPECIALIST_BY_ID } from './specialists';
 
 // ── Options ───────────────────────────────────────────────────────────────
 
-const FILM_STEPS = [120, 150, 180, 210, 240, 270, 300];
-const STORY_FLOW_STEPS = [60, ...FILM_STEPS];
+const FILM_STEPS = [30, 60, 90, 120, 150, 180, 210, 240, 270, 300];
+const STORY_FLOW_STEPS = FILM_STEPS;
+const FILM_DEFAULT_SECONDS = 120;
 
 export type Stage = { key: string; label: string };
 
@@ -59,7 +60,7 @@ export const FLOWS: Record<FlowId, Flow> = {
     label: 'MiniMax H3',
     blurb: '15s takes, each continuing the last, at 480P. H3 writes the dialogue and effects, then scored.',
     steps: STORY_FLOW_STEPS,
-    defaultSeconds: 60,
+    defaultSeconds: FILM_DEFAULT_SECONDS,
     stages: STORY_STAGES,
   },
   director: {
@@ -68,7 +69,7 @@ export const FLOWS: Record<FlowId, Flow> = {
     label: 'fal H3 Director',
     blurb: 'A drawn frame every ~4s, played live as one sitting, then scored.',
     steps: FILM_STEPS,
-    defaultSeconds: 120,
+    defaultSeconds: FILM_DEFAULT_SECONDS,
     stages: DIRECTOR_STAGES,
   },
   seedance: {
@@ -77,7 +78,7 @@ export const FLOWS: Record<FlowId, Flow> = {
     label: 'Seedance 2.5',
     blurb: 'Takes of up to 30s, each extending the last, at 480p. Seedance writes the dialogue and effects, then scored.',
     steps: STORY_FLOW_STEPS,
-    defaultSeconds: 60,
+    defaultSeconds: FILM_DEFAULT_SECONDS,
     stages: STORY_STAGES,
   },
 };

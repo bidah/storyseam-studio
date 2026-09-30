@@ -62,9 +62,9 @@ const imageDeps = {
 const open = { availability: async () => ({ ok: true }), allowance: async () => ({ ok: true }), autoSettings: async () => ({ auto: true }) };
 
 describe("the Film's length ceiling — every step through the real planner", () => {
-  it("the steps run 2:00 … 5:00", () => {
+  it("the steps run 0:30 … 5:00", () => {
     expect(FILM_MAX_SECONDS).toBe(300);
-    expect(FILM_STEPS).toEqual([120, 150, 180, 210, 240, 270, 300]);
+    expect(FILM_STEPS).toEqual([30, 60, 90, 120, 150, 180, 210, 240, 270, 300]);
   });
 
   it.each(FILM_STEPS.map((s) => [s]))(

@@ -252,8 +252,8 @@ the shot list cuts the screenplay onto that grid) → the prompts compiled from 
 (`seedance-skill.js`, vendored from promptsama) → the video run, one segment at a
 time, segment k an `extension` of the **last 3s of segment k−1** (cut on the box) plus
 its sheets → one final cut → the Score. Everything at **480p**. Seedance writes the
-dialogue and effects (never music — see the score below). It adds a **1:00** length
-for testing a story cheaply. The agent reaches it through `make_film`'s `engine`.
+dialogue and effects (never music — see the score below). Every engine takes the
+same lengths — **0:30–5:00** in 30s steps, **2:00** by default. The agent reaches it through `make_film`'s `engine`.
 
 ### The H3 flow — the same story on MiniMax H3
 

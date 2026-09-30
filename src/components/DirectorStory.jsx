@@ -107,8 +107,8 @@ const H3_STAGES = STORY_FLOW_STAGES;
 // `/` makes a Film either with the live Director (fal's H3
 // Director) or from the same prompt on Seedance 2.5 (film-plan.ts › The STORY
 // FLOW). The input's Gen mode picker is the choice: the chosen flow sends
-// `engine` with the prompt, offers its own lengths (the story flow adds 1:00,
-// for testing a story cheaply), and remembers its own length. Every Film's page
+// `engine` with the prompt, offers the Film's lengths (0:30–5:00, 2:00 by default),
+// and remembers its own length. Every Film's page
 // is /create/:filmId and follows the Film's engine, so a link lands on the
 // right steps. /director-story and /story-flow survive only as redirects.
 export const FLOWS = {
@@ -132,7 +132,7 @@ export const FLOWS = {
     stages: STORY_FLOW_STAGES,
     storage: "story-flow",
     label: "Seedance 2.5",
-    blurb: "Takes of up to 30s, each extending the last, at 480p. Seedance writes the dialogue and effects, then scored; can be 1:00.",
+    blurb: "Takes of up to 30s, each extending the last, at 480p. Seedance writes the dialogue and effects, then scored.",
   },
   h3: {
     id: "h3",
@@ -143,7 +143,7 @@ export const FLOWS = {
     stages: H3_STAGES,
     storage: "h3-flow",
     label: "MiniMax H3",
-    blurb: "The same story in 15s takes on MiniMax H3 (its own ceiling), each continuing the last (Video 1), at 480P. H3 writes the dialogue and effects, then scored; can be 1:00.",
+    blurb: "The same story in 15s takes on MiniMax H3 (its own ceiling), each continuing the last (Video 1), at 480P. H3 writes the dialogue and effects, then scored.",
   },
 };
 export const GEN_MODES = [FLOWS.h3, FLOWS.director, FLOWS.seedance];
@@ -435,7 +435,7 @@ function DotsBackground() {
 // ── Story settings: the gear beside the send button ────────────────────────
 //
 // The defaults a story is made with, changeable before sending. For now that is
-// the Film's LENGTH: 2:00 unless changed, any 30s step up to the ceiling
+// the Film's LENGTH: 2:00 unless changed, any 30s step from 0:30 up to the ceiling
 // (film-plan.ts FILM_STEPS). Once the author has CHOSEN a length here it is
 // sent as `seconds` and wins over a length the prompt's wording states; until
 // then nothing is sent, so "a four-minute short" in the prompt still counts. Remembered per browser — a
@@ -1170,7 +1170,7 @@ export function SimpleView({ flow = FLOWS.director, onFlow, onSubmit, submitting
   useEffect(() => { writeDraft(prompt); }, [prompt]);
   const [seconds, setSeconds] = useState(() => readStoredLength(flow));
   const [chosen, setChosen] = useState(() => hasStoredLength(flow));
-  // Each mode remembers its own length (only Seedance offers 1:00).
+  // Each mode remembers its own length.
   useEffect(() => {
     setSeconds(readStoredLength(flow));
     setChosen(hasStoredLength(flow));

@@ -1,5 +1,5 @@
 // The Film plan — the quote an Auto prompt gets before anything is paid for:
-// the length (2:00–5:00 in 30s steps, rounded up, capped and SAID so), the
+// the length (0:30–5:00 in 30s steps, 2:00 by default, rounded up, capped and SAID so), the
 // beats and pins at ~4s, the reels they need, and a cost by stage.
 import { describe, expect, it } from "vitest";
 import {
@@ -53,12 +53,16 @@ describe("parseLength", () => {
   });
 });
 
-describe("filmLength — round up to the next 30s step, 2:00 floor, 5:00 cap", () => {
+describe("filmLength — round up to the next 30s step, 2:00 default, 0:30 floor, 5:00 cap", () => {
   it.each([
     [null, 120, false],
     [0, 120, false],
-    [30, 120, false],
-    [90, 120, false],
+    [10, 30, false],
+    [30, 30, false],
+    [45, 60, false],
+    [60, 60, false],
+    [90, 90, false],
+    [91, 120, false],
     [120, 120, false],
     [121, 150, false],
     [150, 150, false],
@@ -82,7 +86,8 @@ describe("filmLength — round up to the next 30s step, 2:00 floor, 5:00 cap", (
 describe("planFilm — the acceptance examples", () => {
   it.each([
     ["a three-minute short", 180, "3:00", false],
-    ["90 seconds", 120, "2:00", false],
+    ["90 seconds", 90, "1:30", false],
+    ["a thirty second short", 30, "0:30", false],
     ["3:10", 210, "3:30", false],
     ["a mecha in the rain", 120, "2:00", false],
     ["ten minutes", 300, "5:00", true],
@@ -108,8 +113,8 @@ describe("planFilm — the acceptance examples", () => {
 });
 
 describe("every 30s step", () => {
-  it("the steps are 2:00 … 5:00", () => {
-    expect(FILM_STEPS.map(formatLength)).toEqual(["2:00", "2:30", "3:00", "3:30", "4:00", "4:30", "5:00"]);
+  it("the steps are 0:30 … 5:00", () => {
+    expect(FILM_STEPS.map(formatLength)).toEqual(["0:30", "1:00", "1:30", "2:00", "2:30", "3:00", "3:30", "4:00", "4:30", "5:00"]);
   });
 
   it.each(FILM_STEPS.map((s) => [s]))("%is: beats at ~4s (≤64), pins fit the reel ceilings in ≤5 reels", (seconds) => {
