@@ -216,6 +216,15 @@ export async function rewriteRound(env, job, round, deps = {}) {
   const state = { ...EMPTY, ...(await readDoc(env, pid, name, null)) };
   const key = String(round);
   if (state.rewrites?.[key]) return state.rewrites[key];
+  // The room's stage already closed on the draft it reported, and the Shot list
+  // cuts from THAT one (story-flow/shotlist.js storyDraft). A second workflow
+  // instance still rewriting pinned a "polish" draft two minutes after
+  // film-a45e1cb9's Shot list ran, so the Script tab showed words the film
+  // never said. Answer without pinning anything.
+  if (job.steps?.find((s) => s?.key === "room")?.status === "done") {
+    console.warn("film room: a rewrite after the room closed; not pinned", job.id, round);
+    return { round: Number(round), late: true, kept: true, changes: [] };
+  }
 
   const rounds = roomRounds(roomOf(job));
   const spec = rounds.find((r) => r.round === Number(round));

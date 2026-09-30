@@ -2309,7 +2309,128 @@ function NameList({ items, clamp = false }) {
 
 const sheetCaption = (x) => String(x.subject || x.name || "").replace(/\s+—\s+.*$/, "");
 
-function StepResultBody({ step, projectId }) {
+/** Seconds → a film clock, M:SS. */
+const filmClock = (sec) => `${Math.floor(sec / 60)}:${String(Math.round(sec) % 60).padStart(2, "0")}`;
+
+/**
+ * A story Film's Shot list, as the studio's Shot list tab would show it: each
+ * segment (one ≤15s take) with its place, cast and goal, then every SHOT in it
+ * at its own time on the film's clock — camera, action, the lines spoken and
+ * how, the sound, the state it ends on — and, once the Video run has it, the
+ * take that was rendered from them. Everything is off the step's own result
+ * (plus the Video run's, for the clips); nothing is fetched.
+ */
+function SegmentShots({ result: r, steps, projectId }) {
+  const media = useMediaUrl(projectId);
+  const clips = new Map((steps?.find((s) => s.key === "run")?.result?.segments || []).filter((g) => g?.url).map((g) => [g.index, g.url]));
+  const checks = new Map((r.checks || []).map((c) => [c.segment - 1, c]));
+  const dir = r.direction || {};
+  const segStart = [];
+  (r.segments || []).reduce((at, g) => { segStart.push(at); return at + (Number(g.dur) || 0); }, 0);
+  // Shot numbers run across the film (what a music cue's startShot counts).
+  const shotAt = [];
+  let n = 0;
+  (r.segments || []).forEach((g, i) => {
+    let t = segStart[i];
+    (g.stages || []).forEach((st) => { n += 1; shotAt.push({ n, seg: i, from: t, to: t + (Number(st.seconds) || 0) }); t += Number(st.seconds) || 0; });
+  });
+  const total = n;
+  let k = 0;
+  return (
+    <div className="space-y-6" data-segment-shots>
+      <p className="text-xs text-[var(--br-secondary)]" style={{ fontFamily: MONO }}>
+        {[`${r.segments.length} segment${r.segments.length === 1 ? "" : "s"}`, `${total} shot${total === 1 ? "" : "s"}`, r.seconds ? formatLength(r.seconds) : null, r.draftName ? `cut from “${r.draftName}”` : null].filter(Boolean).join(" · ")}
+      </p>
+      {dir.environment || dir.camera || dir.sound ? (
+        <div>
+          <PreviewLabel>Direction — the whole film</PreviewLabel>
+          <dl className="space-y-1 text-xs leading-snug">
+            {[["Look", dir.environment], ["Camera", dir.camera], ["Sound", dir.sound]].filter(([, v]) => v).map(([label, v]) => (
+              <div key={label}><dt className="inline text-[var(--br-secondary)]">{label}: </dt><dd className="inline text-[var(--br-primary)]/85">{v}</dd></div>
+            ))}
+          </dl>
+        </div>
+      ) : null}
+      <ol className="space-y-6">
+        {r.segments.map((g, i) => {
+          const check = checks.get(i);
+          const clip = clips.get(g.index);
+          return (
+            <li key={g.index} className="space-y-2 border-t border-[var(--br-secondary)]/25 pt-4" data-segment={g.index + 1}>
+              <div className="flex flex-wrap items-baseline gap-x-2">
+                <span className="text-sm text-[var(--br-primary)]">{g.index + 1}. {g.title}</span>
+                <span className="text-xs text-[var(--br-secondary)]" style={{ fontFamily: MONO }}>
+                  {filmClock(segStart[i])}–{filmClock(segStart[i] + (Number(g.dur) || 0))} · {g.dur}s · {(g.stages || []).length} shot{(g.stages || []).length === 1 ? "" : "s"}
+                </span>
+              </div>
+              {g.location ? (
+                <p className="text-xs text-[var(--br-secondary)]">
+                  {[g.location, g.characters?.length ? g.characters.join(", ") : null, g.props?.length ? `with ${g.props.join(", ")}` : null].filter(Boolean).join(" · ")}
+                </p>
+              ) : null}
+              {g.goal ? <p className="text-xs text-[var(--br-primary)]/80">{g.goal}</p> : null}
+              {g.environment || g.sound ? (
+                <p className="text-xs text-[var(--br-secondary)]">{[g.environment, g.sound && `Sound: ${g.sound}`].filter(Boolean).join(" · ")}</p>
+              ) : null}
+              <ol className="space-y-2">
+                {(g.stages || []).map((st, j) => {
+                  const at = shotAt[k++];
+                  const lines = Array.isArray(st.lines) ? st.lines : [];
+                  return (
+                    <li key={j} className="border-l-2 border-[var(--br-secondary)]/35 pl-3 text-xs leading-snug" data-shot={at?.n}>
+                      <p className="text-[var(--br-secondary)]" style={{ fontFamily: MONO }}>
+                        Shot {at?.n} · {at ? `${filmClock(at.from)}–${filmClock(at.to)}` : ""} · {st.seconds}s
+                      </p>
+                      {st.camera ? <p className="text-[var(--br-primary)]">{st.camera}</p> : null}
+                      {st.initial && j === 0 ? <p className="text-[var(--br-secondary)]">Opens: {st.initial}</p> : null}
+                      {st.event ? <p className="text-[var(--br-primary)]/85">{st.event}</p> : null}
+                      {lines.map((l, x) => (
+                        <p key={x} className="text-[var(--br-primary)]">
+                          <span className="uppercase text-[var(--br-secondary)]" style={{ fontFamily: MONO, letterSpacing: "0.04em" }}>{l.speaker}</span>
+                          {l.delivery ? <span className="text-[var(--br-secondary)]"> ({l.delivery})</span> : null}: {l.text}
+                        </p>
+                      ))}
+                      {st.audio ? <p className="text-[var(--br-secondary)]">{lines.length ? "Sound" : "Audio"}: {st.audio}</p> : null}
+                      {st.end ? <p className="text-[var(--br-secondary)]">Ends: {st.end}</p> : null}
+                    </li>
+                  );
+                })}
+              </ol>
+              {check?.issues?.length ? (
+                <div>
+                  <PreviewLabel>Still off after the check</PreviewLabel>
+                  <ul className="list-disc space-y-1 pl-4 text-xs text-[var(--br-secondary)]">{check.issues.map((x, y) => <li key={y}>{x}</li>)}</ul>
+                </div>
+              ) : check?.fixed?.length ? (
+                <p className="text-xs text-[var(--br-secondary)]">Rewritten once after the check: {check.fixed.join(" ")}</p>
+              ) : null}
+              {clip ? (
+                <div>
+                  <PreviewLabel>The take rendered from these shots</PreviewLabel>
+                  <video controls preload="metadata" playsInline src={withFirstFrame(media(clip))} className="aspect-video w-full bg-black" />
+                </div>
+              ) : null}
+            </li>
+          );
+        })}
+      </ol>
+      {r.music?.length ? (
+        <div>
+          <PreviewLabel>Music cues</PreviewLabel>
+          <NameList items={r.music.map((m) => {
+            const at = shotAt.find((x) => x.n === m.startShot);
+            return { name: `${at ? `${filmClock(at.from)} · ` : ""}shot ${m.startShot} · ${m.cue || "cue"}${m.energy ? ` · energy ${m.energy}` : ""}`, detail: m.note };
+          })} />
+        </div>
+      ) : null}
+      {r.warnings?.length ? (
+        <div><PreviewLabel>Warnings</PreviewLabel><ul className="list-disc space-y-1 pl-4 text-xs text-[var(--br-secondary)]">{r.warnings.map((x, y) => <li key={y}>{typeof x === "string" ? x : x?.message || JSON.stringify(x)}</li>)}</ul></div>
+      ) : null}
+    </div>
+  );
+}
+
+function StepResultBody({ step, steps, projectId }) {
   const r = step.result || {};
   const media = useMediaUrl(projectId);
   switch (step.key) {
@@ -2404,6 +2525,8 @@ function StepResultBody({ step, projectId }) {
     case "voices":
       return <VoicesCard result={r} projectId={projectId} />;
     case "shotlist":
+      if (Array.isArray(r.segments) && r.segments.length) return <SegmentShots result={r} steps={steps} projectId={projectId} />;
+      // fallthrough — a Director Film's shot list is counted, not segmented.
     case "prompts":
       if (Array.isArray(r.segments) && r.segments.length) {
         return (
@@ -2491,7 +2614,7 @@ function StepBody({ step, onOpen, icon, children }) {
   );
 }
 
-function StepResultDialog({ step, projectId, onClose }) {
+function StepResultDialog({ step, steps, projectId, onClose }) {
   return (
     <Dialog open={!!step} onOpenChange={(o) => { if (!o) onClose(); }}>
       <DialogContent
@@ -2503,7 +2626,7 @@ function StepResultDialog({ step, projectId, onClose }) {
           {step?.label}
         </DialogTitle>
         <DialogDescription className="text-xs text-[var(--br-secondary)]">{step?.summary}</DialogDescription>
-        {step ? <StepResultBody step={step} projectId={projectId} /> : null}
+        {step ? <StepResultBody step={step} steps={steps} projectId={projectId} /> : null}
       </DialogContent>
     </Dialog>
   );
@@ -2603,7 +2726,7 @@ export function ProcessSteps({ job, projectId = null, source = null, className, 
           </div>
         </DialogContent>
       </Dialog>
-      <StepResultDialog step={openStep} projectId={projectId} onClose={() => setOpenStep(null)} />
+      <StepResultDialog step={openStep} steps={steps} projectId={projectId} onClose={() => setOpenStep(null)} />
     </FilmMediaContext.Provider>
   );
 }
@@ -2949,7 +3072,7 @@ export function StoryView({ job, projectId = null, onRetry, retrying = false, re
           <div className="flex min-h-0 flex-1 items-center justify-center overflow-y-auto px-4 py-6">
             <div className="w-full max-w-md space-y-6">
               <StepList steps={steps} onOpen={setOpenStep} />
-              <StepResultDialog step={openStep} projectId={projectId || job.projectId} onClose={() => setOpenStep(null)} />
+              <StepResultDialog step={openStep} steps={steps} projectId={projectId || job.projectId} onClose={() => setOpenStep(null)} />
               {stopped && (
                 <div className="space-y-3">
                   <p className="text-sm text-[var(--br-tertiary)]" data-stopped>

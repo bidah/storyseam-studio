@@ -29,6 +29,10 @@ import { H3_SKILL } from "../h3/h3-skill.js";
 import { pinnedDraft, readStore } from "../../script-store.js";
 import { docToElements, formatScreenplay } from "../../script-elements.js";
 import { writerModel } from "../../writer.js";
+import { partLines, repairMessages, screenplayParts, segmentIssues, segmentShotMessages, shotRangeFor } from "./scene-shots.js";
+
+/** The model that cuts every story Film's shots (see runStoryFlowShotlistStage). */
+export const SHOTLIST_WRITER = DEFAULT_FILM_WRITER;
 
 const str = (v) => (typeof v === "string" ? v : v == null ? "" : String(v)).trim();
 const key = (name) => str(name).toLowerCase().replace(/\s+/g, " ");
@@ -258,7 +262,7 @@ export function fitSeconds(asked, total) {
  * its length (`maxStagesFor`) and their seconds fitted to it. Throws when the
  * answer cannot make a film.
  */
-export function parseSegments(answer, world, durations) {
+export function parseSegments(answer, world, durations, { maxStages = maxStagesFor } = {}) {
   const raw = Array.isArray(answer?.segments) ? answer.segments : [];
   if (raw.length < durations.length) {
     throw new Error(`The writing model returned ${raw.length} of ${durations.length} segments.`);
@@ -272,7 +276,7 @@ export function parseSegments(answer, world, durations) {
     const s = raw[i] && typeof raw[i] === "object" ? raw[i] : {};
     const stagesRaw = (Array.isArray(s.stages) ? s.stages : [])
       .filter((st) => st && typeof st === "object" && (str(st.event) || str(st.end)))
-      .slice(0, maxStagesFor(dur));
+      .slice(0, typeof maxStages === "function" ? maxStages(dur) : maxStages);
     if (!stagesRaw.length) throw new Error(`Segment ${i + 1} came back with no stages.`);
     const secs = fitSeconds(stagesRaw.map((st) => st.seconds), dur);
     const place = places.get(key(s.location)) || lastPlace || [...places.values()][0] || null;
@@ -363,49 +367,188 @@ export function segmentShots(segments) {
 }
 
 /**
+ * The draft the story stages ENDED on — the room's last rewrite, else the
+ * Script stage's — rather than whatever is pinned now. A writers' room
+ * workflow instance that outlived its stage pinned a "polish" draft two
+ * minutes AFTER film-a45e1cb9's Shot list had read the "draft" one, so the
+ * Film's Script tab showed words the film never said. Falls back to the pinned
+ * draft (a job from before either stage recorded its draft).
+ */
+export function storyDraft(store, results) {
+  const want = results?.room?.rewrite?.draftId || results?.script?.draftId || null;
+  const drafts = Array.isArray(store?.drafts) ? store.drafts : [];
+  return (want && drafts.find((d) => d?.id === want)) || pinnedDraft(store);
+}
+
+/**
+ * The film-wide direction and the music cues, written once the shots exist —
+ * `startShot` counts every segment's shots in order, so it needs the whole
+ * list. Its own small call; a failure costs the Film its cues, never its shots.
+ */
+export function directionMusicMessages({ world, idea, segments, seconds }) {
+  const [lo, hi] = musicCueRange(seconds);
+  let n = 0;
+  const list = segments.flatMap((seg) => [
+    `Segment ${seg.index + 1} — ${seg.location}: ${seg.goal}`,
+    ...seg.stages.map((st) => {
+      n += 1;
+      const said = (st.lines || []).map((l) => `${l.speaker}: ${l.text}`).join(" / ");
+      return `  shot ${n} (${st.seconds}s) ${st.camera ? `[${st.camera}] ` : ""}${st.event}${said ? ` — says: ${said}` : ""}`;
+    }),
+  ]);
+  const system = [
+    `You are the music supervisor and director of photography of a ${formatLength(seconds)} short film whose shots are written.`,
+    "",
+    "1. `direction`: the WHOLE film's constants — `environment` (era, season, palette, light quality),",
+    "   `camera` (lens and movement style), `sound` (the texture of the ambience, never music, never speech).",
+    "   Pasted into every segment's prompt, so each must be true at every second: never name a place or a",
+    "   scene, never a progression (\"starts with… ends at…\").",
+    "",
+    "2. `music`: where the score turns — a list of cues. Each starts at a SHOT (`startShot`, the shot number",
+    "   below) and runs until the next cue. `cue` is EXACTLY one of these names:",
+    ...MUSIC_CUE_NAMES.map((c) => `  ${c}${MUSIC_CUES[c].family === "none" ? " — no music at all" : ` (${MUSIC_CUES[c].family})`}`),
+    `- ${lo}–${hi} cues. The FIRST cue starts at shot 1.`,
+    "- Change the cue ONLY where the story TURNS (a discovery, a threat, a chase, a loss, a win); each cue",
+    "  lasts at least ~8 seconds of film.",
+    "- `silence` is the score stopping on purpose (a held breath, a heavy exchange, a reveal): 2–3 per film,",
+    "  4–15 seconds each, never the first or the last cue.",
+    "- `energy` 1 (barely there) to 5 (everything); `note` a few words on why the music turns there.",
+    "",
+    "Answer with ONE JSON object and nothing else:",
+    '{ "direction": { "environment": string, "camera": string, "sound": string },',
+    '  "music": [{ "startShot": number, "cue": string, "energy": number, "note": string }] }',
+  ].join("\n");
+  const user = [`The Idea: ${idea || "(none)"}`, `Title: ${world.title || "(untitled)"}`, world.logline ? `Logline: ${world.logline}` : "", "", "The shots:", ...list]
+    .filter((l) => l !== "").join("\n");
+  return [
+    { role: "system", content: system },
+    { role: "user", content: user },
+  ];
+}
+
+/**
+ * One segment's shots: the call, the parse, the check, and — when code finds
+ * a problem — one more call with the problems sent back. The better of the two
+ * answers is kept (fewer problems; the first on a tie), with what is still
+ * wrong as `issues` for the Film page. Throws only when no answer makes a
+ * segment at all.
+ */
+export async function writeSegmentShots({ model, messages, world, dur, index, lines, engine }) {
+  const attempt = async (msgs) => {
+    const answer = await model.json({ messages: msgs, maxTokens: 8000, temperature: 0.6 });
+    // A segment answer is the segment itself; accept one wrapped as { segments: [..] } too.
+    const one = Array.isArray(answer?.segments) ? answer.segments[0] : answer;
+    const seg = { ...(one || {}), stages: Array.isArray(one?.shots) ? one.shots : one?.stages };
+    const parsed = parseSegments({ segments: [seg] }, world, [dur], { maxStages: shotRangeFor(dur, engine).max }).segments[0];
+    const issues = segmentIssues({ ...parsed, index }, { lines, engine });
+    return { answer: one, segment: { ...parsed, index }, issues };
+  };
+  let first;
+  try {
+    first = await attempt(messages);
+  } catch (err) {
+    // No usable segment at all: one retry from scratch before the stage fails.
+    console.warn("story shot list: segment retry", index + 1, String(err?.message || err));
+    first = await attempt(messages);
+    return { ...first, tries: 2 };
+  }
+  if (!first.issues.length) return { ...first, tries: 1 };
+  let second = null;
+  try {
+    second = await attempt(repairMessages(messages, first.answer, first.issues));
+  } catch (err) {
+    console.warn("story shot list: repair failed", index + 1, String(err?.message || err));
+  }
+  const best = second && second.issues.length <= first.issues.length ? second : first;
+  return { ...best, tries: 2, fixed: first.issues };
+}
+
+/**
  * deps (optional): { readWorld, readStore, saveShotlist, model }.
  *
- * Written by the studio's DEFAULT writer (Qwen 3.8 on Workers AI) whatever writer
- * the Film chose. The Shot list is a structured cut of a screenplay that is
- * already written — the choice of writer is for the story stages. On Claude it
- * was one call of five minutes and more (Kimi: two seconds), and a single call
- * that long is what a deploy kills: film-6767fc11 (2026-09-27) lost its Shot
- * list twice that way and sat stuck.
+ * Written by the studio's default writer (`SHOTLIST_WRITER`, Qwen 3.8 on
+ * Workers AI) whatever writer the Film chose — the choice of writer is for the
+ * story stages; this is a structured cut of a screenplay already written. On
+ * Claude it was one call of five minutes and more, and a single call that long
+ * is what a deploy kills (film-6767fc11 lost its Shot list twice that way).
+ * As ONE call on Qwen it was one 15s stage per segment (film-a45e1cb9) — see
+ * ./scene-shots.js for how the list is cut now: a call per segment, in
+ * parallel, each checked in code. Measured on that Film's own screenplay
+ * (2026-09-29): 33 shots, every line verbatim, 2 minutes; Kimi K2.6 on the
+ * same calls took 2–3.5 minutes EACH and ran out of output on three.
  */
 export async function runStoryFlowShotlistStage({ job, results, env }, deps = {}) {
-  const model = deps.model || writerModel(env, DEFAULT_FILM_WRITER);
+  const model = deps.model || writerModel(env, SHOTLIST_WRITER);
   const pid = job.projectId;
+  const engine = job.engine === "h3" ? "h3" : "seedance";
+  const eng = storyEngineOf(job.engine);
   const world = await (deps.readWorld || readWorld)(env, pid);
   const plan = storyFlowPlanFor(job);
   const idea = results?.world?.idea || "";
-  // The Script stage's draft (or the room's rewrite), as pinned now.
-  const screenplay = docToElements(pinnedDraft(await (deps.readStore || readStore)(env, pid))?.doc);
+  const language = job.language || DEFAULT_FILM_LANGUAGE;
+  const draft = storyDraft(await (deps.readStore || readStore)(env, pid), results);
+  const screenplay = docToElements(draft?.doc);
+  const durations = plan.durations;
 
-  const answer = await model.json({
-    messages: storyFlowShotlistMessages({
-      idea, world, durations: plan.durations, screenplay, language: job.language || DEFAULT_FILM_LANGUAGE, engine: job.engine,
-    }),
-    maxTokens: 24000,
-    temperature: 0.7,
-  });
-  const { segments, direction } = parseSegments(answer, world, plan.durations);
+  let segments;
+  let direction;
+  let rawMusic;
+  const checks = [];
+  if (screenplay.length) {
+    const parts = screenplayParts(screenplay, durations.length);
+    const names = (world.characters || []).map((c) => c.name);
+    const written = await Promise.all(durations.map((dur, i) => {
+      const lines = partLines(parts[i]?.elements, names);
+      return writeSegmentShots({
+        model, world, dur, index: i, lines, engine,
+        messages: segmentShotMessages({
+          eng, engineId: engine, world, idea, screenplay, part: parts[i], prev: parts[i - 1] || null, next: parts[i + 1] || null,
+          index: i, durations, language,
+        }),
+      });
+    }));
+    segments = written.map((w) => w.segment);
+    written.forEach((w, i) => checks.push({ segment: i + 1, tries: w.tries, ...(w.fixed?.length ? { fixed: w.fixed } : {}), ...(w.issues.length ? { issues: w.issues } : {}) }));
+    try {
+      const dm = await model.json({ messages: directionMusicMessages({ world, idea, segments, seconds: plan.seconds }), maxTokens: 4000, temperature: 0.5 });
+      const d = dm?.direction && typeof dm.direction === "object" ? dm.direction : {};
+      direction = { environment: str(d.environment), camera: str(d.camera), sound: str(d.sound) };
+      rawMusic = dm?.music;
+    } catch (err) {
+      console.warn("story shot list: direction + music failed", job.id, String(err?.message || err));
+      direction = { environment: "", camera: "", sound: "" };
+      rawMusic = [];
+    }
+  } else {
+    // No screenplay (a Film from before the Script stage): the whole film in one call, as before.
+    const answer = await model.json({
+      messages: storyFlowShotlistMessages({ idea, world, durations, screenplay, language, engine: job.engine }),
+      maxTokens: 24000,
+      temperature: 0.7,
+    });
+    ({ segments, direction } = parseSegments(answer, world, durations));
+    rawMusic = answer?.music;
+  }
 
   const shots = segmentShots(segments);
   const saved = await (deps.saveShotlist || saveShotlist)(env, pid, { shots, mode: "replace", source: "auto" });
   if (saved?.error) throw new Error(saved.error);
 
-  // The score's pacing, on the stages as saved (one shot per stage) — what the
-  // Score stage lays on the measured film (film-stages/score.js).
-  const music = repairMusicCues(answer?.music, { durs: shots.map((s) => s.dur), plannedSec: plan.seconds });
+  // The score's pacing, on the shots as saved — what the Score stage lays on
+  // the measured film (film-stages/score.js).
+  const music = repairMusicCues(rawMusic, { durs: shots.map((s) => s.dur), plannedSec: plan.seconds });
   const cues = music.length ? ` · ${music.length} music cue${music.length === 1 ? "" : "s"}` : "";
-  const stages = segments.reduce((a, s) => a + s.stages.length, 0);
+  const count = segments.reduce((a, s) => a + s.stages.length, 0);
+  const open = checks.filter((c) => c.issues?.length).length;
   return {
-    summary: `${segments.length} segment${segments.length === 1 ? "" : "s"} (${plan.durations.join("s, ")}s) · ${stages} stages · ${plan.length}${cues}`,
+    summary: `${segments.length} segment${segments.length === 1 ? "" : "s"} (${durations.join("s, ")}s) · ${count} shots · ${plan.length}${cues}${open ? ` · ${open} segment${open === 1 ? "" : "s"} with notes` : ""}`,
     result: {
       seconds: plan.seconds,
-      durations: plan.durations,
+      durations,
       direction,
       segments,
+      ...(draft?.id ? { draftId: draft.id, draftName: draft.name || null } : {}),
+      ...(checks.length ? { checks } : {}),
       ...(music.length ? { music } : {}),
       ...(saved?.warnings?.length ? { warnings: saved.warnings } : {}),
     },
