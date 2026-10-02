@@ -53,7 +53,7 @@ import { studioPath } from "@/lib/home";
 import { Dialog, DialogContent, DialogDescription, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
-  DEFAULT_DEEP_SPECIALISTS, DEFAULT_FILM_RESOLUTION, DEFAULT_FILM_MUSIC, DEFAULT_FILM_SCORE, DEFAULT_FILM_VOICES, FILM_MUSIC, FILM_DEFAULT_SECONDS, FILM_RESOLUTIONS, FILM_DEPTHS, FILM_STEPS, FILM_STYLES, FILM_VOICES, FILM_WRITERS, DEFAULT_FILM_WRITER, STORY_FLOW_DEFAULT_SECONDS,
+  DEFAULT_DEEP_SPECIALISTS, DEFAULT_FILM_RESOLUTION, DEFAULT_FILM_MUSIC, DEFAULT_FILM_SCORE, DEFAULT_FILM_VOICES, FILM_MUSIC, FILM_DEFAULT_SECONDS, FILM_RESOLUTIONS, FILM_DEPTHS, FILM_STEPS, FILM_STYLES, FILM_VOICES, FILM_WRITERS, OFFERED_FILM_WRITERS, DEFAULT_FILM_WRITER, STORY_FLOW_DEFAULT_SECONDS,
   STORY_FLOW_STEPS, filmVoicesOf, formatLength, isStoryEngine, quoteFilm, roomEstimate,
 } from "@/lib/film-plan";
 import { SPECIALISTS, STAGE_ORDER, isSpecialistId } from "@/lib/specialists";
@@ -570,7 +570,8 @@ function Choice({ on, onClick, children }) {
 }
 
 function StorySettings({ flow, seconds, onSeconds, resolution, onResolution, score, onScore, music, onMusic, voices, onVoices, style, onStyle, writer, onWriter, disabled }) {
-  const writers = FILM_WRITERS;
+  // Only what film-plan.ts HIDE_EXTRA_MODELS leaves offered; one choice = no row.
+  const writers = OFFERED_FILM_WRITERS;
   // Only a story engine auditions its cast; the Director has no audio input.
   const storyFlow = isStoryEngine(flow.engine);
   const voice = FILM_VOICES.find((x) => x.id === voices) || FILM_VOICES[0];
@@ -671,7 +672,7 @@ function StorySettings({ flow, seconds, onSeconds, resolution, onResolution, sco
           ))}
         </div>
       </div>
-      <div className="mt-4">
+      {writers.length > 1 ? <div className="mt-4">
         <SettingsLabel id="story-model-label">Writing model</SettingsLabel>
         <div role="radiogroup" aria-labelledby="story-model-label" className="flex flex-wrap gap-y-1.5" data-story-writer>
           {writers.map((w) => (
@@ -680,7 +681,7 @@ function StorySettings({ flow, seconds, onSeconds, resolution, onResolution, sco
             </Choice>
           ))}
         </div>
-      </div>
+      </div> : null}
     </>
   );
   return (
@@ -762,8 +763,8 @@ function useNarrow() {
 }
 
 // The LLM that writes the Film — Idea, World, sheet prompts, Shot list, cues
-// (film-plan.ts FILM_WRITERS): Qwen 3.8 on Workers AI by default, Kimi K2.6,
-// or Claude Fable 5.1. Always sent, so the Film names its writer. Remembered
+// (film-plan.ts FILM_WRITERS): GLM-5.3 on Workers AI by default, Kimi K2.6,
+// Qwen 3.8, or Claude Fable 5.1. Always sent, so the Film names its writer. Remembered
 // per browser (a remembered "default", from before the writer was explicit,
 // reads as the new default), and — like the look — always named on the input,
 // so what will be sent is visible before sending.
@@ -771,7 +772,7 @@ const WRITER_KEY = "director-story:writer";
 function readStoredWriter() {
   try {
     const v = window.localStorage.getItem(WRITER_KEY) || DEFAULT_FILM_WRITER;
-    return FILM_WRITERS.some((w) => w.id === v) ? v : DEFAULT_FILM_WRITER;
+    return OFFERED_FILM_WRITERS.some((w) => w.id === v) ? v : DEFAULT_FILM_WRITER;
   } catch {
     return DEFAULT_FILM_WRITER;
   }

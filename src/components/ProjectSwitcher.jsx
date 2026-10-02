@@ -10,12 +10,13 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { cn } from "@/lib/utils";
 import { Check, ChevronsUpDown, Plus, Pencil, Trash2 } from "lucide-react";
 import { useProjects } from "@/components/ProjectProvider";
 
 // Top-left header control: shows the current project and a dropdown to switch,
 // create, rename, or delete projects. Modeled on the Script tab's DraftControls.
-export default function ProjectSwitcher() {
+export default function ProjectSwitcher({ className }) {
   const { projects, current, currentId, loading, switchTo, rename, remove } = useProjects();
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
@@ -60,7 +61,10 @@ export default function ProjectSwitcher() {
           <button
             type="button"
             aria-label="Switch project"
-            className="flex h-9 w-[202px] min-w-[202px] max-w-[202px] shrink-0 items-center gap-2 rounded-md border bg-background px-2.5 text-left outline-none transition-colors hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
+            className={cn(
+              "flex h-9 w-[202px] min-w-[202px] max-w-[202px] shrink-0 items-center gap-2 rounded-md border bg-background px-2.5 text-left outline-none transition-colors hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring",
+              className,
+            )}
           >
             <span className="min-w-0 flex-1 truncate text-xs font-semibold">
               {loading ? "loading…" : current?.name || "Select…"}

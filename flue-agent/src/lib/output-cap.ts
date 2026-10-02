@@ -93,6 +93,30 @@ const QWEN_MODEL = {
   thinkingLevelMap: { off: null, minimal: "low", low: "low", medium: "medium", high: null, xhigh: null, max: null },
 };
 
+// GLM-5.3 (the studio's default Film writer since 2026-09-29, for its prose)
+// is not in pi-ai's catalog either, and unregistered it would resolve with
+// `reasoning: false` like Qwen did — no `reasoning_effort` on the wire, so it
+// thinks at its own default, which is `max` and cannot be switched off. At
+// `low` it answers straight with no reasoning tokens; `medium` spent ~500 and
+// `max` ~1,000 on a one-line answer (measured 2026-09-29). Workers AI takes
+// none/low/medium/high/max and refuses xhigh, so xhigh rides up to max. A turn
+// with NO thinking level sends no effort at all (pi-ai only sends one when a
+// level is set) and gets max — the writers' room always sets `low`.
+export const WORKERS_AI_GLM_ID = "@cf/zai-org/glm-5.3";
+const GLM_MODEL = {
+  id: WORKERS_AI_GLM_ID,
+  name: "GLM-5.3",
+  reasoning: true,
+  input: ["text"],
+  cost: { input: 1.4, output: 4.4, cacheRead: 0.26, cacheWrite: 0 },
+  contextWindow: 1048576,
+  maxTokens: 32000,
+  thinkingLevelMap: { off: null, minimal: "low", low: "low", medium: "medium", high: "high", xhigh: "max", max: "max" },
+};
+
+// Workers AI models the catalog doesn't ship, added to it with their metadata.
+const EXTRA_MODELS = [QWEN_MODEL, GLM_MODEL];
+
 // flue fails a model stream as a RETRYABLE interruption after this long with
 // no bytes (its default is 300 s). Workers AI streams reasoning deltas, so a
 // thinking model is never silent for long; two minutes of nothing is a stalled
@@ -122,13 +146,16 @@ export function installWorkersAiOutputCap(): void {
   const claudeGateway =
     (process.env.CLAUDE_GATEWAY_ID as string | undefined) || "auto-look";
   const claude = cloudflareBindingProvider({ binding, gateway: { id: claudeGateway }, streamIdleTimeoutMs: STREAM_IDLE_TIMEOUT_MS });
-  // Qwen 3.8 joins the catalog as a binding model (same `api` marker the
-  // binding gives every catalog entry), so it resolves WITH its metadata.
+  // Qwen 3.8 and GLM-5.3 join the catalog as binding models (same `api`
+  // marker the binding gives every catalog entry), so they resolve WITH their
+  // metadata. A later catalog that ships one keeps its own entry.
   const template = base.getModels().find((m) => m.id === "@cf/moonshotai/kimi-k2.6") ?? base.getModels()[0];
   const baseModels = base.getModels();
-  const models = baseModels.some((m) => m.id === WORKERS_AI_QWEN_ID)
-    ? baseModels
-    : [...baseModels, { ...template, ...QWEN_MODEL } as typeof template];
+  const models = [
+    ...baseModels,
+    ...EXTRA_MODELS.filter((extra) => !baseModels.some((m) => m.id === extra.id))
+      .map((extra) => ({ ...template, ...extra }) as typeof template),
+  ];
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const byFamily = <K extends "stream" | "streamSimple">(key: K) => ((model: any, context: any, options: any) =>
     (String(model?.id ?? "").startsWith("anthropic/") ? claude[key] : base[key])(model, context, options)) as typeof base[K];

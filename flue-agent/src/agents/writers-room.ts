@@ -71,7 +71,7 @@ is a real answer when the draft passes your lane.`;
 
 export function WritersRoom(): string {
   const data = useInitialData<RoomPassData>();
-  // A pass on a Workers AI writer (Qwen, Kimi) reasons at "low". Left at
+  // A pass on a Workers AI writer (GLM, Qwen, Kimi) reasons at "low". Left at
   // flue's "medium", or at Qwen's own xhigh when no effort was sent at all, a
   // single turn thought for up to five minutes, and story_architect's pass —
   // its own turns plus the arc expert it delegates to, which inherits this

@@ -21,7 +21,7 @@ import * as v from "valibot";
 import { d } from "./_util.js";
 import type { Api, Json } from "../lib/api.js";
 import {
-  AUDITION_SECONDS, DEFAULT_DEEP_SPECIALISTS, DEFAULT_FILM_MUSIC, DEFAULT_FILM_RESOLUTION, FILM_MUSIC, DEFAULT_FILM_VOICES, DEFAULT_FILM_WRITER, FILM_DEPTHS, FILM_ENGINES, FILM_RESOLUTIONS, FILM_STEPS, FILM_STYLES, FILM_VOICES, FILM_WRITERS, ROOM_PASS_SECONDS, ROOM_REWRITE_SECONDS,
+  AUDITION_SECONDS, DEFAULT_DEEP_SPECIALISTS, DEFAULT_FILM_MUSIC, DEFAULT_FILM_RESOLUTION, FILM_MUSIC, DEFAULT_FILM_VOICES, DEFAULT_FILM_WRITER, FILM_DEPTHS, FILM_ENGINES, FILM_RESOLUTIONS, FILM_STEPS, FILM_STYLES, FILM_VOICES, FILM_WRITERS, HIDE_EXTRA_MODELS, OFFERED_FILM_WRITERS, ROOM_PASS_SECONDS, ROOM_REWRITE_SECONDS,
   filmLength, formatLength, isStoryEngine, storyFlowLength,
 } from "../lib/film-plan.js";
 import { SPECIALIST_IDS } from "../lib/specialists.js";
@@ -135,8 +135,11 @@ export const makeFilm = (api: Api) =>
       ),
       writer: v.optional(
         d(
-          v.picklist(FILM_WRITERS.map((w) => w.id) as [string, ...string[]]),
-          `Optional WRITING MODEL — the LLM that writes every text step of the Film (Idea, World, the Script's passes, a Deep Film's writers' room, sheet prompts, Shot list, cue sheet, music cues): ${FILM_WRITERS.map((w) => `"${w.id}" (${w.label} — ${w.blurb})`).join(", ")}. The same choice as the model picker on the Auto surface's input. Pass "kimi" only when the author asks for Kimi, "claude" only when they ask for Claude / Fable / a stronger writer; omitted is "${DEFAULT_FILM_WRITER}".`,
+          v.picklist(OFFERED_FILM_WRITERS.map((w) => w.id) as [string, ...string[]]),
+          // film-plan.ts HIDE_EXTRA_MODELS: only GLM-5.3 is offered — never name or offer another writer.
+          HIDE_EXTRA_MODELS
+            ? `Optional WRITING MODEL — always "${DEFAULT_FILM_WRITER}" (GLM-5.3) right now; no other writer is offered, so omit it and don't offer the author a choice of model.`
+            : `Optional WRITING MODEL — the LLM that writes every text step of the Film (Idea, World, the Script's passes, a Deep Film's writers' room, sheet prompts, Shot list, cue sheet, music cues): ${FILM_WRITERS.map((w) => `"${w.id}" (${w.label} — ${w.blurb})`).join(", ")}. The same choice as the model picker on the Auto surface's input. Pass "kimi" only when the author asks for Kimi, "qwen" only when they ask for Qwen or the quickest / cheapest writer, "claude" only when they ask for Claude / Fable / a stronger writer; omitted is "${DEFAULT_FILM_WRITER}".`,
         ),
       ),
       depth: v.optional(

@@ -50,8 +50,8 @@ beats mapped onto **this** story. Trust its structural expertise.
 
 Give the root a clean, ordered **beat outline** it can write from — for each beat:
 the beat's name, its dramatic function in one clause, and 1–2 lines of what
-happens here in this story. Keep it to the *Whistlewood* tone and the established
-voices (Sara: bright, playful; Helena: dry, deadpan). Example shape:
+happens here in this story. Keep it to the project's tone and its established
+character voices. Example shape:
 
 ```
 Arc: Story Circle (8 steps) — applied to "Sara & Helena cross the crooked bridge"

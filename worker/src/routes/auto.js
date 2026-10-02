@@ -9,7 +9,8 @@
 //                                 USER-scoped: it never reads the request's
 //                                 project. Body { prompt, seconds?, style?, engine?, writer?, resolution?, score?, music?, depth?, specialists? }.
 //                                 `writer` is the LLM that writes it: absent /
-//                                 "qwen" = Qwen 3.8 on Workers AI, "kimi" = Kimi
+//                                 "glm" = GLM-5.3 on Workers AI, "qwen" = Qwen
+//                                 3.8 on Workers AI, "kimi" = Kimi
 //                                 K2.6 on Workers AI, "claude" = Claude Fable 5.1
 //                                 ("default" = the legacy AUTO_WRITER).
 //                                 `engine` picks the pipeline: absent = the
@@ -75,7 +76,7 @@
 // — one per project — and runs server-side; see lib/film-job.js.
 import { autoAvailable } from "../lib/auto-availability.js";
 import { MAX_PROMPT_CHARS, checkFilmDepth, checkFilmEngine, checkFilmMusic, checkFilmScore, checkFilmSeconds, checkFilmSpecialists, checkFilmStyle, checkFilmVoices, checkFilmWriter, checkFilmResolution } from "../lib/film-job.js";
-import { FILM_WRITERS } from "../lib/film-plan.ts";
+import { OFFERED_FILM_WRITERS, offeredFilmWriter } from "../lib/film-plan.ts";
 import { readAutoSettings, writeAutoSettings } from "../lib/auto-settings.js";
 import { checkAllowance } from "../lib/film-allowance.js";
 import { activeFilm, filmJobsFor, filmProject, latestFilm, listFilms, recordFilm, storyProjectName } from "../lib/films.js";
@@ -105,8 +106,9 @@ const refusal = (code, message) => ({ ok: false, refusal: { code, message }, job
 export function registerAuto(app) {
   app.get("/api/auto/status", async (c) => {
     const { ok, reason, paused, keys } = await autoAvailable(c.env);
-    // The writers the prompt's model picker offers (film-plan.ts FILM_WRITERS).
-    return c.json({ ok, reason, paused, keys, writers: FILM_WRITERS });
+    // The writers the prompt's model picker offers (film-plan.ts
+    // OFFERED_FILM_WRITERS — only GLM-5.3 while HIDE_EXTRA_MODELS is on).
+    return c.json({ ok, reason, paused, keys, writers: OFFERED_FILM_WRITERS });
   });
 
   // Start a Film — in a project of its own. The checks that can refuse run
@@ -130,8 +132,10 @@ export function registerAuto(app) {
     const style = body?.style || undefined;
     const badStyle = checkFilmStyle(style);
     if (badStyle) return c.json(refusal("invalid", badStyle), 400);
-    // The LLM that writes it (film-plan.ts FILM_WRITERS); absent is Qwen on Workers AI.
-    const writer = body?.writer || undefined;
+    // The LLM that writes it (film-plan.ts FILM_WRITERS); absent is GLM-5.3 on Workers AI.
+    // A hidden writer (film-plan.ts HIDE_EXTRA_MODELS) — a stale browser pick
+    // or an old client — is coerced to GLM-5.3 rather than refused.
+    const writer = offeredFilmWriter(body?.writer || undefined);
     const badWriter = checkFilmWriter(writer);
     if (badWriter) return c.json(refusal("invalid", badWriter), 400);
     // What the video renders at (film-plan.ts FILM_RESOLUTIONS); absent is 480p.

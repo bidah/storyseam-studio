@@ -10,9 +10,9 @@
 //
 // That is the LEGACY `default` writer: a Film started before the writer was
 // explicit stored none and keeps running on it. Every new Film names its writer
-// (film-plan.ts FILM_WRITERS, `job.writer`): `qwen` — Qwen 3.8 27B on Workers AI
-// (the default; plain Cloudflare, no Cerebras), `kimi` — Kimi K2.6 on Workers
-// AI, or `claude` — Claude Fable 5.1 through the
+// (film-plan.ts FILM_WRITERS, `job.writer`): `glm` — GLM-5.3 on Workers AI (the
+// default), `qwen` — Qwen 3.8 27B on Workers AI (plain Cloudflare, no
+// Cerebras), `kimi` — Kimi K2.6 on Workers AI, or `claude` — Claude Fable 5.1 through the
 // `AI` binding and AI Gateway's Unified Billing — Cloudflare holds the Anthropic
 // credential and bills the account's gateway credits, so there is no key to set.
 // Unified Billing needs an AUTHENTICATED gateway, which `default` is not; the
@@ -22,6 +22,7 @@ import { groqJSON, stripThinking } from "./groq.js";
 
 export const WORKERS_AI_WRITER_MODEL = "@cf/moonshotai/kimi-k2.6";
 export const WORKERS_AI_QWEN_MODEL = "@cf/qwen/qwen3.8-27b";
+export const WORKERS_AI_GLM_MODEL = "@cf/zai-org/glm-5.3";
 // Workers AI clips an answer at a small default unless asked for more, and a
 // whole Shot list comes back in one answer.
 const WORKERS_AI_MAX_TOKENS = 32000;
@@ -87,6 +88,15 @@ async function workersAIJSON(env, { messages, maxTokens, temperature } = {}, mod
     // completion budget (see cerebrasJSON). Off, with the JSON mode on, it
     // answers the object straight (verified 2026-09-28).
     inputs.chat_template_kwargs = { enable_thinking: false };
+    inputs.response_format = { type: "json_object" };
+  } else if (model === WORKERS_AI_GLM_MODEL) {
+    // GLM-5.3 reasons at `max` by default and its reasoning cannot be switched
+    // off: Qwen's `enable_thinking: false` does NOT work here — the thinking
+    // leaks into `content` as prose and the JSON never parses. `low` is the
+    // lever: it answers straight, with no reasoning tokens spent from the
+    // budget (`medium` spent ~500 and `max` ~1,000 on a one-line answer;
+    // measured 2026-09-29). It takes none/low/medium/high/max and refuses xhigh.
+    inputs.reasoning_effort = "low";
     inputs.response_format = { type: "json_object" };
   }
   const gateway = { id: env.AI_GATEWAY_ID || "default" };
@@ -179,13 +189,14 @@ async function claudeJSON(env, { messages, maxTokens, temperature } = {}) {
 // flue-agent/src/lib/models.ts, which refuses any other specifier.
 export const AGENT_WRITER_MODELS = {
   claude: "cloudflare/anthropic/claude-fable-5.1",
+  glm: `cloudflare/${WORKERS_AI_GLM_MODEL}`,
   qwen: `cloudflare/${WORKERS_AI_QWEN_MODEL}`,
   kimi: `cloudflare/${WORKERS_AI_WRITER_MODEL}`,
   "workers-ai": `cloudflare/${WORKERS_AI_WRITER_MODEL}`,
   cerebras: `cerebras/${CEREBRAS_WRITER_MODEL}`,
 };
 // The Film writers a job names outright; anything else is the legacy AUTO_WRITER.
-const EXPLICIT_WRITERS = ["claude", "qwen", "kimi"];
+const EXPLICIT_WRITERS = ["claude", "glm", "qwen", "kimi"];
 export function agentWriterModel(env, writer = null) {
   if (EXPLICIT_WRITERS.includes(writer)) return AGENT_WRITER_MODELS[writer];
   return AGENT_WRITER_MODELS[writerProvider(env)] || AGENT_WRITER_MODELS["workers-ai"];
@@ -195,6 +206,7 @@ export function agentWriterModel(env, writer = null) {
 // the Film's pick (`job.writer`); absent or `default` is the Worker's AUTO_WRITER.
 export function writerModel(env, writer = null) {
   if (writer === "claude") return { json: (opts) => claudeJSON(env, opts) };
+  if (writer === "glm") return { json: (opts) => workersAIJSON(env, opts, WORKERS_AI_GLM_MODEL) };
   if (writer === "qwen") return { json: (opts) => workersAIJSON(env, opts, WORKERS_AI_QWEN_MODEL) };
   if (writer === "kimi") return { json: (opts) => workersAIJSON(env, opts, WORKERS_AI_WRITER_MODEL) };
   const provider = writerProvider(env);

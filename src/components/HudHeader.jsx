@@ -13,7 +13,7 @@
 // phone (`flex-wrap`) because at 390px the partner strip alone is wider than
 // the room left beside the wordmark.
 import { Link, useNavigate } from "react-router";
-import { LogIn, LogOut, UserRound } from "lucide-react";
+import { CreditCard, LogIn, LogOut, UserRound } from "lucide-react";
 // Deep imports, not the package barrel: `@lobehub/icons`'s index pulls in
 // `@lobehub/ui` + `antd` (React 19 peers this app doesn't have), which fails
 // the dep prebundle. The two Fal marks are self-contained SVG components.
@@ -72,8 +72,11 @@ export function PoweredByFal({ className = "" }) {
  * @param {() => void} [props.onSignIn] Opens the page's own sign-in dialog
  *   (the homepage's, the one a signed-out prompt opens). Without it the
  *   sign-in icon goes to /login.
+ * @param {import("react").ReactNode} [props.trailing] Last in the strip, after
+ *   the account — the studio's phone shell puts its menu button here, so a
+ *   project's page carries the very same strip the homepage does.
  */
-export function HudHeader({ model, onSignIn }) {
+export function HudHeader({ model, onSignIn, trailing }) {
   return (
     // The rule under the strip runs the full width of the page while the strip
     // itself stays in the column: a 1px line drawn by a spread shadow, clipped
@@ -107,6 +110,7 @@ export function HudHeader({ model, onSignIn }) {
       </span>
       <ThemeToggle />
       <AccountButton onSignIn={onSignIn} />
+      {trailing}
     </header>
   );
 }
@@ -159,6 +163,10 @@ function AccountButton({ onSignIn }) {
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-56">
         <DropdownMenuLabel className="truncate font-normal text-muted-foreground">{email || name}</DropdownMenuLabel>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem onClick={() => navigate("/billing")}>
+          <CreditCard size={14} /> Plan &amp; billing
+        </DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem
           variant="destructive"

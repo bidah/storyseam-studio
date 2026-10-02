@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { apiJson, apiUrl, postJson, putJson } from './api';
 import { SPECIALIST_BY_ID } from './specialists';
+import { HIDE_EXTRA_MODELS } from './model-flags';
 
 // The Create tab's model: a prompt in, a Film back — the mobile port of the web
 // root (`src/components/DirectorStory.jsx` + `src/routes/director-story*.jsx`).
@@ -96,10 +97,17 @@ export const FILM_STYLES = [
 ] as const;
 
 export const FILM_WRITERS = [
-  { id: 'qwen', label: 'Qwen 3.8', blurb: 'on Cloudflare — quick and cheap' },
+  { id: 'glm', label: 'GLM-5.3', blurb: 'on Cloudflare — the strongest open writer' },
   { id: 'kimi', label: 'Kimi K2.6', blurb: 'on Cloudflare — a bigger model, a little slower' },
+  { id: 'qwen', label: 'Qwen 3.8', blurb: 'on Cloudflare — quick and cheap' },
   { id: 'claude', label: 'Claude Fable 5.1', blurb: 'slower, stronger writing' },
 ] as const;
+
+// What the Create tab's Writer chip offers: only GLM-5.3 while lib/model-flags.ts
+// HIDE_EXTRA_MODELS is on (FILM_WRITERS stays whole to label older Films).
+export const OFFERED_FILM_WRITERS = HIDE_EXTRA_MODELS
+  ? FILM_WRITERS.filter((w) => w.id === 'glm')
+  : FILM_WRITERS;
 
 export const FILM_DEPTHS = [
   { id: 'fast', label: 'Fast', blurb: 'A fast screen writing pass' },
@@ -131,7 +139,7 @@ export const formatLength = (seconds: number) => {
 
 // The prompt box's settings, remembered per device (the web keeps them in
 // localStorage per browser). Defaults match the web input: H3, Deep with the
-// core four, Qwen, auditioned voices, scored, 480p.
+// core four, GLM-5.3, auditioned voices, scored, 480p.
 export type FilmOptions = {
   flow: FlowId;
   seconds: Partial<Record<FlowId, number>>; // only once picked — unset sends nothing
@@ -149,7 +157,7 @@ const DEFAULT_OPTIONS: FilmOptions = {
   flow: 'h3',
   seconds: {},
   style: '',
-  writer: 'qwen',
+  writer: 'glm',
   depth: 'deep',
   specialists: DEFAULT_DEEP_SPECIALISTS,
   voices: 'video',
@@ -190,7 +198,7 @@ export function hydrateFilmOptions() {
 /** The POST /api/auto/films body for a prompt under these options — the web's exact rules. */
 export function filmBody(prompt: string, o: FilmOptions): Record<string, unknown> {
   const flow = FLOWS[o.flow];
-  const body: Record<string, unknown> = { prompt: prompt.trim(), writer: o.writer };
+  const body: Record<string, unknown> = { prompt: prompt.trim(), writer: HIDE_EXTRA_MODELS ? 'glm' : o.writer };
   const seconds = o.seconds[o.flow];
   if (seconds && flow.steps.includes(seconds)) body.seconds = seconds;
   if (o.style) body.style = o.style;

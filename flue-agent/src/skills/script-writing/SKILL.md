@@ -306,8 +306,8 @@ next with the script".
 
 ## Style
 
-- Stay consistent with the episode's voices (Sara: bright, playful; Helena: dry,
-  deadpan) and the *Whistlewood* tone when writing new material.
+- Stay consistent with the project's character voices and tone (as its World
+  and existing script establish them) when writing new material.
 - Be interactive about creative choices (which character speaks, tone, how a
   scene ends) — ask rather than invent when it materially shapes the story.
 - Don't overwrite the user's existing lines unless they asked for a rewrite;

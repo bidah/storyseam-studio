@@ -18,6 +18,7 @@
 // selected model into the active provider's catalog.
 
 import { useSyncExternalStore } from "react";
+import { HIDE_EXTRA_MODELS } from "./film-plan";
 
 const STORAGE_KEY = "shot-studio:chatProvider";
 
@@ -49,7 +50,15 @@ function normalize(raw) {
   return IDS.includes(raw) ? raw : DEFAULT_CHAT_PROVIDER;
 }
 
+// Under film-plan.ts HIDE_EXTRA_MODELS only Workers AI (GLM-5.3) is offered, so
+// a stored Cerebras/OpenRouter pick doesn't survive a reload and Settings hides
+// the Chat provider panel (OFFERED_CHAT_PROVIDERS has one entry).
+export const OFFERED_CHAT_PROVIDERS = HIDE_EXTRA_MODELS
+  ? CHAT_PROVIDERS.filter((p) => p.id === DEFAULT_CHAT_PROVIDER)
+  : CHAT_PROVIDERS;
+
 let current = (() => {
+  if (HIDE_EXTRA_MODELS) return DEFAULT_CHAT_PROVIDER;
   try { return normalize(localStorage.getItem(STORAGE_KEY)); }
   catch { return DEFAULT_CHAT_PROVIDER; }
 })();

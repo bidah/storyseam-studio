@@ -19,6 +19,7 @@ import { toast } from 'sonner-native';
 import { router } from 'expo-router';
 import { ArrowUp, Check, ChevronDown, CircleStop, ImagePlus, Mic, X } from 'lucide-react-native';
 import { AGENT_MODELS, useAgentModelStore } from '@/lib/agent-model';
+import { HIDE_EXTRA_MODELS } from '@/lib/model-flags';
 import { transcribeAudio } from '@/lib/api';
 import { formatDuration, useAudioRecording } from '@/lib/use-audio-recording';
 import { GlassGroup, GlassSurface } from './glass-surface';
@@ -316,6 +317,8 @@ export function Composer({
               <ImagePlus size={17} color={c.mutedForeground} />
             </Pressable>
 
+            {/* One model offered (lib/model-flags.ts) = no picker chip. */}
+            {HIDE_EXTRA_MODELS ? null : (
             <Pressable
               accessibilityRole="button"
               accessibilityLabel={`Model: ${model.label}`}
@@ -327,6 +330,7 @@ export function Composer({
               </Text>
               <ChevronDown size={13} color={c.mutedForeground} />
             </Pressable>
+            )}
 
             <View style={styles.trailingRow} pointerEvents="box-none">
               {busy ? (

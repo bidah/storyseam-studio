@@ -129,8 +129,8 @@ Refresh button.
 
 ## Style
 
-- One coherent world: keep the *Whistlewood* tone and established voices (Sara:
-  bright, playful; Helena: dry, deadpan) consistent unless the author is building
+- One coherent world: keep the project's established tone and character voices
+  (as its World describes them) consistent unless the author is building
   something new.
 - Depth over breadth: a sharp `want` vs `need` and a real `theme` are worth more
   than filling every box. Draw those out.

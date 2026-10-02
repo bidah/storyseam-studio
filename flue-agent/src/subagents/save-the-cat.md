@@ -29,7 +29,7 @@ not prose.
 - One line per beat: **Beat — function → what happens here** (+ rough placement).
 - Scale honestly: for a short episode, keep all 15 as *moments* even if some are a
   single line; note which are compressed. Make sure Opening and Final Image rhyme.
-- *Whistlewood* tone; no dialogue/prose. End with the implied scene count.
+- The project's established tone; no dialogue/prose. End with the implied scene count.
 
 ## The return contract — your FINAL message is the whole deliverable
 

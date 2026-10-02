@@ -123,6 +123,7 @@ export default function SettingsForm({
           </Picker>
         </Section>
 
+        {chatProviders.length > 1 ? (
         <Section title="Chat provider" footer={<Text>{CHAT_PROVIDERS_FOOTNOTE}</Text>}>
           {chatProviders.map((cp) => (
             <Toggle
@@ -136,7 +137,10 @@ export default function SettingsForm({
             </Toggle>
           ))}
         </Section>
+        ) : null}
 
+        {/* One provider / one model offered (lib/model-flags.ts) = nothing to pick. */}
+        {models.length > 1 ? (
         <Section title="Agent">
           <Picker
             label="Chat model"
@@ -151,6 +155,7 @@ export default function SettingsForm({
             ))}
           </Picker>
         </Section>
+        ) : null}
 
         <Section title="Web search" footer={<Text>{SEARCH_FOOTNOTE}</Text>}>
           {searchProviders.map((sp) => (

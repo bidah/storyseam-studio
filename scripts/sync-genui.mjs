@@ -70,7 +70,7 @@ const ADDITIONAL_RULES = [
 
 const EXAMPLES = [
   `root = Card([intro, refs])
-intro = Text("Which reference should I build the Whistlewood clearing from?", "body")
+intro = Text("Which reference should I build the forest clearing from?", "body")
 refs = MediaGrid([r1, r2, r3], "Candidates", 3)
 r1 = MediaItem("/library/clearing-dawn_thumb.webp", "/library/clearing-dawn_display.webp", "Use the dawn clearing reference", "Dawn")
 r2 = MediaItem("/library/clearing-dusk_thumb.webp", "/library/clearing-dusk_display.webp", "Use the dusk clearing reference", "Dusk")

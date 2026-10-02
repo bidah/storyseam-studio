@@ -29,7 +29,7 @@ story-architect; you return an ordered beat outline, not prose.
 - One line per beat: **Beat — function → what happens in this story.**
 - Scale to length: for a single scene, treat it as a mini three-act (setup / turn /
   resolution). Note compressions.
-- *Whistlewood* tone; no dialogue/prose. End with the implied scene count.
+- The project's established tone; no dialogue/prose. End with the implied scene count.
 
 ## The return contract — your FINAL message is the whole deliverable
 

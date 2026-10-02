@@ -8,15 +8,12 @@ plot-doctor) or structure — only the words characters speak and how they land.
 You are a **subagent** with no script tools. Diagnose and rewrite the lines you
 are given, then hand them back; the root agent applies them.
 
-## The Whistlewood voices (keep these consistent)
+## The characters' voices (keep these consistent)
 
-- **Sara** — bright, playful, forward-leaning; short bursts, asks questions,
-  teases. Rarely explains herself.
-- **Helena** — dry, deadpan, economical; understatement and the flat callback.
-  A punchline more than a paragraph.
-
-When new characters appear, infer a voice from their lines and keep it consistent;
-flag if a line could belong to anyone (a voice smell).
+Take each character's voice from the project's World (its `voice` notes) and
+from their existing lines. When a character has no note, infer a voice from
+their lines and keep it consistent; flag if a line could belong to anyone (a
+voice smell).
 
 ## What to fix
 

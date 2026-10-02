@@ -22,7 +22,7 @@ import {
 } from "@/lib/searchKeys";
 import { SEARCH_PROVIDERS, useSearchProvider, setSearchProvider } from "@/lib/searchProviders";
 import { SANDBOX_MODES, useSandboxMode, setSandboxMode } from "@/lib/sandboxMode";
-import { CHAT_PROVIDERS, useChatProvider, setChatProvider } from "@/lib/chatProvider";
+import { CHAT_PROVIDERS, OFFERED_CHAT_PROVIDERS, useChatProvider, setChatProvider } from "@/lib/chatProvider";
 import { swr, useRevalidateOnMount } from "@/lib/swr";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -34,6 +34,7 @@ import {
 } from "@/components/ui/select";
 import { Eyebrow, Panel, ErrorNote } from "@/components/shared";
 import { McpSetup } from "@/components/UseMcpModal";
+import { SubscriptionPanel } from "@/components/SubscriptionPanel";
 import { CORE, PLUGINS } from "@/lib/plugins";
 import { usePlugins } from "@/components/PluginsProvider";
 import { cn } from "@/lib/utils";
@@ -953,13 +954,16 @@ function SettingsPage() {
 
       {error && <ErrorNote>{error}</ErrorNote>}
 
+      <SubscriptionPanel />
+
       <LanguagePanel />
 
       <PluginsPanel />
 
       <DirectorPanel />
 
-      <ChatProviderPanel />
+      {/* One provider offered (film-plan.ts HIDE_EXTRA_MODELS) = nothing to pick. */}
+      {OFFERED_CHAT_PROVIDERS.length > 1 ? <ChatProviderPanel /> : null}
 
       {providerEnabled("higgsfield") ? <ConnectorsPanel /> : null}
 

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { agentWriterModel, parseJSONAnswer, writerModel, writerProvider, WORKERS_AI_QWEN_MODEL, WORKERS_AI_WRITER_MODEL } from "../../worker/src/lib/writer.js";
+import { agentWriterModel, parseJSONAnswer, writerModel, writerProvider, WORKERS_AI_GLM_MODEL, WORKERS_AI_QWEN_MODEL, WORKERS_AI_WRITER_MODEL } from "../../worker/src/lib/writer.js";
 
 describe("writer", () => {
   it("defaults to Workers AI Kimi and switches to Groq by setting", () => {
@@ -30,6 +30,17 @@ describe("writer", () => {
     expect(model).toBe(WORKERS_AI_QWEN_MODEL);
     expect(inputs).toMatchObject({ chat_template_kwargs: { enable_thinking: false }, response_format: { type: "json_object" } });
     expect(agentWriterModel(env, "qwen")).toBe(`cloudflare/${WORKERS_AI_QWEN_MODEL}`);
+  });
+
+  it("runs an explicit `glm` writer on Workers AI at low reasoning effort — never Qwen's enable_thinking switch, which leaks GLM's thinking into the answer", async () => {
+    const run = vi.fn(async () => ({ choices: [{ message: { content: '{"idea":"g"}' }, finish_reason: "stop" }] }));
+    const env = { AI: { run }, AUTO_WRITER: "cerebras" };
+    expect(await writerModel(env, "glm").json({ messages: [{ role: "user", content: "go" }] })).toEqual({ idea: "g" });
+    const [model, inputs] = run.mock.calls[0];
+    expect(model).toBe(WORKERS_AI_GLM_MODEL);
+    expect(inputs).toMatchObject({ reasoning_effort: "low", response_format: { type: "json_object" } });
+    expect(inputs.chat_template_kwargs).toBeUndefined();
+    expect(agentWriterModel(env, "glm")).toBe(`cloudflare/${WORKERS_AI_GLM_MODEL}`);
   });
 
   it("runs an explicit `kimi` writer on Workers AI Kimi, whatever AUTO_WRITER says", async () => {

@@ -55,7 +55,7 @@ person — **no email goes out automatically**. The invitee opens the link while
 signed in and accepts; that's when they actually join.
 
 If the user was vague about the email or the scope, draw ONE `render_ui` confirm
-card ("Invite alice@example.com to *Whistlewood* as editor?") before calling
+card ("Invite alice@example.com to *The Lighthouse* as editor?") before calling
 invite_member — don't guess a scope and don't fan out one invite per project when
 they meant "all".
 

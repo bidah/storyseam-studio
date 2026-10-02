@@ -103,10 +103,10 @@ describe("onAgentModelChange", () => {
   it("notifies subscribers on a real change and stops after unsubscribe", () => {
     const seen = [];
     const off = onAgentModelChange((id) => seen.push(id));
-    setAgentModel("glm-4.7-flash");
-    setAgentModel("glm-4.7-flash"); // no-op: same value → no notification
+    setAgentModel("qwen-3.8");
+    setAgentModel("qwen-3.8"); // no-op: same value → no notification
     off();
-    setAgentModel("gpt-oss-120b"); // after unsubscribe → not seen
-    expect(seen).toEqual(["glm-4.7-flash"]);
+    setAgentModel("kimi-k2.6"); // after unsubscribe → not seen
+    expect(seen).toEqual(["qwen-3.8"]);
   });
 });

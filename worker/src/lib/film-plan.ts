@@ -583,23 +583,47 @@ export function filmStyleFor({ style, prompt }: { style?: string | null; prompt?
 // Every writing step of a Film — the Idea and World, the Script's passes, a
 // Deep Film's writers' room (its passes and rewrites), the sheet prompts, the
 // Shot list, the Cue sheet and the score's music cues — goes through ONE model,
-// and the author picks it with the prompt. Two run on Cloudflare Workers AI
-// through the Worker's `AI` binding (no key): `qwen` — Qwen 3.8 27B, the
-// default, fast and cheap — and `kimi` — Kimi K2.6. `claude` is Claude Fable
-// 5.1 through AI Gateway's Unified Billing (no Anthropic key). The Look stage
-// is a classifier, not a writer, and is not affected.
+// and the author picks it with the prompt. Three run on Cloudflare Workers AI
+// through the Worker's `AI` binding (no key): `glm` — GLM-5.3, the default:
+// the strongest prose of any open model Cloudflare hosts (EQ-Bench Creative
+// Writing v3 Elo 2075, 2026-09, ahead of Kimi K2.6's 1725 and Qwen 3.8's 1671,
+// with the least slop) — `kimi` — Kimi K2.6 — and `qwen` — Qwen 3.8 27B, fast
+// and cheap. `claude` is Claude Fable 5.1 through AI Gateway's Unified Billing
+// (no Anthropic key). The Look stage is a classifier, not a writer, and is not
+// affected.
 //
 // `default` is not offered any more but still accepted: it is the Worker's
 // AUTO_WRITER (Groq / Cerebras / Kimi), what a Film started before the writer
 // was explicit runs on — a job that stored no writer keeps it.
-export type FilmWriter = 'qwen' | 'kimi' | 'claude' | 'default';
+export type FilmWriter = 'glm' | 'qwen' | 'kimi' | 'claude' | 'default';
 export const FILM_WRITERS: readonly { id: FilmWriter; label: string; blurb: string }[] = [
-  { id: 'qwen', label: 'Qwen 3.8', blurb: 'on Cloudflare — quick and cheap' },
+  { id: 'glm', label: 'GLM-5.3', blurb: 'on Cloudflare — the strongest open writer' },
   { id: 'kimi', label: 'Kimi K2.6', blurb: 'on Cloudflare — a bigger model, a little slower' },
+  { id: 'qwen', label: 'Qwen 3.8', blurb: 'on Cloudflare — quick and cheap' },
   { id: 'claude', label: 'Claude Fable 5.1', blurb: 'slower, stronger writing' },
 ];
 export const FILM_WRITER_IDS: readonly string[] = [...FILM_WRITERS.map((w) => w.id), 'default'];
-export const DEFAULT_FILM_WRITER: FilmWriter = 'qwen';
+export const DEFAULT_FILM_WRITER: FilmWriter = 'glm';
+
+// ── The model-hiding switch ─────────────────────────────────────────────────
+//
+// ONE switch for every model choice the product offers: true = only GLM-5.3 is
+// offered, as the Film's writer (prompt box, make_film) AND as the chat's model
+// (web/mobile pickers, Settings › Chat provider, and the flue worker's model
+// allowlist, which all import this). A stale stored pick of anything else
+// coerces back to GLM-5.3 on the client, the Worker and the agent. The other
+// models stay wired — flip this to false and run `npm run series:sync` to offer
+// them again. (mobile-app keeps its own copy in lib/film.ts.)
+export const HIDE_EXTRA_MODELS = true;
+
+/** The writers the prompt box and make_film offer right now. */
+export const OFFERED_FILM_WRITERS: readonly { id: FilmWriter; label: string; blurb: string }[] =
+  HIDE_EXTRA_MODELS ? FILM_WRITERS.filter((w) => w.id === DEFAULT_FILM_WRITER) : FILM_WRITERS;
+
+/** Coerce a requested writer to one that may run: under the switch, every writer is GLM-5.3. */
+export function offeredFilmWriter<T>(writer: T): T | FilmWriter {
+  return HIDE_EXTRA_MODELS ? DEFAULT_FILM_WRITER : writer;
+}
 
 // ── The depth: how much STORY work a Film gets before anything is drawn ─────
 //

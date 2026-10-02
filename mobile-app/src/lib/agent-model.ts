@@ -1,5 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { create } from 'zustand';
+import { HIDE_EXTRA_MODELS } from './model-flags';
 import {
   DEFAULT_CHAT_PROVIDER,
   getChatProvider,
@@ -22,9 +23,9 @@ import {
 // flue-agent/src/lib/models.ts before adding any of them back.
 
 export const AGENT_MODELS = [
-  { id: 'kimi-k2.6', spec: 'cloudflare/@cf/moonshotai/kimi-k2.6', label: 'Kimi K2.6', hint: 'Default · economical', group: 'cloudflare' },
-  { id: 'gpt-oss-120b', spec: 'cloudflare/@cf/openai/gpt-oss-120b', label: 'GPT-OSS 120B', hint: 'Reasoning', group: 'cloudflare' },
-  { id: 'glm-4.7-flash', spec: 'cloudflare/@cf/zai-org/glm-4.7-flash', label: 'GLM 4.7 Flash', hint: 'Fast · 131k ctx', group: 'cloudflare' },
+  { id: 'glm-5.3', spec: 'cloudflare/@cf/zai-org/glm-5.3', label: 'GLM-5.3', hint: 'Default · reasoning · 1M ctx', group: 'cloudflare' },
+  { id: 'qwen-3.8', spec: 'cloudflare/@cf/qwen/qwen3.8-27b', label: 'Qwen 3.8', hint: 'Reasoning · fast', group: 'cloudflare' },
+  { id: 'kimi-k2.6', spec: 'cloudflare/@cf/moonshotai/kimi-k2.6', label: 'Kimi K2.6', hint: 'Economical', group: 'cloudflare' },
   // Cerebras (Settings › Chat provider = Cerebras). Gemma is the default.
   { id: 'cerebras-gemma-4-31b', spec: 'cerebras/gemma-4-31b', label: 'Gemma 4 31B', hint: 'Default · 131k ctx · vision', group: 'cerebras' },
   { id: 'cerebras-glm-4.7', spec: 'cerebras/zai-glm-4.7', label: 'GLM 4.7', hint: 'Z.AI · reasoning', group: 'cerebras' },
@@ -36,7 +37,7 @@ export const AGENT_MODELS = [
 
 export type AgentModelId = (typeof AGENT_MODELS)[number]['id'];
 
-// The default model per provider group is the FIRST entry tagged with it — Kimi
+// The default model per provider group is the FIRST entry tagged with it — GLM-5.3
 // for cloudflare, Gemma for cerebras. Switching provider snaps to that default.
 export function modelGroupOf(id: string): ChatProviderId {
   return (AGENT_MODELS.find((m) => m.id === id)?.group as ChatProviderId) ?? DEFAULT_CHAT_PROVIDER;
@@ -44,8 +45,12 @@ export function modelGroupOf(id: string): ChatProviderId {
 export function defaultModelForProvider(providerId: ChatProviderId): AgentModelId {
   return (AGENT_MODELS.find((m) => m.group === providerId) ?? AGENT_MODELS[0]).id;
 }
+// lib/model-flags.ts HIDE_EXTRA_MODELS: the pickers offer only GLM-5.3, a stored
+// pick of anything else isn't hydrated, and the header always names GLM-5.3.
 export function modelsForProvider(providerId: ChatProviderId) {
-  return AGENT_MODELS.filter((m) => m.group === providerId);
+  return AGENT_MODELS.filter(
+    (m) => m.group === providerId && (!HIDE_EXTRA_MODELS || m.id === AGENT_MODELS[0].id),
+  );
 }
 
 export const DEFAULT_AGENT_MODEL: AgentModelId = defaultModelForProvider(DEFAULT_CHAT_PROVIDER);
@@ -80,6 +85,7 @@ export function getAgentModel(): AgentModelId {
 // Settings › Chat provider even across a hydration race (falls back to that
 // provider's default when the stored model belongs to another group).
 export function getAgentModelSpecifier(): string {
+  if (HIDE_EXTRA_MODELS) return AGENT_MODELS[0].spec;
   const provider = getChatProvider();
   const id = useAgentModelStore.getState().model;
   const m = AGENT_MODELS.find((x) => x.id === id);
@@ -90,7 +96,7 @@ export function getAgentModelSpecifier(): string {
 export function hydrateAgentModel(): Promise<void> {
   return AsyncStorage.getItem(STORAGE_KEY)
     .then((v) => {
-      if (isKnown(v)) useAgentModelStore.setState({ model: v });
+      if (isKnown(v) && !HIDE_EXTRA_MODELS) useAgentModelStore.setState({ model: v });
     })
     .catch(() => {});
 }

@@ -5,7 +5,7 @@ import { toast } from 'sonner-native';
 import SettingsForm from '@/components/settings-form';
 import { modelsForProvider, useAgentModelStore, type AgentModelId } from '@/lib/agent-model';
 import { apiJson } from '@/lib/api';
-import { CHAT_PROVIDERS, useChatProviderStore, type ChatProviderId } from '@/lib/chat-provider';
+import { OFFERED_CHAT_PROVIDERS, useChatProviderStore, type ChatProviderId } from '@/lib/chat-provider';
 import { authClient, useSession } from '@/lib/auth-client';
 import { API_ORIGIN } from '@/lib/env';
 import { useEveHealth } from '@/lib/eve-health';
@@ -179,7 +179,7 @@ export default function SettingsSheet() {
       models={modelsForProvider(chatProvider)}
       modelId={model}
       onModelChange={(id) => setModel(id as AgentModelId)}
-      chatProviders={CHAT_PROVIDERS.map((p) => {
+      chatProviders={OFFERED_CHAT_PROVIDERS.map((p) => {
         // Cloudflare Workers AI is keyless and always available; Cerebras and
         // OpenRouter are each gated on their own key, which /eve/health reports.
         const available =

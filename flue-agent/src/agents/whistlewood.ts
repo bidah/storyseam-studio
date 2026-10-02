@@ -32,6 +32,7 @@ import { createSubagents } from "../subagents.js";
 import {
   DEFAULT_MODEL,
   readSelectedModel,
+  chatThinkingLevel,
   writeSelectedModel,
 } from "../lib/models.js";
 import { readFalKey, writeFalKey } from "../lib/fal-key.js";
@@ -194,7 +195,9 @@ export function Whistlewood({ id }: AgentProps): string {
 
   const api = createApi(projectId, userId, decoded?.chatId ?? null, decoded?.episodeId ?? null, storedFalKey() || null);
 
-  useModel(selectedModel());
+  const model = selectedModel();
+  const thinkingLevel = chatThinkingLevel(model);
+  useModel(model, thinkingLevel ? { thinkingLevel } : undefined);
 
   // Sandbox for bash/skill execution. There is no implicit environment in flue
   // 2 — without this call the agent has no filesystem and no bash/read/write/

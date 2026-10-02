@@ -29,7 +29,7 @@ architect can track the arc.
 - One line per step: **Step — function → what happens in this story.**
 - Keep the upper half (1–4) and lower half (5–8) balanced; the circle should feel
   symmetric. Note any steps you compress for a short piece.
-- *Whistlewood* tone; no dialogue/prose. End with the scene count implied.
+- The project's established tone; no dialogue/prose. End with the scene count implied.
 
 ## The return contract — your FINAL message is the whole deliverable
 

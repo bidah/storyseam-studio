@@ -24,7 +24,7 @@ export const AUTO_KEYS = {
 };
 
 // No key for the writing steps: every writer a new Film can pick (lib/writer.js)
-// runs through the Worker's AI binding — Qwen and Kimi on Workers AI, Claude on
+// runs through the Worker's AI binding — GLM, Kimi and Qwen on Workers AI, Claude on
 // AI Gateway's Unified Billing. Only the legacy AUTO_WRITER (a job from before
 // the writer was explicit) may still need GROQ_API_KEY / CEREBRAS_API_KEY.
 const requiredKeys = () => AUTO_KEYS;

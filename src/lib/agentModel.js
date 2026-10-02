@@ -9,6 +9,7 @@
 // `x-eve-model` header the same way.)
 import { useSyncExternalStore } from "react";
 import { getChatProvider, onChatProviderChange, useChatProvider, DEFAULT_CHAT_PROVIDER } from "./chatProvider";
+import { HIDE_EXTRA_MODELS } from "./film-plan";
 
 // The chat models. `spec` is the full flue specifier sent as the x-flue-model
 // header; `id` is the short handle persisted in localStorage; `group` is the
@@ -24,9 +25,9 @@ import { getChatProvider, onChatProviderChange, useChatProvider, DEFAULT_CHAT_PR
 // conversation that picks it — permanently, on "Thinking…". See the long note in
 // flue-agent/src/lib/models.ts before adding any of them back.
 export const AGENT_MODELS = [
-  { id: "kimi-k2.6", spec: "cloudflare/@cf/moonshotai/kimi-k2.6", label: "Kimi K2.6", hint: "Default · economical", group: "cloudflare" },
-  { id: "gpt-oss-120b", spec: "cloudflare/@cf/openai/gpt-oss-120b", label: "GPT-OSS 120B", hint: "Reasoning", group: "cloudflare" },
-  { id: "glm-4.7-flash", spec: "cloudflare/@cf/zai-org/glm-4.7-flash", label: "GLM 4.7 Flash", hint: "Fast · 131k ctx", group: "cloudflare" },
+  { id: "glm-5.3", spec: "cloudflare/@cf/zai-org/glm-5.3", label: "GLM-5.3", hint: "Default · reasoning · 1M ctx", group: "cloudflare" },
+  { id: "qwen-3.8", spec: "cloudflare/@cf/qwen/qwen3.8-27b", label: "Qwen 3.8", hint: "Reasoning · fast", group: "cloudflare" },
+  { id: "kimi-k2.6", spec: "cloudflare/@cf/moonshotai/kimi-k2.6", label: "Kimi K2.6", hint: "Economical", group: "cloudflare" },
   // Cerebras (Settings › Chat provider = Cerebras). Gemma is the default.
   { id: "cerebras-gemma-4-31b", spec: "cerebras/gemma-4-31b", label: "Gemma 4 31B", hint: "Default · 131k ctx · vision", group: "cerebras" },
   { id: "cerebras-glm-4.7", spec: "cerebras/zai-glm-4.7", label: "GLM 4.7", hint: "Z.AI · reasoning", group: "cerebras" },
@@ -37,7 +38,7 @@ export const AGENT_MODELS = [
 ];
 
 // The default model per provider group is the FIRST entry tagged with it —
-// Kimi for cloudflare, Gemma for cerebras. Switching provider snaps the
+// GLM-5.3 for cloudflare, Gemma for cerebras. Switching provider snaps the
 // selection to that group's default.
 export function modelGroupOf(id) {
   return AGENT_MODELS.find((m) => m.id === id)?.group ?? DEFAULT_CHAT_PROVIDER;
@@ -54,7 +55,15 @@ function isKnown(id) {
   return AGENT_MODELS.some((m) => m.id === id);
 }
 
+// film-plan.ts HIDE_EXTRA_MODELS: only the default (GLM-5.3) is offered. The
+// catalog above stays whole; the picker filters to this, a stored pick of
+// anything else starts back on the default, and the flue worker coerces too.
+export function isOfferedAgentModel(id) {
+  return !HIDE_EXTRA_MODELS || id === DEFAULT_AGENT_MODEL;
+}
+
 let current = (() => {
+  if (HIDE_EXTRA_MODELS) return DEFAULT_AGENT_MODEL;
   try {
     const v = localStorage.getItem(STORAGE_KEY);
     const id = isKnown(v) ? v : DEFAULT_AGENT_MODEL;
@@ -192,5 +201,7 @@ export function useAvailableAgentModels() {
     () => providerAvailability,
     () => providerAvailability,
   );
-  return AGENT_MODELS.filter((m) => m.group === provider && isSpecAvailable(m.spec));
+  return AGENT_MODELS.filter(
+    (m) => m.group === provider && isSpecAvailable(m.spec) && isOfferedAgentModel(m.id),
+  );
 }

@@ -1,5 +1,6 @@
 import * as SecureStore from 'expo-secure-store';
 import { create } from 'zustand';
+import { HIDE_EXTRA_MODELS } from './model-flags';
 
 // Chat AI provider selection — RN port of the web src/lib/chatProvider.js. Radio
 // semantics like the render providers / sandbox: exactly ONE provider is in use
@@ -29,7 +30,14 @@ const IDS = CHAT_PROVIDERS.map((p) => p.id);
 
 export const DEFAULT_CHAT_PROVIDER: ChatProviderId = 'cloudflare';
 
+// Only Workers AI (GLM-5.3) while lib/model-flags.ts HIDE_EXTRA_MODELS is on;
+// Settings hides the Chat provider section when this has one entry.
+export const OFFERED_CHAT_PROVIDERS = HIDE_EXTRA_MODELS
+  ? CHAT_PROVIDERS.filter((p) => p.id === DEFAULT_CHAT_PROVIDER)
+  : CHAT_PROVIDERS;
+
 function normalizeActive(raw: unknown): ChatProviderId {
+  if (HIDE_EXTRA_MODELS) return DEFAULT_CHAT_PROVIDER;
   const o = (raw && typeof raw === 'object' ? raw : {}) as Record<string, any>;
   return IDS.includes(o.active) ? o.active : DEFAULT_CHAT_PROVIDER;
 }

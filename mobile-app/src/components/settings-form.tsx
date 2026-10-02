@@ -183,6 +183,9 @@ export default function SettingsForm({
         <Segmented value={themePref} onChange={onThemeChange} options={THEME_OPTIONS} />
       </Card>
 
+      {/* One provider / one model offered (lib/model-flags.ts) = nothing to pick. */}
+      {chatProviders.length > 1 ? (
+      <>
       <Eyebrow style={styles.mt2}>Chat provider</Eyebrow>
       <NoteCard icon={<Cpu size={18} color={colors.primary} />} note={CHAT_PROVIDERS_FOOTNOTE}>
         {chatProviders.map((cp) => (
@@ -197,7 +200,11 @@ export default function SettingsForm({
           />
         ))}
       </NoteCard>
+      </>
+      ) : null}
 
+      {models.length > 1 ? (
+      <>
       <Eyebrow style={styles.mt2}>Agent</Eyebrow>
       <Card style={styles.gap2Card}>
         <Text style={styles.text15}>Chat model</Text>
@@ -209,6 +216,8 @@ export default function SettingsForm({
           </Picker>
         </Host>
       </Card>
+      </>
+      ) : null}
 
       <Eyebrow style={styles.mt2}>Web search</Eyebrow>
       <NoteCard icon={<Globe size={18} color={colors.primary} />} note={SEARCH_FOOTNOTE}>

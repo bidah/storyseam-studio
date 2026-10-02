@@ -26,7 +26,7 @@ you return an ordered beat outline, not prose.
 - For a short piece, **compress** — collapse stages (e.g. fold Refusal into the
   Call, Tests into one sequence) rather than padding. Say which you merged.
 - Output one line per stage: **Stage — function → what happens in this story.**
-- Keep it in the *Whistlewood* tone. Don't write dialogue or full action prose;
+- Keep it in the project's established tone. Don't write dialogue or full action prose;
   the story-architect and root handle that.
 - End with the number of scenes this implies.
 

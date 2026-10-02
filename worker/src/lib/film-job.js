@@ -12,7 +12,7 @@
 //
 //   job  = { id, prompt, seconds?, style?, engine? ('seedance' — the story flow on Seedance 2.5;
 //            'h3' — the same on MiniMax H3; absent = the Director),
-//            writer? ('qwen' | 'kimi' | 'claude' — the LLM that writes it; absent = the Worker's legacy AUTO_WRITER),
+//            writer? ('glm' | 'qwen' | 'kimi' | 'claude' — the LLM that writes it; absent = the Worker's legacy AUTO_WRITER),
 //            resolution? ('720p' — what the video renders at; absent = 480p),
 //            score? (false — no Score stage; absent = the film is scored),
 //            depth? ('deep' — the writers' room reads the script; absent = fast),

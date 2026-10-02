@@ -30,6 +30,7 @@ import {
   FILM_STYLES,
   FILM_VOICES,
   FILM_WRITERS,
+  OFFERED_FILM_WRITERS,
   FLOWS,
   GEN_MODES,
   MAX_PROMPT_CHARS,
@@ -184,7 +185,7 @@ export default function CreateScreen() {
   const pickWriter = async () => {
     const v = await sheetPick(
       'Writer',
-      FILM_WRITERS.map((w) => ({ value: w.id, label: `${w.label} — ${w.blurb}` })),
+      OFFERED_FILM_WRITERS.map((w) => ({ value: w.id, label: `${w.label} — ${w.blurb}` })),
       o.writer,
     );
     if (v) o.set({ writer: v });
@@ -289,7 +290,9 @@ export default function CreateScreen() {
           a11y="Script depth"
           onPress={pickDepth}
         />
-        <OptionChip icon={Bot} label={writerLabel} a11y="Writer" onPress={pickWriter} />
+        {OFFERED_FILM_WRITERS.length > 1 ? (
+          <OptionChip icon={Bot} label={writerLabel} a11y="Writer" onPress={pickWriter} />
+        ) : null}
         {storyEngine ? (
           <OptionChip
             icon={Mic2}

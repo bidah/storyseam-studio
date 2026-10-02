@@ -1011,7 +1011,7 @@ function ChatHistorySheet({ conv, triggerClassName }) {
           <History size={16} />
         </Button>
       </SheetTrigger>
-      <SheetContent side="right" className="w-[495px] max-w-none gap-0 p-0 sm:max-w-none">
+      <SheetContent side="right" className="w-[495px] max-w-full gap-0 p-0 sm:max-w-none">
         <SheetHeader className="border-b pr-14">
           <SheetTitle>{t("Chats")}</SheetTitle>
         </SheetHeader>
@@ -1485,6 +1485,8 @@ function ModelPicker({ disabled }) {
     models.find((m) => m.id === DEFAULT_AGENT_MODEL) ??
     models[0] ??
     AGENT_MODELS[0];
+  // One model offered (film-plan.ts HIDE_EXTRA_MODELS) = no picker at all.
+  if (models.length <= 1) return null;
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -1532,7 +1534,10 @@ const RAILED_BY_DEFAULT = new Set(["moodboard", "nodes", "plugins"]);
 const tabOf = (pathname) =>
   ((parseStudioPath(pathname)?.rest ?? pathname).split("/")[1]) || "";
 
-export default function AgentChat() {
+// `mobile`: the phone shell (RootLayout) makes the chat the whole screen, so
+// the docked-column affordances — the rail and the full-view modal — have
+// nothing to do there and step aside.
+export default function AgentChat({ mobile = false }) {
   const t = useT();
   // Shared session: the same instance the sound-studio Render buttons drive.
   const agent = useAgent();
@@ -1547,7 +1552,7 @@ export default function AgentChat() {
   // again. So a manual toggle sticks while the author moves around, and a reload
   // returns every tab to its default.
   const [railedByTab, setRailedByTab] = useState(() => ({}));
-  const railed = railedByTab[tab] ?? RAILED_BY_DEFAULT.has(tab);
+  const railed = !mobile && (railedByTab[tab] ?? RAILED_BY_DEFAULT.has(tab));
   const setRailed = useCallback(
     (next) => setRailedByTab((m) => ({ ...m, [tab]: next })),
     [tab],
@@ -2170,7 +2175,9 @@ export default function AgentChat() {
       ) : null}
     <aside
       {...getDropRootProps({
-        className: fullView
+        className: mobile
+          ? "relative flex h-full w-full min-w-0 flex-1 flex-col bg-card"
+          : fullView
           ? "fixed inset-y-4 left-1/2 z-50 flex w-[min(1100px,94vw)] -translate-x-1/2 flex-col overflow-hidden rounded-none border bg-card"
           : cn(
               "relative flex h-full shrink-0 flex-col border-l bg-card transition-[width] duration-200",
@@ -2246,6 +2253,7 @@ export default function AgentChat() {
             conv={conv}
             triggerClassName="rounded-none border bg-card/80 text-muted-foreground backdrop-blur hover:bg-accent hover:text-foreground"
           />
+          {mobile ? null : (
           <Button
             size="icon"
             variant="ghost"
@@ -2256,9 +2264,10 @@ export default function AgentChat() {
           >
             {fullView ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
           </Button>
+          )}
           {/* The rail is a docked-column affordance — no place in a centred
               modal, so it steps aside for the full-view toggle above. */}
-          {fullView ? null : (
+          {fullView || mobile ? null : (
             <Button
               size="icon"
               variant="ghost"

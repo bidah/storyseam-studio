@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, Outlet, useLocation, useNavigate, useNavigation, useParams, useRevalidator } from "react-router";
-import { RefreshCw, ExternalLink, Clapperboard, LogOut, User, Users, Settings, Blocks, Plug } from "lucide-react";
+import { RefreshCw, ExternalLink, Clapperboard, CreditCard, LogOut, User, Users, Settings, Blocks, Plug, Menu, MessageSquare } from "lucide-react";
 import { Glowing } from "glowing";
 import { cn } from "@/lib/utils";
 import { useProjectEvents } from "@/lib/useProjectEvents";
@@ -38,6 +38,10 @@ import { headerTabs, blockingPlugin } from "@/lib/plugins";
 import { parseStudioPath, studioPath } from "@/lib/home";
 import { toStudio, useStudioPath } from "@/lib/studioNav";
 import { providerEnabled } from "@/lib/providers";
+import { useIsMobile } from "@/lib/useIsMobile";
+import { HudHeader } from "@/components/HudHeader";
+import { HUD } from "@/lib/hudTheme";
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
 
 /* ---------------------------------------------------------------- *
  * App shell                                                        *
@@ -160,17 +164,18 @@ function useSettled(on, ms = 150) {
 // Higgsfield credential and re-gates the app (reload → LoginGate re-checks →
 // homepage). The light/dark toggle that used to live here is gone: the app is
 // dark-only now (see index.html), so the control had nothing to switch to.
+async function signOut() {
+  try {
+    await authSignOut();
+  } catch {
+    /* reload re-gates regardless of the request outcome */
+  }
+  window.location.reload();
+}
+
 function UserMenu() {
   const t = useT();
   const studio = useStudioPath();
-  const signOut = async () => {
-    try {
-      await authSignOut();
-    } catch {
-      /* reload re-gates regardless of the request outcome */
-    }
-    window.location.reload();
-  };
 
   return (
     <DropdownMenu>
@@ -203,6 +208,11 @@ function UserMenu() {
             <Users size={14} /> {t("Team & access")}
           </Link>
         </DropdownMenuItem>
+        <DropdownMenuItem asChild>
+          <Link to="/billing">
+            <CreditCard size={14} /> {t("Plan & billing")}
+          </Link>
+        </DropdownMenuItem>
         {providerEnabled("higgsfield") ? (
           <DropdownMenuItem asChild>
             <a href="https://higgsfield.ai" target="_blank" rel="noopener noreferrer">
@@ -216,6 +226,80 @@ function UserMenu() {
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
+  );
+}
+
+// The phone's whole navigation. Below `md` the header can't hold the tab strip,
+// the marketplace button and the account cluster, so it collapses to the mark,
+// the project and this sheet — which lists the same surfaces `HeaderTabs` does
+// (same `headerTabs` order), plus everything the desktop header carries.
+//
+// The theme toggle and the account (with Sign out) are NOT here: the strip
+// above carries them, exactly as it does on the homepage.
+//
+// "Chat" is the first row on purpose: on a phone the agent IS the studio, and
+// every other row is a place you visit and come back from.
+function MobileMenu({ open, onOpenChange, pane, activeTab, onChat, onGo, onMcp, onRefresh, loading }) {
+  const t = useT();
+  const { enabled } = usePlugins();
+  const row = (on) =>
+    cn(
+      "flex w-full items-center gap-3 px-3 py-2.5 text-left text-sm transition-colors",
+      on ? "bg-primary text-primary-foreground" : "text-foreground hover:bg-accent",
+    );
+  return (
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      <SheetContent side="right" className="w-[85vw] max-w-sm gap-0 p-0">
+        <SheetHeader className="border-b pr-14">
+          <SheetTitle>{t("Menu")}</SheetTitle>
+          <SheetDescription className="sr-only">{t("Studio navigation")}</SheetDescription>
+        </SheetHeader>
+        <div className="min-h-0 flex-1 overflow-y-auto py-2">
+          <div className="space-y-2 px-3 pb-3">
+            <ProjectSwitcher className="w-full min-w-0 max-w-none" />
+            <EpisodeSwitcher />
+          </div>
+          <nav className="space-y-0.5 px-2">
+            <button type="button" className={row(pane === "chat")} onClick={onChat}>
+              <MessageSquare size={15} /> {t("Studio agent")}
+            </button>
+            {headerTabs(enabled).map((tab) => (
+              <button
+                key={tab.id}
+                type="button"
+                className={row(pane === "view" && activeTab === tab.id)}
+                onClick={() => onGo(tab.id)}
+              >
+                <span className="min-w-0 flex-1 truncate">{t(tab.label)}</span>
+              </button>
+            ))}
+          </nav>
+          <div className="px-3 pt-3">
+            <Button
+              variant={pane === "view" && activeTab === "plugins" ? "default" : "outline"}
+              className="w-full"
+              onClick={() => onGo("plugins")}
+            >
+              <Blocks size={14} /> {t("Explore plugins")}
+            </Button>
+          </div>
+          <div className="mt-3 space-y-0.5 border-t px-2 pt-3">
+            <button type="button" className={row(false)} onClick={onMcp}>
+              <Plug size={15} /> {t("Use MCP")}
+            </button>
+            <button type="button" className={row(false)} onClick={onRefresh} disabled={loading}>
+              <RefreshCw size={15} className={cn(loading && "animate-spin")} /> {t("Refresh")}
+            </button>
+            <button type="button" className={row(pane === "view" && activeTab === "settings")} onClick={() => onGo("settings")}>
+              <Settings size={15} /> {t("Settings")}
+            </button>
+            <button type="button" className={row(pane === "view" && activeTab === "members")} onClick={() => onGo("members")}>
+              <Users size={15} /> {t("Team & access")}
+            </button>
+          </div>
+        </div>
+      </SheetContent>
+    </Sheet>
   );
 }
 
@@ -274,6 +358,20 @@ export default function RootLayout() {
   const [modalImage, setModalImage] = useState(null);
   // "Use MCP" — how to point your own agent/harness at this project.
   const [mcpOpen, setMcpOpen] = useState(false);
+
+  // Phone shell: ONE pane at a time, and the chat is the default — on mobile
+  // the agent is how you move the story forward, and a 390px screen can't hold
+  // a page beside it. The menu opens a surface ("view"); its first row, or the
+  // header's chat button, comes back. The URL still names the view underneath,
+  // so the agent's `view_screen` keeps reading the right record either way.
+  const isMobile = useIsMobile();
+  const [mobilePane, setMobilePane] = useState("chat");
+  const [menuOpen, setMenuOpen] = useState(false);
+  const goMobile = (v) => {
+    setMenuOpen(false);
+    setMobilePane("view");
+    if (v !== view) navigate(studioPath(projectId, v));
+  };
 
   // A lightweight readiness ping that bumps `reloadKey` (the media cache-bust
   // nonce) once the backend has settled, and drives the Refresh button's spinner.
@@ -485,7 +583,30 @@ export default function RootLayout() {
             Opaque rather than a blur over the page: the strip is a flat HUD
             ground (design.md), and a translucent header tints whatever
             scrolls under the tab row. */}
-        <header className="shrink-0 border-b bg-card">
+        <header className={cn("shrink-0", !isMobile && "border-b bg-card")}>
+          {isMobile ? (
+            // The phone gets the homepage's strip, not a squeezed studio
+            // header: the StorySeam wordmark left, the menu right, so `/` and
+            // `/p/...` read as one app. The project, the surfaces and the rest
+            // of the desktop header live in the menu sheet. The wrapper is the
+            // gutter HudHeader bleeds into, and carries the `--br-*` tokens it
+            // reads.
+            <div className="px-4" style={HUD}>
+              <HudHeader
+                trailing={
+                  <button
+                    type="button"
+                    aria-label={t("Menu")}
+                    title={t("Menu")}
+                    onClick={() => setMenuOpen(true)}
+                    className="inline-flex size-8 shrink-0 items-center justify-center border border-border text-muted-foreground transition-colors hover:border-foreground/40 hover:text-foreground"
+                  >
+                    <Menu size={15} />
+                  </button>
+                }
+              />
+            </div>
+          ) : (
           <div className="flex flex-wrap items-center gap-x-3 gap-y-3 px-4 py-3 md:px-6">
             {/* The mark goes home — `/`, the prompt box, where stories are made. */}
             <Link
@@ -529,10 +650,11 @@ export default function RootLayout() {
               <UserMenu />
             </div>
           </div>
+          )}
         </header>
 
         <div className="flex min-h-0 flex-1 overflow-hidden">
-          <div className="min-w-0 flex-1 overflow-y-auto">
+          <div className={cn("min-w-0 flex-1 overflow-y-auto", isMobile && mobilePane !== "view" && "hidden")}>
             {/* The Moodboard is a canvas: it wants the whole pane, so it drops
                 the reading-width cap AND becomes a fixed-height flex column so
                 the board can fill the remaining space instead of guessing a vh.
@@ -549,11 +671,35 @@ export default function RootLayout() {
               <GatedOutlet view={view} pendingView={pendingView} />
             </main>
           </div>
-          <AgentChat />
+          {/* `contents` on desktop so the wrapper is layout-invisible; on a phone
+              it is the chat pane. One element either way, so crossing the
+              breakpoint never remounts the chat (and drops a draft). */}
+          <div className={isMobile ? cn("flex min-w-0 flex-1", mobilePane !== "chat" && "hidden") : "contents"}>
+            <AgentChat mobile={isMobile} />
+          </div>
         </div>
       </div>
       </Tabs>
 
+      {isMobile ? (
+        <MobileMenu
+          open={menuOpen}
+          onOpenChange={setMenuOpen}
+          pane={mobilePane}
+          activeTab={activeTab}
+          onChat={() => {
+            setMenuOpen(false);
+            setMobilePane("chat");
+          }}
+          onGo={goMobile}
+          onMcp={() => {
+            setMenuOpen(false);
+            setMcpOpen(true);
+          }}
+          onRefresh={refresh}
+          loading={loading}
+        />
+      ) : null}
       <ImageModal image={modalImage} onClose={() => setModalImage(null)} />
       {/* Connect StorySeam to your own agent/harness over MCP (POST /api/mcp). */}
       <UseMcpDialog open={mcpOpen} onOpenChange={setMcpOpen} />

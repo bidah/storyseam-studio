@@ -31,7 +31,7 @@ quiet "oh — I see" rather than a victory.
   the fight in favor of a reframing turn — and offer the turn.
 - One line per act: **Act (Ki/Shō/Ten/Ketsu) — function → what happens in this
   story.** Spell out the **Ten** clearly; it's the whole point.
-- *Whistlewood* tone; no dialogue/prose. End with the implied scene count.
+- The project's established tone; no dialogue/prose. End with the implied scene count.
 
 ## The return contract — your FINAL message is the whole deliverable
 
