@@ -10,7 +10,7 @@ import { Hono, type MiddlewareHandler } from "hono";
 import { Whistlewood } from "./agents/whistlewood.js";
 import { verifyProxyUser, proxySecret, PROXY_HEADER } from "./lib/proxy-auth.js";
 import { decodeInstanceId } from "./lib/instance-id.js";
-import { createApi } from "./lib/api.js";
+import { createApi, type Json } from "./lib/api.js";
 import { isAllowedModel } from "./lib/models.js";
 import { isPlausibleFalKey } from "./lib/fal-key.js";
 import { isPlausibleAtlasKey } from "./lib/atlas-key.js";
@@ -83,6 +83,31 @@ async function sweepSuggestions(instanceId: string | undefined): Promise<void> {
   }
 }
 
+// Billing: report every model call's tokens to the worker, which prices it
+// (worker/src/lib/billing-plans.js) and charges the user's credit ledger. One
+// `turn` event = one LLM request — agent turns, subagent turns and compaction
+// summaries alike — so counting turns (and nothing else; `operation` usage is
+// an aggregate of these) charges each call exactly once. `ref` makes a
+// re-report a no-op. Same fire-and-forget caveat as the sweep above: an
+// isolate cut off before the POST lands loses that one call's charge, which
+// errs in the author's favour. Conversations only — a Film workflow's instance
+// id names no user and is skipped (Films have their own allowance).
+async function reportUsage(
+  instanceId: string | undefined,
+  turnId: string,
+  model: string,
+  usage: unknown,
+): Promise<void> {
+  const decoded = decodeInstanceId(instanceId);
+  if (!decoded?.userId) return;
+  const api = createApi(decoded.projectId, decoded.userId, decoded.chatId, decoded.episodeId);
+  await api.post("/api/billing/usage", {
+    ref: `turn:${instanceId}:${turnId}`,
+    model,
+    usage: usage as Json,
+  });
+}
+
 observe((event) => {
   // Correlation fields ride on every decoded event (optional per variant).
   // Run-scoped events went away with workflows: `runId` is now `instanceId`
@@ -94,6 +119,18 @@ observe((event) => {
     agent: event.agentName,
   };
   switch (event.type) {
+    case "turn":
+      if (event.response?.usage) {
+        void reportUsage(
+          event.instanceId,
+          event.turnId,
+          `${event.request.providerId}/${event.request.requestedModel}`,
+          event.response.usage,
+        ).catch((err) => {
+          console.warn("[flue] usage report failed", { ...scope, error: errText(err) });
+        });
+      }
+      break;
     case "submission_settled":
       if (event.outcome !== "completed") {
         console.error("[flue] submission " + event.outcome, {

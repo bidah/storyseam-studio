@@ -89,6 +89,7 @@ import { splitSong } from "./split_song.js";
 import { saveMusicalSegments } from "./save_musical_segments.js";
 // Teams / org access
 import { listOrgs } from "./list_orgs.js";
+import { getBilling, startSubscription } from "./billing.js";
 import { listMembers } from "./list_members.js";
 import { inviteMember } from "./invite_member.js";
 import { setMemberScope } from "./set_member_scope.js";
@@ -271,6 +272,9 @@ export function createTools(api: Api): ToolDefinition[] {
     inviteMember(api),
     setMemberScope(api),
     removeMember(api),
+    // Billing — plan and agent-usage credit
+    getBilling(api),
+    startSubscription(api),
   ];
 }
 
@@ -336,5 +340,7 @@ export function createReadTools(api: Api): ToolDefinition[] {
     // Teams / org access (read)
     listOrgs(api),
     listMembers(api),
+    // Billing (read)
+    getBilling(api),
   ];
 }

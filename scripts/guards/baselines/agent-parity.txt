@@ -154,3 +154,6 @@
 # so there is nothing for it to join or check (worker/src/lib/waitlist.js).
 /api/waitlist                     # the signed-out "join the waitlist" form
 /api/waitlist/me                  # the post-sign-in "am I invited?" check behind the /waitlist redirect
+
+# --- [gui-only] money ---------------------------------------------------------
+/api/billing/cancel               # ending a paid plan is the author's own click in Settings › Subscription; the agent reads the plan (get_billing) and can start one (start_subscription), never cancel one

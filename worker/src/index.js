@@ -83,6 +83,8 @@ import { registerNavigate } from "./routes/navigate.js";
 import { registerApprovals } from "./routes/approvals.js";
 import { registerMcp } from "./routes/mcp.js";
 import { registerFilmAllowance } from "./routes/film-allowance.js";
+import { registerBilling } from "./routes/billing.js";
+import { agentAllowed } from "./lib/billing.js";
 import { OAuthProvider } from "@cloudflare/workers-oauth-provider";
 import { ShotStudioMCP } from "./mcp-agent.js";
 import { filmJobsFor } from "./lib/films.js";
@@ -315,6 +317,10 @@ app.use("*", async (c, next) => {
   //   /api/waitlist the early-access list (routes/waitlist.js): the public
   //                  join form, the caller's own standing, and the admin batch
   //                  routes behind their own bearer. No project state.
+  //   /api/billing   the PayPal subscription and credit balance
+  //                  (routes/billing.js). Per-USER: each route 401s without a
+  //                  userId itself, and the webhook's credential is PayPal's
+  //                  signature, verified before anything is written.
   //   four Auto Film routes (isUserScopedAuto) — USER-scoped, not project-
   //                  scoped: starting a Film MAKES its own project, and the
   //                  Film→project lookup and "latest Film" are asked before any
@@ -333,6 +339,7 @@ app.use("*", async (c, next) => {
     !p.startsWith("/api/mcp") &&
     !p.startsWith("/api/share/") &&
     !p.startsWith("/api/waitlist") &&
+    !p.startsWith("/api/billing") &&
     !p.startsWith("/api/sitting-runner/");
   // A WRITE we can't scope must never reach storage: `normalizeProjectId(null)`
   // resolves to `p_default`, and `p_default` is a REAL project (Whistlewood), so
@@ -407,6 +414,8 @@ app.use("*", async (c, next) => {
   // The Sitting runner's progress beats and upload: the Film job announces its
   // own step events, and these carry no project the firehose could name.
   if (p.startsWith("/api/sitting-runner/")) return;
+  // Billing is per-user account state, not project doc state.
+  if (p.startsWith("/api/billing")) return;
   if (!c.res || c.res.status >= 400) return;
   broadcast(
     c.env,
@@ -802,6 +811,7 @@ registerApprovals(app);
 registerMcp(app);
 // Auto: the per-user monthly Film allowance.
 registerFilmAllowance(app);
+registerBilling(app);
 
 // --- remote-MCP OAuth consent screen ---------------------------------------
 // The per-user MCP connector (Settings › Connectors) is an OAuth-fronted server
@@ -983,6 +993,13 @@ app.all("/eve/*", async (c) => {
   // to this user. Because the id prefix and the HMAC `sub` below both come from
   // the session user, flue's ownership check always passes and a client can
   // never address another user's conversation.
+  // Billing gate (lib/billing.js agentAllowed): a SEND — POST to the
+  // conversation itself, not /abort — needs an active plan with credit left.
+  // A no-op unless BILLING_ENFORCED = "1"; reading a transcript never is gated.
+  if (userId && agentMatch && c.req.method === "POST" && !agentMatch[3]) {
+    const allowed = await agentAllowed(c.env, userId);
+    if (!allowed.ok) return c.json({ error: allowed.message, billing: true }, 402);
+  }
   if (userId && agentMatch) {
     const [, name, id, rest = ""] = agentMatch;
     // Bind the conversation to the active episode of a series by folding it into

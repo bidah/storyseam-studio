@@ -311,3 +311,41 @@ CREATE TABLE IF NOT EXISTS waitlist (
 );
 CREATE INDEX IF NOT EXISTS idx_waitlist_queue ON waitlist (invited, created_at);
 CREATE INDEX IF NOT EXISTS idx_waitlist_unsent ON waitlist (invited, invitation_sent);
+
+-- Billing (worker/src/lib/billing.js): a PayPal subscription per user, and the
+-- credit ledger it pays into. Per-USER platform data, so tables rather than
+-- `docs` rows. Read and written ONLY through lib/billing.js.
+--
+-- billing_subscriptions  one row per PayPal subscription the user started; the
+--                        newest is the one that counts. `status` mirrors
+--                        PayPal's, refreshed by webhook and by /api/billing/sync.
+-- billing_ledger         every credit movement, in micro-USD of model cost. A
+--                        paid cycle (PAYMENT.SALE.COMPLETED) writes a `grant`
+--                        keyed `paypal-sale:<sale id>`; each agent model call
+--                        writes a `usage` keyed `turn:<instance>:<turn>`, so a
+--                        re-delivery is a no-op. Balance = SUM(amount_micros).
+-- Prod gets them from migrations/007-billing.sql.
+CREATE TABLE IF NOT EXISTS billing_subscriptions (
+  subscription_id    TEXT PRIMARY KEY,
+  user_id            TEXT NOT NULL,
+  plan_id            TEXT NOT NULL,
+  plan_key           TEXT,
+  status             TEXT NOT NULL,
+  next_billing_at    TEXT,
+  created_at         TEXT NOT NULL,
+  updated_at         TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_billing_subs_user ON billing_subscriptions (user_id, updated_at);
+
+CREATE TABLE IF NOT EXISTS billing_ledger (
+  id           INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id      TEXT NOT NULL,
+  amount_micros INTEGER NOT NULL,
+  kind         TEXT NOT NULL,
+  model        TEXT,
+  tokens       INTEGER,
+  ref          TEXT UNIQUE,
+  note         TEXT,
+  created_at   TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_billing_ledger_user ON billing_ledger (user_id, created_at);
