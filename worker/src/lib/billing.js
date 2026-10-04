@@ -189,6 +189,27 @@ export async function agentAllowed(env, userId) {
   return { ok: true };
 }
 
+/**
+ * May this user MAKE something — start a Film, create a project? Unlike
+ * agentAllowed this is not behind BILLING_ENFORCED: the app needs a plan to be
+ * used at all. An ACTIVE subscription passes; so does an email listed in
+ * BILLING_EXEMPT_EMAILS (comma-separated — the studio's own accounts).
+ * → { ok } or { ok: false, code: "plan", message }
+ */
+export async function planAllowed(env, userId) {
+  const sub = await latestSubscription(env, userId);
+  if (sub?.status === "ACTIVE") return { ok: true };
+  const exempt = String(env.BILLING_EXEMPT_EMAILS || "")
+    .split(",")
+    .map((e) => e.trim().toLowerCase())
+    .filter(Boolean);
+  if (exempt.length) {
+    const row = await env.DB.prepare('SELECT email FROM "user" WHERE id = ?').bind(userId).first();
+    if (row?.email && exempt.includes(String(row.email).toLowerCase())) return { ok: true };
+  }
+  return { ok: false, code: "plan", message: "Choose a plan to start making stories." };
+}
+
 const SUBSCRIPTION_EVENTS = new Set([
   "BILLING.SUBSCRIPTION.CREATED",
   "BILLING.SUBSCRIPTION.ACTIVATED",

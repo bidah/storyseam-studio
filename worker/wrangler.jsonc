@@ -107,7 +107,11 @@
     // "1" = the chat agent needs an active plan with credit left (the /eve
     // proxy answers 402 otherwise). Anything else = usage is metered and shown
     // but nothing is refused — leave it off until plans are live.
-    "BILLING_ENFORCED": "0"
+    "BILLING_ENFORCED": "0",
+    // Starting a Film or creating a project needs an ACTIVE plan regardless of
+    // BILLING_ENFORCED (lib/billing.js planAllowed). These accounts (comma-
+    // separated emails) are the studio's own and pass without one.
+    "BILLING_EXEMPT_EMAILS": "rodrigofigueroa.name@gmail.com"
   },
   // Service bindings to the flue chat agent Workers. The /eve/* proxy dispatches
   // through these (c.env.FLUE.fetch / c.env.FLUE_V2.fetch) instead of a

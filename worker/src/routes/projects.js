@@ -15,6 +15,7 @@ import {
   canAccessProject,
   canManageOrg,
 } from "../lib/orgs.js";
+import { planAllowed } from "../lib/billing.js";
 
 const DEFAULT_PROJECT_ID = "p_default";
 
@@ -133,6 +134,9 @@ export function registerProjects(app) {
   app.post("/api/projects", async (c) => {
     const userId = c.get("userId");
     if (!userId) return c.json({ error: "Unauthorized" }, 401);
+    // A new project needs a plan (lib/billing.js planAllowed).
+    const plan = await planAllowed(c.env, userId);
+    if (!plan.ok) return c.json({ error: plan.message, code: "plan" }, 402);
     let body;
     try { body = await c.req.json(); } catch { body = {}; }
     const res = await createProject(c.env, userId, { name: body?.name, organizationId: body?.organizationId });

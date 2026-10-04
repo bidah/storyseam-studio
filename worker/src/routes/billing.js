@@ -25,6 +25,7 @@ import {
   syncSubscription,
   applyWebhookEvent,
   recordUsage,
+  planAllowed,
 } from "../lib/billing.js";
 import { planByKey, paypalPlanIds } from "../lib/billing-plans.js";
 import {
@@ -59,9 +60,13 @@ export function registerBilling(app) {
   app.get("/api/billing", async (c) => {
     const denied = needUser(c);
     if (denied) return denied;
+    const userId = c.get("userId");
+    const [summary, allowed] = await Promise.all([billingSummary(c.env, userId), planAllowed(c.env, userId)]);
     return c.json({
       configured: paypalMissing(c.env).length === 0,
-      ...(await billingSummary(c.env, c.get("userId"))),
+      ...summary,
+      // May this user make Films and projects (lib/billing.js planAllowed)?
+      canCreate: allowed.ok,
     });
   });
 

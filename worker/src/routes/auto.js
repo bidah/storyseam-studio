@@ -79,6 +79,7 @@ import { MAX_PROMPT_CHARS, checkFilmDepth, checkFilmEngine, checkFilmMusic, chec
 import { OFFERED_FILM_WRITERS, offeredFilmWriter } from "../lib/film-plan.ts";
 import { readAutoSettings, writeAutoSettings } from "../lib/auto-settings.js";
 import { checkAllowance } from "../lib/film-allowance.js";
+import { planAllowed } from "../lib/billing.js";
 import { activeFilm, filmJobsFor, filmProject, latestFilm, listFilms, recordFilm, storyProjectName } from "../lib/films.js";
 import { archiveProject, createProject } from "./projects.js";
 import { filmShareToken, shareFilm, unshareFilm } from "../lib/film-share.js";
@@ -118,6 +119,10 @@ export function registerAuto(app) {
   app.post("/api/auto/films", async (c) => {
     const userId = c.get("userId");
     if (!userId) return c.json({ error: "Sign in required" }, 401);
+    // No plan, no Film (lib/billing.js planAllowed) — checked first, so a
+    // refusal makes nothing.
+    const plan = await planAllowed(c.env, userId);
+    if (!plan.ok) return c.json(refusal("plan", plan.message), 402);
     let body;
     try { body = await c.req.json(); } catch { body = {}; }
     const prompt = typeof body?.prompt === "string" ? body.prompt.slice(0, MAX_PROMPT_CHARS + 1) : "";

@@ -30,12 +30,16 @@ const dollars = (micros) => `$${(Number(micros || 0) / 1_000_000).toFixed(2)}`;
 const tokensLabel = (n) =>
   n >= 1_000_000 ? `${(n / 1_000_000).toFixed(1)}M` : n >= 1_000 ? `${Math.round(n / 1_000)}k` : String(n || 0);
 
-export function SubscriptionPanel() {
+// `returnPath` is where PayPal sends the author back (default: this page);
+// `onBilling` hears every state the panel loads or changes to.
+export function SubscriptionPanel({ returnPath, onBilling } = {}) {
   const t = useT();
   const [billing, setBilling] = useState(null); // null = loading
   const [busy, setBusy] = useState(null); // the plan key (or "cancel") in flight
   const [confirmCancel, setConfirmCancel] = useState(false);
   const [err, setErr] = useState(null);
+
+  useEffect(() => { if (billing && !billing.error) onBilling?.(billing); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [billing]);
 
   useEffect(() => {
     let cancelled = false;
@@ -61,7 +65,7 @@ export function SubscriptionPanel() {
   };
 
   const subscribe = (plan) => run(plan, async () => {
-    const j = await post("/api/billing/subscribe", { plan, returnPath: window.location.pathname });
+    const j = await post("/api/billing/subscribe", { plan, returnPath: returnPath || window.location.pathname });
     window.location.href = j.approveUrl;
   });
   const cancel = () => run("cancel", async () => {

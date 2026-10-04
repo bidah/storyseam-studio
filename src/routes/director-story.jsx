@@ -49,6 +49,7 @@ import { useWaitlistAccess } from "@/lib/waitlist";
 import { setProjectId } from "@/lib/projectFetch";
 import { studioPath } from "@/lib/home";
 import { MONO } from "@/lib/hudTheme";
+import { useCreateGate } from "@/components/CreateGate";
 
 export function Component() {
   return <StoryPage />;
@@ -98,6 +99,23 @@ function SimpleStory({ signedIn, sessionKnown }) {
   const [note, setNote] = useState(null); // the one line under the input
   const [submitting, setSubmitting] = useState(false);
   const [running, setRunning] = useState(null);
+  // A plan and a fal key, asked for when the author first makes something
+  // (components/CreateGate.jsx). Once both are in, whatever was waiting on
+  // them goes ahead: the saved premise, or the studio project being named.
+  const pendingStudio = useRef(null);
+  const gate = useCreateGate({
+    enabled: signedIn,
+    onReady: () => {
+      const name = pendingStudio.current;
+      pendingStudio.current = null;
+      if (name) { launchStudio(name).catch((e) => setNote(String(e?.message || e))); return; }
+      const pending = takePendingStory();
+      if (!pending) return;
+      chooseFlow(pending.flow);
+      setNote("Starting your story…");
+      start(pending.prompt, pending.opts, pending.flow).then((ok) => { if (ok) clearStoryDraft(); });
+    },
+  });
 
   useEffect(() => { if (error) setNote(error); }, [error]);
 
@@ -125,6 +143,12 @@ function SimpleStory({ signedIn, sessionKnown }) {
     setSubmitting(true);
     setNote(null);
     try {
+      // No plan or no fal key: keep the premise and ask for what's missing;
+      // the gate's onReady starts it once both are in.
+      if (!(await gate.ensure())) {
+        savePendingStory(as, prompt, opts);
+        return false;
+      }
       if (!ready.current) throw new Error("Still signing you in — try again in a moment.");
       await ready.current;
       // Auto is always on here. The setting is per user; flip it on if off.
@@ -193,8 +217,12 @@ function SimpleStory({ signedIn, sessionKnown }) {
     resumed.current = true;
     const next = new URLSearchParams(params);
     next.delete(RESUME_PARAM);
+    const fromPaypal = next.has("billing");
+    for (const k of ["billing", "subscription_id", "ba_token", "token"]) next.delete(k);
     setParams(next, { replace: true });
     if (!signedIn) return;
+    // Back from PayPal: the gate syncs the plan and resumes the premise itself.
+    if (fromPaypal) return;
     const pending = takePendingStory();
     if (!pending) return;
     chooseFlow(pending.flow);
@@ -206,6 +234,10 @@ function SimpleStory({ signedIn, sessionKnown }) {
   // The studio road: a blank project under the name given, opened at its
   // studio root, where the author and the agent build it step by step.
   const launchStudio = async (name) => {
+    if (!(await gate.ensure())) {
+      pendingStudio.current = name;
+      return false;
+    }
     const { res, data } = await getJSON("/api/projects", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -255,6 +287,7 @@ function SimpleStory({ signedIn, sessionKnown }) {
         onSignIn={() => { setSignInFromPrompt(false); setSignInOpen(true); }}
       />
       <SignInDialog flow={flow} open={signInOpen} onOpenChange={setSignInOpen} withPremise={signInFromPrompt} />
+      {gate.dialogs}
     </>
   );
 }

@@ -1611,7 +1611,8 @@ export function StudioAgentCard({ signedIn, onSignIn, onCreate }) {
     setBusy(true);
     setErr(null);
     try {
-      await onCreate(trimmed);
+      // false = it didn't go anywhere (a plan or key dialog opened instead).
+      if ((await onCreate(trimmed)) === false) setBusy(false);
     } catch (e2) {
       setErr(String(e2?.message || e2));
       setBusy(false);
