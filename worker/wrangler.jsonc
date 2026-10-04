@@ -102,8 +102,8 @@
     // worker/scripts/paypal-setup.mjs. Anything missing = billing answers 503
     // "not configured" and nothing else changes. Sandbox and live each need
     // their OWN credentials, plans and webhook.
-    "PAYPAL_ENV": "sandbox",
-    "PAYPAL_PLAN_IDS": "{\"starter\":\"P-9DN177867W6313738NK7GO4A\",\"creator\":\"P-6F4198926B5319721NK7GO4I\",\"studio\":\"P-41J77031YX754580KNK7GO4Q\"}",
+    "PAYPAL_ENV": "live",
+    "PAYPAL_PLAN_IDS": "{\"starter\":\"P-1UX95931LE502743SNLBMVSQ\",\"creator\":\"P-2WB33669N0647354WNLBMVSQ\",\"studio\":\"P-0NM26375LY2414121NLBMVSY\"}",
     // "1" = the chat agent needs an active plan with credit left (the /eve
     // proxy answers 402 otherwise). Anything else = usage is metered and shown
     // but nothing is refused — leave it off until plans are live.
