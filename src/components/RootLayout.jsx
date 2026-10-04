@@ -34,7 +34,7 @@ import { useT } from "@/lib/i18n";
 import { PluginsProvider, usePlugins } from "@/components/PluginsProvider";
 import PluginGate from "@/components/PluginGate";
 import { UseMcpDialog } from "@/components/UseMcpModal";
-import { headerTabs, blockingPlugin } from "@/lib/plugins";
+import { headerTabs, blockingPlugin, SHOW_PLUGIN_MARKETPLACE } from "@/lib/plugins";
 import { parseStudioPath, studioPath } from "@/lib/home";
 import { toStudio, useStudioPath } from "@/lib/studioNav";
 import { providerEnabled } from "@/lib/providers";
@@ -274,15 +274,17 @@ function MobileMenu({ open, onOpenChange, pane, activeTab, onChat, onGo, onMcp, 
               </button>
             ))}
           </nav>
-          <div className="px-3 pt-3">
-            <Button
-              variant={pane === "view" && activeTab === "plugins" ? "default" : "outline"}
-              className="w-full"
-              onClick={() => onGo("plugins")}
-            >
-              <Blocks size={14} /> {t("Explore plugins")}
-            </Button>
-          </div>
+          {SHOW_PLUGIN_MARKETPLACE && (
+            <div className="px-3 pt-3">
+              <Button
+                variant={pane === "view" && activeTab === "plugins" ? "default" : "outline"}
+                className="w-full"
+                onClick={() => onGo("plugins")}
+              >
+                <Blocks size={14} /> {t("Explore plugins")}
+              </Button>
+            </div>
+          )}
           <div className="mt-3 space-y-0.5 border-t px-2 pt-3">
             <button type="button" className={row(false)} onClick={onMcp}>
               <Plug size={15} /> {t("Use MCP")}
@@ -628,13 +630,15 @@ export default function RootLayout() {
                 the tabs — the place the NEXT tab comes from — not an app-wide
                 action. On it, it takes the SAME primary fill the TabsList
                 indicator draws, so it highlights exactly the way a tab does. */}
-            <Button
-              variant={view === "plugins" ? "default" : "outline"}
-              size="sm"
-              onClick={() => navigate(studioPath(projectId, "plugins"))}
-            >
-              <Blocks size={13} /> {t("Explore plugins")}
-            </Button>
+            {SHOW_PLUGIN_MARKETPLACE && (
+              <Button
+                variant={view === "plugins" ? "default" : "outline"}
+                size="sm"
+                onClick={() => navigate(studioPath(projectId, "plugins"))}
+              >
+                <Blocks size={13} /> {t("Explore plugins")}
+              </Button>
+            )}
 
             <div className="ml-auto flex items-center gap-2">
               {/* Deliberately a first-class button, not a menu item: driving

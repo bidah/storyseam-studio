@@ -601,6 +601,27 @@ export function normalizeEnabled(ids: unknown): string[] {
   return PLUGIN_IDS.filter((id) => seen[id]);
 }
 
+// ── Launch flags ─────────────────────────────────────────────────────────────
+// For now every project gets the SAME studio: a fixed set of plugins, and no
+// marketplace to install others from. Set FIXED_PLUGINS to null to go back to
+// per-project installs (the `plugins` doc), and SHOW_PLUGIN_MARKETPLACE to true
+// to bring the "Explore plugins" button back. Nothing stored is touched either
+// way — the flags only decide what is read.
+
+/** When set, the installed set for EVERY project, whatever its document says. */
+export const FIXED_PLUGINS: string[] | null = [
+  "images", "videos", "moodboard", "agents", "shotlist", "sounds", "episode",
+  "musicalized", "upscale",
+];
+
+/** Whether the "Explore plugins" entry points are shown. */
+export const SHOW_PLUGIN_MARKETPLACE = false;
+
+/** The set the studio actually shows: the fixed set when the flag is on. */
+export function effectiveEnabled(enabled: unknown): string[] {
+  return normalizeEnabled(FIXED_PLUGINS ?? enabled);
+}
+
 /**
  * The header, left to right. ONE ordered list of every surface, core and plugin
  * interleaved — because the header reads as a pipeline, not as "the built-ins,
@@ -619,7 +640,7 @@ export const HEADER_ORDER: string[] = [
 ];
 
 export function headerTabs(enabled: string[]): Surface[] {
-  const on = normalizeEnabled(enabled);
+  const on = effectiveEnabled(enabled);
   const present: Record<string, Surface> = {};
   for (const c of CORE) present[c.id] = c;
   for (const id of on) present[id] = BY_ID[id] as Surface;
@@ -646,7 +667,7 @@ export function blockingPlugin(view: string, enabled: string[]): PluginSpec | nu
   if (!id || isCore(id) || isUngated(id)) return null;
   const spec = BY_ID[id];
   if (!spec) return null; // not a plugin at all — never our business to block
-  return normalizeEnabled(enabled).indexOf(id) >= 0 ? null : spec;
+  return effectiveEnabled(enabled).indexOf(id) >= 0 ? null : spec;
 }
 
 /**

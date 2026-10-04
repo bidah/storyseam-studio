@@ -48,7 +48,7 @@
 // — this route's GET — pays for one. The call graph terminates in one hop from
 // either direction.
 import { readDoc, updateDoc } from "../lib/docs.js";
-import { PLUGIN_IDS, isCore, normalizeEnabled, pluginById, seedEnabled } from "../lib/plugins.ts";
+import { FIXED_PLUGINS, PLUGIN_IDS, isCore, normalizeEnabled, pluginById, seedEnabled } from "../lib/plugins.ts";
 import { buildStatus } from "./status.js";
 
 // `enabled: null` is load-bearing — it distinguishes "never written" (seed from
@@ -98,6 +98,8 @@ function validateIds(raw, field) {
  * document is materialised by an explicit PUT and by nothing else.
  */
 export async function readEnabledPlugins(env, pid, usage) {
+  // Launch flag: every project shows the same fixed set (src/lib/plugins.ts).
+  if (FIXED_PLUGINS) return { enabled: normalizeEnabled(FIXED_PLUGINS), defaulted: false, updatedAt: null };
   const doc = await readDoc(env, pid, "plugins", FALLBACK);
   if (Array.isArray(doc?.enabled)) {
     return {

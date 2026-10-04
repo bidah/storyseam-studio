@@ -35,7 +35,7 @@ import {
 import { Eyebrow, Panel, ErrorNote } from "@/components/shared";
 import { McpSetup } from "@/components/UseMcpModal";
 import { SubscriptionPanel } from "@/components/SubscriptionPanel";
-import { CORE, PLUGINS } from "@/lib/plugins";
+import { CORE, PLUGINS, SHOW_PLUGIN_MARKETPLACE } from "@/lib/plugins";
 import { usePlugins } from "@/components/PluginsProvider";
 import { cn } from "@/lib/utils";
 import { PRODUCTION_TYPES } from "@/lib/productionType";
@@ -958,7 +958,7 @@ function SettingsPage() {
 
       <LanguagePanel />
 
-      <PluginsPanel />
+      {SHOW_PLUGIN_MARKETPLACE && <PluginsPanel />}
 
       <DirectorPanel />
 
