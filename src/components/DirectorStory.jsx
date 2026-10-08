@@ -60,6 +60,7 @@ import { SPECIALISTS, STAGE_ORDER, isSpecialistId } from "@/lib/specialists";
 import { useVoiceRecording, transcribeAudio, formatDuration } from "@/lib/useVoiceRecording";
 import { authClient, useSession } from "@/lib/auth-client";
 import { WaitlistPanel } from "@/components/WaitlistPanel";
+import { VideoTour } from "@/components/VideoTour";
 import { useWaitlistAccess } from "@/lib/waitlist";
 import { isDesktop } from "@/lib/desktop";
 import { getProjectId, setProjectId } from "@/lib/projectFetch";
@@ -1323,6 +1324,7 @@ export function SimpleView({ flow = FLOWS.director, onFlow, onSubmit, submitting
         className="relative z-10 flex max-w-full flex-col items-stretch gap-8 text-center"
         style={{ width: "min(61.6rem, calc(100vw - 2rem))" }}
       >
+        <VideoTour className="-mb-4" />
         {/* On a phone the column's gap-8 left the headline floating; it sits
             12px over the box there. */}
         <h1
