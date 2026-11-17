@@ -1,3 +1,10 @@
+<p align="center">
+  <a href="https://cal.com/rodrigo-figueroa-vmbwee/30min"><img src="docs/readme/book-a-call.png" alt="For any related work, reach me and book a call at cal.com/rodrigo-figueroa-vmbwee/30min" width="100%"></a>
+</p>
+<p align="center">
+  <a href="https://rofigueroa.dev"><img src="docs/readme/created-by.png" alt="Created by Ro Figueroa — rofigueroa.dev" width="100%"></a>
+</p>
+
 # shot-studio
 
 A browser studio for building the Whistlewood episode end-to-end: write the
