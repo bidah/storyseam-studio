@@ -5,7 +5,7 @@
   <a href="https://rofigueroa.dev"><img src="docs/readme/created-by.png" alt="Created by Ro Figueroa — rofigueroa.dev" width="100%"></a>
 </p>
 
-# shot-studio
+# StorySeam
 
 A browser studio for building the Whistlewood episode end-to-end: write the
 screenplay, break it into shots, generate audio/video via Higgsfield, assemble
