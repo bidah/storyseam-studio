@@ -10,6 +10,8 @@
  *
  * Two message shapes have to match, because two shapes are sent:
  *   · single-select — the message IS the component's `send`, verbatim.
+ *   · several questions — a card with two or more single-select lists sends
+ *     one picked `send` per line (see `ask-form.ts`).
  *   · multi-select  — the list composes `"<list send>: <pick>, <pick>"` (see
  *     `useMultiSelect` in the renderers), so the head matches the list itself
  *     and each comma-separated tail segment matches one picked child.
@@ -33,6 +35,8 @@ export function matchesAnswer(answer: string | null | undefined, send?: string |
   const s = send.trim().toLowerCase();
   if (!s) return false;
   if (a === s) return true;
+  // A card asking several questions answers them one per line (ask-form.ts).
+  if (a.includes("\n")) return a.split("\n").some((line) => matchesAnswer(line, send));
   const colon = a.indexOf(":");
   if (colon < 0) return false;
   if (a.slice(0, colon).trim() === s) return true;

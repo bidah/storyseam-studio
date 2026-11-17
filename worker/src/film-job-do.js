@@ -38,6 +38,7 @@
 // job }` — the Auto surface rides the firehose RootLayout already holds open,
 // rather than a sixth EventSource.
 
+import { envForUser } from "./lib/user-fal-key.js";
 import { DurableObject } from "cloudflare:workers";
 import {
   advanceFilm, confirmFilm, declineFilm, event, filmWriterModel, isActive, nextAlarmDelay, publicJob, repairFilmSeries, retryFilm,
@@ -48,6 +49,7 @@ import { runWithContext } from "./lib/request-context.js";
 import { broadcast } from "./lib/broadcast.js";
 import { saveWorld } from "./routes/world.js";
 import { nameFilmProject } from "./lib/films.js";
+import { capture, filmAnalyticsEvent } from "./lib/analytics.js";
 
 // Same keys lib/film-history.js reads and writes.
 const KEY = JOB_KEY;
@@ -158,7 +160,9 @@ export class FilmJobs extends DurableObject {
     let job = await this.ctx.storage.get(KEY);
     if (job?.status === "running") {
       job = await advanceFilm(job, {
-        env: this.env,
+        // Every render runs on the Film author's OWN fal key, never StorySeam's
+        // (lib/user-fal-key.js): `FAL_KEY` is swapped for theirs, "" if none.
+        env: await envForUser(this.env, job.userId),
         model: filmWriterModel(this.env, job),
         saveWorld,
         commit: (j, ev) => this.commit(j, ev),
@@ -196,6 +200,10 @@ export class FilmJobs extends DurableObject {
   async commit(job, ev) {
     await saveJob(this.ctx.storage, job);
     await this.announce(job.projectId, ev);
+    // The pipeline's progress, for the funnel (lib/analytics.js). Off the
+    // critical path: the stage never waits on PostHog.
+    const tracked = job.userId ? filmAnalyticsEvent(job, ev) : null;
+    if (tracked) this.ctx.waitUntil(capture(this.env, job.userId, ...tracked));
     // The Film's own project (lib/films.js) is named after the prompt until the
     // World has a title — then after the World. Cosmetic: never fails a stage.
     if (ev?.kind === "step.done" && ev.step === "world") {

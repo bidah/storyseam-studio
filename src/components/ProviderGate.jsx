@@ -23,10 +23,10 @@ const GateContext = createContext(null);
 
 // Copy tuned per generation kind; falls back to the generic line.
 const KIND_COPY = {
-  image: "Generating images renders with your own account. Add your fal.ai API key in Settings to start — it stays in this browser and is never stored on StorySeam's servers.",
-  audio: "Rendering audio runs on your own account. Add your fal.ai API key in Settings to start — it stays in this browser and is never stored on StorySeam's servers.",
-  video: "Rendering video runs on your own account. Add your fal.ai API key in Settings to start — it stays in this browser and is never stored on StorySeam's servers.",
-  default: "Generation renders with your own account. Add your fal.ai API key in Settings to start — it stays in this browser and is never stored on StorySeam's servers.",
+  image: "Generating images renders with your own account. Add your fal.ai API key in Settings to start — it's stored encrypted on your account and only ever bills your own generations.",
+  audio: "Rendering audio runs on your own account. Add your fal.ai API key in Settings to start — it's stored encrypted on your account and only ever bills your own generations.",
+  video: "Rendering video runs on your own account. Add your fal.ai API key in Settings to start — it's stored encrypted on your account and only ever bills your own generations.",
+  default: "Generation renders with your own account. Add your fal.ai API key in Settings to start — it's stored encrypted on your account and only ever bills your own generations.",
 };
 
 export function ProviderGateProvider({ children }) {

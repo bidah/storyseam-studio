@@ -15,6 +15,7 @@
 // job_status for each pending job and, on completion, downloads the bytes into R2
 // and flips the record to "ready". The client polls /poll every ~3s while any
 // card is processing (mirrors idea-mural's VideoGenView).
+import { requestFalKey } from "../lib/user-fal-key.js";
 import { readDoc, updateDoc, normalizeProjectId } from "../lib/docs.js";
 import { normalizeProductionType } from "../lib/production-type.js";
 import { putMedia, mediaKey, filesUrl } from "../lib/media.js";
@@ -61,8 +62,8 @@ import {
 } from "../lib/atlas.js";
 
 // The render providers for THIS request. BYOK keys (fal / Atlas Cloud) are
-// stamped by the browser from localStorage — never stored server-side — with
-// the operator's optional FAL_KEY / ATLAS_KEY env secrets as dev fallbacks.
+// stamped by the browser; fal falls back to the author's STORED key
+// (lib/user-fal-key.js), never StorySeam's. ATLAS_KEY stays a dev fallback.
 // The Settings page's SELECTION (exactly one provider in use at a time) rides
 // as `x-render-provider` (the selected backend — its models are the catalog)
 // and `x-disabled-providers` (the non-selected ids — their models leave the
@@ -70,7 +71,7 @@ import {
 // /poll must keep checking in-flight jobs started while another provider was
 // selected, so keys and the Higgsfield token stay usable regardless.
 const PROVIDER_IDS = new Set(["higgsfield", "fal", "atlas"]);
-function reqProviders(c, token) {
+async function reqProviders(c, token) {
   const disabled = new Set(
     str(c.req.header("x-disabled-providers"))
       .split(",")
@@ -80,7 +81,7 @@ function reqProviders(c, token) {
   const activeRaw = str(c.req.header("x-render-provider"));
   return {
     token,
-    falKey: str(c.req.header("x-fal-key") || c.env.FAL_KEY || ""),
+    falKey: str(await requestFalKey(c)),
     atlasKey: str(c.req.header("x-atlas-key") || c.env.ATLAS_KEY || ""),
     disabled,
     active: PROVIDER_IDS.has(activeRaw) && !disabled.has(activeRaw) ? activeRaw : "",
@@ -1334,7 +1335,7 @@ export function registerVisualWorld(app) {
   app.get("/api/visual-world/models", async (c) => {
     const userId = c.get("userId");
     if (!userId) return c.json({ error: "Sign in required" }, 401);
-    const prov = reqProviders(c, await getHiggsfieldToken(c.env, userId));
+    const prov = await reqProviders(c, await getHiggsfieldToken(c.env, userId));
     if (noProvider(prov)) return c.json({ error: "no_higgsfield_token" }, 401);
     const type = c.req.query("type") === "video" ? "video" : "image";
     try {
@@ -1369,7 +1370,7 @@ export function registerVisualWorld(app) {
     const userId = c.get("userId");
     if (!userId) return c.json({ error: "Sign in required" }, 401);
     const pid = c.get("projectId");
-    const prov = reqProviders(c, await getHiggsfieldToken(c.env, userId));
+    const prov = await reqProviders(c, await getHiggsfieldToken(c.env, userId));
     if (noProvider(prov)) return c.json({ error: "no_higgsfield_token" }, 401);
 
     let body;
@@ -1640,7 +1641,7 @@ export function registerVisualWorld(app) {
     const userId = c.get("userId");
     if (!userId) return c.json({ error: "Sign in required" }, 401);
     const pid = c.get("projectId");
-    const prov = reqProviders(c, await getHiggsfieldToken(c.env, userId));
+    const prov = await reqProviders(c, await getHiggsfieldToken(c.env, userId));
     if (noProvider(prov)) return c.json({ error: "no_higgsfield_token" }, 401);
 
     const vw = await readVW(c.env, pid);
@@ -1733,7 +1734,7 @@ export function registerVisualWorld(app) {
     const userId = c.get("userId");
     if (!userId) return c.json({ error: "Sign in required" }, 401);
     const pid = c.get("projectId");
-    const prov = reqProviders(c, await getHiggsfieldToken(c.env, userId));
+    const prov = await reqProviders(c, await getHiggsfieldToken(c.env, userId));
     if (noProvider(prov)) return c.json({ error: "no_higgsfield_token" }, 401);
 
     let body;

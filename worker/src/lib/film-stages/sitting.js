@@ -67,7 +67,7 @@ export async function runSittingStage({ job, results, env, attempt = 1 }, deps =
   if (!seriesId) throw new Error("The Film has no Series to sit — the earlier steps did not finish.");
   const base = String(env?.WORKER_PUBLIC_URL || "").replace(/\/+$/, "");
   if (!base) throw new Error("WORKER_PUBLIC_URL is not set on the Worker — the Sitting runner has nowhere to load from");
-  if (!env?.FAL_KEY) throw new Error("FAL_KEY is not set on the Worker — the Sitting cannot be played");
+  if (!env?.FAL_KEY) throw new Error("No fal key connected — add yours in Settings › Connectors; the Sitting cannot be played.");
   if (!proxySecret(env)) throw new Error("FLUE_PROXY_SECRET is not set on the Worker — the Sitting runner cannot be authorised");
   if (!deps.runner && !env?.DAYTONA_API_KEY) throw new Error("DAYTONA_API_KEY is not set on the Worker — the Sitting has no box to run in");
 

@@ -260,6 +260,47 @@ export async function pinBeat(env, pid, seriesId, { offset, imageUrl, clear, pro
   return { ok: true };
 }
 
+/**
+ * Hand beats their TARGET AUDIO and a line of sound direction, in ONE write —
+ * the Auto job's Dialogue stage (film-stages/dialogue.js). Each entry names a
+ * beat by offset: `audioUrl` (a url, or null to leave the beat's audio as it
+ * is) and `sound` (appended to the beat's `sound` section — or to a plain
+ * prompt — unless the beat already says it, so a retried stage writes once).
+ * The whole Series is re-validated, so a reel past MAX_AUDIO_BEATS is refused
+ * here rather than at `configure`.
+ *
+ * → `{ ok: true }` | `{ missing: true }` | `{ noBeat: offset }` | `{ issues }`
+ */
+export async function voiceBeats(env, pid, seriesId, entries = []) {
+  const res = await updateSeries(env, pid, seriesId, (series) => {
+    if (!series?.id) return { abort: true, missing: true };
+    const beats = [...(series.directions || [])];
+    for (const { offset, audioUrl, sound } of entries) {
+      const at = beats.findIndex((b) => b.offset === offset);
+      if (at < 0) return { abort: true, noBeat: offset };
+      const beat = { ...beats[at] };
+      if (audioUrl) beat.audioUrl = audioUrl;
+      const add = String(sound || "").trim();
+      if (add && typeof beat.prompt === "string") {
+        if (!beat.prompt.includes(add)) beat.prompt = `${beat.prompt} ${add}`;
+      } else if (add && beat.prompt && typeof beat.prompt === "object") {
+        const had = String(beat.prompt.sound || "").trim();
+        if (!had.includes(add)) beat.prompt = { ...beat.prompt, sound: had ? `${had} ${add}` : add };
+      }
+      beats[at] = beat;
+    }
+    const candidate = stampCueTiming({ ...series, directions: beats });
+    const check = seriesInput.safeParse(candidate);
+    if (!check.success) return { abort: true, issues: fieldErrors(check.error) };
+    Object.assign(series, candidate, { updatedAt: nowIso() });
+    return {};
+  });
+  if (res.missing) return { missing: true };
+  if (res.noBeat !== undefined) return { noBeat: res.noBeat };
+  if (res.issues) return { issues: res.issues };
+  return { ok: true };
+}
+
 // ─── Media ───────────────────────────────────────────────────────────────────
 
 /**

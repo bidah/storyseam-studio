@@ -3,6 +3,7 @@
 // (scripts/sync-series.mjs).
 
 import {
+  MAX_AUDIO_BEATS,
   MAX_DIRECTIONS,
   MAX_END_IMAGES,
   MIN_END_IMAGE_GAP_SECONDS,
@@ -122,6 +123,8 @@ export type FilmEstimate = {
     sitting: StageEstimate;
     score: StageEstimate;
     sandbox: StageEstimate;
+    /** The Voices pass and the Director's dialogue clips (absent when off). */
+    voices?: StageEstimate;
   };
   total: number;
 };
@@ -149,6 +152,8 @@ export type FilmPlan = {
   clips: number;
   /** What the Series is opened at — the sitting streams at it. */
   resolution: FilmResolution;
+  /** The Voices pass this Film runs, or null. */
+  voices: FilmVoices | null;
   estimate: FilmEstimate;
 };
 
@@ -360,6 +365,7 @@ export function estimateFilm(args: {
   referenceSheets: number;
   score?: boolean | null;
   music?: string | null;
+  voices?: StageEstimate | null;
 }): FilmEstimate {
   const R = FILM_RATES_USD;
   // Budget the worst case: every seam may push the film on by up to a chunk,
@@ -374,6 +380,7 @@ export function estimateFilm(args: {
     sitting: stage(sittingSeconds, 'sitting second', R.sittingSecond),
     score: scoreEstimate(sittingSeconds, args.score, args.music),
     sandbox: stage(sandboxMinutes, 'sandbox minute', R.sandboxMinute),
+    ...(args.voices ? { voices: args.voices } : {}),
   };
   const total = cents(Object.values(perStage).reduce((sum, s) => sum + s.usd, 0));
   return { currency: 'USD', perStage, total };
@@ -410,7 +417,11 @@ export function planFilm(input: FilmPlanInput = {}): FilmPlan {
     // The sitting's rate is quoted per second whatever the resolution: the
     // Director's price at 720p is not published separately. ESTIMATE.
     resolution: filmResolutionOf(input.resolution),
-    estimate: estimateFilm({ seconds, seams: grid.seams, pinsPerReel: grid.pinsPerReel, referenceSheets, score: input.score, music: input.music }),
+    voices: filmVoicesOf(input.voices, 'director'),
+    estimate: estimateFilm({
+      seconds, seams: grid.seams, pinsPerReel: grid.pinsPerReel, referenceSheets, score: input.score, music: input.music,
+      voices: directorVoicesEstimate(input.voices, input.characters, grid.reels, input.resolution),
+    }),
   };
 }
 
@@ -834,8 +845,13 @@ export function segmentDurations(seconds: number, maxSeconds: number = SEGMENT_M
 //               note alone (text-to-speech with a voice description).
 //   elevenlabs  ElevenLabs on fal DESIGNS a voice from the note and reads the
 //               lines with it.
-// The Director cannot take a voice reference (its live stream has no audio
-// input), so the Director engine ignores the setting and runs no stage.
+// The DIRECTOR takes no voice reference, but it does take TARGET AUDIO: a
+// beat's `audioUrl` is played from that second, the picture is generated
+// against it, and the PCM itself is what the stream carries. So a Director
+// Film auditions the same way (on MiniMax H3 for `video` — its shot sheet's
+// family) and then runs a DIALOGUE stage (film-stages/dialogue.js): every
+// spoken beat's lines are read by Seed Audio against the speakers' auditions
+// and handed to that beat as its audio, at most MAX_AUDIO_BEATS per reel.
 // Absent on a job (one from before this stage existed) means no stage either:
 // steps map onto stages by POSITION, so a running job's list must not change
 // under it.
@@ -847,9 +863,14 @@ export const FILM_VOICES: readonly { id: FilmVoices; label: string; blurb: strin
 ];
 export const FILM_VOICE_IDS: readonly string[] = FILM_VOICES.map((x) => x.id);
 export const DEFAULT_FILM_VOICES: FilmVoices = 'video';
-/** A job's stored `voices` → the pass it runs, or null for none (absent, unknown, or not a story engine). */
+/** Whether an engine runs a Voices pass: every engine — the story engines bind the takes, the Director plays them. */
+export const takesVoices = (engine?: string | null): boolean =>
+  isStoryEngine(engine) || !engine || engine === 'director';
+/** The video model a `video` audition renders on: Seedance for Seedance, MiniMax H3 for H3 and the Director. */
+export const auditionEngine = (engine?: string | null): 'seedance' | 'h3' => (engine === 'seedance' ? 'seedance' : 'h3');
+/** A job's stored `voices` → the pass it runs, or null for none (absent or unknown). */
 export const filmVoicesOf = (voices?: string | null, engine?: string | null): FilmVoices | null =>
-  isStoryEngine(engine) && FILM_VOICE_IDS.includes(voices as FilmVoices) ? (voices as FilmVoices) : null;
+  takesVoices(engine) && FILM_VOICE_IDS.includes(voices as FilmVoices) ? (voices as FilmVoices) : null;
 /**
  * One audition: what the video engines generate for it, and what every filed
  * voice is TRIMMED to on the box — long enough to carry a voice, short enough
@@ -883,6 +904,8 @@ export const VOICE_RATES_USD = {
   seedaudio: 0.02,
   /** One ElevenLabs voice design reading the lines (fal: $0.10 per 1,000 characters performed). ESTIMATE. */
   elevenlabs: 0.02,
+  /** One Director dialogue clip — Seed Audio reading a beat's lines against the auditions. ESTIMATE. */
+  dialogueClip: 0.03,
   sandboxMinute: FILM_RATES_USD.sandboxMinute,
 } as const;
 
@@ -901,13 +924,30 @@ export function voicesEstimate(
   const n = Math.max(0, Math.round(Number(characters) || 0));
   if (!mode || !n) return stage(0, 'voice', 0);
   if (mode === 'video') {
-    const perSecond = engine === 'h3'
+    const perSecond = auditionEngine(engine) === 'h3'
       ? H3_RATES_USD.second[h3ResolutionOf(resolution)]
       : STORY_FLOW_RATES_USD.seedanceSecond * seedanceRateScale(resolution);
     const usd = n * AUDITION_SECONDS * perSecond + VOICE_RATES_USD.sandboxMinute;
     return { units: n, unit: 'voice', rate: cents(AUDITION_SECONDS * perSecond), usd: cents(usd) };
   }
   return stage(n, 'voice', VOICE_RATES_USD[mode]);
+}
+
+/**
+ * The Director's Voices line: the auditions (voicesEstimate, on H3) plus the
+ * dialogue clips that carry them — MAX_AUDIO_BEATS per reel budgeted, since
+ * a film with less dialogue simply spends less. Null when the pass is off.
+ */
+export function directorVoicesEstimate(
+  voices: string | null | undefined,
+  characters: number | null | undefined,
+  reels: number,
+  resolution?: string | null,
+): StageEstimate | null {
+  const auditions = voicesEstimate(voices, 'director', characters, resolution);
+  if (!auditions.units) return null;
+  const clips = Math.max(1, reels) * MAX_AUDIO_BEATS;
+  return { ...auditions, usd: cents(auditions.usd + clips * VOICE_RATES_USD.dialogueClip) };
 }
 
 export type StoryFlowPlan = {
@@ -1073,12 +1113,15 @@ export function quoteFilm(input: FilmPlanInput & { engine?: string | null } = {}
     usd: s.usd,
   });
   if (engine === 'director') {
-    const plan = planFilm(input);
+    const plan = planFilm({ ...input, characters: input.characters ?? QUOTE_CHARACTERS });
     const e = plan.estimate.perStage;
     const lines: FilmQuoteLine[] = [
       { key: 'sheets', label: 'Reference sheets', detail: `${e.referenceSheets.units} × ${money(e.referenceSheets.rate)}`, usd: e.referenceSheets.usd },
       { key: 'clips', label: 'Shot sheet clips', detail: `${e.clips.units}s · H3 Max`, usd: e.clips.usd },
       { key: 'sitting', label: 'Director sitting', detail: `${e.sitting.units}s × ${money(e.sitting.rate)}`, usd: e.sitting.usd },
+      ...(e.voices
+        ? [{ key: 'voices', label: 'Voices', detail: `${FILM_VOICES.find((v) => v.id === plan.voices)?.label ?? plan.voices} · ${e.voices.units} characters + dialogue`, usd: e.voices.usd }]
+        : []),
       scoreLine(e.score),
       { key: 'sandbox', label: 'Cutting + mixing', detail: `${e.sandbox.units} box min`, usd: e.sandbox.usd },
     ];

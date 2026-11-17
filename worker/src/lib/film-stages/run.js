@@ -4,7 +4,7 @@
 // does it (lib/shot-sheet-run.js — the same code): the Reel planner plans the
 // Reels over every slot the cue sheet offers that is not refused, the seams are
 // written as the Series' `reelChanges`, and ONE clip per Reel is submitted to
-// fal on the PLATFORM key (`env.FAL_KEY`, ADR 0003) with the Series' model
+// fal on the AUTHOR's fal key (`env.FAL_KEY`, swapped in per job — lib/user-fal-key.js) with the Series' model
 // sheets as references. Frames a seam costs are never drawn (ADR 0002).
 //
 // ── Across alarms ───────────────────────────────────────────────────────────
@@ -40,7 +40,7 @@ export async function runRunStage({ job, results, env }, deps = {}) {
   const seriesId = results?.cuesheet?.seriesId || results?.sheets?.seriesId;
   if (!seriesId) throw new Error("The Film has no cue sheet yet — the cue sheet step did not finish.");
   const key = str(env?.FAL_KEY);
-  if (!key) throw new Error("FAL_KEY is not set on the Worker — the shot sheet cannot be drawn");
+  if (!key) throw new Error("No fal key connected — add yours in Settings › Connectors; the shot sheet cannot be drawn.");
 
   const series = await readSeries(env, pid, seriesId);
   if (!series) throw new Error(`The Film's Series ${seriesId} is gone.`);

@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Panel } from "@/components/shared";
 import { cn } from "@/lib/utils";
 import { useT } from "@/lib/i18n";
+import { track } from "@/lib/analytics";
 
 async function send(path, method, body) {
   const res = await fetch(path, {
@@ -52,7 +53,13 @@ export function SubscriptionPanel({ returnPath, onBilling } = {}) {
     const load = back === "return" ? post("/api/billing/sync", {}) : send("/api/billing", "GET");
     load
       .catch(() => send("/api/billing", "GET"))
-      .then((j) => { if (!cancelled) setBilling(j); })
+      .then((j) => {
+        if (cancelled) return;
+        // Back from PayPal with a live plan: the subscription went through.
+        if (back === "return") track(j?.active ? "subscription_activated" : "subscription_not_active", { plan: j?.subscription?.plan?.key || null, status: j?.subscription?.status || null });
+        else if (back === "cancel") track("subscription_checkout_cancelled");
+        setBilling(j);
+      })
       .catch((e) => { if (!cancelled) { setBilling({ error: true }); setErr(String(e?.message || e)); } });
     return () => { cancelled = true; };
   }, []);
@@ -65,10 +72,13 @@ export function SubscriptionPanel({ returnPath, onBilling } = {}) {
   };
 
   const subscribe = (plan) => run(plan, async () => {
+    const p = billing?.plans?.find((x) => x.key === plan);
+    track("subscription_plan_clicked", { plan, price: p?.price ?? null, page: window.location.pathname });
     const j = await post("/api/billing/subscribe", { plan, returnPath: returnPath || window.location.pathname });
     window.location.href = j.approveUrl;
   });
   const cancel = () => run("cancel", async () => {
+    track("subscription_cancelled", { plan: current });
     setBilling(await post("/api/billing/cancel", {}));
     setConfirmCancel(false);
   });

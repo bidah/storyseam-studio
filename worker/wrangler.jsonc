@@ -71,6 +71,10 @@
     "R2_BUCKET": "shot-studio-uploads",
     "R2_ACCOUNT_ID": "cda687c8b568323a9b535ca44a192131",
     "WORKER_PUBLIC_URL": "https://storyseam.app",
+    // PostHog (project "storyseam") — the server-side Film and billing events
+    // (src/lib/analytics.js). A project token is public by design: the browser
+    // ships the same one.
+    "POSTHOG_PROJECT_TOKEN": "phc_mbrAnqitxP6BodPqHcQrt3AouQYKbKZEbaAtiav4heNJ",
     "HIGGSFIELD_CLIENT_ID": "LgvtzrTQ0pgrGOzD",
     // Google OAuth web client for "Sign in with Google" (secret is the
     // GOOGLE_CLIENT_SECRET wrangler secret). Empty = Google sign-in disabled.
@@ -146,7 +150,7 @@
     "run_worker_first": [
       "/api/*", "/files/*", "/gen/*", "/media/*", "/sound-media/*", "/final/*",
       "/refs/*", "/multishot-media/*", "/stills/*", "/storyboard-media/*", "/visual-media/*", "/moodboard-media/*", "/director-media/*", "/proxy/*", "/asset/*", "/thumb/*", "/hf-thumb/*", "/img/*",
-      "/ingest/*", "/ingest-mpu/*", "/eve/*", "/upload", "/healthz",
+      "/ingest/*", "/ingest-mpu/*", "/relay/*", "/eve/*", "/upload", "/healthz",
       "/desktop/updates/*",
       // Link previews (routes/og.js): the cards themselves, and /watch/* so a
       // crawler reads THAT Film's og tags — it never runs the SPA.

@@ -49,7 +49,9 @@ import { useWaitlistAccess } from "@/lib/waitlist";
 import { setProjectId } from "@/lib/projectFetch";
 import { studioPath } from "@/lib/home";
 import { MONO } from "@/lib/hudTheme";
+import { FeedbackButton } from "@/components/FeedbackButton";
 import { useCreateGate } from "@/components/CreateGate";
+import { track } from "@/lib/analytics";
 
 export function Component() {
   return <StoryPage />;
@@ -133,7 +135,9 @@ function SimpleStory({ signedIn, sessionKnown }) {
   const start = async (prompt, opts = {}, as = flow) => {
     const { seconds, style, resolution, score, music, voices, writer, depth, specialists } = opts;
     if (submitting) return false;
+    const engine = as.engine || "director";
     if (!signedIn) {
+      track("film_start_blocked", { reason: "sign_in", engine });
       // Keep the premise across the Google round trip; it starts on return.
       savePendingStory(as, prompt, opts);
       setSignInFromPrompt(true);
@@ -146,6 +150,7 @@ function SimpleStory({ signedIn, sessionKnown }) {
       // No plan or no fal key: keep the premise and ask for what's missing;
       // the gate's onReady starts it once both are in.
       if (!(await gate.ensure())) {
+        track("film_start_blocked", { reason: "plan_or_key", engine });
         savePendingStory(as, prompt, opts);
         return false;
       }
@@ -187,12 +192,14 @@ function SimpleStory({ signedIn, sessionKnown }) {
         }),
       });
       if (!res.ok || !data.ok) {
+        track("film_start_failed", { engine, status: res.status, code: data.refusal?.code || null, error: data.refusal?.message || data.error || null });
         setNote(data.refusal?.message || data.error || `Couldn't start (${res.status}).`);
         // Refused because another of theirs is being made: offer the way there.
         if (data.refusal?.code === "busy" && data.filmId) setRunning({ ...(data.job || {}), id: data.filmId });
         return false;
       }
       const id = data.job?.id;
+      track("film_started", { film_id: id || null, engine, seconds: seconds ?? null, depth: depth || "fast", writer: writer ?? null });
       if (!id) {
         setNote("The story started, but its page couldn't be found — reload to see it.");
         return true;
@@ -204,6 +211,7 @@ function SimpleStory({ signedIn, sessionKnown }) {
       navigate(filmPath(id), { state: { engine: as.engine, projectId: data.projectId || null } });
       return true;
     } catch (err) {
+      track("film_start_failed", { engine, error: String(err?.message || err) });
       setNote(String(err?.message || err));
       return false;
     } finally {
@@ -235,6 +243,7 @@ function SimpleStory({ signedIn, sessionKnown }) {
   // studio root, where the author and the agent build it step by step.
   const launchStudio = async (name) => {
     if (!(await gate.ensure())) {
+      track("studio_project_blocked", { reason: "plan_or_key" });
       pendingStudio.current = name;
       return false;
     }
@@ -244,6 +253,7 @@ function SimpleStory({ signedIn, sessionKnown }) {
       body: JSON.stringify({ name }),
     });
     if (!res.ok || !data.project?.id) throw new Error(data.error || `Couldn't create the project (${res.status}).`);
+    track("studio_project_created", { project_id: data.project.id });
     setProjectId(data.project.id);
     navigate(studioPath(data.project.id, ""));
   };
@@ -288,6 +298,7 @@ function SimpleStory({ signedIn, sessionKnown }) {
       />
       <SignInDialog flow={flow} open={signInOpen} onOpenChange={setSignInOpen} withPremise={signInFromPrompt} />
       {gate.dialogs}
+      <FeedbackButton />
     </>
   );
 }

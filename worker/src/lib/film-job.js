@@ -17,8 +17,9 @@
 //            score? (false — no Score stage; absent = the film is scored),
 //            depth? ('deep' — the writers' room reads the script; absent = fast),
 //            specialists? (the room's passes, film-plan.ts DEFAULT_DEEP_SPECIALISTS when none),
-//            voices? ('video' | 'seedaudio' | 'elevenlabs' — a story engine's Voices
-//            stage after its sheets, film-plan.ts › Voices; absent = no stage),
+//            voices? ('video' | 'seedaudio' | 'elevenlabs' — the Voices stage after
+//            the sheets, plus the Director's Dialogue stage after its Stills,
+//            film-plan.ts › Voices; absent = no stage),
 //            status: 'running'|'awaiting-confirm'|'done'|'stopped'
 //            |'refused'|'declined', error, projectId, episodeId, userId,
 //            auto, createdAt, updatedAt, steps: [step],
@@ -152,6 +153,7 @@ import { runStoryFlowPromptsStage } from "./film-stages/story-flow/prompts.js";
 import { runStoryFlowRunStage } from "./film-stages/story-flow/run.js";
 import { runStoryFlowStitchStage } from "./film-stages/story-flow/stitch.js";
 import { runVoicesStage } from "./film-stages/story-flow/voices.js";
+import { runDialogueStage } from "./film-stages/dialogue.js";
 import { runH3PromptsStage } from "./film-stages/h3/prompts.js";
 import { runH3RunStage } from "./film-stages/h3/run.js";
 import { planH3, filmScoreOf, filmVoicesOf, isStoryEngine, newFilmMusic, FILM_MUSIC, FILM_MUSIC_IDS, FILM_VOICES, FILM_VOICE_IDS } from "./film-plan.ts";
@@ -482,6 +484,16 @@ export const ROOM_STAGE = Object.freeze({ key: "room", label: "Writers' room", r
  */
 export const VOICES_STAGE = Object.freeze({ key: "voices", label: "Voices", paid: true, run: (ctx) => runVoicesStage(ctx) });
 
+/**
+ * The DIALOGUE stage a Director Film runs after its Stills when it auditioned
+ * voices: every spoken beat's lines read by Seed Audio against the speakers'
+ * auditions and set as that beat's target audio (film-stages/dialogue.js), so
+ * the live Director plays one voice per character instead of inventing a new
+ * one every chunk. After the Stills because the reels are fixed by then, and
+ * the 8-audio-beat ceiling is per reel.
+ */
+export const DIALOGUE_STAGE = Object.freeze({ key: "dialogue", label: "Dialogue", paid: true, run: (ctx) => runDialogueStage(ctx) });
+
 const ENGINE_STAGES = { seedance: STORY_FLOW_STAGES, h3: H3_STAGES };
 
 /**
@@ -499,6 +511,9 @@ export function stagesFor(job) {
   if (filmVoicesOf(job?.voices, job?.engine)) {
     const sheets = tail.findIndex((s) => s.key === "sheets");
     if (sheets >= 0) tail.splice(sheets + 1, 0, VOICES_STAGE);
+    // The Director plays the voices as target audio, placed once the reels are fixed.
+    const stills = isStoryEngine(job?.engine) ? -1 : tail.findIndex((s) => s.key === "stills");
+    if (stills >= 0) tail.splice(stills + 1, 0, DIALOGUE_STAGE);
   }
   const score = scored && isStoryEngine(job?.engine) ? [STORY_SCORE_STAGE] : [];
   return [...base.slice(0, at), ...story, ...tail, ...score];
@@ -586,8 +601,9 @@ export async function startFilm(existing, { prompt, seconds, style, engine, writ
       ...(score === false ? {} : { music: newFilmMusic(music) }),
       // The writers' room, when the author asked for one: its passes ride along.
       ...(depth === "deep" ? { depth, specialists: roomFor({ specialists }) } : {}),
-      // The Voices pass, only where it can run (a story engine): the Director
-      // takes no voice reference, so the setting is dropped rather than stored.
+      // The Voices pass. Every engine runs it now: the story engines bind the
+      // auditions as voice references, the Director plays its lines as target
+      // audio (the Dialogue stage). Absent = a Film from before (no stage).
       ...(filmVoicesOf(voices, engine) ? { voices } : {}),
       status: "running",
       error: null,
@@ -996,7 +1012,11 @@ export function confirmPlan(job, worldResult) {
   }
   const drawn = (worldResult?.characters?.length || 0) + (worldResult?.places?.length || 0) + (worldResult?.props?.length || 0);
   const sheets = Math.min(MAX_REFERENCE_SHEETS, Math.max(1, drawn));
-  const p = planFilm({ prompt: job.prompt, seconds: job.seconds ?? null, resolution: job.resolution ?? null, referenceSheets: sheets, score: scored, music: job.music ?? "elevenlabs" });
+  const characters = worldResult?.characters?.length || 0;
+  const p = planFilm({
+    prompt: job.prompt, seconds: job.seconds ?? null, resolution: job.resolution ?? null, referenceSheets: sheets, score: scored, music: job.music ?? "elevenlabs",
+    voices: job.voices ?? null, characters,
+  });
   const plan = {
     seconds: p.seconds,
     length: p.length,
@@ -1005,11 +1025,13 @@ export function confirmPlan(job, worldResult) {
     reels: p.reels,
     pins: p.pins,
     sheets,
+    voices: p.voices,
     score: scored,
     estimate: p.estimate,
   };
   const n = (k, one) => `${k} ${one}${k === 1 ? "" : "s"}`;
-  const summary = `${p.length} · ${n(p.reels, "reel")} · ${n(sheets, "sheet")}${scored ? "" : " · no score"} · about ${money(p.estimate.total)}`;
+  const voiced = p.voices ? ` · ${n(characters, "voice")}` : "";
+  const summary = `${p.length} · ${n(p.reels, "reel")} · ${n(sheets, "sheet")}${voiced}${scored ? "" : " · no score"} · about ${money(p.estimate.total)}`;
   return { summary, plan };
 }
 

@@ -18,6 +18,7 @@
 
 import { getSubscription } from "./paypal.js";
 import { PLANS, planByKey, planByPaypalId, paypalPlanIds, callCostMicros, approxTokens } from "./billing-plans.js";
+import { capture } from "./analytics.js";
 
 const now = () => new Date().toISOString();
 
@@ -241,6 +242,7 @@ export async function applyWebhookEvent(env, event) {
       status: r.status || known?.status || "UNKNOWN",
       nextBillingAt: r.billing_info?.next_billing_time ?? null,
     });
+    await capture(env, userId, "subscription_status_changed", { subscription_id: r.id, status: r.status || null, plan: planByPaypalId(env, r.plan_id)?.key || known?.plan_key || null, webhook: type });
     return `subscription ${r.id} → ${r.status}`;
   }
 
@@ -259,6 +261,7 @@ export async function applyWebhookEvent(env, event) {
       r.id,
       `${plan.name} payment ${r.amount?.total ?? ""} ${r.amount?.currency ?? ""} (${subscriptionId})`.trim(),
     );
+    if (added) await capture(env, userId, "subscription_payment_completed", { plan: plan.key, amount: Number(r.amount?.total) || null, currency: r.amount?.currency || null, subscription_id: subscriptionId });
     return added ? `granted ${plan.key} to ${userId}` : "duplicate sale";
   }
 

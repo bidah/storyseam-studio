@@ -31,6 +31,7 @@ import { ImageModal } from "@/components/shared";
 import { RouteSkeleton } from "@/components/skeletons";
 import { ShellContext } from "@/lib/shellContext";
 import { useT } from "@/lib/i18n";
+import { FeedbackButton } from "@/components/FeedbackButton";
 import { PluginsProvider, usePlugins } from "@/components/PluginsProvider";
 import PluginGate from "@/components/PluginGate";
 import { UseMcpDialog } from "@/components/UseMcpModal";
@@ -647,6 +648,7 @@ export default function RootLayout() {
               <Button variant="secondary" size="sm" onClick={() => setMcpOpen(true)}>
                 <Plug size={13} /> {t("Use MCP")}
               </Button>
+              <FeedbackButton variant="header" />
               <Button variant="outline" size="sm" onClick={refresh} disabled={loading}>
                 <RefreshCw size={13} className={cn(loading && "animate-spin")} /> {t("Refresh")}
               </Button>

@@ -36,6 +36,7 @@
 // Daytona sandbox (lib/film-score.js), the picture still stream-copied. The
 // cue's submit/poll and the scored film's filing are plain functions
 // (lib/musicalized-cue.js) shared by these routes and the job.
+import { requestFalKey } from "../lib/user-fal-key.js";
 import { directorUrl, readSeries, readSittings } from "../lib/director.js";
 import { putMedia } from "../lib/media.js";
 import { planTotalMs, renderCostUsd, validatePlan } from "../lib/music-plan.ts";
@@ -45,7 +46,8 @@ import { silenceSpans } from "../lib/score-mix.ts";
 
 export { MUSIC_ENDPOINT };
 
-const falKeyOf = (c) => c.req.header("x-fal-key") || c.env.FAL_KEY || "";
+// The author's own key — sent by the browser or stored (lib/user-fal-key.js).
+const falKeyOf = (c) => requestFalKey(c);
 
 
 export function registerMusicalized(app) {
@@ -122,7 +124,7 @@ export function registerMusicalized(app) {
     const series = await readSeries(c.env, pid, seriesId);
     if (!series) return c.json({ error: "A cue is written for a Series — send a `seriesId` that exists" }, 404);
 
-    const res = await submitCue(c.env, pid, { seriesId, plan: body.plan, filmMs: body.filmMs, key: falKeyOf(c) });
+    const res = await submitCue(c.env, pid, { seriesId, plan: body.plan, filmMs: body.filmMs, key: await falKeyOf(c) });
     if (!res.ok) {
       const { ok: _ok, status, ...err } = res;
       return c.json(err, status);
@@ -139,7 +141,7 @@ export function registerMusicalized(app) {
     const pid = c.get("projectId");
     const requestId = c.req.param("requestId");
     if (!/^[A-Za-z0-9_-]{8,80}$/.test(requestId)) return c.json({ error: "unusable request id" }, 400);
-    const key = falKeyOf(c);
+    const key = await falKeyOf(c);
     if (!key) return c.json({ error: "no fal key", code: "no_fal_key" }, 401);
     const res = await pollCue(c.env, pid, requestId, { seriesId: c.req.query("seriesId") || "", key });
     if (res.status !== "done") return c.json(res);

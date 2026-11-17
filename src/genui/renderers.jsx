@@ -34,6 +34,7 @@ import { toZoomSrc } from "@/lib/previewSrc";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
 import { useAnswerState } from "./answered";
+import { AskFormProvider, useAskForm, useAskFormSelection } from "./ask-form";
 
 // The tap handler for anything carrying a `send`. Returns undefined when there
 // is nothing to send, so callers can render a non-interactive element instead
@@ -98,10 +99,13 @@ function groupItems(items, select) {
  * completeness gate is the point of the mode: a card asking three questions must
  * not be answerable with one, because the send that answers it ends the turn.
  */
-function useMultiSelect({ select, send, confirm }, groups) {
+function useMultiSelect({ select, send, confirm, ...rest }, groups) {
   // group name → the picked `send` strings for that group. "many" keeps
   // everything under the one unnamed group, in tap order.
   const [picks, setPicks] = useState(() => ({}));
+  // A single-select list that is one of several questions on its card picks
+  // into the card instead of sending (ask-form.ts); the card owns the button.
+  const formSelection = useAskFormSelection({ select, ...rest });
   const trigger = useSend(send || " ");
   const many = select === "many";
   const perGroup = select === "one-per-group";
@@ -135,8 +139,8 @@ function useMultiSelect({ select, send, confirm }, groups) {
   );
 
   const Provider = ({ children }) =>
-    active ? (
-      <SelectionContext.Provider value={value}>{children}</SelectionContext.Provider>
+    active || formSelection ? (
+      <SelectionContext.Provider value={active ? value : formSelection}>{children}</SelectionContext.Provider>
     ) : (
       children
     );
@@ -231,12 +235,23 @@ function InsetCard({ className, children }) {
 
 export function Card({ props, renderNode }) {
   const children = Array.isArray(props.children) ? props.children : [];
+  // Two or more single-select lists = several questions: the card holds a
+  // pick per list and sends them together (ask-form.ts).
+  const { form, done, total, message } = useAskForm(children);
+  const submit = useSend(message);
   return (
-    <div className="flex w-full flex-col gap-3 rounded-none border bg-background/40 p-3">
-      {children.map((child, i) => (
-        <div key={i}>{renderNode(child)}</div>
-      ))}
-    </div>
+    <AskFormProvider value={form}>
+      <div className="flex w-full flex-col gap-3 rounded-none border bg-background/40 p-3">
+        {children.map((child, i) => (
+          <div key={i}>{renderNode(child)}</div>
+        ))}
+        {form ? (
+          <Button type="button" size="sm" className="w-full" disabled={!submit} onClick={submit}>
+            Send answers{done < total ? ` (${done}/${total})` : ""}
+          </Button>
+        ) : null}
+      </div>
+    </AskFormProvider>
   );
 }
 
@@ -308,10 +323,6 @@ export function Option({ props }) {
   // current selection, and the rows they passed over recede. See answered.ts.
   const { picked, dimmed } = useAnswerState(props.send);
   const marked = props.selected || picked;
-  // What a tap OPENS, as opposed to what the tile paints. The model is told to
-  // pass `display` (the ~1600px webp) and usually does; when it forgets, derive
-  // the tier from the thumb rather than zooming a 400px box.
-  const zoom = props.display || toZoomSrc(props.src);
   return (
     <button
       type="button"
@@ -430,6 +441,10 @@ export function MediaItem({ props }) {
   // ones they passed over recede. See answered.ts.
   const { picked, dimmed } = useAnswerState(props.send);
   const marked = props.selected || picked;
+  // What a tap OPENS, as opposed to what the tile paints. The model is told to
+  // pass `display` (the ~1600px webp) and usually does; when it forgets, derive
+  // the tier from the thumb rather than zooming a 400px box.
+  const zoom = props.display || toZoomSrc(props.src);
 
   return (
     <div className={cn("flex flex-col gap-1.5", dimmed && "opacity-45")}>

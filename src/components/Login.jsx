@@ -26,8 +26,8 @@
 // After the session exists a SECOND gate may block on the selected render
 // provider's credential: Higgsfield selected but not yet linked shows the
 // connect screen; a BYOK provider (fal.ai / Atlas Cloud) without its key asks
-// for one. BYOK keys live only in this browser's localStorage (lib/falKey.js /
-// lib/atlasKey.js) and ride per-request to the workers — never stored
+// for one. BYOK keys live in this browser (lib/falKey.js / lib/atlasKey.js)
+// and ride per-request to the workers; the fal key is ALSO stored, encrypted,
 // server-side. Keys, connectors and provider toggles stay editable in Settings.
 import { useEffect, useState } from "react";
 import { Link, Navigate, useLocation } from "react-router";
@@ -485,8 +485,8 @@ export function Splash() {
 // today) unlocks the app. What StorySeam pays for and what bills the USER is
 // said here, before they paste anything: the sandboxes and the writing/planning
 // models are ours; image, video, voice and soundtrack generations are theirs.
-// The key never leaves this browser except as a per-request header to our
-// workers, and is never stored server-side.
+// The fal key rides as a per-request header AND is stored encrypted on the
+// author's account (worker/src/lib/user-fal-key.js) — Films need it with no tab open.
 const KEY_PROVIDERS = [
   { id: "fal", label: "fal.ai", save: setFalKey, keysUrl: "https://fal.ai/dashboard/keys", placeholder: "key_id:key_secret" },
   { id: "atlas", label: "Atlas Cloud", save: setAtlasKey, keysUrl: "https://www.atlascloud.ai/console/api-keys", placeholder: "Atlas API key" },
@@ -585,8 +585,8 @@ function ProviderKeyScreen({ userEmail }) {
           <p className="mt-3 flex items-start gap-2 text-left text-xs text-muted-foreground" data-key-storage>
             <Lock size={13} className="mt-0.5 shrink-0" aria-hidden />
             <span>
-              {t("Your key stays in this browser, in localStorage. It rides along only with your own generation requests and is")}{" "}
-              <b className="text-foreground">{t("never stored on StorySeam's servers")}</b>.
+              {t("Your key is stored encrypted on your StorySeam account — so a Film keeps rendering after you close the tab — and is")}{" "}
+              <b className="text-foreground">{t("used only for your own generations")}</b>.
             </span>
           </p>
 

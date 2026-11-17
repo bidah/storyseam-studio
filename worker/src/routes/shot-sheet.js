@@ -26,6 +26,7 @@
 // about the result looks like a bug — it looks like the model drifting. The
 // page and this route both call `validateSheet`, so a sheet either would refuse
 // is refused in one place, before a render is paid for.
+import { requestFalKey } from "../lib/user-fal-key.js";
 import { absolutizeSeries, readSeries, readSheets } from "../lib/director.js";
 import { putMedia } from "../lib/media.js";
 import { endpointFor, renderBody, slotsOf } from "../lib/shot-sheet.ts";
@@ -33,8 +34,9 @@ import {
   buildRun as planRun, finishRender, planView, runErrors, submitClips, takeWithUrl, writeSeams,
 } from "../lib/shot-sheet-run.js";
 
+// The author's own key — sent by the browser or stored (lib/user-fal-key.js).
 function falKeyOf(c) {
-  return c.req.header("x-fal-key") || c.env.FAL_KEY || "";
+  return requestFalKey(c);
 }
 
 export function registerShotSheet(app) {
@@ -106,7 +108,7 @@ export function registerShotSheet(app) {
     const series = await readSeries(c.env, pid, seriesId);
     if (!series) return c.json({ error: "No such Series" }, 404);
 
-    const key = falKeyOf(c);
+    const key = await falKeyOf(c);
     if (!key) {
       return c.json({ error: "Rendering a shot sheet needs your fal key — add it in Settings.", code: "no_fal_key" }, 401);
     }
@@ -171,7 +173,7 @@ export function registerShotSheet(app) {
 
     if (take.status !== "running") return c.json(takeWithUrl(take));
 
-    const key = falKeyOf(c);
+    const key = await falKeyOf(c);
     if (!key) return c.json(takeWithUrl(take));
 
     const finished = await finishRender(c.env, pid, take, key);

@@ -325,9 +325,15 @@ Film's own video model generates a 5s audition to camera and the box cuts its
 audio track (the voice that model gives that face, so it persists best;
 default); `seedaudio` — ByteDance Seed Audio reads the lines from the voice
 note; `elevenlabs` — a voice designed from the note reads them. The Director
-cannot take a voice reference, so it ignores the setting and runs no stage;
-and a job without `voices` (one from before) runs none either — steps map
-onto stages by position, so a running job's list must never change under it.
+takes no voice reference, but it takes **target audio** (a beat's `audioUrl`
+is what the stream acts to and carries). So a Director Film auditions too
+(`video` on MiniMax H3) and then runs a **Dialogue** stage after its Stills
+(`film-stages/dialogue.js`): each spoken beat's lines are read by Seed Audio
+against the speakers' auditions (`@Audio1…3`) and set as that beat's audio,
+merged to fit the 8-audio-beats-per-reel ceiling; lines it can't voice stay
+text with the speaker's voice note. A job without `voices` (one from before)
+runs neither stage — steps map onto stages by position, so a running job's
+list must never change under it.
 
 ## Feature parity — GUI AND agent, always
 

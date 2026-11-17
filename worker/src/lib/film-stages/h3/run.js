@@ -2,8 +2,8 @@
 //
 // The story flow's Video run (story-flow/run.js) on a different endpoint. The
 // compiled segments rendered on fal (minimax/h3/reference-to-video, at H3's
-// 480P or 768P for the job's resolution, the PLATFORM key `env.FAL_KEY` —
-// ADR 0003), ONE AT A TIME, because each one after the first continues the
+// 480P or 768P for the job's resolution, the AUTHOR's fal key `env.FAL_KEY`, swapped in per job by
+// lib/user-fal-key.js), ONE AT A TIME, because each one after the first continues the
 // one before it:
 //
 //   segment 1   the sheets alone (Image 1, Image 2 …), 16:9.
@@ -75,7 +75,7 @@ export async function runH3RunStage({ job, results, env, attempt = 1 }, deps = {
   const pid = job.projectId;
   if (!results?.prompts?.segments?.length) throw new Error("The Film has no segment prompts — the prompts step did not finish.");
   const key = str(env?.FAL_KEY);
-  if (!key) throw new Error("FAL_KEY is not set on the Worker — the segments cannot be rendered");
+  if (!key) throw new Error("No fal key connected — add yours in Settings › Connectors; the segments cannot be rendered.");
   if (!deps.box && !env?.DAYTONA_API_KEY) throw new Error("DAYTONA_API_KEY is not set on the Worker — the segments cannot be cut");
 
   const prev = (job.steps || []).find((s) => s.key === "run")?.result;

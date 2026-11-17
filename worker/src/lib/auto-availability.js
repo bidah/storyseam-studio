@@ -1,7 +1,7 @@
 // Is Auto available right now? — the kill switch plus the platform keys.
 //
-// Auto runs on StorySeam's own keys (ADR 0003), so every Film is StorySeam's
-// cost and pausing it is a platform concern. The kill switch is a KV key, not a
+// Auto runs on StorySeam's Daytona key and the AUTHOR's fal key, so pausing it
+// is a platform concern. The kill switch is a KV key, not a
 // var, so it can be flipped WITHOUT a redeploy:
 //
 //   pause:   npx wrangler kv key put --binding AUTH_KV --remote auto:paused "<reason>"
@@ -18,8 +18,9 @@ export const AUTO_PAUSE_KEY = "auto:paused";
 
 // Secret name → what it pays for. Both are Worker secrets a human sets.
 
+// fal is NOT one of them: every render runs on the author's own fal key
+// (lib/user-fal-key.js), checked per Film when it starts (routes/auto.js).
 export const AUTO_KEYS = {
-  FAL_KEY: "fal (sheets, clips, the sitting)",
   DAYTONA_API_KEY: "Daytona (cutting and scoring)",
 };
 

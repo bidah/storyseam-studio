@@ -5,6 +5,9 @@ import { router } from "./router.jsx";
 import { installProjectScope } from "./lib/projectFetch.js";
 import { initDesktop } from "./lib/desktop-bootstrap.js";
 import { I18nProvider } from "./lib/i18n.jsx";
+// PostHog: initialised on import, before the first render.
+import { AnalyticsIdentity } from "./lib/analytics.js";
+import { FalKeySync } from "./lib/falKey.js";
 import "./index.css";
 
 // Inject the active project id into every same-origin request. Must run before
@@ -30,6 +33,8 @@ initDesktop(router).then(() => {
   ReactDOM.createRoot(document.getElementById("root")).render(
     <React.StrictMode>
       <I18nProvider>
+        <AnalyticsIdentity />
+        <FalKeySync />
         <RouterProvider router={router} />
       </I18nProvider>
     </React.StrictMode>

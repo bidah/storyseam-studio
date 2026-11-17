@@ -20,7 +20,7 @@
 //      `silence` cue is a gap nobody renders. At most four pieces, each its own
 //      composition plan and seed, each running a second past its end where the
 //      next piece starts, for the crossfade. Every piece is sent to ElevenLabs
-//      Music on fal on the PLATFORM key (`env.FAL_KEY`, ADR 0003) through the
+//      Music on fal on the AUTHOR's fal key (`env.FAL_KEY`, swapped in per job — lib/user-fal-key.js) through the
 //      Musicalized helpers (lib/musicalized-cue.js), all polled to completion
 //      and filed on the Series.
 //      FALLBACK — a shot list with no cues (older Films, a model that skipped
@@ -294,7 +294,7 @@ export async function runScoreStage({ job, results, env, attempt = 1, model }, d
   if (!filmFile) throw new Error(`The kept sitting ${sittingId} has no film to score.`);
   const seriesId = str(sitting.seriesId || kept?.seriesId || results?.cuesheet?.seriesId || results?.run?.seriesId);
   const key = str(env?.FAL_KEY);
-  if (!key) throw new Error("FAL_KEY is not set on the Worker — the cue cannot be rendered");
+  if (!key) throw new Error("No fal key connected — add yours in Settings › Connectors; the cue cannot be rendered.");
   if (!deps.scorer) {
     if (!env?.DAYTONA_API_KEY) throw new Error("DAYTONA_API_KEY is not set on the Worker — the film cannot be measured or mixed");
     if (!env?.INGEST_TOKEN || !env?.WORKER_PUBLIC_URL) {

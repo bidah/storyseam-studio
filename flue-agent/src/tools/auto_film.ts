@@ -169,7 +169,7 @@ export const makeFilm = (api: Api) =>
       voices: v.optional(
         d(
           v.picklist(FILM_VOICES.map((x) => x.id) as [string, ...string[]]),
-          `Optional VOICES pass — story engines ("seedance", "h3") ONLY; the Director cannot take a voice reference and ignores it. A story engine writes the sound itself and gives a character a different voice in every segment, so after the sheets the job AUDITIONS every character once — the same lines, read in their own voice as the World describes it, as a clean voice-only recording — files the take as an mp3, and every later segment they speak in binds it as their voice reference (Seedance @Audio1, H3 Audio 1). How the audition is made, all on fal: ${FILM_VOICES.map((x) => `"${x.id}" (${x.label} — ${x.blurb})`).join(", ")}. "video" is a ${AUDITION_SECONDS}s generation per character on the Film's own model — the voice that model gives that face, so it persists best, and it costs the most. The same choice as the Voices setting on the prompt box's gear. Omitted on a story engine, "${DEFAULT_FILM_VOICES}" is sent; pass "seedaudio" or "elevenlabs" when the author names them or asks for a cheaper voice pass.`,
+          `Optional VOICES pass — every engine. Without it a video model gives a character a different voice in every segment (or every live chunk), so after the sheets the job AUDITIONS every character once — the same lines, read in their own voice as the World describes it, as a clean voice-only recording — and files the take as an mp3. A story engine binds it as each segment's voice reference (Seedance @Audio1, H3 Audio 1); the Director (which takes no voice reference) gets a DIALOGUE stage after its Stills instead: every spoken beat's lines are read by Seed Audio in those voices and handed to the beat as target audio, so the live Director acts to the same voice every time. How the audition is made, all on fal: ${FILM_VOICES.map((x) => `"${x.id}" (${x.label} — ${x.blurb})`).join(", ")}. "video" is a ${AUDITION_SECONDS}s generation per character (the Film's own model; MiniMax H3 for the Director) — it costs the most. The same choice as the Voices setting on the prompt box's gear. Omitted, "${DEFAULT_FILM_VOICES}" is sent; pass "seedaudio" or "elevenlabs" when the author names them or asks for a cheaper voice pass.`,
         ),
       ),
       score: v.optional(
@@ -210,8 +210,8 @@ export const makeFilm = (api: Api) =>
             writer: input.writer || DEFAULT_FILM_WRITER,
             ...(input.resolution && input.resolution !== DEFAULT_FILM_RESOLUTION ? { resolution: input.resolution } : {}),
             ...(input.score === false ? { score: false } : { music: input.music || DEFAULT_FILM_MUSIC }),
-            // The Voices pass rides only with a story engine, defaulting as the GUI does.
-            ...(seedance ? { voices: input.voices || DEFAULT_FILM_VOICES } : {}),
+            // The Voices pass rides with every engine, defaulting as the GUI does.
+            voices: input.voices || DEFAULT_FILM_VOICES,
             ...(input.depth === "deep" ? { depth: "deep", ...(room.length ? { specialists: room } : {}) } : {}),
           },
           signal,

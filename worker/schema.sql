@@ -349,3 +349,15 @@ CREATE TABLE IF NOT EXISTS billing_ledger (
   created_at   TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_billing_ledger_user ON billing_ledger (user_id, created_at);
+
+-- user_fal_keys  the author's own fal API key — the ONLY key any render runs on
+--                (lib/user-fal-key.js). AES-GCM under a key derived from
+--                BETTER_AUTH_SECRET; `last4` is all the UI ever shows. One row
+--                per user: one fal account pays for everything they make.
+CREATE TABLE IF NOT EXISTS user_fal_keys (
+  user_id    TEXT PRIMARY KEY,                -- references "user"(id)
+  ciphertext TEXT NOT NULL,
+  iv         TEXT NOT NULL,
+  last4      TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);

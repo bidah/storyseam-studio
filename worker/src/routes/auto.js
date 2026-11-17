@@ -74,6 +74,7 @@
 // one — and each refuses a request with no signed-in user itself (401): fail
 // closed. The job itself lives in the FilmJobs Durable Object (film-job-do.js)
 // — one per project — and runs server-side; see lib/film-job.js.
+import { NO_FAL_KEY, checkFalKey, readUserFalKey, saveUserFalKey } from "../lib/user-fal-key.js";
 import { autoAvailable } from "../lib/auto-availability.js";
 import { MAX_PROMPT_CHARS, checkFilmDepth, checkFilmEngine, checkFilmMusic, checkFilmScore, checkFilmSeconds, checkFilmSpecialists, checkFilmStyle, checkFilmVoices, checkFilmWriter, checkFilmResolution } from "../lib/film-job.js";
 import { OFFERED_FILM_WRITERS, offeredFilmWriter } from "../lib/film-plan.ts";
@@ -123,6 +124,14 @@ export function registerAuto(app) {
     // refusal makes nothing.
     const plan = await planAllowed(c.env, userId);
     if (!plan.ok) return c.json(refusal("plan", plan.message), 402);
+    // Every render runs on the author's own fal account (lib/user-fal-key.js),
+    // so a Film can't start without their key — stored, or sent by the browser
+    // (which then stores it, so the job can keep using it with no tab open).
+    const sentKey = c.req.header("x-fal-key");
+    if (sentKey && !checkFalKey(sentKey) && !(await readUserFalKey(c.env, userId))) {
+      await saveUserFalKey(c.env, userId, sentKey);
+    }
+    if (!(await readUserFalKey(c.env, userId))) return c.json(refusal("fal_key", NO_FAL_KEY), 402);
     let body;
     try { body = await c.req.json(); } catch { body = {}; }
     const prompt = typeof body?.prompt === "string" ? body.prompt.slice(0, MAX_PROMPT_CHARS + 1) : "";

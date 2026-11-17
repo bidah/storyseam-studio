@@ -20,6 +20,7 @@
 //
 // The ORIGINAL is never touched. An upscale lands as a new file under
 // `upscaled/`, and the source keeps playing wherever it was used.
+import { requestFalKey } from "../lib/user-fal-key.js";
 import { createFalClient } from "@fal-ai/client";
 import { directorUrl, readSittings } from "../lib/director.js";
 import { normalizeProjectId } from "../lib/docs.js";
@@ -32,7 +33,8 @@ import upscaleSchema from "../schemas/upscale.json";
 
 const VIDEO_RE = /\.(mp4|webm|mov|m4v)$/i;
 const nowIso = () => new Date().toISOString();
-const falKeyOf = (c) => c.req.header("x-fal-key") || c.env.FAL_KEY || "";
+// The author's own key — sent by the browser or stored (lib/user-fal-key.js).
+const falKeyOf = (c) => requestFalKey(c);
 const falFor = (key) => createFalClient({ credentials: key, suppressLocalCredentialsWarning: true });
 
 // Editor Deliver renders land at `media/<pid>/final/<file>` — written by
@@ -125,7 +127,7 @@ export function registerUpscale(app) {
     const videoUrl = filesUrl(c.env, source.key);
     if (!videoUrl) return c.json({ error: "WORKER_PUBLIC_URL is not set — fal has no way to fetch the video" }, 500);
 
-    const key = falKeyOf(c);
+    const key = await falKeyOf(c);
     if (!key) {
       return c.json({ error: "Upscaling needs your fal key — add it in Settings.", code: "no_fal_key" }, 401);
     }
@@ -166,7 +168,7 @@ export function registerUpscale(app) {
     // Settled either way — nothing left to ask fal.
     if (job.status !== "running") return c.json({ job });
 
-    const key = falKeyOf(c);
+    const key = await falKeyOf(c);
     if (!key) return c.json({ error: "Checking an upscale needs your fal key", code: "no_fal_key" }, 401);
     const fal = falFor(key);
 

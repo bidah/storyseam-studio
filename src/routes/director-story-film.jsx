@@ -31,6 +31,8 @@ import {
   useFilmProject,
 } from "@/components/DirectorStory";
 import { MONO } from "@/lib/hudTheme";
+import { track } from "@/lib/analytics";
+import { FeedbackButton } from "@/components/FeedbackButton";
 
 // Keep polling while the Film is being made, waiting its turn, or not read yet.
 const POLLED = new Set([...ACTIVE, "queued", "loading"]);
@@ -95,6 +97,31 @@ function FilmStory({ flow, signedIn }) {
   };
 
   const status = job === undefined ? "loading" : job?.status;
+
+  // What the visitor SAW on this page: the page itself once the Film is read,
+  // each step as it starts running in front of them, and the moment it finished.
+  // (Whether the pipeline ran a stage at all is the Worker's film_stage_* events.)
+  const engineName = job?.engine || engine || "director";
+  const viewed = useRef(null);
+  useEffect(() => {
+    if (!job || viewed.current === filmId) return;
+    viewed.current = filmId;
+    track("film_page_viewed", { film_id: filmId, status: job.status, engine: engineName, steps_done: (job.steps || []).filter((s) => s.status === "done").length });
+  }, [job, filmId]); // eslint-disable-line react-hooks/exhaustive-deps
+  const runningStep = job?.steps?.find((s) => s.status === "running")?.key || null;
+  useEffect(() => {
+    if (runningStep) track("film_step_shown", { film_id: filmId, step: runningStep, engine: engineName });
+  }, [runningStep, filmId]); // eslint-disable-line react-hooks/exhaustive-deps
+  const lastStatus = useRef(null);
+  useEffect(() => {
+    if (!status || status === "loading") return;
+    const before = lastStatus.current;
+    lastStatus.current = status;
+    if (before && before !== status && (status === "done" || status === "stopped")) {
+      track(status === "done" ? "film_finished_seen" : "film_stopped_seen", { film_id: filmId, engine: engineName });
+    }
+  }, [status, filmId]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const polled = !!projectId && POLLED.has(status);
   useEffect(() => {
     if (!polled) return;
@@ -107,6 +134,7 @@ function FilmStory({ flow, signedIn }) {
   // so the failed step flips back to running at once; the live events and the
   // poll carry it on from there. A refusal replaces the stopped line.
   const onRetry = async () => {
+    track("film_retry_clicked", { film_id: filmId, engine: engineName });
     setRetrying(true);
     setRetryError(null);
     try {
@@ -133,6 +161,7 @@ function FilmStory({ flow, signedIn }) {
         retrying={retrying}
         retryError={retryError}
       />
+      <FeedbackButton />
     </>
   );
 }

@@ -32,6 +32,7 @@
 // recorded WHILE IT PLAYED cannot be recovered — and re-running the recipe does
 // not get it back, because the endpoint is not deterministic: two sittings of
 // one Series are different films.
+import { requestFalKey } from "../lib/user-fal-key.js";
 import { absolutizeSeries, directorUrl, readSeries, readSittings, updateSittings } from "../lib/director.js";
 import { putMedia } from "../lib/media.js";
 import { recipe, screening } from "../lib/series.ts";
@@ -312,10 +313,9 @@ export function registerStage(app) {
   // the host pin, the path pin, the endpoint pin, the cap — is above and would
   // have to be written anyway. One fewer alpha dependency in the Worker.
   app.all("/api/stage/fal/proxy", (c) =>
-    // BYOK, like every other generation in this studio: the author's own fal key
-    // arrives per request and is never persisted. `FAL_KEY` is the operator's
-    // optional dev fallback.
-    forwardToFal(c, c.req.header("x-fal-key") || c.env.FAL_KEY || ""),
+    // The author's own fal key, sent by the browser or stored
+    // (lib/user-fal-key.js) — never StorySeam's.
+    requestFalKey(c).then((key) => forwardToFal(c, key)),
   );
 
   // ── What a sitting would send ─────────────────────────────────────────────

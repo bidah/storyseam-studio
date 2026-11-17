@@ -5,7 +5,7 @@
 // on the Series, and one way a scored film is filed beside its sitting.
 //
 // Nothing here reads a request: the fal key is passed in (the author's BYOK key
-// on the routes, the platform `FAL_KEY` in the job — ADR 0003), and so is
+// on the routes, the author's key, swapped into the job env — lib/user-fal-key.js), and so is
 // `fetch`, so a Vitest can drive the job against a fake queue.
 import { directorUrl, readCues, updateCues, updateSeries, updateSittings } from "./director.js";
 import { putMedia } from "./media.js";

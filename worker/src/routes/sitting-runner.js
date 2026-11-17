@@ -19,6 +19,7 @@
 // The run's state is the `runs[filmId]` entry on the `director-sittings`
 // document — the same ledger a kept sitting is filed into — so the stage, which
 // polls it every ~15s, reads what the runner last said without a second store.
+import { readUserFalKey } from "../lib/user-fal-key.js";
 import { readSeries, updateSittings } from "../lib/director.js";
 import { runWithContext } from "../lib/request-context.js";
 import { sittingClaims } from "../lib/sitting-token.js";
@@ -89,12 +90,12 @@ export function registerSittingRunner(app) {
   );
 
   // The fal realtime calls (`/ice`, `/session`, the heartbeat), pinned and
-  // capped exactly as the Stage's proxy — only the key differs: StorySeam's own
-  // (ADR 0003), because an Auto Film never asks the author for one.
+  // capped exactly as the Stage's proxy — on the Film author's STORED key
+  // (lib/user-fal-key.js): the runner page has no browser key to send.
   app.all(
     "/api/sitting-runner/fal/proxy",
-    withClaims((c) =>
-      forwardToFal(c, c.env.FAL_KEY || "", {
+    withClaims(async (c, claims) =>
+      forwardToFal(c, (await readUserFalKey(c.env, claims.userId)) || "", {
         env: { ...c.env, MAX_SESSION_SECONDS: RUNNER_MAX_SESSION_SECONDS },
       }),
     ),

@@ -47,6 +47,8 @@ export const ROUTE_TABLE = [
   // Link-preview cards (worker/src/routes/og.js). /watch itself stays the SPA's
   // here — the Worker only rewrites its og tags for crawlers in production.
   { prefix: "/og/", kind: "api" },
+  // The PostHog relay (worker/src/index.js) — analytics through our own domain.
+  { prefix: "/relay/", kind: "api" },
   // The flue chat agent — token streams, so it forwards like SSE (unbuffered).
   // /eve/* is same-origin so useFlueAgent() needs no host/CORS config; the
   // Worker owns /eve/*, injecting the session user id into the instance id +

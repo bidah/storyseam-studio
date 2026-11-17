@@ -84,6 +84,7 @@ import { registerApprovals } from "./routes/approvals.js";
 import { registerMcp } from "./routes/mcp.js";
 import { registerFilmAllowance } from "./routes/film-allowance.js";
 import { registerBilling } from "./routes/billing.js";
+import { registerFalKey } from "./routes/fal-key.js";
 import { agentAllowed } from "./lib/billing.js";
 import { OAuthProvider } from "@cloudflare/workers-oauth-provider";
 import { ShotStudioMCP } from "./mcp-agent.js";
@@ -132,6 +133,30 @@ app.use(
     credentials: true,
   }),
 );
+
+// --- PostHog relay ----------------------------------------------------------
+// The browser SDK (src/lib/analytics.js) sends to /relay/* on our own domain so
+// ad blockers don't drop the events; this forwards them to PostHog US. Mounted
+// BEFORE the session/project middlewares on purpose: an analytics beacon needs
+// neither, and would otherwise cost a D1 session lookup per event.
+// (/ingest/* is taken — it is the R2 upload route below.)
+app.all("/relay/*", (c) => {
+  const url = new URL(c.req.url);
+  const path = url.pathname.slice("/relay".length);
+  const host = path.startsWith("/static/") || path.startsWith("/array/")
+    ? "us-assets.i.posthog.com"
+    : "us.i.posthog.com";
+  const headers = new Headers(c.req.raw.headers);
+  headers.delete("cookie");
+  headers.set("host", host);
+  const ip = c.req.header("cf-connecting-ip");
+  if (ip) headers.set("x-forwarded-for", ip);
+  return fetch(`https://${host}${path}${url.search}`, {
+    method: c.req.method,
+    headers,
+    body: c.req.method === "GET" || c.req.method === "HEAD" ? undefined : c.req.raw.body,
+  });
+});
 
 // --- Better Auth (email/password login + sessions) -------------------------
 // A fresh auth instance per request (Workers are stateless). Mount its handler
@@ -321,6 +346,9 @@ app.use("*", async (c, next) => {
   //                  (routes/billing.js). Per-USER: each route 401s without a
   //                  userId itself, and the webhook's credential is PayPal's
   //                  signature, verified before anything is written.
+  //   /api/account/ the author's own fal key (routes/fal-key.js). Per-USER:
+  //                  each route 401s without a userId, and touches only the
+  //                  caller's own row.
   //   four Auto Film routes (isUserScopedAuto) — USER-scoped, not project-
   //                  scoped: starting a Film MAKES its own project, and the
   //                  Film→project lookup and "latest Film" are asked before any
@@ -340,6 +368,7 @@ app.use("*", async (c, next) => {
     !p.startsWith("/api/share/") &&
     !p.startsWith("/api/waitlist") &&
     !p.startsWith("/api/billing") &&
+    !p.startsWith("/api/account/") &&
     !p.startsWith("/api/sitting-runner/");
   // A WRITE we can't scope must never reach storage: `normalizeProjectId(null)`
   // resolves to `p_default`, and `p_default` is a REAL project (Whistlewood), so
@@ -416,6 +445,7 @@ app.use("*", async (c, next) => {
   if (p.startsWith("/api/sitting-runner/")) return;
   // Billing is per-user account state, not project doc state.
   if (p.startsWith("/api/billing")) return;
+  if (p.startsWith("/api/account/")) return;
   if (!c.res || c.res.status >= 400) return;
   broadcast(
     c.env,
@@ -812,6 +842,7 @@ registerMcp(app);
 // Auto: the per-user monthly Film allowance.
 registerFilmAllowance(app);
 registerBilling(app);
+registerFalKey(app);
 
 // --- remote-MCP OAuth consent screen ---------------------------------------
 // The per-user MCP connector (Settings › Connectors) is an OAuth-fronted server

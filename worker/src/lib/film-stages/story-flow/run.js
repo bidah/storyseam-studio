@@ -1,7 +1,7 @@
 // The story flow's "Video run" stage (/story-flow — the Seedance 2.5 Film).
 //
 // The compiled segments rendered on fal (bytedance/seedance-2.5/reference-to-
-// video, at the job's resolution — 480p unless 720p was chosen — the PLATFORM key `env.FAL_KEY` — ADR 0003), ONE AT A TIME,
+// video, at the job's resolution — 480p unless 720p was chosen — the AUTHOR's fal key `env.FAL_KEY`, swapped in per job by lib/user-fal-key.js), ONE AT A TIME,
 // because each one after the first continues the one before it:
 //
 //   segment 1   task "reference" — the sheets alone (@Image1…), 16:9.
@@ -76,7 +76,7 @@ export async function runStoryFlowRunStage({ job, results, env, attempt = 1 }, d
   const pid = job.projectId;
   if (!results?.prompts?.segments?.length) throw new Error("The Film has no segment prompts — the prompts step did not finish.");
   const key = str(env?.FAL_KEY);
-  if (!key) throw new Error("FAL_KEY is not set on the Worker — the segments cannot be rendered");
+  if (!key) throw new Error("No fal key connected — add yours in Settings › Connectors; the segments cannot be rendered.");
   if (!deps.box && !env?.DAYTONA_API_KEY) throw new Error("DAYTONA_API_KEY is not set on the Worker — the segments cannot be cut");
 
   // This step's own state from the last call (a pending answer's result).

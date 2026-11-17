@@ -50,6 +50,7 @@ import {
   STORY_FLOW_RATES_USD,
   VOICE_RATES_USD,
   filmResolutionOf,
+  auditionEngine,
   filmStyleFor,
   filmVoicesOf,
   h3ResolutionOf,
@@ -124,7 +125,7 @@ export const voiceOutputUrl = (mode, polled) => (VOICE_MODELS[mode]?.url || ((p)
 
 /** What the Voices card names the engine that auditioned. */
 const engineLabel = (mode, engine) =>
-  mode === "video" ? `Audition on ${engine === "h3" ? "MiniMax H3" : "Seedance 2.5"}` : VOICE_MODELS[mode]?.label || mode;
+  mode === "video" ? `Audition on ${auditionEngine(engine) === "h3" ? "MiniMax H3" : "Seedance 2.5"}` : VOICE_MODELS[mode]?.label || mode;
 
 // ── The cast ────────────────────────────────────────────────────────────────
 
@@ -237,14 +238,21 @@ function sheetUrls(env, pid, refs, name) {
   return ["body", "face"].map(mine).filter(Boolean).map((r) => absolutize(env, pid, r.imageUrl)).filter((u) => /^https?:\/\//i.test(u));
 }
 
+/** The Director's model sheets (`{ kind, name, imageUrl }`) in the story engines' ref shape. */
+export const directorRefs = (sheets) =>
+  (sheets || [])
+    .filter((s) => s?.kind === "character" && s.imageUrl)
+    .map((s) => ({ kind: "character", view: "body", subject: s.name, imageUrl: s.imageUrl }));
+
 /** The fal request for one character's audition, by mode and engine. */
 export function auditionInput(env, pid, mode, { voice, job, look, refs, withImages = true }) {
   const lines = AUDITION_LINES;
   const language = job.language || DEFAULT_FILM_LANGUAGE;
   if (mode !== "video") return { endpoint: VOICE_MODELS[mode].endpoint, input: VOICE_MODELS[mode].input({ ...voice, lines, language }) };
   const images = withImages ? sheetUrls(env, pid, refs, voice.name) : [];
-  const prompt = auditionPrompt("video", { ...voice, lines, language, engine: job.engine, look, images: images.length });
-  if (job.engine === "h3") {
+  const engine = auditionEngine(job.engine);
+  const prompt = auditionPrompt("video", { ...voice, lines, language, engine, look, images: images.length });
+  if (engine === "h3") {
     return {
       endpoint: H3_ENDPOINT,
       input: {
@@ -275,7 +283,7 @@ export function auditionInput(env, pid, mode, { voice, job, look, refs, withImag
 /** What one audition costs when fal delivers it. */
 export function auditionSpend(mode, engine, resolution) {
   if (mode !== "video") return round(VOICE_RATES_USD[mode] || 0);
-  const perSecond = engine === "h3"
+  const perSecond = auditionEngine(engine) === "h3"
     ? H3_RATES_USD.second[h3ResolutionOf(resolution)]
     : STORY_FLOW_RATES_USD.seedanceSecond * seedanceRateScale(resolution);
   return round(AUDITION_SECONDS * perSecond);
@@ -299,14 +307,16 @@ export async function runVoicesStage({ job, results, env, attempt = 1 }, deps = 
   const mode = filmVoicesOf(job.voices, job.engine);
   if (!mode) throw new Error("This Film has no Voices pass to run.");
   const falKey = str(env?.FAL_KEY);
-  if (!falKey) throw new Error("FAL_KEY is not set on the Worker — the voices cannot be auditioned");
+  if (!falKey) throw new Error("No fal key connected — add yours in Settings › Connectors; the voices cannot be auditioned.");
   if (!deps.box && !env?.DAYTONA_API_KEY) throw new Error("DAYTONA_API_KEY is not set on the Worker — the voices cannot be cut");
 
   const world = await (deps.readWorld || readWorld)(env, pid);
   const cast = planVoices(world, { language: job.language || DEFAULT_FILM_LANGUAGE });
   if (!cast.length) throw new Error("There is no World cast to audition.");
   const look = filmStyleFor({ style: results?.look?.style || job.style, prompt: job.prompt });
-  const refs = results?.sheets?.refs || [];
+  // A story engine's sheets come as a turnaround + a face per character; the
+  // Director's as one model sheet per character, read here as the body.
+  const refs = results?.sheets?.refs || directorRefs(results?.sheets?.sheets);
 
   // This step's own state from the last call (a pending answer's result).
   const prev = (job.steps || []).find((s) => s.key === "voices")?.result;
@@ -369,7 +379,7 @@ export async function runVoicesStage({ job, results, env, attempt = 1 }, deps = 
 
   // Poll what is rendering.
   for (const v of voices.filter((x) => x.status === "rendering")) {
-    const polled = await fal.poll(falKey, v.endpoint || (mode === "video" ? (job.engine === "h3" ? H3_ENDPOINT : SEEDANCE_ENDPOINT) : VOICE_MODELS[mode].endpoint), v.requestId);
+    const polled = await fal.poll(falKey, v.endpoint || (mode === "video" ? (auditionEngine(job.engine) === "h3" ? H3_ENDPOINT : SEEDANCE_ENDPOINT) : VOICE_MODELS[mode].endpoint), v.requestId);
     if (!polled?.done) continue;
     const url = mode === "video" ? str(polled.url) : voiceOutputUrl(mode, polled);
     if (polled.failed || !url) {

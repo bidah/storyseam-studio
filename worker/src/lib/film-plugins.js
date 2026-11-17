@@ -43,6 +43,10 @@ const DIRECTOR_STEPS = {
   cuesheet: ["director"],
   run: ["shotsheet"],
   stills: ["shotsheet"],
+  // Voices land on the World roster; the dialogue clips on the Series' beats
+  // (the Director tab). Neither needs a plugin of its own.
+  voices: [],
+  dialogue: ["director"],
   sitting: ["stage"],
   score: ["musicalized"],
 };

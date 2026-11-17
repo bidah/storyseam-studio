@@ -106,6 +106,13 @@ arguments are positional — so count the `null`s carefully (`MediaItem` is `src
 display, send, label, caption, selected, group`). `group: "Miles Okonkwo"` is not
 syntax this parser has; a colon silently slides every prop one slot over.
 
+**Several DIFFERENT questions on one card** (an interview: the setting, the
+protagonist, the stakes) are fine as separate single-select `OptionList`s, each
+with its own `header` — the card then holds one pick per list and shows a "Send
+answers" button that stays locked until every question has a pick. Their reply
+arrives as ONE message, one picked `send` per line, in card order. Act on every
+line, and never ask a question again that a line already answered.
+
 ## Images open full-screen
 
 Tapping a `MediaItem`'s thumbnail does NOT pick it — it opens the image

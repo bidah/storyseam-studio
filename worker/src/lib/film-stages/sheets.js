@@ -8,7 +8,7 @@
 // first, and the subjects are drawn WITH the style sheet as their reference so
 // the whole cast comes out in one hand.
 //
-// Images run on the PLATFORM fal key (`env.FAL_KEY`, ADR 0003 — an Auto Film
+// Images run on the AUTHOR's fal key (`env.FAL_KEY`, swapped in per job — lib/user-fal-key.js; an Auto Film
 // has no browser to carry a BYOK key), through the same Nano Banana Pro
 // endpoints the Images tab uses, and are filed on the Film's Director Series as
 // model sheets exactly as `attach_model_sheet` files one: kind, name, the
@@ -236,7 +236,7 @@ export async function drawSheet({ env, pid, job, sheet, aspectRatio, refs = [] }
   const sleep = deps.sleep || ((ms) => new Promise((r) => setTimeout(r, ms)));
   const put = deps.putMedia || putMedia;
   const falKey = str(env?.FAL_KEY);
-  if (!falKey) throw new Error("FAL_KEY is not set on the Worker — reference sheets cannot be drawn");
+  if (!falKey) throw new Error("No fal key connected — add yours in Settings › Connectors; reference sheets cannot be drawn.");
 
   const endpoint = refs.length ? SHEET_MODEL.editEndpoint : SHEET_MODEL.endpoint;
   const { requestId } = await fal.submit(falKey, endpoint, {

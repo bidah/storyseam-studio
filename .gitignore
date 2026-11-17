@@ -22,3 +22,9 @@ vitest-results.json
 
 # Local MCP generation output (not committed)
 mcp results/
+
+# local tooling output
+.playwright-mcp/
+landing-header.png
+release-video/
+app.json

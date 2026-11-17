@@ -1,5 +1,11 @@
 # Auto films run on the platform's own fal and Daytona keys
 
+> **Superseded for fal (2026-10-17).** Every render — Films included — now runs
+> on the AUTHOR's own fal key, never StorySeam's: the key is stored encrypted
+> per user (`worker/src/lib/user-fal-key.js`, `/api/account/fal-key`) and the
+> Film job swaps it in as `FAL_KEY` (`envForUser`). A Film without the author's
+> key does not start. Daytona stays on the platform key.
+
 BYOK keys used to live only in the author's browser and ride each request as `x-fal-key`. An Auto Film runs for 20–40 minutes with no request and no browser, and revisions re-run stages later, so a key held in the browser cannot drive it. Auto uses StorySeam's own fal key (`FAL_KEY`) and Daytona key, stored as Worker secrets; the author never adds a key, and StorySeam pays for every Film.
 
 ## Considered Options

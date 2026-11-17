@@ -16,6 +16,7 @@
 /api/script/events                # SSE subscription
 /api/timeline/events              # SSE subscription
 /api/projects                     # project switching is a client concern; the agent is scoped to one
+/api/account/fal-key              # a secret the author pastes; never typed into a chat, so never an agent tool
 # The Director paths that are browser work by nature, not by omission. An agent
 # has no peer connection, no decoded video and no muxer — and each of these is
 # the browser doing the one thing it is uniquely able to do.

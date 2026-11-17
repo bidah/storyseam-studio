@@ -9,6 +9,7 @@
 // session cookie jar attached.
 import { createAuthClient } from "better-auth/react";
 import { genericOAuthClient } from "better-auth/client/plugins";
+import posthog from "posthog-js";
 
 const DESKTOP_BASE = "http://desktop.local";
 const onDesktop = typeof window !== "undefined" && !!window.desktop;
@@ -27,4 +28,11 @@ export const authClient = createAuthClient({
       }
     : {}),
 });
-export const { signIn, signUp, signOut, useSession } = authClient;
+export const { signIn, signUp, useSession } = authClient;
+
+// Sign-out also forgets the analytics identity, so the next person on this
+// browser starts anonymous rather than as the last one.
+export const signOut = (...args) => {
+  try { if (posthog.__loaded) posthog.reset(); } catch { /* analytics never blocks sign-out */ }
+  return authClient.signOut(...args);
+};

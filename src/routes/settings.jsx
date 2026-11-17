@@ -290,13 +290,13 @@ function ProvidersPanel() {
       <p className="mb-3 text-sm text-muted-foreground">
         {t("StorySeam covers sandboxing and the inference that writes and plans your story. Image, video, voice and soundtrack generations bill ")}
         <b>{t("your {provider} credits", { provider: PROVIDERS[0].label })}</b>
-        {t(". Your key is stored only in this browser (localStorage) and sent per-request to the generators — never saved on StorySeam's servers.")}
+        {t(". Your fal key is stored encrypted on your account, so Films keep rendering with no tab open, and it is only ever used for your own generations.")}
       </p>
       ) : (
       <p className="mb-3 text-sm text-muted-foreground">
         {t("Renders bill ")}
         <b>{t("your")}</b>
-        {t(" accounts. Keys are stored only in this browser (localStorage) and sent per-request to the generators — never saved on our servers. You can keep credentials for all three, but ")}
+        {t(" accounts. Your fal key is stored encrypted on your account (so Films keep rendering with no tab open); other keys stay in this browser. You can keep credentials for all three, but ")}
         <b>{t("one provider is in use at a time")}</b>
         {t(" — switching one on switches the others off. Jobs already running on another provider still finish.")}
       </p>

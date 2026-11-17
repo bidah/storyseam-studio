@@ -22,6 +22,7 @@ import { SubscriptionPanel } from "@/components/SubscriptionPanel";
 import { getFalKey, setFalKey } from "@/lib/falKey";
 import { setActiveProvider } from "@/lib/providers";
 import { HUD, BODY, DISPLAY, DISPLAY_TRACKING } from "@/lib/hudTheme";
+import { track } from "@/lib/analytics";
 
 const planOk = (b) => Boolean(b && (b.canCreate || b.active));
 
@@ -38,13 +39,23 @@ async function loadBilling() {
       .then((r) => (r.ok ? r.json() : null))
       .catch(() => null);
     // The sync answers the summary without `canCreate`; ask again for it.
-    if (synced) return get().catch(() => synced);
+    if (synced) {
+      const billing = await get().catch(() => synced);
+      track(billing?.active ? "subscription_activated" : "subscription_not_active", { plan: billing?.subscription?.plan?.key || null, status: billing?.subscription?.status || null });
+      return billing;
+    }
   }
+  if (back === "cancel") track("subscription_checkout_cancelled");
   return get();
 }
 
 export function useCreateGate({ enabled = true, onReady } = {}) {
   const [step, setStep] = useState(null); // null | "plan" | "key"
+  // Each gate step the author is shown: the plan, then the fal key.
+  useEffect(() => {
+    if (step === "plan") track("plan_dialog_shown");
+    else if (step === "key") track("fal_key_dialog_shown");
+  }, [step]);
   const readyRef = useRef(onReady);
   readyRef.current = onReady;
 
@@ -133,6 +144,7 @@ function FalKeyDialog({ open, onOpenChange, onSaved }) {
           onSubmit={(e) => {
             e.preventDefault();
             if (!plausible) return;
+            track("fal_key_saved");
             setFalKey(draft.trim());
             setActiveProvider("fal");
             onSaved();
@@ -154,7 +166,7 @@ function FalKeyDialog({ open, onOpenChange, onSaved }) {
         </form>
         <p className="flex items-start gap-2 text-xs text-[var(--br-secondary)]">
           <Lock size={13} className="mt-0.5 shrink-0" aria-hidden />
-          <span>Your key stays in this browser. It rides along only with your own generation requests and is never stored on StorySeam's servers.</span>
+          <span>Every render bills your own fal account. Your key is stored encrypted on your StorySeam account, so a Film keeps rendering after you close the tab, and is used only for your own generations.</span>
         </p>
       </DialogContent>
     </Dialog>

@@ -19,6 +19,8 @@ import { CreditCard, LogIn, LogOut, UserRound } from "lucide-react";
 // the dep prebundle. The two Fal marks are self-contained SVG components.
 import FalColor from "@lobehub/icons/es/Fal/components/Color";
 import FalText from "@lobehub/icons/es/Fal/components/Text";
+// lucide dropped its brand icons, so the GitHub mark comes from the same set.
+import GithubMono from "@lobehub/icons/es/Github/components/Mono";
 import { DISPLAY, DISPLAY_TRACKING, MONO } from "@/lib/hudTheme";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { signOut, useSession } from "@/lib/auth-client";
@@ -108,6 +110,7 @@ export function HudHeader({ model, onSignIn, trailing }) {
         <FalLockup />
         {model ? <Label>{model}</Label> : null}
       </span>
+      <GithubLink />
       <ThemeToggle />
       <AccountButton onSignIn={onSignIn} />
       {trailing}
@@ -118,6 +121,28 @@ export function HudHeader({ model, onSignIn, trailing }) {
 // Same square as the ThemeToggle beside it.
 const SQUARE =
   "inline-flex size-8 shrink-0 items-center justify-center border border-border text-muted-foreground transition-colors hover:border-foreground/40 hover:text-foreground";
+
+export const GITHUB_URL = "https://github.com/bidah/storyseam";
+
+// The source, open: same square as the toggle beside it, the word on desktop.
+function GithubLink() {
+  return (
+    <a
+      href={GITHUB_URL}
+      target="_blank"
+      rel="noopener noreferrer"
+      aria-label="StorySeam on GitHub"
+      title="StorySeam on GitHub"
+      className={cn(SQUARE, "w-auto gap-1.5 px-2")}
+      data-github
+    >
+      <GithubMono size={15} />
+      <span className="hidden text-[0.72rem] uppercase sm:inline" style={{ fontFamily: MONO, letterSpacing: "0.08em" }}>
+        GitHub
+      </span>
+    </a>
+  );
+}
 
 // An icon, no label: signed out it is the way in; signed in it is the account
 // — the Google avatar when there is one, a person otherwise — with the email

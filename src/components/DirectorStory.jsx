@@ -54,7 +54,7 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle, DialogTrigger } 
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   DEFAULT_DEEP_SPECIALISTS, DEFAULT_FILM_RESOLUTION, DEFAULT_FILM_MUSIC, DEFAULT_FILM_SCORE, DEFAULT_FILM_VOICES, FILM_MUSIC, FILM_DEFAULT_SECONDS, FILM_RESOLUTIONS, FILM_DEPTHS, FILM_STEPS, FILM_STYLES, FILM_VOICES, FILM_WRITERS, OFFERED_FILM_WRITERS, DEFAULT_FILM_WRITER, STORY_FLOW_DEFAULT_SECONDS,
-  STORY_FLOW_STEPS, filmVoicesOf, formatLength, isStoryEngine, quoteFilm, roomEstimate,
+  STORY_FLOW_STEPS, filmVoicesOf, formatLength, isStoryEngine, quoteFilm, roomEstimate, takesVoices,
 } from "@/lib/film-plan";
 import { SPECIALISTS, STAGE_ORDER, isSpecialistId } from "@/lib/specialists";
 import { useVoiceRecording, transcribeAudio, formatDuration } from "@/lib/useVoiceRecording";
@@ -69,6 +69,7 @@ import { HUD, DISPLAY, DISPLAY_FIT, DISPLAY_TRACKING, BODY, MONO } from "@/lib/h
 import { HudHeader, PoweredByFal } from "@/components/HudHeader";
 import { useTheme } from "@/lib/theme";
 import { cn } from "@/lib/utils";
+import { track, trackOnce } from "@/lib/analytics";
 
 // Mirrors FILM_STAGES in worker/src/lib/film-job.js (keys are stable public
 // ids). The job only lists a step once it has STARTED, so the ones still ahead
@@ -170,15 +171,19 @@ export function storeFlow(flow) {
 
 // A Deep Film runs the writers' room after the Script (worker stagesFor).
 const ROOM_STAGE = { key: "room", label: "Writers' room" };
-// A story-engine Film with a Voices pass auditions its cast after the sheets
-// (film-plan.ts › Voices); a job without `voices` — from before — runs none.
+// A Film with a Voices pass auditions its cast after the sheets (film-plan.ts
+// › Voices); a job without `voices` — from before — runs none. A Director
+// Film then voices its dialogue after the Stills, as the beats' target audio.
 const VOICES_STAGE = { key: "voices", label: "Voices" };
+const DIALOGUE_STAGE = { key: "dialogue", label: "Dialogue" };
 export function stagesOf(job) {
   // A Film whose score was switched off has no Score stage (worker stagesFor).
   let base = flowOf(job?.engine).stages.filter((s) => job?.score !== false || s.key !== "score");
   if (filmVoicesOf(job?.voices, job?.engine)) {
     const at = base.findIndex((s) => s.key === "sheets") + 1;
     base = [...base.slice(0, at), VOICES_STAGE, ...base.slice(at)];
+    const stills = isStoryEngine(job?.engine) ? -1 : base.findIndex((s) => s.key === "stills");
+    if (stills >= 0) base = [...base.slice(0, stills + 1), DIALOGUE_STAGE, ...base.slice(stills + 1)];
   }
   if (job?.depth !== "deep") return base;
   const at = base.findIndex((s) => s.key === "script") + 1;
@@ -516,10 +521,10 @@ function readStoredMusic() {
 function storeMusic(music) {
   try { window.localStorage.setItem(MUSIC_KEY, music); } catch { /* private mode: not remembered */ }
 }
-// The Voices pass a story-engine Film runs (film-plan.ts FILM_VOICES): every
-// character auditioned once, on the Film's own video model, Seed Audio or
-// ElevenLabs, and bound as a voice reference by every segment after. Sent only
-// with a story engine — the Director cannot take a voice reference.
+// The Voices pass a Film runs (film-plan.ts FILM_VOICES): every character
+// auditioned once, on a video model, Seed Audio or ElevenLabs. A story engine
+// binds the take as a voice reference in every segment; the Director plays
+// its lines, voiced from the takes, as each beat's target audio.
 const VOICES_KEY = "director-story:voices";
 function readStoredVoices() {
   try {
@@ -573,8 +578,8 @@ function Choice({ on, onClick, children }) {
 function StorySettings({ flow, seconds, onSeconds, resolution, onResolution, score, onScore, music, onMusic, voices, onVoices, style, onStyle, writer, onWriter, disabled }) {
   // Only what film-plan.ts HIDE_EXTRA_MODELS leaves offered; one choice = no row.
   const writers = OFFERED_FILM_WRITERS;
-  // Only a story engine auditions its cast; the Director has no audio input.
-  const storyFlow = isStoryEngine(flow.engine);
+  // Every engine auditions its cast (film-plan.ts takesVoices).
+  const storyFlow = takesVoices(flow.engine);
   const voice = FILM_VOICES.find((x) => x.id === voices) || FILM_VOICES[0];
   const scoreModel = FILM_MUSIC.find((x) => x.id === music) || FILM_MUSIC[0];
   const [open, setOpen] = useState(false);
@@ -687,6 +692,7 @@ function StorySettings({ flow, seconds, onSeconds, resolution, onResolution, sco
   );
   return (
     <PickerShell
+      name="settings"
       open={open}
       onOpenChange={setOpen}
       trigger={trigger}
@@ -703,8 +709,13 @@ function StorySettings({ flow, seconds, onSeconds, resolution, onResolution, sco
 // The input's pickers open as a popover beside their button on desktop and
 // take the whole screen on a phone (a popover there ran off the viewport's
 // edge), titled, with a Done button at the foot.
-function PickerShell({ open, onOpenChange, trigger, title, description, panelProps, popoverClassName, align = "end", children }) {
+function PickerShell({ name, open, onOpenChange: setOpen, trigger, title, description, panelProps, popoverClassName, align = "end", children }) {
   const narrow = useNarrow();
+  // Every picker that opens is a look at the Film's options.
+  const onOpenChange = (o) => {
+    if (o && !open) track("film_options_opened", { picker: name });
+    setOpen(o);
+  };
   if (narrow) {
     return (
       <Dialog open={open} onOpenChange={onOpenChange}>
@@ -938,6 +949,7 @@ function DepthPicker({ depth, onDepth, room, onRoom, disabled }) {
   return (
     <>
       <PickerShell
+        name="writer"
         open={open}
         onOpenChange={setOpen}
         trigger={
@@ -1070,6 +1082,7 @@ function PriceQuote({ quote, disabled }) {
   );
   return (
     <PickerShell
+      name="cost"
       open={open}
       onOpenChange={setOpen}
       trigger={trigger}
@@ -1109,6 +1122,7 @@ function GenModePicker({ flow, onFlow, disabled }) {
   );
   return (
     <PickerShell
+      name="gen_mode"
       open={open}
       onOpenChange={setOpen}
       trigger={trigger}
@@ -1179,45 +1193,56 @@ export function SimpleView({ flow = FLOWS.director, onFlow, onSubmit, submitting
   }, [flow]);
   const [style, setStyle] = useState(readStoredStyle);
   const [resolution, setResolution] = useState(readStoredResolution);
+  // Every option the author changes in the box, as one event.
+  const changed = (option, value) => track("film_option_changed", { option, value, engine: flow.engine || "director" });
   const chooseResolution = (r) => {
+    changed("resolution", r);
     setResolution(r);
     storeResolution(r);
   };
   const [score, setScore] = useState(readStoredScore);
   const chooseScore = (on) => {
+    changed("score", on);
     setScore(on);
     storeScore(on);
   };
   const [music, setMusic] = useState(readStoredMusic);
   const chooseMusic = (id) => {
+    changed("music", id);
     setMusic(id);
     storeMusic(id);
   };
   const [voices, setVoices] = useState(readStoredVoices);
   const chooseVoices = (id) => {
+    changed("voices", id);
     setVoices(id);
     storeVoices(id);
   };
   const [writer, setWriter] = useState(readStoredWriter);
   const chooseWriter = (id) => {
+    changed("writer", id);
     setWriter(id);
     storeWriter(id);
   };
   const [depth, setDepth] = useState(readStoredDepth);
   const chooseDepth = (id) => {
+    changed("depth", id);
     setDepth(id);
     storeDepth(id);
   };
   const [room, setRoom] = useState(readStoredRoom);
   const chooseRoom = (ids) => {
+    changed("specialists", ids?.length ?? 0);
     setRoom(ids);
     storeRoom(ids);
   };
   const chooseStyle = (id) => {
+    changed("style", id || null);
     setStyle(id);
     storeStyle(id);
   };
   const chooseSeconds = (s) => {
+    changed("seconds", s);
     setSeconds(s);
     setChosen(true);
     storeLength(flow, s);
@@ -1230,6 +1255,7 @@ export function SimpleView({ flow = FLOWS.director, onFlow, onSubmit, submitting
   const [voiceNote, setVoiceNote] = useState(null);
 
   const startRecording = async () => {
+    track("prompt_dictation_started");
     setVoiceNote(null);
     try { await rec.start(); } catch (e) { setVoiceNote(e?.message || "Couldn't start recording."); }
   };
@@ -1270,12 +1296,26 @@ export function SimpleView({ flow = FLOWS.director, onFlow, onSubmit, submitting
       resolution: resolution !== DEFAULT_FILM_RESOLUTION ? resolution : undefined,
       score: score ? undefined : false,
       music: score ? music : undefined,
-      // The Voices pass, for a story engine only (the Director ignores it).
-      voices: isStoryEngine(flow.engine) ? voices : undefined,
+      // The Voices pass — every engine runs it now (film-plan.ts takesVoices).
+      voices: takesVoices(flow.engine) ? voices : undefined,
       writer,
       depth: depth === "deep" ? depth : undefined,
       specialists: depth === "deep" ? room : undefined,
     };
+    track("film_generate_clicked", {
+      engine: flow.engine || "director",
+      prompt_length: text.length,
+      seconds: opts.seconds ?? null,
+      resolution,
+      style: opts.style ?? null,
+      score: score !== false,
+      music: opts.music ?? null,
+      voices: opts.voices ?? null,
+      writer: writer ?? null,
+      depth: depth || "fast",
+      specialists: depth === "deep" ? room?.length ?? 0 : 0,
+      quoted_usd: typeof quote?.total === "number" ? quote.total : null,
+    });
     if (await onSubmit(text, opts)) setPrompt("");
   };
 
@@ -1289,11 +1329,11 @@ export function SimpleView({ flow = FLOWS.director, onFlow, onSubmit, submitting
     resolution,
     score,
     music,
-    voices: isStoryEngine(flow.engine) ? voices : undefined,
+    voices: takesVoices(flow.engine) ? voices : undefined,
   });
   const options = listening ? null : (
     <>
-      {onFlow && <GenModePicker flow={flow} onFlow={onFlow} disabled={submitting} />}
+      {onFlow && <GenModePicker flow={flow} onFlow={(f) => { changed("gen_mode", f.engine || "director"); onFlow(f); }} disabled={submitting} />}
       <DepthPicker depth={depth} onDepth={chooseDepth} room={room} onRoom={chooseRoom} disabled={submitting} />
       <StorySettings
         flow={flow} seconds={seconds} onSeconds={chooseSeconds} resolution={resolution} onResolution={chooseResolution}
@@ -1353,6 +1393,7 @@ export function SimpleView({ flow = FLOWS.director, onFlow, onSubmit, submitting
               onKeyDown={(e) => {
                 if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) submit(e);
               }}
+              onFocus={() => trackOnce("prompt_input_focused", { engine: flow.engine || "director", has_draft: Boolean(prompt.trim()) })}
               placeholder="Tell the story you want to bring to life"
               aria-label="Story premise"
               disabled={submitting}
@@ -1510,8 +1551,11 @@ export function SignInDialog({ flow = FLOWS.director, open, onOpenChange, withPr
   // have been let in and need the sign-in button. Reset on OPEN rather than on
   // close, so the thank-you doesn't flip back to the form mid close animation.
   useEffect(() => { if (open) setJoined(null); }, [open]);
+  // Which door opened it: a sent premise, or the header / studio card.
+  useEffect(() => { if (open) track("sign_in_dialog_shown", { source: withPremise ? "prompt" : "header" }); }, [open, withPremise]);
   const callbackURL = withPremise ? `/?${RESUME_PARAM}=1` : "/";
   const signIn = async () => {
+    track("sign_in_clicked", { provider: "google", source: withPremise ? "prompt" : "header" });
     setBusy(true);
     setErr(null);
     try {
@@ -1548,7 +1592,7 @@ export function SignInDialog({ flow = FLOWS.director, open, onOpenChange, withPr
                 ? "We're opening spots a few at a time. Leave your email and we'll let you know — or sign in if you already have access, and your premise starts the moment you're back."
                 : "We're opening spots a few at a time. Leave your email and we'll let you know when yours opens."}
             </DialogDescription>
-            <WaitlistPanel className="max-w-none" onSignIn={signIn} signingIn={busy} signInError={err} onJoined={setJoined} />
+            <WaitlistPanel className="max-w-none" onSignIn={signIn} signingIn={busy} signInError={err} onJoined={(email) => { track("waitlist_joined", { source: withPremise ? "prompt" : "header" }); setJoined(email); }} />
           </>
         )}
       </DialogContent>
@@ -1607,6 +1651,7 @@ export function StudioAgentCard({ signedIn, onSignIn, onCreate }) {
   const [err, setErr] = useState(null);
   const submit = async (e) => {
     e?.preventDefault();
+    track("studio_agent_launch_clicked", { signed_in: signedIn, has_name: Boolean(name.trim()) });
     if (!signedIn) { onSignIn?.(); return; }
     const trimmed = name.trim();
     if (!trimmed) { setErr("Name the project first."); return; }
@@ -1642,6 +1687,7 @@ export function StudioAgentCard({ signedIn, onSignIn, onCreate }) {
           <input
             value={name}
             onChange={(e) => { setName(e.target.value); if (err) setErr(null); }}
+            onFocus={() => trackOnce("studio_agent_input_focused", { signed_in: signedIn })}
             placeholder="New project name"
             aria-label="New project name"
             required={signedIn}
@@ -1919,6 +1965,7 @@ export function FilmActions({ job, projectId, children = null }) {
   };
   // Opening the popover shares it: the author asked for a link, so there is one.
   const onOpen = async (open) => {
+    if (open) track("film_share_opened", { film_id: job.id });
     if (!open || link) return;
     setCopied(false);
     await run("POST");
@@ -1927,6 +1974,7 @@ export function FilmActions({ job, projectId, children = null }) {
     if (!url) return;
     try {
       await navigator.clipboard.writeText(url);
+      track("film_share_link_copied", { film_id: job.id });
       setCopied(true);
       setTimeout(() => setCopied(false), 1600);
     } catch {
@@ -2023,6 +2071,7 @@ export function FilmActions({ job, projectId, children = null }) {
       <a
         href={filmMediaUrl(job.film.url, projectId || job.projectId)}
         download={filmFileName(job.film)}
+        onClick={() => track("film_downloaded", { film_id: job.id, engine: job.engine || "director" })}
         className={FILL_ACTION}
         style={{ fontFamily: MONO, letterSpacing: "0.08em" }}
         data-download
@@ -2061,6 +2110,32 @@ function VoicesCard({ result, projectId }) {
         ))}
       </ul>
     </div>
+  );
+}
+
+// A Director Film's Dialogue step: each clip the Director plays as a beat's
+// target audio — when it starts, who speaks, the lines, and a player.
+function DialogueCard({ result, projectId }) {
+  const media = useMediaUrl(projectId);
+  const clips = (result?.clips || []).filter((c) => c?.url);
+  if (!clips.length) return null;
+  return (
+    <ul className="mt-2 space-y-3" data-dialogue>
+      {clips.map((c) => (
+        <li key={c.offset} className="space-y-1" data-dialogue-clip={c.offset}>
+          <div className="flex items-center gap-2">
+            <AudioLines size={14} className="shrink-0 text-[var(--br-secondary)]" aria-hidden />
+            <span className="min-w-0 flex-1 text-xs text-[var(--br-primary)]/90">
+              {formatLength(c.offset)} · {(c.speakers || []).join(", ")}
+            </span>
+            <audio controls preload="none" src={media(c.url)} className="h-8 w-40 shrink-0" aria-label={`Dialogue at ${formatLength(c.offset)}`} />
+          </div>
+          <p className="text-[0.7rem] text-[var(--br-secondary)]">
+            {(c.lines || []).map((l) => `${l.speaker}: ${l.text}`).join(" / ")}
+          </p>
+        </li>
+      ))}
+    </ul>
   );
 }
 
@@ -2341,6 +2416,10 @@ function Lightbox({ items, at, onAt, projectId }) {
     return () => window.removeEventListener("keydown", onKey);
   }, [open, n]); // eslint-disable-line react-hooks/exhaustive-deps
   const item = open ? items[at] : null;
+  // A look at a card's picture (a character, a place, a frame) — once per opening.
+  useEffect(() => {
+    if (open) track("film_media_previewed", { kind: items[at]?.kind || null, count: n });
+  }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
   const arrow = "absolute top-1/2 z-10 hidden size-10 -translate-y-1/2 items-center justify-center border border-[var(--br-secondary)]/70 bg-[var(--br-surface)] text-[var(--br-primary)] transition-colors hover:border-[var(--br-primary)] sm:flex";
   return (
     <Dialog open={open} onOpenChange={(o) => { if (!o) onAt(null); }}>
@@ -2691,6 +2770,8 @@ function StepResultBody({ step, steps, projectId }) {
     }
     case "voices":
       return <VoicesCard result={r} projectId={projectId} />;
+    case "dialogue":
+      return <DialogueCard result={r} projectId={projectId} />;
     case "shotlist":
       if (Array.isArray(r.segments) && r.segments.length) return <SegmentShots result={r} steps={steps} projectId={projectId} />;
       // fallthrough — a Director Film's shot list is counted, not segmented.
@@ -2783,6 +2864,10 @@ function StepBody({ step, onOpen, icon, children }) {
 }
 
 function StepResultDialog({ step, steps, projectId, onClose }) {
+  // Opening a done step's card: what the World, the sheets, the script… came back with.
+  useEffect(() => {
+    if (step) track("film_step_opened", { step: step.key, label: step.label });
+  }, [step?.key]); // eslint-disable-line react-hooks/exhaustive-deps
   return (
     <Dialog open={!!step} onOpenChange={(o) => { if (!o) onClose(); }}>
       <DialogContent
@@ -2872,7 +2957,7 @@ export function ProcessSteps({ job, projectId = null, source = null, className, 
     <FilmMediaContext.Provider value={source}>
       <button
         type="button"
-        onClick={() => setOpen(true)}
+        onClick={() => { track("film_process_steps_opened", { film_id: job.id }); setOpen(true); }}
         className={className || ROW_ACTION}
         style={{ fontFamily: MONO, letterSpacing: "0.08em", ...style }}
         data-steps-open
@@ -2938,7 +3023,7 @@ function chosenOptions(job, seconds) {
   const writer = FILM_WRITERS.find((w) => w.id === job.writer) || (job.writer ? null : { label: "Studio default" });
   const deep = job.depth === "deep";
   const room = deep ? (job.specialists?.length ? job.specialists : DEFAULT_DEEP_SPECIALISTS) : [];
-  const voices = story ? FILM_VOICES.find((v) => v.id === filmVoicesOf(job.voices, job.engine)) : null;
+  const voices = FILM_VOICES.find((v) => v.id === filmVoicesOf(job.voices, job.engine)) || null;
   return [
     ["Model", flow.label],
     ["Length", seconds ? formatLength(Math.round(seconds)) : null],
@@ -2946,7 +3031,7 @@ function chosenOptions(job, seconds) {
     ["Look", look?.label || null],
     ["Writer", writer?.label || null],
     ["Story", deep ? `Deep · ${room.length} ${room.length === 1 ? "pass" : "passes"}` : "Fast"],
-    ["Voices", story ? voices?.label || "None" : null],
+    ["Voices", voices?.label || (story ? "None" : null)],
     ["Score", job.score === false ? "Off" : FILM_MUSIC.find((m) => m.id === job.music)?.label || "ElevenLabs Music"],
   ];
 }
@@ -3058,7 +3143,7 @@ export function FilmDetails({ job }) {
                 <span className="truncate" title={v}>{v}</span>
                 <button
                   type="button"
-                  onClick={() => setCostOpen(true)}
+                  onClick={() => { track("film_cost_opened", { film_id: job.id }); setCostOpen(true); }}
                   aria-label="See what each step cost"
                   className="flex size-6 shrink-0 items-center justify-center border border-[var(--br-secondary)]/40 text-[var(--br-secondary)] transition-colors hover:border-[var(--br-primary)]/60 hover:text-[var(--br-primary)] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--br-primary)]/60"
                   data-cost-open
@@ -3210,6 +3295,7 @@ export function StoryView({ job, projectId = null, onRetry, retrying = false, re
                   {projectId || job.projectId ? (
                     <Link
                       to={studioPath(projectId || job.projectId, "")}
+                      onClick={() => track("film_continue_in_studio_clicked", { film_id: job.id, engine: job.engine || "director" })}
                       className={FILL_ACTION}
                       style={{ fontFamily: MONO, letterSpacing: "0.08em" }}
                       data-continue
@@ -3229,6 +3315,8 @@ export function StoryView({ job, projectId = null, onRetry, retrying = false, re
                 controls
                 playsInline
                 preload="metadata"
+                onPlay={(e) => track("film_result_played", { film_id: job.id, engine: job.engine || "director", seconds: Math.round(e.currentTarget.duration) || null, at: Math.round(e.currentTarget.currentTime) })}
+                onEnded={() => track("film_result_completed", { film_id: job.id, engine: job.engine || "director" })}
                 className={cn("block h-auto max-h-[70dvh] w-auto max-w-full", FILM_W)}
                 data-film
               />
