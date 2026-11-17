@@ -1481,6 +1481,17 @@ export function SimpleView({ flow = FLOWS.director, onFlow, onSubmit, submitting
         ) : null}
       </main>
       </div>
+      <footer className="relative z-10 pb-6 text-center text-sm text-[var(--br-secondary)]" data-credit>
+        Created by{" "}
+        <a
+          href="https://rofigueroa.dev"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="underline underline-offset-4 transition-colors hover:text-[var(--br-primary)]"
+        >
+          Ro Figueroa
+        </a>
+      </footer>
     </Page>
   );
 }
