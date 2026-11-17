@@ -1,5 +1,5 @@
 <p align="center">
-  <a href="https://cal.com/rodrigo-figueroa-vmbwee/30min"><img src="docs/readme/book-a-call-v2.png" alt="Let's work together — for any related work, reach me and book a call" width="100%"></a>
+  <a href="https://cal.com/rodrigo-figueroa-vmbwee/30min"><img src="docs/readme/book-a-call-v3.png" alt="Let's work together — for any related work, reach me and book a call" width="100%"></a>
 </p>
 <p align="center">
   <a href="https://rofigueroa.dev"><img src="docs/readme/created-by.png" alt="Created by Ro Figueroa — rofigueroa.dev" width="100%"></a>
