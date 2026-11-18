@@ -18,7 +18,7 @@ says which values live in which file. That ownership table is the rule you will 
 Run this in the parent directory of the new story:
 
 ```bash
-npx -y https://storyseam.app/spec/storyseam.tgz init <folder> --title "<working title>" --agent <claude|codex|cursor> --yes
+npx -y https://storyseam.app/spec/storyseam-0.2.0.tgz init <folder> --title "<working title>" --agent <claude|codex|cursor> --yes
 ```
 
 That one tarball is the whole engine. It installs the pipeline skills, the 21 script
@@ -35,7 +35,7 @@ so the story is self-contained afterwards. Pick `--agent` for the tool you are r
 Optional flags: `--seconds 120` (runtime; each 30s block is one paid video run),
 `--aspect 16:9|9:16`, `--provider higgsfield|atlas|fal`, and `--video <id,id>` to offer
 the author more than one video model (`--video seedance_2_5,seedance_2_0`).
-`npx -y https://storyseam.app/spec/storyseam.tgz list` shows the models the registry knows.
+`npx -y https://storyseam.app/spec/storyseam-0.2.0.tgz list` shows the models the registry knows.
 
 If you cannot run `npx`, the same files are listed one by one at
 `https://storyseam.app/spec/skills.json`. Each entry has a raw URL and the path it belongs
@@ -68,7 +68,7 @@ Code, `/start-story` does this whole step for you.
 ## 4. Check, then hand over
 
 ```bash
-cd <folder> && npx -y https://storyseam.app/spec/storyseam.tgz check
+cd <folder> && npx -y https://storyseam.app/spec/storyseam-0.2.0.tgz check
 ```
 
 Report the tree, the config values (call out loud that video is 480p and stills are 2k),

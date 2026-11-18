@@ -13,7 +13,9 @@ architecture and how to run it.
 and **`/spec` is the `storyseam.md` spec** (`routes/spec.jsx`) — the agent prompt
 and every skill are static files under `/spec/*`, vendored from the storyseam
 repo (`../storyseam`) into `public/spec/` by **`npm run spec:sync`**; never edit
-them here. A `/` that arrives WITH a query (`?resume=1`, `?billing=…`, `?mode=…`)
+them here. The engine tarball's url carries its version (`storyseam-<v>.tgz`) because npx
+caches a url by the url: **bump `version` in the storyseam repo's `package.json` before
+syncing a change**, or every author who ran it once keeps the old engine. A `/` that arrives WITH a query (`?resume=1`, `?billing=…`, `?mode=…`)
 is forwarded to `/studio` whole.
 
 **`/studio` is the product** (`HOME_PATH`): the prompt box (a prompt in, a Film back),

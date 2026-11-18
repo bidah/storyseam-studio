@@ -15,13 +15,14 @@ import { ThemeToggle } from "@/components/ThemeToggle";
 import { GITHUB_URL, Label } from "@/components/HudHeader";
 import { DISPLAY, DISPLAY_TRACKING, MONO, hudPage } from "@/lib/hudTheme";
 import { HOME_PATH } from "@/lib/home";
+import { SPEC_VERSION } from "@/lib/spec-version";
 import { cn } from "@/lib/utils";
 
 export const SITE = "https://storyseam.app";
 export const SPEC_URL = `${SITE}/spec/storyseam.md`;
 export const AGENT_URL = `${SITE}/spec/agent.md`;
 export const SKILLS_URL = `${SITE}/spec/skills.json`;
-export const TARBALL_URL = `${SITE}/spec/storyseam.tgz`;
+export const TARBALL_URL = `${SITE}/spec/storyseam-${SPEC_VERSION}.tgz`;
 export const INSTALL = `npx -y ${TARBALL_URL} init my-film`;
 export const AGENT_ONE_LINER = `Read ${AGENT_URL} and set up a Storyseam story in ./my-film.`;
 
