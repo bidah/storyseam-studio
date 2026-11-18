@@ -66,6 +66,7 @@ the others instead of copying them:
 | the script | `script/script.md` | The pinned draft is the one true script. |
 | the shot list | `shotlist/shotlist.json` | It is the seam `/cast` and `/render` read. |
 | render progress, job ids, credits spent | `.storyseam/state.json` | It changes every run. |
+| which sheets and plates the film needs, and how each is made | `shotlist/assets.json` | Derived from the shot list; see §11. |
 | the stage the story is in | **the tree itself** | Derived, never stored — see §3. |
 
 When a value appears in both, the owning file wins and the copy is a bug.
@@ -327,6 +328,61 @@ file.**
 Tool names depend on the name the server was installed under. Higgsfield installed as
 `higgsfield` exposes `mcp__higgsfield__*`, and the claude.ai connector exposes
 `mcp__claude_ai_higgsfield__*`. A skill matches the server, not one prefix.
+
+## 11. The asset sheet
+
+The shot list decides which stills the film needs, and those stills are the first thing that
+costs money. So the shot-list pass ends by writing them down in one file the agent works
+through and the author answers: `shotlist/assets.json`.
+
+```json
+{
+  "title": "Nothing To Do",
+  "assets": [
+    {
+      "kind": "character",
+      "slug": "theo",
+      "name": "Theo",
+      "path": "assets/images/characters/theo.png",
+      "refs_dir": "assets/refs/characters/theo/",
+      "needed_by": ["block_01", "block_02", "block_03", "block_04"],
+      "source": "refs",
+      "refs": ["assets/refs/characters/theo/photo.jpg"]
+    },
+    {
+      "kind": "location",
+      "slug": "theo-living-room",
+      "path": "assets/images/locations/theo-living-room.png",
+      "refs_dir": "assets/refs/locations/theo-living-room/",
+      "needed_by": ["block_01", "block_02", "block_03"],
+      "source": "generate",
+      "refs": []
+    }
+  ]
+}
+```
+
+There is one entry per character sheet, location plate and prop plate. `needed_by` lists the
+blocks that cite it, and `path` is where `/cast` writes it. `source` says how it is made:
+
+| `source` | Meaning |
+| --- | --- |
+| `ask` | The author has not answered. `/cast` will not make it. |
+| `refs` | Made from the author's own reference images in `refs`: a photo of the actor, the real room, the actual prop. The style prompt still applies, so the sheet matches the film's look. |
+| `generate` | Made from the World's description alone (`world/*.md`). |
+
+**The reference pass.** After `/shotlist`, the agent runs `npx storyseam assets`, which writes
+the sheet from the shot list and keeps every answer already given. It then asks the author
+**once, for every still at the same time**: do you have reference images for any of these, or
+should they be generated? The author drops images into an asset's `refs_dir`, or attaches them
+in the chat and the agent saves them there, or says "generate". Files found in a `refs_dir` mark
+that asset `refs` on the next run. The agent records every answer, and does not ask again about
+an asset that has one.
+
+`assets/refs/` is human-filled, like `assets/audio/music/`: Storyseam reads it and never writes
+to it, except to save images the author attached on purpose. `storyseam check` validates the
+sheet against `schema/assets.schema.json`, and reports an asset marked `refs` with no images or
+a ref that is not on disk.
 
 ## Template
 

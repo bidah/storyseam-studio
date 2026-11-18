@@ -169,3 +169,18 @@ references now, while it is free. When a block's recommendation differs from
 `config.video.model`, show the author the line with its reason and, only on a yes, set that
 block's `model`. Never mix models silently. One model across the film keeps the look.
 
+## Then — the asset sheet and the reference pass
+
+Run `npx storyseam assets`. It writes `shotlist/assets.json`: every character sheet, location
+plate and prop plate the blocks cite, which blocks need each, and how each will be made
+(`docs/spec.md` §11). Then ask the author ONE question that covers every still with
+`source: "ask"`, grouped by kind, with the number of blocks each is in:
+
+> These stills need making before anything renders. Do you have reference images for any of
+> them (a photo of the person, the real place, the actual object)? Drop them in the folder
+> shown, or attach them here. Anything without references I'll generate from the World.
+
+Save attached images into that asset's `refs_dir`, then run `npx storyseam assets` again.
+Set `source` to `"generate"` for the ones the author wants generated. Do not ask again about
+an asset that already has an answer, and generate nothing here: making the stills is `/cast`.
+

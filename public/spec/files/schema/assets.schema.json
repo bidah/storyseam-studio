@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://storyseam.dev/schema/assets.schema.json",
+  "title": "Storyseam asset sheet (shotlist/assets.json)",
+  "description": "Every still the film needs, which blocks need it, and how it is made. Written by /shotlist through `storyseam assets`, answered by the author, read by /cast. See docs/spec.md section 11.",
+  "type": "object",
+  "required": ["assets"],
+  "additionalProperties": true,
+  "properties": {
+    "title": { "type": "string" },
+    "assets": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["kind", "slug", "path", "needed_by", "source", "refs"],
+        "additionalProperties": true,
+        "properties": {
+          "kind": { "type": "string", "enum": ["character", "location", "prop"] },
+          "slug": { "type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$" },
+          "name": { "type": "string" },
+          "path": { "type": "string", "pattern": "^assets/images/(characters|locations|props)/[a-z0-9-]+\\.png$" },
+          "refs_dir": { "type": "string" },
+          "needed_by": { "type": "array", "minItems": 1, "items": { "type": "string", "pattern": "^block_[0-9]{2,}$" } },
+          "source": {
+            "type": "string",
+            "enum": ["ask", "refs", "generate"],
+            "description": "ask = the author has not answered; refs = made from the author's reference images; generate = made from the World's description alone."
+          },
+          "refs": { "type": "array", "items": { "type": "string", "pattern": "^assets/refs/" } },
+          "notes": { "type": "string" }
+        }
+      }
+    }
+  }
+}

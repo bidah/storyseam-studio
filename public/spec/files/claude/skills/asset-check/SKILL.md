@@ -34,6 +34,15 @@ Read `config.providers` first and verify access the way the `providers` skill sa
 the image and video providers differ, stills are registered with one and voices with the
 other.
 
+## Step 0 — the asset sheet
+
+Read `shotlist/assets.json` (`docs/spec.md` §11); run `npx storyseam assets` first if it is
+missing or older than `shotlist.json`. It says, for every still, whether to make it from the
+author's reference images (`source: "refs"`, files in `refs`) or from the World's description
+(`"generate"`). **An asset still at `"ask"` is not yours to decide:** ask the author the
+reference question for all of them at once (the `shotlist` skill's wording), and make nothing
+for those until they answer.
+
 ## Step 1 — the audit (free, do it first, always)
 
 `bin/asset-audit.sh` reads `shotlist/shotlist.json` and builds the union of everything it
@@ -55,7 +64,11 @@ credits, say the total first.
 ## Step 2 — character sheets
 
 One image per character, at `assets/images/characters/<slug>.png`, written through the
-image director. This single image is the identity every block cites, so the director's
+image director. When the asset sheet says `source: "refs"`, pass its `refs` as the image
+inputs and tell the director they are the identity to keep: the face, the build, the real
+place or object. The style prompt still applies, so a photo becomes a sheet in the film's
+look rather than a photo. With `"generate"`, work from `world/*.md` alone. Location and prop
+plates follow the same rule. This single image is the identity every block cites, so the director's
 rules are not optional: full figure plus a clear face, plain background, costume locked,
 portrait aspect. Append `prompts/image_style_prompt.txt` verbatim — it is what makes the
 characters and the locations look like the same film.
