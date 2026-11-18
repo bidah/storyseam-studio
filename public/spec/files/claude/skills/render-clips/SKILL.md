@@ -36,7 +36,7 @@ film gets rendered against a role the model ignores.
 
 ## The invariants
 
-1. **Video is Seedance 2.5 at 480p. Always 480p.** If someone asks for higher, quote the
+1. **Video is rendered at 480p, on the block's model. Always 480p.** If someone asks for higher, quote the
    multiplier from the adapter and leave it at 480p.
 2. **Every video prompt ends with an audio line that says no music.** The clip should come
    back with dialogue, room tone and Foley — and nothing else.
