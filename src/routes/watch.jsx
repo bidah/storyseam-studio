@@ -18,6 +18,7 @@ import { formatLength } from "@/lib/film-plan";
 import { PoweredByFal } from "@/components/HudHeader";
 import { DISPLAY, DISPLAY_TRACKING, MONO } from "@/lib/hudTheme";
 import { cn } from "@/lib/utils";
+import { HOME_PATH } from "@/lib/home";
 
 const ACTION =
   "flex items-center gap-1.5 border border-[var(--br-secondary)]/40 px-3 py-1.5 text-[0.72rem] uppercase text-[var(--br-primary)] transition-colors hover:border-[var(--br-primary)]";
@@ -54,7 +55,7 @@ export function Component() {
       <Page className="items-center justify-center px-4">
         <main className="flex max-w-md flex-col items-center gap-5 text-center" data-not-found>
           <p className="text-base">This share link is no longer available.</p>
-          <Link to="/" className={ACTION} style={{ fontFamily: MONO, letterSpacing: "0.08em" }}>
+          <Link to={HOME_PATH} className={ACTION} style={{ fontFamily: MONO, letterSpacing: "0.08em" }}>
             Make your own story
           </Link>
         </main>
@@ -96,14 +97,14 @@ function WatchFilm({ film, token }) {
     <div className="flex h-dvh flex-col" data-watch>
       <header className="flex shrink-0 items-center gap-3 border-b border-[var(--br-secondary)]/25 px-4 py-3 sm:px-8">
         <Link
-          to="/"
+          to={HOME_PATH}
           className="text-[1.35rem] leading-none"
           style={{ fontFamily: DISPLAY, fontWeight: 600, letterSpacing: DISPLAY_TRACKING }}
         >
           STORY<span style={{ fontWeight: 800 }}>SEAM</span>
         </Link>
         <PoweredByFal className="ml-auto" />
-        <Link to="/" className={cn(ACTION, "hidden sm:flex")} style={{ fontFamily: MONO, letterSpacing: "0.08em" }} data-make-your-own>
+        <Link to={HOME_PATH} className={cn(ACTION, "hidden sm:flex")} style={{ fontFamily: MONO, letterSpacing: "0.08em" }} data-make-your-own>
           Made with StorySeam — make your own <ArrowRight size={12} aria-hidden />
         </Link>
         <Link to="/login" className={cn(ACTION, "max-sm:ml-auto")} style={{ fontFamily: MONO, letterSpacing: "0.08em" }} data-login>

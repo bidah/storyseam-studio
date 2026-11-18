@@ -25,7 +25,7 @@ const WORKER_ORIGIN = process.env.SHOT_STUDIO_WORKER || DEFAULT_WORKER_ORIGIN;
 const DEV_URL =
   process.env.SHOT_STUDIO_DEV_URL ||
   (process.argv.includes("--dev") ? "http://localhost:3333" : null);
-const APP_URL = DEV_URL || APP_ORIGIN + "/";
+const APP_URL = DEV_URL || APP_ORIGIN + "/studio";
 // The Vite build: bundled as extraResources in the packaged app; the repo's
 // dist/ when running from the checkout (`npm run build` first).
 const DIST_DIR = app.isPackaged

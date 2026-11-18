@@ -1,14 +1,17 @@
 // Where a signed-in author lands, and how the studio shell is reached.
 //
-// The product IS the text-to-story page: a prompt in, a Film back (`/`, with
-// the fal H3 Director / Seedance 2.5 Gen mode). The studio (header, tabs,
+// The site root `/` is the open-source StorySeam front page (routes/home.jsx),
+// and `/spec` is the storyseam.md spec (routes/spec.jsx). The PRODUCT is the
+// Studio's text-to-story page: a prompt in, a Film back (`/studio`, with the
+// fal H3 Director / Seedance 2.5 Gen mode) — HOME_PATH, where every "home" in
+// the studio goes. The studio (header, tabs,
 // agent panel — RootLayout) is reached ONLY through a Film's project:
 // `/p/:projectId/<view>` (`studioPath`). The project is in the URL, so a
 // reload, a shared link or a tab switch lands on the same project's studio —
 // the URL is the state. Every BARE studio path (`/world`, `/editor`, …) still
 // exists so old links and the agent's `navigate` keep working: it redirects to
 // the current project's `/p/...` url when one is known, else home.
-export const HOME_PATH = "/";
+export const HOME_PATH = "/studio";
 export const STUDIO_HIDDEN = true;
 
 /** The default landing after sign-in, when no `?next=` names one. */

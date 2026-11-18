@@ -11,6 +11,7 @@ import { HudHeader } from "@/components/HudHeader";
 import { SubscriptionPanel } from "@/components/SubscriptionPanel";
 import { HUD, BODY } from "@/lib/hudTheme";
 import { useT } from "@/lib/i18n";
+import { HOME_PATH } from "@/lib/home";
 
 export function Component() {
   const t = useT();
@@ -27,7 +28,7 @@ export function Component() {
         <HudHeader />
       </div>
       <div className="mx-auto w-full max-w-3xl space-y-4 py-8">
-        <Link to="/" className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground">
+        <Link to={HOME_PATH} className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground">
           <ArrowLeft size={14} /> {t("Back")}
         </Link>
         <div>

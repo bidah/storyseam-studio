@@ -32,7 +32,8 @@
     "plugins:sync": "node scripts/sync-plugins.mjs",
     "series:sync": "node scripts/sync-series.mjs",
     "auto:sync": "node scripts/sync-auto-prompts.mjs",
-    "guards": "node scripts/run-guards.mjs"
+    "guards": "node scripts/run-guards.mjs",
+    "spec:sync": "node scripts/spec-sync.mjs"
   },
   "dependencies": {
     "@daytona/sdk": "^0.195.0",

@@ -1,0 +1,187 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://storyseam.dev/schema/shotlist.schema.json",
+  "title": "Storyseam shot list (shotlist/shotlist.json)",
+  "description": "The contract between the script and the renders. Written by /shotlist, read by /cast and /render. Every name in characters/voices is a canonical name from world/characters.md; location and props are slugs.",
+  "type": "object",
+  "required": [
+    "title",
+    "aspect_ratio",
+    "block_seconds",
+    "blocks"
+  ],
+  "additionalProperties": true,
+  "properties": {
+    "title": {
+      "type": "string",
+      "minLength": 1
+    },
+    "aspect_ratio": {
+      "type": "string",
+      "enum": [
+        "16:9",
+        "9:16"
+      ]
+    },
+    "block_seconds": {
+      "type": "integer",
+      "minimum": 4,
+      "maximum": 30
+    },
+    "blocks": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "location",
+          "dur",
+          "characters",
+          "voices",
+          "shots",
+          "prompt",
+          "final_frame",
+          "start_from_previous_last_frame"
+        ],
+        "additionalProperties": true,
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^block_[0-9]{2,}$"
+          },
+          "scene": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "location": {
+            "type": "string",
+            "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"
+          },
+          "dur": {
+            "type": "number",
+            "minimum": 4,
+            "maximum": 30
+          },
+          "characters": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "voices": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "props": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"
+            }
+          },
+          "video_refs": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "shots": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "required": [
+                "t",
+                "camera",
+                "action"
+              ],
+              "properties": {
+                "t": {
+                  "type": "string",
+                  "pattern": "^[0-9]+-[0-9]+$"
+                },
+                "camera": {
+                  "type": "string"
+                },
+                "action": {
+                  "type": "string"
+                },
+                "dialogue": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "prompt": {
+            "type": "string",
+            "minLength": 1
+          },
+          "final_frame": {
+            "type": "string",
+            "minLength": 1
+          },
+          "start_from_previous_last_frame": {
+            "type": "boolean"
+          },
+          "anchor_prose": {
+            "type": "string"
+          },
+          "references": {
+            "type": "array",
+            "description": "The ordered reference list: the order the director numbered @Image 1..K in the prompt, and the order /render passes them to the provider. Anchor first on a chained block, then character sheets, location plate, prop plates, then voice/video references. Optional for shot lists written before this field existed.",
+            "items": {
+              "type": "object",
+              "required": [
+                "kind",
+                "path"
+              ],
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "enum": [
+                    "anchor",
+                    "character",
+                    "location",
+                    "prop",
+                    "voice",
+                    "video"
+                  ]
+                },
+                "path": {
+                  "type": "string",
+                  "pattern": "^(assets|renders)/.+$"
+                },
+                "label": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "progress": {
+      "type": "object",
+      "properties": {
+        "through_scene": {
+          "type": "integer"
+        },
+        "through_block": {
+          "type": "string"
+        },
+        "note": {
+          "type": "string"
+        },
+        "complete": {
+          "type": "boolean"
+        }
+      }
+    }
+  }
+}

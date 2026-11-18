@@ -36,7 +36,7 @@ import { PluginsProvider, usePlugins } from "@/components/PluginsProvider";
 import PluginGate from "@/components/PluginGate";
 import { UseMcpDialog } from "@/components/UseMcpModal";
 import { headerTabs, blockingPlugin, SHOW_PLUGIN_MARKETPLACE } from "@/lib/plugins";
-import { parseStudioPath, studioPath } from "@/lib/home";
+import { HOME_PATH, parseStudioPath, studioPath } from "@/lib/home";
 import { toStudio, useStudioPath } from "@/lib/studioNav";
 import { providerEnabled } from "@/lib/providers";
 import { useIsMobile } from "@/lib/useIsMobile";
@@ -611,9 +611,9 @@ export default function RootLayout() {
             </div>
           ) : (
           <div className="flex flex-wrap items-center gap-x-3 gap-y-3 px-4 py-3 md:px-6">
-            {/* The mark goes home — `/`, the prompt box, where stories are made. */}
+            {/* The mark goes home — `/studio`, the prompt box, where stories are made. */}
             <Link
-              to="/"
+              to={HOME_PATH}
               aria-label={t("StorySeam home")}
               className="flex size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
               data-home-mark

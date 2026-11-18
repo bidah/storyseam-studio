@@ -1,0 +1,151 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://storyseam.dev/schema/state.schema.json",
+  "title": "Storyseam render state (.storyseam/state.json)",
+  "description": "What has been spent and what is on disk. /cast writes voices and stills; /render writes blocks; both keep the two counters current. A block whose status is done must have a clip on disk \u2014 /render never re-renders it.",
+  "type": "object",
+  "required": [
+    "blocks",
+    "credits_spent",
+    "runs_used"
+  ],
+  "additionalProperties": true,
+  "properties": {
+    "blocks": {
+      "type": "object",
+      "patternProperties": {
+        "^block_[0-9]{2,}$": {
+          "type": "object",
+          "required": [
+            "status"
+          ],
+          "properties": {
+            "status": {
+              "type": "string",
+              "enum": [
+                "pending",
+                "running",
+                "done",
+                "failed"
+              ]
+            },
+            "job_id": {
+              "type": "string"
+            },
+            "clip": {
+              "type": "string",
+              "pattern": "^renders/clips/block_[0-9]{2,}\\.mp4$"
+            },
+            "last_frame": {
+              "type": "string",
+              "pattern": "^renders/frames/block_[0-9]{2,}_last\\.jpg$"
+            },
+            "last_frame_media_id": {
+              "type": "string"
+            },
+            "duration": {
+              "type": "number",
+              "minimum": 0
+            },
+            "credits": {
+              "type": "number",
+              "minimum": 0
+            },
+            "chained_from": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "attempts": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "note": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "voices": {
+      "type": "object",
+      "description": "Keyed by character slug.",
+      "additionalProperties": {
+        "type": "object",
+        "required": [
+          "status"
+        ],
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "done",
+              "failed"
+            ]
+          },
+          "job_id": {
+            "type": "string"
+          },
+          "credits": {
+            "type": "number",
+            "minimum": 0
+          },
+          "mp3": {
+            "type": "string"
+          },
+          "blackframe": {
+            "type": "string"
+          },
+          "media_id": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "stills": {
+      "type": "object",
+      "description": "Keyed by asset path or slug; shape is the same as a voice entry minus the audio fields.",
+      "additionalProperties": true
+    },
+    "credits_spent": {
+      "type": "number",
+      "minimum": 0
+    },
+    "runs_used": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "run_budget": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 0
+    },
+    "final": {
+      "type": "object",
+      "description": "Written by /assemble once renders/final/ exists.",
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "duration": {
+          "type": "number",
+          "minimum": 0
+        },
+        "resolution": {
+          "type": "string"
+        },
+        "music": {
+          "type": "string"
+        },
+        "assembled_at": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}

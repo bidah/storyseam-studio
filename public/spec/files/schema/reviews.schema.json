@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://storyseam.dev/schema/reviews.schema.json",
+  "title": "Storyseam specialist ledger (script/reviews.json)",
+  "description": "Every specialist pass over the script, recorded by the root agent from the specialist's VERDICT / FINDINGS / SUMMARY envelope (docs/specialist-contract.md). Nothing that is not in it happened. /script-agents marks an entry fresh when its words equals `wc -w script/script.md` and its draft is the newest snapshot in script/drafts/.",
+  "type": "object",
+  "required": [
+    "passes"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "passes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "specialist",
+          "draft",
+          "words",
+          "when",
+          "findings",
+          "verdict",
+          "summary"
+        ],
+        "additionalProperties": true,
+        "properties": {
+          "specialist": {
+            "type": "string",
+            "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"
+          },
+          "draft": {
+            "type": "string",
+            "pattern": "^v[0-9]+$",
+            "description": "vN of the newest script/drafts/script.vN.md at pass time."
+          },
+          "words": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "wc -w script/script.md at pass time."
+          },
+          "when": {
+            "type": "string",
+            "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T"
+          },
+          "findings": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "The FINDINGS integer, verbatim: numbered items in the body."
+          },
+          "summary": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The SUMMARY line, verbatim."
+          },
+          "verdict": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The VERDICT line, verbatim."
+          }
+        }
+      }
+    }
+  }
+}

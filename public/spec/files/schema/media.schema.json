@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://storyseam.dev/schema/media.schema.json",
+  "title": "Storyseam media cache (.storyseam/media.json)",
+  "description": "Local reference path -> how the configured provider fetches it. On Higgsfield that is a confirmed media_id (upload -> PUT -> confirm); on Atlas and fal it is the public URL the file was published to. Written by /cast, read by /render and bin/asset-audit.sh. An entry whose mtime is older than the file on disk is stale.",
+  "type": "object",
+  "patternProperties": {
+    "^(assets|renders)/.+$": {
+      "type": "object",
+      "required": [],
+      "properties": {
+        "media_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "confirmed": {
+          "type": "boolean"
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "image",
+            "video",
+            "audio"
+          ]
+        },
+        "mtime": {
+          "type": "number"
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{16,64}$"
+        },
+        "uploaded_at": {
+          "type": "string"
+        },
+        "url": {
+          "type": "string",
+          "pattern": "^https?://"
+        }
+      },
+      "description": "Either a Higgsfield {media_id, confirmed} or a URL provider's {url}. mtime lets the audit flag a file edited after registration."
+    }
+  },
+  "additionalProperties": false
+}

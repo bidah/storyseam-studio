@@ -1,0 +1,292 @@
+{
+  "name": "storyseam",
+  "version": "0.1.0",
+  "spec": "https://storyseam.app/spec/storyseam.md",
+  "agent_prompt": "https://storyseam.app/spec/agent.md",
+  "install": "npx -y https://storyseam.app/spec/storyseam.tgz init <folder>",
+  "tarball": "https://storyseam.app/spec/storyseam.tgz",
+  "repository": "https://github.com/bidah/storyseam",
+  "note": "Paths are Claude Code's. Skills reference engine scripts under bin/; installing with the tarball rewrites those to `npx storyseam`, a hand-copied tree keeps them as written.",
+  "files": [
+    {
+      "kind": "skill",
+      "path": ".claude/skills/assemble/SKILL.md",
+      "url": "https://storyseam.app/spec/files/claude/skills/assemble/SKILL.md"
+    },
+    {
+      "kind": "skill",
+      "path": ".claude/skills/asset-check/SKILL.md",
+      "url": "https://storyseam.app/spec/files/claude/skills/asset-check/SKILL.md"
+    },
+    {
+      "kind": "skill",
+      "path": ".claude/skills/model-directors/SKILL.md",
+      "url": "https://storyseam.app/spec/files/claude/skills/model-directors/SKILL.md"
+    },
+    {
+      "kind": "skill",
+      "path": ".claude/skills/providers/SKILL.md",
+      "url": "https://storyseam.app/spec/files/claude/skills/providers/SKILL.md"
+    },
+    {
+      "kind": "skill",
+      "path": ".claude/skills/render-clips/SKILL.md",
+      "url": "https://storyseam.app/spec/files/claude/skills/render-clips/SKILL.md"
+    },
+    {
+      "kind": "skill",
+      "path": ".claude/skills/script-agents/SKILL.md",
+      "url": "https://storyseam.app/spec/files/claude/skills/script-agents/SKILL.md"
+    },
+    {
+      "kind": "skill",
+      "path": ".claude/skills/script-writing/SKILL.md",
+      "url": "https://storyseam.app/spec/files/claude/skills/script-writing/SKILL.md"
+    },
+    {
+      "kind": "skill",
+      "path": ".claude/skills/shotlist/SKILL.md",
+      "url": "https://storyseam.app/spec/files/claude/skills/shotlist/SKILL.md"
+    },
+    {
+      "kind": "skill",
+      "path": ".claude/skills/start-story/SKILL.md",
+      "url": "https://storyseam.app/spec/files/claude/skills/start-story/SKILL.md"
+    },
+    {
+      "kind": "skill",
+      "path": ".claude/skills/story-engine/SKILL.md",
+      "url": "https://storyseam.app/spec/files/claude/skills/story-engine/SKILL.md"
+    },
+    {
+      "kind": "registry",
+      "path": ".claude/skills/gpt-image-2-director/SKILL.md",
+      "url": "https://storyseam.app/spec/files/claude/skills/gpt-image-2-director/SKILL.md"
+    },
+    {
+      "kind": "registry",
+      "path": ".claude/skills/provider-atlas/SKILL.md",
+      "url": "https://storyseam.app/spec/files/claude/skills/provider-atlas/SKILL.md"
+    },
+    {
+      "kind": "registry",
+      "path": ".claude/skills/provider-fal/SKILL.md",
+      "url": "https://storyseam.app/spec/files/claude/skills/provider-fal/SKILL.md"
+    },
+    {
+      "kind": "registry",
+      "path": ".claude/skills/provider-higgsfield/SKILL.md",
+      "url": "https://storyseam.app/spec/files/claude/skills/provider-higgsfield/SKILL.md"
+    },
+    {
+      "kind": "registry",
+      "path": ".claude/skills/seedance-2-0-director/SKILL.md",
+      "url": "https://storyseam.app/spec/files/claude/skills/seedance-2-0-director/SKILL.md"
+    },
+    {
+      "kind": "registry",
+      "path": ".claude/skills/seedance-2-5-director/SKILL.md",
+      "url": "https://storyseam.app/spec/files/claude/skills/seedance-2-5-director/SKILL.md"
+    },
+    {
+      "kind": "registry",
+      "path": ".claude/skills/seedance-2-5-extension-director/SKILL.md",
+      "url": "https://storyseam.app/spec/files/claude/skills/seedance-2-5-extension-director/SKILL.md"
+    },
+    {
+      "kind": "registry",
+      "path": ".claude/skills/seedance-voice-casting/SKILL.md",
+      "url": "https://storyseam.app/spec/files/claude/skills/seedance-voice-casting/SKILL.md"
+    },
+    {
+      "kind": "specialist",
+      "path": ".claude/agents/character-actor.md",
+      "url": "https://storyseam.app/spec/files/claude/agents/character-actor.md"
+    },
+    {
+      "kind": "specialist",
+      "path": ".claude/agents/character-doctor.md",
+      "url": "https://storyseam.app/spec/files/claude/agents/character-doctor.md"
+    },
+    {
+      "kind": "specialist",
+      "path": ".claude/agents/dialogue-doctor.md",
+      "url": "https://storyseam.app/spec/files/claude/agents/dialogue-doctor.md"
+    },
+    {
+      "kind": "specialist",
+      "path": ".claude/agents/first-reader.md",
+      "url": "https://storyseam.app/spec/files/claude/agents/first-reader.md"
+    },
+    {
+      "kind": "specialist",
+      "path": ".claude/agents/heros-journey.md",
+      "url": "https://storyseam.app/spec/files/claude/agents/heros-journey.md"
+    },
+    {
+      "kind": "specialist",
+      "path": ".claude/agents/kishotenketsu.md",
+      "url": "https://storyseam.app/spec/files/claude/agents/kishotenketsu.md"
+    },
+    {
+      "kind": "specialist",
+      "path": ".claude/agents/motivation-doctor.md",
+      "url": "https://storyseam.app/spec/files/claude/agents/motivation-doctor.md"
+    },
+    {
+      "kind": "specialist",
+      "path": ".claude/agents/performance-doctor.md",
+      "url": "https://storyseam.app/spec/files/claude/agents/performance-doctor.md"
+    },
+    {
+      "kind": "specialist",
+      "path": ".claude/agents/plot-doctor.md",
+      "url": "https://storyseam.app/spec/files/claude/agents/plot-doctor.md"
+    },
+    {
+      "kind": "specialist",
+      "path": ".claude/agents/producer.md",
+      "url": "https://storyseam.app/spec/files/claude/agents/producer.md"
+    },
+    {
+      "kind": "specialist",
+      "path": ".claude/agents/punch-up.md",
+      "url": "https://storyseam.app/spec/files/claude/agents/punch-up.md"
+    },
+    {
+      "kind": "specialist",
+      "path": ".claude/agents/save-the-cat.md",
+      "url": "https://storyseam.app/spec/files/claude/agents/save-the-cat.md"
+    },
+    {
+      "kind": "specialist",
+      "path": ".claude/agents/scene-doctor.md",
+      "url": "https://storyseam.app/spec/files/claude/agents/scene-doctor.md"
+    },
+    {
+      "kind": "specialist",
+      "path": ".claude/agents/story-architect.md",
+      "url": "https://storyseam.app/spec/files/claude/agents/story-architect.md"
+    },
+    {
+      "kind": "specialist",
+      "path": ".claude/agents/story-circle.md",
+      "url": "https://storyseam.app/spec/files/claude/agents/story-circle.md"
+    },
+    {
+      "kind": "specialist",
+      "path": ".claude/agents/table-read.md",
+      "url": "https://storyseam.app/spec/files/claude/agents/table-read.md"
+    },
+    {
+      "kind": "specialist",
+      "path": ".claude/agents/tension-doctor.md",
+      "url": "https://storyseam.app/spec/files/claude/agents/tension-doctor.md"
+    },
+    {
+      "kind": "specialist",
+      "path": ".claude/agents/theme-doctor.md",
+      "url": "https://storyseam.app/spec/files/claude/agents/theme-doctor.md"
+    },
+    {
+      "kind": "specialist",
+      "path": ".claude/agents/three-act.md",
+      "url": "https://storyseam.app/spec/files/claude/agents/three-act.md"
+    },
+    {
+      "kind": "specialist",
+      "path": ".claude/agents/voice-designer.md",
+      "url": "https://storyseam.app/spec/files/claude/agents/voice-designer.md"
+    },
+    {
+      "kind": "specialist",
+      "path": ".claude/agents/world-continuity.md",
+      "url": "https://storyseam.app/spec/files/claude/agents/world-continuity.md"
+    },
+    {
+      "kind": "command",
+      "path": ".claude/commands/assemble.md",
+      "url": "https://storyseam.app/spec/files/claude/commands/assemble.md"
+    },
+    {
+      "kind": "command",
+      "path": ".claude/commands/cast.md",
+      "url": "https://storyseam.app/spec/files/claude/commands/cast.md"
+    },
+    {
+      "kind": "command",
+      "path": ".claude/commands/render.md",
+      "url": "https://storyseam.app/spec/files/claude/commands/render.md"
+    },
+    {
+      "kind": "command",
+      "path": ".claude/commands/script-agents.md",
+      "url": "https://storyseam.app/spec/files/claude/commands/script-agents.md"
+    },
+    {
+      "kind": "command",
+      "path": ".claude/commands/shotlist.md",
+      "url": "https://storyseam.app/spec/files/claude/commands/shotlist.md"
+    },
+    {
+      "kind": "command",
+      "path": ".claude/commands/start-story.md",
+      "url": "https://storyseam.app/spec/files/claude/commands/start-story.md"
+    },
+    {
+      "kind": "command",
+      "path": ".claude/commands/write-script.md",
+      "url": "https://storyseam.app/spec/files/claude/commands/write-script.md"
+    },
+    {
+      "kind": "schema",
+      "path": "schema/media.schema.json",
+      "url": "https://storyseam.app/spec/files/schema/media.schema.json"
+    },
+    {
+      "kind": "schema",
+      "path": "schema/reviews.schema.json",
+      "url": "https://storyseam.app/spec/files/schema/reviews.schema.json"
+    },
+    {
+      "kind": "schema",
+      "path": "schema/shotlist.schema.json",
+      "url": "https://storyseam.app/spec/files/schema/shotlist.schema.json"
+    },
+    {
+      "kind": "schema",
+      "path": "schema/state.schema.json",
+      "url": "https://storyseam.app/spec/files/schema/state.schema.json"
+    },
+    {
+      "kind": "doc",
+      "path": "docs/adr/0001-continuity-anchor-in-prose.md",
+      "url": "https://storyseam.app/spec/files/docs/adr/0001-continuity-anchor-in-prose.md"
+    },
+    {
+      "kind": "doc",
+      "path": "docs/adr/0002-voice-references-as-black-frame-video.md",
+      "url": "https://storyseam.app/spec/files/docs/adr/0002-voice-references-as-black-frame-video.md"
+    },
+    {
+      "kind": "doc",
+      "path": "docs/adr/0003-per-model-craft-lives-in-a-registry.md",
+      "url": "https://storyseam.app/spec/files/docs/adr/0003-per-model-craft-lives-in-a-registry.md"
+    },
+    {
+      "kind": "doc",
+      "path": "docs/spec.md",
+      "url": "https://storyseam.app/spec/files/docs/spec.md"
+    },
+    {
+      "kind": "doc",
+      "path": "docs/storyseam.template.md",
+      "url": "https://storyseam.app/spec/files/docs/storyseam.template.md"
+    },
+    {
+      "kind": "doc",
+      "path": "docs/specialist-contract.md",
+      "url": "https://storyseam.app/spec/files/docs/specialist-contract.md"
+    }
+  ]
+}

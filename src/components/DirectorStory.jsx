@@ -49,7 +49,7 @@ import {
   ArrowUp, AudioLines, Check, ChevronDown, ChevronLeft, ChevronRight, Circle, Clapperboard, CircleAlert, Copy, Download, Link2Off, ListChecks, Loader2, Mic, PenLine, Plus, Receipt, RotateCw, Search, Settings2,
   Share2, SlidersHorizontal, Square, Users, X, icons as LUCIDE,
 } from "lucide-react";
-import { studioPath } from "@/lib/home";
+import { HOME_PATH, studioPath } from "@/lib/home";
 import { Dialog, DialogContent, DialogDescription, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
@@ -1564,7 +1564,7 @@ export function SignInDialog({ flow = FLOWS.director, open, onOpenChange, withPr
   useEffect(() => { if (open) setJoined(null); }, [open]);
   // Which door opened it: a sent premise, or the header / studio card.
   useEffect(() => { if (open) track("sign_in_dialog_shown", { source: withPremise ? "prompt" : "header" }); }, [open, withPremise]);
-  const callbackURL = withPremise ? `/?${RESUME_PARAM}=1` : "/";
+  const callbackURL = withPremise ? `${HOME_PATH}?${RESUME_PARAM}=1` : HOME_PATH;
   const signIn = async () => {
     track("sign_in_clicked", { provider: "google", source: withPremise ? "prompt" : "header" });
     setBusy(true);
@@ -3218,7 +3218,7 @@ export function StoryView({ job, projectId = null, onRetry, retrying = false, re
             height — py-4 around a 32px row. */}
         <div className="flex shrink-0 items-center justify-between gap-3 border-b border-[var(--br-secondary)]/25 px-4 py-4 sm:px-8">
           <Link
-            to="/"
+            to={HOME_PATH}
             className="text-[1.35rem] leading-none"
             style={{ fontFamily: DISPLAY, fontWeight: 600, letterSpacing: DISPLAY_TRACKING }}
             data-wordmark
@@ -3227,7 +3227,7 @@ export function StoryView({ job, projectId = null, onRetry, retrying = false, re
           </Link>
           <PoweredByFal className="ml-auto" />
           <Link
-            to="/"
+            to={HOME_PATH}
             className={cn(ROW_ACTION, "h-8")}
             style={{ fontFamily: MONO, letterSpacing: "0.08em" }}
             data-new

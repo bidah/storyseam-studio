@@ -23,6 +23,7 @@ import { getFalKey, setFalKey } from "@/lib/falKey";
 import { setActiveProvider } from "@/lib/providers";
 import { HUD, BODY, DISPLAY, DISPLAY_TRACKING } from "@/lib/hudTheme";
 import { track } from "@/lib/analytics";
+import { HOME_PATH } from "@/lib/home";
 
 const planOk = (b) => Boolean(b && (b.canCreate || b.active));
 
@@ -117,7 +118,7 @@ function PlanDialog({ open, onOpenChange, onBilling }) {
           StorySeam needs a plan to make stories. Pick one — you'll come back here and your premise starts right after.
         </DialogDescription>
         {/* Back to the root with the premise saved; ?resume=1 starts it. */}
-        {open ? <SubscriptionPanel returnPath="/?resume=1" onBilling={onBilling} /> : null}
+        {open ? <SubscriptionPanel returnPath={`${HOME_PATH}?resume=1`} onBilling={onBilling} /> : null}
       </DialogContent>
     </Dialog>
   );

@@ -9,7 +9,14 @@ chat agent (`flue-agent/`, its own Cloudflare Worker `shot-studio-flue-v2`, prox
 at `/eve`) drives the pipeline via typed tools + render skills. See `README.md` for
 architecture and how to run it.
 
-**The root `/` is the product**: the prompt box (a prompt in, a Film back),
+**The site root `/` is the open-source Storyseam front page** (`routes/home.jsx`)
+and **`/spec` is the `storyseam.md` spec** (`routes/spec.jsx`) — the agent prompt
+and every skill are static files under `/spec/*`, vendored from the storyseam
+repo (`../storyseam`) into `public/spec/` by **`npm run spec:sync`**; never edit
+them here. A `/` that arrives WITH a query (`?resume=1`, `?billing=…`, `?mode=…`)
+is forwarded to `/studio` whole.
+
+**`/studio` is the product** (`HOME_PATH`): the prompt box (a prompt in, a Film back),
 with a **Gen mode** of fal H3 Director, Seedance 2.5 or MiniMax H3, and a Film's
 page at `/create/:filmId`. **The studio shell lives under a project's url** —
 `/p/:projectId/<view>` (`studioPath` in `src/lib/home.js`; RootLayout mounts

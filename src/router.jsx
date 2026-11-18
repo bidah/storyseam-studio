@@ -2,7 +2,7 @@ import { createBrowserRouter, redirect } from "react-router";
 import RootLayout from "@/components/RootLayout";
 import { RouteError } from "@/components/shared";
 import { RouteSkeleton } from "@/components/skeletons";
-import { studioPath } from "@/lib/home";
+import { HOME_PATH, studioPath } from "@/lib/home";
 import { setProjectId } from "@/lib/projectFetch";
 import { StudioRedirect } from "@/components/StudioRedirect";
 
@@ -25,7 +25,7 @@ const fallback = (tab) => () => <RouteSkeleton tab={tab} />;
 // Biggest win: /editor's Remotion deps leave the main bundle. ErrorBoundary stays
 // statically set so it also catches lazy-load failures.
 export const router = createBrowserRouter([
-  // `/` IS the product: text to story — a prompt in, a Film back — with the
+  // `/studio` IS the product: text to story — a prompt in, a Film back — with the
   // Gen mode (fal H3 Director / Seedance 2.5) on its input. A SIBLING of
   // RootLayout, not its index route, so the studio shell (header, tab bar,
   // agent panel) never wraps it. It opens signed OUT too (it is the pitch):
@@ -33,8 +33,31 @@ export const router = createBrowserRouter([
   // The URL is the state: a Film lives at /create/:filmId, so a reload mid-run
   // lands back on it. Shared pieces: components/DirectorStory.jsx.
   {
-    index: true,
+    path: "/studio",
     lazy: () => import("@/routes/director-story"),
+    ErrorBoundary: RouteError,
+  },
+  // `/` is the open-source StorySeam front page: the storyseam.md convention,
+  // the repo, and the two doors (the spec, the Studio). Every query `/` was
+  // ever sent before the Studio moved to /studio — Google's `?resume=1`
+  // round trip, PayPal's `?billing=return`, `/story-flow`'s `?mode=seedance`,
+  // links in old emails — belongs to the Studio, so a `/` WITH a query is
+  // forwarded there whole rather than dropped on a page that ignores it.
+  {
+    index: true,
+    loader: ({ request }) => {
+      const { search } = new URL(request.url);
+      return search ? redirect(`${HOME_PATH}${search}`) : null;
+    },
+    lazy: () => import("@/routes/home"),
+    ErrorBoundary: RouteError,
+  },
+  // The storyseam.md spec, the agent prompt, and where the skills are. The raw
+  // files themselves are static assets under /spec/* (public/spec/, vendored
+  // from the storyseam repo by `npm run spec:sync`).
+  {
+    path: "/spec",
+    lazy: () => import("@/routes/spec"),
     ErrorBoundary: RouteError,
   },
   {
@@ -76,7 +99,7 @@ export const router = createBrowserRouter([
   // trip that started there) rides along; /story-flow also chooses Seedance.
   {
     path: "/director-story",
-    loader: ({ request }) => redirect(`/${new URL(request.url).search}`),
+    loader: ({ request }) => redirect(`${HOME_PATH}${new URL(request.url).search}`),
   },
   {
     path: "/director-story/create/:filmId",
@@ -84,7 +107,7 @@ export const router = createBrowserRouter([
   },
   {
     path: "/story-flow",
-    loader: () => redirect("/?mode=seedance"),
+    loader: () => redirect(`${HOME_PATH}?mode=seedance`),
   },
   {
     path: "/story-flow/create/:filmId",

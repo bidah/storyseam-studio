@@ -29,6 +29,7 @@ import {
   DropdownMenuSeparator, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
+import { HOME_PATH } from "@/lib/home";
 
 /** A HUD label: mono, small, wide-tracked, secondary. The system's `label` role. */
 export function Label({ children, className = "" }) {
@@ -90,7 +91,7 @@ export function HudHeader({ model, onSignIn, trailing }) {
       {/* The wordmark goes home, which on the model page is the way back to
           the homepage and on the homepage is a no-op the browser handles. */}
       <Link
-        to="/"
+        to={HOME_PATH}
         className="text-[1.35rem] leading-none"
         style={{ fontFamily: DISPLAY, fontWeight: 600, letterSpacing: DISPLAY_TRACKING }}
       >
