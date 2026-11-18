@@ -14,3 +14,6 @@ references in the shot list's order. No music. Never `start_image` on 2.5.
 
 Write `.storyseam/state.json` after every block with what it actually billed. Announce
 credits and runs as you go, and stop at the run budget.
+
+If `config.json` lists several `video.models` and `video.model` is unset, stop and ask the
+author which to use before anything else (`docs/spec.md` §7). Never pick one yourself.

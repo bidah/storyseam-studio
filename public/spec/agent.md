@@ -33,7 +33,9 @@ so the story is self-contained afterwards. Pick `--agent` for the tool you are r
 | Cursor | `cursor` | `.storyseam/skills/`, `.storyseam/agents/` | `AGENTS.md` + `.cursor/rules/storyseam.mdc` |
 
 Optional flags: `--seconds 120` (runtime; each 30s block is one paid video run),
-`--aspect 16:9|9:16`, `--provider higgsfield|atlas|fal`.
+`--aspect 16:9|9:16`, `--provider higgsfield|atlas|fal`, and `--video <id,id>` to offer
+the author more than one video model (`--video seedance_2_5,seedance_2_0`).
+`npx -y https://storyseam.app/spec/storyseam.tgz list` shows the models the registry knows.
 
 If you cannot run `npx`, the same files are listed one by one at
 `https://storyseam.app/spec/skills.json`. Each entry has a raw URL and the path it belongs
@@ -50,6 +52,13 @@ filled in so they correct rather than compose:
 3. Runtime in minutes
 4. Look (the visual world in a phrase)
 5. Shape (`16:9` cinematic or `9:16` vertical)
+
+**If `config.json` has `video.models` with more than one entry and no `video.model`, add a
+sixth question to the same message: which video model to use.** Name each candidate with one
+line from its director skill on what it is good at. The skill is the id with `_` turned
+into `-`, plus `-director` (`seedance_2_5` → `skills/seedance-2-5-director/SKILL.md`). Write the answer to `video.model`, and record
+it with the reason under `## Decisions`. Never pick for the author, and never ask again once
+`video.model` is set.
 
 Then write `<folder>/storyseam.md` from `docs/storyseam.template.md`, following
 `docs/spec.md`. Write the two style prompts in `prompts/` from the look. If runtime or aspect

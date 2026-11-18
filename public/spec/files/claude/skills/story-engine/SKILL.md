@@ -30,6 +30,7 @@ The filesystem is the state. Detect the stage and name the next command:
 
 | On disk | Stage | Next |
 | --- | --- | --- |
+| `config.json` `video.models` has several entries and no `video.model` | model unchosen | ask the author which, write `video.model` (`docs/spec.md` §7), then carry on |
 | no `storyseam.md` (a legacy `STORY.md` counts — offer `git mv STORY.md storyseam.md` + front matter, per `docs/spec.md` §5) | nothing yet | `/start-story` |
 | `storyseam.md`, no `script/script.md` (or it holds only a title) | scaffolded | `/write-script` |
 | a script, no `shotlist/shotlist.json` | written | `/shotlist` (once the author is happy) |

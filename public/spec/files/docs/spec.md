@@ -172,6 +172,36 @@ Stories made before this spec carry `STORY.md` with no front matter. A reader tr
 The spec is versioned with the engine. A minor version may add keys and sections; a
 reader ignores ones it does not know. A major version may rename or remove them.
 
+## 7. Choosing the video model
+
+`config.json` names the video model in two keys:
+
+```json
+"video": {
+  "models": ["seedance_2_5", "seedance_2_0"],
+  "model": "seedance_2_5",
+  "resolution": "480p",
+  "generate_audio": true
+}
+```
+
+- **`video.models`** is an array of the models this story may render on. Every id must be
+  one the registry knows (`npx storyseam list`), and a director is installed for each.
+- **`video.model`** is the one in use. It is what every skill reads.
+
+When `video.models` has **one** entry, `video.model` is that entry. When it has **more than
+one** and `video.model` is unset, the story has not chosen yet. Before anything reads the
+model (`/shotlist`, `/render`, or a cost estimate), the agent asks the author which one to
+use, in one question that names each candidate with what its director says it is for. It
+writes the answer to `video.model` and records the choice and its reason under
+`## Decisions` in `storyseam.md`. It never picks one silently, and it never re-asks once
+`video.model` is set. Switching after blocks have rendered breaks the continuity chain, so
+the agent says so before changing it.
+
+`storyseam check` reports an unchosen model as `UNCHOSEN`, and a `video.model` that is not
+in `video.models` as `BROKEN`. A config written before this section with only `video.model`
+is valid, and is read as a one-entry list.
+
 ## Template
 
 A blank file to start from is in `docs/storyseam.template.md`. A complete, rendered example is

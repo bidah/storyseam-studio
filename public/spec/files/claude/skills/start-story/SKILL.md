@@ -47,7 +47,13 @@ Tell them the cost implication in one line before they answer — "a 2-minute fi
 4 Seedance blocks, about 300 credits at 480p" — because runtime is the only choice
 here that spends money.
 
-**Do not ask a seventh question.** Arc structure, character names, act breaks and
+7. **Video model** — ONLY when `config.json` has `video.models` with more than one entry
+   and no `video.model` (`init --video a,b` leaves it unset on purpose). List each
+   candidate with one line from its director skill on what it is for. Write the answer to
+   `video.model` and the reason under `## Decisions` in `storyseam.md`. With one entry, or
+   `video.model` already set, do not ask; it is decided.
+
+**Do not ask an eighth question.** Arc structure, character names, act breaks and
 shot style are `/write-script`'s business, and asking about them now is asking the
 author to design a film before they have a premise. If they volunteer any of it,
 write it into `storyseam.md` under `## Notes` and move on.
@@ -118,7 +124,7 @@ preferences.
   "target_seconds": 120,
   "block_seconds": 30,
   "image": { "model": "gpt_image_2", "resolution": "2k", "quality": "high" },
-  "video": { "model": "seedance_2_5", "resolution": "480p", "generate_audio": true },
+  "video": { "models": ["seedance_2_5"], "model": "seedance_2_5", "resolution": "480p", "generate_audio": true },
   "audio": { "music": "never_generated", "voice_ref_format": "blackframe_mp4" },
   "continuity": { "chain_last_frame": true },
   "costs": { "block_30s": 75, "voice": 15, "still": 2.5 }
@@ -165,7 +171,7 @@ Right after `config.json` exists:
 
 ```bash
 bin/registry-add.py provider-<config.providers.video.id>   # the backend adapter
-bin/registry-add.py <config.video.model>                   # e.g. seedance_2_5
+bin/registry-add.py <each id in config.video.models>       # e.g. seedance_2_5
 bin/registry-add.py <config.image.model>                   # e.g. gpt_image_2
 bin/provider-check.py                                      # is access satisfied?
 ```
