@@ -45,22 +45,31 @@ A block renders in **one call, up to `block_seconds`** (30). A block is:
   what makes the last-frame chain coherent.
 - **One set of character sheets**, cited once and binding for the whole block.
 - **2–4 timed shots** inside it, each with its own framing and one clear action.
-- **≤ 30 seconds.** Prefer a full 30s block to two short ones: blocks are billed per
-  call, so two 15s blocks cost twice what one 30s block costs and add a seam.
+- **≤ 30 seconds, and it ENDS ON A BEAT.** A block covers whole beats of
+  `script/outline.md`, and its last second is the last second of a beat, even when the
+  model could run longer. A block is as long as its beats, not as long as the model
+  allows: a 22s beat is a 22s block, never a 30s block padded with half of the next beat.
+  Several short consecutive beats may share a block when they share a location. A beat
+  longer than the model's maximum splits into consecutive blocks that carry only that
+  beat (`beat_part`), each cut on a moment inside it. See `docs/spec.md` §12.
+- **Record it:** `beats` lists the outline beat numbers the block covers (`[2]`, or
+  `[2, 3]`), and a split beat's blocks carry `"beat_part": { "n": 1, "of": 2 }`.
 
-`blocks = ceil(target_seconds / block_seconds)`. **Say the block count and the credit cost
-out loud before you write the first prompt** — `config.costs.block_30s` per block, as a
-floor — the author is entitled to know what they are about to spend.
+The block count follows from the beats, not from `ceil(target_seconds / block_seconds)`;
+that is only the floor. **Say the block count and the credit cost out loud before you
+write the first prompt** (`config.costs.block_30s` per 30s, pro rata for a shorter block):
+the author is entitled to know what they are about to spend.
 
 ## Steps
 
 1. **Read the script.** Split on `## SCENE n — SLUGLINE`. Note every character who
    speaks, every location, every prop that has to stay consistent.
-2. **Map scenes onto blocks.** Walk the script in order, accumulating estimated seconds
-   (~145 words per minute of dialogue and acted action) until you hit the block length or
-   the location changes. That is one block. A scene longer than a block splits into
-   consecutive blocks in the same location; several short scenes in one location can
-   share a block.
+2. **Map beats onto blocks.** Walk the outline's numbered beats in order and time each
+   from the script (~145 words per minute of dialogue and acted action). Close the block
+   at the END of a beat: when the next beat would push it past the model's maximum, when
+   the location changes, or when the beat is a turn that deserves its own cut. A beat
+   longer than the maximum splits into consecutive blocks of that beat alone. Never close
+   a block in the middle of a beat to fill it to 30 seconds.
 3. **Plan the internal shots.** Inside each block, cut 2–4 shots the way a storyboard
    would — wide to establish, mediums for the exchange, a close-up on the turn. Give each
    a start and end second.
@@ -151,6 +160,9 @@ before asking for more. Do not roll on into the next block.
 
 - Do not generate any image or video here. `/cast` makes references, `/render` makes
   clips.
+- Do not end a block mid-beat to fill it out. A short block that lands on its beat is
+  right; a full one that cuts a beat in half is wrong, and the next block opens on the
+  wrong moment.
 - Do not pack a block over `block_seconds`. Seedance caps at 30 and a 31-second block is
   silently clamped, which truncates the beat you wrote for the end.
 - Do not cross a location inside a block.

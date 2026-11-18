@@ -384,6 +384,28 @@ to it, except to save images the author attached on purpose. `storyseam check` v
 sheet against `schema/assets.schema.json`, and reports an asset marked `refs` with no images or
 a ref that is not on disk.
 
+## 12. Blocks land on beats
+
+A block is cut where the story turns, not where the model runs out. Every block in
+`shotlist/shotlist.json` covers whole, consecutive beats of `script/outline.md`, and **its last
+second is the last second of a beat**, even when the model could keep going. A 22-second beat
+is a 22-second block. It is never a 30-second block that runs eight seconds into the next beat,
+because then the next block opens mid-moment and the seam falls on nothing.
+
+- **`beats`** lists the outline beat numbers a block covers: `[2]`, or `[2, 3]` when short
+  beats in one location share a block.
+- **A beat longer than the model's maximum** is the one case a beat spans blocks. It splits into
+  consecutive blocks that carry only that beat, each cut on a moment inside it, and each marked
+  `"beat_part": { "n": 1, "of": 2 }`.
+- **The block count follows from the beats.** `ceil(target_seconds / block_seconds)` is only
+  the floor. A shorter block bills pro rata, so landing on beats costs seams, not much money.
+
+The outline numbers its beats (`**3. TEN — the idea.**`, or a `### 3.` heading), which is what
+`beats` refers to. `storyseam check` reports a block that ends mid-beat without a declared
+split, a beat no block covers, a block citing a beat the outline does not have, and a shot list
+where only some blocks say which beats they cover. Shot lists written before this section, with
+no `beats` at all, are still valid.
+
 ## Template
 
 A blank file to start from is in `docs/storyseam.template.md`. A complete, rendered example is

@@ -167,6 +167,33 @@
             "type": "string",
             "minLength": 1,
             "description": "The video model this block renders on, when it differs from config.json video.model. Must be one of video.models. Chosen by the author from `storyseam recommend` (docs/spec.md §9)."
+          },
+          "beats": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "description": "The script/outline.md beat numbers this block covers, whole and in order. The block ends where its last beat ends (docs/spec.md section 12). Optional for shot lists written before this field."
+          },
+          "beat_part": {
+            "type": "object",
+            "required": [
+              "n",
+              "of"
+            ],
+            "properties": {
+              "n": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "of": {
+                "type": "integer",
+                "minimum": 2
+              }
+            },
+            "description": "Set when one beat is longer than a block can be and is split across consecutive blocks: this is part n of `of`."
           }
         }
       }

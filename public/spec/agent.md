@@ -18,7 +18,7 @@ says which values live in which file. That ownership table is the rule you will 
 Run this in the parent directory of the new story:
 
 ```bash
-npx -y https://storyseam.app/spec/storyseam-0.5.0.tgz init <folder> --title "<working title>" --agent <claude|codex|cursor> --yes
+npx -y https://storyseam.app/spec/storyseam-0.6.0.tgz init <folder> --title "<working title>" --agent <claude|codex|cursor> --yes
 ```
 
 That one tarball is the whole engine. It installs the pipeline skills, the 21 script
@@ -37,7 +37,7 @@ Optional flags: `--seconds 120` (runtime; each 30s block is one paid video run),
 (add `--editor-mcp` when its MCP server is installed), and `--video <id,id>` to offer
 the author more than one video model (`--video seedance_2_5,seedance_2_0`), and
 `--mcp fal` to record an extra MCP server.
-`npx -y https://storyseam.app/spec/storyseam-0.5.0.tgz list` shows the models the registry knows.
+`npx -y https://storyseam.app/spec/storyseam-0.6.0.tgz list` shows the models the registry knows.
 
 If you cannot run `npx`, the same files are listed one by one at
 `https://storyseam.app/spec/skills.json`. Each entry has a raw URL and the path it belongs
@@ -50,7 +50,7 @@ renders there, fal, and the editing program's server (DaVinci Resolve). Each com
 install command per agent (`docs/spec.md` §10). Print them with:
 
 ```bash
-cd <folder> && npx -y https://storyseam.app/spec/storyseam-0.5.0.tgz mcp --agent <claude|codex|cursor>
+cd <folder> && npx -y https://storyseam.app/spec/storyseam-0.6.0.tgz mcp --agent <claude|codex|cursor>
 ```
 
 Check that each `required` server is connected with one read-only call. If one is missing,
@@ -90,9 +90,17 @@ Then write `<folder>/storyseam.md` from `docs/storyseam.template.md`, following
 changed from what `init` was given, update `config.json`, never `storyseam.md`. In Claude
 Code, `/start-story` does this whole step for you.
 
+## Blocks land on beats
+
+When `/shotlist` packs the script into blocks, each block ends where a beat of
+`script/outline.md` ends, even if the model could run the full 30 seconds. A block is as long
+as its beats. Only a beat longer than the model's maximum splits across blocks, marked
+`beat_part`. Every block records its `beats` (`docs/spec.md` §12), and `check` fails a block
+that cuts a beat in half.
+
 ## After the shot list — the reference pass
 
-`/shotlist` ends with `npx -y https://storyseam.app/spec/storyseam-0.5.0.tgz assets`, which writes
+`/shotlist` ends with `npx -y https://storyseam.app/spec/storyseam-0.6.0.tgz assets`, which writes
 `shotlist/assets.json`: every character sheet, location plate and prop plate the film needs
 (`docs/spec.md` §11). Ask the author once, for all of them: do they have reference images
 (a photo of a person, a real place, the actual object) to build any of these from, or should
@@ -101,7 +109,7 @@ they be generated? Save what they give you into each asset's `refs_dir`, mark th
 
 ## 4. Check, then hand over
 
-Once a shot list exists (after `/shotlist`), `npx -y https://storyseam.app/spec/storyseam-0.5.0.tgz
+Once a shot list exists (after `/shotlist`), `npx -y https://storyseam.app/spec/storyseam-0.6.0.tgz
 recommend` prints the video model each block should use, from its length and how many
 reference images, videos and audio it cites, against each model's limits. Long or
 reference-heavy scenes go to Seedance 2.5. Short, lightly referenced chained scenes can use
@@ -110,7 +118,7 @@ from `video.model`, and set that block's `model` only on a yes.
 
 
 ```bash
-cd <folder> && npx -y https://storyseam.app/spec/storyseam-0.5.0.tgz check
+cd <folder> && npx -y https://storyseam.app/spec/storyseam-0.6.0.tgz check
 ```
 
 Report the tree, the config values (call out loud that video is 480p and stills are 2k),

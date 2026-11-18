@@ -49,8 +49,10 @@ CUT TO:
 
 For **new material** — a fresh script, a new scene, a rewrite of any size — your
 first turn is not a script. It is a **beat outline**: three to eight one-line beats
-in order, naming who is in each and what turns. Write it to `script/outline.md`,
-show it in chat, and **stop**.
+in order, naming who is in each and what turns. **Number every beat** as
+`**1. NAME — what turns.**` (or a `### 1.` heading), with a rough length, because the
+shot list cuts every block on a beat by its number (`docs/spec.md` §12). Write it to
+`script/outline.md`, show it in chat, and **stop**.
 
 Write pages only once the beats are approved. This is the most important rule here:
 a script written straight from a one-line premise is *your* story, and the author

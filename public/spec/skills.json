@@ -1,10 +1,10 @@
 {
   "name": "storyseam",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "spec": "https://storyseam.app/spec/storyseam.md",
   "agent_prompt": "https://storyseam.app/spec/agent.md",
-  "install": "npx -y https://storyseam.app/spec/storyseam-0.5.0.tgz init <folder>",
-  "tarball": "https://storyseam.app/spec/storyseam-0.5.0.tgz",
+  "install": "npx -y https://storyseam.app/spec/storyseam-0.6.0.tgz init <folder>",
+  "tarball": "https://storyseam.app/spec/storyseam-0.6.0.tgz",
   "repository": "https://github.com/bidah/storyseam",
   "note": "Paths are Claude Code's. Skills reference engine scripts under bin/; installing with the tarball rewrites those to `npx storyseam`, a hand-copied tree keeps them as written.",
   "files": [
