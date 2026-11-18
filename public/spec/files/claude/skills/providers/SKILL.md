@@ -67,7 +67,10 @@ bin/registry-add.py provider-atlas        # install the adapter skill
 
 The order at the start of any run that will cost money:
 
-1. Read `config.json` → `providers.video.id`, `providers.image.id`.
+1. Read `config.json` → `providers.video.id`, `providers.image.id`, and `mcp_servers`: a
+   provider reached by MCP has an entry there with its install command per agent
+   (`docs/spec.md` §10). If its server is not connected, print that line
+   (`npx storyseam mcp --agent <yours>`) and stop.
 2. Install each adapter if missing (`bin/registry-add.py provider-<id>`).
 3. `bin/provider-check.py`. For `api_key`, that is conclusive. For `mcp`, **probe the tool
    yourself** — the script cannot see your tools, it only tells you which one to probe.

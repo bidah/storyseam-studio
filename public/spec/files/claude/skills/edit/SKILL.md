@@ -43,8 +43,10 @@ Follow the `assemble` skill. The output is `renders/final/film.mp4`. That is the
 Before touching anything, confirm what `config.json` claims:
 
 - **MCP:** call a read-only tool on the program's server (for DaVinci Resolve, the project
-  or timeline listing). If it fails, say so, and set `editor.mcp` to `false` only after the
-  author confirms the server is not meant to be there.
+  or timeline listing). If it fails, print that server's install line from `config.json`
+  `mcp_servers` (`npx storyseam mcp --agent <yours>`; for Resolve, `npx davinci-resolve-mcp
+  setup`) and wait. Set `editor.mcp` to `false` only after the author confirms the server
+  is not meant to be there. Never install it yourself.
 - **Computer use:** take one screenshot and confirm the program is open, or can be opened.
 
 Then tell the author in one line which mode you will work in, and **ask before taking over

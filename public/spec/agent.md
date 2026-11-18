@@ -18,7 +18,7 @@ says which values live in which file. That ownership table is the rule you will 
 Run this in the parent directory of the new story:
 
 ```bash
-npx -y https://storyseam.app/spec/storyseam-0.3.0.tgz init <folder> --title "<working title>" --agent <claude|codex|cursor> --yes
+npx -y https://storyseam.app/spec/storyseam-0.4.0.tgz init <folder> --title "<working title>" --agent <claude|codex|cursor> --yes
 ```
 
 That one tarball is the whole engine. It installs the pipeline skills, the 21 script
@@ -35,12 +35,28 @@ so the story is self-contained afterwards. Pick `--agent` for the tool you are r
 Optional flags: `--seconds 120` (runtime; each 30s block is one paid video run),
 `--aspect 16:9|9:16`, `--provider higgsfield|atlas|fal`, `--editor none|davinci_resolve|<program>`
 (add `--editor-mcp` when its MCP server is installed), and `--video <id,id>` to offer
-the author more than one video model (`--video seedance_2_5,seedance_2_0`).
-`npx -y https://storyseam.app/spec/storyseam-0.3.0.tgz list` shows the models the registry knows.
+the author more than one video model (`--video seedance_2_5,seedance_2_0`), and
+`--mcp fal` to record an extra MCP server.
+`npx -y https://storyseam.app/spec/storyseam-0.4.0.tgz list` shows the models the registry knows.
 
 If you cannot run `npx`, the same files are listed one by one at
 `https://storyseam.app/spec/skills.json`. Each entry has a raw URL and the path it belongs
 at, so you can write the tree by hand.
+
+### Connect the MCP servers it uses
+
+`config.json` `mcp_servers` lists every MCP server the story relies on: Higgsfield when it
+renders there, fal, and the editing program's server (DaVinci Resolve). Each comes with its
+install command per agent (`docs/spec.md` §10). Print them with:
+
+```bash
+cd <folder> && npx -y https://storyseam.app/spec/storyseam-0.4.0.tgz mcp --agent <claude|codex|cursor>
+```
+
+Check that each `required` server is connected with one read-only call. If one is missing,
+show the author its install line and wait. Do not install it yourself, and never put a token
+in a file. Add `--mcp fal` (or another known server) to `init` to record one more, or add an
+entry to `mcp_servers` by hand for any other server, with its `used_for` and `install`.
 
 ## 3. Write `storyseam.md`
 
@@ -76,7 +92,7 @@ Code, `/start-story` does this whole step for you.
 
 ## 4. Check, then hand over
 
-Once a shot list exists (after `/shotlist`), `npx -y https://storyseam.app/spec/storyseam-0.3.0.tgz
+Once a shot list exists (after `/shotlist`), `npx -y https://storyseam.app/spec/storyseam-0.4.0.tgz
 recommend` prints the video model each block should use, from its length and how many
 reference images, videos and audio it cites, against each model's limits. Long or
 reference-heavy scenes go to Seedance 2.5. Short, lightly referenced chained scenes can use
@@ -85,7 +101,7 @@ from `video.model`, and set that block's `model` only on a yes.
 
 
 ```bash
-cd <folder> && npx -y https://storyseam.app/spec/storyseam-0.3.0.tgz check
+cd <folder> && npx -y https://storyseam.app/spec/storyseam-0.4.0.tgz check
 ```
 
 Report the tree, the config values (call out loud that video is 480p and stills are 2k),

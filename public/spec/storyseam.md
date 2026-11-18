@@ -268,6 +268,66 @@ differs from `video.model`, the agent shows the author and, on a yes, sets that 
 `model`. `/render` then uses that block's model and its director. One model for the whole
 film keeps the look consistent, so the agent proposes a mix only where a block does not fit.
 
+## 10. The MCP servers a story uses
+
+A story records every MCP server it relies on, so it can be opened on another machine or in
+another agent and set up the same way. They live in `config.json` under `mcp_servers`, keyed
+by server name:
+
+```json
+"mcp_servers": {
+  "higgsfield": {
+    "used_for": ["video", "image"],
+    "required": true,
+    "transport": "http",
+    "url": "https://mcp.higgsfield.ai/mcp",
+    "auth": "oauth",
+    "install": {
+      "claude": "claude mcp add --transport http higgsfield https://mcp.higgsfield.ai/mcp",
+      "codex": "codex mcp add higgsfield --url https://mcp.higgsfield.ai/mcp",
+      "cursor": "add {\"mcpServers\":{\"higgsfield\":{\"url\":\"https://mcp.higgsfield.ai/mcp\"}}} to .cursor/mcp.json"
+    }
+  },
+  "fal": {
+    "used_for": ["video"],
+    "required": false,
+    "transport": "http",
+    "url": "https://mcp.fal.ai/mcp-relay",
+    "install": { "claude": "claude mcp add --transport http fal https://mcp.fal.ai/mcp-relay" }
+  },
+  "davinci-resolve": {
+    "used_for": ["editor"],
+    "required": true,
+    "transport": "stdio",
+    "install": { "any": "npx davinci-resolve-mcp setup" }
+  }
+}
+```
+
+| Key | Meaning |
+| --- | --- |
+| `used_for` | What the story uses the server for: `video`, `image`, `audio`, `editor`, or free text. |
+| `required` | `true` when a stage cannot run without it: a provider reached by MCP, or the editor's server when `editor.mcp` is `true`. |
+| `transport` | `http` (a remote server, with `url`) or `stdio` (a local program). |
+| `url` | The server's address, for `http`. |
+| `auth` | How it signs in: `oauth` (the client opens a browser) or the name of an env var it reads. Never the secret itself. |
+| `install` | A command per agent (`claude`, `codex`, `cursor`), or `any` when one installer covers every client. |
+| `notes` | Anything a person needs to know to make it work: edition, settings, what it is optional beside. |
+
+`init` writes this from the story's providers and editor, and `--mcp <names>` adds more.
+`npx storyseam mcp` prints what to install (`--agent codex` for one client). `storyseam check`
+reports a provider reached by MCP with no entry, an `editor.mcp: true` with no server
+`used_for` `"editor"`, and an entry with no `used_for` or `install`.
+
+Before the first stage that needs a server, the agent confirms it is connected (one
+read-only call). When it is not, the agent prints that server's `install` line for the
+current client and stops. **It never installs a server, and never writes a token into a
+file.**
+
+Tool names depend on the name the server was installed under. Higgsfield installed as
+`higgsfield` exposes `mcp__higgsfield__*`, and the claude.ai connector exposes
+`mcp__claude_ai_higgsfield__*`. A skill matches the server, not one prefix.
+
 ## Template
 
 A blank file to start from is in `docs/storyseam.template.md`. A complete, rendered example is

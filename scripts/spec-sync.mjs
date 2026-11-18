@@ -30,8 +30,14 @@ if (!fs.existsSync(path.join(src, "docs", "spec.md"))) {
   process.exit(1);
 }
 
+// Every released tarball stays served: a prompt copied last month names its
+// version, and a 404 there is a broken install. Everything else is rebuilt.
+const keep = fs.existsSync(out)
+  ? fs.readdirSync(out).filter((f) => /^storyseam-\d+\.\d+\.\d+\.tgz$/.test(f)).map((f) => [f, fs.readFileSync(path.join(out, f))])
+  : [];
 fs.rmSync(out, { recursive: true, force: true });
 fs.mkdirSync(out, { recursive: true });
+for (const [f, bytes] of keep) fs.writeFileSync(path.join(out, f), bytes);
 
 const copy = (from, to) => {
   fs.mkdirSync(path.dirname(to), { recursive: true });
