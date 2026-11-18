@@ -53,7 +53,12 @@ here that spends money.
    `video.model` and the reason under `## Decisions` in `storyseam.md`. With one entry, or
    `video.model` already set, do not ask; it is decided.
 
-**Do not ask an eighth question.** Arc structure, character names, act breaks and
+8. **Editing** — where the film is finished: `none` (the agent cuts it with ffmpeg), DaVinci
+   Resolve, or another program, and whether that program's MCP server is installed. Skip it
+   when `config.json` already has an `editor` other than the scaffold's `none` default.
+   Write it to `config.json` `editor` (`docs/spec.md` §8).
+
+**Do not ask a ninth question.** Arc structure, character names, act breaks and
 shot style are `/write-script`'s business, and asking about them now is asking the
 author to design a film before they have a premise. If they volunteer any of it,
 write it into `storyseam.md` under `## Notes` and move on.

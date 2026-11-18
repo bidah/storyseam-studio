@@ -20,7 +20,8 @@ a full block's price.
 
 This skill owns **how the script is cut into blocks** and **what each block cites**. The
 prompt itself — every word of it — is written through **the director for
-`config.video.model`** (`seedance_2_5` → `seedance-2-5-director`). The director owns the
+`config.video.model`** (`seedance_2_5` → `seedance-2-5-director`), or of the block's own
+`model` when it has one. The director owns the
 prompt contract: the section structure, how the anchor frame is declared, how references
 are numbered, the audio line, what never goes in a prompt. Load it and follow it; if it is
 not installed, `bin/registry-add.py <model>` first. Do not write prompts from memory of
@@ -159,3 +160,12 @@ before asking for more. Do not roll on into the next block.
 - Do not invent a character who is not in `world/characters.md`. If the script has one,
   add them to the world file first and say you did — an uncast character has no sheet
   and no voice, and `/cast` will stop.
+
+## Before you hand over — recommend a model per block
+
+Run `npx storyseam recommend` over the finished shot list (`docs/spec.md` §9).
+A block no candidate accepts is too long or carries too many references: split it or cut
+references now, while it is free. When a block's recommendation differs from
+`config.video.model`, show the author the line with its reason and, only on a yes, set that
+block's `model`. Never mix models silently. One model across the film keeps the look.
+

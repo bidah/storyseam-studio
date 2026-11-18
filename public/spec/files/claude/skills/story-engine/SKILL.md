@@ -11,7 +11,7 @@ description: >-
 # Storyseam — the engine
 
 ```
-idea ──▶ /start-story ──▶ /write-script ──▶ /shotlist ──▶ /cast ──▶ /render ──▶ /assemble
+idea ──▶ /start-story ──▶ /write-script ──▶ /shotlist ──▶ /cast ──▶ /render ──▶ /edit
 ```
 
 ## The five hard rules
@@ -37,7 +37,7 @@ The filesystem is the state. Detect the stage and name the next command:
 | a shot list, missing assets | shot-listed | `/cast` |
 | assets complete, no clips | cast | `/render` |
 | some clips, not all | rendering | `/render` (it resumes) |
-| all clips, no `renders/final/` | rendered | `/assemble` |
+| all clips, no `renders/final/` | rendered | `/edit` (in the program `config.json` `editor` names; `none` = ffmpeg) |
 | a film | done | hand it over; music is the human's |
 
 ## Running the whole pipeline in one go

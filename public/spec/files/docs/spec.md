@@ -144,7 +144,7 @@ An agent never asks where a story stands. It reads the folder:
 | a shot list, missing assets | shot-listed | `/cast` |
 | assets complete, no clips | cast | `/render` |
 | some clips, not all | rendering | `/render` (it resumes) |
-| all clips, no `renders/final/` | rendered | `/assemble` |
+| all clips, no `renders/final/` | rendered | `/edit` |
 | a film in `renders/final/` | done | hand it over; music is the human's |
 
 **Absence is meaningful.** The scaffold deliberately does not create `script/script.md`,
@@ -201,6 +201,72 @@ the agent says so before changing it.
 `storyseam check` reports an unchosen model as `UNCHOSEN`, and a `video.model` that is not
 in `video.models` as `BROKEN`. A config written before this section with only `video.model`
 is valid, and is read as a one-entry list.
+
+## 8. The editing program
+
+`config.json` says where the film is cut, so the agent knows whether to edit it alone or in
+the author's program:
+
+```json
+"editor": { "id": "davinci_resolve", "mcp": true, "computer_use": true, "notes": "Resolve Studio 20" }
+```
+
+| Key | Meaning |
+| --- | --- |
+| `id` | `none`: the agent edits the film itself with ffmpeg. Or the program: `davinci_resolve`, `premiere_pro`, `final_cut_pro`, `capcut`, or any other name. |
+| `mcp` | Whether that program's MCP server is installed and connected in the agent's client. |
+| `computer_use` | Whether the agent may drive the screen while it edits. |
+| `notes` | Optional: version, edition, where the project file lives. |
+
+A config with no `editor` is `{ "id": "none" }`. With a program named, `mcp` and
+`computer_use` are required, and `storyseam check` reports one that is missing.
+
+The `/edit` skill reads this. With `none`, it runs `/assemble`. With a program, it edits
+**in** that program, and it uses the program's MCP and computer use **together**: MCP for the
+exact operations (project, timeline, imports in block order, markers, render settings), and
+computer use to look at what those operations did and to reach whatever the MCP does not
+expose. An MCP call that reports success has not been verified until someone has looked at
+the screen. With neither available, the agent writes an EDL for the author to import and
+still produces `renders/final/film.mp4` with ffmpeg.
+
+## 9. Recommending a model for each block
+
+Models differ in what they will accept, and a request outside a model's limits is refused
+whole (and may still be billed). Each block in `shotlist/shotlist.json` needs two numbers
+checked against each candidate before anything renders:
+
+- **Length**: the block's `dur`, against the model's `duration_seconds`.
+- **References**: the images it cites (the chain anchor, character sheets, the location
+  plate, prop plates), the videos (black-frame voices, motion references) and any audio,
+  each against the model's `reference_ceiling`.
+
+The limits come from the registry, never from memory:
+
+| Model | Clip length | Images | Videos | Audio | Seam |
+| --- | --- | --- | --- | --- | --- |
+| `seedance_2_5` | 4–30s | 30 | 10 | 10 | first frame declared in prose (`@Image 1`) |
+| `seedance_2_0` | 4–15s | 9 | 3 | 3 | a real `start_image`, so the seam is frame-exact |
+
+The recommendation, in order:
+
+1. Keep only the candidates (`video.models`) that accept the block's length and every
+   reference count. When none does, the block is too long or too heavy: split it or drop
+   references in `/shotlist`. Never let the provider find out.
+2. A short, chained block prefers a model with a real `start_image` role, because the seam is
+   then exact rather than declared in prose.
+3. Otherwise, keep the story's `video.model`.
+4. Otherwise, take the candidate with the most headroom.
+
+So a long scene, or one that carries many references, goes to Seedance 2.5. A short scene
+with few references can go to Seedance 2.0 for an exact seam.
+
+`npx storyseam recommend` runs this rule over the shot list and prints a model per block,
+with the reason and what each other candidate would refuse (`--all` compares every video
+model in the registry, which is how an author finds out that adding a model to
+`video.models` would help). It recommends and never writes. When a block's recommendation
+differs from `video.model`, the agent shows the author and, on a yes, sets that block's
+`model`. `/render` then uses that block's model and its director. One model for the whole
+film keeps the look consistent, so the agent proposes a mix only where a block does not fit.
 
 ## Template
 

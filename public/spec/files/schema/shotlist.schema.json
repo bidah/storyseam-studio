@@ -162,6 +162,11 @@
                 }
               }
             }
+          },
+          "model": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The video model this block renders on, when it differs from config.json video.model. Must be one of video.models. Chosen by the author from `storyseam recommend` (docs/spec.md §9)."
           }
         }
       }

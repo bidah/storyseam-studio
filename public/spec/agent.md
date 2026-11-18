@@ -18,7 +18,7 @@ says which values live in which file. That ownership table is the rule you will 
 Run this in the parent directory of the new story:
 
 ```bash
-npx -y https://storyseam.app/spec/storyseam-0.2.0.tgz init <folder> --title "<working title>" --agent <claude|codex|cursor> --yes
+npx -y https://storyseam.app/spec/storyseam-0.3.0.tgz init <folder> --title "<working title>" --agent <claude|codex|cursor> --yes
 ```
 
 That one tarball is the whole engine. It installs the pipeline skills, the 21 script
@@ -33,9 +33,10 @@ so the story is self-contained afterwards. Pick `--agent` for the tool you are r
 | Cursor | `cursor` | `.storyseam/skills/`, `.storyseam/agents/` | `AGENTS.md` + `.cursor/rules/storyseam.mdc` |
 
 Optional flags: `--seconds 120` (runtime; each 30s block is one paid video run),
-`--aspect 16:9|9:16`, `--provider higgsfield|atlas|fal`, and `--video <id,id>` to offer
+`--aspect 16:9|9:16`, `--provider higgsfield|atlas|fal`, `--editor none|davinci_resolve|<program>`
+(add `--editor-mcp` when its MCP server is installed), and `--video <id,id>` to offer
 the author more than one video model (`--video seedance_2_5,seedance_2_0`).
-`npx -y https://storyseam.app/spec/storyseam-0.2.0.tgz list` shows the models the registry knows.
+`npx -y https://storyseam.app/spec/storyseam-0.3.0.tgz list` shows the models the registry knows.
 
 If you cannot run `npx`, the same files are listed one by one at
 `https://storyseam.app/spec/skills.json`. Each entry has a raw URL and the path it belongs
@@ -60,6 +61,14 @@ into `-`, plus `-director` (`seedance_2_5` → `skills/seedance-2-5-director/SKI
 it with the reason under `## Decisions`. Never pick for the author, and never ask again once
 `video.model` is set.
 
+**Ask which editing program to finish in**, in the same message: `none` (you edit it
+yourself with ffmpeg), DaVinci Resolve, or another program, and whether that program's MCP
+server is installed. Write the answer to `config.json` `editor` (`docs/spec.md` §8), or pass
+`--editor davinci_resolve --editor-mcp` to `init`. When the time comes, `/edit` cuts the film
+there. It uses the program's MCP and computer use together: MCP for the exact operations, and
+computer use to look at the screen and check each one. Never use MCP alone, and ask before
+taking over the screen.
+
 Then write `<folder>/storyseam.md` from `docs/storyseam.template.md`, following
 `docs/spec.md`. Write the two style prompts in `prompts/` from the look. If runtime or aspect
 changed from what `init` was given, update `config.json`, never `storyseam.md`. In Claude
@@ -67,15 +76,23 @@ Code, `/start-story` does this whole step for you.
 
 ## 4. Check, then hand over
 
+Once a shot list exists (after `/shotlist`), `npx -y https://storyseam.app/spec/storyseam-0.3.0.tgz
+recommend` prints the video model each block should use, from its length and how many
+reference images, videos and audio it cites, against each model's limits. Long or
+reference-heavy scenes go to Seedance 2.5. Short, lightly referenced chained scenes can use
+Seedance 2.0 for a frame-exact seam. Show the author any block whose recommendation differs
+from `video.model`, and set that block's `model` only on a yes.
+
+
 ```bash
-cd <folder> && npx -y https://storyseam.app/spec/storyseam-0.2.0.tgz check
+cd <folder> && npx -y https://storyseam.app/spec/storyseam-0.3.0.tgz check
 ```
 
 Report the tree, the config values (call out loud that video is 480p and stills are 2k),
 and the one next command: `/write-script`. The pipeline after that is:
 
 ```
-/write-script → /shotlist → /cast → /render → /assemble → renders/final/film.mp4
+/write-script → /shotlist → /cast → /render → /edit → renders/final/film.mp4
 ```
 
 ## Rules you may not break

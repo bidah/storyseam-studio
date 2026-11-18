@@ -20,7 +20,8 @@ spent on a call that was going to fail.
 This skill owns the **order of operations** and the **state**. Two other skills own the
 detail, and you load both before the first paid call:
 
-- **The director for `config.video.model`** (`seedance_2_5` → `seedance-2-5-director`)
+- **The director for the block's model**: the block's own `model` when it has one, otherwise
+  `config.video.model` (`seedance_2_5` → `seedance-2-5-director`)
   owns the prompt contract: how the anchor frame is declared, how references are numbered
   in the prompt, the audio line, what never goes in a prompt. The shot list was written
   through it; you pass what it wrote and do not edit the prompt here.
